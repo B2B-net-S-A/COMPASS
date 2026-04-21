@@ -1,13 +1,16 @@
 # ============================================================
 # RODO / dane osobowe — zostają LOKALNIE, nigdy do repo
+# Używamy absolute paths (/) aby uniknąć trafienia w case-insensitive
+# nazwy katalogów aplikacji (np. components/centrala/).
 # ============================================================
-CV_aktualni*/
-CV_nadesłane*/
-CENTRALA/
-menu CENTRALA/
-APK-COMPASS/CENTRALA/
-projekty NORDEA/
-APK-COMPASS/projekty NORDEA/
+/CV_aktualni*/
+/CV_nadesłane*/
+/CENTRALA/
+/menu CENTRALA/
+/projekty NORDEA/
+/APK-COMPASS/CENTRALA/
+/APK-COMPASS/projekty NORDEA/
+/APK-COMPASS/public/centrala/docs/
 
 # ============================================================
 # Office lock / temp files
