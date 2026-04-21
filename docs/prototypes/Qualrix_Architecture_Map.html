@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qualrix (ComPass) — Mapa Architektury Systemu | B2B.net S.A.</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232736;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --text-dim: #8b8fa8;
+    --accent: #6c63ff;
+    --accent2: #00d4aa;
+    --red: #ff6b6b;
+    --orange: #ffa94d;
+    --blue: #4dabf7;
+    --green: #51cf66;
+    --pink: #f06595;
+    --yellow: #ffd43b;
+    --cyan: #22b8cf;
+    --consultant: #6c63ff;
+    --management: #00d4aa;
+    --infra: #4dabf7;
+    --data: #ffa94d;
+    --external: #f06595;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #232736 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 24px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+  .header .subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .header-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .view-btn {
+    padding: 7px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .view-btn:hover, .view-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  /* ── LEGEND ── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    padding: 12px 40px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  /* ── MAIN CONTENT ── */
+  .main {
+    padding: 32px 40px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ── LAYER ── */
+  .layer {
+    margin-bottom: 24px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+  .layer:hover {
+    border-color: rgba(108, 99, 255, 0.3);
+    box-shadow: 0 0 30px rgba(108, 99, 255, 0.05);
+  }
+  .layer-header {
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--surface);
+  }
+  .layer-header:hover {
+    background: var(--surface2);
+  }
+  .layer-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .layer-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .layer-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .layer-badge {
+    margin-left: auto;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(108, 99, 255, 0.15);
+    color: var(--accent);
+  }
+  .layer-toggle {
+    margin-left: 8px;
+    font-size: 18px;
+    color: var(--text-dim);
+    transition: transform 0.3s;
+  }
+  .layer-toggle.open { transform: rotate(180deg); }
+
+  .layer-body {
+    padding: 20px 24px;
+    background: var(--bg);
+    display: none;
+  }
+  .layer-body.open { display: block; }
+
+  /* ── MODULE GRID ── */
+  .module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+
+  .module-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .module-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 12px 12px 0 0;
+  }
+  .module-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    border-color: rgba(108, 99, 255, 0.4);
+  }
+  .module-card .mc-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .mc-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .mc-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+  }
+  .mc-title {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .mc-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+  .mc-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 10px;
+  }
+  .mc-tag {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    background: rgba(108, 99, 255, 0.12);
+    color: var(--accent);
+  }
+  .mc-tag.green { background: rgba(0, 212, 170, 0.12); color: var(--accent2); }
+  .mc-tag.orange { background: rgba(255, 169, 77, 0.12); color: var(--orange); }
+  .mc-tag.blue { background: rgba(77, 171, 247, 0.12); color: var(--blue); }
+  .mc-tag.red { background: rgba(255, 107, 107, 0.12); color: var(--red); }
+  .mc-tag.pink { background: rgba(240, 101, 149, 0.12); color: var(--pink); }
+
+  /* ── CONNECTOR/FLOW ── */
+  .flow-section {
+    margin-top: 20px;
+  }
+  .flow-section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-dim);
+  }
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 10px;
+  }
+  .flow-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .flow-arrow {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  /* ── DATABASE ── */
+  .db-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .db-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    border-left: 3px solid var(--orange);
+  }
+  .db-card h4 {
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--orange);
+    margin-bottom: 6px;
+  }
+  .db-card p {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ── ROLE ── */
+  .role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  .role-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .role-card .role-emoji { font-size: 28px; margin-bottom: 6px; }
+  .role-card .role-name { font-size: 13px; font-weight: 600; }
+  .role-card .role-count { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .role-card .role-access { font-size: 11px; color: var(--accent); margin-top: 6px; }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── DETAIL PANEL ── */
+  .detail-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    backdrop-filter: blur(4px);
+  }
+  .detail-overlay.open { display: flex; align-items: center; justify-content: center; }
+  .detail-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 680px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 28px;
+    position: relative;
+  }
+  .detail-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .detail-close:hover { background: var(--red); color: #fff; border-color: var(--red); }
+  .detail-panel h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .detail-panel .detail-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+  .detail-section {
+    margin-bottom: 16px;
+  }
+  .detail-section h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .detail-section p, .detail-section li {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .detail-section ul {
+    list-style: none;
+    padding: 0;
+  }
+  .detail-section ul li::before {
+    content: '→ ';
+    color: var(--accent2);
+    font-weight: 700;
+  }
+  .dep-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .dep-chip {
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(108, 99, 255, 0.12);
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .dep-chip:hover { background: rgba(108, 99, 255, 0.25); }
+
+  /* ── INTEGRATION DIAGRAM ── */
+  .integration-svg {
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    .header { padding: 16px 20px; }
+    .main { padding: 20px; }
+    .legend { padding: 10px 20px; }
+    .module-grid { grid-template-columns: 1fr; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* Animations */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .module-card { animation: fadeIn 0.3s ease-out; }
+
+  /* ── COLOR CODING PER TYPE ── */
+  .type-consultant::before { background: var(--consultant); }
+  .type-management::before { background: var(--management); }
+  .type-infra::before { background: var(--infra); }
+  .type-data::before { background: var(--data); }
+  .type-external::before { background: var(--external); }
+
+  /* Search */
+  .search-box {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 13px;
+    width: 220px;
+    outline: none;
+  }
+  .search-box:focus { border-color: var(--accent); }
+  .search-box::placeholder { color: var(--text-dim); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<div class="header">
+  <div>
+    <h1>Qualrix (ComPass) — Mapa Architektury</h1>
+    <div class="subtitle">B2B.net S.A. | System Zarz&#261;dzania Konsultantami IT | 13 Modu&#322;&#243;w | Next.js + Supabase</div>
+  </div>
+  <div class="header-right">
+    <input type="text" class="search-box" placeholder="Szukaj modu&#322;u..." id="searchBox" oninput="filterModules(this.value)">
+    <button class="view-btn active" onclick="expandAll()">Rozwi&#324; wszystko</button>
+    <button class="view-btn" onclick="collapseAll()">Zwi&#324; wszystko</button>
+  </div>
+</div>
+
+<!-- ═══════════ LEGEND ═══════════ -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--consultant)"></div> Modu&#322;y Konsultanta (M1-M7)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--management)"></div> Modu&#322;y Zarz&#261;dcze (M8-M13)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--infra)"></div> Infrastruktura & Stack</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--data)"></div> Model Danych (PostgreSQL)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--external)"></div> Integracje Zewn&#281;trzne</div>
+</div>
+
+<!-- ═══════════ STATS ═══════════ -->
+<div class="main">
+  <div class="stats-bar">
+    <div class="stat-card"><div class="stat-value">13</div><div class="stat-label">Modu&#322;&#243;w</div></div>
+    <div class="stat-card"><div class="stat-value">14</div><div class="stat-label">Tabel DB</div></div>
+    <div class="stat-card"><div class="stat-value">5</div><div class="stat-label">R&#243;l u&#380;ytkownik&#243;w</div></div>
+    <div class="stat-card"><div class="stat-value">500+</div><div class="stat-label">Konsultant&#243;w</div></div>
+    <div class="stat-card"><div class="stat-value">50+</div><div class="stat-label">Mened&#380;er&#243;w</div></div>
+    <div class="stat-card"><div class="stat-value">PL/EN</div><div class="stat-label">Wieloj&#281;zyczno&#347;&#263;</div></div>
+    <div class="stat-card"><div class="stat-value">PWA</div><div class="stat-label">Mobile Ready</div></div>
+    <div class="stat-card"><div class="stat-value">RLS</div><div class="stat-label">Bezpiecze&#324;stwo</div></div>
+  </div>
+
+  <!-- ═══════════ L0: USERS & ACTORS ═══════════ -->
+  <div class="layer" id="layer-users">
+    <div class="layer-header" onclick="toggleLayer('layer-users')">
+      <div class="layer-icon" style="background:rgba(108,99,255,0.15);color:var(--accent)">&#128101;</div>
+      <div>
+        <div class="layer-title">Warstwa 0: Aktorzy & Role</div>
+        <div class="layer-desc">U&#380;ytkownicy systemu i ich uprawnienia</div>
+      </div>
+      <div class="layer-badge">5 r&#243;l</div>
+      <div class="layer-toggle open" id="toggle-layer-users">&#9660;</div>
+    </div>
+    <div class="layer-body open" id="body-layer-users">
+      <div class="role-grid">
+        <div class="role-card">
+          <div class="role-emoji">&#128187;</div>
+          <div class="role-name">Konsultant IT</div>
+          <div class="role-count">500+ os&#243;b</div>
+          <div class="role-access">Dost&#281;p: M1-M7</div>
+        </div>
+        <div class="role-card">
+          <div class="role-emoji">&#128188;</div>
+          <div class="role-name">Delivery Lead</div>
+          <div class="role-count">~30 os&#243;b</div>
+          <div class="role-access">Dost&#281;p: M8-M13 + podgl&#261;d</div>
+        </div>
+        <div class="role-card">
+          <div class="role-emoji">&#129309;</div>
+          <div class="role-name">Account Manager</div>
+          <div class="role-count">~15 os&#243;b</div>
+          <div class="role-access">Dost&#281;p: M8-M13 + klienci</div>
+        </div>
+        <div class="role-card">
+          <div class="role-emoji">&#127775;</div>
+          <div class="role-name">Consultant Success Mgr</div>
+          <div class="role-count">~5 os&#243;b</div>
+          <div class="role-access">Dost&#281;p: M8-M13 + pulse</div>
+        </div>
+        <div class="role-card">
+          <div class="role-emoji">&#128081;</div>
+          <div class="role-name">Admin / CEO</div>
+          <div class="role-count">1-2 osoby</div>
+          <div class="role-access">Dost&#281;p: PE&#321;NY + config</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ L1: CONSULTANT MODULES ═══════════ -->
+  <div class="layer" id="layer-consultant">
+    <div class="layer-header" onclick="toggleLayer('layer-consultant')">
+      <div class="layer-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#128100;</div>
+      <div>
+        <div class="layer-title">Warstwa 1: Modu&#322;y Konsultanta (M1-M7)</div>
+        <div class="layer-desc">Self-service portal dla 500+ konsultant&#243;w IT</div>
+      </div>
+      <div class="layer-badge">7 modu&#322;&#243;w</div>
+      <div class="layer-toggle open" id="toggle-layer-consultant">&#9660;</div>
+    </div>
+    <div class="layer-body open" id="body-layer-consultant">
+      <div class="module-grid">
+
+        <div class="module-card type-consultant" onclick="showDetail('m1')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#127968;</div>
+            <div class="mc-label">M1</div>
+          </div>
+          <div class="mc-title">Dashboard Konsultanta</div>
+          <div class="mc-desc">G&#322;&#243;wna strona domowa — hub informacyjny i motywacyjny. Status kontraktu, Health Score, punkty lojalno&#347;ciowe, Quick Actions.</div>
+          <div class="mc-tags">
+            <span class="mc-tag">Hub</span>
+            <span class="mc-tag">Health Score</span>
+            <span class="mc-tag">Lojalno&#347;&#263;</span>
+            <span class="mc-tag">Powiadomienia</span>
+          </div>
+        </div>
+
+        <div class="module-card type-consultant" onclick="showDetail('m2')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#128218;</div>
+            <div class="mc-label">M2</div>
+          </div>
+          <div class="mc-title">Marketplace Projekt&#243;w</div>
+          <div class="mc-desc">Wewn&#281;trzna tablica projekt&#243;w (OPEN / PIPELINE). Auto-matching, filtry tech, exclusive projekty dla Gold/Platinum.</div>
+          <div class="mc-tags">
+            <span class="mc-tag">Matching</span>
+            <span class="mc-tag">Filtry</span>
+            <span class="mc-tag green">Retencja</span>
+            <span class="mc-tag">Exclusive</span>
+          </div>
+        </div>
+
+        <div class="module-card type-consultant" onclick="showDetail('m3')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#127942;</div>
+            <div class="mc-label">M3</div>
+          </div>
+          <div class="mc-title">Program Lojalno&#347;ciowy</div>
+          <div class="mc-desc">System punkt&#243;w i tier&#243;w: Bronze → Silver → Gold → Platinum. Auto-trigger, celebracyjne animacje, przywileje.</div>
+          <div class="mc-tags">
+            <span class="mc-tag orange">Punkty</span>
+            <span class="mc-tag orange">Tiery</span>
+            <span class="mc-tag">Gamifikacja</span>
+            <span class="mc-tag green">Motywacja</span>
+          </div>
+        </div>
+
+        <div class="module-card type-consultant" onclick="showDetail('m4')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#128154;</div>
+            <div class="mc-label">M4</div>
+          </div>
+          <div class="mc-title">Contract Health Score</div>
+          <div class="mc-desc">Dynamiczna ocena zdrowia kontraktu (0-100%). Breakdown na 4 komponenty: feedback, stabilno&#347;&#263;, engagement, red flags.</div>
+          <div class="mc-tags">
+            <span class="mc-tag green">Score 0-100%</span>
+            <span class="mc-tag red">Red Flags</span>
+            <span class="mc-tag">Trend</span>
+            <span class="mc-tag">Rekomendacje</span>
+          </div>
+        </div>
+
+        <div class="module-card type-consultant" onclick="showDetail('m5')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#128218;</div>
+            <div class="mc-label">M5</div>
+          </div>
+          <div class="mc-title">Skill Development</div>
+          <div class="mc-desc">Mapa kompetencji, alerty luk, rekomendacje szkole&#324;, upload certyfikat&#243;w, benchmark stawek rynkowych.</div>
+          <div class="mc-tags">
+            <span class="mc-tag blue">Skills</span>
+            <span class="mc-tag blue">Certyfikaty</span>
+            <span class="mc-tag">Kursy</span>
+            <span class="mc-tag orange">Benchmark</span>
+          </div>
+        </div>
+
+        <div class="module-card type-consultant" onclick="showDetail('m6')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#128587;</div>
+            <div class="mc-label">M6</div>
+          </div>
+          <div class="mc-title">Program Polece&#324;</div>
+          <div class="mc-desc">Referral Program: polecanie znajomych za punkty + bonus (2000-5000 PLN). Tracking: submitted → hired → on_project.</div>
+          <div class="mc-tags">
+            <span class="mc-tag green">Referral</span>
+            <span class="mc-tag orange">Bonus PLN</span>
+            <span class="mc-tag">Pipeline</span>
+            <span class="mc-tag">Konwersja</span>
+          </div>
+        </div>
+
+        <div class="module-card type-consultant" onclick="showDetail('m7')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(108,99,255,0.15);color:var(--consultant)">&#128196;</div>
+            <div class="mc-label">M7</div>
+          </div>
+          <div class="mc-title">Dokumenty & Finanse</div>
+          <div class="mc-desc">Centralne repozytorium: umowy, aneksy, faktury, certyfikaty. Generowanie raport&#243;w, historia p&#322;atno&#347;ci.</div>
+          <div class="mc-tags">
+            <span class="mc-tag">Umowy</span>
+            <span class="mc-tag orange">Faktury</span>
+            <span class="mc-tag">PDF</span>
+            <span class="mc-tag">Raporty</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ L2: MANAGEMENT MODULES ═══════════ -->
+  <div class="layer" id="layer-management">
+    <div class="layer-header" onclick="toggleLayer('layer-management')">
+      <div class="layer-icon" style="background:rgba(0,212,170,0.15);color:var(--management)">&#128200;</div>
+      <div>
+        <div class="layer-title">Warstwa 2: Modu&#322;y Zarz&#261;dcze (M8-M13)</div>
+        <div class="layer-desc">Narz&#281;dzia analityczne i decyzyjne dla management</div>
+      </div>
+      <div class="layer-badge">6 modu&#322;&#243;w</div>
+      <div class="layer-toggle open" id="toggle-layer-management">&#9660;</div>
+    </div>
+    <div class="layer-body open" id="body-layer-management">
+      <div class="module-grid">
+
+        <div class="module-card type-management" onclick="showDetail('m8')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(0,212,170,0.15);color:var(--management)">&#9888;&#65039;</div>
+            <div class="mc-label">M8</div>
+          </div>
+          <div class="mc-title">Dashboard Zarz&#261;dczy (Risk Monitor)</div>
+          <div class="mc-desc">System wczesnego ostrzegania: Red Flags, kontrakty ko&#324;cz&#261;ce si&#281;, algorytm ryzyka odej&#347;cia, heatmap rotacji, alerty email/Slack.</div>
+          <div class="mc-tags">
+            <span class="mc-tag red">Risk</span>
+            <span class="mc-tag red">Alerts</span>
+            <span class="mc-tag">Heatmap</span>
+            <span class="mc-tag orange">Koszty</span>
+          </div>
+        </div>
+
+        <div class="module-card type-management" onclick="showDetail('m9')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(0,212,170,0.15);color:var(--management)">&#128279;</div>
+            <div class="mc-label">M9</div>
+          </div>
+          <div class="mc-title">Pipeline Matching Engine</div>
+          <div class="mc-desc">Inteligentne dopasowywanie konsultant&#243;w do projekt&#243;w. Scoring, Kanban, bulk assign, integracja ATS.</div>
+          <div class="mc-tags">
+            <span class="mc-tag blue">Algorytm</span>
+            <span class="mc-tag">Kanban</span>
+            <span class="mc-tag">ATS</span>
+            <span class="mc-tag green">Auto-match</span>
+          </div>
+        </div>
+
+        <div class="module-card type-management" onclick="showDetail('m10')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(0,212,170,0.15);color:var(--management)">&#127775;</div>
+            <div class="mc-label">M10</div>
+          </div>
+          <div class="mc-title">Consultant Success Hub</div>
+          <div class="mc-desc">Proaktywne zarz&#261;dzanie relacjami: check-in scheduler (30-dniowy cykl), Pulse Survey, feedback od AM, timeline.</div>
+          <div class="mc-tags">
+            <span class="mc-tag green">Check-in</span>
+            <span class="mc-tag">Pulse Survey</span>
+            <span class="mc-tag">NPS</span>
+            <span class="mc-tag">Timeline</span>
+          </div>
+        </div>
+
+        <div class="module-card type-management" onclick="showDetail('m11')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(0,212,170,0.15);color:var(--management)">&#128202;</div>
+            <div class="mc-label">M11</div>
+          </div>
+          <div class="mc-title">Analytics & Reporting</div>
+          <div class="mc-desc">Centralny system raportowania dla Zarz&#261;du i RN. KPI operacyjne, finansowe i strategiczne. Eksport, drill-down, GDPR.</div>
+          <div class="mc-tags">
+            <span class="mc-tag blue">KPI</span>
+            <span class="mc-tag">Recharts</span>
+            <span class="mc-tag">Eksport</span>
+            <span class="mc-tag">GDPR</span>
+          </div>
+        </div>
+
+        <div class="module-card type-management" onclick="showDetail('m12')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(0,212,170,0.15);color:var(--management)">&#128176;</div>
+            <div class="mc-label">M12</div>
+          </div>
+          <div class="mc-title">Right to Hire (Monetyzacja)</div>
+          <div class="mc-desc">Detekcja sygna&#322;&#243;w internalizacji, kalkulator op&#322;at (2-3x), workflow negocjacyjny, revenue tracking, compliance prawny.</div>
+          <div class="mc-tags">
+            <span class="mc-tag red">Signal Detection</span>
+            <span class="mc-tag orange">Fee Calc</span>
+            <span class="mc-tag">Legal</span>
+            <span class="mc-tag">Revenue</span>
+          </div>
+        </div>
+
+        <div class="module-card type-management" onclick="showDetail('m13')">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(0,212,170,0.15);color:var(--management)">&#128075;</div>
+            <div class="mc-label">M13</div>
+          </div>
+          <div class="mc-title">Alumni Management</div>
+          <div class="mc-desc">Zarz&#261;dzanie by&#322;ymi konsultantami. Re-engagement kampanie, ograniczony dost&#281;p do platformy, analityka powrot&#243;w.</div>
+          <div class="mc-tags">
+            <span class="mc-tag pink">Alumni</span>
+            <span class="mc-tag green">Re-engagement</span>
+            <span class="mc-tag">Kampanie</span>
+            <span class="mc-tag">ROI</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ L3: INFRASTRUCTURE ═══════════ -->
+  <div class="layer" id="layer-infra">
+    <div class="layer-header" onclick="toggleLayer('layer-infra')">
+      <div class="layer-icon" style="background:rgba(77,171,247,0.15);color:var(--infra)">&#9881;&#65039;</div>
+      <div>
+        <div class="layer-title">Warstwa 3: Stack Technologiczny & Infrastruktura</div>
+        <div class="layer-desc">Frontend, Backend, Hosting, Biblioteki</div>
+      </div>
+      <div class="layer-badge">3 warstwy</div>
+      <div class="layer-toggle open" id="toggle-layer-infra">&#9660;</div>
+    </div>
+    <div class="layer-body open" id="body-layer-infra">
+      <div class="module-grid">
+
+        <div class="module-card type-infra">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(77,171,247,0.15);color:var(--blue)">&#127760;</div>
+            <div class="mc-label">FRONTEND</div>
+          </div>
+          <div class="mc-title">Next.js 14+ (App Router) + React 18</div>
+          <div class="mc-desc">TypeScript, PWA (next-pwa), Server Components. Tailwind CSS + shadcn/ui. i18n via next-intl (PL/EN). State: Zustand.</div>
+          <div class="mc-tags">
+            <span class="mc-tag blue">Next.js 14</span>
+            <span class="mc-tag blue">React 18</span>
+            <span class="mc-tag blue">TypeScript</span>
+            <span class="mc-tag">PWA</span>
+          </div>
+        </div>
+
+        <div class="module-card type-infra">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(77,171,247,0.15);color:var(--blue)">&#128205;</div>
+            <div class="mc-label">UI FRAMEWORK</div>
+          </div>
+          <div class="mc-title">Tailwind CSS + shadcn/ui + Recharts</div>
+          <div class="mc-desc">Utility-first CSS, accessible Radix UI components (copy-paste), wykresy SVG responsive. Zustand dla UI state.</div>
+          <div class="mc-tags">
+            <span class="mc-tag blue">Tailwind</span>
+            <span class="mc-tag blue">shadcn/ui</span>
+            <span class="mc-tag blue">Recharts</span>
+            <span class="mc-tag">Radix UI</span>
+          </div>
+        </div>
+
+        <div class="module-card type-infra">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(0,212,170,0.15);color:var(--accent2)">&#128187;</div>
+            <div class="mc-label">BACKEND</div>
+          </div>
+          <div class="mc-title">Supabase (PostgreSQL + Auth + Realtime)</div>
+          <div class="mc-desc">Row Level Security (RLS), Edge Functions, Storage (pliki), Realtime (live updates), REST API via @supabase/supabase-js.</div>
+          <div class="mc-tags">
+            <span class="mc-tag green">PostgreSQL</span>
+            <span class="mc-tag green">Auth</span>
+            <span class="mc-tag green">RLS</span>
+            <span class="mc-tag green">Realtime</span>
+          </div>
+        </div>
+
+        <div class="module-card type-infra">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(77,171,247,0.15);color:var(--blue)">&#9729;&#65039;</div>
+            <div class="mc-label">HOSTING</div>
+          </div>
+          <div class="mc-title">Vercel + Supabase Cloud</div>
+          <div class="mc-desc">Frontend: Vercel (serverless, CI/CD, 1-klik deploy). Backend: Supabase hosted (DB + Auth). Edge Functions na Deno.</div>
+          <div class="mc-tags">
+            <span class="mc-tag blue">Vercel</span>
+            <span class="mc-tag green">Supabase Cloud</span>
+            <span class="mc-tag">Serverless</span>
+            <span class="mc-tag">CI/CD</span>
+          </div>
+        </div>
+
+        <div class="module-card type-infra">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(255,169,77,0.15);color:var(--orange)">&#128230;</div>
+            <div class="mc-label">DATA IMPORT</div>
+          </div>
+          <div class="mc-title">Papa Parse (CSV) + SheetJS (Excel)</div>
+          <div class="mc-desc">Stream large files, auto-detect delimiters, wielkie arkusze (10k+ rows). Import z Excel, CSV, ODS. Mapping i walidacja.</div>
+          <div class="mc-tags">
+            <span class="mc-tag orange">CSV</span>
+            <span class="mc-tag orange">Excel</span>
+            <span class="mc-tag">Streaming</span>
+            <span class="mc-tag">Walidacja</span>
+          </div>
+        </div>
+
+        <div class="module-card type-infra">
+          <div class="mc-top">
+            <div class="mc-icon" style="background:rgba(240,101,149,0.15);color:var(--pink)">&#128231;</div>
+            <div class="mc-label">EMAIL</div>
+          </div>
+          <div class="mc-title">Resend (Transactional)</div>
+          <div class="mc-desc">Transactional emails: notyfikacje, alerty, onboarding. 3000 email&#243;w/miesi&#261;c free tier. Tracking opens/clicks (premium).</div>
+          <div class="mc-tags">
+            <span class="mc-tag pink">Resend</span>
+            <span class="mc-tag">Email Alerts</span>
+            <span class="mc-tag">Templates</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ L4: DATA MODEL ═══════════ -->
+  <div class="layer" id="layer-data">
+    <div class="layer-header" onclick="toggleLayer('layer-data')">
+      <div class="layer-icon" style="background:rgba(255,169,77,0.15);color:var(--data)">&#128451;</div>
+      <div>
+        <div class="layer-title">Warstwa 4: Model Danych (PostgreSQL / Supabase)</div>
+        <div class="layer-desc">14 g&#322;&#243;wnych tabel, RLS, triggery automatyzacji</div>
+      </div>
+      <div class="layer-badge">14 tabel</div>
+      <div class="layer-toggle open" id="toggle-layer-data">&#9660;</div>
+    </div>
+    <div class="layer-body open" id="body-layer-data">
+      <div class="db-grid">
+        <div class="db-card"><h4>profiles</h4><p>Rozszerzenie auth.users. Role: consultant, delivery_lead, account_manager, csm, admin. i18n preference.</p></div>
+        <div class="db-card"><h4>consultants</h4><p>Profil rozszerzony: specjalizacja, technologie[], certyfikaty[], stawka, loyalty_points, health_score, status.</p></div>
+        <div class="db-card"><h4>contracts</h4><p>Kontrakty: klient, projekt, daty, stawka/h, tryb pracy, status (active/ending/ended), przedłużenia.</p></div>
+        <div class="db-card"><h4>contract_health_scores</h4><p>4 komponenty: client_feedback (40%), stability (30%), engagement (20%), red_flags (10%). Score 0-10.</p></div>
+        <div class="db-card"><h4>projects</h4><p>Marketplace: tytuł, klient, tech_required[], seniority, rate range, work_mode, status, visibility (exclusive).</p></div>
+        <div class="db-card"><h4>project_applications</h4><p>Zgłoszenia: matching_score, status (interested → in_review → accepted/rejected). UNIQUE per project+consultant.</p></div>
+        <div class="db-card"><h4>loyalty_transactions</h4><p>Punkty: activity_type (monthly, extension, referral, certification, anniversary). Auto-trigger loyalty_status.</p></div>
+        <div class="db-card"><h4>referrals</h4><p>Polecenia: dane polecaego, status (submitted → hired → on_project), bonus points + PLN.</p></div>
+        <div class="db-card"><h4>documents</h4><p>Typy: contract, amendment, invoice, certificate, other. Supabase Storage URLs.</p></div>
+        <div class="db-card"><h4>invoices</h4><p>Faktury: numer, kwota PLN, issue/due dates, payment_status (pending → processing → paid).</p></div>
+        <div class="db-card"><h4>skill_gap_alerts</h4><p>Alerty luk kompetencyjnych: skill_name, recommendation, course_url, is_read.</p></div>
+        <div class="db-card"><h4>pulse_surveys</h4><p>Ankiety: satisfaction/engagement/recommendation (1-5), komentarz. Dla CSM.</p></div>
+        <div class="db-card"><h4>right_to_hire_cases</h4><p>Internalizacja: sygnały, kalkulator opłaty, status (detected → negotiating → settled/lost).</p></div>
+        <div class="db-card"><h4>notifications</h4><p>Powiadomienia bilingual (PL/EN): type, title, body, is_read, action_url.</p></div>
+      </div>
+
+      <div class="flow-section" style="margin-top:20px;">
+        <h3>&#9889; Triggery automatyzacji</h3>
+        <div class="flow-grid">
+          <div class="flow-item">
+            <span>Rejestracja user</span>
+            <span class="flow-arrow">→</span>
+            <span>Auto-tworzenie <code>profiles</code> (role=consultant)</span>
+          </div>
+          <div class="flow-item">
+            <span>Nowa <code>loyalty_transaction</code></span>
+            <span class="flow-arrow">→</span>
+            <span>Auto-update <code>loyalty_status</code> (Bronze→Silver→Gold→Platinum)</span>
+          </div>
+          <div class="flow-item">
+            <span>UPDATE na tabeli</span>
+            <span class="flow-arrow">→</span>
+            <span>Auto-update <code>updated_at</code> timestamp</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ L5: INTEGRATIONS ═══════════ -->
+  <div class="layer" id="layer-integrations">
+    <div class="layer-header" onclick="toggleLayer('layer-integrations')">
+      <div class="layer-icon" style="background:rgba(240,101,149,0.15);color:var(--external)">&#128279;</div>
+      <div>
+        <div class="layer-title">Warstwa 5: Integracje & Przep&#322;ywy Mi&#281;dzymodu&#322;owe</div>
+        <div class="layer-desc">Jak modu&#322;y ze sob&#261; komunikuj&#261; i zewn&#281;trzne API</div>
+      </div>
+      <div class="layer-badge">12+ po&#322;&#261;cze&#324;</div>
+      <div class="layer-toggle open" id="toggle-layer-integrations">&#9660;</div>
+    </div>
+    <div class="layer-body open" id="body-layer-integrations">
+
+      <h3 style="font-size:14px;margin-bottom:12px;color:var(--accent);">Przep&#322;ywy mi&#281;dzy modu&#322;ami</h3>
+      <div class="flow-grid">
+        <div class="flow-item"><span style="color:var(--consultant)">M1 Dashboard</span><span class="flow-arrow">&#8592;</span><span>Agreguje dane z M3, M4, M7 (punkty, health, notyfikacje)</span></div>
+        <div class="flow-item"><span style="color:var(--consultant)">M2 Marketplace</span><span class="flow-arrow">&#8594;</span><span>M9 Matching Engine (forward/reverse matching)</span></div>
+        <div class="flow-item"><span style="color:var(--consultant)">M3 Lojalno&#347;&#263;</span><span class="flow-arrow">&#8592;</span><span>M5 Certyfikaty, M6 Referrale, M7 Kontrakty (auto-punkty)</span></div>
+        <div class="flow-item"><span style="color:var(--consultant)">M4 Health Score</span><span class="flow-arrow">&#8594;</span><span>M8 Risk Dashboard + M10 CSM Hub (pulse surveys)</span></div>
+        <div class="flow-item"><span style="color:var(--consultant)">M5 Skills</span><span class="flow-arrow">&#8594;</span><span>M9 Matching (profil kompetencji = scoring input)</span></div>
+        <div class="flow-item"><span style="color:var(--consultant)">M6 Referrale</span><span class="flow-arrow">&#8594;</span><span>M9 Pipeline (nowi kandydaci), M3 (punkty)</span></div>
+        <div class="flow-item"><span style="color:var(--management)">M8 Risk</span><span class="flow-arrow">&#8592;</span><span>M4 Health, M12 R2H signals, M7 kontrakty ko&#324;cz&#261;ce si&#281;</span></div>
+        <div class="flow-item"><span style="color:var(--management)">M10 CSM</span><span class="flow-arrow">&#8594;</span><span>M4 Health Score (pulse survey wp&#322;ywa na score)</span></div>
+        <div class="flow-item"><span style="color:var(--management)">M11 Analytics</span><span class="flow-arrow">&#8592;</span><span>WSZYSTKIE modu&#322;y (centralna agregacja KPI)</span></div>
+        <div class="flow-item"><span style="color:var(--management)">M12 R2H</span><span class="flow-arrow">&#8594;</span><span>M8 Risk (bridge integracyjny dla alert&#243;w)</span></div>
+        <div class="flow-item"><span style="color:var(--management)">M13 Alumni</span><span class="flow-arrow">&#8592;</span><span>M7 Offboarding data, M6 Referral (alumni polecaj&#261;)</span></div>
+      </div>
+
+      <h3 style="font-size:14px;margin-top:24px;margin-bottom:12px;color:var(--pink);">Integracje zewn&#281;trzne</h3>
+      <div class="flow-grid">
+        <div class="flow-item"><span style="color:var(--pink)">&#128231; Resend</span><span class="flow-arrow">→</span><span>Transactional emails, alerty, onboarding</span></div>
+        <div class="flow-item"><span style="color:var(--pink)">&#128172; Slack Webhooks</span><span class="flow-arrow">→</span><span>Alerty M8 (Red Flags, kontrakty ko&#324;cz&#261;ce si&#281;)</span></div>
+        <div class="flow-item"><span style="color:var(--pink)">&#128274; Supabase Auth</span><span class="flow-arrow">→</span><span>Email/Password, Magic Links, SSO (Google/MS)</span></div>
+        <div class="flow-item"><span style="color:var(--pink)">&#128230; Supabase Storage</span><span class="flow-arrow">→</span><span>Upload dokument&#243;w, certyfikat&#243;w, avatar&#243;w, CSV</span></div>
+        <div class="flow-item"><span style="color:var(--pink)">&#128640; Vercel Edge</span><span class="flow-arrow">→</span><span>Serverless Functions, ISR, Image Optimization</span></div>
+        <div class="flow-item"><span style="color:var(--pink)">&#127891; Udemy/Coursera API</span><span class="flow-arrow">→</span><span>M5: rekomendacje kurs&#243;w i szkole&#324;</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════ L6: SECURITY ═══════════ -->
+  <div class="layer" id="layer-security">
+    <div class="layer-header" onclick="toggleLayer('layer-security')">
+      <div class="layer-icon" style="background:rgba(255,107,107,0.15);color:var(--red)">&#128274;</div>
+      <div>
+        <div class="layer-title">Warstwa 6: Bezpiecze&#324;stwo & Autoryzacja</div>
+        <div class="layer-desc">RLS, RBAC, GDPR, Audit Trail</div>
+      </div>
+      <div class="layer-badge">5 mechanizm&#243;w</div>
+      <div class="layer-toggle" id="toggle-layer-security">&#9660;</div>
+    </div>
+    <div class="layer-body" id="body-layer-security">
+      <div class="module-grid">
+        <div class="module-card type-external">
+          <div class="mc-title">Row Level Security (RLS)</div>
+          <div class="mc-desc">Ka&#380;da tabela ma polityki RLS. Konsultant widzi TYLKO swoje dane. Admin widzi wszystko. Delivery Lead widzi sw&#243;j zesp&#243;&#322;.</div>
+        </div>
+        <div class="module-card type-external">
+          <div class="mc-title">RBAC (Role-Based Access Control)</div>
+          <div class="mc-desc">5 r&#243;l: consultant, delivery_lead, account_manager, csm, admin. Uprawnienia na poziomie bazy (RLS) + UI (conditional rendering).</div>
+        </div>
+        <div class="module-card type-external">
+          <div class="mc-title">Autentykacja wielopoziomowa</div>
+          <div class="mc-desc">Supabase Auth: Email/Password + Magic Links + SSO (Google, Microsoft). 2FA w przysz&#322;o&#347;ci. JWT tokens.</div>
+        </div>
+        <div class="module-card type-external">
+          <div class="mc-title">GDPR / RODO Compliance</div>
+          <div class="mc-desc">Audit trail (logowanie dost&#281;pu), encryption at rest/transit, prawo do usuni&#281;cia, eksport danych osobowych.</div>
+        </div>
+        <div class="module-card type-external">
+          <div class="mc-title">Supabase Storage Security</div>
+          <div class="mc-desc">Bucket policies per rola. Dokumenty prywatne per konsultant. Signed URLs z limitem czasu. Upload size limits.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ DETAIL OVERLAY ═══════════ -->
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail(event)">
+  <div class="detail-panel" id="detailPanel" onclick="event.stopPropagation()">
+    <button class="detail-close" onclick="closeDetail()">&times;</button>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<script>
+// ── MODULE DETAILS DATA ──
+const moduleData = {
+  m1: {
+    title: 'M1: Dashboard Konsultanta',
+    sub: 'Hub informacyjny i motywacyjny — pierwsza strona po logowaniu',
+    sections: [
+      { title: 'Cel', content: 'Centralizacja kluczowych informacji: status kontraktu, Health Score, punkty lojalnościowe, Quick Actions. Budowanie poczucia kontroli i przejrzystości.' },
+      { title: 'Funkcjonalności', list: ['Status kontraktu (aktywny / kończy się / zakończony)', 'Health Score z wizualizacją (zielony/żółty/czerwony)', 'Punkty lojalnościowe + progress bar do następnego tieru', 'Quick Actions: Marketplace, Poleć, Dokumenty, Profil', 'Powiadomienia (bell icon + drawer)', 'Przełącznik języka PL/EN', 'Tryb offline (PWA cache)'] },
+      { title: 'Tabele DB', list: ['consultants', 'contracts', 'contract_health_scores', 'loyalty_transactions', 'notifications'] },
+      { title: 'Zależności', deps: ['M3 (punkty)', 'M4 (health score)', 'M7 (dokumenty)', 'Notifications'] },
+      { title: 'Rola w architekturze', content: 'Pierwszy moduł do zbudowania. Agreguje dane z wielu modułów. Quick Actions prowadzą do M2-M7. Fundament UX.' }
+    ]
+  },
+  m2: {
+    title: 'M2: Marketplace Projektów',
+    sub: 'Wewnętrzna tablica ogłoszeń projektów — kluczowy moduł retencji',
+    sections: [
+      { title: 'Cel', content: 'Eliminacja strachu przed końcem umowy. Konsultant widzi pipeline projektów dopasowanych do profilu. Exclusive projekty dla Gold/Platinum.' },
+      { title: 'Funkcjonalności', list: ['Lista projektów OPEN (do zgłoszenia) + PIPELINE (planowane)', 'Auto-matching score na podstawie profilu (tech, seniority, lokalizacja)', 'Filtry: technologie, rate range, work mode, lokalizacja', 'Exclusive visibility dla wyższych tierów', 'Kanał zgłoszeniowy: interested → in_review → accepted/rejected'] },
+      { title: 'Tabele DB', list: ['projects', 'project_applications', 'consultants'] },
+      { title: 'Zależności', deps: ['M5 (profil kompetencji = matching input)', 'M3 (tier = visibility exclusive)', 'M9 (matching engine)'] }
+    ]
+  },
+  m3: {
+    title: 'M3: Program Lojalnościowy',
+    sub: 'System behawioralny: punkty + tiery (Bronze → Platinum)',
+    sections: [
+      { title: 'Cel', content: 'Motywowanie konsultantów poprzez zbieranie punktów. 4 tiery statusu. Auto-trigger per zdarzenie. Celebracyjne animacje. Zero kar.' },
+      { title: 'Punkty za aktywności', list: ['monthly_active: 10 pkt/miesiąc', 'contract_extension: 50 pkt', 'referral_hired: 200 pkt', 'smooth_transition: 30 pkt', 'positive_feedback: 25 pkt', 'certification: 40 pkt', 'anniversary: 100 pkt'] },
+      { title: 'Tiery', list: ['Bronze: 0-99 pkt (default)', 'Silver: 100-299 pkt', 'Gold: 300-499 pkt', 'Platinum: 500+ pkt'] },
+      { title: 'Tabele DB', list: ['loyalty_transactions', 'consultants (loyalty_points, loyalty_status)'] },
+      { title: 'Zależności', deps: ['M5 (certyfikaty)', 'M6 (referrale)', 'M7 (kontrakty)', 'M2 (exclusive access)'] }
+    ]
+  },
+  m4: {
+    title: 'M4: Contract Health Score',
+    sub: 'Dynamiczna ocena zdrowia kontraktu (0-100%)',
+    sections: [
+      { title: 'Cel', content: 'Samoświadomość konsultanta o stanie umowy. Prewencja eskalacji. Breakdown na 4 komponenty. NIE jest to ranking czy system karny.' },
+      { title: 'Komponenty Score', list: ['Client Feedback (40%) — feedback od klienta', 'Contract Stability (30%) — szansa na przedłużenie', 'Engagement (20%) — zaangażowanie konsultanta', 'Red Flags (10%) — brak check-inów, negatywny feedback'] },
+      { title: 'Wizualizacja', list: ['GREEN: 80-100% — zdrowy kontrakt', 'YELLOW: 50-79% — uwaga, potrzebna akcja', 'RED: 0-49% — alarm, kontakt z CSM'] },
+      { title: 'Tabele DB', list: ['contract_health_scores', 'health_events', 'contracts'] },
+      { title: 'Zależności', deps: ['M8 (risk dashboard)', 'M10 (CSM hub — pulse survey)'] }
+    ]
+  },
+  m5: {
+    title: 'M5: Skill Development',
+    sub: 'Rozwój kompetencji, certyfikaty, benchmark rynkowy',
+    sections: [
+      { title: 'Cel', content: 'Mapowanie umiejętności. Alerty o lukach kompetencyjnych. Rekomendacje szkoleń. Upload certyfikatów z punktami lojalnościowymi. Opcjonalny benchmark stawek.' },
+      { title: 'Funkcjonalności', list: ['Profil kompetencji (tech, certyfikaty, lata)', 'Alerty luk (brakujący certyfikat vs wymagania projektów)', 'Rekomendacje kursów (Udemy, A Cloud Guru, Coursera)', 'Upload certyfikatów (PDF) + punkty lojalności', 'Analizy rynkowe stawek', 'Benchmark stawek (TOGGLE — opcjonalny)'] },
+      { title: 'Tabele DB', list: ['consultants (technologies[], certifications[])', 'skill_gap_alerts'] },
+      { title: 'Zależności', deps: ['M3 (punkty za certyfikaty)', 'M9 (profil = matching input)', 'M2 (alerty vs projekty)'] }
+    ]
+  },
+  m6: {
+    title: 'M6: Program Poleceń (Referral)',
+    sub: 'Najtańszy kanał pozyskiwania kandydatów',
+    sections: [
+      { title: 'Cel', content: 'Polecanie znajomych w zamian za punkty + bonus (2000-5000 PLN). Konwersja 2-3x wyższa niż traditional. Tracking pełnego pipeline.' },
+      { title: 'Pipeline', list: ['submitted → in_recruitment → hired → on_project', 'Target: 15-20 poleceń/miesiąc', 'Conversion referral → hired: 15-20%', 'Conversion hired → project: 70-80%'] },
+      { title: 'Tabele DB', list: ['referrals', 'loyalty_transactions (referral_hired)'] },
+      { title: 'Zależności', deps: ['M3 (punkty za referral)', 'M9 (nowi kandydaci)', 'M13 (alumni polecają)'] }
+    ]
+  },
+  m7: {
+    title: 'M7: Dokumenty & Finanse',
+    sub: 'Centralne repozytorium dokumentów i danych finansowych',
+    sections: [
+      { title: 'Cel', content: 'Spójne źródło informacji o umowach, historii płatności, fakturach i dokumentach. Supabase Storage jako backend.' },
+      { title: 'Funkcjonalności', list: ['Dostęp do aktualnej umowy + historia', 'Generowanie faktur', 'Raport roczny do rozliczeń', 'Status płatności (pending → processing → paid)', 'Upload/download dokumentów PDF'] },
+      { title: 'Tabele DB', list: ['documents', 'invoices', 'contracts'] },
+      { title: 'Zależności', deps: ['M1 (dashboard — quick access)', 'M3 (punkty za contract extension)', 'M8 (kontrakty kończące się)'] }
+    ]
+  },
+  m8: {
+    title: 'M8: Dashboard Zarządczy (Risk Monitor)',
+    sub: 'System wczesnego ostrzegania — dedykowany zarządzającym',
+    sections: [
+      { title: 'Cel', content: 'Identyfikacja ryzyk w czasie rzeczywistym. Analiza finansowa rotacji. Planowanie zasobów. Alerting email/Slack.' },
+      { title: 'Submoduły', list: ['M8.1: Konsultanci Red Flag (Health Score <50%)', 'M8.2: Kontrakty kończące się (30/60/90 dni)', 'M8.3: Algorytm ryzyka odejścia (Exit Risk %)', 'M8.4: Analiza luki (Pipeline vs Dostępni)', 'M8.5: Koszty odejść (utracona marża PLN)', 'M8.6: Heatmap rotacji (klient/tech/recruiter)', 'M8.7: System alertów (Email/Slack)'] },
+      { title: 'Tabele DB', list: ['health_events', 'alerts', 'rotation_heatmap', 'consultant_assignments'] },
+      { title: 'Zależności', deps: ['M4 (health score)', 'M7 (kontrakty)', 'M12 (R2H signals)', 'Resend (email)', 'Slack (webhooks)'] }
+    ]
+  },
+  m9: {
+    title: 'M9: Pipeline Matching Engine',
+    sub: 'Inteligentne dopasowywanie konsultantów do projektów',
+    sections: [
+      { title: 'Cel', content: 'Forward matching (konsultant → projekty) + Reverse matching (projekt → konsultanci). Scoring z wagami. Kanban + bulk assign.' },
+      { title: 'Funkcjonalności', list: ['Automatyczne sugerowanie projektów (kontrakt wygasa)', 'Wsteczne wyszukiwanie konsultantów', 'Obliczanie match score (tech, seniority, rate, lokalizacja)', 'Interfejs Kanban z drag-and-drop', 'Operacje masowe i bulk assign', 'Metryki jakości matchingu', 'Integracja z ATS'] },
+      { title: 'Tabele DB', list: ['projects', 'project_applications', 'consultants', 'contracts'] },
+      { title: 'Zależności', deps: ['M2 (marketplace)', 'M5 (profil kompetencji)', 'M6 (nowi kandydaci)', 'ATS (zewnętrzny)'] }
+    ]
+  },
+  m10: {
+    title: 'M10: Consultant Success Hub',
+    sub: 'Proaktywne zarządzanie relacjami z konsultantami',
+    sections: [
+      { title: 'Cel', content: 'Narzędzie CSM: automatyzacja check-inów (30-dniowy cykl), Pulse Survey (3 pytania / 15 sekund), zbieranie feedback od AM, agregacja insights.' },
+      { title: 'Funkcjonalności', list: ['CSM Dashboard — lista konsultantów + timeline', 'Check-in Scheduler (30-dniowy cykl, auto-reminder)', 'Pulse Survey (satisfaction, engagement, NPS)', 'Client Feedback Form (dla Account Managers)', 'Wyniki wpływają na M4 Health Score'] },
+      { title: 'Tabele DB', list: ['consultant_checkins', 'pulse_surveys'] },
+      { title: 'Zależności', deps: ['M4 (health score update)', 'M8 (risk dashboard)', 'Resend (remindery)'] }
+    ]
+  },
+  m11: {
+    title: 'M11: Analytics & Reporting',
+    sub: 'Centralny system raportowania dla Zarządu i RN',
+    sections: [
+      { title: 'Cel', content: 'Real-time widoczność KPI operacyjnych, finansowych i strategicznych. Dla C-Level i Rady Nadzorczej.' },
+      { title: 'Raporty', list: ['Contract Duration Trend (średni czas trwania)', 'Placement Rate i Engagement', 'Health Score agregat + churn', 'Referral Pipeline Conversion', 'Revenue i koszty rotacji', 'Drill-down per klient/technologia/recruiter'] },
+      { title: 'Tabele DB', list: ['Wszystkie tabele (centralna agregacja)', 'ETL Pipeline (nightly aggregate job)'] },
+      { title: 'Zależności', deps: ['Wszystkie moduły M1-M13', 'Recharts (wizualizacja)', 'GDPR compliance'] }
+    ]
+  },
+  m12: {
+    title: 'M12: Right to Hire (Monetyzacja Internalizacji)',
+    sub: 'Gdy klient chce zatrudnić konsultanta bezpośrednio',
+    sections: [
+      { title: 'Cel', content: 'Detekcja sygnałów internalizacji. Kalkulator opłat (2-3x wynagrodzenie miesięczne). Workflow negocjacyjny. Revenue tracking. Compliance prawny.' },
+      { title: 'Submoduły', list: ['Signal Detection Engine (SDE) — wzorce behawioralne', 'Fee Calculator Module (FCM) — kalkulator opłat', 'Negotiation Workflow Manager (NWM) — tracking stanu', 'Revenue Tracker (RT) — przychody YTD', 'Legal Compliance Manager (LCM) — klauzule prawne', 'M8 Integration Bridge — alerty'] },
+      { title: 'Sygnały detekcji', list: ['consultant_activity_drop', 'client_inquiry', 'linkedin_update', 'contract_expiration_no_renewal'] },
+      { title: 'Tabele DB', list: ['internalization_signals', 'right_to_hire_cases'] },
+      { title: 'Zależności', deps: ['M8 (risk bridge)', 'M7 (kontrakty)', 'M4 (health score — context)'] }
+    ]
+  },
+  m13: {
+    title: 'M13: Alumni Management',
+    sub: 'Utrzymywanie relacji z byłymi konsultantami',
+    sections: [
+      { title: 'Cel', content: 'Digitalizacja bazy alumni. Re-engagement kampanie ("Wróć do B2B.net"). Ograniczony dostęp do platformy. Analityka powrotów i ROI.' },
+      { title: 'Funkcjonalności', list: ['Profil alumni z pełną historią współpracy', 'Ograniczony dostęp do Marketplace (tylko przeglądanie)', 'Kampanie re-engagement (email, personalizacja)', 'Ścieżka powrotu: alumni → consultant (re-onboarding)', 'System rekomendacji (alumni polecają nowych)', 'Newsletter alumni + events', 'Analityka: powroty, ROI, engagement'] },
+      { title: 'Tabele DB', list: ['consultants (status = alumni)', 'referrals (alumni jako referrer)'] },
+      { title: 'Zależności', deps: ['M7 (offboarding data)', 'M6 (referrale od alumni)', 'Resend (kampanie email)'] }
+    ]
+  }
+};
+
+// ── FUNCTIONS ──
+function toggleLayer(id) {
+  const body = document.getElementById('body-' + id);
+  const toggle = document.getElementById('toggle-' + id);
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
+
+function expandAll() {
+  document.querySelectorAll('.layer-body').forEach(el => el.classList.add('open'));
+  document.querySelectorAll('.layer-toggle').forEach(el => el.classList.add('open'));
+}
+
+function collapseAll() {
+  document.querySelectorAll('.layer-body').forEach(el => el.classList.remove('open'));
+  document.querySelectorAll('.layer-toggle').forEach(el => el.classList.remove('open'));
+}
+
+function showDetail(moduleId) {
+  const d = moduleData[moduleId];
+  if (!d) return;
+
+  let html = `<h2>${d.title}</h2><div class="detail-sub">${d.sub}</div>`;
+
+  d.sections.forEach(s => {
+    html += `<div class="detail-section"><h3>${s.title}</h3>`;
+    if (s.content) html += `<p>${s.content}</p>`;
+    if (s.list) {
+      html += '<ul>' + s.list.map(l => `<li>${l}</li>`).join('') + '</ul>';
+    }
+    if (s.deps) {
+      html += '<div class="dep-list">' + s.deps.map(d => `<span class="dep-chip">${d}</span>`).join('') + '</div>';
+    }
+    html += '</div>';
+  });
+
+  document.getElementById('detailContent').innerHTML = html;
+  document.getElementById('detailOverlay').classList.add('open');
+}
+
+function closeDetail(e) {
+  if (e && e.target !== document.getElementById('detailOverlay') && !e.target.classList.contains('detail-close')) return;
+  document.getElementById('detailOverlay').classList.remove('open');
+}
+
+function filterModules(query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll('.module-card').forEach(card => {
+    const text = card.textContent.toLowerCase();
+    card.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+// Close detail on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('detailOverlay').classList.remove('open');
+});
+</script>
+
+</body>
+</html>

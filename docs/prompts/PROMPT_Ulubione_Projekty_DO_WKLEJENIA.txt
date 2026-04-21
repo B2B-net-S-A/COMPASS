@@ -1,0 +1,889 @@
+=== QUALRIX / APK ComPass - ULUBIONE PROJEKTY (FAVORITE PROJECTS) ===
+
+Rozbudowujemy aplikację APK ComPass (Qualrix) o funkcjonalność "Ulubione Projekty".
+Konsultant może oznaczyć dowolny projekt z listy Marketplace jako ulubiony (gwiazdka).
+Informacja o ulubionych projektach musi być widoczna w wielu kluczowych miejscach aplikacji.
+
+## KONTEKST TECHNICZNY
+
+- Aplikacja: APK ComPass / Qualrix by B2B.net S.A.
+- Stack: Next.js 14+ App Router, React 18, TypeScript, Tailwind CSS, shadcn/ui, Supabase
+- Database: PostgreSQL via Supabase (z pgvector)
+- Auth: Supabase Auth
+- i18n: TypeScript dictionary w lib/i18n/dictionary.ts (NIE pliki JSON), hook useTranslation() z @/lib/i18n/context
+- Supabase Client: server actions → @/lib/supabase/server, client components → @/lib/supabase/client
+
+Istniejące typy (lib/types.ts):
+  - Project: { id, title, description, required_skills[], budget_range, file_url?, position?, max_rate?, location?, work_type?, required_languages?[], start_date?, recommendation_deadline?, manager_name?, description_pl? }
+  - ProjectMatch: { id, full_name, avatar_url, job_title, similarity, ai_recommendation?, ai_reasoning? }
+
+Istniejąca struktura katalogów components/:
+  - admin/ (ProjectCard.tsx, ProjectsListClient.tsx, CandidateCard.tsx, CandidatesListClient.tsx, CandidateProjectList.tsx, MatchAnalysisDialog.tsx, ...)
+  - centrala/
+  - dashboard/ (DashboardMockup.tsx, WelcomeMessage.tsx)
+  - documents/
+  - layout/ (Sidebar.tsx, AppLayout.tsx, TopBar.tsx, MobileMenu.tsx)
+  - profile/ (ProfileMockup.tsx)
+  - projects/ (ProjectsMockup.tsx, ProjectGapAnalysis.tsx)
+  - ui/ (button.tsx, card.tsx, badge.tsx, dialog.tsx, input.tsx, tabs.tsx, ...)
+  - UWAGA: katalog shared/ NIE ISTNIEJE — musisz go utworzyć!
+
+Istniejący interfejs ProjectCardProps (components/admin/ProjectCard.tsx):
+  interface ProjectCardProps {
+      project: Project
+      isSelected: boolean
+      onToggleSelect: (id: string) => void
+      onDelete: (id: string) => void
+      onUpdate: (updatedProject: Project) => void
+      initialMatches?: ProjectMatch[]
+  }
+
+Istniejący interfejs CandidateProjectListProps (components/admin/CandidateProjectList.tsx):
+  interface CandidateProjectListProps {
+      matches: MatchedProject[]
+      candidateId: string
+      candidateName?: string
+  }
+
+Strona admin/candidates/[id]/page.tsx — aktualnie ma 3 taby:
+  <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+      <TabsTrigger value="profile">Profil</TabsTrigger>
+      <TabsTrigger value="cv">CV</TabsTrigger>
+      <TabsTrigger value="projects">Projekty ({matches.length})</TabsTrigger>
+  </TabsList>
+
+Tabela candidates ma pole user_id (UUID) — łączy importowanego kandydata z kontem auth.users.
+
+---
+
+## KROK 1: NOWA TABELA SUPABASE
+
+Wykonaj w Supabase SQL Editor:
+
+-- Tabela ulubionych projektów
+CREATE TABLE favorite_projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  note TEXT DEFAULT NULL,
+  UNIQUE(user_id, project_id)
+);
+
+CREATE INDEX idx_favorite_projects_user ON favorite_projects(user_id);
+CREATE INDEX idx_favorite_projects_project ON favorite_projects(project_id);
+CREATE INDEX idx_favorite_projects_created ON favorite_projects(created_at DESC);
+
+ALTER TABLE favorite_projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own favorites"
+  ON favorite_projects FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own favorites"
+  ON favorite_projects FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own favorites"
+  ON favorite_projects FOR DELETE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own favorites"
+  ON favorite_projects FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Admins can view all favorites"
+  ON favorite_projects FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid()
+      AND profiles.role = 'admin'
+    )
+  );
+
+---
+
+## KROK 2: NOWE TYPY TypeScript
+
+W pliku lib/types.ts DODAJ (nie usuwaj istniejących typów Project i ProjectMatch):
+
+export type FavoriteProject = {
+  id: string
+  user_id: string
+  project_id: string
+  created_at: string
+  note: string | null
+}
+
+export type ProjectWithFavorite = Project & {
+  is_favorite: boolean
+  favorite_id?: string
+  favorite_note?: string
+  favorite_date?: string
+}
+
+---
+
+## KROK 3: NOWE SERVER ACTIONS
+
+Stwórz NOWY plik: lib/actions/favorites.ts
+
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import { FavoriteProject } from '@/lib/types'
+
+export async function addFavoriteProject(projectId: string, note?: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data, error } = await supabase
+    .from('favorite_projects')
+    .insert({
+      user_id: user.id,
+      project_id: projectId,
+      note: note || null
+    })
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === '23505') {
+      return { success: true, already_exists: true }
+    }
+    throw new Error('Failed to add favorite: ' + error.message)
+  }
+
+  revalidatePath('/projects')
+  revalidatePath('/profile')
+  revalidatePath('/admin/projects')
+  return { success: true, data }
+}
+
+export async function removeFavoriteProject(projectId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('favorite_projects')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('project_id', projectId)
+
+  if (error) throw new Error('Failed to remove favorite: ' + error.message)
+
+  revalidatePath('/projects')
+  revalidatePath('/profile')
+  revalidatePath('/admin/projects')
+  return { success: true }
+}
+
+export async function toggleFavoriteProject(projectId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data: existing } = await supabase
+    .from('favorite_projects')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('project_id', projectId)
+    .single()
+
+  if (existing) {
+    await supabase.from('favorite_projects').delete().eq('id', existing.id)
+    revalidatePath('/projects')
+    revalidatePath('/profile')
+    return { success: true, is_favorite: false }
+  } else {
+    await supabase.from('favorite_projects').insert({
+      user_id: user.id,
+      project_id: projectId
+    })
+    revalidatePath('/projects')
+    revalidatePath('/profile')
+    return { success: true, is_favorite: true }
+  }
+}
+
+export async function getMyFavoriteProjects(): Promise<(FavoriteProject & { project: any })[]> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('favorite_projects')
+    .select('*, project:projects(*)')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Failed to get favorites:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function getUserFavoriteProjects(userId: string): Promise<(FavoriteProject & { project: any })[]> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from('favorite_projects')
+    .select('*, project:projects(*)')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Failed to get user favorites:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function getMyFavoriteProjectIds(): Promise<string[]> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('favorite_projects')
+    .select('project_id')
+    .eq('user_id', user.id)
+
+  if (error) return []
+  return (data || []).map(d => d.project_id)
+}
+
+export async function updateFavoriteNote(projectId: string, note: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('favorite_projects')
+    .update({ note })
+    .eq('user_id', user.id)
+    .eq('project_id', projectId)
+
+  if (error) throw new Error('Failed to update note: ' + error.message)
+  return { success: true }
+}
+
+export async function getProjectFavoriteCount(projectId: string): Promise<number> {
+  const supabase = createClient()
+
+  const { count, error } = await supabase
+    .from('favorite_projects')
+    .select('*', { count: 'exact', head: true })
+    .eq('project_id', projectId)
+
+  if (error) return 0
+  return count || 0
+}
+
+---
+
+## KROK 4: KOMPONENT FavoriteButton (GWIAZDKA)
+
+UWAGA: Katalog components/shared/ NIE ISTNIEJE — utwórz go najpierw!
+
+Stwórz NOWY plik: components/shared/FavoriteButton.tsx
+
+'use client'
+
+import { useState, useTransition } from 'react'
+import { Star } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { toggleFavoriteProject } from '@/lib/actions/favorites'
+import { cn } from '@/lib/utils'
+
+interface FavoriteButtonProps {
+  projectId: string
+  isFavorite: boolean
+  size?: 'sm' | 'md' | 'lg'
+  showLabel?: boolean
+  className?: string
+  onToggle?: (newState: boolean) => void
+}
+
+export function FavoriteButton({
+  projectId,
+  isFavorite,
+  size = 'md',
+  showLabel = false,
+  className,
+  onToggle
+}: FavoriteButtonProps) {
+  const [optimisticFavorite, setOptimisticFavorite] = useState(isFavorite)
+  const [isPending, startTransition] = useTransition()
+
+  const iconSize = size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-6 h-6' : 'w-5 h-5'
+  const buttonSize = size === 'sm' ? 'h-8 w-8' : size === 'lg' ? 'h-10 w-10' : 'h-9 w-9'
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+
+    const newState = !optimisticFavorite
+    setOptimisticFavorite(newState)
+
+    startTransition(async () => {
+      try {
+        const result = await toggleFavoriteProject(projectId)
+        setOptimisticFavorite(result.is_favorite)
+        onToggle?.(result.is_favorite)
+      } catch {
+        setOptimisticFavorite(!newState)
+      }
+    })
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handleClick}
+      disabled={isPending}
+      className={cn(
+        showLabel ? 'w-auto px-3 gap-2' : buttonSize,
+        'transition-all duration-200',
+        optimisticFavorite
+          ? 'text-yellow-400 hover:text-yellow-500'
+          : 'text-muted-foreground hover:text-yellow-400',
+        className
+      )}
+      title={optimisticFavorite ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+    >
+      <Star
+        className={cn(
+          iconSize,
+          'transition-all duration-200',
+          optimisticFavorite && 'fill-yellow-400',
+          isPending && 'animate-pulse'
+        )}
+      />
+      {showLabel && (
+        <span className="text-sm">
+          {optimisticFavorite ? 'W ulubionych' : 'Dodaj do ulubionych'}
+        </span>
+      )}
+    </Button>
+  )
+}
+
+---
+
+## KROK 5: KOMPONENT FavoriteProjectsSection (LISTA ULUBIONYCH)
+
+Stwórz NOWY plik: components/shared/FavoriteProjectsSection.tsx
+
+Reusable komponent wyświetlający listę ulubionych projektów — używany w Profilu, Dashboard i widoku admin Konsultanta.
+
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Star, Briefcase, MapPin, DollarSign, ExternalLink, StickyNote, X } from 'lucide-react'
+import { FavoriteButton } from '@/components/shared/FavoriteButton'
+import Link from 'next/link'
+
+interface FavoriteProjectData {
+  id: string
+  project_id: string
+  created_at: string
+  note: string | null
+  project: {
+    id: string
+    title: string
+    description?: string
+    description_pl?: string
+    position?: string
+    max_rate?: string
+    location?: string
+    work_type?: string
+    required_skills?: string[]
+    start_date?: string
+  }
+}
+
+interface FavoriteProjectsSectionProps {
+  favorites: FavoriteProjectData[]
+  title?: string
+  emptyMessage?: string
+  showRemoveButton?: boolean
+  maxItems?: number
+  compact?: boolean
+  onFavoriteRemoved?: (projectId: string) => void
+}
+
+const WORK_TYPE_LABELS: Record<string, string> = {
+  hybrid: 'Hybryda',
+  remote: 'Zdalnie',
+  onsite: 'Stacjonarnie',
+}
+
+export function FavoriteProjectsSection({
+  favorites,
+  title = 'Ulubione Projekty',
+  emptyMessage = 'Nie masz jeszcze ulubionych projektów. Przejdź do Marketplace i oznacz projekty gwiazdką!',
+  showRemoveButton = true,
+  maxItems = 0,
+  compact = false,
+  onFavoriteRemoved
+}: FavoriteProjectsSectionProps) {
+  const displayFavorites = maxItems > 0 ? favorites.slice(0, maxItems) : favorites
+
+  if (favorites.length === 0) {
+    return (
+      <Card className="bg-card border-white/10">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Star className="w-5 h-5 text-yellow-400" />
+            {title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-muted-foreground rounded-lg border border-dashed border-white/10">
+            {emptyMessage}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="bg-card border-white/10">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+          {title}
+          <Badge variant="secondary" className="ml-2 bg-yellow-400/10 text-yellow-400 border-yellow-400/20">
+            {favorites.length}
+          </Badge>
+        </CardTitle>
+        {maxItems > 0 && favorites.length > maxItems && (
+          <Link href="/projects?tab=favorites">
+            <Button variant="ghost" size="sm" className="text-cyan-400 hover:text-cyan-300">
+              Zobacz wszystkie ({favorites.length})
+              <ExternalLink className="w-3 h-3 ml-1" />
+            </Button>
+          </Link>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {displayFavorites.map((fav) => (
+          <div
+            key={fav.id}
+            className="group flex items-start gap-3 p-3 rounded-lg border border-white/5 hover:border-cyan-500/30 hover:bg-cyan-500/5 transition-all"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h4 className="font-semibold text-white truncate group-hover:text-cyan-400 transition-colors">
+                  {fav.project.title}
+                </h4>
+              </div>
+
+              {!compact && (
+                <>
+                  {fav.project.position && (
+                    <p className="text-sm text-muted-foreground mb-1">
+                      <Briefcase className="w-3 h-3 inline mr-1" />
+                      {fav.project.position}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-2">
+                    {fav.project.location && (
+                      <span><MapPin className="w-3 h-3 inline mr-0.5" />{fav.project.location}</span>
+                    )}
+                    {fav.project.max_rate && (
+                      <span><DollarSign className="w-3 h-3 inline mr-0.5" />{fav.project.max_rate}</span>
+                    )}
+                    {fav.project.work_type && (
+                      <Badge variant="outline" className="text-xs border-white/10">
+                        {WORK_TYPE_LABELS[fav.project.work_type] || fav.project.work_type}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {fav.project.required_skills && fav.project.required_skills.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {fav.project.required_skills.slice(0, 4).map((skill, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs bg-black/40 text-gray-300 border border-white/5">
+                          {skill}
+                        </Badge>
+                      ))}
+                      {fav.project.required_skills.length > 4 && (
+                        <Badge variant="secondary" className="text-xs bg-black/40 text-gray-500 border border-white/5">
+                          +{fav.project.required_skills.length - 4}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+
+                  {fav.note && (
+                    <div className="flex items-start gap-1 text-xs text-yellow-400/70 bg-yellow-400/5 rounded px-2 py-1 mt-1">
+                      <StickyNote className="w-3 h-3 mt-0.5 shrink-0" />
+                      <span className="italic">{fav.note}</span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="text-xs text-muted-foreground/50 mt-1">
+                Dodano: {new Date(fav.created_at).toLocaleDateString('pl-PL')}
+              </div>
+            </div>
+
+            {showRemoveButton && (
+              <FavoriteButton
+                projectId={fav.project_id}
+                isFavorite={true}
+                size="sm"
+                onToggle={(newState) => {
+                  if (!newState) onFavoriteRemoved?.(fav.project_id)
+                }}
+              />
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+---
+
+## KROK 6: INTEGRACJA — MARKETPLACE PROJEKTÓW (lista projektów)
+
+### 6A. Modyfikacja components/admin/ProjectCard.tsx
+
+1. Dodaj import na górze:
+   import { FavoriteButton } from '@/components/shared/FavoriteButton'
+
+2. ROZSZERZ (nie zastępuj!) interfejs ProjectCardProps o nowe pola:
+   interface ProjectCardProps {
+       project: Project
+       isSelected: boolean
+       onToggleSelect: (id: string) => void
+       onDelete: (id: string) => void
+       onUpdate: (updatedProject: Project) => void
+       initialMatches?: ProjectMatch[]
+       isFavorite?: boolean                                              // NOWE
+       onFavoriteToggle?: (projectId: string, newState: boolean) => void // NOWE
+       showFavoriteButton?: boolean                                      // NOWE — domyślnie true
+       favoriteCount?: number                                            // NOWE — ile osób oznaczyło (admin view)
+   }
+
+3. W headerze karty (CardHeader), obok tytułu projektu, DODAJ gwiazdkę:
+   <div className="flex items-center gap-2">
+     <CardTitle className="text-xl">{project.title}</CardTitle>
+     {showFavoriteButton !== false && (
+       <FavoriteButton
+         projectId={project.id}
+         isFavorite={isFavorite || false}
+         size="sm"
+         onToggle={(newState) => onFavoriteToggle?.(project.id, newState)}
+       />
+     )}
+     {typeof favoriteCount === 'number' && favoriteCount > 0 && (
+       <Badge variant="secondary" className="text-xs bg-yellow-400/10 text-yellow-400 border-yellow-400/20">
+         {favoriteCount} zainteresowanych
+       </Badge>
+     )}
+   </div>
+
+### 6B. Modyfikacja components/admin/ProjectsListClient.tsx
+
+1. Dodaj import:
+   import { getMyFavoriteProjectIds } from '@/lib/actions/favorites'
+   import { Star } from 'lucide-react'
+
+2. Dodaj state i loading:
+   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false)
+
+   useEffect(() => {
+     const loadFavorites = async () => {
+       const ids = await getMyFavoriteProjectIds()
+       setFavoriteIds(ids)
+     }
+     loadFavorites()
+   }, [])
+
+3. W sekcji filtrów dodaj przycisk toggle:
+   <Button
+     variant={showOnlyFavorites ? "default" : "outline"}
+     size="sm"
+     onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+     className={showOnlyFavorites ? "bg-yellow-500 hover:bg-yellow-600" : ""}
+   >
+     <Star className={cn("w-4 h-4 mr-1", showOnlyFavorites && "fill-white")} />
+     Ulubione ({favoriteIds.length})
+   </Button>
+
+4. W filtracji projektów dodaj warunek:
+   const filteredProjects = projects.filter(p => {
+     // ...istniejące filtry...
+     if (showOnlyFavorites && !favoriteIds.includes(p.id)) return false
+     return true
+   })
+
+5. W mapowaniu ProjectCard przekaż nowe props:
+   <ProjectCard
+     key={project.id}
+     project={project}
+     {/* ... istniejące props ... */}
+     isFavorite={favoriteIds.includes(project.id)}
+     onFavoriteToggle={(id, newState) => {
+       setFavoriteIds(prev =>
+         newState ? [...prev, id] : prev.filter(fid => fid !== id)
+       )
+     }}
+   />
+
+---
+
+## KROK 7: INTEGRACJA — MÓJ PROFIL (Twój Profil)
+
+W istniejącym pliku app/(protected)/profile/page.tsx:
+
+1. Dodaj importy na górze:
+   import { getMyFavoriteProjects } from '@/lib/actions/favorites'
+   import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
+
+2. Dodaj state i useEffect:
+   const [favorites, setFavorites] = useState<any[]>([])
+
+   useEffect(() => {
+     const loadFavorites = async () => {
+       const favs = await getMyFavoriteProjects()
+       setFavorites(favs)
+     }
+     loadFavorites()
+   }, [])
+
+3. DODAJ sekcję Ulubionych Projektów w renderze — PO sekcji Bio/Previous Clients, ale PRZED Delete Account:
+
+   {/* === ULUBIONE PROJEKTY === */}
+   <div className="mt-6">
+     <FavoriteProjectsSection
+       favorites={favorites}
+       title="Twoje Ulubione Projekty"
+       emptyMessage="Nie masz jeszcze ulubionych projektów. Przejdź do zakładki Projekty i oznacz interesujące Cię projekty gwiazdką!"
+       showRemoveButton={true}
+       maxItems={5}
+       onFavoriteRemoved={(projectId) => {
+         setFavorites(prev => prev.filter(f => f.project_id !== projectId))
+       }}
+     />
+   </div>
+
+---
+
+## KROK 8: INTEGRACJA — PODSTRONA KONSULTANTA (Admin → Konsultanci → [id])
+
+W istniejącym pliku app/(protected)/admin/candidates/[id]/page.tsx:
+
+1. Dodaj importy na górze:
+   import { getUserFavoriteProjects } from '@/lib/actions/favorites'
+   import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
+
+2. W funkcji CandidateDetailPage, PO pobraniu danych kandydata i matches, dodaj:
+   // Fetch favorite projects — potrzebujemy user_id kandydata (kolumna user_id w tabeli candidates)
+   const favoriteProjects = candidate.user_id
+     ? await getUserFavoriteProjects(candidate.user_id)
+     : []
+
+3. ZMIEŃ TabsList z 3 kolumn na 4:
+   <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
+     <TabsTrigger value="profile">Profil</TabsTrigger>
+     <TabsTrigger value="cv">CV</TabsTrigger>
+     <TabsTrigger value="projects">Projekty ({matches.length})</TabsTrigger>
+     <TabsTrigger value="favorites">
+       Ulubione ({favoriteProjects.length})
+     </TabsTrigger>
+   </TabsList>
+
+4. Dodaj nowy TabsContent (po istniejących TabsContent):
+   {/* FAVORITES TAB */}
+   <TabsContent value="favorites" className="space-y-4 mt-4">
+     <FavoriteProjectsSection
+       favorites={favoriteProjects}
+       title={'Ulubione Projekty — ' + candidate.full_name}
+       emptyMessage="Ten konsultant nie oznaczył jeszcze żadnych projektów jako ulubione."
+       showRemoveButton={false}
+       compact={false}
+     />
+   </TabsContent>
+
+---
+
+## KROK 9: INTEGRACJA — DASHBOARD KONSULTANTA
+
+W istniejącym pliku dashboard (components/dashboard/DashboardMockup.tsx lub app/(protected)/dashboard/page.tsx):
+
+1. Dodaj importy:
+   import { getMyFavoriteProjects } from '@/lib/actions/favorites'
+   import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
+
+2. Dodaj state i loading:
+   const [favorites, setFavorites] = useState<any[]>([])
+
+   useEffect(() => {
+     getMyFavoriteProjects().then(setFavorites)
+   }, [])
+
+3. W renderze dodaj mini-widget (compact, max 3):
+   <FavoriteProjectsSection
+     favorites={favorites}
+     title="Ulubione Projekty"
+     maxItems={3}
+     compact={true}
+     showRemoveButton={false}
+   />
+
+---
+
+## KROK 10: INTEGRACJA — ADMIN LISTA PROJEKTÓW (badge "X zainteresowanych")
+
+W widoku admina ProjectsListClient.tsx lub ProjectCard.tsx, przy każdym projekcie pokaż ile osób go oznaczyło:
+
+   import { getProjectFavoriteCount } from '@/lib/actions/favorites'
+
+W ProjectCard (widok admin), obok Match Score wyświetl:
+   {favoriteCount > 0 && (
+     <div className="flex items-center gap-1 text-xs text-yellow-400/70">
+       <Star className="w-3 h-3 fill-yellow-400" />
+       {favoriteCount} zainteresowanych
+     </div>
+   )}
+
+To daje adminowi/delivery leadowi cenną informację — który projekt generuje największe zainteresowanie wśród konsultantów.
+
+---
+
+## KROK 11: AKTUALIZACJA CandidateProjectList.tsx
+
+W istniejącym components/admin/CandidateProjectList.tsx, dodaj props i badge:
+
+1. ROZSZERZ interfejs:
+   interface CandidateProjectListProps {
+     matches: MatchedProject[]
+     candidateId: string
+     candidateName?: string
+     favoriteProjectIds?: string[]   // NOWE
+   }
+
+2. Przy każdym projekcie na liście dopasowań dodaj badge jeśli jest ulubiony:
+   {favoriteProjectIds?.includes(project.id) && (
+     <Badge className="bg-yellow-400/10 text-yellow-400 border-yellow-400/20 text-xs">
+       Ulubiony
+     </Badge>
+   )}
+
+---
+
+## KROK 12: i18n — TŁUMACZENIA
+
+UWAGA: Aplikacja używa TypeScript dictionary (lib/i18n/dictionary.ts), NIE pliki JSON!
+
+W istniejącym pliku lib/i18n/dictionary.ts, DODAJ nowe klucze do obiektu pl i en (NIE USUWAJ istniejących kluczy!):
+
+W sekcji pl: {...istniejące klucze..., dodaj:}
+    favorites_title: 'Ulubione Projekty',
+    favorites_add: 'Dodaj do ulubionych',
+    favorites_remove: 'Usuń z ulubionych',
+    favorites_in_favorites: 'W ulubionych',
+    favorites_empty: 'Nie masz jeszcze ulubionych projektów',
+    favorites_empty_consultant: 'Ten konsultant nie oznaczył jeszcze żadnych projektów jako ulubione',
+    favorites_show_only: 'Tylko ulubione',
+    favorites_interested_count: 'zainteresowanych',
+    favorites_added_on: 'Dodano',
+    favorites_note_placeholder: 'Dodaj notatkę...',
+    favorites_your: 'Twoje Ulubione Projekty',
+    favorites_see_all: 'Zobacz wszystkie',
+
+W sekcji en: {...istniejące klucze..., dodaj:}
+    favorites_title: 'Favorite Projects',
+    favorites_add: 'Add to favorites',
+    favorites_remove: 'Remove from favorites',
+    favorites_in_favorites: 'In favorites',
+    favorites_empty: 'You don\'t have any favorite projects yet',
+    favorites_empty_consultant: 'This consultant hasn\'t marked any favorite projects yet',
+    favorites_show_only: 'Favorites only',
+    favorites_interested_count: 'interested',
+    favorites_added_on: 'Added',
+    favorites_note_placeholder: 'Add a note...',
+    favorites_your: 'Your Favorite Projects',
+    favorites_see_all: 'See all',
+
+---
+
+## PODSUMOWANIE — MAPA INTEGRACJI
+
+| Lokalizacja | Co widać | Kto widzi |
+|---|---|---|
+| Marketplace / Lista Projektów (/projects) | Gwiazdka przy każdym projekcie + filtr "Tylko ulubione" | Konsultant |
+| Mój Profil (/profile) | Sekcja "Twoje Ulubione Projekty" (max 5 z linkiem "zobacz wszystkie") | Konsultant |
+| Dashboard (/dashboard) | Mini-widget z 3 najnowszymi ulubionymi (compact) | Konsultant |
+| Admin → Konsultant (/admin/candidates/[id]) | Nowy tab "Ulubione" z pełną listą | Admin |
+| Admin → Projekty (/admin/projects) | Badge "X zainteresowanych" przy każdym projekcie | Admin |
+| Admin → Konsultant → Projekty (tab Projekty) | Badge "Ulubiony" przy dopasowanych projektach | Admin |
+
+---
+
+## SCENARIUSZE TESTOWE
+
+SMOKE TEST:
+1. Zaloguj się jako konsultant
+2. Przejdź do /projects → kliknij gwiazdkę przy projekcie → gwiazdka zmienia kolor na żółty (fill)
+3. Kliknij ponownie → gwiazdka wraca do szarego (unfill)
+4. Oznacz 3 projekty → przejdź do /profile → sekcja "Ulubione Projekty" pokazuje 3 pozycje
+5. Przejdź do /dashboard → mini-widget pokazuje 3 ulubione
+
+ADMIN VIEW:
+1. Zaloguj się jako admin
+2. Przejdź do /admin/candidates/[id] → tab "Ulubione" → widoczne ulubione tego konsultanta
+3. Przejdź do /admin/projects → przy popularnych projektach badge "X zainteresowanych"
+
+EDGE CASES:
+1. Usunięcie projektu → wpis w favorite_projects znika (CASCADE)
+2. Usunięcie konta → ulubione znikają (CASCADE)
+3. Szybkie dwukrotne kliknięcie gwiazdki → brak duplikatów (UNIQUE constraint + optimistic UI)
+4. Nowy user bez ulubionych → empty state z zachętą
+5. Projekt bez description_pl → fallback na description
+
+---
+
+## NOWE PLIKI DO STWORZENIA
+
+1. lib/actions/favorites.ts (server actions)
+2. components/shared/FavoriteButton.tsx (komponent gwiazdki)
+3. components/shared/FavoriteProjectsSection.tsx (lista ulubionych)
+
+## ISTNIEJĄCE PLIKI DO MODYFIKACJI
+
+1. lib/types.ts — dodaj FavoriteProject i ProjectWithFavorite
+2. lib/i18n/dictionary.ts — dodaj klucze favorites_*
+3. components/admin/ProjectCard.tsx — dodaj gwiazdkę w headerze + nowe props
+4. components/admin/ProjectsListClient.tsx — dodaj filtr ulubionych + state
+5. components/admin/CandidateProjectList.tsx — dodaj badge "Ulubiony" + prop favoriteProjectIds
+6. app/(protected)/profile/page.tsx — dodaj sekcję ulubionych
+7. app/(protected)/admin/candidates/[id]/page.tsx — dodaj 4. tab "Ulubione"
+8. app/(protected)/dashboard/page.tsx lub components/dashboard/DashboardMockup.tsx — dodaj widget
+
+## DEPENDENCIES
+
+- Moduł Projects (tabela projects, typy, ProjectCard)
+- Moduł Profile (strona /profile)
+- Moduł Candidates (admin, strona /admin/candidates/[id])
+- Supabase Auth (auth.uid())
+- shadcn/ui: Button, Card, Badge, Tabs
+- lucide-react: Star, Briefcase, MapPin, DollarSign, ExternalLink, StickyNote

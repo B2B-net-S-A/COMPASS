@@ -1,0 +1,719 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Upload, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useTranslation } from '@/lib/i18n/context'
+import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
+import { getMyFavoriteProjects } from '@/lib/actions/favorites'
+import { MyReferralsSection } from '@/components/referrals/MyReferralsSection'
+import { useLayoutPreferences } from '@/lib/contexts/LayoutPreferencesContext'
+import { LayoutSwitcher } from '@/components/profile/LayoutSwitcher'
+import { ProfileGridLayout } from '@/components/profile/layouts/ProfileGridLayout'
+import { ProfileTabsLayout } from '@/components/profile/layouts/ProfileTabsLayout'
+import { ProfileFeedLayout } from '@/components/profile/layouts/ProfileFeedLayout'
+
+export default function ProfilePage() {
+    const { t: _t } = useTranslation()
+    const [bio, setBio] = useState('')
+    const [experience, setExperience] = useState(0)
+    const [status, setStatus] = useState('open')
+    const [capacity, setCapacity] = useState(100)
+    const [sentiments, setSentiments] = useState<string[]>([])
+    const [verifier, setVerifier] = useState('not_interested')
+    const [ambassador, setAmbassador] = useState('not_interested')
+    const [sales, setSales] = useState('not_interested')
+    const [clients, setClients] = useState<string[]>([])
+    const [clientInput, setClientInput] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [avatarLoading, setAvatarLoading] = useState(false)
+    const [currentCvUrl, setCurrentCvUrl] = useState<string | null>(null)
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+    const [coverLetter, setCoverLetter] = useState('')
+    const [favorites, setFavorites] = useState<any[]>([])
+
+    const [initialProfile, setInitialProfile] = useState<any>(null)
+    const [isDirty, setIsDirty] = useState(false)
+
+    useEffect(() => {
+        const loadProfile = async () => {
+            try {
+                const { getMyProfile } = await import('@/lib/actions/matching')
+                const profile = await getMyProfile()
+                if (profile) {
+                    if (profile.bio) setBio(profile.bio)
+                    if (profile.experience_years) setExperience(profile.experience_years)
+                    if (profile.current_status) setStatus(profile.current_status)
+                    if (profile.capacity_percentage) setCapacity(profile.capacity_percentage)
+                    if (profile.project_sentiment) setSentiments(profile.project_sentiment)
+
+                    if (profile.verifier_status) setVerifier(profile.verifier_status)
+                    if (profile.ambassador_status) setAmbassador(profile.ambassador_status)
+                    if (profile.sales_support_status) setSales(profile.sales_support_status)
+                    if (profile.previous_clients) setClients(profile.previous_clients)
+
+                    if (profile.cv_url) setCurrentCvUrl('uploaded')
+                    if (profile.avatar_url) setAvatarUrl(profile.avatar_url)
+
+                    // Set initial profile state for dirty checking
+                    setInitialProfile({
+                        bio: profile.bio || '',
+                        experience_years: profile.experience_years || 0,
+                        current_status: profile.current_status || 'open',
+                        capacity_percentage: profile.capacity_percentage || 100,
+                        project_sentiment: profile.project_sentiment || [],
+                        verifier_status: profile.verifier_status || 'not_interested',
+                        ambassador_status: profile.ambassador_status || 'not_interested',
+                        sales_support_status: profile.sales_support_status || 'not_interested',
+                        previous_clients: profile.previous_clients || [],
+                        full_name: profile.full_name
+                    })
+                }
+            } catch (e) {
+                console.error('Failed to load profile', e)
+            }
+        }
+        const loadFavorites = async () => {
+            const favs = await getMyFavoriteProjects()
+            setFavorites(favs)
+        }
+        loadProfile()
+        loadFavorites()
+    }, [])
+
+    // Check for dirty state
+    useEffect(() => {
+        if (!initialProfile) return
+
+        const currentState = {
+            bio,
+            experience_years: experience,
+            current_status: status,
+            capacity_percentage: capacity,
+            project_sentiment: sentiments,
+            verifier_status: verifier,
+            ambassador_status: ambassador,
+            sales_support_status: sales,
+            previous_clients: clients
+        }
+
+        // Simple comparison (JSON.stringify is enough for this data structure)
+        const isModified = JSON.stringify(currentState) !== JSON.stringify(initialProfile)
+        setIsDirty(isModified)
+
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isModified) {
+                e.preventDefault()
+                e.returnValue = ''
+            }
+        }
+
+        window.addEventListener('beforeunload', handleBeforeUnload)
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+    }, [bio, experience, status, capacity, sentiments, verifier, ambassador, sales, clients, initialProfile])
+
+    // In a real app, we would fetch the user profile here or pass it as a prop.
+    // For now, let's assume we handle uploads and notifications.
+
+    const handleSaveProfile = async () => {
+        if (!confirm('Czy na pewno chcesz zapisać zmiany w profilu?')) {
+            return
+        }
+
+        setLoading(true)
+        try {
+            const { updateProfileFull } = await import('@/lib/actions/matching')
+            await updateProfileFull({
+                bio,
+                experience_years: experience,
+                current_status: status,
+                capacity_percentage: capacity,
+                project_sentiment: sentiments,
+                verifier_status: verifier,
+                ambassador_status: ambassador,
+                sales_support_status: sales,
+                previous_clients: clients
+            })
+            alert('Profil zaktualizowany pomyślnie!')
+        } catch (error) {
+            console.error(error)
+            alert('Wystąpił błąd podczas zapisywania profilu.')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setAvatarLoading(true)
+        const formData = new FormData()
+        formData.append('file', file)
+
+        try {
+            const { uploadAvatar } = await import('@/lib/actions/files')
+            const result = await uploadAvatar(formData)
+            if (result.success) {
+                // Create local preview immediately
+                const objectUrl = URL.createObjectURL(file)
+                setAvatarUrl(objectUrl)
+                alert('Avatar zaktualizowany! Odśwież stronę, aby zobaczyć zmiany.')
+            }
+        } catch (error) {
+            console.error(error)
+            alert('Błąd podczas wgrywania avatara.')
+        } finally {
+            setAvatarLoading(false)
+        }
+    }
+
+    const [fileToUpload, setFileToUpload] = useState<File | null>(null)
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setFileToUpload(e.target.files[0])
+        }
+    }
+
+    const handleProfileUpdate = async () => {
+        if (!fileToUpload) {
+            alert('Proszę najpierw wybrać plik CV (Krok 1).')
+            return
+        }
+
+        if (currentCvUrl && currentCvUrl !== 'uploaded') {
+            if (!confirm('Wgranie nowego CV nadpisze poprzednie. Czy chcesz kontynuować?')) {
+                return
+            }
+        }
+
+        setLoading(true)
+        const formData = new FormData()
+        formData.append('file', fileToUpload)
+
+        try {
+            const { uploadCV, generateProfileFromCV } = await import('@/lib/actions/files')
+
+            // 1. Upload File
+            const result = await uploadCV(formData)
+
+            if (result.success) {
+                // 2. Generate Profile
+                const manualData = {
+                    experience,
+                    status,
+                    capacity,
+                    sentiments,
+                    verifier,
+                    ambassador,
+                    sales,
+                    coverLetter // Pass the cover letter content
+                }
+                const genResult = await generateProfileFromCV(manualData)
+
+                if (genResult.success && genResult.data) {
+                    if (genResult.data.bio) setBio(genResult.data.bio)
+                    if (genResult.data.previous_clients) setClients(genResult.data.previous_clients)
+
+                    alert('Proces zakończony sukcesem! Profil został zaktualizowany.')
+                    setCurrentCvUrl('uploaded')
+                    setInitialProfile((prev: any) => ({ ...prev, bio: genResult.data.bio, previous_clients: genResult.data.previous_clients }))
+                    setFileToUpload(null) // Reset file
+                    setCoverLetter('') // Optional: reset cover letter
+                } else {
+                    alert('CV wgrane, ale wystąpił błąd przy generowaniu profilu: ' + (genResult.error || 'Nieznany błąd'))
+                }
+            } else {
+                alert('Błąd uploadu: ' + result.error)
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Wystąpił krytyczny błąd.')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold text-white">
+                        {initialProfile?.full_name || 'Twój Profil'}
+                    </h1>
+                    <p className="text-muted-foreground">Zarządzanie rozwojem, lojalnością i kompetencjami.</p>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                    <label className="cursor-pointer">
+                        <div className="h-16 w-16 rounded-full bg-secondary/20 flex items-center justify-center border-2 border-dashed border-white/20 hover:border-cyan-400 transition-colors overflow-hidden relative group">
+                            {avatarLoading ? (
+                                <span className="text-xs animate-pulse">Wait...</span>
+                            ) : (
+                                <>
+                                    {/* Create a state for avatarUrl and use it here. For now assuming we add it. */}
+                                    {avatarUrl ? (
+                                        <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span className="text-xs text-muted-foreground text-center group-hover:text-cyan-400">Zmień Foto</span>
+                                    )}
+                                </>
+                            )}
+                            <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={avatarLoading} />
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            {/* Section 1: CV & Cover Letter */}
+            <Card className="bg-card border-white/10 mb-6 bg-gradient-to-r from-cyan-500/5 to-purple-500/5">
+                <CardHeader>
+                    <CardTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 flex items-center gap-2">
+                        📄 CV i List Motywacyjny
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+
+                    {/* Step 1: File Selection */}
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
+                        <Label className="text-lg font-semibold text-white mb-2 block">
+                            1. Wgraj CV (Wybierz plik)
+                        </Label>
+                        <div className="flex items-center gap-4 mt-4">
+                            <Input
+                                type="file"
+                                accept=".pdf,.docx"
+                                className="hidden"
+                                id="cv-select"
+                                onChange={handleFileSelect}
+                                disabled={loading}
+                            />
+                            <Button
+                                asChild
+                                variant="outline"
+                                className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 cursor-pointer"
+                            >
+                                <label htmlFor="cv-select">
+                                    <Upload className="w-4 h-4 mr-2" />
+                                    {fileToUpload ? 'Zmień plik' : 'Wybierz plik z dysku'}
+                                </label>
+                            </Button>
+                            <span className="text-sm text-gray-300">
+                                {fileToUpload ? `Wybrano: ${fileToUpload.name}` : (currentCvUrl ? 'Obecnie masz wgrane CV' : 'Nie wybrano pliku')}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Step 2: Cover Letter */}
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
+                        <Label className="text-lg font-semibold text-white mb-2 block">
+                            2. List Motywacyjny / Dodatkowe Informacje (Opcjonalne)
+                        </Label>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Wpisz tutaj informacje, których brakuje w CV, a które AI powinno uwzględnić (np. nietypowe problemy, ulubiona rola w projekcie, cele zawodowe).
+                        </p>
+                        <Textarea
+                            placeholder="Treść listu motywacyjnego..."
+                            value={coverLetter}
+                            onChange={(e) => setCoverLetter(e.target.value)}
+                            className="bg-black/20 border-white/10 text-white min-h-[100px]"
+                        />
+                    </div>
+
+                    {/* Step 3: Action */}
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-6 text-left">
+                        <Label className="text-lg font-semibold text-white mb-4 block">
+                            3. Aktualizacja CV
+                        </Label>
+
+                        <Button
+                            onClick={handleProfileUpdate}
+                            size="lg"
+                            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white border-0 shadow-lg shadow-cyan-900/20 w-full sm:w-auto"
+                            disabled={loading || !fileToUpload}
+                        >
+                            {loading ? (
+                                <>
+                                    <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                                    Przetwarzanie...
+                                </>
+                            ) : (
+                                <>
+                                    <RefreshCw className="w-5 h-5 mr-2" />
+                                    Zaktualizuj Profil (Wyślij)
+                                </>
+                            )}
+                        </Button>
+                        <p className="text-xs text-muted-foreground mt-2">
+                            Kliknięcie spowoduje nadpisanie starego CV i ponowną analizę profilu przez AI.
+                        </p>
+                    </div>
+
+                </CardContent>
+            </Card>
+
+            {/* Section 2: Clients / Projects */}
+            <Card className="bg-card border-white/10 mb-6">
+                <CardHeader>
+                    <CardTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 flex items-center gap-2">
+                        🏢 Klienci / Projekty
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        <div className="flex gap-2">
+                            <Input
+                                placeholder="Dodaj nazwę klienta lub projektu..."
+                                value={clientInput}
+                                onChange={(e) => setClientInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault()
+                                        if (clientInput.trim()) {
+                                            setClients([...clients, clientInput.trim()])
+                                            setClientInput('')
+                                        }
+                                    }
+                                }}
+                                className="bg-secondary/20 border-white/10 text-white"
+                            />
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    if (clientInput.trim()) {
+                                        setClients([...clients, clientInput.trim()])
+                                        setClientInput('')
+                                    }
+                                }}
+                                className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+                            >
+                                Dodaj
+                            </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {clients.map((client, i) => (
+                                <div key={i} className="flex items-center gap-1 bg-secondary/30 px-3 py-1 rounded-full border border-white/10 text-sm text-gray-300">
+                                    <span>{client}</span>
+                                    <button
+                                        onClick={() => setClients(clients.filter((_, idx) => idx !== i))}
+                                        className="ml-1 text-gray-500 hover:text-red-400"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                            {clients.length === 0 && (
+                                <p className="text-xs text-muted-foreground italic">
+                                    Brak dodanych klientów. Wgraj CV aby pobrać automatycznie lub dodaj ręcznie.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Section 3: BIO / Summary */}
+            <Card className="bg-card border-white/10 mb-6">
+                <CardHeader>
+                    <CardTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
+                        📝 BIO / Podsumowanie
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex justify-between items-center mb-1">
+                        <label className="text-sm font-medium text-white">Bio / Podsumowanie</label>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            ✨ Generowane przez AI (możesz edytować)
+                        </span>
+                    </div>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-blue-500/30 text-blue-300 hover:text-white hover:border-blue-500 mb-2 w-full"
+                        disabled={!currentCvUrl || loading}
+                        onClick={async () => {
+                            if (!currentCvUrl) {
+                                alert('Najpierw wgraj CV używając sekcji "CV i List Motywacyjny" powyżej.')
+                                return
+                            }
+
+                            setLoading(true)
+                            try {
+                                const { generateProfileFromCV } = await import('@/lib/actions/files')
+                                // Collect current manual data to guide AI
+                                const manualData = {
+                                    experience,
+                                    status,
+                                    capacity,
+                                    sentiments,
+                                    verifier,
+                                    ambassador,
+                                    sales,
+                                    coverLetter
+                                }
+                                const res = await generateProfileFromCV(manualData)
+                                if (res.success && res.data) {
+                                    if (res.data.bio) setBio(res.data.bio)
+                                    alert('Profil AI został wygenerowany z uwzględnieniem Twoich ustawień! Sprawdź sekcję Bio.')
+                                } else {
+                                    const errorMsg = typeof res.error === 'string' ? res.error : (res.error?.message || JSON.stringify(res.error) || 'Nieznany błąd')
+                                    alert('Błąd generowania: ' + errorMsg)
+                                }
+                            } catch (e) {
+                                console.error(e)
+                                alert('Wystąpił błąd podczas generowania')
+                            } finally {
+                                setLoading(false)
+                            }
+                        }}
+                    >
+                        ✨ Wygeneruj Podsumowanie z CV {!currentCvUrl && '(Wgraj CV najpierw)'}
+                    </Button>
+
+                    <Textarea
+                        placeholder="To pole zostanie automatycznie uzupełnione przez AI po wgraniu CV. Możesz je również edytować ręcznie."
+                        className="bg-secondary/20 border-white/10 text-white min-h-[120px]"
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                    />
+                </CardContent>
+            </Card>
+
+            {/* Section 4: Supplementary Info */}
+            <Card className="bg-card border-white/10 mb-6">
+                <CardHeader>
+                    <CardTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
+                        ℹ️ Informacje uzupełniające
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="space-y-4">
+
+                        {/* Experience */}
+                        <div className="space-y-2">
+                            <label className="text-md font-bold text-cyan-400 mb-2 flex items-center gap-2">
+                                ⏱️ Lata doświadczenia w IT
+                            </label>
+                            <Input
+                                type="number"
+                                min="0"
+                                placeholder="0"
+                                value={experience === 0 ? '' : experience}
+                                onChange={(e) => setExperience(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                                className="bg-secondary/20 border-white/10 text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                        </div>
+
+                        {/* Status */}
+                        <div className="space-y-2">
+                            <label className="text-md font-bold text-cyan-400 mb-2 flex items-center gap-2">
+                                📊 Status projektowy
+                            </label>
+                            <select
+                                value={status}
+                                onChange={(e) => setStatus(e.target.value)}
+                                className="w-full h-10 px-3 rounded-md bg-secondary/20 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            >
+                                <option value="busy">Zajęty na full</option>
+                                <option value="open">Open to work czyli mogę coś wziąć dodatkowo ale najpierw proszę o kontakt</option>
+                                <option value="free_capacity">Wolna przestrzeń, przesyłajcie dodatkowe projekty, poniżej moja dostepność w %</option>
+                            </select>
+                        </div>
+
+                        {/* Capacity (Conditional) */}
+                        {status === 'free_capacity' && (
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <label className="text-sm font-medium text-white">Dostępność (%)</label>
+                                    <span className="text-sm text-cyan-400">{capacity}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="10"
+                                    max="100"
+                                    step="10"
+                                    value={capacity}
+                                    onChange={(e) => setCapacity(parseInt(e.target.value))}
+                                    className="w-full accent-cyan-500"
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                    <span>10%</span>
+                                    <span>50%</span>
+                                    <span>100%</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Project Sentiment */}
+                        <div className="space-y-2">
+                            <label className="text-md font-bold text-cyan-400 mb-2 flex items-center gap-2">
+                                ❤️ Nastawienie do Projektu (max 3)
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    { id: 'super', label: 'Super' },
+                                    { id: 'change_willing', label: 'Chętnie zmienię' },
+                                    { id: 'manager_issues', label: 'Problemy z managerem' },
+                                    { id: 'low_growth', label: 'Mało rozwojowy' },
+                                    { id: 'needs_training', label: 'Wymaga szkoleń' },
+                                    { id: 'extra_work', label: 'Chcę dodatkowy' }
+                                ].map((option) => (
+                                    <div
+                                        key={option.id}
+                                        onClick={() => {
+                                            if (sentiments.includes(option.id)) {
+                                                setSentiments(sentiments.filter(s => s !== option.id))
+                                            } else {
+                                                if (sentiments.length < 3) {
+                                                    setSentiments([...sentiments, option.id])
+                                                }
+                                            }
+                                        }}
+                                        className={`cursor-pointer px-3 py-2 rounded-md text-xs border transition-colors ${sentiments.includes(option.id)
+                                            ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
+                                            : 'bg-secondary/10 border-white/10 text-gray-400 hover:bg-secondary/20'
+                                            }`}
+                                    >
+                                        {option.label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Additional Work Section */}
+                        <div className="pt-4 border-t border-white/10">
+                            <h3 className="text-md font-bold text-cyan-400 mb-4 flex items-center gap-2">
+                                💼 Praca Dodatkowa
+                            </h3>
+                            <div className="space-y-6">
+                                {[
+                                    { id: 'verifier', label: 'Weryfikator', state: verifier, setState: setVerifier, icon: '🛡️' },
+                                    { id: 'ambassador', label: 'Ambasador', state: ambassador, setState: setAmbassador, icon: '🚩' },
+                                    { id: 'sales', label: 'Wsparcie Sprzedaży', state: sales, setState: setSales, icon: '💰' }
+                                ].map((role) => (
+                                    <div key={role.id} className="bg-secondary/10 p-4 rounded-lg border border-white/5">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-xl">{role.icon}</span>
+                                            <span className="font-medium text-white">{role.label}</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {[
+                                                { val: 'active', label: 'Aktywny', color: 'bg-green-500/20 text-green-400 border-green-500/50' },
+                                                { val: 'interested', label: 'Zainteresowany', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50' },
+                                                { val: 'not_interested', label: 'To nie dla mnie', color: 'bg-red-500/20 text-red-400 border-red-500/50' }
+                                            ].map((opt) => (
+                                                <button
+                                                    key={opt.val}
+                                                    onClick={() => role.setState(opt.val)}
+                                                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${role.state === opt.val
+                                                        ? opt.color + ' ring-1 ring-offset-1 ring-offset-transparent'
+                                                        : 'bg-transparent text-gray-500 border-white/10 hover:bg-white/5'
+                                                        }`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <Button
+                            onClick={handleSaveProfile}
+                            disabled={loading}
+                            className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white mt-8"
+                        >
+                            {loading ? 'Zapisywanie...' : 'Zapisz Profil'}
+                        </Button>
+
+                        <div className="pt-4 flex justify-center">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={loading}
+                                className="text-xs text-muted-foreground hover:text-white"
+                                onClick={async () => {
+                                    setLoading(true)
+                                    try {
+                                        const { syncMyProfile } = await import('@/lib/actions/matching')
+                                        await syncMyProfile({
+                                            experience_years: experience,
+                                            current_status: status,
+                                            capacity_percentage: capacity,
+                                            project_sentiment: sentiments,
+                                            verifier_status: verifier,
+                                            ambassador_status: ambassador,
+                                            sales_support_status: sales,
+                                            bio: bio
+                                        })
+                                        alert('Synchronizacja zakończona sukcesem! Sprawdź zakładkę Konsultanci.')
+                                    } catch (e: any) {
+                                        alert('Błąd synchronizacji: ' + e.message)
+                                        console.error(e)
+                                    } finally {
+                                        setLoading(false)
+                                    }
+                                }}
+                            >
+                                🔄 Wymuś synchronizację (Debug)
+                            </Button>
+                        </div>
+
+
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="bg-card border-white/10 mb-6">
+                <CardHeader>
+                    <CardTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 flex items-center gap-2">
+                        <FavoriteProjectsSection
+                            favorites={favorites}
+                            onFavoriteRemoved={(id) => setFavorites(prev => prev.filter(f => f.project_id !== id))}
+                        />
+                    </CardTitle>
+                </CardHeader>
+            </Card>
+
+            <div className="mb-6">
+                <MyReferralsSection />
+            </div>
+
+            <ProfileMockup />
+
+            <div className="border-t border-white/10 pt-8 mt-12">
+                <div className="flex flex-col items-center gap-4">
+                    <h3 className="text-lg font-medium text-red-400">Strefa Niebezpieczna</h3>
+                    <p className="text-sm text-gray-500 text-center max-w-md">
+                        Jeśli chcesz usunąć swoje konto i wszystkie powiązane dane, możesz to zrobić tutaj.
+                        Ta operacja jest nieodwracalna.
+                    </p>
+                    <Button
+                        variant="destructive"
+                        className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20"
+                        onClick={async () => {
+                            if (confirm('Czy na pewno chcesz usunąć swoje konto?')) {
+                                try {
+                                    const { deleteMyProfile } = await import('@/lib/actions/matching')
+                                    await deleteMyProfile()
+                                    window.location.href = '/'
+                                } catch (e) {
+                                    alert('Błąd usuwania konta')
+                                    console.error(e)
+                                }
+                            }
+                        }}
+                    >
+                        Usuń Moje Konto
+                    </Button>
+                </div>
+            </div>
+        </div>
+    )
+}

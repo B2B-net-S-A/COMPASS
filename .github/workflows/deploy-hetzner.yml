@@ -1,0 +1,108 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hetzner
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./APK-COMPASS
+          file: ./APK-COMPASS/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+  deploy:
+    name: Deploy on Hetzner
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify deploy webhook
+        if: vars.DEPLOY_METHOD == 'coolify' || vars.DEPLOY_METHOD == ''
+        run: |
+          if [ -z "${{ secrets.COOLIFY_WEBHOOK_URL }}" ]; then
+            echo "::warning::COOLIFY_WEBHOOK_URL not set — skipping webhook deploy"
+            exit 0
+          fi
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+            "${{ secrets.COOLIFY_WEBHOOK_URL }}"
+
+      - name: SSH deploy (docker compose pull + up)
+        if: vars.DEPLOY_METHOD == 'ssh'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            cd /home/deploy/app
+            git pull origin main
+            docker compose pull
+            docker compose up -d --build
+            docker image prune -f
+
+  smoke-test:
+    name: Smoke test
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for deploy to stabilize
+        run: sleep 30
+
+      - name: Health check
+        env:
+          APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsSL "$APP_URL/api/health" | grep -q '"status":"ok"'; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Health check failed after 5 attempts"
+          exit 1

@@ -1,0 +1,37 @@
+services:
+  app:
+    build:
+      context: ./APK-COMPASS
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    image: compass-app:latest
+    container_name: compass-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-10000}:10000"
+    environment:
+      NODE_ENV: production
+      PORT: 10000
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-${NEXT_PUBLIC_APP_URL}}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:10000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

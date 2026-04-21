@@ -1,0 +1,174 @@
+---
+description: Zasady pracy agenta w projekcie ComPass — stosować w każdej sesji
+alwaysApply: true
+---
+
+# Ustalenia z właścicielem projektu
+
+Każdy agent (w tym New Agent) ma się do tych zasad stosować.
+
+## 1. Nie prosić o błędy — od razu poprawiać kod
+
+- Nie prosić użytkownika o wklejanie komunikatów błędów ani o „odśwież i skopiuj błąd".
+- Na podstawie opisu problemu od razu wprowadzać poprawki: zabezpieczenia (try/catch), sensowne domyślne zachowania, obsługa błędów.
+- Działać tak, jakby użytkownik nie miał wklejać błędów — samodzielnie diagnozować i naprawiać po stronie kodu.
+
+## 2. Samokontrola przed „naprawione"
+
+- Zanim napisać, że błąd został naprawiony, **zweryfikować** zmiany:
+  - uruchomić `npm run build` (lub odpowiedni build projektu),
+  - sprawdzić lint w zmienionych plikach,
+  - ewentualnie uruchomić testy, jeśli są w projekcie.
+- Dopiero po pozytywnej weryfikacji pisać, że **błąd został naprawiony i sprawdzony**; jeśli czegoś nie da się zweryfikować (np. produkcja), krótko to dopisać.
+
+## 3. Automatyczny commit i push po zmianach
+
+- Po wprowadzeniu zmian w kodzie **samodzielnie** wykonać:
+  1. `git add` zmienionych plików,
+  2. `git commit` z krótkim, sensownym opisem po polsku,
+  3. `git push` (w razie potrzeby `git push --set-upstream origin main`).
+- Root repozytorium: `APK-COMPASS/` (tam jest `.git`).
+- Kod aplikacji: `APK-COMPASS/ak-qualrix/` (to jest Next.js root).
+- Nie prosić użytkownika o „zrób push" — robić to automatycznie za każdym razem, gdy są zmiany do wypchnięcia.
+
+## 4. Krótkie podsumowania
+
+- Ograniczać długie listy poleceń dla użytkownika.
+- Podsumowania: co zostało zrobione i ewentualnie jedna konkretna informacja lub prośba, tylko gdy naprawdę potrzebna.
+
+## 5. Automatyczne migracje SQL (Supabase)
+
+- Migracje SQL uruchamiać przez uniwersalny skrypt: `node scripts/run-migration.js <nazwa_pliku.sql>`
+- Uruchamiać z katalogu `ak-qualrix/`.
+- Plik SQL tworzyć w katalogu `ak-qualrix/supabase/migrations/` z konwencją nazewnictwa: `YYYYMMDD_opis.sql`
+- Po utworzeniu pliku SQL od razu uruchomić migrację i zweryfikować exit code:
+  - Exit 0 = sukces → kontynuować
+  - Exit 1 = błąd → naprawić SQL i powtórzyć uruchomienie
+  - Ostrzeżenie "already exists" = OK, kontynuować
+- **Nie prosić użytkownika** o ręczne uruchamianie migracji ani o wchodzenie do Supabase Dashboard.
+- Każda migracja powinna zawierać komentarz `-- ROLLBACK:` z SQL do cofnięcia zmian.
+- Connection string jest w `scripts/run-migration.js` (zmienna `DATABASE_URL` z `.env.local` lub hardcoded fallback).
+
+## 6. Autonomiczna realizacja planu implementacji
+
+Gdy użytkownik zleca realizację etapu z planu (`.cursor/plans/`):
+
+1. **Przeczytać plan** i znaleźć etap do realizacji (status: pending).
+2. **Wykonać WSZYSTKIE kroki etapu samodzielnie**, w kolejności:
+   - Napisać migrację SQL → uruchomić `node scripts/run-migration.js` → zweryfikować sukces
+   - Zmienić pliki TypeScript/TSX → uruchomić `npm run build` → zweryfikować sukces
+   - Sprawdzić linty w zmienionych plikach
+   - Jeśli build lub migracja się nie powiedzie — naprawić i powtórzyć (max 3 próby)
+3. **Po sukcesie**: git add + commit (opis po polsku) + push
+4. **Po push**: uruchomić deploy na Render (patrz sekcja 7)
+5. **Oznaczyć etap jako completed** w planie (edytować plik `.plan.md`)
+6. **Nie pytać użytkownika** o potwierdzenie kroków pośrednich — działać w pełni autonomicznie.
+7. **Krótkie podsumowanie** po zakończeniu etapu (max 3 zdania): co zrobiono, ile plików zmieniono, czy build OK, czy deploy uruchomiony.
+
+## 7. Automatyczny deploy na Render
+
+### Kiedy deployować
+
+- **Po każdym `git push`** uruchamiać deploy.
+- **Zmiany client-side** (komponenty React, CSS, JS) → `bash scripts/render-deploy.sh --clear-cache`
+- **Zmiany server-side only** (server actions, API routes, middleware) → `bash scripts/render-deploy.sh`
+- W razie wątpliwości → użyć `--clear-cache` (bezpieczniejsze).
+
+### Jak deployować
+
+```bash
+# Z katalogu ak-qualrix/:
+bash scripts/render-deploy.sh              # zwykły deploy
+bash scripts/render-deploy.sh --clear-cache # deploy z czyszczeniem cache
+
+# Lub przez npm:
+npm run deploy        # zwykły deploy
+npm run deploy:clear  # deploy z czyszczeniem cache
+```
+
+### Jak to działa
+
+- Skrypt `scripts/render-deploy.sh` wywołuje Render API:
+  `POST https://api.render.com/v1/services/{RENDER_SERVICE_ID}/deploys`
+- Klucze `RENDER_API_KEY` i `RENDER_SERVICE_ID` są w `.env.local` (root repozytorium `APK-COMPASS/.env.local`).
+- HTTP 201 lub 202 = deploy przyjęty (sukces).
+- Jeśli zmienne nie są ustawione — skrypt wyświetli komunikat i zakończy z kodem 1. Render ma też auto-deploy z gita, więc push sam w sobie triggeruje deploy (ale bez cache clear).
+
+### Sprawdzanie statusu deployu
+
+```bash
+curl -s "https://api.render.com/v1/services/srv-d6cnncnpm1nc739b0e00/deploys?limit=1" \
+    -H "Accept: application/json" \
+    -H "Authorization: Bearer $RENDER_API_KEY" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin)[0]['deploy']; print(f'Status: {d[\"status\"]}')"
+```
+
+Statusy: `build_in_progress` → `update_in_progress` → `live` (sukces) lub `build_failed` / `update_failed` (błąd).
+
+### Integracja z `npm run ship`
+
+Skrypt `scripts/git-ship.sh` automatycznie wywołuje `render-deploy.sh` po pushu:
+```bash
+npm run ship "opis commita"                  # commit + push + deploy
+npm run ship "opis commita" "--clear-cache"  # commit + push + deploy z cache clear
+```
+
+### Weryfikacja po deployu
+
+Po deploymencie sprawdzić czy nowy build jest serwowany:
+```bash
+curl -s -L https://compass-14fg.onrender.com | grep -oE 'buildId[^,]+'
+```
+Jeśli build ID się zmienił — deploy udany.
+
+## 8. Struktura projektu
+
+```
+APK-COMPASS/                          # Git root (tu jest .git)
+├── .env.local                        # Klucze: Supabase, OpenAI, Resend, Render
+├── ak-qualrix/                       # Next.js app root
+│   ├── app/                          # Next.js App Router (pages, layouts, API routes)
+│   │   ├── login/actions.ts          # Server actions: login, signup
+│   │   ├── onboarding/page.tsx       # Onboarding wizard dla konsultantów
+│   │   ├── (protected)/              # Strony wymagające auth
+│   │   │   └── admin/candidates/     # Panel admin kandydatów
+│   │   └── api/admin/                # API routes (np. process-cv-batch)
+│   ├── lib/
+│   │   ├── actions/matching.ts       # Server actions: profil, sync, claim, search
+│   │   ├── actions/bulk-import.ts    # Bulk import kandydatów
+│   │   ├── actions/files.ts          # Upload/generowanie CV
+│   │   ├── ai/embeddings.ts          # OpenAI embeddings
+│   │   └── supabase/                 # Supabase client (server/client/mock)
+│   ├── middleware.ts                 # Auth, onboarding redirect, cookies
+│   ├── scripts/
+│   │   ├── run-migration.js          # Uniwersalny runner migracji SQL
+│   │   ├── render-deploy.sh          # Deploy na Render przez API
+│   │   └── git-ship.sh              # Commit + push + deploy
+│   ├── supabase/migrations/          # Pliki migracji SQL
+│   └── package.json                  # Scripts: dev, build, ship, deploy, deploy:clear
+└── APK-COMPASS/                      # Stary katalog (legacy, nie używać)
+```
+
+## 9. Infrastruktura
+
+| Serwis | URL / Identyfikator |
+|--------|---------------------|
+| **Produkcja** | https://compass-14fg.onrender.com |
+| **Render Service** | `srv-d6cnncnpm1nc739b0e00` |
+| **Supabase Project** | `txzflesacqvlyhxwfjxk` |
+| **Supabase URL** | https://txzflesacqvlyhxwfjxk.supabase.co |
+| **GitHub Repo** | https://github.com/biurko2015-eng/aplikacja-zbyszka |
+| **Branch** | `main` |
+
+## 10. Pełny workflow agenta (checklist)
+
+Przy każdej zmianie w kodzie:
+
+1. ☐ Przeczytać i zrozumieć pliki przed edycją
+2. ☐ Wprowadzić zmiany
+3. ☐ Jeśli SQL → `node scripts/run-migration.js <plik.sql>` → sprawdzić exit code
+4. ☐ `npm run build` → sprawdzić exit code
+5. ☐ Sprawdzić linty w zmienionych plikach
+6. ☐ `git add` + `git commit -m "opis po polsku"` + `git push`
+7. ☐ `bash scripts/render-deploy.sh [--clear-cache]` → sprawdzić sukces
+8. ☐ Krótkie podsumowanie dla użytkownika

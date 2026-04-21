@@ -1,0 +1,103 @@
+# ============================================================
+# RODO / dane osobowe — zostają LOKALNIE, nigdy do repo
+# ============================================================
+CV_aktualni*/
+CV_nadesłane*/
+CENTRALA/
+menu CENTRALA/
+APK-COMPASS/CENTRALA/
+projekty NORDEA/
+APK-COMPASS/projekty NORDEA/
+
+# ============================================================
+# Office lock / temp files
+# ============================================================
+~$*
+.~lock.*#
+*.tmp
+
+# ============================================================
+# Dependencies / build output
+# ============================================================
+**/node_modules/
+**/.next/
+**/.next-bak/
+**/out/
+**/build/
+**/dist/
+**/.turbo/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+*.tsbuildinfo
+next-env.d.ts
+
+# ============================================================
+# Testing / CI artifacts
+# ============================================================
+**/coverage/
+**/test-results/
+**/playwright-report/
+
+# ============================================================
+# Environment / secrets
+# ============================================================
+**/.env
+**/.env.local
+**/.env.production
+**/.env.*.local
+.env.github
+!**/.env.example
+!**/.env.*.example
+
+# ============================================================
+# Legacy SQL debug files w APK-COMPASS (mają odpowiedniki w supabase/migrations/)
+# ============================================================
+APK-COMPASS/ADD_*.sql
+APK-COMPASS/FIX_*.sql
+APK-COMPASS/CREATE_MATCH_RESULTS_TABLE.sql
+APK-COMPASS/STORAGE_SETUP.sql
+APK-COMPASS/TEMP_DISABLE_RLS.sql
+APK-COMPASS/VERIFY_RLS.sql
+APK-COMPASS/SETUP_SQL.txt
+APK-COMPASS/DATABASE_SETUP_FIX.sql
+APK-COMPASS/COMPASS_ASSIST_SETUP.sql
+
+# ============================================================
+# Legacy JS/TS one-off scripts w APK-COMPASS root
+# ============================================================
+APK-COMPASS/check_*.js
+APK-COMPASS/confirm_user.js
+APK-COMPASS/final_confirm.js
+APK-COMPASS/fix_profile_id*.js
+APK-COMPASS/list_*.js
+APK-COMPASS/read_settings.js
+APK-COMPASS/test_login.js
+APK-COMPASS/test_register.js
+APK-COMPASS/test-actions.ts
+APK-COMPASS/test-db.ts
+APK-COMPASS/verify_*.ts
+APK-COMPASS/typescript-errors.txt
+APK-COMPASS/package-lock 2.json
+APK-COMPASS/supabase 2/
+
+# ============================================================
+# Backup/temp files
+# ============================================================
+**/*.bak
+**/*.orig
+**/*.rej
+
+# ============================================================
+# OS / IDE
+# ============================================================
+.DS_Store
+.idea/
+*.swp
+*.swo
+*.pem
+
+# ============================================================
+# Logs
+# ============================================================
+*.log

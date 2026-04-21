@@ -1,0 +1,20 @@
+node_modules
+.next
+.next-bak
+.git
+*.md
+LICENSE
+.env*
+!.env.local.example
+!.env.hetzner.example
+playwright-report
+test-results
+e2e
+supabase/migrations
+scripts
+.github
+.cursor
+CENTRALA
+projekty NORDEA
+docs
+*.log

@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComPass — Design System Preview v2.0</title>
+<style>
+  /* ===== CSS TOKENS — PALETA HYBRYDOWA ===== */
+  :root {
+    /* Brand — Deep Plum */
+    --plum-900: #160E15;
+    --plum-850: #1D121B;
+    --plum-800: #241625;
+    --plum-750: #2A1A2A;
+    --plum-700: #2E1A2B;
+
+    /* Brand — Burgundy */
+    --burgundy-600: #8B1A2B;
+    --burgundy-500: #B43C4D;
+
+    /* Tech Accent — Electric Blue */
+    --tech-500: #3A8DFF;
+    --tech-400: #5BA3FF;
+    --tech-glow: rgba(58, 141, 255, 0.08);
+
+    /* Semantics */
+    --success-500: #2DBE88;
+    --success-bg: rgba(45, 190, 136, 0.08);
+    --warning-500: #D6A542;
+    --warning-bg: rgba(214, 165, 66, 0.08);
+    --error-500: #B43C4D;
+    --error-bg: rgba(180, 60, 77, 0.08);
+
+    /* Neutrals */
+    --border-500: #3A2A38;
+    --border-hover: #4A3A48;
+    --text-900: #F3EEF2;
+    --text-700: #B9AFB6;
+    --text-500: #8A7D87;
+
+    /* Elevation */
+    --shadow-1: 0 6px 24px rgba(0, 0, 0, 0.35);
+    --shadow-2: 0 10px 40px rgba(0, 0, 0, 0.45);
+
+    /* Radius */
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 16px;
+    --r-xl: 22px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--plum-900);
+    color: var(--text-900);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ===== APP LAYOUT ===== */
+  .app-layout {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    width: 260px;
+    background: var(--plum-900);
+    border-right: 1px solid var(--border-500);
+    padding: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .sidebar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 20%, rgba(46, 26, 43, 0.6) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-500);
+    margin-bottom: 1rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo-hex {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .logo-hex::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    background: var(--tech-500);
+    filter: blur(12px);
+    opacity: 0.15;
+    border-radius: 50%;
+  }
+
+  .logo-hex svg {
+    width: 36px;
+    height: 36px;
+    color: var(--tech-500);
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo-name {
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, var(--tech-500), var(--tech-400));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .sidebar-section {
+    padding: 0.5rem 0.75rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .sidebar-section-title {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-500);
+    padding: 0.5rem 0.75rem 0.375rem;
+    font-weight: 600;
+  }
+
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--r-sm);
+    color: var(--text-700);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+  }
+
+  .sidebar-item:hover {
+    background: rgba(46, 26, 43, 0.5);
+    color: var(--text-900);
+  }
+
+  .sidebar-item.active {
+    background: rgba(139, 26, 43, 0.12);
+    color: var(--text-900);
+    box-shadow: inset 0 0 12px rgba(139, 26, 43, 0.05);
+  }
+
+  .sidebar-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    background: var(--burgundy-600);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .sidebar-item svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-badge {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: var(--tech-500);
+    color: white;
+    padding: 1px 7px;
+    border-radius: 10px;
+  }
+
+  .sidebar-user {
+    margin-top: auto;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border-500);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--burgundy-600), var(--plum-700));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-900);
+    border: 2px solid var(--border-500);
+  }
+
+  .user-info { flex: 1; }
+  .user-name { font-size: 0.8rem; font-weight: 600; color: var(--text-900); }
+  .user-role { font-size: 0.7rem; color: var(--text-500); }
+
+  /* ===== MAIN CONTENT ===== */
+  .main-content {
+    flex: 1;
+    background: var(--plum-850);
+    background-image: radial-gradient(ellipse 800px 500px at 30% 20%, rgba(46, 26, 43, 0.4) 0%, transparent 70%);
+    overflow-y: auto;
+  }
+
+  /* ===== TOP BAR ===== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--border-500);
+    background: rgba(22, 14, 21, 0.5);
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .topbar-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--plum-800);
+    border: 1px solid var(--border-500);
+    border-radius: var(--r-sm);
+    padding: 0.5rem 0.75rem;
+    color: var(--text-700);
+    font-size: 0.8rem;
+    min-width: 200px;
+    transition: border-color 0.2s;
+  }
+
+  .search-box:focus-within {
+    border-color: var(--tech-500);
+    box-shadow: 0 0 0 3px rgba(58, 141, 255, 0.08);
+  }
+
+  .search-box svg { width: 16px; height: 16px; color: var(--text-500); }
+  .search-box span { color: var(--text-500); }
+
+  /* ===== CONTENT AREA ===== */
+  .content-area {
+    padding: 2rem;
+  }
+
+  .page-header {
+    margin-bottom: 1.75rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+
+  .page-header p {
+    color: var(--text-700);
+    font-size: 0.875rem;
+  }
+
+  /* ===== KPI GRID ===== */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .kpi-card {
+    background: var(--plum-800);
+    border: 1px solid var(--border-500);
+    border-radius: var(--r-lg);
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .kpi-card:hover {
+    border-color: var(--border-hover);
+  }
+
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--tech-500), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .kpi-card:hover::before {
+    opacity: 0.3;
+  }
+
+  .kpi-label {
+    font-size: 0.75rem;
+    color: var(--text-700);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+  }
+
+  .kpi-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--tech-500);
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kpi-trend {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .kpi-trend.up { color: var(--success-500); }
+  .kpi-trend.down { color: var(--error-500); }
+  .kpi-trend.neutral { color: var(--text-700); }
+
+  .kpi-trend svg { width: 14px; height: 14px; }
+
+  /* ===== PROGRESS BAR ===== */
+  .progress-bar {
+    height: 4px;
+    background: var(--plum-750);
+    border-radius: 2px;
+    margin-top: 0.75rem;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--tech-500), var(--tech-400));
+    transition: width 0.5s ease;
+  }
+
+  /* ===== CARDS GRID ===== */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .card {
+    background: var(--plum-800);
+    border: 1px solid var(--border-500);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-500);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .card-body {
+    padding: 1.25rem;
+  }
+
+  /* ===== TABLE ===== */
+  .table-row {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(58, 42, 56, 0.5);
+    gap: 1rem;
+  }
+
+  .table-row:last-child { border-bottom: none; }
+
+  .table-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--plum-750);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-700);
+    border: 1px solid var(--border-500);
+    flex-shrink: 0;
+  }
+
+  .table-name { flex: 1; font-size: 0.85rem; font-weight: 500; }
+  .table-email { flex: 1; font-size: 0.8rem; color: var(--text-700); }
+
+  /* ===== BADGES ===== */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid;
+  }
+
+  .badge-admin {
+    color: var(--tech-500);
+    border-color: rgba(58, 141, 255, 0.3);
+    background: rgba(58, 141, 255, 0.08);
+  }
+
+  .badge-superadmin {
+    color: #D98B9A;
+    border-color: rgba(139, 26, 43, 0.4);
+    background: rgba(139, 26, 43, 0.12);
+  }
+
+  .badge-active {
+    color: var(--success-500);
+    border-color: rgba(45, 190, 136, 0.3);
+    background: var(--success-bg);
+  }
+
+  .badge-inactive {
+    color: var(--text-500);
+    border-color: var(--border-500);
+    background: var(--plum-750);
+  }
+
+  .badge-warning {
+    color: var(--warning-500);
+    border-color: rgba(214, 165, 66, 0.3);
+    background: var(--warning-bg);
+  }
+
+  /* ===== BUTTONS ===== */
+  .btn-section {
+    margin-bottom: 2rem;
+  }
+
+  .btn-section h3 {
+    font-size: 0.8rem;
+    color: var(--text-700);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 1rem;
+    font-weight: 600;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: var(--r-sm);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+    font-family: inherit;
+  }
+
+  .btn svg { width: 16px; height: 16px; }
+
+  .btn-primary {
+    background: var(--tech-500);
+    color: white;
+    border-color: var(--tech-500);
+  }
+  .btn-primary:hover {
+    background: var(--tech-400);
+    box-shadow: 0 0 16px rgba(58, 141, 255, 0.15);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-900);
+    border-color: var(--border-500);
+  }
+  .btn-secondary:hover {
+    background: var(--plum-750);
+    border-color: var(--border-hover);
+  }
+
+  .btn-destructive {
+    background: var(--error-bg);
+    color: var(--error-500);
+    border-color: rgba(180, 60, 77, 0.3);
+  }
+  .btn-destructive:hover {
+    background: rgba(180, 60, 77, 0.15);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-700);
+    border-color: transparent;
+  }
+  .btn-ghost:hover {
+    background: var(--plum-750);
+    color: var(--text-900);
+  }
+
+  .btn-burgundy {
+    background: rgba(139, 26, 43, 0.15);
+    color: #D98B9A;
+    border-color: rgba(139, 26, 43, 0.3);
+  }
+  .btn-burgundy:hover {
+    background: rgba(139, 26, 43, 0.25);
+  }
+
+  /* ===== AI ASSISTANT BUTTON ===== */
+  .btn-ai {
+    background: linear-gradient(135deg, var(--tech-500), #2B6FCC);
+    color: white;
+    border: none;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-ai::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent, rgba(255,255,255,0.08), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .btn-ai:hover::before { opacity: 1; }
+  .btn-ai:hover { box-shadow: 0 0 20px rgba(58, 141, 255, 0.2); }
+
+  /* ===== FORM ELEMENTS ===== */
+  .form-group {
+    margin-bottom: 1rem;
+  }
+
+  .form-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-700);
+    margin-bottom: 0.375rem;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 0.6rem 0.875rem;
+    background: var(--plum-750);
+    border: 1px solid var(--border-500);
+    border-radius: var(--r-sm);
+    color: var(--text-900);
+    font-size: 0.875rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .form-input::placeholder { color: var(--text-500); }
+
+  .form-input:focus {
+    border-color: var(--tech-500);
+    box-shadow: 0 0 0 3px rgba(58, 141, 255, 0.08), 0 0 16px rgba(58, 141, 255, 0.05);
+  }
+
+  .form-input.error {
+    border-color: var(--error-500);
+    box-shadow: 0 0 0 3px rgba(180, 60, 77, 0.08);
+  }
+
+  /* ===== ALERTS ===== */
+  .alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-radius: var(--r-sm);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    margin-bottom: 0.75rem;
+    border: 1px solid;
+  }
+
+  .alert svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  .alert-success {
+    color: var(--success-500);
+    background: var(--success-bg);
+    border-color: rgba(45, 190, 136, 0.15);
+  }
+
+  .alert-warning {
+    color: var(--warning-500);
+    background: var(--warning-bg);
+    border-color: rgba(214, 165, 66, 0.15);
+  }
+
+  .alert-error {
+    color: var(--error-500);
+    background: var(--error-bg);
+    border-color: rgba(180, 60, 77, 0.15);
+  }
+
+  .alert-info {
+    color: var(--tech-500);
+    background: rgba(58, 141, 255, 0.06);
+    border-color: rgba(58, 141, 255, 0.15);
+  }
+
+  /* ===== SECTION DIVIDER ===== */
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 2rem 0 1.5rem;
+  }
+
+  .section-divider span {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-500);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .section-divider::before,
+  .section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-500);
+  }
+
+  /* ===== COLOR SWATCHES ===== */
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .swatch {
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    border: 1px solid var(--border-500);
+  }
+
+  .swatch-color {
+    height: 48px;
+    position: relative;
+  }
+
+  .swatch-info {
+    padding: 0.5rem 0.625rem;
+    background: var(--plum-800);
+  }
+
+  .swatch-name {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-900);
+    margin-bottom: 2px;
+  }
+
+  .swatch-hex {
+    font-size: 0.65rem;
+    color: var(--text-500);
+    font-family: monospace;
+  }
+
+  /* ===== TOOLTIP ===== */
+  .tooltip-demo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--plum-750);
+    border: 1px solid var(--border-500);
+    border-radius: var(--r-sm);
+    font-size: 0.8rem;
+    color: var(--text-700);
+    cursor: default;
+  }
+
+  /* ===== ACTIVITY ITEM ===== */
+  .activity-item {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(58, 42, 56, 0.4);
+  }
+
+  .activity-item:last-child { border-bottom: none; }
+
+  .activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+
+  .activity-text {
+    font-size: 0.825rem;
+    color: var(--text-700);
+    line-height: 1.45;
+  }
+
+  .activity-text strong { color: var(--text-900); font-weight: 600; }
+  .activity-time { font-size: 0.7rem; color: var(--text-500); margin-top: 2px; }
+
+  /* ===== LOGIN PREVIEW ===== */
+  .login-preview {
+    background: var(--plum-900);
+    background-image:
+      radial-gradient(ellipse 600px 400px at 30% 40%, rgba(46, 26, 43, 0.5) 0%, transparent 70%),
+      radial-gradient(ellipse 400px 300px at 70% 60%, rgba(139, 26, 43, 0.06) 0%, transparent 70%);
+    border: 1px solid var(--border-500);
+    border-radius: var(--r-lg);
+    padding: 3rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 2rem;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--plum-800);
+    border: 1px solid var(--border-500);
+    border-radius: var(--r-lg);
+    padding: 2rem 1.5rem 1.5rem;
+    box-shadow: var(--shadow-2);
+  }
+
+  .login-logo {
+    text-align: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .login-logo .logo-name {
+    font-size: 1.5rem;
+  }
+
+  .login-logo h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-top: 0.75rem;
+  }
+
+  .login-logo p {
+    font-size: 0.8rem;
+    color: var(--text-700);
+    margin-top: 0.15rem;
+  }
+
+  .login-footer {
+    text-align: center;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-500);
+    font-size: 0.8rem;
+    color: var(--text-500);
+  }
+
+  .login-footer a {
+    color: var(--tech-500);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  /* ===== WATERMARK ===== */
+  .design-watermark {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-500);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+  }
+
+  /* ===== TAB SELECTOR ===== */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-500);
+    margin-bottom: 2rem;
+  }
+
+  .tab-item {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-700);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    font-family: inherit;
+  }
+
+  .tab-item:hover { color: var(--text-900); }
+
+  .tab-item.active {
+    color: var(--tech-500);
+    border-bottom-color: var(--tech-500);
+  }
+
+  /* ===== VIEWS ===== */
+  .view { display: none; }
+  .view.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ===== SIDEBAR ===== -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-hex">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        </svg>
+      </div>
+      <span class="logo-name">Compass</span>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Panel</div>
+      <div class="sidebar-item active" onclick="showView('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </div>
+      <div class="sidebar-item" onclick="showView('login')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Ekran logowania
+      </div>
+      <div class="sidebar-item" onclick="showView('components')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Komponenty
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Konsultant</div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Mój profil
+      </div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        Projekty
+        <span class="sidebar-badge">3</span>
+      </div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Program lojalnościowy
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">AI</div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/></svg>
+        Compass Assist
+      </div>
+    </div>
+
+    <div class="sidebar-user">
+      <div class="user-avatar">ZT</div>
+      <div class="user-info">
+        <div class="user-name">Zbigniew Twardowski</div>
+        <div class="user-role">Super Admin</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <div class="main-content">
+
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-actions">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Szukaj...</span>
+        </div>
+        <button class="btn btn-ai">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/></svg>
+          AI Assist
+        </button>
+      </div>
+    </div>
+
+    <div class="content-area">
+
+      <!-- ===== VIEW: DASHBOARD ===== -->
+      <div class="view active" id="view-dashboard">
+        <div class="page-header">
+          <h1>Witaj, Zbigniew</h1>
+          <p>Przegląd operacyjny ComPass — luty 2026</p>
+        </div>
+
+        <!-- KPI Grid -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Aktywni konsultanci</div>
+            <div class="kpi-value">247</div>
+            <div class="kpi-trend up">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+              +12% vs poprzedni miesiąc
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: 78%"></div></div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-label">Otwarte projekty</div>
+            <div class="kpi-value">34</div>
+            <div class="kpi-trend up">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+              +5 nowych w tym tygodniu
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: 62%"></div></div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-label">Contract Health Score</div>
+            <div class="kpi-value">8.4</div>
+            <div class="kpi-trend down">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/></svg>
+              -0.3 vs styczeń
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: 84%"></div></div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-label">Przychód MTD</div>
+            <div class="kpi-value">1.2M</div>
+            <div class="kpi-trend neutral">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              na planie budżetowym
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: 55%"></div></div>
+          </div>
+        </div>
+
+        <!-- Cards Grid -->
+        <div class="cards-grid">
+          <!-- Users table -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Ostatnio aktywni konsultanci</span>
+              <button class="btn btn-ghost" style="padding: 0.375rem 0.625rem; font-size: 0.75rem;">Zobacz wszystkich</button>
+            </div>
+            <div class="card-body">
+              <div class="table-row">
+                <div class="table-avatar">JK</div>
+                <div class="table-name">Jan Kowalski</div>
+                <div class="table-email">konsultant@b2bnetwork.pl</div>
+                <span class="badge badge-active">Aktywny</span>
+              </div>
+              <div class="table-row">
+                <div class="table-avatar">EN</div>
+                <div class="table-name">Ewa Nowak</div>
+                <div class="table-email">centrala@b2bnetwork.pl</div>
+                <span class="badge badge-admin">Administrator</span>
+              </div>
+              <div class="table-row">
+                <div class="table-avatar">AT</div>
+                <div class="table-name">Artur Twardowski</div>
+                <div class="table-email">artur.twardowski@b2bnetwork.pl</div>
+                <span class="badge badge-superadmin">Super Admin</span>
+              </div>
+              <div class="table-row">
+                <div class="table-avatar">ZJ</div>
+                <div class="table-name">Zofia Jasionowska</div>
+                <div class="table-email">zofia.jasionowska@b2bnetwork.pl</div>
+                <span class="badge badge-warning">Wygasa umowa</span>
+              </div>
+              <div class="table-row">
+                <div class="table-avatar">MK</div>
+                <div class="table-name">Marta Kozarzewska</div>
+                <div class="table-email">marta.kozarzewska@b2bnetwork.pl</div>
+                <span class="badge badge-inactive">Nieaktywny</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Activity feed -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Aktywność</span>
+            </div>
+            <div class="card-body">
+              <div class="activity-item">
+                <div class="activity-dot" style="background: var(--tech-500);"></div>
+                <div>
+                  <div class="activity-text"><strong>AI Matching</strong> znalazł 3 nowe dopasowania do projektu Nordea</div>
+                  <div class="activity-time">2 min temu</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background: var(--success-500);"></div>
+                <div>
+                  <div class="activity-text"><strong>Jan Kowalski</strong> zaakceptował ofertę projektową</div>
+                  <div class="activity-time">15 min temu</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background: var(--warning-500);"></div>
+                <div>
+                  <div class="activity-text">Umowa z <strong>Zofia J.</strong> wygasa za 14 dni</div>
+                  <div class="activity-time">1 godz. temu</div>
+                </div>
+              </div>
+              <div class="activity-item">
+                <div class="activity-dot" style="background: var(--burgundy-600);"></div>
+                <div>
+                  <div class="activity-text"><strong>Super Admin</strong> zaktualizował listę uprawnień Centrali</div>
+                  <div class="activity-time">3 godz. temu</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== VIEW: LOGIN ===== -->
+      <div class="view" id="view-login">
+        <div class="page-header">
+          <h1>Ekran logowania — preview</h1>
+          <p>Nowa kolorystyka zastosowana do formularza logowania</p>
+        </div>
+
+        <div class="login-preview">
+          <div class="login-card">
+            <div class="login-logo">
+              <div style="display:flex;align-items:center;justify-content:center;gap:0.6rem;margin-bottom:0.75rem;">
+                <div class="logo-hex">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:32px;height:32px;color:var(--tech-500);">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                  </svg>
+                </div>
+                <span class="logo-name">Compass</span>
+              </div>
+              <h2>Witaj ponownie</h2>
+              <p>Zaloguj się do swojego konta</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input class="form-input" type="email" placeholder="name@b2bnetwork.pl" value="zbigniew.twardowski@b2bnetwork.pl">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Hasło</label>
+              <input class="form-input" type="password" placeholder="••••••••••" value="haslohaslo">
+            </div>
+
+            <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.7rem;margin-top:0.25rem;">
+              Zaloguj się
+            </button>
+
+            <div class="login-footer">
+              Nie masz konta? <a href="#">Zarejestruj się</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== VIEW: COMPONENTS ===== -->
+      <div class="view" id="view-components">
+        <div class="page-header">
+          <h1>Design System — Komponenty</h1>
+          <p>Przegląd elementów UI w nowej palecie Deep Plum + Electric Blue</p>
+        </div>
+
+        <!-- Color swatches -->
+        <div class="section-divider"><span>Paleta kolorów</span></div>
+        <div class="swatch-grid">
+          <div class="swatch"><div class="swatch-color" style="background:#160E15"></div><div class="swatch-info"><div class="swatch-name">Bg-0</div><div class="swatch-hex">#160E15</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#1D121B"></div><div class="swatch-info"><div class="swatch-name">Bg-1</div><div class="swatch-hex">#1D121B</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#241625"></div><div class="swatch-info"><div class="swatch-name">Surface</div><div class="swatch-hex">#241625</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#2A1A2A"></div><div class="swatch-info"><div class="swatch-name">Surface-2</div><div class="swatch-hex">#2A1A2A</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#2E1A2B"></div><div class="swatch-info"><div class="swatch-name">Deep Plum</div><div class="swatch-hex">#2E1A2B</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#8B1A2B"></div><div class="swatch-info"><div class="swatch-name">Burgundy</div><div class="swatch-hex">#8B1A2B</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#3A8DFF"></div><div class="swatch-info"><div class="swatch-name">Electric Blue</div><div class="swatch-hex">#3A8DFF</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#2DBE88"></div><div class="swatch-info"><div class="swatch-name">Success</div><div class="swatch-hex">#2DBE88</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#D6A542"></div><div class="swatch-info"><div class="swatch-name">Warning</div><div class="swatch-hex">#D6A542</div></div></div>
+          <div class="swatch"><div class="swatch-color" style="background:#B43C4D"></div><div class="swatch-info"><div class="swatch-name">Error</div><div class="swatch-hex">#B43C4D</div></div></div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="section-divider"><span>Przyciski</span></div>
+        <div class="btn-section">
+          <h3>CTA / Akcje</h3>
+          <div class="btn-row">
+            <button class="btn btn-primary">Primary Action</button>
+            <button class="btn btn-secondary">Secondary</button>
+            <button class="btn btn-ghost">Ghost</button>
+            <button class="btn btn-destructive">Destructive</button>
+            <button class="btn btn-burgundy">Admin Action</button>
+            <button class="btn btn-ai">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/></svg>
+              AI Assist
+            </button>
+          </div>
+        </div>
+
+        <!-- Badges -->
+        <div class="section-divider"><span>Badges / Role</span></div>
+        <div class="btn-row" style="margin-bottom:2rem">
+          <span class="badge badge-admin">Administrator</span>
+          <span class="badge badge-superadmin">Super Admin</span>
+          <span class="badge badge-active">Aktywny</span>
+          <span class="badge badge-warning">Wygasa umowa</span>
+          <span class="badge badge-inactive">Nieaktywny</span>
+        </div>
+
+        <!-- Alerts -->
+        <div class="section-divider"><span>Alerty / komunikaty</span></div>
+        <div class="alert alert-info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div>AI Matching znalazł nowe dopasowania do Twojego profilu. Sprawdź zakładkę Projekty.</div>
+        </div>
+        <div class="alert alert-success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div>Hasło zostało zmienione pomyślnie. Możesz się teraz zalogować.</div>
+        </div>
+        <div class="alert alert-warning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div>Umowa konsultanta wygasa za 14 dni. Rozważ prolongatę.</div>
+        </div>
+        <div class="alert alert-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <div>Nieprawidłowy email lub hasło. Sprawdź dane i spróbuj ponownie.</div>
+        </div>
+
+        <!-- Form elements -->
+        <div class="section-divider"><span>Formularze</span></div>
+        <div style="max-width:400px">
+          <div class="form-group">
+            <label class="form-label">Input — domyślny</label>
+            <input class="form-input" placeholder="Wpisz wartość..." value="zbigniew.twardowski@b2bnetwork.pl">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Input — focus (kliknij)</label>
+            <input class="form-input" placeholder="Kliknij, żeby zobaczyć focus ring...">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Input — error</label>
+            <input class="form-input error" value="nieprawidlowy@gmail.com">
+          </div>
+        </div>
+
+        <!-- Design rules reminder -->
+        <div class="section-divider"><span>Zasady twarde</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:2rem;">
+          <div class="card" style="padding:1.25rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+              <div style="width:12px;height:12px;border-radius:50%;background:var(--tech-500);"></div>
+              <strong style="font-size:0.85rem;">Electric Blue</strong>
+            </div>
+            <p style="font-size:0.8rem;color:var(--text-700);line-height:1.5;">Tylko dla interakcji i inteligencji systemu — CTA, aktywny KPI, AI, focus ring. Nie do dekoracji.</p>
+          </div>
+          <div class="card" style="padding:1.25rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+              <div style="width:12px;height:12px;border-radius:50%;background:var(--burgundy-600);"></div>
+              <strong style="font-size:0.85rem;">Burgundy</strong>
+            </div>
+            <p style="font-size:0.8rem;color:var(--text-700);line-height:1.5;">Tylko dla power / risk / admin — Super Admin, alert krytyczny, governance. Nie do zwykłych przycisków.</p>
+          </div>
+          <div class="card" style="padding:1.25rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+              <strong style="font-size:0.85rem;">Max 3 akcenty / ekran</strong>
+            </div>
+            <p style="font-size:0.8rem;color:var(--text-700);line-height:1.5;">Plum = tło, Tech Blue = akcja, jeden z: Success / Warning / Error. Koniec. Bez choinki.</p>
+          </div>
+          <div class="card" style="padding:1.25rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+              <strong style="font-size:0.85rem;">Glow = szept, nie krzyk</strong>
+            </div>
+            <p style="font-size:0.8rem;color:var(--text-700);line-height:1.5;">Glow tylko na hover/focus, max 5–8% intensywności. Premium premium premium.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="design-watermark">
+      COMPASS DESIGN SYSTEM v2.0 — DEEP PLUM + ELECTRIC BLUE — PREVIEW DO AKCEPTACJI
+    </div>
+  </div>
+</div>
+
+<script>
+  function showView(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+
+    const titles = { dashboard: 'Dashboard', login: 'Ekran logowania', components: 'Komponenty' };
+    document.getElementById('topbarTitle').textContent = titles[name] || 'ComPass';
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComPass Login — Prototyp "Alive"</title>
+<style>
+  /* ===== RESET & BASE ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0D0D1A;
+    --card: #1A1A2E;
+    --card-border: #33255C;
+    --primary: #D946EF;
+    --primary-dim: rgba(217, 70, 239, 0.15);
+    --primary-glow: rgba(217, 70, 239, 0.35);
+    --text: #FFFFFF;
+    --text-muted: #9CA3AF;
+    --input-bg: #252542;
+    --destructive: #EF4444;
+    --destructive-bg: rgba(239, 68, 68, 0.1);
+    --success: #22C55E;
+    --success-bg: rgba(34, 197, 94, 0.1);
+    --radius: 0.5rem;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ===== 1. ANIMATED GRADIENT MESH BACKGROUND ===== */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: var(--bg);
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: -50%;
+    z-index: -1;
+    background:
+      radial-gradient(ellipse 600px 600px at 20% 30%, rgba(217, 70, 239, 0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 500px 500px at 80% 70%, rgba(139, 92, 246, 0.10) 0%, transparent 70%),
+      radial-gradient(ellipse 700px 400px at 50% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+    animation: mesh-drift 12s ease-in-out infinite alternate;
+  }
+
+  @keyframes mesh-drift {
+    0%   { transform: translate(0, 0) rotate(0deg); }
+    33%  { transform: translate(30px, -20px) rotate(1deg); }
+    66%  { transform: translate(-20px, 15px) rotate(-1deg); }
+    100% { transform: translate(15px, -10px) rotate(0.5deg); }
+  }
+
+  /* ===== 2. CARD FADE-IN + SLIDE-UP ===== */
+  @keyframes card-enter {
+    0%   { opacity: 0; transform: translateY(30px) scale(0.98); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 2.5rem 2rem 1.5rem;
+    position: relative;
+    overflow: hidden;
+    animation: card-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  /* ===== 5. SHAKE ANIMATION ===== */
+  @keyframes card-shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 50%, 90% { transform: translateX(-6px); }
+    30%, 70% { transform: translateX(6px); }
+  }
+
+  .login-card.shake {
+    animation: card-shake 0.45s cubic-bezier(.36,.07,.19,.97) both;
+  }
+
+  /* ===== 7. PROGRESS BAR ON TOP OF CARD ===== */
+  .progress-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary), #8B5CF6);
+    border-radius: 0 3px 3px 0;
+    width: 0%;
+    transition: width 0.4s ease-out;
+    opacity: 0;
+  }
+
+  .progress-bar.active {
+    opacity: 1;
+  }
+
+  /* ===== LOGO ===== */
+  .logo-section {
+    text-align: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .logo-hexagon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .logo-hexagon .glow {
+    position: absolute;
+    inset: -4px;
+    background: #10B981;
+    filter: blur(16px);
+    opacity: 0.2;
+    border-radius: 50%;
+    transition: opacity 0.3s ease;
+  }
+
+  .logo-container:hover .glow {
+    opacity: 0.4;
+  }
+
+  .logo-hexagon svg {
+    width: 48px;
+    height: 48px;
+    color: #10B981;
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo-dot {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #10B981;
+    border-radius: 50%;
+    z-index: 2;
+    animation: logo-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes logo-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .logo-text {
+    font-size: 1.75rem;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    background: linear-gradient(to right, #34D399, #22D3EE);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+  }
+
+  .logo-section h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+
+  .logo-section p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+  }
+
+  /* ===== FORM ===== */
+  .form-group {
+    margin-bottom: 1rem;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.375rem;
+    color: var(--text);
+  }
+
+  .input-wrapper {
+    position: relative;
+  }
+
+  /* ===== 4. ENHANCED FOCUS GLOW ===== */
+  .form-input {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .form-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  .form-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-dim), 0 0 20px var(--primary-dim);
+  }
+
+  .form-input.input-error {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+  }
+
+  /* ===== 3. SHOW/HIDE PASSWORD ===== */
+  .password-wrapper {
+    position: relative;
+  }
+
+  .password-wrapper .form-input {
+    padding-right: 2.75rem;
+  }
+
+  .password-toggle {
+    position: absolute;
+    right: 0.625rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease;
+  }
+
+  .password-toggle:hover {
+    color: var(--text);
+  }
+
+  .password-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* ===== 6. ERROR / SUCCESS MESSAGES ===== */
+  .message-box {
+    display: none;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    padding: 0.75rem;
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    line-height: 1.4;
+    animation: msg-enter 0.3s ease-out;
+  }
+
+  @keyframes msg-enter {
+    0%   { opacity: 0; transform: translateY(-8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .message-box.visible { display: flex; }
+
+  .message-box.error {
+    color: #FCA5A5;
+    background: var(--destructive-bg);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+  }
+
+  .message-box.success {
+    color: #86EFAC;
+    background: var(--success-bg);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+  }
+
+  .message-box .msg-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .message-box .msg-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .forgot-link {
+    display: block;
+    margin-top: 0.375rem;
+    font-size: 0.8rem;
+    color: var(--primary);
+    text-decoration: none;
+    opacity: 0;
+    height: 0;
+    overflow: hidden;
+    transition: opacity 0.3s ease, height 0.3s ease, margin 0.3s ease;
+  }
+
+  .forgot-link.visible {
+    opacity: 1;
+    height: auto;
+    margin-top: 0.5rem;
+  }
+
+  .forgot-link:hover {
+    text-decoration: underline;
+  }
+
+  /* ===== SUBMIT BUTTON ===== */
+  .submit-btn {
+    width: 100%;
+    padding: 0.7rem 1.25rem;
+    background: var(--primary);
+    color: var(--text);
+    border: none;
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .submit-btn:hover:not(:disabled) {
+    background: #C026D3;
+  }
+
+  .submit-btn:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+
+  .submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .submit-btn .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ===== 7. LOADING STATUS TEXT ===== */
+  .loading-status {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+    height: 1.2em;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .loading-status.visible {
+    opacity: 1;
+    animation: status-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes status-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+
+  /* ===== LOADING OVERLAY ===== */
+  .card-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 13, 26, 0.5);
+    backdrop-filter: blur(2px);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    border-radius: 12px;
+  }
+
+  .card-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ===== 8. SUCCESS ANIMATION ===== */
+  .success-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--card);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    border-radius: 12px;
+  }
+
+  .success-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  @keyframes check-scale-in {
+    0%   { transform: scale(0.5); opacity: 0; }
+    50%  { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .success-checkmark {
+    animation: check-scale-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .success-checkmark svg circle {
+    stroke-dasharray: 166;
+    stroke-dashoffset: 166;
+    animation: circle-draw 0.5s ease-out 0.1s forwards;
+  }
+
+  .success-checkmark svg path {
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: check-draw 0.3s ease-out 0.4s forwards;
+  }
+
+  @keyframes circle-draw {
+    to { stroke-dashoffset: 0; }
+  }
+
+  @keyframes check-draw {
+    to { stroke-dashoffset: 0; }
+  }
+
+  .success-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    opacity: 0;
+    animation: fade-in 0.3s ease-out 0.6s forwards;
+  }
+
+  .success-subtext {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    opacity: 0;
+    animation: fade-in 0.3s ease-out 0.8s forwards;
+  }
+
+  @keyframes fade-in {
+    to { opacity: 1; }
+  }
+
+  @keyframes card-fade-out {
+    to { opacity: 0; transform: scale(0.96) translateY(-10px); }
+  }
+
+  /* ===== FOOTER ===== */
+  .card-footer {
+    text-align: center;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--card-border);
+  }
+
+  .card-footer p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  .card-footer a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    margin-left: 4px;
+  }
+
+  .card-footer a:hover {
+    text-decoration: underline;
+  }
+
+  .brand-footer {
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 0.7rem;
+    color: rgba(156, 163, 175, 0.4);
+  }
+
+  /* ===== DEMO CONTROLS ===== */
+  .demo-panel {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(26, 26, 46, 0.95);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+    max-width: 90vw;
+  }
+
+  .demo-panel .demo-title {
+    width: 100%;
+    text-align: center;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+  }
+
+  .demo-btn {
+    padding: 0.4rem 0.75rem;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .demo-btn:hover {
+    background: rgba(217, 70, 239, 0.15);
+    border-color: var(--primary);
+  }
+
+  .demo-btn.active {
+    background: var(--primary-dim);
+    border-color: var(--primary);
+    color: var(--primary);
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN CARD ===== -->
+<div class="login-card" id="loginCard">
+
+  <!-- Progress bar -->
+  <div class="progress-bar" id="progressBar"></div>
+
+  <!-- Loading overlay -->
+  <div class="card-overlay" id="cardOverlay"></div>
+
+  <!-- Success overlay -->
+  <div class="success-overlay" id="successOverlay">
+    <div class="success-checkmark">
+      <svg width="64" height="64" viewBox="0 0 52 52">
+        <circle cx="26" cy="26" r="25" fill="none" stroke="#22C55E" stroke-width="2"/>
+        <path fill="none" stroke="#22C55E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+      </svg>
+    </div>
+    <div class="success-text">Witaj z powrotem!</div>
+    <div class="success-subtext">Przygotowuję Twój panel...</div>
+  </div>
+
+  <!-- Logo — wierne odwzorowanie komponentu Logo.tsx (hexagon + emerald gradient text) -->
+  <div class="logo-section">
+    <div class="logo-container">
+      <div class="logo-hexagon">
+        <div class="glow"></div>
+        <!-- Hexagon icon from lucide-react -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        </svg>
+        <div class="logo-dot"></div>
+      </div>
+      <span class="logo-text">Compass</span>
+    </div>
+    <h1>Witaj ponownie</h1>
+    <p>Zaloguj się do panelu konsultanta</p>
+  </div>
+
+  <!-- Form -->
+  <form id="loginForm" onsubmit="return false;">
+    <div class="form-group">
+      <label for="email">Email</label>
+      <div class="input-wrapper">
+        <input
+          type="email"
+          id="email"
+          class="form-input"
+          placeholder="name@b2bnetwork.pl"
+          autocomplete="email"
+        />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="password">Hasło</label>
+      <div class="password-wrapper">
+        <input
+          type="password"
+          id="password"
+          class="form-input"
+          placeholder="••••••••••"
+          autocomplete="current-password"
+        />
+        <button type="button" class="password-toggle" id="pwdToggle" onclick="togglePassword()">
+          <!-- Eye icon -->
+          <svg id="eyeOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <!-- Eye-off icon (hidden) -->
+          <svg id="eyeClosed" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Error message -->
+    <div class="message-box error" id="errorBox">
+      <span class="msg-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </span>
+      <span>
+        <span id="errorText"></span>
+        <a href="#" class="forgot-link" id="forgotLink" onclick="showDemo('reset'); return false;">Nie pamiętasz hasła? Zresetuj je →</a>
+      </span>
+    </div>
+
+    <!-- Success message -->
+    <div class="message-box success" id="successBox">
+      <span class="msg-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+      </span>
+      <span id="successText"></span>
+    </div>
+
+    <button type="submit" class="submit-btn" id="submitBtn" onclick="handleLogin()">
+      Zaloguj się
+    </button>
+
+    <div class="loading-status" id="loadingStatus"></div>
+  </form>
+
+  <!-- Footer -->
+  <div class="card-footer">
+    <p>Nie masz konta? <a href="#">Zarejestruj się</a></p>
+  </div>
+  <div class="brand-footer">ComPass by Inframinds</div>
+</div>
+
+<!-- ===== DEMO PANEL ===== -->
+<div class="demo-panel">
+  <div class="demo-title">Panel demonstracyjny — kliknij aby zobaczyć</div>
+  <button class="demo-btn" onclick="showDemo('wrongPassword')">Błędne hasło</button>
+  <button class="demo-btn" onclick="showDemo('wrongEmail')">Zły format email</button>
+  <button class="demo-btn" onclick="showDemo('empty')">Puste pola</button>
+  <button class="demo-btn" onclick="showDemo('rateLimit')">Za dużo prób</button>
+  <button class="demo-btn" onclick="showDemo('notConfirmed')">Email niepotwierdzony</button>
+  <button class="demo-btn" onclick="showDemo('success')">✓ Logowanie OK</button>
+  <button class="demo-btn" onclick="showDemo('reset')">Reset stanu</button>
+</div>
+
+<script>
+  // ===== STATE =====
+  let failCount = 0;
+  let isLoading = false;
+
+  // ===== 3. SHOW/HIDE PASSWORD =====
+  function togglePassword() {
+    const input = document.getElementById('password');
+    const eyeOpen = document.getElementById('eyeOpen');
+    const eyeClosed = document.getElementById('eyeClosed');
+    if (input.type === 'password') {
+      input.type = 'text';
+      eyeOpen.style.display = 'none';
+      eyeClosed.style.display = 'block';
+    } else {
+      input.type = 'password';
+      eyeOpen.style.display = 'block';
+      eyeClosed.style.display = 'none';
+    }
+  }
+
+  // ===== HELPERS =====
+  function showError(text, showForgot = false) {
+    const box = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    const link = document.getElementById('forgotLink');
+    successBox.classList.remove('visible');
+    document.getElementById('errorText').textContent = text;
+    box.classList.add('visible');
+    if (showForgot) {
+      link.classList.add('visible');
+    } else {
+      link.classList.remove('visible');
+    }
+  }
+
+  function showSuccess(text) {
+    const box = document.getElementById('successBox');
+    const errorBox = document.getElementById('errorBox');
+    errorBox.classList.remove('visible');
+    document.getElementById('successText').textContent = text;
+    box.classList.add('visible');
+  }
+
+  function clearMessages() {
+    document.getElementById('errorBox').classList.remove('visible');
+    document.getElementById('successBox').classList.remove('visible');
+    document.getElementById('forgotLink').classList.remove('visible');
+  }
+
+  // ===== 5. SHAKE =====
+  function shakeCard() {
+    const card = document.getElementById('loginCard');
+    card.classList.remove('shake');
+    // Force reflow
+    void card.offsetWidth;
+    card.classList.add('shake');
+    setTimeout(() => card.classList.remove('shake'), 500);
+  }
+
+  // ===== 7. MULTI-STEP LOADING =====
+  const loadingSteps = [
+    { text: 'Weryfikuję dane...', progress: 35 },
+    { text: 'Sprawdzam uprawnienia...', progress: 65 },
+    { text: 'Przygotowuję panel...', progress: 90 },
+  ];
+
+  function startLoading() {
+    isLoading = true;
+    const btn = document.getElementById('submitBtn');
+    const bar = document.getElementById('progressBar');
+    const status = document.getElementById('loadingStatus');
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Logowanie...';
+    bar.classList.add('active');
+    status.classList.add('visible');
+
+    loadingSteps.forEach((step, i) => {
+      setTimeout(() => {
+        if (!isLoading) return;
+        bar.style.width = step.progress + '%';
+        status.textContent = step.text;
+      }, i * 800);
+    });
+  }
+
+  function stopLoading() {
+    isLoading = false;
+    const btn = document.getElementById('submitBtn');
+    const bar = document.getElementById('progressBar');
+    const status = document.getElementById('loadingStatus');
+
+    btn.disabled = false;
+    btn.innerHTML = 'Zaloguj się';
+    bar.classList.remove('active');
+    bar.style.width = '0%';
+    status.classList.remove('visible');
+    status.textContent = '';
+  }
+
+  // ===== 8. SUCCESS ANIMATION =====
+  function showSuccessOverlay() {
+    const overlay = document.getElementById('successOverlay');
+    const bar = document.getElementById('progressBar');
+    bar.style.width = '100%';
+
+    setTimeout(() => {
+      overlay.classList.add('active');
+    }, 300);
+
+    // Simulate redirect
+    setTimeout(() => {
+      const card = document.getElementById('loginCard');
+      card.style.animation = 'card-fade-out 0.4s ease-out forwards';
+      setTimeout(() => {
+        // Reset for demo
+        card.style.animation = '';
+        overlay.classList.remove('active');
+        stopLoading();
+        clearMessages();
+        showSuccess('Redirect do /home — w produkcji nastąpi automatyczne przekierowanie.');
+      }, 500);
+    }, 2200);
+  }
+
+  // ===== DEMO SCENARIOS =====
+  function showDemo(scenario) {
+    stopLoading();
+    clearMessages();
+
+    const card = document.getElementById('loginCard');
+    const successOverlay = document.getElementById('successOverlay');
+    successOverlay.classList.remove('active');
+    card.style.animation = '';
+
+    // Force card re-enter
+    if (scenario === 'reset') {
+      failCount = 0;
+      document.getElementById('email').value = '';
+      document.getElementById('password').value = '';
+      document.getElementById('email').classList.remove('input-error');
+      document.getElementById('password').classList.remove('input-error');
+      return;
+    }
+
+    switch (scenario) {
+      case 'wrongPassword':
+        failCount++;
+        startLoading();
+        setTimeout(() => {
+          stopLoading();
+          shakeCard();
+          document.getElementById('password').classList.add('input-error');
+          setTimeout(() => document.getElementById('password').classList.remove('input-error'), 2000);
+          if (failCount >= 2) {
+            showError('Nieprawidłowy email lub hasło. Sprawdź dane i spróbuj ponownie.', true);
+          } else {
+            showError('Nieprawidłowy email lub hasło. Sprawdź dane i spróbuj ponownie.');
+          }
+        }, 2200);
+        break;
+
+      case 'wrongEmail':
+        shakeCard();
+        document.getElementById('email').classList.add('input-error');
+        setTimeout(() => document.getElementById('email').classList.remove('input-error'), 2000);
+        showError('Ten adres email nie wygląda prawidłowo. Sprawdź, czy nie ma literówki.');
+        break;
+
+      case 'empty':
+        shakeCard();
+        showError('Potrzebujemy Twojego emaila i hasła, żeby Cię wpuścić.');
+        break;
+
+      case 'rateLimit':
+        startLoading();
+        setTimeout(() => {
+          stopLoading();
+          shakeCard();
+          showError('Zbyt wiele nieudanych prób logowania. Ze względów bezpieczeństwa odpocznij 15 minut, a potem spróbuj ponownie.', true);
+        }, 1500);
+        break;
+
+      case 'notConfirmed':
+        startLoading();
+        setTimeout(() => {
+          stopLoading();
+          showError('Twoje konto czeka na aktywację. Sprawdź skrzynkę pocztową — wysłaliśmy Ci link potwierdzający.');
+        }, 1800);
+        break;
+
+      case 'success':
+        failCount = 0;
+        startLoading();
+        setTimeout(() => {
+          showSuccessOverlay();
+        }, 2400);
+        break;
+    }
+  }
+
+  // ===== FORM SUBMIT HANDLER (demo) =====
+  function handleLogin() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    clearMessages();
+
+    if (!email && !password) {
+      showDemo('empty');
+    } else if (email && !email.includes('@')) {
+      showDemo('wrongEmail');
+    } else if (email === 'test@b2bnetwork.pl' && password === 'test') {
+      showDemo('success');
+    } else {
+      showDemo('wrongPassword');
+    }
+  }
+</script>
+
+</body>
+</html>
