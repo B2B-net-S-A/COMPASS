@@ -26,7 +26,7 @@ Tworzony profil zawiera: id, email, full_name, role='consultant', preferred_lang
 ETAP 3: Synchronizacja roli przy logowaniu
 Przy każdym logowaniu odpala się syncRole() w app/login/actions.ts, która sprawdza w kolejności priorytetowej:
 
-Super Admin (hardcoded lista, m.in. zbigniew.twardowski@b2bnetwork.pl) → rola administrator
+Super Admin (hardcoded lista, m.in. <master-admin-1>) → rola administrator
 admin_access_list (tabela zarządzana przez Super Adminów) → rola administrator
 centrala_access_list (tabela zarządzana przez Adminów) → rola centrala
 Domyślnie → rola consultant
@@ -231,7 +231,7 @@ async function syncRole(supabase: SupabaseClient, userId: string, email: string,
 ```
 
 **Uwagi**:
-- Super Admin lista zawiera **dwa** emaile, nie "m.in." jeden -- to `zbigniew.twardowski@b2bnetwork.pl` i `igor.twardowski@b2bnetwork.pl`
+- Super Admin lista zawiera **dwa** emaile, nie "m.in." jeden -- to `<master-admin-1>` i `<master-admin-2>`
 - Funkcja RPC `sync_user_role` jest **wywoływana, ale NIE istnieje w migracjach** -- nie znalazłem jej definicji w żadnym pliku SQL. To znaczy, że zawsze używany jest fallback z bezpośrednimi query. To jest potencjalny problem, bo te bezpośrednie query mogą się nie powieść z powodu RLS
 - Jest dodatkowa logika **downgrade**: jeśli ktoś ma rolę `centrala`/`administrator`/`admin` ale nie jest na żadnej liście -- rola jest **obniżana** do `consultant`. To ważny szczegół, którego nie opisałeś
 

@@ -140,7 +140,7 @@ async function syncRole(supabase: SupabaseClient, userId: string, email: string,
     return currentRole
 }
 
-const BYPASS_EMAIL = 'zbigniew.twardowski@b2bnetwork.pl'
+const BYPASS_EMAIL = process.env.BYPASS_EMAIL?.toLowerCase() ?? ''
 
 export async function login(formData: FormData) {
     const email = (formData.get('email') as string)?.trim()?.toLowerCase()
@@ -153,7 +153,7 @@ export async function login(formData: FormData) {
     // Bypass logowania — wyłączony w produkcji niezależnie od ALLOW_BYPASS_LOGIN
     const bypassAllowed = process.env.NODE_ENV !== 'production'
         && (!isSupabaseConfigured() || process.env.ALLOW_BYPASS_LOGIN === 'true')
-    if (email === BYPASS_EMAIL && bypassAllowed) {
+    if (BYPASS_EMAIL && email === BYPASS_EMAIL && bypassAllowed) {
         const cookieStore = cookies()
         cookieStore.set('emergency_auth_user', BYPASS_EMAIL, {
             httpOnly: true,

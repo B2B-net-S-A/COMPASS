@@ -1,13 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { createMockSupabaseClient, isSupabaseConfigured, BYPASS_USER } from './mock-client'
+import { createMockSupabaseClient, getBypassEmail, isSupabaseConfigured, BYPASS_USER } from './mock-client'
 
 export function createClient() {
     try {
         const cookieStore = cookies()
+        const bypassEmail = getBypassEmail()
         if (!isSupabaseConfigured()) {
-            const bypassEmail = cookieStore.get('emergency_auth_user')?.value
-            if (bypassEmail === 'zbigniew.twardowski@b2bnetwork.pl') {
+            const cookieEmail = cookieStore.get('emergency_auth_user')?.value
+            if (bypassEmail && cookieEmail === bypassEmail) {
                 return createMockSupabaseClient(BYPASS_USER as any)
             }
             return createMockSupabaseClient()
@@ -17,7 +18,7 @@ export function createClient() {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL
         const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
         if (!url || !key) {
-            return createMockSupabaseClient(emergencyUser === 'zbigniew.twardowski@b2bnetwork.pl' ? (BYPASS_USER as any) : undefined)
+            return createMockSupabaseClient(bypassEmail && emergencyUser === bypassEmail ? (BYPASS_USER as any) : undefined)
         }
 
         // ─── Bypass cookie cleanup ──────────────────────────────────────

@@ -86,14 +86,14 @@ Lista przechowywana w bazie danych. Adresy e-mail Administratorow:
 
 | Adres e-mail | Uprawnienia specjalne |
 |---|---|
-| zbigniew.twardowski@b2bnetwork.pl | Master Admin — jedyny moze zmieniac liste Administratorow |
-| igor.twardowski@b2bnetwork.pl | Drugi Master Admin — moze zmieniac liste Administratorow |
+| <master-admin-1> | Master Admin — jedyny moze zmieniac liste Administratorow |
+| <master-admin-2> | Drugi Master Admin — moze zmieniac liste Administratorow |
 | artur.twardowski@b2bnetwork.pl | Administrator standardowy |
 | marta.kozarzewska@b2bnetwork.pl | Administrator standardowy |
 
 **Uprawnienia dodatkowe (wzgledem Centrali):**
 - Dodawanie i usuwanie osob z listy Centrali (wszyscy Administratorzy)
-- Modyfikacja listy Administratorow (wylacznie Master Admini: zbigniew.twardowski@b2bnetwork.pl oraz igor.twardowski@b2bnetwork.pl)
+- Modyfikacja listy Administratorow (wylacznie Master Admini: <master-admin-1> oraz <master-admin-2>)
 
 ---
 
@@ -167,7 +167,7 @@ Mechanizm resetu hasla dostepny dla wszystkich rol:
 
 Schemat zarzadzania kontami:
 
-- Master Admin (zbigniew.twardowski / igor.twardowski) → zarzadza lista Administratorow
+- Master Admin (<master-admin-1> / <master-admin-2>) → zarzadza lista Administratorow
 - Administrator → zarzadza lista Centrali
 - Centrala → zarzadza kontami Konsultantow i Team Leadow
 - Team Lead → brak uprawnien zarzadczych (tylko podglad)
@@ -247,8 +247,8 @@ Dla kazdej operacji administracyjnej system rejestruje:
 
 W systemie zdefiniowani sa dwaj Master Admini:
 
-- zbigniew.twardowski@b2bnetwork.pl (Master Admin 1)
-- igor.twardowski@b2bnetwork.pl (Master Admin 2)
+- <master-admin-1> (Master Admin 1)
+- <master-admin-2> (Master Admin 2)
 
 W przypadku niedostepnosci jednego z nich, drugi Master Admin przejmuje pelna kontrole nad zarzadzaniem lista Administratorow.
 

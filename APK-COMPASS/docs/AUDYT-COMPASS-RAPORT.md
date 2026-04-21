@@ -1,4 +1,4 @@
-# Raport audytu ComPass (compass-14fg.onrender.com)
+# Raport audytu ComPass (historyczny — Render)
 
 Data raportu: na podstawie audytu automatycznego (przeglądarka + konsola).
 

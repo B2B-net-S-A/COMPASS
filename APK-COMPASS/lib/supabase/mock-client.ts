@@ -4,14 +4,27 @@
  * dane profilu są trzymane w pamięci (Map), żeby zapis/odczyt "Mój Profil" i baner działały.
  */
 
-const BYPASS_USER_ID = 'df0edb15-8c84-434d-928f-689348171029'
-const BYPASS_EMAIL = 'zbigniew.twardowski@b2bnetwork.pl'
+const BYPASS_USER_ID = process.env.BYPASS_USER_ID ?? 'df0edb15-8c84-434d-928f-689348171029'
+
+export function getBypassEmail(): string {
+  return process.env.BYPASS_EMAIL?.toLowerCase() ?? ''
+}
+
+export function getBypassFullName(): string {
+  return process.env.BYPASS_FULL_NAME ?? 'Bypass User'
+}
 
 export const BYPASS_USER = {
   id: BYPASS_USER_ID,
-  email: BYPASS_EMAIL,
+  get email() {
+    return getBypassEmail()
+  },
   app_metadata: {},
-  user_metadata: { full_name: 'Zbigniew Twardowski' },
+  user_metadata: {
+    get full_name() {
+      return getBypassFullName()
+    },
+  },
   aud: 'authenticated',
   created_at: new Date().toISOString(),
 } as const
@@ -25,8 +38,8 @@ function getProfilesStore(): TableStore {
     const store = new Map<string, Record<string, unknown>>()
     store.set(BYPASS_USER_ID, {
       id: BYPASS_USER_ID,
-      email: BYPASS_EMAIL,
-      full_name: 'Zbigniew Twardowski',
+      email: getBypassEmail(),
+      full_name: getBypassFullName(),
       role: 'administrator',
       avatar_url: null,
       phone: null,

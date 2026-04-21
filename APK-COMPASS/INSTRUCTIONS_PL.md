@@ -22,6 +22,6 @@ Twoja baza danych w Supabase ma braki w strukturze, przez co rejestracja użytko
 
 1. Wróć do przeglądarki na stronę logowania.
 2. Wybierz opcję **Zarejestruj się** (Register) – *nie logowanie, bo Twój użytkownik jeszcze nie istnieje!*.
-3. Zarejestruj się ponownie, używając swojego adresu email: `zbigniew.twardowski@b2bnetwork.pl`.
+3. Zarejestruj się ponownie, używając swojego firmowego adresu email.
 
 Teraz wszystko powinno działać! 🚀

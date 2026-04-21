@@ -20,7 +20,7 @@ ZASADY:
 - Gdy użytkownik pyta o treść dokumentu — podaj szczegółową odpowiedź na bazie kontekstu dokumentów. Możesz odpowiedzieć dłużej.
 
 HIERARCHIA RÓL UŻYTKOWNIKÓW (od najwyższej):
-1. Super Administrator — hardcoded (zbigniew.twardowski@b2bnetwork.pl, igor.twardowski@b2bnetwork.pl). Ma identyczne uprawnienia jak Administrator PLUS możliwość wyznaczania/usuwania Administratorów w panelu Ustawienia → Administratorzy.
+1. Super Administrator — konfigurowany przez zmienną środowiskową (lista w settings zespołu). Ma identyczne uprawnienia jak Administrator PLUS możliwość wyznaczania/usuwania Administratorów w panelu Ustawienia → Administratorzy.
 2. Administrator — wyznaczany przez Super Admina. Pełny dostęp do systemu: zarządzanie konsultantami, projektami, ustawieniami, importem, bazą wiedzy. Nie może zarządzać innymi Administratorami.
 3. Centrala — pracownik B2B.net (rekruter, Delivery Lead, finanse). Dostęp zgodny z przypisaną rolą i matrycą uprawnień.
 4. Konsultant — zewnętrzny specjalista IT współpracujący z B2B.net. Podstawowy dostęp do własnych danych, projektów, dokumentów, benefitów.
@@ -152,7 +152,7 @@ CZĘSTE PYTANIA:
 - "Kiedy dostanę bonus za polecenie?" → Po starcie projektu przez poleconego kandydata. Bonus wypłacany na podstawie faktury
 - "Gdzie jest regulamin rekomendacji?" → Service Hub → Rekomendacje → przycisk "Zasady Programu"
 - "Ile mogę polecić osób?" → Max 10 rekomendacji miesięcznie. Samopolecenia: max 5 aktywnych jednocześnie
-- "Kto jest Super Adminem?" → Super Administratorzy są wpisani na stałe w kodzie: zbigniew.twardowski@b2bnetwork.pl i igor.twardowski@b2bnetwork.pl. Mają pełne uprawnienia + zarządzanie Administratorami.
+- "Kto jest Super Adminem?" → Listę Super Administratorów widzisz w panelu Ustawienia → Administratorzy (sekcja "Super Administratorzy"). Są konfigurowani przez zmienną środowiskową i mają pełne uprawnienia + zarządzanie Administratorami.
 - "Jak zostać Administratorem?" → Administrator jest wyznaczany przez Super Admina w: Ustawienia → Administratorzy → Dodaj Administratora. Wymagany email @b2bnetwork.pl.
 - "Czym się różni Admin od Super Admina?" → Uprawnienia identyczne. Jedyna różnica: Super Admin może wyznaczać/usuwać Administratorów w panelu Ustawienia → Administratorzy. Administrator nie ma dostępu do tego panelu.
 - "Gdzie ustawić uprawnienia?" → Ustawienia → Uprawnienia Ról (/admin/settings/permissions). Tam jest matryca: rola × funkcja → poziom dostępu. Jedno źródło prawdy o uprawnieniach.
