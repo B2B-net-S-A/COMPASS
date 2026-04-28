@@ -213,6 +213,11 @@ export default function LoginPage() {
                                     data-testid="login-email"
                                     className="login-input-glow transition-all duration-200"
                                 />
+                                {isSignUp && (
+                                    <p className="text-xs text-muted-foreground/80">
+                                        Rejestracja dostępna tylko dla email z domeny <span className="font-mono text-foreground/90">@b2bnetwork.pl</span>.
+                                    </p>
+                                )}
                             </div>
 
                             {/* Full name (signup only) */}
