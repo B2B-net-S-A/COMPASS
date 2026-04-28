@@ -1,10 +1,6 @@
 'use server'
 
-import OpenAI from 'openai'
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'MISSING_KEY',
-})
+import { chatJSON } from '@/lib/ai/llm'
 
 export interface ScoringResult {
     id: string
@@ -44,23 +40,11 @@ export async function batchScore(
     `
 
     try {
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini', // Use faster model for batch re-ranking
-            messages: [
-                { role: 'system', content: 'You are an IT recruitment scoring engine. Output JSON array.' },
-                { role: 'user', content: prompt }
-            ],
-            response_format: { type: 'json_object' }
+        const parsed = await chatJSON<{ results?: ScoringResult[]; matches?: ScoringResult[]; [key: string]: any }>({
+            model: 'gpt-4o-mini',
+            system: 'You are an IT recruitment scoring engine. Output JSON array.',
+            messages: [{ role: 'user', content: prompt }],
         })
-
-        const content = response.choices[0].message.content || '{"results": []}'
-        let parsed: { results?: ScoringResult[]; matches?: ScoringResult[];[key: string]: any }
-        try {
-            parsed = JSON.parse(content)
-        } catch {
-            console.error('Failed to parse AI response as JSON:', content)
-            return []
-        }
 
         // Robust extraction: find the first array in the object regardless of key name
         let results: ScoringResult[] = []

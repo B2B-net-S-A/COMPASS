@@ -1,11 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import OpenAI from 'openai'
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'MISSING_KEY',
-})
+import { generateEmbedding } from '@/lib/ai/embeddings'
 
 export type KnowledgeDocument = {
     id: string
@@ -15,12 +11,8 @@ export type KnowledgeDocument = {
     created_at: string
 }
 
-export async function createEmbedding(text: string) {
-    const response = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: text,
-    })
-    return response.data[0].embedding
+export async function createEmbedding(text: string): Promise<number[]> {
+    return await generateEmbedding(text)
 }
 
 export async function addKnowledgeDocument(content: string, category: string, metadata: Record<string, any> = {}) {

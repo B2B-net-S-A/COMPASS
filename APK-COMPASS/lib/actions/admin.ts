@@ -3,11 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { parseFile } from '@/lib/files/parsers'
 import { generateEmbedding } from '@/lib/ai/embeddings'
-import OpenAI from 'openai'
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
+import { chatJSON } from '@/lib/ai/llm'
 
 // --- Gap Analysis ---
 
@@ -57,13 +53,10 @@ export async function analyzeGap(projectId: string) {
     Response Format: JSON only.
     `
 
-        const response = await openai.chat.completions.create({
+        const analysis = await chatJSON<Record<string, unknown>>({
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' },
         })
-
-        const analysis = JSON.parse(response.choices[0].message.content || '{}')
         return analysis
 
     } catch (error) {
@@ -96,13 +89,10 @@ export async function parseProjectSpec(formData: FormData) {
     Response Format: JSON only.
     `
 
-        const response = await openai.chat.completions.create({
+        const extractedData = await chatJSON<Record<string, unknown>>({
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' },
         })
-
-        const extractedData = JSON.parse(response.choices[0].message.content || '{}')
         return extractedData
 
     } catch (error) {

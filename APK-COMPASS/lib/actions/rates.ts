@@ -1,11 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import OpenAI from 'openai'
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'mock-key',
-})
+import { chatText } from '@/lib/ai/llm'
 
 interface MarketRate {
     id: string
@@ -448,16 +444,14 @@ INSTRUKCJE — sporządź analizę w następującej strukturze:
 Pisz po polsku, profesjonalnym językiem biznesowym. Bądź konkretny — podawaj liczby i procenty.`
 
     try {
-        const response = await openai.chat.completions.create({
+        const text = await chatText({
             model: 'gpt-4o-mini',
-            messages: [
-                { role: 'system', content: 'Jesteś ekspertem ds. stawek IT w Polsce. Tworzysz profesjonalne analizy stawek na podstawie raportów płacowych (Hays, Sedlak & Sedlak, itp.). Odpowiadasz po polsku, konkretnie, z odniesieniami do źródeł.' },
-                { role: 'user', content: prompt },
-            ],
-            max_tokens: 1200,
+            system: 'Jesteś ekspertem ds. stawek IT w Polsce. Tworzysz profesjonalne analizy stawek na podstawie raportów płacowych (Hays, Sedlak & Sedlak, itp.). Odpowiadasz po polsku, konkretnie, z odniesieniami do źródeł.',
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 1200,
             temperature: 0.3,
         })
-        return response.choices[0]?.message?.content || 'Nie udało się wygenerować podsumowania.'
+        return text || 'Nie udało się wygenerować podsumowania.'
     } catch (err) {
         console.error('[generateRateSummary]', err)
         return 'Błąd generowania podsumowania AI.'

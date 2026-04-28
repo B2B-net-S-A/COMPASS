@@ -3,8 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 import { revalidatePath } from 'next/cache'
-
-import OpenAI from 'openai'
+import { chatJSON } from '@/lib/ai/llm'
 
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024
 const MAX_CV_SIZE = 20 * 1024 * 1024
@@ -173,28 +172,25 @@ export async function generateProfileFromCV(manualData?: any) {
         const sanitizedText = text.slice(0, 15000)
 
         // 4. AI Extraction
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
         const contextPrompt = manualData ? `
 USER MANUAL INPUTS (Must be incorporated):
 - Experience Level: ${manualData.experience} years
 - Current Status: ${manualData.status}
 - Capacity: ${manualData.capacity}%
 - Project Sentiments: ${manualData.sentiments?.join(', ')}
-- Additional Work Roles: 
+- Additional Work Roles:
     - Verifier: ${manualData.verifier}
     - Ambassador: ${manualData.ambassador}
     - Sales Support: ${manualData.sales}
 - Cover Letter / Additional Info: "${manualData.coverLetter || 'None'}"
 ` : ''
 
-        const extractionResponse = await openai.chat.completions.create({
+        const aiData = await chatJSON<Record<string, any>>({
             model: 'gpt-4o-mini',
-            messages: [
-                { role: 'system', content: 'You are an HR expert. You must output a JSON object.' },
-                {
-                    role: 'user',
-                    content: `Analyze the CV text and the user's manual inputs to create a comprehensive profile.
+            system: 'You are an HR expert. You must output a JSON object.',
+            messages: [{
+                role: 'user',
+                content: `Analyze the CV text and the user's manual inputs to create a comprehensive profile.
 
 ${contextPrompt}
 
@@ -203,20 +199,14 @@ Extract the following fields in json format:
 - skills (array of strings): Technical skills, soft skills, tools.
 - previous_clients (array of strings): Extract names of companies, clients, or projects the candidate worked for. Look for capitalized names associated with "Client", "Project for", "Worked at", etc.
 - experience_years (number): Total years of professional experience in the IT industry. Output only the number. If not found, use ${manualData?.experience || 0}.
-- bio (string): Write a professional summary (1st person view, e.g. "Jestem..."). Highlight key skills, experience, and roles. 
+- bio (string): Write a professional summary (1st person view, e.g. "Jestem..."). Highlight key skills, experience, and roles.
   CRITICAL: You MUST explicitly mention their availability status ("${manualData?.status || ''}") and any additional roles they are interested in (Verifier, Ambassador, etc.) if specified in the manual inputs.
   Keep it under 1000 characters.
 
 CV Text to analyze:
-${sanitizedText.slice(0, 10000)}
-
-Respond with a valid json object.`
-                }
-            ],
-            response_format: { type: 'json_object' }
+${sanitizedText.slice(0, 10000)}`,
+            }],
         })
-
-        const aiData = JSON.parse(extractionResponse.choices[0].message.content || '{}')
         const summary = aiData.bio || sanitizedText.slice(0, 500)
         const embedding = await generateEmbedding(summary)
 
@@ -432,15 +422,12 @@ export async function adminGenerateProfileFromCV(candidateId: string, cvUrl: str
         const sanitizedText = text.slice(0, 15000)
 
         // 3. AI Extraction
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-        const extractionResponse = await openai.chat.completions.create({
+        const aiData = await chatJSON<Record<string, any>>({
             model: 'gpt-4o-mini',
-            messages: [
-                { role: 'system', content: 'You are an HR expert. You must output a JSON object.' },
-                {
-                    role: 'user',
-                    content: `Analyze the CV text and extract the following in json format:
+            system: 'You are an HR expert. You must output a JSON object.',
+            messages: [{
+                role: 'user',
+                content: `Analyze the CV text and extract the following in json format:
 - full_name (string): The candidate's full name.
 - skills (array of strings): Technical skills, soft skills, tools.
 - previous_clients (array of strings): Extract names of companies, clients, or projects.
@@ -448,15 +435,9 @@ export async function adminGenerateProfileFromCV(candidateId: string, cvUrl: str
 - bio (string): Write a professional summary. 1st person view. Keep it under 1000 characters.
 
 Text to analyze:
-${sanitizedText.slice(0, 10000)}
-
-Respond with a valid json object.`
-                }
-            ],
-            response_format: { type: 'json_object' }
+${sanitizedText.slice(0, 10000)}`,
+            }],
         })
-
-        const aiData = JSON.parse(extractionResponse.choices[0].message.content || '{}')
         const summary = aiData.bio || sanitizedText.slice(0, 500)
         const embedding = await generateEmbedding(summary)
 

@@ -1,13 +1,9 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import OpenAI from 'openai'
+import { chatText, type LLMMessage } from '@/lib/ai/llm'
 import { searchKnowledge } from './knowledge-base'
 import { getCentralaData } from './centrala'
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'MISSING_KEY',
-})
 
 export type ChatMessage = {
     role: 'user' | 'assistant' | 'system'
@@ -72,18 +68,17 @@ export async function processChat(profileId: string, message: string, history: C
     - Jeśli użytkownik prosi o akcję (np. zmiana benefitu, zgłoszenie problemu), poinformuj, że możesz utworzyć zgłoszenie (ticket).
     `
 
-    // 4. Call OpenAI
-    const response = await openai.chat.completions.create({
+    // 4. Call LLM (Claude)
+    const llmMessages: LLMMessage[] = [
+        ...history.filter((m) => m.role !== 'system').map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        { role: 'user', content: message },
+    ]
+    const aiResponse = await chatText({
         model: 'gpt-4o',
-        messages: [
-            { role: 'system', content: systemPrompt },
-            ...history,
-            { role: 'user', content: message }
-        ],
+        system: systemPrompt,
+        messages: llmMessages,
         temperature: 0.3,
-    })
-
-    const aiResponse = response.choices[0].message.content || 'Przepraszam, nie mogłem wygenerować odpowiedzi.'
+    }) || 'Przepraszam, nie mogłem wygenerować odpowiedzi.'
 
     // 5. Store Chat History (Optional: can be done in frontend or here)
     // For now, we return it to the frontend to handle state

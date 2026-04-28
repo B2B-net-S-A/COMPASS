@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { chatJSON } from '@/lib/ai/llm'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 
 const BATCH_SIZE = 10
@@ -40,7 +40,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ processed: 0, message: 'Brak CV do przetworzenia' })
     }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
     let processed = 0
     let errors = 0
     const results: { id: string; name: string; status: string }[] = []
@@ -86,13 +85,12 @@ export async function POST(request: Request) {
 
             const sanitizedText = text.slice(0, 15000)
 
-            const extractionResponse = await openai.chat.completions.create({
+            const aiData = await chatJSON<Record<string, any>>({
                 model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: 'You are an HR expert. Output a JSON object.' },
-                    {
-                        role: 'user',
-                        content: `Analyze this CV and extract:
+                system: 'You are an HR expert. Output a JSON object.',
+                messages: [{
+                    role: 'user',
+                    content: `Analyze this CV and extract:
 - full_name (string)
 - skills (array of strings)
 - previous_clients (array of strings)
@@ -102,15 +100,9 @@ export async function POST(request: Request) {
 - phone (string or null)
 
 CV Text:
-${sanitizedText.slice(0, 10000)}
-
-Respond with valid JSON.`
-                    }
-                ],
-                response_format: { type: 'json_object' }
+${sanitizedText.slice(0, 10000)}`,
+                }],
             })
-
-            const aiData = JSON.parse(extractionResponse.choices[0].message.content || '{}')
             const summary = aiData.bio || sanitizedText.slice(0, 500)
             const embedding = await generateEmbedding(summary)
 

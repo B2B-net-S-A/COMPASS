@@ -1,15 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import OpenAI from 'openai'
-
-if (!process.env.OPENAI_API_KEY) {
-    console.warn("Missing OPENAI_API_KEY environment variable. AI features will fail.")
-}
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'MISSING_KEY',
-})
+import { chatJSON } from '@/lib/ai/llm'
 
 export type MatchAnalysis = {
     strong_points: string[]
@@ -105,17 +97,12 @@ export async function analyzeMatch(projectId: string, candidateId: string): Prom
     Output only valid JSON.
     `
 
-    // 4. Call OpenAI
-    const response = await openai.chat.completions.create({
+    // 4. Call LLM (Claude)
+    const result = await chatJSON<Record<string, any>>({
         model: 'gpt-4o',
-        messages: [
-            { role: 'system', content: 'You are an IT Recruitment Expert. Analyze matches deeply based on the Qualrix V2.0 engine. Output JSON.' },
-            { role: 'user', content: prompt }
-        ],
-        response_format: { type: 'json_object' }
+        system: 'You are an IT Recruitment Expert. Analyze matches deeply based on the Qualrix V2.0 engine. Output JSON.',
+        messages: [{ role: 'user', content: prompt }],
     })
-
-    const result = JSON.parse(response.choices[0].message.content || '{}')
 
     const analysisResult: MatchAnalysis = {
         strong_points: result.strong_points || [],
