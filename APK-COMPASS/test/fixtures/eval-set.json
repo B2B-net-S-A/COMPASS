@@ -1,0 +1,77 @@
+{
+  "candidates": [
+    {
+      "id": "eval-c-react",
+      "full_name": "Anna React Senior",
+      "bio": "Senior React + TypeScript developer with 9 years of experience. Led 4 product teams. Expert in Next.js, Redux, performance optimization, and design systems. Worked for fintech and SaaS companies.",
+      "skills": ["React", "TypeScript", "Next.js", "Redux", "GraphQL", "Tailwind"],
+      "experience_years": 9
+    },
+    {
+      "id": "eval-c-java",
+      "full_name": "Bartek Java Backend",
+      "bio": "Java backend engineer, 7 years. Spring Boot, microservices, Kafka, PostgreSQL. Banking domain. Designed event-driven architectures handling 500k tps.",
+      "skills": ["Java", "Spring Boot", "Kafka", "PostgreSQL", "Docker", "Kubernetes"],
+      "experience_years": 7
+    },
+    {
+      "id": "eval-c-data",
+      "full_name": "Celina Data Engineer",
+      "bio": "Data engineer with 6 years on Snowflake, dbt, Airflow. Built lakehouses for retail and telco. Strong SQL + Python (pandas, polars).",
+      "skills": ["Snowflake", "dbt", "Airflow", "Python", "SQL", "AWS"],
+      "experience_years": 6
+    },
+    {
+      "id": "eval-c-junior",
+      "full_name": "Damian Junior Frontend",
+      "bio": "Junior frontend dev, 1.5 years. HTML/CSS/JS basics, learning React. Built two portfolio sites.",
+      "skills": ["HTML", "CSS", "JavaScript", "React"],
+      "experience_years": 1
+    },
+    {
+      "id": "eval-c-devops",
+      "full_name": "Ewa DevOps Lead",
+      "bio": "DevOps lead, 11 years. Kubernetes on AWS/GCP, Terraform, ArgoCD, Prometheus. Migrated 3 enterprise estates. Cost-optimization specialist.",
+      "skills": ["Kubernetes", "AWS", "Terraform", "ArgoCD", "Prometheus", "Helm"],
+      "experience_years": 11
+    }
+  ],
+  "projects": [
+    {
+      "id": "eval-p-react-fintech",
+      "title": "Senior React Developer for Klient (fintech)",
+      "description": "Build a trading dashboard with React + TypeScript + Next.js for a top-tier Klient. Performance is critical (60fps charts), and the team uses GraphQL + Redux Toolkit. Need someone with 5+ years React.",
+      "required_skills": ["React", "TypeScript", "Next.js", "Redux", "GraphQL"]
+    },
+    {
+      "id": "eval-p-spring-banking",
+      "title": "Spring Boot Microservices Engineer for Klient (banking)",
+      "description": "Architect and build a payment processing platform on Spring Boot + Kafka + PostgreSQL. Banking domain knowledge a plus. 5+ years Java.",
+      "required_skills": ["Java", "Spring Boot", "Kafka", "PostgreSQL"]
+    },
+    {
+      "id": "eval-p-data-platform",
+      "title": "Lakehouse Architect for Klient (retail)",
+      "description": "Design and implement a Snowflake-based lakehouse with dbt models and Airflow orchestration. Need 5+ years on the data platform side.",
+      "required_skills": ["Snowflake", "dbt", "Airflow", "SQL", "Python"]
+    },
+    {
+      "id": "eval-p-platform-eng",
+      "title": "Platform Engineer (Kubernetes + Terraform)",
+      "description": "Build and operate a multi-cluster Kubernetes platform on AWS. IaC via Terraform, GitOps via ArgoCD. 7+ years in DevOps.",
+      "required_skills": ["Kubernetes", "AWS", "Terraform", "ArgoCD"]
+    },
+    {
+      "id": "eval-p-no-match",
+      "title": "Embedded C++ for IoT firmware",
+      "description": "Write firmware in C/C++ for embedded ARM Cortex M devices. RTOS experience required.",
+      "required_skills": ["C", "C++", "ARM", "RTOS", "FreeRTOS"]
+    }
+  ],
+  "expectedTopMatches": {
+    "eval-c-react": ["eval-p-react-fintech"],
+    "eval-c-java": ["eval-p-spring-banking"],
+    "eval-c-data": ["eval-p-data-platform"],
+    "eval-c-devops": ["eval-p-platform-eng"]
+  }
+}

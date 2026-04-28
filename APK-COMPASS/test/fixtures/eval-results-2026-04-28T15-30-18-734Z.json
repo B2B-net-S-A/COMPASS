@@ -1,0 +1,68 @@
+{
+  "precisionAt1": 0,
+  "recallAt5": 1,
+  "mrr": 0.41666666666666663,
+  "ndcgAt5": 0.5654648767857288,
+  "perCandidate": [
+    {
+      "candidateId": "eval-c-react",
+      "rankedProjects": [
+        "eval-p-data-platform",
+        "eval-p-react-fintech",
+        "eval-p-platform-eng",
+        "eval-p-spring-banking",
+        "eval-p-no-match"
+      ],
+      "expected": [
+        "eval-p-react-fintech"
+      ],
+      "precisionAt1": 0,
+      "rrContribution": 0.5
+    },
+    {
+      "candidateId": "eval-c-java",
+      "rankedProjects": [
+        "eval-p-platform-eng",
+        "eval-p-react-fintech",
+        "eval-p-spring-banking",
+        "eval-p-data-platform",
+        "eval-p-no-match"
+      ],
+      "expected": [
+        "eval-p-spring-banking"
+      ],
+      "precisionAt1": 0,
+      "rrContribution": 0.3333333333333333
+    },
+    {
+      "candidateId": "eval-c-data",
+      "rankedProjects": [
+        "eval-p-spring-banking",
+        "eval-p-data-platform",
+        "eval-p-no-match",
+        "eval-p-platform-eng",
+        "eval-p-react-fintech"
+      ],
+      "expected": [
+        "eval-p-data-platform"
+      ],
+      "precisionAt1": 0,
+      "rrContribution": 0.5
+    },
+    {
+      "candidateId": "eval-c-devops",
+      "rankedProjects": [
+        "eval-p-spring-banking",
+        "eval-p-no-match",
+        "eval-p-platform-eng",
+        "eval-p-data-platform",
+        "eval-p-react-fintech"
+      ],
+      "expected": [
+        "eval-p-platform-eng"
+      ],
+      "precisionAt1": 0,
+      "rrContribution": 0.3333333333333333
+    }
+  ]
+}
