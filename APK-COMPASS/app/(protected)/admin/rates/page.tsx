@@ -1,6 +1,7 @@
 import { ProtectedPage } from '@/components/common/ProtectedPage'
-import { getMarketRates, getMarketRateCategories, getMarketRateSources, getVerificationHistory } from '@/lib/actions/rates'
+import { getMarketRates, getMarketRateCategories, getMarketRateSources, getVerificationHistory, getRateChangeLog } from '@/lib/actions/rates'
 import { RatesPageClient } from '@/components/admin/RatesPageClient'
+import { RateChangeLogList } from '@/components/admin/RateChangeLogList'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function AdminRatesPage() {
@@ -8,6 +9,7 @@ export default async function AdminRatesPage() {
     let categories: string[] = []
     let sources: string[] = []
     let history: Awaited<ReturnType<typeof getVerificationHistory>> = []
+    let changeLog: Awaited<ReturnType<typeof getRateChangeLog>> = []
     let isAdmin = false
 
     try {
@@ -22,11 +24,12 @@ export default async function AdminRatesPage() {
             isAdmin = ['administrator', 'admin'].includes(profile?.role || '')
         }
 
-        ;[marketRates, categories, sources, history] = await Promise.all([
+        ;[marketRates, categories, sources, history, changeLog] = await Promise.all([
             getMarketRates(),
             getMarketRateCategories(),
             getMarketRateSources(),
             getVerificationHistory(),
+            getRateChangeLog(undefined, 50),
         ])
     } catch (e) {
         const err = e as { digest?: string }
@@ -48,6 +51,8 @@ export default async function AdminRatesPage() {
                 initialHistory={history}
                 isAdmin={isAdmin}
             />
+
+            <RateChangeLogList initialEntries={changeLog} title="Historia zmian stawek (audit log)" limit={50} />
         </ProtectedPage>
     )
 }

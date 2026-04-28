@@ -475,6 +475,78 @@ export async function getVerificationHistory(): Promise<RateVerification[]> {
     return (data || []) as RateVerification[]
 }
 
+// ─── Audit log for market_rates changes (Faza 6.4) ────────────────────────────
+
+export interface RateChangeLogEntry {
+    id: string
+    rate_id: string | null
+    action: 'INSERT' | 'UPDATE' | 'DELETE'
+    changed_by: string | null
+    changed_at: string
+    position_title: string | null
+    old_rate_min: number | null
+    new_rate_min: number | null
+    old_rate_median: number | null
+    new_rate_median: number | null
+    old_rate_max: number | null
+    new_rate_max: number | null
+    actor_name?: string | null
+    actor_email?: string | null
+}
+
+/**
+ * Returns the audit log of all market_rates changes (admin/centrala only).
+ * Optionally scoped to a single rate via `rateId`.
+ * Defaults to last 100 entries, newest first.
+ *
+ * Backed by `rate_change_log` table populated by `trg_rate_change_log` trigger
+ * (see migration 20260428_rate_change_log.sql).
+ */
+export async function getRateChangeLog(rateId?: string, limit = 100): Promise<RateChangeLogEntry[]> {
+    const { supabase } = await requireCentralaOrAdmin()
+
+    let query = supabase
+        .from('rate_change_log')
+        .select('id, rate_id, action, changed_by, changed_at, position_title, old_rate_min, new_rate_min, old_rate_median, new_rate_median, old_rate_max, new_rate_max')
+        .order('changed_at', { ascending: false })
+        .limit(limit)
+
+    if (rateId) {
+        query = query.eq('rate_id', rateId)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+        console.error('[getRateChangeLog]', error)
+        return []
+    }
+
+    const entries = (data || []) as RateChangeLogEntry[]
+
+    // Hydrate actor names — single batched query for all unique changed_by ids
+    const actorIds = Array.from(new Set(entries.map(e => e.changed_by).filter((id): id is string => Boolean(id))))
+    if (actorIds.length > 0) {
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', actorIds)
+
+        const actorMap = new Map((profiles || []).map((p: { id: string; full_name: string | null; email: string | null }) => [p.id, p]))
+        for (const e of entries) {
+            if (e.changed_by) {
+                const a = actorMap.get(e.changed_by)
+                if (a) {
+                    e.actor_name = a.full_name
+                    e.actor_email = a.email
+                }
+            }
+        }
+    }
+
+    return entries
+}
+
 export async function deleteMarketRate(id: string) {
     const { supabase } = await requireAdmin()
 
