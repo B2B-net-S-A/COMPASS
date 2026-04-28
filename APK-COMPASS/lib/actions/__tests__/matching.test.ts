@@ -76,9 +76,9 @@ describe('matchProjectsForUser', () => {
         })
         const { matchProjectsForUser } = await import('../matching')
         await matchProjectsForUser('u1')
-        expect(rpc.mock.calls[0][0]).toMatchObject({ match_count: 5 })
+        expect((rpc.mock.calls[0] as unknown[])[0]).toMatchObject({ match_count: 5 })
         await matchProjectsForUser('u1', 12)
-        expect(rpc.mock.calls[1][0]).toMatchObject({ match_count: 12 })
+        expect((rpc.mock.calls[1] as unknown[])[0]).toMatchObject({ match_count: 12 })
     })
 
     it('returns [] (does not throw) when match_projects RPC errors', async () => {

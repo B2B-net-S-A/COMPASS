@@ -41,7 +41,6 @@ export default defineConfig({
                 statements: 80,
                 branches: 75,
             },
-            all: false,
         },
         clearMocks: true,
         testTimeout: 10_000,

@@ -11,6 +11,7 @@ import { ClientCVPreview } from '@/components/admin/ClientCVPreview'
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { DeleteRedirectWrapper } from '@/components/admin/DeleteRedirectWrapper'
 import { AdminCVUpload } from '@/components/admin/AdminCVUpload'
+import { RescoreButton } from '@/components/admin/RescoreButton'
 import { CandidateProjectList } from '@/components/admin/CandidateProjectList'
 import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
 import { getUserFavoriteProjects } from '@/lib/actions/favorites'
@@ -77,6 +78,7 @@ export default async function CandidateDetailPage({ params, searchParams }: Page
                     </div>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
+                    <RescoreButton candidateId={candidate.id} candidateName={candidate.full_name || 'Konsultant'} />
                     <DeleteRedirectWrapper id={candidate.id} name={candidate.full_name} />
                 </div>
             </div>

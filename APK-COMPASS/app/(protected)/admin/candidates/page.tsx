@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { CandidatesListClient } from "@/components/admin/CandidatesListClient"
 import { SearchInput } from "@/components/admin/SearchInput"
 import { SortSelect } from "@/components/admin/SortSelect"
+import { CVBatchProcessor } from "@/components/admin/CVBatchProcessor"
 import { ProtectedPage } from '@/components/common/ProtectedPage'
 
 export default async function AdminCandidatesPage({
@@ -125,6 +126,7 @@ export default async function AdminCandidatesPage({
                     )}
                     <SearchInput placeholder="Szukaj konsultanta..." />
                     <SortSelect />
+                    <CVBatchProcessor />
                 </div>
             </div>
 

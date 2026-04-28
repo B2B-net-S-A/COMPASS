@@ -169,7 +169,7 @@ describe('createNotification (admin/self only)', () => {
         const { createNotification } = await import('../notifications')
         const result = await createNotification({
             userId: 'u-other',
-            type: 'info',
+            type: 'info' as never,
             titlePl: 't',
             titleEn: 't',
         })
@@ -188,7 +188,7 @@ describe('createNotification (admin/self only)', () => {
         const { createNotification } = await import('../notifications')
         const result = await createNotification({
             userId: 'u1',
-            type: 'info',
+            type: 'info' as never,
             titlePl: 't',
             titleEn: 't',
         })
@@ -205,7 +205,7 @@ describe('createNotification (admin/self only)', () => {
         const { createNotification } = await import('../notifications')
         const result = await createNotification({
             userId: 'u-target',
-            type: 'info',
+            type: 'info' as never,
             titlePl: 't',
             titleEn: 't',
         })

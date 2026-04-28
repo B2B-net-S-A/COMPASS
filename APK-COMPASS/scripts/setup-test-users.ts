@@ -56,10 +56,10 @@ function loadEnvTest(): EnvVars {
     return env as unknown as EnvVars
 }
 
-async function ensureUser(supabase: ReturnType<typeof createClient>, email: string, password: string): Promise<{ id: string; created: boolean }> {
+async function ensureUser(supabase: any, email: string, password: string): Promise<{ id: string; created: boolean }> {
     // Check existing user via auth admin API
     const { data: list } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
-    const existing = list?.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+    const existing = list?.users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
     if (existing) {
         console.log(`  ✓ already exists: ${email} (${existing.id})`)
         // Ensure email is confirmed (in case the UI signup left it unconfirmed)
@@ -86,10 +86,10 @@ function deriveName(email: string): string {
     return `Test ${lastTag.charAt(0).toUpperCase() + lastTag.slice(1)}`
 }
 
-async function setRole(supabase: ReturnType<typeof createClient>, userId: string, role: string): Promise<void> {
+async function setRole(supabase: any, userId: string, role: string): Promise<void> {
     const { error } = await supabase
         .from('profiles')
-        .upsert({ id: userId, role, onboarding_completed: false, full_name: 'E2E Test Account' }, { onConflict: 'id' })
+        .upsert([{ id: userId, role, onboarding_completed: false, full_name: 'E2E Test Account' }], { onConflict: 'id' })
     if (error) throw new Error(`profile upsert failed for ${userId}: ${error.message}`)
 }
 

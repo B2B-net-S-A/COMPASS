@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Mail, Save, Loader2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { getSystemSetting, updateSystemSetting } from "@/lib/actions/settings"
+import { DigestPreview } from "@/components/admin/DigestPreview"
 
 export default function NotificationsSettingsPage() {
     const [email, setEmail] = useState('')
@@ -128,6 +129,8 @@ export default function NotificationsSettingsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            <DigestPreview />
         </div>
     )
 }
