@@ -7,12 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "playwright test",
+    "test": "vitest run && playwright test",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:smoke": "playwright test e2e/01-smoke.spec.ts",
     "test:auth": "playwright test e2e/02-auth.spec.ts",
     "test:rls": "playwright test e2e/04-rls-database.spec.ts",
     "test:communicator": "playwright test e2e/03-communicator.spec.ts",
+    "test:eval": "tsx scripts/eval_matching.ts",
     "ship": "bash scripts/git-ship.sh",
     "deploy": "bash scripts/render-deploy.sh",
     "deploy:clear": "bash scripts/render-deploy.sh --clear-cache"
@@ -57,16 +61,24 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/pg": "^8.16.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/ui": "^4.1.5",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
+    "happy-dom": "^20.9.0",
     "pg": "^8.18.0",
     "playwright": "^1.58.2",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.1.5"
   }
 }
