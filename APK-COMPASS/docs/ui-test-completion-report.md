@@ -15,10 +15,10 @@
 
 | Warstwa | Liczba testów | Pliki | Status |
 |---|---|---|---|
-| **Vitest unit + component** | **307** | 34 | ✅ wszystkie zielone |
+| **Vitest unit + component** | **374** | 42 | ✅ wszystkie zielone |
 | **Playwright E2E (Hetzner)** | **11 nowych + 26 istniejących** | 6 | ✅ 11/11 nowych zielone |
 | **Eval harness** | 4 metryki | 1 skrypt | ✅ baseline zapisany |
-| **Łącznie** | **~318 testów + eval** | | |
+| **Łącznie** | **~385 testów + eval** | | |
 
 **Commity dodane w sesji (6):**
 1. `90ca36f` — test: Vitest infrastructure + 177 unit tests
