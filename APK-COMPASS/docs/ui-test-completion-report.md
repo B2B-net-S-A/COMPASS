@@ -11,15 +11,22 @@
 
 **Punkt wyjścia (przed sesją):** ~15–20 % pokrycia testami. Tylko 26 testów Playwright E2E (smoke / auth / RLS / loyalty / komunikator). Krytyczne moduły biznesowe (matching engine, scoring, AI wrappers, RODO scrubbing, 38 server actions, 153 komponentów, 6 API routes) — **0 % pokrycia.**
 
-**Po sesji:**
+**Po sesji (zaktualizowane na koniec milestone 5):**
 
 | Warstwa | Liczba testów | Pliki | Status |
 |---|---|---|---|
-| **Vitest unit** | **203** | 21 | ✅ wszystkie zielone |
-| **Vitest component** | **11** | 3 | ✅ wszystkie zielone |
+| **Vitest unit + component** | **307** | 34 | ✅ wszystkie zielone |
 | **Playwright E2E (Hetzner)** | **11 nowych + 26 istniejących** | 6 | ✅ 11/11 nowych zielone |
 | **Eval harness** | 4 metryki | 1 skrypt | ✅ baseline zapisany |
-| **Łącznie** | **~225 nowych testów + eval** | | |
+| **Łącznie** | **~318 testów + eval** | | |
+
+**Commity dodane w sesji (6):**
+1. `90ca36f` — test: Vitest infrastructure + 177 unit tests
+2. `11aa624` — test: 11 E2E specs + 11 component tests + eval harness + 3 API route tests + bugs report
+3. `916d1ff` — feat: 3 brakujące widoki FE↔BE (CV Batch / Re-score / Digest) + 7 bug findings
+4. `8b0bb61` — fix(login): add domain-whitelist hint (bug #001) + raport końcowy
+5. `86b1b95` — test: +95 unit tests across 12 new files (server actions + ConsentPage + LoginForm fix verify)
+6. `8b73fd9` — feat(rates): audit log for market_rates changes (Faza 6.4 — migracja + UI + server action)
 
 **Coverage na krytycznych modułach:**
 
@@ -123,7 +130,7 @@
 - ✅ **6.1 — CV Batch Processor UI** ([components/admin/CVBatchProcessor.tsx](../components/admin/CVBatchProcessor.tsx)) — admin button + AlertDialog z progress + per-CV error list. Eksponuje `POST /api/admin/process-cv-batch`. Dodany do toolbar w `/admin/candidates`.
 - ✅ **6.2 — Re-score button** ([components/admin/RescoreButton.tsx](../components/admin/RescoreButton.tsx)) — wywołuje istniejący `triggerAIScoringForCandidate(id)` z toast feedback + `router.refresh()`. Dodany do header bara w `/admin/candidates/[id]`.
 - ✅ **6.3 — Email digest admin trigger** ([components/admin/DigestPreview.tsx](../components/admin/DigestPreview.tsx)) — input userId + 2 buttony (Podgląd / Wyślij teraz) + iframe preview HTML. Dodany do `/admin/settings/notifications`.
-- 🟡 **6.4 — Audit log dla rate changes** — nie zaimplementowany (wymaga migracji DB tworzącej tabelę `rate_change_log` + trigger PG na UPDATE). Zostawiony do iteracji 2.
+- ✅ **6.4 — Audit log dla rate changes** ([components/admin/RateChangeLogList.tsx](../components/admin/RateChangeLogList.tsx) + [supabase/migrations/20260428_rate_change_log.sql](../supabase/migrations/20260428_rate_change_log.sql) + `getRateChangeLog` w [lib/actions/rates.ts](../lib/actions/rates.ts)) — append-only `rate_change_log` table z PG triggerem `trg_rate_change_log` na INSERT/UPDATE/DELETE w `market_rates`. RLS: read-only dla admin/centrala. UI tabela z color-coded action badges, delta display ("100 → 110 ↑"), actor hydration, refresh button. **Migrację trzeba uruchomić raz na Hetznerze** — Supabase migrations CLI lub ręcznie z dashboard.
 
 ### Faza 7 — Bug fixing
 
@@ -255,15 +262,15 @@ curl -X GET "https://compass.dynaminds.pl/api/migrate-compliance?secret=$CRON_SE
 | Faza | Plan | Wykonane | % |
 |---|---|---|---|
 | 0 — Setup | Vitest + mocki + 4 test accounts + helpery | 3/4 | ✅ 75 % (czeka na klucz dla 0.4) |
-| 1 — Unit tests | 28 plików | **22** plików, 203 testy, krytyczne moduły 100 % | ✅ 80 % |
+| 1 — Unit tests | 28 plików | **34** plików, 307 testów, krytyczne moduły 100 % | ✅ 121 % |
 | 2 — Eval harness | scripts/eval_matching.ts | ✅ działa, baseline | ✅ 100 % |
-| 3 — Component tests | 30 priorytetowych | **3** + 11 testów | 🟡 10 % |
+| 3 — Component tests | 30 priorytetowych | **5** komponentów (ConfirmDialog, SortSelect, SearchInput, ConsentPage, LoginForm) + 26 testów | 🟡 17 % |
 | 4 — E2E rozszerzenie | 20+ nowych spec | 1 (11 testów, 11/11 zielone) + 26 istniejących | 🟡 35 % |
 | 5 — Manual exploration | 4 role × 25 stron × 3 motywy | publiczne strony + 1 cz. admin | 🟡 15 % |
-| 6 — FE↔BE gaps | 4 widoki | 3/4 | ✅ 75 % |
+| 6 — FE↔BE gaps | 4 widoki | **4/4** | ✅ 100 % |
 | 7 — Bug fixing | wszystkie failing + UX | 1 fix (#001) + 7 bug findings | 🟡 dalej |
 | 8 — Verification + raport | report.md + push | ✅ ten plik + commity | ✅ 100 % |
 
-**Łącznie: ~60 % planu, 100 % krytycznej infrastruktury testowej + ~225 nowych testów + 7 bug findings + 3 brakujące widoki.**
+**Łącznie: ~75 % planu, 100 % krytycznej infrastruktury testowej + 318 testów + 7 bug findings + wszystkie 4 brakujące widoki FE↔BE + 1 nowa migracja DB (rate_change_log).**
 
-Pozostałe 40 % = manual exploration per rola + rozszerzenie E2E + reszta unit / component testów. Wymaga `SUPABASE_SERVICE_ROLE_KEY` w `.env.test` żeby kontynuować autonomicznie.
+Pozostałe 25 % = manual exploration per rola + rozszerzenie E2E z loginem + reszta server actions / komponentów na smoke render. Wymaga `SUPABASE_SERVICE_ROLE_KEY` w `.env.test` żeby kontynuować autonomicznie.
