@@ -15,18 +15,23 @@
 
 | Warstwa | Liczba testów | Pliki | Status |
 |---|---|---|---|
-| **Vitest unit + component** | **374** | 42 | ✅ wszystkie zielone |
+| **Vitest unit + component** | **418** | 49 | ✅ wszystkie zielone |
 | **Playwright E2E (Hetzner)** | **11 nowych + 26 istniejących** | 6 | ✅ 11/11 nowych zielone |
 | **Eval harness** | 4 metryki | 1 skrypt | ✅ baseline zapisany |
-| **Łącznie** | **~385 testów + eval** | | |
+| **Łącznie** | **~429 testów + eval** | | |
 
-**Commity dodane w sesji (6):**
+**Commity dodane w sesji (9 push'niętych do `main`):**
 1. `90ca36f` — test: Vitest infrastructure + 177 unit tests
 2. `11aa624` — test: 11 E2E specs + 11 component tests + eval harness + 3 API route tests + bugs report
 3. `916d1ff` — feat: 3 brakujące widoki FE↔BE (CV Batch / Re-score / Digest) + 7 bug findings
 4. `8b0bb61` — fix(login): add domain-whitelist hint (bug #001) + raport końcowy
 5. `86b1b95` — test: +95 unit tests across 12 new files (server actions + ConsentPage + LoginForm fix verify)
 6. `8b73fd9` — feat(rates): audit log for market_rates changes (Faza 6.4 — migracja + UI + server action)
+7. `58946a3` — docs: update completion report — 307 tests, 6 commits, Faza 6.4 done (4/4 FE↔BE views)
+8. `35eec6a` — test: +67 unit tests across 8 new server-action files (374 total, 42 files)
+9. `314ede0` — test: +44 unit tests across 7 new server-action files (418 total, 49 files)
+
+**Pokrycie `lib/actions/`:** 32 z 38 plików (~84 %) ma unit testy.
 
 **Coverage na krytycznych modułach:**
 
