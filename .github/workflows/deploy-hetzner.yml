@@ -39,6 +39,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Compute build metadata
+        id: meta-build
+        run: |
+          echo "git_sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -53,6 +59,8 @@ jobs:
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+            GIT_SHA=${{ steps.meta-build.outputs.git_sha }}
+            BUILT_AT=${{ steps.meta-build.outputs.built_at }}
 
   deploy:
     name: Deploy on Hetzner
@@ -92,16 +100,28 @@ jobs:
       - name: Wait for deploy to stabilize
         run: sleep 30
 
-      - name: Health check
+      - name: Health check (standard /api/health shape)
         env:
           APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          EXPECTED_SHA: ${{ steps.meta-build.outputs.git_sha }}
         run: |
           for i in 1 2 3 4 5; do
-            if curl -fsSL "$APP_URL/api/health" | grep -q '"status":"ok"'; then
-              echo "Health check passed"
-              exit 0
+            response=$(curl -fsSL "$APP_URL/api/health" || echo '')
+            if [ -n "$response" ]; then
+              status=$(echo "$response" | jq -r '.status // "missing"')
+              version=$(echo "$response" | jq -r '.version // "missing"')
+              if [ "$status" != "unhealthy" ] && [ "$status" != "missing" ]; then
+                if [ "$version" = "$EXPECTED_SHA" ]; then
+                  echo "Health check passed: status=$status version=$version"
+                  exit 0
+                fi
+                echo "Attempt $i: stale version (got $version, expected $EXPECTED_SHA)"
+              else
+                echo "Attempt $i: status=$status, retrying in 10s..."
+              fi
+            else
+              echo "Attempt $i: no response, retrying in 10s..."
             fi
-            echo "Attempt $i failed, retrying in 10s..."
             sleep 10
           done
           echo "::error::Health check failed after 5 attempts"

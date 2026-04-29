@@ -21,6 +21,11 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+ARG GIT_SHA=unknown
+ARG BUILT_AT=unknown
+ENV GIT_SHA=$GIT_SHA
+ENV BUILT_AT=$BUILT_AT
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
