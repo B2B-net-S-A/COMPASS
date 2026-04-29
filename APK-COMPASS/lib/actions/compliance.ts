@@ -117,20 +117,84 @@ export async function saveUserConsents(input: SaveConsentsInput): Promise<{ erro
 // ─── Get Legal Document ────────────────────────────────────────────────────────
 
 /**
+ * Compatibility layer: prod schema uses `document_type` (enum-constrained) +
+ * `content` columns. Newer code expects `slug` + `content_html`. We map between
+ * them here so callers don't have to know.
+ */
+const SLUG_TO_DOC_TYPE: Record<string, string> = {
+  'privacy-policy': 'privacy_policy',
+  'terms': 'terms_of_service',
+  'help': 'help_center',                // not yet allowed by CHECK constraint — falls through to null
+  'ai-notice': 'ai_notice',
+  'security': 'security',
+  'cooperation': 'cooperation',
+  'electronic-signature': 'electronic_signature',
+  'access-management': 'access_management',
+  'incident-response': 'incident_response',
+  'data-retention': 'data_retention',
+}
+
+interface LegalDocumentRow {
+  id?: string
+  slug?: string
+  document_type?: string
+  title: string
+  content_html?: string
+  content?: string
+  version: string
+  is_active: boolean
+  requires_acceptance?: boolean
+  visibility?: 'public' | 'authenticated' | 'admin'
+  created_at: string
+  updated_at: string
+}
+
+function normaliseDoc(row: LegalDocumentRow | null): LegalDocument | null {
+  if (!row) return null
+  return {
+    id: row.id ?? '',
+    slug: row.slug ?? row.document_type ?? '',
+    title: row.title,
+    content_html: row.content_html ?? row.content ?? '',
+    version: row.version,
+    is_active: row.is_active,
+    requires_acceptance: row.requires_acceptance ?? false,
+    visibility: row.visibility ?? 'public',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+/**
  * Fetch a single legal document by its slug.
- * Respects RLS — only returns documents the user has access to.
+ * Tries the newer `slug` + `content_html` schema first; falls back to the prod
+ * `document_type` + `content` schema with a friendly slug → enum mapping.
  */
 export async function getLegalDocument(slug: string): Promise<LegalDocument | null> {
   const supabase = createClient()
 
-  const { data } = await supabase
+  // Primary: try `slug` column (newer schema)
+  const slugAttempt = await supabase
     .from('um_legal_documents')
     .select('*')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle()
 
-  return (data as LegalDocument) || null
+  if (!slugAttempt.error && slugAttempt.data) {
+    return normaliseDoc(slugAttempt.data as LegalDocumentRow)
+  }
+
+  // Fallback: try `document_type` (older / prod schema)
+  const docType = SLUG_TO_DOC_TYPE[slug] ?? slug
+  const typeAttempt = await supabase
+    .from('um_legal_documents')
+    .select('*')
+    .eq('document_type', docType)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  return normaliseDoc((typeAttempt.data as LegalDocumentRow | null) ?? null)
 }
 
 // ─── List Legal Documents ──────────────────────────────────────────────────────
@@ -138,6 +202,7 @@ export async function getLegalDocument(slug: string): Promise<LegalDocument | nu
 /**
  * List all active legal documents visible to the current user.
  * If visibility filter is provided, only those docs are returned.
+ * Compatible with both `slug`-style and `document_type`-style schemas.
  */
 export async function listLegalDocuments(
   visibility?: 'public' | 'authenticated' | 'admin'
@@ -150,13 +215,24 @@ export async function listLegalDocuments(
     .eq('is_active', true)
     .order('title')
 
+  // visibility column may not exist in legacy schema — only apply if asked,
+  // and gracefully fall back if the column is missing.
   if (visibility) {
     query = query.eq('visibility', visibility)
   }
 
-  const { data } = await query
+  const { data, error } = await query
+  if (error && /visibility/.test(error.message ?? '')) {
+    // legacy schema without visibility — re-run unfiltered
+    const { data: data2 } = await supabase
+      .from('um_legal_documents')
+      .select('*')
+      .eq('is_active', true)
+      .order('title')
+    return ((data2 as LegalDocumentRow[]) || []).map(d => normaliseDoc(d)).filter((d): d is LegalDocument => d !== null)
+  }
 
-  return (data as LegalDocument[]) || []
+  return ((data as LegalDocumentRow[]) || []).map(d => normaliseDoc(d)).filter((d): d is LegalDocument => d !== null)
 }
 
 // ─── Admin: List All Consents ──────────────────────────────────────────────────

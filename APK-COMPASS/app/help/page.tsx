@@ -1,17 +1,11 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { getLegalDocument } from '@/lib/actions/compliance'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Centrum Pomocy | ComPass' }
 
 export default async function HelpPage() {
-  const supabase = createClient()
-  const { data: doc } = await supabase
-    .from('um_legal_documents')
-    .select('title, content_html, version, updated_at')
-    .eq('slug', 'help')
-    .eq('is_active', true)
-    .maybeSingle()
+  const doc = await getLegalDocument('help')
 
   return (
     <div className="min-h-screen bg-background p-8 text-foreground max-w-3xl mx-auto">

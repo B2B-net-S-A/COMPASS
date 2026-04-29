@@ -87,10 +87,32 @@ function deriveName(email: string): string {
 }
 
 async function setRole(supabase: any, userId: string, role: string): Promise<void> {
-    const { error } = await supabase
+    // Try the full upsert first (newer schema with onboarding_completed)
+    let { error } = await supabase
         .from('profiles')
         .upsert([{ id: userId, role, onboarding_completed: false, full_name: 'E2E Test Account' }], { onConflict: 'id' })
-    if (error) throw new Error(`profile upsert failed for ${userId}: ${error.message}`)
+
+    if (error && /onboarding_completed|schema cache/.test(error.message || '')) {
+        // Fallback: minimal columns only
+        const retry = await supabase
+            .from('profiles')
+            .upsert([{ id: userId, role, full_name: 'E2E Test Account' }], { onConflict: 'id' })
+        error = retry.error
+    }
+    if (error && /full_name|schema cache/.test(error.message || '')) {
+        const retry2 = await supabase
+            .from('profiles')
+            .upsert([{ id: userId, role }], { onConflict: 'id' })
+        error = retry2.error
+    }
+    if (error) {
+        // Last resort: bare update (no upsert)
+        const { error: updateErr } = await supabase
+            .from('profiles')
+            .update({ role })
+            .eq('id', userId)
+        if (updateErr) throw new Error(`profile upsert failed for ${userId}: ${updateErr.message}`)
+    }
 }
 
 async function main() {
