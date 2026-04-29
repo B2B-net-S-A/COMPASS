@@ -100,7 +100,39 @@ export interface ListCoursesFilters {
     orderBy?: 'newest' | 'popular' | 'top_rated'
 }
 
+export interface CreateLessonInput {
+    title: string
+    content_md?: string | null
+    video_url?: string | null
+    estimated_minutes?: number | null
+    attachments?: CourseAttachment[]
+}
+
+export interface UpdateLessonPatch {
+    title?: string
+    content_md?: string | null
+    video_url?: string | null
+    estimated_minutes?: number | null
+    attachments?: CourseAttachment[]
+}
+
+export interface QuizQuestionInput {
+    question_text: string
+    options: { option_text: string; is_correct: boolean }[]
+}
+
+export interface CourseQuizQuestionAuthor {
+    id: string
+    order_index: number
+    question_text: string
+    options: { id: string; order_index: number; option_text: string; is_correct: boolean }[]
+}
+
 export type ActionResult<T> = { success: true; data: T } | { success: false; error: string }
+
+export const QUIZ_MIN_QUESTIONS = 4
+export const QUIZ_MAX_QUESTIONS = 10
+export const QUIZ_OPTIONS_PER_QUESTION = 4
 
 // ============================================================
 // Helpers
@@ -419,6 +451,452 @@ export async function getCourseDetail(slugOrId: string): Promise<ActionResult<Co
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania szczegółów kursu'
         console.error('[getCourseDetail]', error)
+        return { success: false, error: msg }
+    }
+}
+
+// ============================================================
+// Authoring helpers — author/admin only
+// ============================================================
+
+async function loadCourseForAuthor(
+    supabase: ReturnType<typeof createClient>,
+    courseId: string,
+    userId: string,
+): Promise<{ id: string; author_id: string; status: CourseStatus; slug: string } | null> {
+    const { data, error } = await supabase
+        .from('courses')
+        .select('id, author_id, status, slug')
+        .eq('id', courseId)
+        .single()
+    if (error || !data) return null
+    const isAdmin = await isAdminOrCentrala(supabase, userId)
+    if (data.author_id !== userId && !isAdmin) return null
+    return data as { id: string; author_id: string; status: CourseStatus; slug: string }
+}
+
+/**
+ * Pobiera lekcje kursu (uporządkowane). Zwraca załączniki sparsowane do tablicy.
+ * Author/admin widzi wszystkie statusy; student tylko gdy course.status='published' (przez RLS).
+ */
+export async function getCourseLessons(courseId: string): Promise<ActionResult<CourseLesson[]>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data, error } = await supabase
+            .from('course_lessons')
+            .select('*')
+            .eq('course_id', courseId)
+            .order('order_index', { ascending: true })
+
+        if (error) throw error
+        const lessons = ((data ?? []) as CourseLesson[]).map((l) => ({
+            ...l,
+            attachments: Array.isArray(l.attachments) ? l.attachments : [],
+        }))
+        return { success: true, data: lessons }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd pobierania lekcji'
+        console.error('[getCourseLessons]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Tworzy nową lekcję na końcu listy (next order_index). Author/admin only.
+ */
+export async function addLesson(courseId: string, input: CreateLessonInput): Promise<ActionResult<{ lessonId: string }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const course = await loadCourseForAuthor(supabase, courseId, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
+
+        if (!input.title || input.title.trim().length < 2) {
+            return { success: false, error: 'Tytuł lekcji jest wymagany' }
+        }
+
+        // Determine next order_index
+        const { data: existing } = await supabase
+            .from('course_lessons')
+            .select('order_index')
+            .eq('course_id', courseId)
+            .order('order_index', { ascending: false })
+            .limit(1)
+        const nextIndex = existing && existing.length > 0 ? (existing[0] as { order_index: number }).order_index + 1 : 0
+
+        const { data, error } = await supabase
+            .from('course_lessons')
+            .insert({
+                course_id: courseId,
+                order_index: nextIndex,
+                title: input.title.trim(),
+                content_md: input.content_md?.trim() || null,
+                video_url: input.video_url?.trim() || null,
+                estimated_minutes: input.estimated_minutes ?? null,
+                attachments: input.attachments ?? [],
+            })
+            .select('id')
+            .single()
+
+        if (error) throw error
+
+        revalidatePath(`/akademia/tworze/${courseId}/edit`)
+        revalidatePath(`/akademia/${course.slug}`)
+        return { success: true, data: { lessonId: data.id } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd dodawania lekcji'
+        console.error('[addLesson]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Aktualizuje pola lekcji.
+ */
+export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): Promise<ActionResult<{ courseId: string }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data: lesson, error: lessonErr } = await supabase
+            .from('course_lessons')
+            .select('id, course_id')
+            .eq('id', lessonId)
+            .single()
+        if (lessonErr || !lesson) return { success: false, error: 'Lekcja nie istnieje' }
+
+        const course = await loadCourseForAuthor(supabase, lesson.course_id, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień' }
+
+        const cleanPatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        if (patch.title !== undefined) {
+            if (patch.title.trim().length < 2) return { success: false, error: 'Tytuł lekcji jest wymagany' }
+            cleanPatch.title = patch.title.trim()
+        }
+        if (patch.content_md !== undefined) cleanPatch.content_md = patch.content_md?.trim() || null
+        if (patch.video_url !== undefined) cleanPatch.video_url = patch.video_url?.trim() || null
+        if (patch.estimated_minutes !== undefined) cleanPatch.estimated_minutes = patch.estimated_minutes
+        if (patch.attachments !== undefined) cleanPatch.attachments = patch.attachments
+
+        const { error } = await supabase
+            .from('course_lessons')
+            .update(cleanPatch)
+            .eq('id', lessonId)
+
+        if (error) throw error
+
+        revalidatePath(`/akademia/tworze/${course.id}/edit`)
+        revalidatePath(`/akademia/${course.slug}`)
+        return { success: true, data: { courseId: course.id } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd aktualizacji lekcji'
+        console.error('[updateLesson]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Zmienia kolejność lekcji. orderedIds = lista wszystkich lekcji w kursie po nowej kolejności.
+ * Implementacja two-phase: najpierw przesuwamy do offsetu (+1000) by uniknąć kolizji UNIQUE,
+ * potem ustawiamy docelowe indeksy.
+ */
+export async function reorderLessons(courseId: string, orderedIds: string[]): Promise<ActionResult<void>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const course = await loadCourseForAuthor(supabase, courseId, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
+
+        // Phase 1: bump every lesson by 1000 to avoid UNIQUE collision
+        for (let i = 0; i < orderedIds.length; i++) {
+            const { error } = await supabase
+                .from('course_lessons')
+                .update({ order_index: 1000 + i })
+                .eq('id', orderedIds[i])
+                .eq('course_id', courseId)
+            if (error) throw error
+        }
+        // Phase 2: set final indices
+        for (let i = 0; i < orderedIds.length; i++) {
+            const { error } = await supabase
+                .from('course_lessons')
+                .update({ order_index: i })
+                .eq('id', orderedIds[i])
+                .eq('course_id', courseId)
+            if (error) throw error
+        }
+
+        revalidatePath(`/akademia/tworze/${courseId}/edit`)
+        revalidatePath(`/akademia/${course.slug}`)
+        return { success: true, data: undefined }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd zmiany kolejności'
+        console.error('[reorderLessons]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Usuwa lekcję. Pozostałe lekcje zachowują swoje order_index (luki są OK — UI je ignoruje).
+ */
+export async function deleteLesson(lessonId: string): Promise<ActionResult<{ courseId: string }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data: lesson, error: lessonErr } = await supabase
+            .from('course_lessons')
+            .select('id, course_id')
+            .eq('id', lessonId)
+            .single()
+        if (lessonErr || !lesson) return { success: false, error: 'Lekcja nie istnieje' }
+
+        const course = await loadCourseForAuthor(supabase, lesson.course_id, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień' }
+
+        const { error } = await supabase.from('course_lessons').delete().eq('id', lessonId)
+        if (error) throw error
+
+        revalidatePath(`/akademia/tworze/${course.id}/edit`)
+        revalidatePath(`/akademia/${course.slug}`)
+        return { success: true, data: { courseId: course.id } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd usuwania lekcji'
+        console.error('[deleteLesson]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Pobiera quiz dla autora — z polem is_correct (do edycji).
+ * RLS na course_quiz_options pozwala na SELECT tylko autorowi/adminowi.
+ */
+export async function getCourseQuizForAuthor(courseId: string): Promise<ActionResult<CourseQuizQuestionAuthor[]>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const course = await loadCourseForAuthor(supabase, courseId, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień' }
+
+        const { data: questions, error: qErr } = await supabase
+            .from('course_quiz_questions')
+            .select('id, order_index, question_text')
+            .eq('course_id', courseId)
+            .order('order_index', { ascending: true })
+        if (qErr) throw qErr
+
+        const questionIds = (questions ?? []).map((q) => (q as { id: string }).id)
+        const { data: options, error: oErr } = questionIds.length > 0
+            ? await supabase
+                .from('course_quiz_options')
+                .select('id, question_id, order_index, option_text, is_correct')
+                .in('question_id', questionIds)
+                .order('order_index', { ascending: true })
+            : { data: [], error: null }
+        if (oErr) throw oErr
+
+        const optionsByQ = new Map<string, CourseQuizQuestionAuthor['options']>()
+        for (const o of (options ?? []) as Array<{ id: string; question_id: string; order_index: number; option_text: string; is_correct: boolean }>) {
+            const arr = optionsByQ.get(o.question_id) ?? []
+            arr.push({ id: o.id, order_index: o.order_index, option_text: o.option_text, is_correct: o.is_correct })
+            optionsByQ.set(o.question_id, arr)
+        }
+
+        const result: CourseQuizQuestionAuthor[] = ((questions ?? []) as Array<{ id: string; order_index: number; question_text: string }>).map((q) => ({
+            id: q.id,
+            order_index: q.order_index,
+            question_text: q.question_text,
+            options: optionsByQ.get(q.id) ?? [],
+        }))
+
+        return { success: true, data: result }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd pobierania quizu'
+        console.error('[getCourseQuizForAuthor]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Upsertuje cały quiz: kasuje istniejące pytania (CASCADE → opcje) i wstawia nowe.
+ * Walidacja: 4-10 pytań, każde z dokładnie 4 opcjami i 1 oznaczoną is_correct=true.
+ */
+export async function setQuizQuestions(courseId: string, questions: QuizQuestionInput[]): Promise<ActionResult<void>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const course = await loadCourseForAuthor(supabase, courseId, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
+
+        // Validation
+        if (questions.length < QUIZ_MIN_QUESTIONS || questions.length > QUIZ_MAX_QUESTIONS) {
+            return { success: false, error: `Quiz musi mieć od ${QUIZ_MIN_QUESTIONS} do ${QUIZ_MAX_QUESTIONS} pytań (jest ${questions.length})` }
+        }
+        for (let i = 0; i < questions.length; i++) {
+            const q = questions[i]
+            if (!q.question_text || q.question_text.trim().length === 0) {
+                return { success: false, error: `Pytanie ${i + 1}: treść jest wymagana` }
+            }
+            if (q.options.length !== QUIZ_OPTIONS_PER_QUESTION) {
+                return { success: false, error: `Pytanie ${i + 1}: wymagane dokładnie ${QUIZ_OPTIONS_PER_QUESTION} opcje` }
+            }
+            const correctCount = q.options.filter((o) => o.is_correct).length
+            if (correctCount !== 1) {
+                return { success: false, error: `Pytanie ${i + 1}: zaznacz dokładnie jedną poprawną odpowiedź` }
+            }
+            for (let j = 0; j < q.options.length; j++) {
+                if (!q.options[j].option_text || q.options[j].option_text.trim().length === 0) {
+                    return { success: false, error: `Pytanie ${i + 1}, opcja ${j + 1}: treść jest wymagana` }
+                }
+            }
+        }
+
+        // Delete existing quiz
+        const { error: deleteErr } = await supabase
+            .from('course_quiz_questions')
+            .delete()
+            .eq('course_id', courseId)
+        if (deleteErr) throw deleteErr
+
+        // Insert new questions + options
+        for (let i = 0; i < questions.length; i++) {
+            const q = questions[i]
+            const { data: insertedQ, error: qErr } = await supabase
+                .from('course_quiz_questions')
+                .insert({
+                    course_id: courseId,
+                    order_index: i,
+                    question_text: q.question_text.trim(),
+                })
+                .select('id')
+                .single()
+            if (qErr) throw qErr
+
+            const optionRows = q.options.map((o, j) => ({
+                question_id: insertedQ.id,
+                order_index: j,
+                option_text: o.option_text.trim(),
+                is_correct: o.is_correct,
+            }))
+            const { error: oErr } = await supabase.from('course_quiz_options').insert(optionRows)
+            if (oErr) throw oErr
+        }
+
+        revalidatePath(`/akademia/tworze/${courseId}/edit`)
+        return { success: true, data: undefined }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd zapisu quizu'
+        console.error('[setQuizQuestions]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Wysyła kurs do moderacji: status `draft` lub `rejected` → `pending_review`.
+ * Walidacja: ≥1 lekcja + 4-10 pytań quizu (każde z 4 opcjami i 1 correct).
+ */
+export async function submitForReview(courseId: string): Promise<ActionResult<void>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const course = await loadCourseForAuthor(supabase, courseId, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
+
+        if (course.status !== 'draft' && course.status !== 'rejected') {
+            return { success: false, error: `Nie można wysłać do moderacji — aktualny status: ${course.status}` }
+        }
+
+        const { count: lessonCount, error: lessonErr } = await supabase
+            .from('course_lessons')
+            .select('id', { count: 'exact', head: true })
+            .eq('course_id', courseId)
+        if (lessonErr) throw lessonErr
+        if ((lessonCount ?? 0) < 1) {
+            return { success: false, error: 'Kurs musi mieć co najmniej jedną lekcję' }
+        }
+
+        const { count: quizCount, error: quizErr } = await supabase
+            .from('course_quiz_questions')
+            .select('id', { count: 'exact', head: true })
+            .eq('course_id', courseId)
+        if (quizErr) throw quizErr
+        if ((quizCount ?? 0) < QUIZ_MIN_QUESTIONS) {
+            return { success: false, error: `Quiz musi mieć co najmniej ${QUIZ_MIN_QUESTIONS} pytań (jest ${quizCount ?? 0})` }
+        }
+
+        const { error: updErr } = await supabase
+            .from('courses')
+            .update({ status: 'pending_review', rejection_reason: null, updated_at: new Date().toISOString() })
+            .eq('id', courseId)
+        if (updErr) throw updErr
+
+        revalidatePath(`/akademia/tworze`)
+        revalidatePath(`/akademia/tworze/${courseId}/edit`)
+        revalidatePath('/admin/akademia')
+        return { success: true, data: undefined }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd wysyłania do moderacji'
+        console.error('[submitForReview]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Upload załącznika PDF do bucketu `documents` pod ścieżkę `courses/{courseId}/{ts}_{filename}`.
+ * Zwraca relatywną ścieżkę storage — zapis do `course_lessons.attachments` po stronie wywołującego.
+ */
+export async function uploadCourseAttachment(formData: FormData): Promise<ActionResult<CourseAttachment>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const courseId = formData.get('courseId') as string | null
+        const file = formData.get('file') as File | null
+        if (!courseId || !file) return { success: false, error: 'Brak courseId lub pliku' }
+
+        const course = await loadCourseForAuthor(supabase, courseId, user.id)
+        if (!course) return { success: false, error: 'Brak uprawnień' }
+
+        const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
+        if (file.size > MAX_BYTES) return { success: false, error: 'Plik przekracza 10 MB' }
+
+        const ALLOWED = ['application/pdf']
+        if (!ALLOWED.includes(file.type)) return { success: false, error: 'Dozwolone tylko pliki PDF' }
+
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
+        const path = `courses/${courseId}/${Date.now()}_${safeName}`
+
+        const buffer = await file.arrayBuffer()
+        const { error: uploadErr } = await supabase.storage
+            .from('documents')
+            .upload(path, buffer, { contentType: file.type, upsert: false })
+        if (uploadErr) throw uploadErr
+
+        const attachment: CourseAttachment = {
+            name: file.name,
+            storage_path: path,
+            size_bytes: file.size,
+        }
+        return { success: true, data: attachment }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd uploadu pliku'
+        console.error('[uploadCourseAttachment]', error)
         return { success: false, error: msg }
     }
 }

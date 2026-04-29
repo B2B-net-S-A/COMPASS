@@ -343,3 +343,198 @@ describe('getCourseDetail', () => {
         }
     })
 })
+
+// ============================================================
+// addLesson — Faza 2
+// ============================================================
+describe('addLesson', () => {
+    it('rejects when not authenticated', async () => {
+        setupClient({ user: null })
+        const { addLesson } = await import('../courses')
+        const result = await addLesson('c1', { title: 'Lekcja' })
+        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+    })
+
+    it('rejects when caller is not author and not admin', async () => {
+        setupClient({
+            user: { id: 'u-other', email: 'other@x.com' },
+            tables: {
+                profiles: [{ id: 'u-other', role: 'consultant' }],
+                courses: [{ id: 'c1', author_id: 'u-author', slug: 'kurs-1', status: 'draft' }],
+            },
+        })
+        const { addLesson } = await import('../courses')
+        const result = await addLesson('c1', { title: 'Hack' })
+        expect(result.success).toBe(false)
+    })
+
+    it('rejects empty title', async () => {
+        setupClient({
+            user: { id: 'u-author', email: 'a@x.com' },
+            tables: {
+                profiles: [{ id: 'u-author', role: 'consultant' }],
+                courses: [{ id: 'c1', author_id: 'u-author', slug: 'kurs-1', status: 'draft' }],
+                course_lessons: [],
+            },
+        })
+        const { addLesson } = await import('../courses')
+        const result = await addLesson('c1', { title: '' })
+        expect(result.success).toBe(false)
+    })
+})
+
+// ============================================================
+// setQuizQuestions — Faza 2 walidacje
+// ============================================================
+describe('setQuizQuestions', () => {
+    const validOptions = [
+        { option_text: 'A', is_correct: true },
+        { option_text: 'B', is_correct: false },
+        { option_text: 'C', is_correct: false },
+        { option_text: 'D', is_correct: false },
+    ]
+
+    function authorFixture(courseId = 'c1') {
+        return {
+            user: { id: 'u-author', email: 'a@x.com' },
+            tables: {
+                profiles: [{ id: 'u-author', role: 'consultant' }],
+                courses: [{ id: courseId, author_id: 'u-author', slug: 'kurs', status: 'draft' }],
+                course_quiz_questions: [],
+                course_quiz_options: [],
+            },
+        }
+    }
+
+    it('rejects when fewer than 4 questions', async () => {
+        setupClient(authorFixture())
+        const { setQuizQuestions } = await import('../courses')
+        const result = await setQuizQuestions('c1', [
+            { question_text: 'Q1', options: validOptions },
+            { question_text: 'Q2', options: validOptions },
+            { question_text: 'Q3', options: validOptions },
+        ])
+        expect(result.success).toBe(false)
+        if (!result.success) expect(result.error).toMatch(/od 4 do 10 pyta/)
+    })
+
+    it('rejects when more than 10 questions', async () => {
+        setupClient(authorFixture())
+        const { setQuizQuestions } = await import('../courses')
+        const eleven = Array.from({ length: 11 }, (_, i) => ({ question_text: `Q${i}`, options: validOptions }))
+        const result = await setQuizQuestions('c1', eleven)
+        expect(result.success).toBe(false)
+    })
+
+    it('rejects question with != 4 options', async () => {
+        setupClient(authorFixture())
+        const { setQuizQuestions } = await import('../courses')
+        const four = Array.from({ length: 4 }, (_, i) => ({
+            question_text: `Q${i}`,
+            options: i === 0 ? validOptions.slice(0, 3) : validOptions,
+        }))
+        const result = await setQuizQuestions('c1', four)
+        expect(result.success).toBe(false)
+        if (!result.success) expect(result.error).toMatch(/dokładnie 4 opcje/)
+    })
+
+    it('rejects question with != 1 correct option', async () => {
+        setupClient(authorFixture())
+        const { setQuizQuestions } = await import('../courses')
+        const allCorrect = validOptions.map((o) => ({ ...o, is_correct: true }))
+        const four = Array.from({ length: 4 }, (_, i) => ({
+            question_text: `Q${i}`,
+            options: i === 0 ? allCorrect : validOptions,
+        }))
+        const result = await setQuizQuestions('c1', four)
+        expect(result.success).toBe(false)
+        if (!result.success) expect(result.error).toMatch(/dokładnie jedną poprawną/)
+    })
+
+    it('accepts valid quiz with 4 questions × 4 options × 1 correct', async () => {
+        setupClient(authorFixture())
+        const { setQuizQuestions } = await import('../courses')
+        const four = Array.from({ length: 4 }, (_, i) => ({ question_text: `Pytanie ${i + 1}`, options: validOptions }))
+        const result = await setQuizQuestions('c1', four)
+        expect(result.success).toBe(true)
+    })
+})
+
+// ============================================================
+// submitForReview — Faza 2
+// ============================================================
+describe('submitForReview', () => {
+    it('rejects when not authenticated', async () => {
+        setupClient({ user: null })
+        const { submitForReview } = await import('../courses')
+        const result = await submitForReview('c1')
+        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+    })
+
+    it('rejects when no lessons', async () => {
+        setupClient({
+            user: { id: 'u-author', email: 'a@x.com' },
+            tables: {
+                profiles: [{ id: 'u-author', role: 'consultant' }],
+                courses: [{ id: 'c1', author_id: 'u-author', slug: 'kurs', status: 'draft' }],
+                course_lessons: [],
+                course_quiz_questions: [],
+            },
+        })
+        const { submitForReview } = await import('../courses')
+        const result = await submitForReview('c1')
+        expect(result.success).toBe(false)
+        if (!result.success) expect(result.error).toMatch(/co najmniej jedną lekcję/)
+    })
+
+    it('rejects when fewer than 4 quiz questions', async () => {
+        setupClient({
+            user: { id: 'u-author', email: 'a@x.com' },
+            tables: {
+                profiles: [{ id: 'u-author', role: 'consultant' }],
+                courses: [{ id: 'c1', author_id: 'u-author', slug: 'kurs', status: 'draft' }],
+                course_lessons: [{ id: 'l1', course_id: 'c1', order_index: 0, title: 'L1' }],
+                course_quiz_questions: [
+                    { id: 'q1', course_id: 'c1', order_index: 0, question_text: 'Q1' },
+                    { id: 'q2', course_id: 'c1', order_index: 1, question_text: 'Q2' },
+                ],
+            },
+        })
+        const { submitForReview } = await import('../courses')
+        const result = await submitForReview('c1')
+        expect(result.success).toBe(false)
+        if (!result.success) expect(result.error).toMatch(/co najmniej 4 pyta/)
+    })
+
+    it('rejects when status is not draft or rejected', async () => {
+        setupClient({
+            user: { id: 'u-author', email: 'a@x.com' },
+            tables: {
+                profiles: [{ id: 'u-author', role: 'consultant' }],
+                courses: [{ id: 'c1', author_id: 'u-author', slug: 'kurs', status: 'pending_review' }],
+                course_lessons: [{ id: 'l1', course_id: 'c1', order_index: 0, title: 'L1' }],
+                course_quiz_questions: Array.from({ length: 4 }, (_, i) => ({ id: `q${i}`, course_id: 'c1', order_index: i, question_text: 'Q' })),
+            },
+        })
+        const { submitForReview } = await import('../courses')
+        const result = await submitForReview('c1')
+        expect(result.success).toBe(false)
+        if (!result.success) expect(result.error).toMatch(/Nie można wysłać/)
+    })
+
+    it('transitions draft → pending_review when valid', async () => {
+        setupClient({
+            user: { id: 'u-author', email: 'a@x.com' },
+            tables: {
+                profiles: [{ id: 'u-author', role: 'consultant' }],
+                courses: [{ id: 'c1', author_id: 'u-author', slug: 'kurs', status: 'draft' }],
+                course_lessons: [{ id: 'l1', course_id: 'c1', order_index: 0, title: 'L1' }],
+                course_quiz_questions: Array.from({ length: 4 }, (_, i) => ({ id: `q${i}`, course_id: 'c1', order_index: i, question_text: 'Q' })),
+            },
+        })
+        const { submitForReview } = await import('../courses')
+        const result = await submitForReview('c1')
+        expect(result.success).toBe(true)
+        expect(currentClient._tables.courses[0].status).toBe('pending_review')
+    })
+})
