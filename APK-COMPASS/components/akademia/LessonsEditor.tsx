@@ -14,8 +14,8 @@ import {
     deleteLesson,
     reorderLessons,
     uploadCourseAttachment,
-    type CourseLesson,
 } from '@/lib/actions/courses'
+import type { CourseLesson } from '@/lib/types/akademia'
 
 interface LessonsEditorProps {
     courseId: string

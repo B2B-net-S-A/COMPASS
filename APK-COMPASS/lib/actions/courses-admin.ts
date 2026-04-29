@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { Course, CourseListItem, ActionResult } from './courses'
+import type { Course, CourseListItem, ActionResult } from '@/lib/types/akademia'
 
 // ============================================================
 // Helpers

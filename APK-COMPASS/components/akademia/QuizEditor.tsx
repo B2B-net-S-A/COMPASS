@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { setQuizQuestions } from '@/lib/actions/courses'
 import {
-    setQuizQuestions,
     QUIZ_MIN_QUESTIONS,
     QUIZ_MAX_QUESTIONS,
     QUIZ_OPTIONS_PER_QUESTION,
     type QuizQuestionInput,
     type CourseQuizQuestionAuthor,
-} from '@/lib/actions/courses'
+} from '@/lib/types/akademia'
 
 interface QuizEditorProps {
     courseId: string

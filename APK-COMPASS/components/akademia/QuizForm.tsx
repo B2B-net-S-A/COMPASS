@@ -6,7 +6,8 @@ import { Loader2, AlertCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { submitQuizAttempt, type QuizQuestionForAttempt, type QuizSubmissionResult } from '@/lib/actions/course-learning'
+import { submitQuizAttempt } from '@/lib/actions/course-learning'
+import type { QuizQuestionForAttempt, QuizSubmissionResult } from '@/lib/types/akademia'
 
 interface QuizFormProps {
     courseId: string

@@ -7,8 +7,8 @@ import {
     getCourseDetail,
     getCourseLessons,
     getCourseQuizForAuthor,
-    type CourseStatus,
 } from '@/lib/actions/courses'
+import type { CourseStatus } from '@/lib/types/akademia'
 
 export const dynamic = 'force-dynamic'
 

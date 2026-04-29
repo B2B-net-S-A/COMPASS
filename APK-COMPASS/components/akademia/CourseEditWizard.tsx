@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { CourseAuthorForm } from './CourseAuthorForm'
 import { LessonsEditor } from './LessonsEditor'
 import { QuizEditor } from './QuizEditor'
-import { submitForReview, type CourseDetail, type CourseLesson, type CourseQuizQuestionAuthor, QUIZ_MIN_QUESTIONS } from '@/lib/actions/courses'
+import { submitForReview } from '@/lib/actions/courses'
+import { QUIZ_MIN_QUESTIONS, type CourseDetail, type CourseLesson, type CourseQuizQuestionAuthor } from '@/lib/types/akademia'
 
 interface CourseEditWizardProps {
     course: CourseDetail

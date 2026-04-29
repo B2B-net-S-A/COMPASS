@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { MarkdownView } from './MarkdownView'
 import { EmbedVideo } from './EmbedVideo'
 import { markLessonComplete } from '@/lib/actions/course-learning'
-import type { CourseLesson } from '@/lib/actions/courses'
+import type { CourseLesson } from '@/lib/types/akademia'
 
 interface LessonPlayerProps {
     courseId: string

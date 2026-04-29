@@ -3,7 +3,8 @@ import { GraduationCap, Plus, Edit, Eye, Clock, AlertCircle, CheckCircle2, Penci
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { getMyCourses, type CourseStatus } from '@/lib/actions/courses'
+import { getMyCourses } from '@/lib/actions/courses'
+import type { CourseStatus } from '@/lib/types/akademia'
 
 export const dynamic = 'force-dynamic'
 

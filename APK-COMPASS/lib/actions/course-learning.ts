@@ -2,37 +2,15 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { ActionResult, Course, CourseListItem } from './courses'
-
-// ============================================================
-// Types
-// ============================================================
-
-export interface QuizQuestionForAttempt {
-    question_id: string
-    question_order: number
-    question_text: string
-    options: { id: string; order_index: number; option_text: string }[]
-}
-
-export interface QuizSubmissionResult {
-    score_percent: number
-    passed: boolean
-    attempt_id: string
-    already_awarded: boolean
-    award_status: string | null
-}
-
-export interface CourseEnrollmentWithProgress {
-    enrollment_id: string
-    course: Course
-    enrolled_at: string
-    completed_lessons: string[]
-    total_lessons: number
-    completed_at: string | null
-    points_awarded: boolean
-    progress_percent: number
-}
+import type {
+    ActionResult,
+    Course,
+    CourseEnrollmentWithProgress,
+    CourseListItem,
+    QuizQuestionForAttempt,
+    QuizSubmissionResult,
+    RecommendedCourse,
+} from '@/lib/types/akademia'
 
 // ============================================================
 // Server actions — student
@@ -325,12 +303,6 @@ export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentW
 // ============================================================
 // AI rekomendacje
 // ============================================================
-
-export interface RecommendedCourse {
-    course: CourseListItem
-    overlap_count: number
-    reason: string
-}
 
 /**
  * Rekomenduje opublikowane kursy konsultantowi na bazie braków w skillach

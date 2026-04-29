@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { createCourse, updateCourse, type CourseLevel, type Course } from '@/lib/actions/courses'
+import { createCourse, updateCourse } from '@/lib/actions/courses'
+import type { CourseLevel, Course } from '@/lib/types/akademia'
 
 interface CourseAuthorFormProps {
     /** Initial data dla edycji; brak = nowy kurs */
