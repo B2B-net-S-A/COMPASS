@@ -1,0 +1,22 @@
+# Gitleaks configuration for Compass.
+# Docs: https://github.com/gitleaks/gitleaks
+title = "Compass gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional placeholders and docs"
+paths = [
+  '''APK-COMPASS/package-lock\.json''',
+  '''APK-COMPASS/tsconfig\.tsbuildinfo''',
+  '''\.github/workflows/build-check\.yml''',
+]
+regexes = [
+  # CI-only placeholders (clearly marked, no real secret)
+  '''placeholder-anon-key''',
+  '''https://placeholder\.supabase\.co''',
+  '''https://placeholder\.example\.com''',
+  '''change-me''',
+  '''your-[a-z-]+-key-here''',
+]
