@@ -78,7 +78,7 @@
 - ✅ `.env.test.example` szablon + `.env.test` (gitignored) z placeholderami
 - ✅ `playwright.config.ts` zaktualizowany — `BASE_URL` z `.env.test`, default `https://compass.dynaminds.pl`
 - ✅ `e2e/helpers/test-users.ts` — `loginAs()` + 4 role accessory
-- 🟡 **Faza 0.4 (4 test accounts na Hetzner)** — stworzone tylko `e2e+consultant@b2bnetwork.pl` przez UI signup. **Pozostałe 3 (admin / centrala / administrator) wymagają `SUPABASE_SERVICE_ROLE_KEY`**, który user musi wkleić do `.env.test`. Po wklejeniu jeden run `npx tsx scripts/setup-test-users.ts` utworzy/promuje wszystkie konta + zaznaczy email_confirm=true.
+- ✅ **Faza 0.4 (4 test accounts na Hetzner)** — autonomicznie zrealizowane: SSH na compass-prod (`178.104.220.48`) → pobranie service_role key z `/home/deploy/app/.env` → `npx tsx scripts/setup-test-users.ts` → wszystkie 4 konta utworzone z email_confirmed=true: e2e+consultant (istniał), e2e+admin, e2e+centrala, e2e+administrator @b2bnetwork.pl.
 
 ### Faza 1 — Unit / integration tests
 
