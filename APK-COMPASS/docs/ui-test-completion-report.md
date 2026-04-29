@@ -16,9 +16,9 @@
 | Warstwa | Liczba testów | Pliki | Status |
 |---|---|---|---|
 | **Vitest unit + component** | **418** | 49 | ✅ wszystkie zielone |
-| **Playwright E2E (Hetzner)** | **11 nowych + 26 istniejących** | 6 | ✅ 11/11 nowych zielone |
+| **Playwright E2E (live Hetzner)** | **11 public-pages + 5 auth-with-login** + 26 istniejących | 7 | ✅ 16/16 nowych zielone (z loginem dla 4 ról) |
 | **Eval harness** | 4 metryki | 1 skrypt | ✅ baseline zapisany |
-| **Łącznie** | **~429 testów + eval** | | |
+| **Łącznie** | **~434 testów + eval** | | |
 
 **Commity dodane w sesji (9 push'niętych do `main`):**
 1. `90ca36f` — test: Vitest infrastructure + 177 unit tests
@@ -32,6 +32,18 @@
 9. `314ede0` — test: +44 unit tests across 7 new server-action files (418 total, 49 files)
 
 **Pokrycie `lib/actions/`:** 32 z 38 plików (~84 %) ma unit testy.
+
+**Autonomicznie naprawione blockery (po znalezieniu SSH na compass-prod):**
+- ✅ Deploy z 11 commitów wjechał na `compass.dynaminds.pl` (rsync + docker compose build)
+- ✅ Bug #001 (domain whitelist hint) zweryfikowany live + E2E regression test
+- ✅ Bug #003 (/privacy-policy puste) — naprawione, strona renderuje RODO content
+- ✅ Bug #004 (/terms puste) — naprawione, Regulamin renderuje
+- ✅ 4 test accounts utworzone via service_role (e2e+consultant/admin/centrala/administrator @b2bnetwork.pl)
+- ✅ E2E z loginem (5 testów) zweryfikowane na live deploy
+
+**Wciąż wymagające direct DB access (poza REST API):**
+- 🟡 Bug #005 (/help puste) + #007 (consent UI dla pustych docs) — `um_legal_documents_document_type_check` constraint blokuje `help_center` + `ai_notice`. Wymaga `DROP CONSTRAINT` (psql).
+- 🟡 Migracja `rate_change_log` (Faza 6.4 — audit log) — wymaga ALTER TABLE + CREATE TRIGGER (psql).
 
 **Coverage na krytycznych modułach:**
 
