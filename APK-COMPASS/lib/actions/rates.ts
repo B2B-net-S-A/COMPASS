@@ -495,16 +495,57 @@ export interface RateChangeLogEntry {
 }
 
 /**
+ * Audit-log fallback storage. Prod schema does not have a dedicated `rate_change_log`
+ * table (its CREATE requires DDL via Supabase SQL Editor — see migration
+ * 20260428_rate_change_log.sql). Until the migration is applied, we log market_rates
+ * changes into the existing `audit_logs` table with action type `MARKET_RATE_*`
+ * and a JSONB `details` payload. After the migration runs, getRateChangeLog tries
+ * the dedicated table first and gracefully falls back here.
+ */
+const RATE_AUDIT_ACTIONS = ['MARKET_RATE_INSERT', 'MARKET_RATE_UPDATE', 'MARKET_RATE_DELETE'] as const
+
+interface AuditLogRow {
+    id: string
+    user_id: string | null
+    action: string
+    details: Record<string, unknown> | null
+    created_at: string
+}
+
+function auditRowToEntry(row: AuditLogRow): RateChangeLogEntry {
+    const details = (row.details ?? {}) as Record<string, unknown>
+    const action = (row.action.replace('MARKET_RATE_', '') || 'INSERT') as RateChangeLogEntry['action']
+    return {
+        id: row.id,
+        rate_id: (details.rate_id as string) ?? null,
+        action,
+        changed_by: row.user_id,
+        changed_at: row.created_at,
+        position_title: (details.position_title as string) ?? null,
+        old_rate_min: (details.old_rate_min as number) ?? null,
+        new_rate_min: (details.new_rate_min as number) ?? null,
+        old_rate_median: (details.old_rate_median as number) ?? null,
+        new_rate_median: (details.new_rate_median as number) ?? null,
+        old_rate_max: (details.old_rate_max as number) ?? null,
+        new_rate_max: (details.new_rate_max as number) ?? null,
+    }
+}
+
+/**
  * Returns the audit log of all market_rates changes (admin/centrala only).
  * Optionally scoped to a single rate via `rateId`.
  * Defaults to last 100 entries, newest first.
  *
- * Backed by `rate_change_log` table populated by `trg_rate_change_log` trigger
- * (see migration 20260428_rate_change_log.sql).
+ * Resolution order:
+ *   1. Dedicated `rate_change_log` table (populated by trg_rate_change_log trigger
+ *      from migration 20260428_rate_change_log.sql).
+ *   2. Fallback: `audit_logs` rows with action LIKE 'MARKET_RATE_%' (populated by
+ *      logRateChange() — see addMarketRate / deleteMarketRate below).
  */
 export async function getRateChangeLog(rateId?: string, limit = 100): Promise<RateChangeLogEntry[]> {
     const { supabase } = await requireCentralaOrAdmin()
 
+    // Try dedicated table first
     let query = supabase
         .from('rate_change_log')
         .select('id, rate_id, action, changed_by, changed_at, position_title, old_rate_min, new_rate_min, old_rate_median, new_rate_median, old_rate_max, new_rate_max')
@@ -515,14 +556,32 @@ export async function getRateChangeLog(rateId?: string, limit = 100): Promise<Ra
         query = query.eq('rate_id', rateId)
     }
 
-    const { data, error } = await query
+    const dedicated = await query
+    let entries: RateChangeLogEntry[]
 
-    if (error) {
-        console.error('[getRateChangeLog]', error)
-        return []
+    if (dedicated.error) {
+        // Table does not exist on prod — fall back to audit_logs
+        const auditQuery = supabase
+            .from('audit_logs')
+            .select('id, user_id, action, details, created_at')
+            .in('action', RATE_AUDIT_ACTIONS)
+            .order('created_at', { ascending: false })
+            .limit(limit)
+
+        const { data: auditRows, error: auditErr } = await auditQuery
+        if (auditErr) {
+            console.error('[getRateChangeLog] both stores failed:', dedicated.error, auditErr)
+            return []
+        }
+
+        let rows = (auditRows || []) as AuditLogRow[]
+        if (rateId) {
+            rows = rows.filter(r => (r.details as { rate_id?: string } | null)?.rate_id === rateId)
+        }
+        entries = rows.map(auditRowToEntry)
+    } else {
+        entries = (dedicated.data || []) as RateChangeLogEntry[]
     }
-
-    const entries = (data || []) as RateChangeLogEntry[]
 
     // Hydrate actor names — single batched query for all unique changed_by ids
     const actorIds = Array.from(new Set(entries.map(e => e.changed_by).filter((id): id is string => Boolean(id))))
@@ -547,8 +606,36 @@ export async function getRateChangeLog(rateId?: string, limit = 100): Promise<Ra
     return entries
 }
 
+/**
+ * Internal helper — write a market_rates change event to audit_logs.
+ * No-op if RLS blocks the insert (graceful degradation).
+ */
+async function logRateChange(
+    supabase: ReturnType<typeof createClient>,
+    userId: string,
+    action: 'INSERT' | 'UPDATE' | 'DELETE',
+    details: Record<string, unknown>,
+): Promise<void> {
+    try {
+        await supabase.from('audit_logs').insert({
+            user_id: userId,
+            action: `MARKET_RATE_${action}`,
+            details,
+        })
+    } catch (e) {
+        console.warn('[logRateChange] could not write audit row:', e)
+    }
+}
+
 export async function deleteMarketRate(id: string) {
-    const { supabase } = await requireAdmin()
+    const { supabase, user } = await requireAdmin()
+
+    // Snapshot before delete for audit
+    const { data: snapshot } = await supabase
+        .from('market_rates')
+        .select('position_title, rate_min, rate_median, rate_max')
+        .eq('id', id)
+        .maybeSingle()
 
     const { error } = await supabase
         .from('market_rates')
@@ -556,6 +643,17 @@ export async function deleteMarketRate(id: string) {
         .eq('id', id)
 
     if (error) throw new Error('Błąd usuwania: ' + error.message)
+
+    if (snapshot) {
+        await logRateChange(supabase, user.id, 'DELETE', {
+            rate_id: id,
+            position_title: snapshot.position_title,
+            old_rate_min: snapshot.rate_min,
+            old_rate_median: snapshot.rate_median,
+            old_rate_max: snapshot.rate_max,
+        })
+    }
+
     return { success: true }
 }
 
@@ -573,11 +671,23 @@ export async function addMarketRate(rate: {
 }) {
     const { supabase, user } = await requireAdmin()
 
-    const { error } = await supabase.from('market_rates').insert({
-        ...rate,
-        uploaded_by: user.id,
-    })
+    const { data: inserted, error } = await supabase
+        .from('market_rates')
+        .insert({ ...rate, uploaded_by: user.id })
+        .select('id')
+        .single()
 
     if (error) throw new Error('Błąd dodawania: ' + error.message)
+
+    if (inserted) {
+        await logRateChange(supabase, user.id, 'INSERT', {
+            rate_id: inserted.id,
+            position_title: rate.position_title,
+            new_rate_min: rate.rate_min,
+            new_rate_median: rate.rate_median ?? null,
+            new_rate_max: rate.rate_max,
+        })
+    }
+
     return { success: true }
 }

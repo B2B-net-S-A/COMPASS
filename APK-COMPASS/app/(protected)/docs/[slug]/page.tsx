@@ -1,7 +1,7 @@
-import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { getLegalDocument } from '@/lib/actions/compliance'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,26 +10,12 @@ interface Props {
 }
 
 export async function generateMetadata({ params }: Props) {
-  const supabase = createClient()
-  const { data: doc } = await supabase
-    .from('um_legal_documents')
-    .select('title')
-    .eq('slug', params.slug)
-    .eq('is_active', true)
-    .maybeSingle()
-
+  const doc = await getLegalDocument(params.slug)
   return { title: doc ? `${doc.title} | ComPass` : 'Dokument | ComPass' }
 }
 
 export default async function LegalDocPage({ params }: Props) {
-  const supabase = createClient()
-  const { data: doc } = await supabase
-    .from('um_legal_documents')
-    .select('*')
-    .eq('slug', params.slug)
-    .eq('is_active', true)
-    .maybeSingle()
-
+  const doc = await getLegalDocument(params.slug)
   if (!doc) notFound()
 
   return (

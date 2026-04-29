@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { CURRENT_TERMS_VERSION } from '@/lib/constants/compliance'
+import { getFallbackDoc } from '@/lib/constants/fallback-docs'
 import { headers } from 'next/headers'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -185,7 +186,7 @@ export async function getLegalDocument(slug: string): Promise<LegalDocument | nu
     return normaliseDoc(slugAttempt.data as LegalDocumentRow)
   }
 
-  // Fallback: try `document_type` (older / prod schema)
+  // Fallback 1: try `document_type` (older / prod schema)
   const docType = SLUG_TO_DOC_TYPE[slug] ?? slug
   const typeAttempt = await supabase
     .from('um_legal_documents')
@@ -194,7 +195,30 @@ export async function getLegalDocument(slug: string): Promise<LegalDocument | nu
     .eq('is_active', true)
     .maybeSingle()
 
-  return normaliseDoc((typeAttempt.data as LegalDocumentRow | null) ?? null)
+  const dbResult = normaliseDoc((typeAttempt.data as LegalDocumentRow | null) ?? null)
+  if (dbResult) return dbResult
+
+  // Fallback 2: bundled fallback content (for slugs blocked by prod CHECK constraint
+  // — e.g. help, ai-notice, security, cooperation, electronic-signature, access-management,
+  // incident-response, data-retention).
+  const bundled = getFallbackDoc(slug)
+  if (bundled) {
+    const now = new Date().toISOString()
+    return {
+      id: `fallback-${slug}`,
+      slug,
+      title: bundled.title,
+      content_html: bundled.content_html,
+      version: bundled.version,
+      is_active: true,
+      requires_acceptance: false,
+      visibility: 'public',
+      created_at: now,
+      updated_at: now,
+    }
+  }
+
+  return null
 }
 
 // ─── List Legal Documents ──────────────────────────────────────────────────────
