@@ -22,6 +22,10 @@ interface QueryState {
     payload?: Row | Row[]
     columns?: string
     limitN?: number
+    rangeFrom?: number
+    rangeTo?: number
+    countMode?: 'exact' | 'planned' | 'estimated'
+    headOnly?: boolean
     orderBy?: { column: string; ascending: boolean }
     single?: boolean
     maybeSingle?: boolean
@@ -70,6 +74,12 @@ function applyFilters(rows: Row[], filters: QueryFilter[]): Row[] {
             out = out.filter(r => (r[f.column!] as any) < (f.value as any))
         } else if (f.kind === 'match' && f.matchObj) {
             out = out.filter(r => Object.entries(f.matchObj!).every(([k, v]) => r[k] === v))
+        } else if (f.kind === 'contains' && f.column !== undefined && Array.isArray(f.values)) {
+            out = out.filter(r => {
+                const arr = r[f.column!] as unknown[] | undefined
+                if (!Array.isArray(arr)) return false
+                return f.values!.every(v => arr.includes(v))
+            })
         } else if (f.kind === 'or' && f.orExprs) {
             out = out.filter(r => f.orExprs!.some(expr => {
                 if (expr.op === 'eq') return r[expr.column] === expr.value
@@ -97,8 +107,10 @@ function parseOrExpression(expr: string): Array<{ column: string; op: 'eq' | 'il
 
 function buildQueryBuilder(state: QueryState, tables: TableData) {
     const builder: any = {
-        select(cols?: string) {
+        select(cols?: string, opts?: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean }) {
             state.columns = cols
+            if (opts?.count) state.countMode = opts.count
+            if (opts?.head) state.headOnly = true
             if (state.operation !== 'select') {
                 state.selectAfterMutation = true
             }
@@ -126,6 +138,8 @@ function buildQueryBuilder(state: QueryState, tables: TableData) {
         textSearch(column: string, query: string, options?: Record<string, unknown>) { state.filters.push({ kind: 'textSearch', column, query, options }); return builder },
         order(column: string, opts?: { ascending?: boolean }) { state.orderBy = { column, ascending: opts?.ascending ?? true }; return builder },
         limit(n: number) { state.limitN = n; return builder },
+        range(from: number, to: number) { state.rangeFrom = from; state.rangeTo = to; return builder },
+        contains(column: string, values: unknown[]) { state.filters.push({ kind: 'contains', column, values }); return builder },
         single() { state.single = true; return builder },
         maybeSingle() { state.maybeSingle = true; return builder },
         async then(resolve: (v: { data: any; error: any }) => void) {
@@ -149,8 +163,15 @@ async function execute(state: QueryState, tables: TableData): Promise<{ data: an
                 return ascending ? cmp : -cmp
             })
         }
+        const totalCount = filtered.length
+        if (state.rangeFrom !== undefined && state.rangeTo !== undefined) {
+            filtered = filtered.slice(state.rangeFrom, state.rangeTo + 1)
+        }
         if (state.limitN !== undefined) {
             filtered = filtered.slice(0, state.limitN)
+        }
+        if (state.headOnly) {
+            return { data: null, error: null, count: state.countMode ? totalCount : null } as any
         }
         if (state.single) {
             if (filtered.length === 0) return { data: null, error: { code: 'PGRST116', message: 'No rows', details: null } }
@@ -159,7 +180,7 @@ async function execute(state: QueryState, tables: TableData): Promise<{ data: an
         if (state.maybeSingle) {
             return { data: filtered[0] || null, error: null }
         }
-        return { data: filtered, error: null }
+        return { data: filtered, error: null, count: state.countMode ? totalCount : null } as any
     }
     if (state.operation === 'insert' || state.operation === 'upsert') {
         const payload = Array.isArray(state.payload) ? state.payload : [state.payload!]
