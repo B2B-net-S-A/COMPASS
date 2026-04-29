@@ -3,7 +3,29 @@
 -- Date: 2026-03-11
 -- Purpose: Compliance infrastructure for ComPass platform
 -- Tables: um_legal_documents, um_user_consents
+--
+-- Idempotent: safe to re-run. Detects legacy um_user_consents schema
+-- (per-document rows with document_id) and replaces it with the
+-- per-user-version schema expected by lib/actions/compliance.ts.
 -- ============================================================
+
+-- 0. Drop legacy um_user_consents schema if it exists.
+-- The original layout had columns (user_id, document_id, consented_at,
+-- ip_address, user_agent). The current app inserts (accepted_terms,
+-- accepted_privacy, accepted_data_processing, accepted_ai, terms_version,
+-- accepted_ip, accepted_ua), so the old layout breaks INSERTs silently
+-- when CREATE TABLE IF NOT EXISTS skips creation.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'um_user_consents'
+          AND column_name = 'document_id'
+    ) THEN
+        DROP TABLE public.um_user_consents CASCADE;
+    END IF;
+END$$;
 
 -- 1. Legal documents table (stores all compliance documents as HTML)
 CREATE TABLE IF NOT EXISTS um_legal_documents (
@@ -43,18 +65,21 @@ CREATE INDEX IF NOT EXISTS idx_user_consents_user ON um_user_consents(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_consents_version ON um_user_consents(terms_version);
 CREATE INDEX IF NOT EXISTS idx_user_consents_user_version ON um_user_consents(user_id, terms_version);
 
--- 4. RLS Policies
+-- 4. RLS Policies (idempotent — DROP before CREATE since Postgres lacks CREATE POLICY IF NOT EXISTS)
 ALTER TABLE um_legal_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE um_user_consents ENABLE ROW LEVEL SECURITY;
 
 -- Legal documents: public docs visible to all, authenticated docs to logged-in users, admin docs to admins
+DROP POLICY IF EXISTS "legal_docs_public_read" ON um_legal_documents;
 CREATE POLICY "legal_docs_public_read" ON um_legal_documents
     FOR SELECT USING (visibility = 'public');
 
+DROP POLICY IF EXISTS "legal_docs_authenticated_read" ON um_legal_documents;
 CREATE POLICY "legal_docs_authenticated_read" ON um_legal_documents
     FOR SELECT TO authenticated
     USING (visibility IN ('public', 'authenticated'));
 
+DROP POLICY IF EXISTS "legal_docs_admin_read" ON um_legal_documents;
 CREATE POLICY "legal_docs_admin_read" ON um_legal_documents
     FOR SELECT TO authenticated
     USING (
@@ -66,6 +91,7 @@ CREATE POLICY "legal_docs_admin_read" ON um_legal_documents
     );
 
 -- Admin can manage legal documents
+DROP POLICY IF EXISTS "legal_docs_admin_manage" ON um_legal_documents;
 CREATE POLICY "legal_docs_admin_manage" ON um_legal_documents
     FOR ALL TO authenticated
     USING (
@@ -77,16 +103,19 @@ CREATE POLICY "legal_docs_admin_manage" ON um_legal_documents
     );
 
 -- User consents: users see only their own
+DROP POLICY IF EXISTS "user_consents_own_read" ON um_user_consents;
 CREATE POLICY "user_consents_own_read" ON um_user_consents
     FOR SELECT TO authenticated
     USING (user_id = auth.uid());
 
 -- Users can insert their own consents
+DROP POLICY IF EXISTS "user_consents_own_insert" ON um_user_consents;
 CREATE POLICY "user_consents_own_insert" ON um_user_consents
     FOR INSERT TO authenticated
     WITH CHECK (user_id = auth.uid());
 
 -- Admin can read all consents (audit)
+DROP POLICY IF EXISTS "user_consents_admin_read" ON um_user_consents;
 CREATE POLICY "user_consents_admin_read" ON um_user_consents
     FOR SELECT TO authenticated
     USING (
