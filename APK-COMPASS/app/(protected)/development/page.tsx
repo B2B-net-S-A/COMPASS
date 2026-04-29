@@ -90,10 +90,6 @@ export default function DevelopmentPage() {
     const [projectMatchLoading, setProjectMatchLoading] = useState(false)
     const [projectMatchError, setProjectMatchError] = useState<string | null>(null)
 
-    // Webinar interest
-    const [webinarInterest, setWebinarInterest] = useState(false)
-    const [trainingInterest, setTrainingInterest] = useState(false)
-
     // Get the target user ID for analysis
     const targetUserId = isManagerView && selectedConsultantId ? selectedConsultantId : currentUserId
 
@@ -275,6 +271,31 @@ export default function DevelopmentPage() {
                         </p>
                     </div>
                 </div>
+
+                {/* Akademia CTA — link do nowej sekcji LMS */}
+                {!isManagerView && (
+                    <Card className="bg-gradient-to-r from-burgundy/10 to-primary/10 border-burgundy/20">
+                        <CardContent className="p-5 flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+                                    <Sparkles className="w-5 h-5 text-primary" />
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold mb-1">Nowość: Akademia</h3>
+                                    <p className="text-xs text-muted-foreground max-w-xl">
+                                        Szkolenia tworzone przez konsultantów dla konsultantów. Zobacz rekomendacje
+                                        dopasowane do Twoich braków kompetencyjnych — i zarabiaj punkty lojalnościowe za każde ukończone szkolenie.
+                                    </p>
+                                </div>
+                            </div>
+                            <a href="/akademia/rekomendowane">
+                                <Button className="bg-burgundy hover:bg-burgundy/80 gap-2 shrink-0">
+                                    Zobacz rekomendacje <ArrowUpDown className="w-4 h-4 rotate-90" />
+                                </Button>
+                            </a>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* ============================================================ */}
                 {/* CONSULTANT SELECTOR — only for admin/centrala */}

@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { ActionResult, Course } from './courses'
+import type { ActionResult, Course, CourseListItem } from './courses'
 
 // ============================================================
 // Types
@@ -318,6 +318,133 @@ export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentW
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania zapisów'
         console.error('[getMyEnrollments]', error)
+        return { success: false, error: msg }
+    }
+}
+
+// ============================================================
+// AI rekomendacje
+// ============================================================
+
+export interface RecommendedCourse {
+    course: CourseListItem
+    overlap_count: number
+    reason: string
+}
+
+/**
+ * Rekomenduje opublikowane kursy konsultantowi na bazie braków w skillach
+ * (z istniejącego getSkillGaps w lib/actions/development.ts).
+ *
+ * Strategia:
+ *  1. Weź skill gaps (missingSkills) z analizy projektowej
+ *  2. Match kursy z published WHERE tags ∩ missingSkills > 0
+ *  3. Sortuj po liczbie pokrywających tagów + ratingu
+ *  4. Fallback: gdy brak gapów lub brak matchu, zwróć Top N popularnych kursów
+ */
+export async function getRecommendedCourses(): Promise<ActionResult<{ items: RecommendedCourse[]; basedOnGaps: boolean }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        // Pobierz braki skilli (lazy import — żeby nie tworzyć cyklicznych zależności)
+        const { getSkillGaps } = await import('./development')
+        const gaps = await getSkillGaps()
+        const missingSkills = new Set<string>()
+        for (const g of gaps.gaps) {
+            if (g.status === 'has_gaps') {
+                for (const s of g.missingSkills) missingSkills.add(s.toLowerCase())
+            }
+        }
+
+        // Pobierz wszystkie published kursy
+        const { data: rawCourses, error: coursesErr } = await supabase
+            .from('courses')
+            .select('*')
+            .eq('status', 'published')
+            .order('avg_rating', { ascending: false })
+        if (coursesErr) throw coursesErr
+
+        const courses = (rawCourses ?? []) as Course[]
+        if (courses.length === 0) return { success: true, data: { items: [], basedOnGaps: missingSkills.size > 0 } }
+
+        // Pobierz autorów (do CourseListItem)
+        const authorIds = Array.from(new Set(courses.map((c) => c.author_id)))
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url')
+            .in('id', authorIds)
+        const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
+        for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>) {
+            authorMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url })
+        }
+
+        // Wyklucz kursy w które user już jest zapisany (nie polecaj tego, co już ma)
+        const { data: enrolls } = await supabase
+            .from('course_enrollments')
+            .select('course_id')
+            .eq('user_id', user.id)
+        const enrolledIds = new Set((enrolls ?? []).map((e) => (e as { course_id: string }).course_id))
+
+        const eligible = courses.filter((c) => !enrolledIds.has(c.id) && c.author_id !== user.id)
+
+        const itemize = (c: Course, overlap: number, matchedSkills: string[]): RecommendedCourse => {
+            const author = authorMap.get(c.author_id)
+            const item: CourseListItem = {
+                ...c,
+                author_name: author?.full_name ?? null,
+                author_avatar_url: author?.avatar_url ?? null,
+            }
+            const reason = overlap > 0
+                ? `Pokrywa Twoje braki: ${matchedSkills.slice(0, 3).join(', ')}${matchedSkills.length > 3 ? '…' : ''}`
+                : 'Popularne wśród konsultantów'
+            return { course: item, overlap_count: overlap, reason }
+        }
+
+        // Tag overlap scoring
+        if (missingSkills.size > 0) {
+            const scored = eligible
+                .map((c) => {
+                    const matched = c.tags.filter((t) => missingSkills.has(t.toLowerCase()))
+                    return { course: c, matched }
+                })
+                .filter((x) => x.matched.length > 0)
+                .sort((a, b) => {
+                    if (a.matched.length !== b.matched.length) return b.matched.length - a.matched.length
+                    return b.course.avg_rating - a.course.avg_rating
+                })
+                .slice(0, 12)
+
+            if (scored.length > 0) {
+                return {
+                    success: true,
+                    data: {
+                        items: scored.map((s) => itemize(s.course, s.matched.length, s.matched)),
+                        basedOnGaps: true,
+                    },
+                }
+            }
+        }
+
+        // Fallback: top by enrollments_count + avg_rating
+        const fallback = [...eligible]
+            .sort((a, b) => {
+                if (b.enrollments_count !== a.enrollments_count) return b.enrollments_count - a.enrollments_count
+                return b.avg_rating - a.avg_rating
+            })
+            .slice(0, 12)
+
+        return {
+            success: true,
+            data: {
+                items: fallback.map((c) => itemize(c, 0, [])),
+                basedOnGaps: false,
+            },
+        }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd rekomendacji'
+        console.error('[getRecommendedCourses]', error)
         return { success: false, error: msg }
     }
 }
