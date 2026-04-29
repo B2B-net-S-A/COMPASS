@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { GraduationCap, Plus, Star, Users } from 'lucide-react'
+import { GraduationCap, Plus, Star, Users, BookOpen, Pencil } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -48,6 +48,23 @@ export default async function AkademiaPage() {
                 <Link href="/akademia/tworze/nowy">
                     <Button size="lg" className="gap-2">
                         <Plus className="w-4 h-4" /> Stwórz szkolenie
+                    </Button>
+                </Link>
+            </div>
+
+            {/* Sub-navigation */}
+            <div className="flex flex-wrap gap-2">
+                <Button variant="default" size="sm" className="gap-2">
+                    <BookOpen className="w-4 h-4" /> Katalog
+                </Button>
+                <Link href="/akademia/moje">
+                    <Button variant="outline" size="sm" className="gap-2">
+                        <Users className="w-4 h-4" /> Moje szkolenia
+                    </Button>
+                </Link>
+                <Link href="/akademia/tworze">
+                    <Button variant="outline" size="sm" className="gap-2">
+                        <Pencil className="w-4 h-4" /> Tworzę
                     </Button>
                 </Link>
             </div>
