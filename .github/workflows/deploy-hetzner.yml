@@ -103,8 +103,10 @@ jobs:
       - name: Health check (standard /api/health shape)
         env:
           APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-          EXPECTED_SHA: ${{ steps.meta-build.outputs.git_sha }}
         run: |
+          # SHA cut w bash bo cross-job outputs są kłopotliwe (steps.* dostępne
+          # tylko w obrębie tego samego job'a, github.sha działa wszędzie).
+          EXPECTED_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           for i in 1 2 3 4 5; do
             response=$(curl -fsSL "$APP_URL/api/health" || echo '')
             if [ -n "$response" ]; then
