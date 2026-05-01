@@ -18,13 +18,13 @@ describe('GET /api/health', () => {
     })
 
     it('returns HTTP 200 when Supabase is reachable', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
         const response = await GET()
         expect(response.status).toBe(200)
     })
 
     it('returns standard healthcheck shape', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
         const response = await GET()
         const body = await response.json()
         expect(body).toMatchObject({
@@ -42,6 +42,15 @@ describe('GET /api/health', () => {
         expect(response.status).toBe(503)
         expect(body.status).toBe('unhealthy')
         expect(body.checks.supabase).toBe('unhealthy')
+    })
+
+    it('treats Supabase 4xx (auth-rejected HEAD) as healthy — service alive', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+        const response = await GET()
+        const body = await response.json()
+        expect(response.status).toBe(200)
+        expect(body.status).toBe('healthy')
+        expect(body.checks.supabase).toBe('healthy')
     })
 
     it('returns unhealthy when fetch throws (network error or timeout)', async () => {
@@ -62,7 +71,7 @@ describe('GET /api/health', () => {
     it('falls back to "unknown" when GIT_SHA / BUILT_AT not set', async () => {
         delete process.env.GIT_SHA
         delete process.env.BUILT_AT
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
         const response = await GET()
         const body = await response.json()
         expect(body.version).toBe('unknown')
