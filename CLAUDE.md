@@ -16,22 +16,24 @@
 
 ## Deploy
 
-- **Hosting:** Coolify on Hetzner.
-- **Registry:** GHCR (`ghcr.io/artur-t-96/compass`).
-- **Trigger:** push `main` → `.github/workflows/deploy-hetzner.yml`.
-- **Dual deploy method (świadome):** workflow respektuje `vars.DEPLOY_METHOD`:
-  - `coolify` (default) → POST do `secrets.COOLIFY_WEBHOOK_URL` z `Authorization: Bearer COOLIFY_TOKEN`.
-  - `ssh` → fallback przez `appleboy/ssh-action` na `secrets.HETZNER_HOST`, `git pull && docker compose up -d --build`.
+- **Hosting:** Coolify v4 on Hetzner CAX21 ARM (compass-prod, 178.104.220.48).
+- **Coolify panel:** `http://178.104.220.48:8000` (port nie public — dostęp tylko przez SSH tunnel: `ssh -L 8000:127.0.0.1:8000 root@178.104.220.48`).
+- **Resource:** Docker Compose Application, Private Repository (with Deploy Key), branch `main`, compose `docker-compose.yml`.
+- **Deploy key:** w GitHub repo Settings → Deploy keys jako "Coolify on compass-prod" (read-only).
+- **Auto-deploy:** **NIE** (port 8000 nie public → webhook GitHub.com nie dotrze). Po push do main: ręczny "Deploy" w Coolify panel. TODO: dodać `coolify.dynaminds.pl` sub-domenę (Traefik route) → webhook auto-trigger.
+- **Trigger:** push `main` → `.github/workflows/deploy-hetzner.yml` (build-and-push do GHCR jako redundant backup + smoke-test).
 - **Concurrency:** `group: deploy-hetzner, cancel-in-progress: false`.
-- **Render fallback:** w `package.json` jest `npm run deploy` → `scripts/render-deploy.sh`. Historyczny — używać tylko jeśli Coolify+SSH oba padną.
+- **Migracja 2026-05-01:** z Caddy + manual SSH deploy → Coolify-managed (commit `4851e63`). Caddy `systemctl disable caddy`. Stary app dir: `/home/deploy/app.pre-coolify-2026-05-01` (zachowany do 2026-05-15).
+- **Coolify admin password:** zapisz w password manager (mac `/tmp/coolify-admin-password.txt` po setupie sesji).
 
 ## Healthcheck endpoint
 
 - **URL:** `/api/health` (route w `APK-COMPASS/app/api/health/route.ts`).
+- **Shape:** `{status, version, deployedAt, checks: {supabase}}` (Faza 1.A done — commit `48fa896`).
+- **Logic:** Supabase HEAD `/rest/v1/?apikey=...` → 4xx = healthy (alive), 5xx/timeout = unhealthy.
 - **Compose healthcheck:** `wget --spider http://127.0.0.1:10000/api/health` co 30s, retries 3, start_period 40s.
-- **Smoke test w GHA:** `deploy-hetzner.yml` linia 87-108, 5×10s curl `$NEXT_PUBLIC_APP_URL/api/health`.
-
-> **Faza 1 (TODO):** shape `{status, version, deployedAt, checks.supabase}` zamiast obecnego `{status: 'ok', timestamp, uptime}`. Smoke-test grep `"status":"ok"` → `jq .status != "unhealthy"`.
+- **Smoke test w GHA:** `deploy-hetzner.yml` smoke-test job, 5×15s curl `$NEXT_PUBLIC_APP_URL/api/health`, expect status `healthy`/`degraded`.
+- **TODO Faza 1.B:** GIT_SHA + BUILT_AT build args (obecnie `version=unknown`, `deployedAt=unknown`).
 
 ## Env vars (build-time vs runtime)
 

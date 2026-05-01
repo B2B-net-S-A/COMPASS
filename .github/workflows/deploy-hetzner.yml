@@ -1,4 +1,10 @@
-name: Deploy to Hetzner
+name: Build and verify (Coolify-managed deploy)
+
+# Coolify (na compass-prod) zarządza deploymentem od 2026-05-01.
+# GHA build-and-push do GHCR jest redundant backupem — Coolify buduje sam z git source.
+# Auto-deploy webhook (Coolify) jeszcze nie skonfigurowany (port 8000 nie public).
+# Po push do main: ręczny "Deploy" w Coolify panel: http://178.104.220.48:8000
+#   (przez SSH tunnel: ssh -L 8000:127.0.0.1:8000 root@178.104.220.48)
 
 on:
   push:
@@ -11,7 +17,7 @@ concurrency:
 
 jobs:
   build-and-push:
-    name: Build and push image
+    name: Build and push image (GHCR backup)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -62,69 +68,29 @@ jobs:
             GIT_SHA=${{ steps.meta-build.outputs.git_sha }}
             BUILT_AT=${{ steps.meta-build.outputs.built_at }}
 
-  deploy:
-    name: Deploy on Hetzner
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Coolify deploy webhook
-        if: vars.DEPLOY_METHOD == 'coolify' || vars.DEPLOY_METHOD == ''
-        run: |
-          if [ -z "${{ secrets.COOLIFY_WEBHOOK_URL }}" ]; then
-            echo "::warning::COOLIFY_WEBHOOK_URL not set — skipping webhook deploy"
-            exit 0
-          fi
-          curl -fsSL -X POST \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-            "${{ secrets.COOLIFY_WEBHOOK_URL }}"
-
-      - name: SSH deploy (docker compose pull + up)
-        if: vars.DEPLOY_METHOD == 'ssh'
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: ${{ secrets.HETZNER_USER }}
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          script: |
-            cd /home/deploy/app
-            git pull origin main
-            docker compose pull
-            docker compose up -d --build
-            docker image prune -f
-
   smoke-test:
-    name: Smoke test
-    needs: deploy
+    name: Smoke test current deployment
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for deploy to stabilize
-        run: sleep 30
-
-      - name: Health check (standard /api/health shape)
+      # Coolify deploy jest manual — może się nie odbyć przed smoke testem.
+      # Sprawdzamy tylko że produkcja odpowiada healthy (niekoniecznie ten commit).
+      - name: Health check (status != unhealthy)
         env:
           APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
         run: |
-          # SHA cut w bash bo cross-job outputs są kłopotliwe (steps.* dostępne
-          # tylko w obrębie tego samego job'a, github.sha działa wszędzie).
-          EXPECTED_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           for i in 1 2 3 4 5; do
             response=$(curl -fsSL "$APP_URL/api/health" || echo '')
             if [ -n "$response" ]; then
               status=$(echo "$response" | jq -r '.status // "missing"')
-              version=$(echo "$response" | jq -r '.version // "missing"')
-              if [ "$status" != "unhealthy" ] && [ "$status" != "missing" ]; then
-                if [ "$version" = "$EXPECTED_SHA" ]; then
-                  echo "Health check passed: status=$status version=$version"
-                  exit 0
-                fi
-                echo "Attempt $i: stale version (got $version, expected $EXPECTED_SHA)"
-              else
-                echo "Attempt $i: status=$status, retrying in 10s..."
+              if [ "$status" = "healthy" ] || [ "$status" = "degraded" ]; then
+                echo "Health check passed: $response"
+                exit 0
               fi
+              echo "Attempt $i: status=$status, retrying in 15s..."
             else
-              echo "Attempt $i: no response, retrying in 10s..."
+              echo "Attempt $i: no response, retrying in 15s..."
             fi
-            sleep 10
+            sleep 15
           done
           echo "::error::Health check failed after 5 attempts"
           exit 1
