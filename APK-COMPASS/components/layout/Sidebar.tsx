@@ -15,6 +15,7 @@ import {
     Settings,
     Cog,
     ShieldCheck,
+    Inbox,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -85,11 +86,12 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
         },
     ]
 
-    // Admin extras (Phase 0 minimal — points to existing admin routes; expanded in Phase 1).
+    // Admin extras — expanded as new admin pages ship per phase.
     const adminGroup: NavGroup = {
         heading: t('group_admin'),
         links: [
             { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: null },
+            { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null },
             { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
         ],
     }
