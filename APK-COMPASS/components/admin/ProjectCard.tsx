@@ -11,9 +11,7 @@ import { ClientDate } from '@/components/common/ClientDate'
 import { Project, ProjectMatch } from '@/lib/types'
 import { getProjectMatches, updateProject, getMyProjectMatch } from '@/lib/actions/projects'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { MatchAnalysisDialog } from "@/components/admin/MatchAnalysisDialog"
 import { FavoriteButton } from '@/components/shared/FavoriteButton'
-import { ReferralWizard } from '@/components/referrals/ReferralWizard'
 import { Share2 } from 'lucide-react'
 
 import { anonymizeProjectText, formatProjectValue } from '@/lib/utils/anonymizer'
@@ -475,41 +473,6 @@ export function ProjectCard({
                 </CardFooter>
             </Card>
 
-            <ReferralWizard
-                projectId={project.id}
-                projectTitle={project.title}
-                isOpen={referralOpen}
-                onOpenChange={setReferralOpen}
-                isAdmin={isAdmin}
-            />
-
-            {selectedMatch && (
-                <MatchAnalysisDialog
-                    open={analysisOpen}
-                    onOpenChange={setAnalysisOpen}
-                    projectId={project.id}
-                    candidateId={selectedMatch.id}
-                    candidateName={selectedMatch.full_name}
-                    score={Math.round(selectedMatch.similarity * 100)}
-                    onAnalysisComplete={(newScore, recommendation) => {
-                        // Update Admin List
-                        setMatches(prev => prev.map(m =>
-                            m.id === selectedMatch.id
-                                ? { ...m, similarity: newScore / 100, ai_recommendation: recommendation }
-                                : m
-                        ))
-
-                        // Update Consultant Self-Match
-                        if (myMatch && selectedMatch.id === myMatch.id) {
-                            setMyMatch(prev => prev ? {
-                                ...prev,
-                                similarity: newScore / 100,
-                                ai_recommendation: recommendation
-                            } : null)
-                        }
-                    }}
-                />
-            )}
         </>
     )
 }

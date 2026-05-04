@@ -189,63 +189,8 @@ export async function getProjectMatches(projectId: string): Promise<ProjectMatch
         // Identify which candidates need AI scoring
         const candidatesToScore = (matches as CandidateMatch[]).filter(m => !resultsMap.has(m.id))
 
-        if (candidatesToScore.length > 0) {
-            console.log(`[Matching] Scoring ${candidatesToScore.length} candidates for project ${projectId} (Parallel)`)
-            const { batchScore } = await import('./scoring')
-
-            // Split into chunks of 15 for faster parallel processing
-            const CHUNK_SIZE = 15
-            const chunks = []
-            for (let i = 0; i < candidatesToScore.length; i += CHUNK_SIZE) {
-                chunks.push(candidatesToScore.slice(i, i + CHUNK_SIZE))
-            }
-
-            const projectContext = `Title: ${project.title}, Description: ${project.description}, Skills: ${project.required_skills?.join(', ')}`
-
-            // Process chunks in parallel
-            const scorePromises = chunks.map(chunk => {
-                const candidateItems = chunk.map(m => ({
-                    id: m.id,
-                    content: `Name: ${m.full_name}, Bio: ${m.bio}, Skills: ${m.skills?.join(', ')}`
-                }))
-                return batchScore(candidateItems, projectContext, 'project-to-candidates')
-            })
-
-            const chunkResults = await Promise.all(scorePromises)
-            const newScores = chunkResults.flat()
-
-            // Save new scores to DB
-            if (newScores.length > 0) {
-                const inserts = newScores.map(ns => ({
-                    project_id: projectId,
-                    candidate_id: ns.id,
-                    score: ns.combined_score,
-                    reasoning: ns.reasoning,
-                    recommendation: ns.recommendation,
-                    updated_at: new Date().toISOString()
-                }))
-
-                try {
-                    const { error: insertError } = await supabase
-                        .from('match_results')
-                        .upsert(inserts)
-                    if (insertError) console.error('Error saving match results:', insertError)
-                } catch (dbErr) {
-                    console.error('Failed to upsert to match_results:', dbErr)
-                }
-
-                // Update the map for final merge
-                newScores.forEach(ns => {
-                    resultsMap.set(ns.id, {
-                        candidate_id: ns.id,
-                        score: ns.combined_score,
-                        reasoning: ns.reasoning,
-                        recommendation: ns.recommendation
-                    })
-                })
-            }
-        }
-
+        // Phase 1.0 (2026-05-04): AI candidate scoring removed (legacy ATS feature).
+        // Returns embedding-similarity-only results from cached match_results table.
         return (matches as CandidateMatch[]).map(m => {
             const aiResult = resultsMap.get(m.id)
             return {
@@ -314,42 +259,6 @@ export async function getMyProjectMatch(projectId: string): Promise<ProjectMatch
 
     if (!project) return null
 
-    const { batchScore } = await import('./scoring')
-
-    // safe fallbacks for context
-    const projectContext = `Title: ${project.title || ''}, Description: ${project.description || ''}, Skills: ${project.required_skills?.join(', ') || ''}`
-    const candidateContent = `Name: ${profile.full_name}, Bio: ${profile.bio || ''}, Skills: ${profile.skills?.join(', ') || ''}`
-
-    try {
-        const scores = await batchScore(
-            [{ id: user.id, content: candidateContent }],
-            projectContext,
-            'project-to-candidates'
-        )
-
-        if (scores.length > 0) {
-            const score = scores[0]
-
-            // Save to DB
-            await supabase.from('match_results').upsert({
-                project_id: projectId,
-                candidate_id: user.id,
-                score: score.combined_score,
-                reasoning: score.reasoning,
-                recommendation: score.recommendation,
-                updated_at: new Date().toISOString()
-            })
-
-            return {
-                ...baseMatch,
-                similarity: score.combined_score / 100,
-                ai_recommendation: score.recommendation,
-                ai_reasoning: score.reasoning
-            }
-        }
-    } catch (e) {
-        console.error('Auto-scoring for consultant failed:', e)
-    }
-
+    // Phase 1.0 (2026-05-04): AI candidate scoring removed (legacy ATS feature).
     return baseMatch
 }

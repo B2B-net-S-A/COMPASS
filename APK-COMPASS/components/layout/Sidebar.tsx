@@ -89,7 +89,7 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
     const adminGroup: NavGroup = {
         heading: t('group_admin'),
         links: [
-            { name: t('nav_admin_learning'), href: '/admin/akademia', icon: ShieldCheck, feature: null },
+            { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: null },
             { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
         ],
     }

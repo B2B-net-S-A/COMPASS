@@ -207,7 +207,7 @@ export async function getTierProgress() {
         if (!profile) return { success: false, error: 'Nie znaleziono profilu' }
 
         const points = profile.loyalty_points || 0
-        const currentTier = profile.loyalty_tier || 'bronze'
+        const currentTier = profile.loyalty_tier || DEFAULT_TIER
 
         const tierInfo = TIER_CONFIG.find(t => t.name === currentTier) || TIER_CONFIG[0]
         const nextTier = tierInfo.next || null
@@ -233,10 +233,8 @@ export async function getTierProgress() {
 }
 
 // ── Tier config — imported from shared module (NOT re-exported) ──
-// TIER_CONFIG lives in @/lib/loyalty-config.ts so it can be imported by
-// client components. We import it here for internal use only — do NOT
-// re-export from 'use server' files (Next.js only allows async fn exports).
-import { TIER_CONFIG } from '@/lib/loyalty-config'
+// Phase 1.2 (2026-05-04): renamed loyalty-config → league-config (7 tiers).
+import { TIER_CONFIG, DEFAULT_TIER, getTier, computeTierProgress, TIER_DISTRIBUTION_KEYS, type TierName } from '@/lib/league-config'
 
 // ── Breakdown types ──
 
@@ -326,7 +324,7 @@ export async function getLoyaltyBreakdown(
             .single()
 
         const totalPoints = profile?.loyalty_points || 0
-        const currentTier = profile?.loyalty_tier || 'bronze'
+        const currentTier = profile?.loyalty_tier || DEFAULT_TIER
         const tierInfo = TIER_CONFIG.find(t => t.name === currentTier) || TIER_CONFIG[0]
         const pointsToNext = tierInfo.next ? Math.max(0, tierInfo.nextThreshold - totalPoints) : 0
         const progressPercent = tierInfo.next
@@ -539,7 +537,7 @@ export async function getAllConsultantsLoyalty(): Promise<AllConsultantsLoyaltyR
             email: p.email,
             role: p.role,
             loyalty_points: p.loyalty_points || 0,
-            loyalty_tier: p.loyalty_tier || 'bronze',
+            loyalty_tier: p.loyalty_tier || DEFAULT_TIER,
             loyalty_joined_at: p.loyalty_joined_at || null,
         }))
 
@@ -548,7 +546,7 @@ export async function getAllConsultantsLoyalty(): Promise<AllConsultantsLoyaltyR
         const totalPoints = consultants.reduce((sum, c) => sum + c.loyalty_points, 0)
         const avgPoints = totalConsultants > 0 ? Math.round(totalPoints / totalConsultants) : 0
 
-        const tierDistribution: Record<string, number> = { bronze: 0, silver: 0, gold: 0, platinum: 0 }
+        const tierDistribution: Record<string, number> = { ...TIER_DISTRIBUTION_KEYS }
         for (const c of consultants) {
             tierDistribution[c.loyalty_tier] = (tierDistribution[c.loyalty_tier] || 0) + 1
         }
@@ -642,3 +640,180 @@ export async function exportLoyaltyCsv(
         return { success: false, error: error.message }
     }
 }
+
+// ─── Phase 1.2 (2026-05-04): Pending points + League overview ────────────────
+
+export interface LoyaltyOverview {
+    confirmed_points: number
+    pending_points: number
+    total_potential: number
+    tier: TierName
+    tier_label: string
+    next_tier: TierName | null
+    next_tier_threshold: number
+    points_to_next: number
+    progress_pct: number
+    member_since: string | null
+}
+
+/**
+ * League dashboard summary: confirmed + pending balances, current tier,
+ * progress toward next tier. Pending = points awarded but awaiting moderation
+ * (status='pending' in loyalty_transactions, added by migration 4).
+ */
+export async function getLoyaltyOverview(targetUserId?: string): Promise<{ success: true; data: LoyaltyOverview } | { success: false; error: string }> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        let userId = user.id
+        if (targetUserId && targetUserId !== user.id) {
+            const { data: callerProfile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
+                .single()
+            if (!['admin', 'trainer'].includes(callerProfile?.role || '')) {
+                return { success: false, error: 'Niewystarczające uprawnienia' }
+            }
+            userId = targetUserId
+        }
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('loyalty_points, loyalty_tier, loyalty_joined_at')
+            .eq('id', userId)
+            .single()
+
+        if (!profile) return { success: false, error: 'Nie znaleziono profilu' }
+
+        const confirmed_points = profile.loyalty_points || 0
+        const tierName = (profile.loyalty_tier as TierName) || DEFAULT_TIER
+        const tierInfo = getTier(tierName)
+
+        // Sum pending transactions
+        const { data: pendingTx } = await supabase
+            .from('loyalty_transactions')
+            .select('points')
+            .eq('user_id', userId)
+            .eq('status', 'pending')
+
+        const pending_points = (pendingTx || []).reduce((sum, t: { points: number }) => sum + t.points, 0)
+
+        return {
+            success: true,
+            data: {
+                confirmed_points,
+                pending_points,
+                total_potential: confirmed_points + pending_points,
+                tier: tierInfo.name as TierName,
+                tier_label: tierInfo.label,
+                next_tier: tierInfo.next,
+                next_tier_threshold: tierInfo.nextThreshold,
+                points_to_next: tierInfo.next ? Math.max(0, tierInfo.nextThreshold - confirmed_points) : 0,
+                progress_pct: computeTierProgress(confirmed_points, tierName),
+                member_since: profile.loyalty_joined_at || null,
+            },
+        }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Nieznany błąd'
+        console.error('Error in getLoyaltyOverview:', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Admin/trainer: flip a pending transaction to confirmed (e.g. after quiz moderation).
+ * Trigger update_loyalty_status will recompute tier on UPDATE OF status.
+ */
+export async function confirmPendingTransaction(transactionId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data: callerProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+        if (!['admin', 'trainer'].includes(callerProfile?.role || '')) {
+            return { success: false, error: 'Niewystarczające uprawnienia' }
+        }
+
+        const { error } = await supabase
+            .from('loyalty_transactions')
+            .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+            .eq('id', transactionId)
+            .eq('status', 'pending')
+
+        if (error) return { success: false, error: error.message }
+
+        revalidatePath('/loyalty')
+        revalidatePath('/league')
+        return { success: true }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Nieznany błąd'
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Admin/trainer: mark an awarded transaction as reversed (e.g. moderation rejection
+ * after points were already credited). Inserts a compensating reversal row referencing
+ * the original via reverses_id, then flips status='reversed' on the original.
+ */
+export async function reverseTransaction(transactionId: string, reason: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data: callerProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+        if (!['admin', 'trainer'].includes(callerProfile?.role || '')) {
+            return { success: false, error: 'Niewystarczające uprawnienia' }
+        }
+
+        const { data: original, error: fetchError } = await supabase
+            .from('loyalty_transactions')
+            .select('id, user_id, points, source_type, status')
+            .eq('id', transactionId)
+            .single()
+
+        if (fetchError || !original) return { success: false, error: 'Transakcja nie znaleziona' }
+        if (original.status === 'reversed') return { success: false, error: 'Transakcja już cofnięta' }
+
+        const { error: insertError } = await supabase
+            .from('loyalty_transactions')
+            .insert({
+                user_id: original.user_id,
+                points: -original.points,
+                source_type: `reversal:${original.source_type}`,
+                description: `Cofnięcie: ${reason}`,
+                reverses_id: original.id,
+                status: 'confirmed',
+            })
+
+        if (insertError) return { success: false, error: insertError.message }
+
+        const { error: updateError } = await supabase
+            .from('loyalty_transactions')
+            .update({ status: 'reversed' })
+            .eq('id', transactionId)
+
+        if (updateError) return { success: false, error: updateError.message }
+
+        revalidatePath('/loyalty')
+        revalidatePath('/league')
+        return { success: true }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Nieznany błąd'
+        return { success: false, error: msg }
+    }
+}
+

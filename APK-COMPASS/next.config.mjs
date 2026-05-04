@@ -34,12 +34,16 @@ const nextConfig = {
             'sonner',
         ],
     },
-    // Phase 0 (2026-05-04): IA refactor redirects. /akademia→/learning and /loyalty→/league
-    // are deferred to Phase 1 (route rename). Phase 0 only redirects routes whose targets exist.
+    // Phase 0+1 (2026-05-04): IA refactor redirects.
+    // Phase 1.3 added /akademia/* → /learning/* after the folder rename.
     async redirects() {
         return [
             { source: '/dashboard', destination: '/home', permanent: false },
-            { source: '/development', destination: '/akademia', permanent: false },
+            { source: '/development', destination: '/learning', permanent: false },
+            { source: '/akademia', destination: '/learning', permanent: false },
+            { source: '/akademia/:path*', destination: '/learning/:path*', permanent: false },
+            { source: '/admin/akademia', destination: '/admin/learning', permanent: false },
+            { source: '/admin/akademia/:path*', destination: '/admin/learning/:path*', permanent: false },
         ]
     },
     async headers() {

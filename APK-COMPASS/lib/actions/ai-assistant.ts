@@ -33,7 +33,7 @@ SYSTEM UPRAWNIEŃ:
 
 NAWIGACJA DLA KONSULTANTÓW (Phase 0 IA — platforma retencji):
 - "Pulpit" (/home) — dashboard z podsumowaniem 5 paneli: aktywne kursy, news, otwarte tickety, status League, pitches
-- "Learning Center" (/akademia → docelowo /learning) — kursy firmowe i konsultanckie, autor dostaje punkty za każdego studenta, możliwość tworzenia własnego kursu po akceptacji admina
+- "Learning Center" (/learning) — kursy firmowe i konsultanckie, autor dostaje punkty za każdego studenta, możliwość tworzenia własnego kursu po akceptacji admina
 - "Dynaminds League" (/loyalty → docelowo /league) — punkty za aktywność, 7 poziomów (Scout/Explorer/Pathfinder/Navigator/Captain/Admiral/Legend), leaderboard
 - "Support Center" (/support) — tickety, chat z opiekunem, baza wiedzy procedur (HR/Benefity/IT/Onboarding)
 - "Aktualności" (/news) — feed ogłoszeń od admina, broadcast komunikaty

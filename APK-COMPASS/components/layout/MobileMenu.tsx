@@ -126,7 +126,7 @@ export function MobileMenu({ role }: MobileMenuProps) {
                                 {t('group_admin')}
                             </p>
                             <Link
-                                href="/admin/akademia"
+                                href="/admin/learning"
                                 onClick={() => setMoreOpen(false)}
                                 className="mt-2 flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
                             >

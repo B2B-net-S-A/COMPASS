@@ -20,7 +20,7 @@ import {
     type UpdateCoursePatch,
     type UpdateLessonPatch,
     type ActionResult,
-} from '@/lib/types/akademia'
+} from '@/lib/types/learning'
 
 // ============================================================
 // Helpers
@@ -101,8 +101,8 @@ export async function createCourse(input: CreateCourseInput): Promise<ActionResu
 
         if (error) throw error
 
-        revalidatePath('/akademia')
-        revalidatePath('/akademia/tworze')
+        revalidatePath('/learning')
+        revalidatePath('/learning/tworze')
         return { success: true, data: { courseId: data.id, slug: data.slug } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd tworzenia kursu'
@@ -155,9 +155,9 @@ export async function updateCourse(courseId: string, patch: UpdateCoursePatch): 
 
         if (updateError) throw updateError
 
-        revalidatePath('/akademia')
-        revalidatePath('/akademia/tworze')
-        revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath('/learning')
+        revalidatePath('/learning/tworze')
+        revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: { slug: course.slug } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd aktualizacji kursu'
@@ -433,8 +433,8 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
 
         if (error) throw error
 
-        revalidatePath(`/akademia/tworze/${courseId}/edit`)
-        revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath(`/learning/tworze/${courseId}/edit`)
+        revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: { lessonId: data.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd dodawania lekcji'
@@ -479,8 +479,8 @@ export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): 
 
         if (error) throw error
 
-        revalidatePath(`/akademia/tworze/${course.id}/edit`)
-        revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath(`/learning/tworze/${course.id}/edit`)
+        revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: { courseId: course.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd aktualizacji lekcji'
@@ -522,8 +522,8 @@ export async function reorderLessons(courseId: string, orderedIds: string[]): Pr
             if (error) throw error
         }
 
-        revalidatePath(`/akademia/tworze/${courseId}/edit`)
-        revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath(`/learning/tworze/${courseId}/edit`)
+        revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zmiany kolejności'
@@ -554,8 +554,8 @@ export async function deleteLesson(lessonId: string): Promise<ActionResult<{ cou
         const { error } = await supabase.from('course_lessons').delete().eq('id', lessonId)
         if (error) throw error
 
-        revalidatePath(`/akademia/tworze/${course.id}/edit`)
-        revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath(`/learning/tworze/${course.id}/edit`)
+        revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: { courseId: course.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd usuwania lekcji'
@@ -683,7 +683,7 @@ export async function setQuizQuestions(courseId: string, questions: QuizQuestion
             if (oErr) throw oErr
         }
 
-        revalidatePath(`/akademia/tworze/${courseId}/edit`)
+        revalidatePath(`/learning/tworze/${courseId}/edit`)
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu quizu'
@@ -733,9 +733,9 @@ export async function submitForReview(courseId: string): Promise<ActionResult<vo
             .eq('id', courseId)
         if (updErr) throw updErr
 
-        revalidatePath(`/akademia/tworze`)
-        revalidatePath(`/akademia/tworze/${courseId}/edit`)
-        revalidatePath('/admin/akademia')
+        revalidatePath(`/learning/tworze`)
+        revalidatePath(`/learning/tworze/${courseId}/edit`)
+        revalidatePath('/admin/learning')
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wysyłania do moderacji'

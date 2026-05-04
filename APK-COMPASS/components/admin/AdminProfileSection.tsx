@@ -12,7 +12,7 @@ import Link from 'next/link'
 import { ThemeQuickPicker } from '@/components/theme/ThemeQuickPicker'
 import { useRouter } from 'next/navigation' // wymagany dla router.refresh() po zapisie profilu
 import type { AdminDashboardData } from '@/lib/actions/admin-dashboard'
-import { updateProfileFull } from '@/lib/actions/matching'
+import { updateProfileFull } from '@/lib/actions/profile'
 import { toast } from 'sonner'
 import { toastSuccess } from '@/lib/toast-success'
 

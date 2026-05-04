@@ -10,7 +10,7 @@ import type {
     QuizQuestionForAttempt,
     QuizSubmissionResult,
     RecommendedCourse,
-} from '@/lib/types/akademia'
+} from '@/lib/types/learning'
 
 // ============================================================
 // Server actions — student
@@ -54,8 +54,8 @@ export async function enrollInCourse(courseId: string): Promise<ActionResult<{ e
             .single()
         if (error) throw error
 
-        revalidatePath('/akademia/moje')
-        revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath('/learning/moje')
+        revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: { enrollmentId: data.id, alreadyEnrolled: false } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu na kurs'
@@ -156,7 +156,7 @@ export async function submitQuizAttempt(
 
         const result = data as QuizSubmissionResult
 
-        revalidatePath('/akademia/moje')
+        revalidatePath('/learning/moje')
         revalidatePath('/loyalty')
         return { success: true, data: result }
     } catch (error: unknown) {
@@ -221,8 +221,8 @@ export async function submitRating(
             if (error) throw error
         }
 
-        revalidatePath('/akademia')
-        if (course?.slug) revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath('/learning')
+        if (course?.slug) revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu oceny'
