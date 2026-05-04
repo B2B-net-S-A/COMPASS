@@ -8,7 +8,11 @@ import { LayoutPreferencesProvider } from '@/lib/contexts/LayoutPreferencesConte
 import { AIAssistantPreferencesProvider } from '@/lib/contexts/AIAssistantPreferencesContext'
 import { ThemeProvider } from '@/lib/contexts/ThemeContext'
 import { getPermissions } from '@/lib/actions/permissions'
+import { getUnreadNewsCount } from '@/lib/actions/news'
+import { listTickets } from '@/lib/actions/support-tickets'
+import { listAllPitchesAdmin } from '@/lib/actions/incubator'
 import type { PermissionRole, PermissionsMap, PermissionFeature, PermissionValue } from '@/lib/types/permissions'
+import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
 import nextDynamic from 'next/dynamic'
 
@@ -68,10 +72,23 @@ export default async function ProtectedLayout({
             bio: profile?.bio,
         }
 
+        // Phase 7: sidebar badge counts (unread news for all; admin counts for admins)
+        const isAdminLike = role === 'administrator' || role === 'admin' || role === 'centrala'
+        const [newsRes, adminTicketsRes, adminPitchesRes] = await Promise.all([
+            getUnreadNewsCount(),
+            isAdminLike ? listTickets({ scope: 'all', status: 'open', limit: 1 }) : Promise.resolve({ success: false as const, error: 'skip' }),
+            isAdminLike ? listAllPitchesAdmin('submitted') : Promise.resolve({ success: false as const, error: 'skip' }),
+        ])
+        const sidebarBadges: SidebarBadgeCounts = {
+            news: newsRes.success ? newsRes.data : 0,
+            adminTickets: adminTicketsRes.success ? adminTicketsRes.data.total : 0,
+            adminPitches: adminPitchesRes.success ? adminPitchesRes.data.length : 0,
+        }
+
         return (
             <ThemeProvider>
                 <AIAssistantPreferencesProvider>
-                    <AppLayout user={userData} role={role} permissions={userPermissions}>
+                    <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges}>
                         <LayoutPreferencesProvider>
                             {children}
                         </LayoutPreferencesProvider>

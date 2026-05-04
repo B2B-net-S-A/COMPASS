@@ -24,6 +24,14 @@ import { Logo } from '@/components/common/Logo'
 import { useTheme } from '@/lib/contexts/ThemeContext'
 import type { PermissionFeature, PermissionValue } from '@/lib/types/permissions'
 
+// Phase 7 (2026-05-04): Sidebar badge counts fetched server-side in
+// app/(protected)/layout.tsx and passed through. Display badge if count > 0.
+export interface SidebarBadgeCounts {
+    news?: number
+    adminTickets?: number
+    adminPitches?: number
+}
+
 interface SidebarProps {
     role: 'consultant' | 'admin' | 'centrala' | 'administrator'
     isOpen?: boolean
@@ -35,6 +43,7 @@ interface SidebarProps {
     } | null
     permissions?: Record<PermissionFeature, PermissionValue>
     forMobile?: boolean
+    badges?: SidebarBadgeCounts
 }
 
 interface NavLink {
@@ -42,6 +51,7 @@ interface NavLink {
     href: string
     icon: LucideIcon
     feature: PermissionFeature | null
+    badgeCount?: number
 }
 
 interface NavGroup {
@@ -49,7 +59,7 @@ interface NavGroup {
     links: NavLink[]
 }
 
-export function Sidebar({ role, user, permissions, forMobile = false }: SidebarProps) {
+export function Sidebar({ role, user, permissions, forMobile = false, badges }: SidebarProps) {
     const pathname = usePathname()
     const { t } = useTranslation()
     const { brandName } = useTheme()
@@ -75,7 +85,7 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
         {
             heading: t('group_community'),
             links: [
-                { name: t('nav_news'), href: '/news', icon: Newspaper, feature: 'news' },
+                { name: t('nav_news'), href: '/news', icon: Newspaper, feature: 'news', badgeCount: badges?.news },
                 { name: t('nav_support'), href: '/support', icon: LifeBuoy, feature: 'support' },
             ],
         },
@@ -93,9 +103,9 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
         heading: t('group_admin'),
         links: [
             { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: null },
-            { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null },
+            { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null, badgeCount: badges?.adminTickets },
             { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
-            { name: t('nav_admin_incubator'), href: '/admin/incubator', icon: Sparkles, feature: null },
+            { name: t('nav_admin_incubator'), href: '/admin/incubator', icon: Sparkles, feature: null, badgeCount: badges?.adminPitches },
             { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
         ],
     }
@@ -146,7 +156,12 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
                                         )}
                                     >
                                         <Icon className="h-4 w-4" />
-                                        {link.name}
+                                        <span className="flex-1">{link.name}</span>
+                                        {link.badgeCount !== undefined && link.badgeCount > 0 && (
+                                            <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold tabular-nums">
+                                                {link.badgeCount > 99 ? '99+' : link.badgeCount}
+                                            </span>
+                                        )}
                                     </Link>
                                 )
                             })}
