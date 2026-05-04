@@ -14,6 +14,7 @@ import nextDynamic from 'next/dynamic'
 
 const InternalCommunicator = nextDynamic(() => import('@/components/communicator/InternalCommunicator').then(m => m.InternalCommunicator), { ssr: false })
 const AIAssistantWidget = nextDynamic(() => import('@/components/ai-assistant/AIAssistantWidget').then(m => m.AIAssistantWidget), { ssr: false })
+const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 
 export default async function ProtectedLayout({
     children,
@@ -27,12 +28,12 @@ export default async function ProtectedLayout({
             redirect('/login')
         }
 
-        type ProfileData = { full_name?: string | null; avatar_url?: string | null; role?: string; bio?: string | null }
+        type ProfileData = { full_name?: string | null; avatar_url?: string | null; role?: string; bio?: string | null; onboarding_tour_done?: boolean }
         let profile: ProfileData | null = null
         let permissionsMap: PermissionsMap = {} as PermissionsMap
         try {
             const [profileRes, perms] = await Promise.all([
-                supabase.from('profiles').select('id, full_name, avatar_url, email, bio, role, cv_url, gdpr_consent').eq('id', user.id).single(),
+                supabase.from('profiles').select('id, full_name, avatar_url, email, bio, role, cv_url, gdpr_consent, onboarding_tour_done').eq('id', user.id).single(),
                 getPermissions(),
             ])
             profile = (profileRes as { data?: ProfileData | null })?.data ?? null
@@ -76,6 +77,7 @@ export default async function ProtectedLayout({
                         </LayoutPreferencesProvider>
                         <AIAssistantWidget />
                         <InternalCommunicator currentUser={userData} />
+                        <Tour initialDone={profile?.onboarding_tour_done ?? false} />
                     </AppLayout>
                 </AIAssistantPreferencesProvider>
             </ThemeProvider>
