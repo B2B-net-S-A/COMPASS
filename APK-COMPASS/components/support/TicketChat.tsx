@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Send, Lock } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { addComment, changeTicketStatus } from '@/lib/actions/support-tickets'
+import { useRealtimeTicketComments } from '@/lib/hooks/useRealtimeTicketComments'
 import type { SupportComment, TicketStatus } from '@/lib/types/support'
 import { TICKET_STATUS_LABEL } from '@/lib/types/support'
 import { cn } from '@/lib/utils'
@@ -30,6 +31,10 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
     const [error, setError] = useState<string | null>(null)
     const [isSending, startSending] = useTransition()
     const [isStatusUpdating, startStatusUpdating] = useTransition()
+
+    // Phase 8: realtime — refresh server data when new comment arrives
+    const handleNewComment = useCallback(() => router.refresh(), [router])
+    useRealtimeTicketComments({ ticketId, onNewComment: handleNewComment })
 
     const handleSend = (e: React.FormEvent) => {
         e.preventDefault()

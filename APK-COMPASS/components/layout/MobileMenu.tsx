@@ -70,12 +70,14 @@ export function MobileMenu({ role }: MobileMenuProps) {
                         key={link.href}
                         href={link.href}
                         data-testid={`mobile-nav-${link.href.replace(/^\//, '')}`}
+                        aria-label={link.name}
+                        aria-current={active ? 'page' : undefined}
                         className={cn(
-                            "flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors min-w-[56px]",
+                            "flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors min-w-[56px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                             active ? "text-primary" : "text-muted-foreground hover:text-primary"
                         )}
                     >
-                        <Icon className="h-5 w-5" />
+                        <Icon className="h-5 w-5" aria-hidden="true" />
                         <span className="text-[10px]">{link.name}</span>
                     </Link>
                 )
@@ -85,12 +87,13 @@ export function MobileMenu({ role }: MobileMenuProps) {
                 <SheetTrigger asChild>
                     <button
                         data-testid="mobile-nav-more"
+                        aria-label={t('mobile_more')}
                         className={cn(
-                            "flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors min-w-[56px]",
+                            "flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors min-w-[56px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                             "text-muted-foreground hover:text-primary"
                         )}
                     >
-                        <MoreHorizontal className="h-5 w-5" />
+                        <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
                         <span className="text-[10px]">{t('mobile_more')}</span>
                     </button>
                 </SheetTrigger>

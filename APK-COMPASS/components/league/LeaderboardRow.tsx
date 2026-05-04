@@ -41,6 +41,8 @@ export function LeaderboardRow({ entry, className }: LeaderboardRowProps) {
 
     return (
         <div
+            role="listitem"
+            aria-label={`Pozycja ${entry.rank}: ${displayName}, ${entry.loyalty_points} punktów`}
             className={cn(
                 'flex items-center gap-3 p-3 border-b border-white/5 last:border-0 transition-colors',
                 entry.is_self && 'bg-primary/5 ring-1 ring-primary/20',

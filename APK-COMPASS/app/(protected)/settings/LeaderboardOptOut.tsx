@@ -47,6 +47,7 @@ export function LeaderboardOptOut({ initialOptOut }: LeaderboardOptOutProps) {
                         disabled={isPending}
                         role="switch"
                         aria-checked={!optOut}
+                        aria-label={`Widoczność w rankingu Dynaminds League: ${optOut ? 'ukryta' : 'widoczna'}`}
                         className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 ${
                             !optOut ? 'bg-primary' : 'bg-white/20'
                         }`}
