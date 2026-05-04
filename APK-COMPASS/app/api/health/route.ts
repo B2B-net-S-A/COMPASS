@@ -16,7 +16,7 @@ async function checkSupabase(): Promise<'healthy' | 'unhealthy'> {
             method: 'HEAD',
             signal: controller.signal,
         })
-        return response.ok ? 'healthy' : 'unhealthy'
+        return response.status < 500 ? 'healthy' : 'unhealthy'
     } catch {
         return 'unhealthy'
     } finally {
