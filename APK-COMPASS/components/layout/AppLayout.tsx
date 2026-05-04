@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Sidebar } from './Sidebar'
+import { Sidebar, type SidebarBadgeCounts } from './Sidebar'
 import { MobileMenu } from './MobileMenu'
 import { TopBar } from './TopBar'
 import { LanguageProvider } from '@/lib/i18n/context'
@@ -14,15 +14,16 @@ interface AppLayoutProps {
     user: any
     role: 'consultant' | 'admin' | 'centrala' | 'administrator'
     permissions?: Record<PermissionFeature, PermissionValue>
+    sidebarBadges?: SidebarBadgeCounts
 }
 
-export function AppLayout({ children, user, role, permissions }: AppLayoutProps) {
+export function AppLayout({ children, user, role, permissions, sidebarBadges }: AppLayoutProps) {
     return (
         <LanguageProvider>
             <PermissionsProvider permissions={permissions ?? null} role={role}>
                 <div className="flex min-h-screen bg-background">
                     {/* Desktop sidebar — always visible md+ */}
-                    <Sidebar role={role} user={user} permissions={permissions} />
+                    <Sidebar role={role} user={user} permissions={permissions} badges={sidebarBadges} />
 
                     <div className="flex flex-1 flex-col">
                         <TopBar user={user} />
