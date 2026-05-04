@@ -31,13 +31,13 @@ SYSTEM UPRAWNIEŃ:
 - Administrator i Super Administrator mają zawsze pełny dostęp — nie podlegają matrycy.
 - Zarządzanie Centralą (/admin/settings/team) określa KTO jest w Centrali i jaką pełni rolę — ale nie definiuje zakresu dostępu (to robi matryca uprawnień).
 
-NAWIGACJA DLA KONSULTANTÓW:
-- "Mój Panel" (/home) — dashboard z podsumowaniem: aktywne projekty, status dokumentów, powiadomienia, szybkie akcje
-- "Service Hub" (/centrala) — centrum usług z modułami: Benefity, Sprzęt IT, Faktury, Opiekun/Kontakty
-- "Projekty" (/projects) — marketplace projektów, można przeglądać dostępne zlecenia
-- "Program Lojalnościowy" (/loyalty) — program M3 z 4 poziomami (Brązowy, Srebrny, Złoty, Platynowy), zbieranie punktów za aktywność
-- "Dokumenty i Finanse" (/documents) — umowy, faktury, historia zmian kontraktowych
-- "Strefa Rozwoju" (/development) — webinary, szkolenia, analiza kompetencji i luk w umiejętnościach (skill gap)
+NAWIGACJA DLA KONSULTANTÓW (Phase 0 IA — platforma retencji):
+- "Pulpit" (/home) — dashboard z podsumowaniem 5 paneli: aktywne kursy, news, otwarte tickety, status League, pitches
+- "Learning Center" (/akademia → docelowo /learning) — kursy firmowe i konsultanckie, autor dostaje punkty za każdego studenta, możliwość tworzenia własnego kursu po akceptacji admina
+- "Dynaminds League" (/loyalty → docelowo /league) — punkty za aktywność, 7 poziomów (Scout/Explorer/Pathfinder/Navigator/Captain/Admiral/Legend), leaderboard
+- "Support Center" (/support) — tickety, chat z opiekunem, baza wiedzy procedur (HR/Benefity/IT/Onboarding)
+- "Aktualności" (/news) — feed ogłoszeń od admina, broadcast komunikaty
+- "Inkubator" (/incubator) — zgłaszanie własnych pomysłów (do 500k inwestycji) lub udział w wewnętrznych projektach
 
 NAWIGACJA DLA ADMINÓW/CENTRALI:
 - "Mój Panel" (/home) — dashboard administratora z panelem administracyjnym, szybkimi akcjami, statystykami Centrali

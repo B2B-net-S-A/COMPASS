@@ -21,7 +21,7 @@ interface AIAssistantPreferencesContextType {
 
 const DEFAULT_PREFERENCES: AIAssistantPreferences = {
     glowColor: 'violet',
-    glowEnabled: true,
+    glowEnabled: false,
 }
 
 const STORAGE_KEY = 'ai-assistant-preferences'

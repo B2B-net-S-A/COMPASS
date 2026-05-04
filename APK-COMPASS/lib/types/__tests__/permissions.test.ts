@@ -3,8 +3,12 @@ import { DEFAULT_PERMISSIONS } from '../permissions'
 
 const ROLES = ['recruiter', 'delivery_lead', 'finance', 'consultant'] as const
 const FEATURES = [
-    'dashboard', 'projects', 'candidates', 'service_hub', 'messages', 'documents',
-    'loyalty', 'development', 'import', 'referrals', 'ai_assistant', 'settings', 'rates',
+    // New platform panels (Phase 0+)
+    'home', 'learning', 'league', 'support', 'news', 'incubator', 'notifications',
+    // Utility
+    'dashboard', 'projects', 'messages', 'documents', 'loyalty', 'ai_assistant', 'settings',
+    // Legacy (Phase 1 cleanup target)
+    'candidates', 'service_hub', 'development', 'import', 'referrals', 'rates',
 ] as const
 
 describe('DEFAULT_PERMISSIONS', () => {

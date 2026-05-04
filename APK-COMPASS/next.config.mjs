@@ -34,6 +34,14 @@ const nextConfig = {
             'sonner',
         ],
     },
+    // Phase 0 (2026-05-04): IA refactor redirects. /akademia→/learning and /loyalty→/league
+    // are deferred to Phase 1 (route rename). Phase 0 only redirects routes whose targets exist.
+    async redirects() {
+        return [
+            { source: '/dashboard', destination: '/home', permanent: false },
+            { source: '/development', destination: '/akademia', permanent: false },
+        ]
+    },
     async headers() {
         return [
             {

@@ -14,8 +14,12 @@ import { DEFAULT_PERMISSIONS } from '@/lib/types/permissions'
 const VALID_ROLES: PermissionRole[] = ['recruiter', 'delivery_lead', 'finance', 'consultant']
 const VALID_VALUES: PermissionValue[] = ['true', 'false', 'portfolio', 'full', 'readonly']
 const VALID_FEATURES: PermissionFeature[] = [
-    'dashboard', 'projects', 'candidates', 'service_hub', 'messages', 'documents',
-    'loyalty', 'development', 'import', 'referrals', 'ai_assistant', 'settings', 'rates',
+    // New platform panels
+    'home', 'learning', 'league', 'support', 'news', 'incubator', 'notifications',
+    // Utility
+    'dashboard', 'projects', 'messages', 'documents', 'loyalty', 'ai_assistant', 'settings',
+    // Legacy (Phase 1 cleanup)
+    'candidates', 'service_hub', 'development', 'import', 'referrals', 'rates',
 ]
 function isValidRole(r: unknown): r is PermissionRole {
     return typeof r === 'string' && VALID_ROLES.includes(r as PermissionRole)

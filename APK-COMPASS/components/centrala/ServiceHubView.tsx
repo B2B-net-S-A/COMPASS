@@ -160,7 +160,7 @@ export function ServiceHubView({ stats, notifications }: ServiceHubViewProps) {
                                         key={i}
                                         onClick={() => {
                                             if (card.id === 'training') {
-                                                router.push('/development')
+                                                router.push('/akademia')
                                             } else {
                                                 setSelectedSection(card.id)
                                             }

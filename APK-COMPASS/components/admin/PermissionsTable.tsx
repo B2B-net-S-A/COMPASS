@@ -19,19 +19,29 @@ import { updatePermissions } from '@/lib/actions/permissions'
 // ─── Feature definitions ──────────────────────────────────────────────────────
 
 const FEATURES: { key: PermissionFeature; label: string; allowedValues: PermissionValue[] }[] = [
-    { key: 'dashboard', label: 'Dashboard (Mój Panel)', allowedValues: ['true', 'false'] },
-    { key: 'projects', label: 'Projekty', allowedValues: ['false', 'portfolio', 'full'] },
-    { key: 'candidates', label: 'Baza Kandydatów', allowedValues: ['false', 'portfolio', 'full', 'readonly'] },
-    { key: 'service_hub', label: 'Service Hub', allowedValues: ['true', 'false'] },
-    { key: 'messages', label: 'Wiadomości', allowedValues: ['true', 'false'] },
-    { key: 'documents', label: 'Dokumenty', allowedValues: ['true', 'false'] },
-    { key: 'loyalty', label: 'Program Lojalnościowy', allowedValues: ['true', 'false'] },
-    { key: 'development', label: 'Strefa Rozwoju', allowedValues: ['true', 'false'] },
-    { key: 'import', label: 'Import Danych', allowedValues: ['true', 'false'] },
-    { key: 'referrals', label: 'Polecenia', allowedValues: ['true', 'false'] },
+    // New platform panels (Phase 0+)
+    { key: 'home', label: 'Pulpit (Home)', allowedValues: ['true', 'false'] },
+    { key: 'learning', label: 'Learning Center', allowedValues: ['true', 'false'] },
+    { key: 'league', label: 'Dynaminds League', allowedValues: ['true', 'false'] },
+    { key: 'support', label: 'Support Center', allowedValues: ['true', 'false'] },
+    { key: 'news', label: 'Aktualności', allowedValues: ['true', 'false'] },
+    { key: 'incubator', label: 'Inkubator', allowedValues: ['true', 'false'] },
+    { key: 'notifications', label: 'Powiadomienia', allowedValues: ['true', 'false'] },
+    // Utility
     { key: 'ai_assistant', label: 'Asystent AI', allowedValues: ['false', 'portfolio', 'full'] },
-    { key: 'settings', label: 'Ustawienia Systemu', allowedValues: ['true', 'false'] },
-    { key: 'rates', label: 'Stawki', allowedValues: ['true', 'false'] },
+    { key: 'settings', label: 'Ustawienia', allowedValues: ['true', 'false'] },
+    // Legacy (Phase 1 cleanup target — UI dropped from sidebar in Phase 0)
+    { key: 'dashboard', label: 'Dashboard (legacy)', allowedValues: ['true', 'false'] },
+    { key: 'projects', label: 'Projekty (legacy)', allowedValues: ['false', 'portfolio', 'full'] },
+    { key: 'candidates', label: 'Baza Kandydatów (legacy ATS)', allowedValues: ['false', 'portfolio', 'full', 'readonly'] },
+    { key: 'service_hub', label: 'Service Hub (legacy)', allowedValues: ['true', 'false'] },
+    { key: 'messages', label: 'Wiadomości (legacy)', allowedValues: ['true', 'false'] },
+    { key: 'documents', label: 'Dokumenty (legacy)', allowedValues: ['true', 'false'] },
+    { key: 'loyalty', label: 'Program Lojalnościowy (→ League)', allowedValues: ['true', 'false'] },
+    { key: 'development', label: 'Strefa Rozwoju (legacy)', allowedValues: ['true', 'false'] },
+    { key: 'import', label: 'Import Danych (legacy ATS)', allowedValues: ['true', 'false'] },
+    { key: 'referrals', label: 'Polecenia (legacy ATS)', allowedValues: ['true', 'false'] },
+    { key: 'rates', label: 'Stawki (legacy ATS)', allowedValues: ['true', 'false'] },
 ]
 
 const ROLES: { key: PermissionRole; label: string; color: string }[] = [

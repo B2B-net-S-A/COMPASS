@@ -6,21 +6,16 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n/context'
 import {
     LayoutDashboard,
-    Briefcase,
-    FileText,
-    Users,
-    Settings,
-    Building2,
-    BookOpen,
-    Box,
-    Trophy,
-    Rocket,
-    MessageCircle,
-    TrendingUp,
-    KanbanSquare,
-    Shield,
     GraduationCap,
+    Trophy,
+    Lightbulb,
+    Newspaper,
+    LifeBuoy,
+    User,
+    Settings,
+    Cog,
     ShieldCheck,
+    type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
 import { useTheme } from '@/lib/contexts/ThemeContext'
@@ -39,22 +34,16 @@ interface SidebarProps {
     forMobile?: boolean
 }
 
-// Map each sidebar link to its permission feature key
-const LINK_PERMISSION_MAP: Record<string, PermissionFeature> = {
-    '/home': 'dashboard',
-    '/centrala': 'service_hub',
-    '/admin/centrala': 'service_hub',
-    '/messages': 'messages',
-    '/projects': 'projects',
-    '/admin/projects': 'projects',
-    '/loyalty': 'loyalty',
-    '/documents': 'documents',
-    '/development': 'development',
-    '/admin/candidates': 'candidates',
-    '/admin/referrals': 'referrals',
-    '/admin/import': 'import',
-    '/admin/settings': 'settings',
-    '/admin/rates': 'rates',
+interface NavLink {
+    name: string
+    href: string
+    icon: LucideIcon
+    feature: PermissionFeature | null
+}
+
+interface NavGroup {
+    heading: string
+    links: NavLink[]
 }
 
 export function Sidebar({ role, user, permissions, forMobile = false }: SidebarProps) {
@@ -62,49 +51,58 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
     const { t } = useTranslation()
     const { brandName } = useTheme()
 
-    const consultantLinks = [
-        { name: 'Mój Panel', href: '/home', icon: LayoutDashboard },
-        { name: 'Service Hub', href: '/centrala', icon: Box },
-        { name: 'Wiadomości', href: '/messages', icon: MessageCircle },
-        { name: t('projects'), href: '/projects', icon: Briefcase },
-        { name: 'Program lojalnościowy', href: '/loyalty', icon: Trophy },
-        { name: t('documents'), href: '/documents', icon: FileText },
-        { name: 'Strefa Rozwoju', href: '/development', icon: BookOpen },
-        { name: 'Akademia', href: '/akademia', icon: GraduationCap },
-        { name: 'Ustawienia', href: '/more', icon: Settings },
+    const isAdmin = role === 'administrator' || role === 'admin' || role === 'centrala'
+
+    // Consultant + admin both see the 5 platform panels.
+    const platformGroups: NavGroup[] = [
+        {
+            heading: t('group_main'),
+            links: [
+                { name: t('nav_home'), href: '/home', icon: LayoutDashboard, feature: 'home' },
+            ],
+        },
+        {
+            heading: t('group_growth'),
+            links: [
+                { name: t('nav_learning'), href: '/learning', icon: GraduationCap, feature: 'learning' },
+                { name: t('nav_league'), href: '/league', icon: Trophy, feature: 'league' },
+                { name: t('nav_incubator'), href: '/incubator', icon: Lightbulb, feature: 'incubator' },
+            ],
+        },
+        {
+            heading: t('group_community'),
+            links: [
+                { name: t('nav_news'), href: '/news', icon: Newspaper, feature: 'news' },
+                { name: t('nav_support'), href: '/support', icon: LifeBuoy, feature: 'support' },
+            ],
+        },
+        {
+            heading: t('group_account'),
+            links: [
+                { name: t('nav_profile'), href: '/profile', icon: User, feature: null },
+                { name: t('nav_settings'), href: '/settings', icon: Settings, feature: 'settings' },
+            ],
+        },
     ]
 
-    const adminLinks = [
-        { name: 'Mój Panel', href: '/home', icon: LayoutDashboard },
-        { name: 'Service Hub', href: '/admin/centrala', icon: Building2 },
-        { name: 'Wiadomości', href: '/messages', icon: MessageCircle },
-        { name: 'Konsultanci', href: '/admin/candidates', icon: Users },
-        { name: t('projects'), href: '/admin/projects', icon: Briefcase },
-        { name: t('referrals'), href: '/admin/referrals', icon: Users },
-        { name: 'Import', href: '/admin/import', icon: FileText },
-        { name: 'Stawki', href: '/admin/rates', icon: TrendingUp },
-        { name: 'Zadania', href: '/admin/tasks', icon: KanbanSquare },
-        { name: 'Program lojalnościowy', href: '/loyalty', icon: Trophy },
-        { name: 'Strefa Rozwoju', href: '/development', icon: Rocket },
-        { name: 'Akademia', href: '/akademia', icon: GraduationCap },
-        { name: 'Akademia — moderacja', href: '/admin/akademia', icon: ShieldCheck },
-        { name: 'Compliance', href: '/admin/compliance', icon: Shield },
-        { name: t('settings'), href: '/admin/settings', icon: Settings },
-    ]
+    // Admin extras (Phase 0 minimal — points to existing admin routes; expanded in Phase 1).
+    const adminGroup: NavGroup = {
+        heading: t('group_admin'),
+        links: [
+            { name: t('nav_admin_learning'), href: '/admin/akademia', icon: ShieldCheck, feature: null },
+            { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
+        ],
+    }
 
-    const baseLinks = (role === 'admin' || role === 'centrala' || role === 'administrator') ? adminLinks : consultantLinks
+    const groups: NavGroup[] = isAdmin ? [...platformGroups, adminGroup] : platformGroups
 
-    // Filter links based on permissions
-    // Administrators always see everything, no filtering applied
-    const isAdmin = role === 'administrator' || role === 'admin'
-    const links = isAdmin ? baseLinks : baseLinks.filter(link => {
-        const featureKey = LINK_PERMISSION_MAP[link.href]
-        if (!featureKey) return true // No mapping = always show
-        if (!permissions) return true // No permissions loaded = show all (fallback)
-        const value = permissions[featureKey]
-        // Show link unless permission is explicitly 'false'
-        return value !== 'false'
-    })
+    // Apply per-feature permission filter (admins always pass).
+    const filterByPermission = (link: NavLink): boolean => {
+        if (isAdmin) return true
+        if (!link.feature) return true
+        if (!permissions) return true
+        return permissions[link.feature] !== 'false'
+    }
 
     return (
         <div className={cn(
@@ -114,28 +112,39 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
             <div className="flex h-20 items-center px-6 border-b border-border gap-3">
                 <Logo size="md" />
             </div>
-            <nav className="flex flex-col gap-1 p-4" data-testid="sidebar-nav">
-                {links.map((link) => {
-                    const Icon = link.icon
-                    const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`)
-                    // Generate testid from href: /home → nav-home, /admin/settings → nav-admin-settings
-                    const testId = `nav-${link.href.replace(/^\//, '').replace(/\//g, '-')}`
+            <nav className="flex flex-col gap-2 p-4" data-testid="sidebar-nav">
+                {groups.map((group) => {
+                    const visibleLinks = group.links.filter(filterByPermission)
+                    if (visibleLinks.length === 0) return null
 
                     return (
-                        <Link
-                            key={link.href}
-                            href={link.href}
-                            data-testid={testId}
-                            className={cn(
-                                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:text-primary",
-                                isActive
-                                    ? "bg-primary/10 text-primary"
-                                    : "text-muted-foreground hover:bg-muted"
-                            )}
-                        >
-                            <Icon className="h-4 w-4" />
-                            {link.name}
-                        </Link>
+                        <div key={group.heading} className="flex flex-col gap-1">
+                            <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                                {group.heading}
+                            </div>
+                            {visibleLinks.map((link) => {
+                                const Icon = link.icon
+                                const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`)
+                                const testId = `nav-${link.href.replace(/^\//, '').replace(/\//g, '-')}`
+
+                                return (
+                                    <Link
+                                        key={link.href}
+                                        href={link.href}
+                                        data-testid={testId}
+                                        className={cn(
+                                            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:text-primary",
+                                            isActive
+                                                ? "bg-primary/10 text-primary"
+                                                : "text-muted-foreground hover:bg-muted"
+                                        )}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        {link.name}
+                                    </Link>
+                                )
+                            })}
+                        </div>
                     )
                 })}
             </nav>
