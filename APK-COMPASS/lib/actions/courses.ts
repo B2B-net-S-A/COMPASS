@@ -83,6 +83,13 @@ export async function createCourse(input: CreateCourseInput): Promise<ActionResu
         // Slug: zsanityzowany tytuł + losowy sufiks (zawsze unikalny — bez kolizji)
         const slug = `${slugifyTitle(input.title)}-${randomSuffix()}`
 
+        // Phase 1.4 (2026-05-04): only admin/trainer can pick course_type='company' or is_official=true.
+        // Consultant requests for 'company' are silently downgraded to 'consultant' (no error — defensive).
+        const callerIsAdminOrTrainer = await isAdminOrCentrala(supabase, user.id)
+        const requestedType = input.course_type ?? 'consultant'
+        const finalType = callerIsAdminOrTrainer && requestedType === 'company' ? 'company' : 'consultant'
+        const finalOfficial = callerIsAdminOrTrainer && finalType === 'company' ? !!input.is_official : false
+
         const { data, error } = await supabase
             .from('courses')
             .insert({
@@ -95,6 +102,8 @@ export async function createCourse(input: CreateCourseInput): Promise<ActionResu
                 level: input.level ?? 'beginner',
                 duration_minutes: input.duration_minutes ?? null,
                 status: 'draft',
+                course_type: finalType,
+                is_official: finalOfficial,
             })
             .select('id, slug')
             .single()
@@ -212,6 +221,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
 
         if (filters.category) query = query.eq('category', filters.category)
         if (filters.level) query = query.eq('level', filters.level)
+        if (filters.course_type) query = query.eq('course_type', filters.course_type)
         if (filters.tag) query = query.contains('tags', [filters.tag])
         if (filters.search && filters.search.trim().length > 0) {
             const s = `%${filters.search.trim()}%`

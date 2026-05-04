@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { createCourse, updateCourse } from '@/lib/actions/courses'
-import type { CourseLevel, Course } from '@/lib/types/learning'
+import type { CourseLevel, Course, CourseType } from '@/lib/types/learning'
 
 interface CourseAuthorFormProps {
     /** Initial data dla edycji; brak = nowy kurs */
@@ -17,6 +17,14 @@ interface CourseAuthorFormProps {
     onSuccess?: (courseId: string, slug: string) => void
     /** Tekst CTA przycisku — domyślnie "Zapisz" lub "Stwórz kurs" */
     submitLabel?: string
+    /**
+     * Phase 1.4: gdy `true`, pokazuje przełącznik typu kursu (consultant/company)
+     * + checkbox "is_official". Tylko dla admin/trainer — server-side gate w createCourse
+     * silently downgrades to 'consultant' jeśli caller nie ma uprawnień.
+     */
+    allowCompanyType?: boolean
+    /** Phase 1.4: domyślny typ przy tworzeniu (np. z ?type=company w URL) */
+    defaultCourseType?: CourseType
 }
 
 const CATEGORIES = [
@@ -39,7 +47,7 @@ const LEVELS: { value: CourseLevel; label: string }[] = [
     { value: 'advanced', label: 'Zaawansowany' },
 ]
 
-export function CourseAuthorForm({ initial, onSuccess, submitLabel }: CourseAuthorFormProps) {
+export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompanyType = false, defaultCourseType = 'consultant' }: CourseAuthorFormProps) {
     const [title, setTitle] = useState(initial?.title ?? '')
     const [description, setDescription] = useState(initial?.description ?? '')
     const [category, setCategory] = useState(initial?.category ?? '')
@@ -47,6 +55,8 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel }: CourseAuth
     const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
     const [tagInput, setTagInput] = useState('')
     const [duration, setDuration] = useState<string>(initial?.duration_minutes?.toString() ?? '')
+    const [courseType, setCourseType] = useState<CourseType>(initial?.course_type ?? defaultCourseType)
+    const [isOfficial, setIsOfficial] = useState<boolean>(initial?.is_official ?? false)
     const [error, setError] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
 
@@ -90,6 +100,8 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel }: CourseAuth
                     tags,
                     level,
                     duration_minutes: durationMin,
+                    course_type: allowCompanyType ? courseType : 'consultant',
+                    is_official: allowCompanyType && courseType === 'company' ? isOfficial : false,
                 })
                 if (!res.success) {
                     setError(res.error)
@@ -108,6 +120,55 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel }: CourseAuth
 
             <Card className="bg-white/5 border-white/10">
                 <CardContent className="p-5 space-y-4">
+                    {allowCompanyType && (
+                        <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-3">
+                            <p className="text-xs font-semibold text-amber-400">Tryb autora (admin / trainer)</p>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setCourseType('consultant')}
+                                    disabled={isPending}
+                                    className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${
+                                        courseType === 'consultant'
+                                            ? 'bg-primary text-primary-foreground border-primary'
+                                            : 'bg-white/5 text-muted-foreground border-white/10 hover:border-primary/40'
+                                    }`}
+                                >
+                                    Kurs konsultancki
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCourseType('company')}
+                                    disabled={isPending}
+                                    className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${
+                                        courseType === 'company'
+                                            ? 'bg-primary text-primary-foreground border-primary'
+                                            : 'bg-white/5 text-muted-foreground border-white/10 hover:border-primary/40'
+                                    }`}
+                                >
+                                    Kurs firmowy (Dynaminds)
+                                </button>
+                            </div>
+                            {courseType === 'company' && (
+                                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={isOfficial}
+                                        onChange={(e) => setIsOfficial(e.target.checked)}
+                                        disabled={isPending}
+                                        className="accent-amber-500"
+                                    />
+                                    Oznacz jako Official (np. GASQ-certified, SAFe Agile, Pega)
+                                </label>
+                            )}
+                            <p className="text-[10px] text-muted-foreground">
+                                {courseType === 'company'
+                                    ? 'Kurs firmowy: brak bonusu autora, student dostaje +30 pkt zamiast +20.'
+                                    : 'Kurs konsultancki: autor dostaje +50 pkt × rating multiplier za każdego studenta, student dostaje +20 pkt.'}
+                            </p>
+                        </div>
+                    )}
+
                     <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
                             Tytuł szkolenia <span className="text-red-400">*</span>

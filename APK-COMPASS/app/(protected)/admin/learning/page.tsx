@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ShieldCheck, Clock, BookOpen } from 'lucide-react'
+import { ShieldCheck, Clock, BookOpen, Plus, Building2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -24,12 +24,33 @@ export default async function AdminAkademiaPage() {
                         <h1 className="text-3xl font-bold tracking-tight">Akademia — moderacja</h1>
                     </div>
                     <p className="text-muted-foreground mt-1">
-                        Kolejka szkoleń oczekujących zatwierdzenia. Pierwsza publikacja autora = +100 pkt bonusu.
+                        Kolejka kursów konsultanckich oczekujących zatwierdzenia + tworzenie kursów firmowych Dynaminds.
                     </p>
                 </div>
-                <Badge variant="outline" className="text-base py-1.5 px-3">
-                    {items.length} oczekujących
-                </Badge>
+                <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-base py-1.5 px-3">
+                        {items.length} oczekujących
+                    </Badge>
+                    <Link href="/learning/tworze/nowy?type=company">
+                        <Button size="sm" className="gap-2">
+                            <Plus className="w-4 h-4" /> Stwórz kurs firmowy
+                        </Button>
+                    </Link>
+                </div>
+            </div>
+
+            {/* Quick links to filtered catalog (Phase 1.4) */}
+            <div className="flex flex-wrap gap-2">
+                <Link href="/learning?type=company">
+                    <Button variant="outline" size="sm" className="gap-2">
+                        <Building2 className="w-4 h-4" /> Wszystkie firmowe
+                    </Button>
+                </Link>
+                <Link href="/learning?type=consultant">
+                    <Button variant="outline" size="sm" className="gap-2">
+                        <BookOpen className="w-4 h-4" /> Wszystkie konsultanckie
+                    </Button>
+                </Link>
             </div>
 
             {error && (
@@ -43,7 +64,7 @@ export default async function AdminAkademiaPage() {
                     <CardContent className="p-12 text-center space-y-3">
                         <ShieldCheck className="w-16 h-16 text-muted-foreground mx-auto" />
                         <h2 className="text-xl font-bold">Brak szkoleń do moderacji</h2>
-                        <p className="text-muted-foreground">Kolejka jest pusta. Wróć później.</p>
+                        <p className="text-muted-foreground">Kolejka jest pusta. Wróć później albo stwórz kurs firmowy.</p>
                     </CardContent>
                 </Card>
             )}
@@ -55,7 +76,7 @@ export default async function AdminAkademiaPage() {
                             <CardContent className="p-5">
                                 <div className="flex items-start justify-between gap-4 flex-wrap">
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
+                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                                             <Badge variant="outline" className="border-amber-500/30 text-amber-400 bg-amber-500/10 text-[10px]">
                                                 W moderacji
                                             </Badge>
