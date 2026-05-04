@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         })
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Server error'
-        console.error('[GET /api/akademia/attachment]', error)
+        console.error('[GET /api/learning/attachment]', error)
         return NextResponse.json({ error: msg }, { status: 500 })
     }
 }

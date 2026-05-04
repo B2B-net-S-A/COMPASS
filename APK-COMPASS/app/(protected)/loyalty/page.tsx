@@ -24,7 +24,7 @@ import {
 } from "lucide-react"
 import { MyPointsTab } from '@/components/dashboard/loyalty/MyPointsTab'
 import { AdminLoyaltyOverview } from '@/components/dashboard/loyalty/AdminLoyaltyOverview'
-import { TIER_CONFIG } from '@/lib/loyalty-config'
+import { TIER_CONFIG, DEFAULT_TIER } from '@/lib/league-config'
 
 export default async function LoyaltyPage() {
     const supabase = createClient()
@@ -32,7 +32,7 @@ export default async function LoyaltyPage() {
 
     let role = 'consultant'
     let loyaltyPoints = 0
-    let loyaltyTier = 'bronze'
+    let loyaltyTier: string = DEFAULT_TIER
 
     if (user) {
         const { data: profile } = await supabase
@@ -42,7 +42,7 @@ export default async function LoyaltyPage() {
             .single()
         role = profile?.role || 'consultant'
         loyaltyPoints = profile?.loyalty_points || 0
-        loyaltyTier = profile?.loyalty_tier || 'bronze'
+        loyaltyTier = profile?.loyalty_tier || DEFAULT_TIER
     }
 
     const isAdmin = role === 'admin' || role === 'administrator'

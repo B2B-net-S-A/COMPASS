@@ -118,13 +118,7 @@ export async function uploadCV(formData: FormData) {
 
         if (updateError) throw new Error('Failed to update profile: ' + updateError.message)
 
-        // SC: Sync to Candidates table (just the file URL for now)
-        const { syncProfileToCandidate } = await import('@/lib/actions/matching')
-        await syncProfileToCandidate(user.id, {
-            cv_url: filePath,
-            avatar_url: extractedAvatarUrl ?? undefined
-        })
-
+        // Phase 1.0 (2026-05-04): candidate-table sync removed (legacy ATS).
         revalidatePath('/profile')
         return { success: true }
 
@@ -233,19 +227,7 @@ ${sanitizedText.slice(0, 10000)}`,
 
         if (updateError) throw new Error('Failed to update profile: ' + updateError.message)
 
-        // 7. Sync to Candidates
-        const { syncProfileToCandidate } = await import('@/lib/actions/matching')
-
-        // Merge AI data with manual overrides for the sync
-        const syncData = {
-            full_name: aiData.full_name,
-            skills: aiData.skills,
-            bio: summary,
-            embedding: embedding,
-            experience_years: typeof aiData.experience_years === 'number' ? aiData.experience_years : (manualData?.experience || 0)
-        }
-
-        await syncProfileToCandidate(user.id, syncData)
+        // Phase 1.0 (2026-05-04): candidate-table sync removed (legacy ATS).
 
         revalidatePath('/profile')
         return {

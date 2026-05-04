@@ -39,7 +39,6 @@ const UnifiedDocumentManager = dynamic(() => import("@/components/documents/Unif
 // Import lightweight sections normally
 import { RecruiterSection } from "@/components/centrala/sections/RecruiterSection"
 import { BillingSection } from "@/components/centrala/sections/BillingSection"
-import { ReferralsSection } from "@/components/centrala/sections/ReferralsSection"
 import { NotificationCenterWidget } from "@/components/dashboard/NotificationCenterWidget"
 
 // Configuration mapping real services to Hub Layout
@@ -100,7 +99,6 @@ export function ServiceHubView({ stats, notifications }: ServiceHubViewProps) {
             case 'benefits': return <BenefitsSection profileId={profileId} isAdmin={isAdmin} />
             case 'billing': return <BillingSection profileId={profileId} />
             case 'equipment': return <EquipmentSection profileId={profileId} />
-            case 'referrals': return <ReferralsSection profileId={profileId} />
             case 'documents': return <UnifiedDocumentManager ownerId={profileId} />
             default: return null
         }
@@ -160,7 +158,7 @@ export function ServiceHubView({ stats, notifications }: ServiceHubViewProps) {
                                         key={i}
                                         onClick={() => {
                                             if (card.id === 'training') {
-                                                router.push('/akademia')
+                                                router.push('/learning')
                                             } else {
                                                 setSelectedSection(card.id)
                                             }

@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Upload } from 'lucide-react'
 import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
-import { MyReferralsSection } from '@/components/referrals/MyReferralsSection'
 import { RoleItem } from '@/components/profile/RoleItem'
 
 export function ProfileFeedLayout(props: any) {
@@ -339,17 +338,6 @@ export function ProfileFeedLayout(props: any) {
                     </Card>
                 )}
 
-                {/* Referrals Card */}
-                <Card className="bg-gradient-to-br from-card/50 to-muted/50 border-slate-600/30">
-                    <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                            👥 Rekomendacje
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <MyReferralsSection />
-                    </CardContent>
-                </Card>
             </div>
         </div>
     )

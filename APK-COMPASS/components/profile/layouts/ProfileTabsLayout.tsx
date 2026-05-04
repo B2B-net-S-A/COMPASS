@@ -7,12 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Upload } from 'lucide-react'
 import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
-import { MyReferralsSection } from '@/components/referrals/MyReferralsSection'
 import { RoleItem } from '@/components/profile/RoleItem'
 import { TechStackSection, TechItem } from '@/components/profile/sections/TechStackSection'
 import { CertificationsSection, Certification } from '@/components/profile/sections/CertificationsSection'
 import { WorkPreferencesSection, WorkPreferences } from '@/components/profile/sections/WorkPreferencesSection'
-import { updateProfileFull } from '@/lib/actions/matching'
+import { updateProfileFull } from '@/lib/actions/profile'
 
 interface ProfileTabsLayoutProps {
     // All same props as Grid... (abbreviated for brevity)
@@ -358,12 +357,6 @@ export function ProfileTabsLayout(props: any) {
                         </Card>
                     )}
 
-                    <Card className="bg-slate-800/50 border-slate-600/30">
-                        <CardHeader><CardTitle>👥 Rekomendacje</CardTitle></CardHeader>
-                        <CardContent>
-                            <MyReferralsSection />
-                        </CardContent>
-                    </Card>
                 </div>
             )}
 

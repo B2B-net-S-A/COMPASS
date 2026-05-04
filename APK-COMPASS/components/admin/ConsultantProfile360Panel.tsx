@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { X, User, Mail, Phone, Calendar, Code2, Award, Briefcase, MapPin, Clock, DollarSign } from "lucide-react"
-import { getConsultantProfile360 } from '@/lib/actions/matching'
+import { getConsultantProfile360 } from '@/lib/actions/profile'
 import { addAdminNote } from '@/lib/actions/admin-notes'
 import { AdminNotesSection, type AdminNote } from '@/components/profile/sections/AdminNotesSection'
 import { Shimmer } from '@/components/ui/shimmer-skeleton'

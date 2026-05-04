@@ -196,7 +196,7 @@ describe('getTierProgress', () => {
     it('returns 100% progress for the top tier (no next tier)', async () => {
         setupClient({
             user: { id: 'u1', email: 'x@x.com' },
-            tables: { profiles: [{ id: 'u1', loyalty_points: 10000, loyalty_tier: 'platinum' }] },
+            tables: { profiles: [{ id: 'u1', loyalty_points: 30000, loyalty_tier: 'legend' }] },
         })
         const { getTierProgress } = await import('../loyalty')
         const result = await getTierProgress() as { success: true; progressPercent: number; pointsToNextTier: number }
@@ -204,15 +204,15 @@ describe('getTierProgress', () => {
         expect(result.pointsToNextTier).toBe(0)
     })
 
-    it('computes points-to-next correctly within bronze tier', async () => {
+    it('computes points-to-next correctly within scout tier', async () => {
         setupClient({
             user: { id: 'u1', email: 'x@x.com' },
-            tables: { profiles: [{ id: 'u1', loyalty_points: 200, loyalty_tier: 'bronze' }] },
+            tables: { profiles: [{ id: 'u1', loyalty_points: 100, loyalty_tier: 'scout' }] },
         })
         const { getTierProgress } = await import('../loyalty')
         const result = await getTierProgress() as { success: true; pointsToNextTier: number; nextTier: string }
         expect(result.pointsToNextTier).toBeGreaterThan(0)
-        expect(['silver', 'gold', 'platinum']).toContain(result.nextTier)
+        expect(['explorer', 'pathfinder', 'navigator', 'captain', 'admiral', 'legend']).toContain(result.nextTier)
     })
 })
 
@@ -234,9 +234,9 @@ describe('getAllConsultantsLoyalty (admin only)', () => {
             tables: {
                 profiles: [
                     { id: 'u-admin', role: 'admin' },
-                    { id: 'c1', role: 'consultant', full_name: 'A', email: 'a@x.com', loyalty_points: 1000, loyalty_tier: 'silver', loyalty_joined_at: '2026' },
-                    { id: 'c2', role: 'consultant', full_name: 'B', email: 'b@x.com', loyalty_points: 100, loyalty_tier: 'bronze', loyalty_joined_at: '2026' },
-                    { id: 'c3', role: 'consultant', full_name: 'C', email: 'c@x.com', loyalty_points: 4000, loyalty_tier: 'gold', loyalty_joined_at: '2026' },
+                    { id: 'c1', role: 'consultant', full_name: 'A', email: 'a@x.com', loyalty_points: 1000, loyalty_tier: 'pathfinder', loyalty_joined_at: '2026' },
+                    { id: 'c2', role: 'consultant', full_name: 'B', email: 'b@x.com', loyalty_points: 100, loyalty_tier: 'scout', loyalty_joined_at: '2026' },
+                    { id: 'c3', role: 'consultant', full_name: 'C', email: 'c@x.com', loyalty_points: 4000, loyalty_tier: 'navigator', loyalty_joined_at: '2026' },
                 ],
             },
         })
@@ -245,7 +245,9 @@ describe('getAllConsultantsLoyalty (admin only)', () => {
         expect(result.consultants).toHaveLength(3)
         expect(result.stats.totalConsultants).toBe(3)
         expect(result.stats.avgPoints).toBe(Math.round((1000 + 100 + 4000) / 3))
-        expect(result.stats.tierDistribution).toEqual({ bronze: 1, silver: 1, gold: 1, platinum: 0 })
+        expect(result.stats.tierDistribution).toEqual({
+            scout: 1, explorer: 0, pathfinder: 1, navigator: 1, captain: 0, admiral: 0, legend: 0,
+        })
         expect(result.stats.topPerformer?.id).toBe('c3')
     })
 })

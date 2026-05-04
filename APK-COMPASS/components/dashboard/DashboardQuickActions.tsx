@@ -1,8 +1,6 @@
 'use client'
 
-import { useState } from 'react'
 import { QuickActionsGrid } from './QuickActionsGrid'
-import { ReferralWizard } from '@/components/referrals/ReferralWizard'
 import { QuickAction } from '@/lib/types'
 
 interface DashboardQuickActionsProps {
@@ -10,27 +8,10 @@ interface DashboardQuickActionsProps {
     locale: 'pl' | 'en'
 }
 
+// Phase 1.0 (2026-05-04): removed ReferralWizard integration (legacy ATS feature).
+// Quick actions now route via QuickActionsGrid only — referral flow deleted.
 export function DashboardQuickActions({ actions, locale }: DashboardQuickActionsProps) {
-    const [isReferralOpen, setIsReferralOpen] = useState(false)
-
-    const handleActionClick = (id: string) => {
-        if (id === 'recommend_friend') {
-            setIsReferralOpen(true)
-        }
-    }
-
     return (
-        <>
-            <QuickActionsGrid
-                actions={actions}
-                locale={locale}
-                onActionClick={handleActionClick}
-            />
-
-            <ReferralWizard
-                isOpen={isReferralOpen}
-                onOpenChange={setIsReferralOpen}
-            />
-        </>
+        <QuickActionsGrid actions={actions} locale={locale} />
     )
 }

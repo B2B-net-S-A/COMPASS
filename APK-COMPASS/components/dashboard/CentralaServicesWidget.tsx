@@ -24,7 +24,6 @@ import { RecruiterSection } from "@/components/centrala/sections/RecruiterSectio
 import { BenefitsSection } from "@/components/centrala/sections/BenefitsSection"
 import { BillingSection } from "@/components/centrala/sections/BillingSection"
 import { EquipmentSection } from "@/components/centrala/sections/EquipmentSection"
-import { ReferralsSection } from "@/components/centrala/sections/ReferralsSection"
 import { DocumentsSection } from "@/components/centrala/sections/DocumentsSection"
 
 // Configuration
@@ -130,7 +129,6 @@ export function CentralaServicesWidget({ profileId }: CentralaServicesWidgetProp
             case 'benefits': return <BenefitsSection profileId={profileId} initialData={data?.benefits} />
             case 'billing': return <BillingSection profileId={profileId} initialData={data?.invoices} />
             case 'equipment': return <EquipmentSection profileId={profileId} initialData={data?.equipment} />
-            case 'referrals': return <ReferralsSection profileId={profileId} initialData={data?.referrals} />
             case 'documents': return <DocumentsSection />
             default: return null
         }

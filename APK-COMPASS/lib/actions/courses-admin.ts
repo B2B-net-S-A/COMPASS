@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { Course, CourseListItem, ActionResult } from '@/lib/types/akademia'
+import type { Course, CourseListItem, ActionResult } from '@/lib/types/learning'
 
 // ============================================================
 // Helpers
@@ -108,10 +108,10 @@ export async function approveCourse(courseId: string): Promise<ActionResult<{ fi
         const { data: rpcResult } = await supabase.rpc('award_first_publish_bonus', { p_course_id: courseId })
         if (rpcResult === 'awarded') firstPublishBonus = true
 
-        revalidatePath('/admin/akademia')
-        revalidatePath('/akademia')
-        revalidatePath(`/akademia/${course.slug}`)
-        revalidatePath('/akademia/tworze')
+        revalidatePath('/admin/learning')
+        revalidatePath('/learning')
+        revalidatePath(`/learning/${course.slug}`)
+        revalidatePath('/learning/tworze')
         return { success: true, data: { firstPublishBonus } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zatwierdzania kursu'
@@ -166,12 +166,12 @@ export async function rejectCourse(courseId: string, reason: string): Promise<Ac
             p_title_en: 'Course rejected',
             p_body_pl: `${course.title} — ${reason.trim().slice(0, 200)}`,
             p_body_en: `${course.title} — ${reason.trim().slice(0, 200)}`,
-            p_action_url: `/akademia/tworze/${course.id}/edit`,
+            p_action_url: `/learning/tworze/${course.id}/edit`,
             p_priority: 'normal',
         })
 
-        revalidatePath('/admin/akademia')
-        revalidatePath('/akademia/tworze')
+        revalidatePath('/admin/learning')
+        revalidatePath('/learning/tworze')
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd odrzucania kursu'
@@ -209,10 +209,10 @@ export async function archiveCourse(courseId: string): Promise<ActionResult<void
             .eq('id', courseId)
         if (error) throw error
 
-        revalidatePath('/akademia')
-        revalidatePath('/akademia/tworze')
-        revalidatePath('/admin/akademia')
-        revalidatePath(`/akademia/${course.slug}`)
+        revalidatePath('/learning')
+        revalidatePath('/learning/tworze')
+        revalidatePath('/admin/learning')
+        revalidatePath(`/learning/${course.slug}`)
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd archiwizacji'

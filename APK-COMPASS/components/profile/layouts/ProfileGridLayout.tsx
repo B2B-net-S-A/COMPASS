@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Upload } from 'lucide-react'
 import { FavoriteProjectsSection } from '@/components/shared/FavoriteProjectsSection'
-import { MyReferralsSection } from '@/components/referrals/MyReferralsSection'
 import { RoleItem } from '@/components/profile/RoleItem'
 
 interface GridLayoutProps {
@@ -577,9 +576,6 @@ export function ProfileGridLayout(props: GridLayoutProps) {
                 {favorites.length > 0 && (
                     <FavoriteProjectsSection favorites={favorites} />
                 )}
-
-                {/* My Referrals */}
-                <MyReferralsSection />
 
                 {/* Save Button */}
                 <div className="flex justify-end">

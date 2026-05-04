@@ -31,7 +31,6 @@ import { RecruiterSection } from "./sections/RecruiterSection"
 import { BenefitsSection } from "./sections/BenefitsSection"
 import { BillingSection } from "./sections/BillingSection"
 import { EquipmentSection } from "./sections/EquipmentSection"
-import { ReferralsSection } from "./sections/ReferralsSection"
 import { DocumentsSection } from "./sections/DocumentsSection"
 import { CompassAssistWidget } from "./CompassAssistWidget"
 
@@ -127,7 +126,6 @@ export function CentralaDashboard({ profileId }: CentralaDashboardProps) {
             case 'benefits': return <BenefitsSection profileId={profileId} initialData={data?.benefits} />
             case 'billing': return <BillingSection profileId={profileId} initialData={data?.invoices} />
             case 'equipment': return <EquipmentSection profileId={profileId} initialData={data?.equipment} />
-            case 'referrals': return <ReferralsSection profileId={profileId} initialData={data?.referrals} />
             case 'documents': return <DocumentsSection />
             default: return null
         }

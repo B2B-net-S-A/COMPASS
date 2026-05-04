@@ -43,7 +43,7 @@ export function ConsultantProfileView() {
     useEffect(() => {
         const loadProfile = async () => {
             try {
-                const { getMyProfile } = await import('@/lib/actions/matching')
+                const { getMyProfile } = await import('@/lib/actions/profile')
                 const profile = await getMyProfile()
                 if (profile) {
                     if (profile.bio) setBio(profile.bio)
@@ -143,7 +143,7 @@ export function ConsultantProfileView() {
 
         setLoading(true)
         try {
-            const { updateProfileFull } = await import('@/lib/actions/matching')
+            const { updateProfileFull } = await import('@/lib/actions/profile')
             const result = await updateProfileFull({
                 bio,
                 experience_years: experience,
