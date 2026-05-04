@@ -44,6 +44,10 @@ const nextConfig = {
             { source: '/akademia/:path*', destination: '/learning/:path*', permanent: false },
             { source: '/admin/akademia', destination: '/admin/learning', permanent: false },
             { source: '/admin/akademia/:path*', destination: '/admin/learning/:path*', permanent: false },
+            // Phase 2 (2026-05-04): /loyalty → /league rename
+            { source: '/loyalty', destination: '/league', permanent: false },
+            { source: '/loyalty/:path*', destination: '/league/:path*', permanent: false },
+            { source: '/admin/settings/loyalty', destination: '/admin/settings', permanent: false },
         ]
     },
     async headers() {

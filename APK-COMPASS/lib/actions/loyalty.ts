@@ -750,7 +750,7 @@ export async function confirmPendingTransaction(transactionId: string): Promise<
 
         if (error) return { success: false, error: error.message }
 
-        revalidatePath('/loyalty')
+        revalidatePath('/league')
         revalidatePath('/league')
         return { success: true }
     } catch (error: unknown) {
@@ -808,8 +808,147 @@ export async function reverseTransaction(transactionId: string, reason: string):
 
         if (updateError) return { success: false, error: updateError.message }
 
-        revalidatePath('/loyalty')
         revalidatePath('/league')
+        revalidatePath('/league')
+        return { success: true }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Nieznany błąd'
+        return { success: false, error: msg }
+    }
+}
+
+// ─── Phase 2 (2026-05-04): Dynaminds League — leaderboard + history + opt-out ─────
+
+export interface LeaderboardEntryRow {
+    rank: number
+    user_id: string
+    full_name: string | null
+    avatar_url: string | null
+    loyalty_points: number
+    loyalty_tier: string
+    is_self: boolean
+    is_anonymous: boolean
+}
+
+/**
+ * Globalny ranking top-N. Profile z `leaderboard_opt_out=true` są zwracane jako
+ * anonimowe (full_name='Anonim', avatar_url=null) — zachowują rank, ukrywają tożsamość.
+ * Phase 2 MVP: jedyne wymiary to "all-time"; tygodniowe/miesięczne w Phase 6+ jeśli potrzeba.
+ */
+export async function getLeaderboard(limit = 50): Promise<{ success: true; data: LeaderboardEntryRow[] } | { success: false; error: string }> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, loyalty_points, loyalty_tier, leaderboard_opt_out')
+            .order('loyalty_points', { ascending: false })
+            .limit(Math.min(200, Math.max(1, limit)))
+
+        if (error) throw error
+
+        const rows: LeaderboardEntryRow[] = (data ?? []).map((p, i) => {
+            const optOut = (p as { leaderboard_opt_out?: boolean }).leaderboard_opt_out ?? false
+            const isSelf = p.id === user.id
+            const isAnonymous = optOut && !isSelf
+            return {
+                rank: i + 1,
+                user_id: p.id,
+                full_name: isAnonymous ? null : p.full_name,
+                avatar_url: isAnonymous ? null : p.avatar_url,
+                loyalty_points: p.loyalty_points || 0,
+                loyalty_tier: p.loyalty_tier || DEFAULT_TIER,
+                is_self: isSelf,
+                is_anonymous: isAnonymous,
+            }
+        })
+
+        return { success: true, data: rows }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Nieznany błąd'
+        console.error('[getLeaderboard]', error)
+        return { success: false, error: msg }
+    }
+}
+
+export type LoyaltyTxStatus = 'pending' | 'confirmed' | 'reversed'
+
+export interface LoyaltyHistoryEntry {
+    id: string
+    points: number
+    description: string
+    sourceType: string
+    status: LoyaltyTxStatus
+    createdAt: string
+}
+
+/**
+ * Phase 2: paginated transaction history for /league/history with optional status filter.
+ * Replaces simpler `getLoyaltyHistory` (kept for backward compat).
+ */
+export async function getLoyaltyHistoryV2(
+    options: { status?: LoyaltyTxStatus; offset?: number; limit?: number } = {},
+): Promise<{ success: true; data: { items: LoyaltyHistoryEntry[]; total: number } } | { success: false; error: string }> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const offset = Math.max(0, options.offset ?? 0)
+        const limit = Math.min(100, Math.max(1, options.limit ?? 25))
+
+        let query = supabase
+            .from('loyalty_transactions')
+            .select('id, points, description, source_type, status, created_at', { count: 'exact' })
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+
+        if (options.status) {
+            query = query.eq('status', options.status)
+        }
+
+        query = query.range(offset, offset + limit - 1)
+
+        const { data, error, count } = await query
+        if (error) throw error
+
+        const items: LoyaltyHistoryEntry[] = (data ?? []).map((t: { id: string; points: number; description: string; source_type: string; status: LoyaltyTxStatus; created_at: string }) => ({
+            id: t.id,
+            points: t.points,
+            description: t.description,
+            sourceType: t.source_type,
+            status: t.status ?? 'confirmed',
+            createdAt: t.created_at,
+        }))
+
+        return { success: true, data: { items, total: count ?? items.length } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Nieznany błąd'
+        console.error('[getLoyaltyHistoryV2]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Toggle leaderboard visibility for current user.
+ */
+export async function setLeaderboardOptOut(optOut: boolean): Promise<{ success: boolean; error?: string }> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { error } = await supabase
+            .from('profiles')
+            .update({ leaderboard_opt_out: optOut })
+            .eq('id', user.id)
+
+        if (error) return { success: false, error: error.message }
+
+        revalidatePath('/league/leaderboard')
+        revalidatePath('/settings')
         return { success: true }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Nieznany błąd'

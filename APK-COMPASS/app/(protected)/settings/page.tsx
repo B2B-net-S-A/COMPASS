@@ -1,8 +1,22 @@
-'use client'
-
+import { createClient } from '@/lib/supabase/server'
 import { AIAppearanceSettings } from '@/components/settings/AIAppearanceSettings'
+import { LeaderboardOptOut } from './LeaderboardOptOut'
 
-export default function UserSettingsPage() {
+export const dynamic = 'force-dynamic'
+
+export default async function UserSettingsPage() {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    let optOut = false
+    if (user) {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('leaderboard_opt_out')
+            .eq('id', user.id)
+            .single()
+        optOut = (profile as { leaderboard_opt_out?: boolean } | null)?.leaderboard_opt_out ?? false
+    }
+
     return (
         <div className="space-y-6 max-w-2xl p-6">
             <div>
@@ -10,6 +24,7 @@ export default function UserSettingsPage() {
                 <p className="text-muted-foreground mt-1">Personalizuj wygląd i zachowanie aplikacji.</p>
             </div>
             <AIAppearanceSettings />
+            <LeaderboardOptOut initialOptOut={optOut} />
         </div>
     )
 }
