@@ -17,14 +17,17 @@
 ## Deploy
 
 - **Hosting:** Coolify v4 on Hetzner CAX21 ARM (compass-prod, 178.104.220.48).
-- **Coolify panel:** `http://178.104.220.48:8000` (port nie public — dostęp tylko przez SSH tunnel: `ssh -L 8000:127.0.0.1:8000 root@178.104.220.48`).
-- **Resource:** Docker Compose Application, Private Repository (with Deploy Key), branch `main`, compose `docker-compose.yml`.
+- **Coolify panel:** `https://coolify-compass.dynaminds.pl` (HTTPS+LE, public via Traefik route — od 2026-05-04).
+- **App UUID (Coolify):** `w136dv828ofipvjfnxrqi643`.
+- **Resource:** Docker Compose Application, Private Repository (with Deploy Key), branch `main`, compose `docker-compose.yml` (z `build:` block).
 - **Deploy key:** w GitHub repo Settings → Deploy keys jako "Coolify on compass-prod" (read-only).
-- **Auto-deploy:** **NIE** (port 8000 nie public → webhook GitHub.com nie dotrze). Po push do main: ręczny "Deploy" w Coolify panel. TODO: dodać `coolify.dynaminds.pl` sub-domenę (Traefik route) → webhook auto-trigger.
-- **Trigger:** push `main` → `.github/workflows/deploy-hetzner.yml` (build-and-push do GHCR jako redundant backup + smoke-test).
-- **Concurrency:** `group: deploy-hetzner, cancel-in-progress: false`.
-- **Migracja 2026-05-01:** z Caddy + manual SSH deploy → Coolify-managed (commit `4851e63`). Caddy `systemctl disable caddy`. Stary app dir: `/home/deploy/app.pre-coolify-2026-05-01` (zachowany do 2026-05-15).
-- **Coolify admin password:** zapisz w password manager (mac `/tmp/coolify-admin-password.txt` po setupie sesji).
+- **Auto-deploy:** ✅ **TAK** — `git push origin main` → `.github/workflows/deploy.yml` (unified template) → Coolify webhook → build + restart → smoke test.
+- **Trigger:** push `main` → `.github/workflows/deploy.yml` (PR #3 merged 2026-05-04).
+- **Concurrency:** `group: deploy-${{ github.ref }}, cancel-in-progress: false`.
+- **Migracja 2026-05-01 → 04:** z Caddy + manual SSH → Coolify-managed → unified Coolify webhook (commits `4851e63`, `e9c3f55`, `1dee42a`, PR #3).
+- **Coolify admin password:** w password manager (był w `/tmp/coolify-admin-password.txt` na mac).
+- **Rollback:** Coolify panel `https://coolify-compass.dynaminds.pl` → Resources → compass → Deployments → poprzedni → Redeploy.
+- **Standardy + procedury:** patrz `~/.claude/rules/deployment.md` + `~/.claude/rules/deployment-runbook.md`.
 
 ## Healthcheck endpoint
 
@@ -60,7 +63,7 @@
 - **Lint:** `next lint` (eslint-config-next 14.2.35).
 - **Typecheck:** `tsc --noEmit` (TS 5, w `APK-COMPASS/tsconfig.json`).
 
-> **Faza 2 (TODO):** dodać gitleaks job i `test:unit` do `build-check.yml`.
+**Faza 2 (DONE 2026-04-29):** gitleaks + ESLint + Vitest + Playwright w `build-check.yml`.
 
 ## Manual ops cheat sheet
 
