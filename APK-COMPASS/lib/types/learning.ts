@@ -6,6 +6,9 @@
 
 export type CourseStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected'
 export type CourseLevel = 'beginner' | 'intermediate' | 'advanced'
+// Phase 1.1 (2026-05-04): course_type ENUM in DB; consultant=peer-authored (admin moderation),
+// company=Dynaminds-authored (admin/trainer creates, no peer-author bonus).
+export type CourseType = 'consultant' | 'company'
 
 export interface Course {
     id: string
@@ -19,6 +22,8 @@ export interface Course {
     level: CourseLevel
     duration_minutes: number | null
     status: CourseStatus
+    course_type: CourseType
+    is_official: boolean
     rejection_reason: string | null
     reviewed_by: string | null
     reviewed_at: string | null
@@ -76,6 +81,10 @@ export interface CreateCourseInput {
     tags?: string[]
     level?: CourseLevel
     duration_minutes?: number
+    /** Admin/trainer can pick 'company'; consultant defaults to 'consultant' regardless. */
+    course_type?: CourseType
+    /** Admin/trainer can mark a company course as 'official' (badge surface). */
+    is_official?: boolean
 }
 
 export interface UpdateCoursePatch {
@@ -92,6 +101,7 @@ export interface ListCoursesFilters {
     category?: string
     tag?: string
     level?: CourseLevel
+    course_type?: CourseType
     search?: string
     page?: number
     limit?: number
