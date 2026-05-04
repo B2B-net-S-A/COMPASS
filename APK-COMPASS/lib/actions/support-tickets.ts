@@ -1,0 +1,419 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
+import type {
+    CreateTicketInput,
+    SupportActionResult,
+    SupportCategory,
+    SupportTicketWithMeta,
+    SupportTicketDetail,
+    SupportComment,
+    TicketStatus,
+} from '@/lib/types/support'
+
+async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
+    const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
+    return data?.role === 'admin'
+}
+
+async function notifyUsers(
+    supabase: ReturnType<typeof createClient>,
+    userIds: string[],
+    type: 'support_ticket_assigned' | 'support_ticket_replied' | 'support_ticket_resolved',
+    titlePl: string,
+    bodyPl: string,
+): Promise<void> {
+    if (userIds.length === 0) return
+    const rows = userIds.map((uid) => ({
+        user_id: uid,
+        type,
+        title_pl: titlePl,
+        title_en: titlePl,
+        body_pl: bodyPl,
+        body_en: bodyPl,
+        priority: 'normal',
+    }))
+    try {
+        await supabase.from('notifications').insert(rows)
+    } catch (e) {
+        console.warn('[notify] Failed to insert notifications:', e)
+    }
+}
+
+export async function listSupportCategories(): Promise<SupportActionResult<SupportCategory[]>> {
+    try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+            .from('support_categories')
+            .select('*')
+            .order('sort_order', { ascending: true })
+        if (error) throw error
+        return { success: true, data: (data ?? []) as SupportCategory[] }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd pobierania kategorii'
+        return { success: false, error: msg }
+    }
+}
+
+export async function createTicket(input: CreateTicketInput): Promise<SupportActionResult<{ ticketId: string }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        if (!input.subject || input.subject.trim().length < 3) {
+            return { success: false, error: 'Tytuł musi mieć co najmniej 3 znaki' }
+        }
+        if (!input.body_md || input.body_md.trim().length < 10) {
+            return { success: false, error: 'Opis musi mieć co najmniej 10 znaków' }
+        }
+
+        const { data, error } = await supabase
+            .from('support_tickets')
+            .insert({
+                user_id: user.id,
+                category_id: input.category_id,
+                subject: input.subject.trim(),
+                body_md: input.body_md.trim(),
+                priority: input.priority ?? 'normal',
+                status: 'open',
+            })
+            .select('id')
+            .single()
+
+        if (error) throw error
+
+        // Notify all admins about new ticket (round-robin assignment is Phase 3.x)
+        const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+        const adminIds = (admins ?? []).map((p: { id: string }) => p.id)
+        await notifyUsers(supabase, adminIds, 'support_ticket_assigned', 'Nowe zgłoszenie w Support', input.subject.trim())
+
+        revalidatePath('/support/tickets')
+        revalidatePath('/admin/support')
+        return { success: true, data: { ticketId: data.id } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd tworzenia ticketu'
+        console.error('[createTicket]', error)
+        return { success: false, error: msg }
+    }
+}
+
+interface ListTicketsOptions {
+    scope: 'mine' | 'all'
+    status?: TicketStatus
+    limit?: number
+    offset?: number
+}
+
+export async function listTickets(options: ListTicketsOptions): Promise<SupportActionResult<{ items: SupportTicketWithMeta[]; total: number }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        if (options.scope === 'all') {
+            const isAdmin = await isCallerAdmin(supabase, user.id)
+            if (!isAdmin) return { success: false, error: 'Niewystarczające uprawnienia' }
+        }
+
+        const limit = Math.min(100, Math.max(1, options.limit ?? 25))
+        const offset = Math.max(0, options.offset ?? 0)
+
+        let query = supabase
+            .from('support_tickets')
+            .select('*', { count: 'exact' })
+            .order('updated_at', { ascending: false })
+
+        if (options.scope === 'mine') {
+            query = query.eq('user_id', user.id)
+        }
+        if (options.status) {
+            query = query.eq('status', options.status)
+        }
+
+        query = query.range(offset, offset + limit - 1)
+
+        const { data, error, count } = await query
+        if (error) throw error
+
+        const tickets = (data ?? []) as Array<SupportTicketWithMeta & Record<string, unknown>>
+        if (tickets.length === 0) return { success: true, data: { items: [], total: count ?? 0 } }
+
+        const userIds = Array.from(new Set([
+            ...tickets.map((t) => t.user_id),
+            ...tickets.map((t) => t.assignee_id).filter((x): x is string => !!x),
+        ]))
+        const categoryIds = Array.from(new Set(tickets.map((t) => t.category_id)))
+
+        const [{ data: profiles }, { data: categories }, { data: counts }] = await Promise.all([
+            supabase.from('profiles').select('id, full_name').in('id', userIds),
+            supabase.from('support_categories').select('id, slug, name_pl').in('id', categoryIds),
+            supabase
+                .from('support_ticket_comments')
+                .select('ticket_id')
+                .in('ticket_id', tickets.map((t) => t.id)),
+        ])
+
+        const profileMap = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+        const categoryMap = new Map((categories ?? []).map((c: { id: string; slug: string; name_pl: string }) => [c.id, c]))
+        const countMap = new Map<string, number>()
+        for (const c of (counts ?? []) as Array<{ ticket_id: string }>) {
+            countMap.set(c.ticket_id, (countMap.get(c.ticket_id) ?? 0) + 1)
+        }
+
+        const items: SupportTicketWithMeta[] = tickets.map((t) => {
+            const cat = categoryMap.get(t.category_id)
+            return {
+                id: t.id,
+                user_id: t.user_id,
+                assignee_id: t.assignee_id,
+                category_id: t.category_id,
+                subject: t.subject,
+                body_md: t.body_md,
+                status: t.status,
+                priority: t.priority,
+                resolved_at: t.resolved_at,
+                created_at: t.created_at,
+                updated_at: t.updated_at,
+                category_slug: cat?.slug ?? '',
+                category_name_pl: cat?.name_pl ?? '',
+                user_name: profileMap.get(t.user_id) ?? null,
+                assignee_name: t.assignee_id ? (profileMap.get(t.assignee_id) ?? null) : null,
+                comment_count: countMap.get(t.id) ?? 0,
+            }
+        })
+
+        return { success: true, data: { items, total: count ?? items.length } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd pobierania ticketów'
+        console.error('[listTickets]', error)
+        return { success: false, error: msg }
+    }
+}
+
+export async function getTicketDetail(ticketId: string): Promise<SupportActionResult<SupportTicketDetail>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data: ticket, error: ticketErr } = await supabase
+            .from('support_tickets')
+            .select('*')
+            .eq('id', ticketId)
+            .single()
+
+        if (ticketErr || !ticket) return { success: false, error: 'Ticket nie istnieje lub brak dostępu' }
+
+        const isAdmin = await isCallerAdmin(supabase, user.id)
+        const isAssignee = ticket.assignee_id === user.id
+        const isOwner = ticket.user_id === user.id
+
+        const { data: category } = await supabase
+            .from('support_categories')
+            .select('id, slug, name_pl')
+            .eq('id', ticket.category_id)
+            .single()
+
+        const userIds = Array.from(new Set([ticket.user_id, ticket.assignee_id].filter((x): x is string => !!x)))
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', userIds)
+        const profileMap = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+
+        const { data: rawComments } = await supabase
+            .from('support_ticket_comments')
+            .select('*')
+            .eq('ticket_id', ticketId)
+            .order('created_at', { ascending: true })
+
+        const commentAuthorIds = Array.from(new Set(((rawComments ?? []) as Array<{ author_id: string }>).map((c) => c.author_id)))
+        const { data: commentProfiles } = commentAuthorIds.length > 0
+            ? await supabase.from('profiles').select('id, full_name').in('id', commentAuthorIds)
+            : { data: [] }
+        const commentProfileMap = new Map((commentProfiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+
+        const comments: SupportComment[] = ((rawComments ?? []) as Array<{
+            id: string
+            ticket_id: string
+            author_id: string
+            body_md: string
+            is_internal: boolean
+            created_at: string
+        }>).map((c) => ({
+            id: c.id,
+            ticket_id: c.ticket_id,
+            author_id: c.author_id,
+            author_name: commentProfileMap.get(c.author_id) ?? null,
+            body_md: c.body_md,
+            is_internal: c.is_internal,
+            created_at: c.created_at,
+        }))
+
+        return {
+            success: true,
+            data: {
+                id: ticket.id,
+                user_id: ticket.user_id,
+                assignee_id: ticket.assignee_id,
+                category_id: ticket.category_id,
+                subject: ticket.subject,
+                body_md: ticket.body_md,
+                status: ticket.status,
+                priority: ticket.priority,
+                resolved_at: ticket.resolved_at,
+                created_at: ticket.created_at,
+                updated_at: ticket.updated_at,
+                category_slug: category?.slug ?? '',
+                category_name_pl: category?.name_pl ?? '',
+                user_name: profileMap.get(ticket.user_id) ?? null,
+                assignee_name: ticket.assignee_id ? (profileMap.get(ticket.assignee_id) ?? null) : null,
+                comment_count: comments.length,
+                comments,
+                can_reply: isOwner || isAssignee || isAdmin,
+                can_change_status: isAssignee || isAdmin,
+            },
+        }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd pobierania ticketu'
+        console.error('[getTicketDetail]', error)
+        return { success: false, error: msg }
+    }
+}
+
+export async function addComment(ticketId: string, body: string, isInternal = false): Promise<SupportActionResult<{ commentId: string }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        if (!body || body.trim().length < 1) {
+            return { success: false, error: 'Treść komentarza jest wymagana' }
+        }
+
+        const { data: ticket } = await supabase.from('support_tickets').select('user_id, assignee_id, subject').eq('id', ticketId).single()
+        if (!ticket) return { success: false, error: 'Ticket nie istnieje' }
+
+        const { data, error } = await supabase
+            .from('support_ticket_comments')
+            .insert({
+                ticket_id: ticketId,
+                author_id: user.id,
+                body_md: body.trim(),
+                is_internal: isInternal,
+            })
+            .select('id')
+            .single()
+
+        if (error) throw error
+
+        // Bump updated_at on parent ticket
+        await supabase
+            .from('support_tickets')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', ticketId)
+
+        // Notify the other party (only for non-internal comments)
+        if (!isInternal) {
+            const recipientIds: string[] = []
+            if (user.id !== ticket.user_id) recipientIds.push(ticket.user_id)
+            if (ticket.assignee_id && ticket.assignee_id !== user.id) recipientIds.push(ticket.assignee_id)
+            if (recipientIds.length > 0) {
+                await notifyUsers(supabase, recipientIds, 'support_ticket_replied', 'Nowa odpowiedź w Support', ticket.subject)
+            }
+        }
+
+        revalidatePath(`/support/tickets/${ticketId}`)
+        revalidatePath(`/admin/support`)
+        return { success: true, data: { commentId: data.id } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd dodawania komentarza'
+        console.error('[addComment]', error)
+        return { success: false, error: msg }
+    }
+}
+
+export async function changeTicketStatus(ticketId: string, status: TicketStatus): Promise<SupportActionResult<void>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const { data: ticket } = await supabase
+            .from('support_tickets')
+            .select('user_id, assignee_id, subject, status')
+            .eq('id', ticketId)
+            .single()
+        if (!ticket) return { success: false, error: 'Ticket nie istnieje' }
+
+        const isAdmin = await isCallerAdmin(supabase, user.id)
+        const isAssignee = ticket.assignee_id === user.id
+        const isOwner = ticket.user_id === user.id
+
+        if (!isAdmin && !isAssignee && !(isOwner && (status === 'closed' || status === 'open'))) {
+            return { success: false, error: 'Niewystarczające uprawnienia' }
+        }
+
+        const updates: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
+        if (status === 'resolved' || status === 'closed') {
+            updates.resolved_at = new Date().toISOString()
+        } else if (ticket.status === 'resolved' || ticket.status === 'closed') {
+            updates.resolved_at = null
+        }
+
+        const { error } = await supabase.from('support_tickets').update(updates).eq('id', ticketId)
+        if (error) throw error
+
+        if (status === 'resolved' && ticket.user_id !== user.id) {
+            await notifyUsers(supabase, [ticket.user_id], 'support_ticket_resolved', 'Twoje zgłoszenie zostało rozwiązane', ticket.subject)
+        }
+
+        revalidatePath(`/support/tickets/${ticketId}`)
+        revalidatePath('/support/tickets')
+        revalidatePath('/admin/support')
+        return { success: true, data: undefined }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd zmiany statusu'
+        console.error('[changeTicketStatus]', error)
+        return { success: false, error: msg }
+    }
+}
+
+export async function assignTicket(ticketId: string, assigneeId: string | null): Promise<SupportActionResult<void>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+
+        const isAdmin = await isCallerAdmin(supabase, user.id)
+        if (!isAdmin) return { success: false, error: 'Niewystarczające uprawnienia' }
+
+        const updates: Record<string, unknown> = { assignee_id: assigneeId, updated_at: new Date().toISOString() }
+        if (assigneeId) {
+            updates.status = 'in_progress'
+        }
+
+        const { data: ticket } = await supabase
+            .from('support_tickets')
+            .select('subject')
+            .eq('id', ticketId)
+            .single()
+
+        const { error } = await supabase.from('support_tickets').update(updates).eq('id', ticketId)
+        if (error) throw error
+
+        if (assigneeId && ticket?.subject) {
+            await notifyUsers(supabase, [assigneeId], 'support_ticket_assigned', 'Przypisano Cię do ticketu', ticket.subject)
+        }
+
+        revalidatePath(`/support/tickets/${ticketId}`)
+        revalidatePath('/admin/support')
+        return { success: true, data: undefined }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd przypisania'
+        console.error('[assignTicket]', error)
+        return { success: false, error: msg }
+    }
+}

@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
     if (user) {
         const pathname = request.nextUrl.pathname
         const isOnboarding = pathname.startsWith('/onboarding')
-        const isPublicPath = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/forgot-password') || pathname.startsWith('/privacy-policy') || pathname.startsWith('/terms') || pathname.startsWith('/help') || pathname.startsWith('/support')
+        const isPublicPath = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/forgot-password') || pathname.startsWith('/privacy-policy') || pathname.startsWith('/terms') || pathname.startsWith('/help')
         const onboardingDone = request.cookies.get('onboarding_done')?.value === 'true'
 
         if (!isPublicPath && !isOnboarding && !onboardingDone) {
