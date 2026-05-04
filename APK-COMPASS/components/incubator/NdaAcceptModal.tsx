@@ -21,8 +21,13 @@ export function NdaAcceptModal({ open, onAccept, onClose }: NdaAcceptModalProps)
                 className="relative max-w-2xl w-full bg-card border border-white/10 rounded-lg shadow-xl"
                 onClick={(e) => e.stopPropagation()}
             >
-                <button type="button" onClick={onClose} className="absolute top-3 right-3 text-muted-foreground hover:text-foreground">
-                    <X className="w-5 h-5" />
+                <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Zamknij oświadczenie"
+                    className="absolute top-3 right-3 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                >
+                    <X className="w-5 h-5" aria-hidden="true" />
                 </button>
 
                 <div className="p-6 space-y-4">

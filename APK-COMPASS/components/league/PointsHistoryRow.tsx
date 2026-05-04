@@ -34,7 +34,7 @@ export function PointsHistoryRow({ tx, className }: PointsHistoryRowProps) {
     const isReversed = tx.status === 'reversed'
 
     return (
-        <div className={cn('flex items-center justify-between gap-3 p-3 border-b border-white/5 last:border-0', className)}>
+        <div role="listitem" className={cn('flex items-center justify-between gap-3 p-3 border-b border-white/5 last:border-0', className)}>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium truncate">{tx.description}</span>
