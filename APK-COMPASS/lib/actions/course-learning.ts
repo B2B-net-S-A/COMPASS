@@ -157,7 +157,7 @@ export async function submitQuizAttempt(
         const result = data as QuizSubmissionResult
 
         revalidatePath('/learning/moje')
-        revalidatePath('/loyalty')
+        revalidatePath('/league')
         return { success: true, data: result }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu odpowiedzi quizu'

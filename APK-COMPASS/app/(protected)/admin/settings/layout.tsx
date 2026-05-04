@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Wrench, Trophy, Mail, Users, ShieldCheck, Crown, Palette } from 'lucide-react'
+import { Wrench, Mail, Users, ShieldCheck, Crown, Palette } from 'lucide-react'
 import { checkIsSuperAdmin } from '@/lib/actions/admin-management'
 
 interface NavItem {
@@ -23,11 +23,6 @@ const settingsGroups: NavGroup[] = [
     {
         label: "Konfiguracja",
         items: [
-            {
-                title: "Program Lojalnościowy",
-                href: "/admin/settings/loyalty",
-                icon: Trophy,
-            },
             {
                 title: "Powiadomienia Email",
                 href: "/admin/settings/notifications",
