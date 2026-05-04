@@ -14,7 +14,6 @@ import nextDynamic from 'next/dynamic'
 
 const InternalCommunicator = nextDynamic(() => import('@/components/communicator/InternalCommunicator').then(m => m.InternalCommunicator), { ssr: false })
 const AIAssistantWidget = nextDynamic(() => import('@/components/ai-assistant/AIAssistantWidget').then(m => m.AIAssistantWidget), { ssr: false })
-const ScreenGlowEffect = nextDynamic(() => import('@/components/ui/ScreenGlowEffect').then(m => m.ScreenGlowEffect), { ssr: false })
 
 export default async function ProtectedLayout({
     children,
@@ -77,7 +76,6 @@ export default async function ProtectedLayout({
                         </LayoutPreferencesProvider>
                         <AIAssistantWidget />
                         <InternalCommunicator currentUser={userData} />
-                        <ScreenGlowEffect />
                     </AppLayout>
                 </AIAssistantPreferencesProvider>
             </ThemeProvider>
