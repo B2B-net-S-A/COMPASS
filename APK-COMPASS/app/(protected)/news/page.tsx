@@ -1,36 +1,45 @@
-'use client'
+import { Newspaper } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { PostCard } from '@/components/news/PostCard'
+import { listNewsForUser } from '@/lib/actions/news'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Newspaper, Construction } from 'lucide-react'
-import { useTranslation } from '@/lib/i18n/context'
+export const dynamic = 'force-dynamic'
 
-export default function NewsPage() {
-    const { t } = useTranslation()
+export default async function NewsPage() {
+    const result = await listNewsForUser()
 
     return (
-        <div className="container mx-auto max-w-4xl py-8 space-y-6">
-            <header className="flex items-center gap-3">
-                <Newspaper className="h-8 w-8 text-primary" />
-                <div>
-                    <h1 className="text-3xl font-bold text-primary">{t('nav_news')}</h1>
-                    <p className="text-muted-foreground text-sm mt-1">{t('news_tagline')}</p>
+        <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
+            <div>
+                <div className="flex items-center gap-3">
+                    <Newspaper className="w-8 h-8 text-primary" />
+                    <h1 className="text-3xl font-bold tracking-tight">Aktualności</h1>
                 </div>
-            </header>
+                <p className="text-muted-foreground mt-1">Najnowsze ogłoszenia i komunikaty od Dynaminds.</p>
+            </div>
 
-            <Card className="border-dashed">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                        <Construction className="h-5 w-5 text-muted-foreground" />
-                        {t('coming_soon')}
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-muted-foreground">{t('coming_soon_desc')}</p>
-                    <p className="text-xs text-muted-foreground/60 mt-4">
-                        Phase 4 roadmap — feed ogłoszeń od admina, broadcast email, reakcje, pinned posts.
-                    </p>
-                </CardContent>
-            </Card>
+            {!result.success && (
+                <Card className="bg-red-500/5 border-red-500/20">
+                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                </Card>
+            )}
+
+            {result.success && result.data.length === 0 && (
+                <Card className="bg-white/5 border-white/10">
+                    <CardContent className="p-12 text-center space-y-3">
+                        <Newspaper className="w-16 h-16 text-muted-foreground mx-auto" />
+                        <p className="text-muted-foreground">Brak ogłoszeń. Wróć tu wkrótce.</p>
+                    </CardContent>
+                </Card>
+            )}
+
+            {result.success && result.data.length > 0 && (
+                <div className="space-y-3">
+                    {result.data.map((post) => (
+                        <PostCard key={post.id} post={post} />
+                    ))}
+                </div>
+            )}
         </div>
     )
 }
