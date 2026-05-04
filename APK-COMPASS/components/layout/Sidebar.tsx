@@ -17,6 +17,7 @@ import {
     ShieldCheck,
     Inbox,
     PenSquare,
+    Sparkles,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -94,6 +95,7 @@ export function Sidebar({ role, user, permissions, forMobile = false }: SidebarP
             { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: null },
             { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null },
             { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
+            { name: t('nav_admin_incubator'), href: '/admin/incubator', icon: Sparkles, feature: null },
             { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
         ],
     }
