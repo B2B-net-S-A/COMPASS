@@ -13,6 +13,7 @@ import {
     getAllUsersToMessage,
     getOrCreateDirectConversation
 } from '@/lib/actions/communicator'
+import { dispatchConversationToTicket } from '@/lib/actions/dispatch-to-ticket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -30,7 +31,8 @@ import {
     Plus,
     Loader2,
     ArrowLeft,
-    X
+    X,
+    Ticket,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -60,6 +62,7 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
     const [loadingMessages, setLoadingMessages] = useState(false)
     const [sending, setSending] = useState(false)
     const [broadcastOpen, setBroadcastOpen] = useState(false)
+    const [dispatching, setDispatching] = useState(false)
 
     // Search state
     const [searchMode, setSearchMode] = useState(false)
@@ -214,6 +217,18 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
         }
         setSearchMode(false)
         setSearchQuery('')
+    }
+
+    const handleDispatchToTicket = async () => {
+        if (!activeConversationId || dispatching) return
+        setDispatching(true)
+        const result = await dispatchConversationToTicket({ conversationId: activeConversationId })
+        setDispatching(false)
+        if (!result.success || !result.redirectUrl) {
+            toast.error(result.error || 'Nie udało się przygotować ticketu')
+            return
+        }
+        router.push(result.redirectUrl)
     }
 
     const handleSend = async () => {
@@ -492,12 +507,29 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                     </AvatarFallback>
                                 </Avatar>
                             )}
-                            <div>
-                                <h3 className="font-bold text-white">{chatTitle}</h3>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="font-bold text-white truncate">{chatTitle}</h3>
                                 <p className="text-[10px] text-slate-600">
                                     {activeConversation.type === 'broadcast' ? 'Ogłoszenie dla wszystkich' : 'Konwersacja prywatna'}
                                 </p>
                             </div>
+                            {activeConversation.type === 'direct' && messages.length > 0 && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleDispatchToTicket}
+                                    disabled={dispatching}
+                                    className="gap-2 shrink-0"
+                                    title="Utwórz ticket z ostatnich 5 wiadomości"
+                                >
+                                    {dispatching ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                        <Ticket className="w-3.5 h-3.5" />
+                                    )}
+                                    <span className="hidden sm:inline">Zamień na ticket</span>
+                                </Button>
+                            )}
                         </div>
 
                         {/* Messages */}

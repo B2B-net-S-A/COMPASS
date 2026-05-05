@@ -14,15 +14,24 @@ import { TICKET_PRIORITY_LABEL } from '@/lib/types/support'
 interface TicketComposerProps {
     categories: SupportCategory[]
     defaultCategoryId?: string
+    defaultSubject?: string
+    defaultBody?: string
+    defaultAssigneeId?: string
 }
 
 const PRIORITIES: TicketPriority[] = ['low', 'normal', 'high', 'urgent']
 
-export function TicketComposer({ categories, defaultCategoryId }: TicketComposerProps) {
+export function TicketComposer({
+    categories,
+    defaultCategoryId,
+    defaultSubject,
+    defaultBody,
+    defaultAssigneeId,
+}: TicketComposerProps) {
     const router = useRouter()
     const [categoryId, setCategoryId] = useState(defaultCategoryId ?? categories[0]?.id ?? '')
-    const [subject, setSubject] = useState('')
-    const [body, setBody] = useState('')
+    const [subject, setSubject] = useState(defaultSubject ?? '')
+    const [body, setBody] = useState(defaultBody ?? '')
     const [priority, setPriority] = useState<TicketPriority>('normal')
     const [error, setError] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
@@ -33,7 +42,13 @@ export function TicketComposer({ categories, defaultCategoryId }: TicketComposer
         e.preventDefault()
         setError(null)
         startTransition(async () => {
-            const result = await createTicket({ category_id: categoryId, subject, body_md: body, priority })
+            const result = await createTicket({
+                category_id: categoryId,
+                subject,
+                body_md: body,
+                priority,
+                assignee_id: defaultAssigneeId,
+            })
             if (!result.success) {
                 setError(result.error)
                 return
