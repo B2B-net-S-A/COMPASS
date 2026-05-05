@@ -21,7 +21,7 @@ export default function SupportLandingPage() {
                         <CardHeader>
                             <Users className="w-7 h-7 text-primary mb-2" />
                             <CardTitle className="text-lg group-hover:text-primary">Pogadaj z opiekunem</CardTitle>
-                            <CardDescription>Czat z Rekruterem lub Delivery Leadem — szybkie pytania, casual.</CardDescription>
+                            <CardDescription>Wybierz temat i napisz wiadomość — Centrala odpowie w wątku.</CardDescription>
                         </CardHeader>
                     </Card>
                 </Link>
