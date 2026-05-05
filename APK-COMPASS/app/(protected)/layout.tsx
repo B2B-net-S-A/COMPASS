@@ -5,7 +5,6 @@ import { cookies } from 'next/headers'
 export const dynamic = 'force-dynamic'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { LayoutPreferencesProvider } from '@/lib/contexts/LayoutPreferencesContext'
-import { AIAssistantPreferencesProvider } from '@/lib/contexts/AIAssistantPreferencesContext'
 import { ThemeProvider } from '@/lib/contexts/ThemeContext'
 import { getPermissions } from '@/lib/actions/permissions'
 import { getUnreadNewsCount } from '@/lib/actions/news'
@@ -17,7 +16,6 @@ import { isSuperAdmin } from '@/lib/auth/super-admins'
 import nextDynamic from 'next/dynamic'
 
 const InternalCommunicator = nextDynamic(() => import('@/components/communicator/InternalCommunicator').then(m => m.InternalCommunicator), { ssr: false })
-const AIAssistantWidget = nextDynamic(() => import('@/components/ai-assistant/AIAssistantWidget').then(m => m.AIAssistantWidget), { ssr: false })
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 
 export default async function ProtectedLayout({
@@ -87,16 +85,13 @@ export default async function ProtectedLayout({
 
         return (
             <ThemeProvider>
-                <AIAssistantPreferencesProvider>
-                    <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges}>
-                        <LayoutPreferencesProvider>
-                            {children}
-                        </LayoutPreferencesProvider>
-                        <AIAssistantWidget />
-                        <InternalCommunicator currentUser={userData} />
-                        <Tour initialDone={profile?.onboarding_tour_done ?? false} />
-                    </AppLayout>
-                </AIAssistantPreferencesProvider>
+                <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges}>
+                    <LayoutPreferencesProvider>
+                        {children}
+                    </LayoutPreferencesProvider>
+                    <InternalCommunicator currentUser={userData} />
+                    <Tour initialDone={profile?.onboarding_tour_done ?? false} />
+                </AppLayout>
             </ThemeProvider>
         )
     } catch (e) {

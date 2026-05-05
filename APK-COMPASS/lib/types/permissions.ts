@@ -21,7 +21,6 @@ export type PermissionFeature =
     | 'messages'
     | 'documents'
     | 'loyalty'
-    | 'ai_assistant'
     | 'settings'
     // Legacy (Phase 1 cleanup target)
     | 'candidates'
@@ -57,7 +56,7 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         dashboard: 'true', projects: 'portfolio', candidates: 'portfolio',
         service_hub: 'true', messages: 'true', documents: 'true',
         loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', ai_assistant: 'portfolio', settings: 'false',
+        referrals: 'true', settings: 'false',
         rates: 'true',
     },
     delivery_lead: {
@@ -65,7 +64,7 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         dashboard: 'true', projects: 'portfolio', candidates: 'portfolio',
         service_hub: 'true', messages: 'true', documents: 'true',
         loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', ai_assistant: 'portfolio', settings: 'false',
+        referrals: 'true', settings: 'false',
         rates: 'true',
     },
     finance: {
@@ -73,7 +72,7 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         dashboard: 'true', projects: 'full', candidates: 'readonly',
         service_hub: 'true', messages: 'true', documents: 'true',
         loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', ai_assistant: 'portfolio', settings: 'false',
+        referrals: 'true', settings: 'false',
         rates: 'true',
     },
     consultant: {
@@ -81,7 +80,7 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         dashboard: 'true', projects: 'full', candidates: 'false',
         service_hub: 'true', messages: 'true', documents: 'true',
         loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', ai_assistant: 'full', settings: 'false',
+        referrals: 'true', settings: 'false',
         rates: 'false',
     },
 }

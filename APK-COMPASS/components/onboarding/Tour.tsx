@@ -44,7 +44,7 @@ export function Tour({ initialDone }: TourProps) {
         },
         {
             target: '[data-testid="nav-support"]',
-            content: 'Support — tickety, baza wiedzy procedur (HR/Benefity/IT/Onboarding), AI Assistant 24/7.',
+            content: 'Support — tickety, baza wiedzy procedur (HR/Benefity/IT/Onboarding), chat z opiekunem.',
         },
         {
             target: '[data-testid="nav-incubator"]',

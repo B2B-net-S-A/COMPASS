@@ -28,7 +28,6 @@ const FEATURES: { key: PermissionFeature; label: string; allowedValues: Permissi
     { key: 'incubator', label: 'Inkubator', allowedValues: ['true', 'false'] },
     { key: 'notifications', label: 'Powiadomienia', allowedValues: ['true', 'false'] },
     // Utility
-    { key: 'ai_assistant', label: 'Asystent AI', allowedValues: ['false', 'portfolio', 'full'] },
     { key: 'settings', label: 'Ustawienia', allowedValues: ['true', 'false'] },
     // Legacy (Phase 1 cleanup target — UI dropped from sidebar in Phase 0)
     { key: 'dashboard', label: 'Dashboard (legacy)', allowedValues: ['true', 'false'] },
@@ -227,7 +226,7 @@ export function PermissionsTable({ initialPermissions }: PermissionsTableProps) 
                     </div>
                     <div className="flex items-start gap-3">
                         <span className={`shrink-0 px-2.5 py-0.5 rounded border ${VALUE_CONFIG['portfolio'].text} ${VALUE_CONFIG['portfolio'].bg} font-medium`}>Portfel</span>
-                        <span>Użytkownik widzi <strong>tylko tych konsultantów i projekty, którzy są do niego przypisani</strong>. Np. Rekruter z „Portfelem" w Projektach widzi tylko projekty swoich konsultantów, a nie wszystkie w systemie. Asystent AI z „Portfelem" odpowiada tylko na pytania dotyczące danych z portfela użytkownika.</span>
+                        <span>Użytkownik widzi <strong>tylko tych konsultantów i projekty, którzy są do niego przypisani</strong>. Np. Rekruter z „Portfelem" w Projektach widzi tylko projekty swoich konsultantów, a nie wszystkie w systemie.</span>
                     </div>
                     <div className="flex items-start gap-3">
                         <span className={`shrink-0 px-2.5 py-0.5 rounded border ${VALUE_CONFIG['readonly'].text} ${VALUE_CONFIG['readonly'].bg} font-medium`}>Tylko odczyt</span>

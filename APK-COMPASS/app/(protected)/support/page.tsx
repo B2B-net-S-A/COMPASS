@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { LifeBuoy, Plus, BookOpen, MessageCircleQuestion } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +11,7 @@ export default function SupportLandingPage() {
                 <LifeBuoy className="w-8 h-8 text-primary" />
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Support Center</h1>
-                    <p className="text-muted-foreground text-sm">Tickety, baza wiedzy, AI assistant.</p>
+                    <p className="text-muted-foreground text-sm">Tickety, baza wiedzy, chat z opiekunem.</p>
                 </div>
             </div>
 
@@ -46,15 +46,6 @@ export default function SupportLandingPage() {
                     </Card>
                 </Link>
             </div>
-
-            <Card className="bg-gradient-to-br from-primary/10 to-card border-primary/20">
-                <CardContent className="p-5">
-                    <p className="text-sm">
-                        💡 <strong>Wskazówka:</strong> AI Assistant w prawym dolnym rogu odpowiada na typowe pytania
-                        o procedury, benefity i onboarding 24/7. Jeśli nie znajdzie odpowiedzi — utwórz ticket.
-                    </p>
-                </CardContent>
-            </Card>
         </div>
     )
 }

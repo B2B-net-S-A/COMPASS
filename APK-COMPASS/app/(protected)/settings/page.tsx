@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { AIAppearanceSettings } from '@/components/settings/AIAppearanceSettings'
 import { LeaderboardOptOut } from './LeaderboardOptOut'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +22,6 @@ export default async function UserSettingsPage() {
                 <h1 className="text-3xl font-bold text-primary">Ustawienia</h1>
                 <p className="text-muted-foreground mt-1">Personalizuj wygląd i zachowanie aplikacji.</p>
             </div>
-            <AIAppearanceSettings />
             <LeaderboardOptOut initialOptOut={optOut} />
         </div>
     )

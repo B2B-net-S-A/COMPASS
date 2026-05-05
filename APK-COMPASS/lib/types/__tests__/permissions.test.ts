@@ -6,7 +6,7 @@ const FEATURES = [
     // New platform panels (Phase 0+)
     'home', 'learning', 'league', 'support', 'news', 'incubator', 'notifications',
     // Utility
-    'dashboard', 'projects', 'messages', 'documents', 'loyalty', 'ai_assistant', 'settings',
+    'dashboard', 'projects', 'messages', 'documents', 'loyalty', 'settings',
     // Legacy (Phase 1 cleanup target)
     'candidates', 'service_hub', 'development', 'import', 'referrals', 'rates',
 ] as const
@@ -44,12 +44,6 @@ describe('DEFAULT_PERMISSIONS', () => {
     it('all roles have dashboard access (true) — fundamental UX expectation', () => {
         for (const role of ROLES) {
             expect(DEFAULT_PERMISSIONS[role].dashboard).toBe('true')
-        }
-    })
-
-    it('all roles have ai_assistant access (some level)', () => {
-        for (const role of ROLES) {
-            expect(['true', 'portfolio', 'full']).toContain(DEFAULT_PERMISSIONS[role].ai_assistant)
         }
     })
 
