@@ -80,31 +80,23 @@ function friendlySignupError(raw: string, err?: { code?: string }): string {
 // Priority: Super Admin > Admin (from admin_access_list) > Centrala > Consultant
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Phase 8 hotfix (2026-05-05): Phase 1.5 cast profiles.role to user_role enum
+// (consultant | admin | trainer). Legacy values 'administrator' and 'centrala'
+// are no longer valid DB values — they're collapsed to 'admin' at the DB level
+// but returned as marker strings to the caller for permissions/MFA gating.
 async function syncRole(supabase: SupabaseClient, userId: string, email: string, currentRole: string): Promise<string> {
     const emailLower = email.toLowerCase()
 
-    // 1. Super Admins — hardcoded, always get 'administrator' role
+    // 1. Super Admins — hardcoded list (lib/auth/super-admins.ts).
+    //    DB stores 'admin'; we return 'administrator' marker for downstream gates.
     if (isSuperAdmin(emailLower)) {
-        if (currentRole !== 'administrator') {
-            await supabase.from('profiles').update({ role: 'administrator' }).eq('id', userId)
+        if (currentRole !== 'admin') {
+            await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
         }
         return 'administrator'
     }
 
-    // 2. Use SECURITY DEFINER function to bypass RLS on access lists
-    // This solves the chicken-and-egg problem: user needs to read access lists
-    // to get their role, but RLS on access lists requires an elevated role.
-    const { data: rpcResult, error: rpcError } = await supabase
-        .rpc('sync_user_role', { p_user_id: userId, p_email: emailLower })
-
-    if (!rpcError && rpcResult) {
-        console.log('[SYNC_ROLE] RPC result:', rpcResult, 'for', emailLower)
-        return rpcResult as string
-    }
-
-    // Fallback: if RPC fails, use direct queries (may fail due to RLS)
-    console.warn('[SYNC_ROLE] RPC failed, falling back to direct queries:', rpcError?.message)
-
+    // 2. admin_access_list (DB-driven admins — same DB role 'admin', marker 'administrator')
     const { data: adminEntry } = await supabase
         .from('admin_access_list')
         .select('id')
@@ -112,12 +104,13 @@ async function syncRole(supabase: SupabaseClient, userId: string, email: string,
         .maybeSingle()
 
     if (adminEntry) {
-        if (currentRole !== 'administrator') {
-            await supabase.from('profiles').update({ role: 'administrator' }).eq('id', userId)
+        if (currentRole !== 'admin') {
+            await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
         }
         return 'administrator'
     }
 
+    // 3. centrala_access_list — also gets DB 'admin', marker 'centrala' for permissions matrix
     const { data: centralaEntry } = await supabase
         .from('centrala_access_list')
         .select('id')
@@ -125,19 +118,17 @@ async function syncRole(supabase: SupabaseClient, userId: string, email: string,
         .maybeSingle()
 
     if (centralaEntry) {
-        if (currentRole !== 'centrala') {
-            await supabase.from('profiles').update({ role: 'centrala' }).eq('id', userId)
+        if (currentRole !== 'admin') {
+            await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
         }
         return 'centrala'
     }
 
-    // Fallback — downgrade elevated roles not in any list
-    if (currentRole === 'centrala' || currentRole === 'administrator' || currentRole === 'admin') {
+    // 4. Not in any list → consultant. Downgrade if previously elevated.
+    if (currentRole !== 'consultant') {
         await supabase.from('profiles').update({ role: 'consultant' }).eq('id', userId)
-        return 'consultant'
     }
-
-    return currentRole
+    return 'consultant'
 }
 
 const BYPASS_EMAIL = process.env.BYPASS_EMAIL?.toLowerCase() ?? ''
