@@ -10,6 +10,7 @@ import { getPermissions } from '@/lib/actions/permissions'
 import { getUnreadNewsCount } from '@/lib/actions/news'
 import { listTickets } from '@/lib/actions/support-tickets'
 import { listAllPitchesAdmin } from '@/lib/actions/incubator'
+import { getUnreadGuardianMessages } from '@/lib/actions/communicator'
 import type { PermissionRole, PermissionsMap, PermissionFeature, PermissionValue } from '@/lib/types/permissions'
 import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
@@ -70,17 +71,20 @@ export default async function ProtectedLayout({
             bio: profile?.bio,
         }
 
-        // Phase 7: sidebar badge counts (unread news for all; admin counts for admins)
+        // Phase 7: sidebar badge counts (unread news for all; admin counts for admins).
+        // Phase 9: unread guardian messages for consultants (Support Center badge).
         const isAdminLike = role === 'administrator' || role === 'admin' || role === 'centrala'
-        const [newsRes, adminTicketsRes, adminPitchesRes] = await Promise.all([
+        const [newsRes, adminTicketsRes, adminPitchesRes, consultantSupport] = await Promise.all([
             getUnreadNewsCount(),
             isAdminLike ? listTickets({ scope: 'all', status: 'open', limit: 1 }) : Promise.resolve({ success: false as const, error: 'skip' }),
             isAdminLike ? listAllPitchesAdmin('submitted') : Promise.resolve({ success: false as const, error: 'skip' }),
+            !isAdminLike ? getUnreadGuardianMessages() : Promise.resolve(0),
         ])
         const sidebarBadges: SidebarBadgeCounts = {
             news: newsRes.success ? newsRes.data : 0,
             adminTickets: adminTicketsRes.success ? adminTicketsRes.data.total : 0,
             adminPitches: adminPitchesRes.success ? adminPitchesRes.data.length : 0,
+            consultantSupport,
         }
 
         return (

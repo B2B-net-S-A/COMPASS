@@ -30,6 +30,7 @@ export interface SidebarBadgeCounts {
     news?: number
     adminTickets?: number
     adminPitches?: number
+    consultantSupport?: number
 }
 
 interface SidebarProps {
@@ -86,7 +87,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
             heading: t('group_community'),
             links: [
                 { name: t('nav_news'), href: '/news', icon: Newspaper, feature: 'news', badgeCount: badges?.news },
-                { name: t('nav_support'), href: '/support', icon: LifeBuoy, feature: 'support' },
+                { name: t('nav_support'), href: '/support', icon: LifeBuoy, feature: 'support', badgeCount: badges?.consultantSupport },
             ],
         },
         {

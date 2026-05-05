@@ -6,9 +6,16 @@ import { listSupportCategories } from '@/lib/actions/support-tickets'
 
 export const dynamic = 'force-dynamic'
 
-export default async function NewTicketPage() {
+interface NewTicketPageProps {
+    searchParams: { category?: string }
+}
+
+export default async function NewTicketPage({ searchParams }: NewTicketPageProps) {
     const categoriesResult = await listSupportCategories()
     const categories = categoriesResult.success ? categoriesResult.data : []
+    const defaultCategoryId = searchParams.category
+        ? categories.find(c => c.slug === searchParams.category)?.id
+        : undefined
 
     return (
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
@@ -29,7 +36,7 @@ export default async function NewTicketPage() {
                 </Card>
             )}
 
-            {categoriesResult.success && <TicketComposer categories={categories} />}
+            {categoriesResult.success && <TicketComposer categories={categories} defaultCategoryId={defaultCategoryId} />}
         </div>
     )
 }

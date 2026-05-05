@@ -436,3 +436,56 @@ export async function sendBroadcastToAll(
     revalidatePath('/messages')
     return { error: null, recipientCount: allUsers.length }
 }
+
+/**
+ * Counts unread messages from the consultant's assigned guardians
+ * (recruiter / delivery_lead from consultant_assignments). Powers the
+ * Support Center sidebar badge for consultants.
+ *
+ * Returns 0 for non-consultants and on any error — badge is non-critical.
+ */
+export async function getUnreadGuardianMessages(): Promise<number> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return 0
+
+    const { data: assignments } = await supabase
+        .from('consultant_assignments')
+        .select('assigned_to')
+        .eq('consultant_id', user.id)
+
+    const guardianIds = (assignments ?? []).map((a: { assigned_to: string }) => a.assigned_to)
+    if (guardianIds.length === 0) return 0
+
+    // My direct conversations
+    const { data: myConvs } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id, last_read_at')
+        .eq('user_id', user.id)
+
+    if (!myConvs || myConvs.length === 0) return 0
+
+    let total = 0
+    for (const c of myConvs) {
+        // Is this a direct conversation with a guardian?
+        const { data: target } = await supabase
+            .from('conversation_participants')
+            .select('user_id')
+            .eq('conversation_id', c.conversation_id)
+            .neq('user_id', user.id)
+            .maybeSingle()
+
+        if (!target || !guardianIds.includes(target.user_id)) continue
+
+        const { count } = await supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('conversation_id', c.conversation_id)
+            .eq('sender_id', target.user_id)
+            .gt('created_at', c.last_read_at ?? '1970-01-01')
+
+        total += count ?? 0
+    }
+
+    return total
+}

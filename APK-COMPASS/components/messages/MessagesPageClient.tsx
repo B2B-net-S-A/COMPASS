@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
     Conversation,
@@ -47,6 +48,9 @@ interface MessagesPageClientProps {
 }
 
 export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientProps) {
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const deeplinkWith = searchParams.get('with')
     const [conversations, setConversations] = useState<Conversation[]>([])
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
@@ -118,6 +122,35 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
         }
         load()
     }, [activeConversationId])
+
+    // Deeplink — when /messages?with=<userId> is opened, auto-start a direct chat with that user
+    // (used by /support/contacts → GuardianCard).
+    useEffect(() => {
+        if (!deeplinkWith || loading) return
+        let cancelled = false
+        const open = async () => {
+            const { id, error } = await getOrCreateDirectConversation(deeplinkWith)
+            if (cancelled) return
+            if (error) {
+                toast.error(error)
+                router.replace('/messages')
+                return
+            }
+            if (id) {
+                setActiveConversationId(id)
+                const { data } = await getConversations()
+                if (cancelled) return
+                if (data) {
+                    setConversations(data)
+                    const found = data.find(c => c.id === id)
+                    if (found) setActiveConversation(found)
+                }
+            }
+            router.replace('/messages')
+        }
+        open()
+        return () => { cancelled = true }
+    }, [deeplinkWith, loading, router])
 
     // Load all users when search mode opens
     useEffect(() => {

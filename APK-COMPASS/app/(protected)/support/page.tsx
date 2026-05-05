@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LifeBuoy, Plus, BookOpen, MessageCircleQuestion } from 'lucide-react'
+import { LifeBuoy, Plus, BookOpen, MessageCircleQuestion, Users } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 export const dynamic = 'force-dynamic'
@@ -15,13 +15,23 @@ export default function SupportLandingPage() {
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
+                <Link href="/support/contacts" className="block group">
+                    <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                        <CardHeader>
+                            <Users className="w-7 h-7 text-primary mb-2" />
+                            <CardTitle className="text-lg group-hover:text-primary">Pogadaj z opiekunem</CardTitle>
+                            <CardDescription>Czat z Rekruterem lub Delivery Leadem — szybkie pytania, casual.</CardDescription>
+                        </CardHeader>
+                    </Card>
+                </Link>
+
                 <Link href="/support/tickets/new" className="block group">
                     <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
                         <CardHeader>
                             <Plus className="w-7 h-7 text-primary mb-2" />
                             <CardTitle className="text-lg group-hover:text-primary">Zgłoś problem</CardTitle>
-                            <CardDescription>HR, IT, benefity, sprzęt — wybierz kategorię i opisz sytuację.</CardDescription>
+                            <CardDescription>HR, IT, finanse, benefity, sprzęt — wybierz kategorię i opisz sytuację.</CardDescription>
                         </CardHeader>
                     </Card>
                 </Link>
