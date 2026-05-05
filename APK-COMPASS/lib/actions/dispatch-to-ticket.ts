@@ -33,18 +33,19 @@ export interface DispatchResult {
     error?: string
 }
 
+type GuardianAssignmentType = 'recruiter' | 'delivery_lead'
+
 /**
- * Maps a centrala_role (recruiter / delivery_lead / finance) to the
+ * Maps a guardian's `consultant_assignments.assignment_type` to the
  * support_categories slug that best matches the topic the guardian handles.
+ * Returns 'other' when the chat partner is not a recognized guardian.
  */
-function pickCategorySlug(centralaRole: string | null): string {
-    switch (centralaRole) {
+function pickCategorySlug(assignmentType: GuardianAssignmentType | null): string {
+    switch (assignmentType) {
         case 'recruiter':
             return 'hr'
         case 'delivery_lead':
             return 'it'
-        case 'finance':
-            return 'finance'
         default:
             return 'other'
     }
@@ -78,7 +79,7 @@ export async function dispatchConversationToTicket(args: DispatchArgs): Promise<
     const otherUserId = (participants ?? []).find((p: { user_id: string }) => p.user_id !== user.id)?.user_id ?? null
 
     let assigneeName = 'opiekunem'
-    let centralaRole: string | null = null
+    let assignmentType: GuardianAssignmentType | null = null
 
     if (otherUserId) {
         const { data: otherProfile } = await supabase
@@ -88,12 +89,17 @@ export async function dispatchConversationToTicket(args: DispatchArgs): Promise<
             .single()
         if (otherProfile) assigneeName = otherProfile.full_name || otherProfile.email || 'opiekunem'
 
-        const { data: access } = await supabase
-            .from('centrala_access_list')
-            .select('centrala_role')
-            .eq('email', (otherProfile as { email?: string } | null)?.email ?? '')
+        // Source of truth for "is this person my guardian, and which type?": consultant_assignments
+        const { data: assignment } = await supabase
+            .from('consultant_assignments')
+            .select('assignment_type')
+            .eq('consultant_id', user.id)
+            .eq('assigned_to', otherUserId)
             .maybeSingle()
-        centralaRole = (access as { centrala_role?: string } | null)?.centrala_role ?? null
+        const t = (assignment as { assignment_type?: string } | null)?.assignment_type
+        if (t === 'recruiter' || t === 'delivery_lead') {
+            assignmentType = t
+        }
     }
 
     // 3. Format body_md (newest first → flip back to chronological for readability)
@@ -112,7 +118,7 @@ export async function dispatchConversationToTicket(args: DispatchArgs): Promise<
     const prefill: DispatchPrefill = {
         subject: firstSubject,
         body_md,
-        category_slug: pickCategorySlug(centralaRole),
+        category_slug: pickCategorySlug(assignmentType),
         assignee_id: otherUserId,
     }
 
