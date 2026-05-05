@@ -59,6 +59,8 @@ export interface CreateTicketInput {
     body_md: string
     priority?: TicketPriority
     assignee_id?: string
+    /** Chat-mode threads relax min-length validation (auto-generated subject + short first message). */
+    is_chat?: boolean
 }
 
 export interface SupportArticle {
