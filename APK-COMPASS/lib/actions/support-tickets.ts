@@ -69,25 +69,34 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportAct
             return { success: false, error: 'Opis musi mieć co najmniej 10 znaków' }
         }
 
+        const insertPayload: Record<string, unknown> = {
+            user_id: user.id,
+            category_id: input.category_id,
+            subject: input.subject.trim(),
+            body_md: input.body_md.trim(),
+            priority: input.priority ?? 'normal',
+            status: 'open',
+        }
+        if (input.assignee_id) {
+            insertPayload.assignee_id = input.assignee_id
+        }
+
         const { data, error } = await supabase
             .from('support_tickets')
-            .insert({
-                user_id: user.id,
-                category_id: input.category_id,
-                subject: input.subject.trim(),
-                body_md: input.body_md.trim(),
-                priority: input.priority ?? 'normal',
-                status: 'open',
-            })
+            .insert(insertPayload)
             .select('id')
             .single()
 
         if (error) throw error
 
-        // Notify all admins about new ticket (round-robin assignment is Phase 3.x)
-        const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
-        const adminIds = (admins ?? []).map((p: { id: string }) => p.id)
-        await notifyUsers(supabase, adminIds, 'support_ticket_assigned', 'Nowe zgłoszenie w Support', input.subject.trim())
+        // Notify the assigned guardian (if any) directly; otherwise broadcast to admins.
+        if (input.assignee_id) {
+            await notifyUsers(supabase, [input.assignee_id], 'support_ticket_assigned', 'Nowe zgłoszenie z czatu', input.subject.trim())
+        } else {
+            const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+            const adminIds = (admins ?? []).map((p: { id: string }) => p.id)
+            await notifyUsers(supabase, adminIds, 'support_ticket_assigned', 'Nowe zgłoszenie w Support', input.subject.trim())
+        }
 
         revalidatePath('/support/tickets')
         revalidatePath('/admin/support')

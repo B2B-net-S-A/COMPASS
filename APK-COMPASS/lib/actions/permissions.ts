@@ -17,7 +17,7 @@ const VALID_FEATURES: PermissionFeature[] = [
     // New platform panels
     'home', 'learning', 'league', 'support', 'news', 'incubator', 'notifications',
     // Utility
-    'dashboard', 'projects', 'messages', 'documents', 'loyalty', 'ai_assistant', 'settings',
+    'dashboard', 'projects', 'messages', 'documents', 'loyalty', 'settings',
     // Legacy (Phase 1 cleanup)
     'candidates', 'service_hub', 'development', 'import', 'referrals', 'rates',
 ]

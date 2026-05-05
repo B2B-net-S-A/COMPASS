@@ -1,6 +1,6 @@
 import Link from 'next/link'
-import { LifeBuoy, Plus, BookOpen, MessageCircleQuestion } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { LifeBuoy, Plus, BookOpen, MessageCircleQuestion, Users } from 'lucide-react'
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,17 +11,27 @@ export default function SupportLandingPage() {
                 <LifeBuoy className="w-8 h-8 text-primary" />
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Support Center</h1>
-                    <p className="text-muted-foreground text-sm">Tickety, baza wiedzy, AI assistant.</p>
+                    <p className="text-muted-foreground text-sm">Tickety, baza wiedzy, chat z opiekunem.</p>
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
+                <Link href="/support/contacts" className="block group">
+                    <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                        <CardHeader>
+                            <Users className="w-7 h-7 text-primary mb-2" />
+                            <CardTitle className="text-lg group-hover:text-primary">Pogadaj z opiekunem</CardTitle>
+                            <CardDescription>Czat z Rekruterem lub Delivery Leadem — szybkie pytania, casual.</CardDescription>
+                        </CardHeader>
+                    </Card>
+                </Link>
+
                 <Link href="/support/tickets/new" className="block group">
                     <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
                         <CardHeader>
                             <Plus className="w-7 h-7 text-primary mb-2" />
                             <CardTitle className="text-lg group-hover:text-primary">Zgłoś problem</CardTitle>
-                            <CardDescription>HR, IT, benefity, sprzęt — wybierz kategorię i opisz sytuację.</CardDescription>
+                            <CardDescription>HR, IT, finanse, benefity, sprzęt — wybierz kategorię i opisz sytuację.</CardDescription>
                         </CardHeader>
                     </Card>
                 </Link>
@@ -46,15 +56,6 @@ export default function SupportLandingPage() {
                     </Card>
                 </Link>
             </div>
-
-            <Card className="bg-gradient-to-br from-primary/10 to-card border-primary/20">
-                <CardContent className="p-5">
-                    <p className="text-sm">
-                        💡 <strong>Wskazówka:</strong> AI Assistant w prawym dolnym rogu odpowiada na typowe pytania
-                        o procedury, benefity i onboarding 24/7. Jeśli nie znajdzie odpowiedzi — utwórz ticket.
-                    </p>
-                </CardContent>
-            </Card>
         </div>
     )
 }

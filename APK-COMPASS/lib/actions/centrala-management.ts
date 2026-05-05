@@ -630,6 +630,144 @@ export interface MyRecruiterInfo {
  * and joins with profiles + centrala_access_list for contact details.
  * Does NOT require admin — any authenticated user can call this.
  */
+// ============================================================
+// 5. Consultant-facing: get all my guardians (recruiter + delivery_lead)
+// with last-message preview for /support/contacts UI
+// ============================================================
+
+export type GuardianType = 'recruiter' | 'delivery_lead'
+
+export interface GuardianInfo {
+    user_id: string
+    full_name: string
+    email: string
+    avatar_url: string | null
+    type: GuardianType
+    last_message_preview: string | null
+    last_message_at: string | null
+    unread_count: number
+    conversation_id: string | null
+}
+
+/**
+ * Returns all guardians (recruiter + delivery_lead) assigned to the currently
+ * logged-in consultant, with chat preview metadata for /support/contacts.
+ * Each guardian = one row in consultant_assignments. A consultant may have
+ * up to 2 guardians (one per assignment_type).
+ */
+export async function getMyGuardians(): Promise<GuardianInfo[]> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+
+    const { data: assignments, error } = await supabase
+        .from('consultant_assignments')
+        .select('assigned_to, assignment_type')
+        .eq('consultant_id', user.id)
+
+    if (error || !assignments || assignments.length === 0) return []
+
+    const guardians: GuardianInfo[] = []
+    for (const a of assignments as { assigned_to: string; assignment_type: GuardianType }[]) {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, email, avatar_url')
+            .eq('id', a.assigned_to)
+            .single()
+
+        if (!profile) continue
+
+        // Find the existing direct conversation (if any) — read-only lookup, do NOT auto-create
+        const { data: myConvs } = await supabase
+            .from('conversation_participants')
+            .select('conversation_id')
+            .eq('user_id', user.id)
+
+        let convId: string | null = null
+        let lastReadAt: string | null = null
+        for (const c of myConvs ?? []) {
+            const { data: target } = await supabase
+                .from('conversation_participants')
+                .select('conversation_id, last_read_at')
+                .eq('conversation_id', c.conversation_id)
+                .eq('user_id', a.assigned_to)
+                .maybeSingle()
+
+            if (target) {
+                const { data: convType } = await supabase
+                    .from('conversations')
+                    .select('type')
+                    .eq('id', c.conversation_id)
+                    .single()
+
+                if (convType?.type === 'direct') {
+                    convId = c.conversation_id
+                    // last_read_at for me, not for the guardian — we want unread by ME
+                    const { data: myParticipant } = await supabase
+                        .from('conversation_participants')
+                        .select('last_read_at')
+                        .eq('conversation_id', c.conversation_id)
+                        .eq('user_id', user.id)
+                        .single()
+                    lastReadAt = myParticipant?.last_read_at ?? null
+                    break
+                }
+            }
+        }
+
+        let lastMessagePreview: string | null = null
+        let lastMessageAt: string | null = null
+        let unreadCount = 0
+
+        if (convId) {
+            const { data: lastMsg } = await supabase
+                .from('messages')
+                .select('content, created_at')
+                .eq('conversation_id', convId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+
+            if (lastMsg) {
+                lastMessagePreview = (lastMsg.content as string).slice(0, 120)
+                lastMessageAt = lastMsg.created_at as string
+            }
+
+            // Unread = messages from the guardian after my last_read_at
+            if (lastReadAt) {
+                const { count } = await supabase
+                    .from('messages')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('conversation_id', convId)
+                    .eq('sender_id', a.assigned_to)
+                    .gt('created_at', lastReadAt)
+                unreadCount = count ?? 0
+            }
+        }
+
+        guardians.push({
+            user_id: a.assigned_to,
+            full_name: profile.full_name || 'Opiekun',
+            email: profile.email || '',
+            avatar_url: profile.avatar_url || null,
+            type: a.assignment_type,
+            last_message_preview: lastMessagePreview,
+            last_message_at: lastMessageAt,
+            unread_count: unreadCount,
+            conversation_id: convId,
+        })
+    }
+
+    // Recruiter first, then delivery_lead — matches B2B.net hierarchy ("Twój Ambasador" first)
+    guardians.sort((a, b) => {
+        if (a.type === 'recruiter' && b.type !== 'recruiter') return -1
+        if (b.type === 'recruiter' && a.type !== 'recruiter') return 1
+        return 0
+    })
+
+    return guardians
+}
+
 export async function getMyRecruiter(): Promise<MyRecruiterInfo | null> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()

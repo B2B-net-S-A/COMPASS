@@ -6,9 +6,37 @@ import { listSupportCategories } from '@/lib/actions/support-tickets'
 
 export const dynamic = 'force-dynamic'
 
-export default async function NewTicketPage() {
+interface NewTicketPageProps {
+    searchParams: { category?: string; prefill?: string }
+}
+
+interface DispatchPrefill {
+    subject?: string
+    body_md?: string
+    category_slug?: string
+    assignee_id?: string | null
+}
+
+function decodePrefill(token: string | undefined): DispatchPrefill | null {
+    if (!token) return null
+    try {
+        const json = Buffer.from(token, 'base64url').toString('utf-8')
+        const parsed = JSON.parse(json) as DispatchPrefill
+        return parsed && typeof parsed === 'object' ? parsed : null
+    } catch {
+        return null
+    }
+}
+
+export default async function NewTicketPage({ searchParams }: NewTicketPageProps) {
     const categoriesResult = await listSupportCategories()
     const categories = categoriesResult.success ? categoriesResult.data : []
+
+    const prefill = decodePrefill(searchParams.prefill)
+    const categorySlugFromUrl = prefill?.category_slug ?? searchParams.category
+    const defaultCategoryId = categorySlugFromUrl
+        ? categories.find(c => c.slug === categorySlugFromUrl)?.id
+        : undefined
 
     return (
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
@@ -29,7 +57,15 @@ export default async function NewTicketPage() {
                 </Card>
             )}
 
-            {categoriesResult.success && <TicketComposer categories={categories} />}
+            {categoriesResult.success && (
+                <TicketComposer
+                    categories={categories}
+                    defaultCategoryId={defaultCategoryId}
+                    defaultSubject={prefill?.subject}
+                    defaultBody={prefill?.body_md}
+                    defaultAssigneeId={prefill?.assignee_id ?? undefined}
+                />
+            )}
         </div>
     )
 }

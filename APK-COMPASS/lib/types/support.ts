@@ -58,6 +58,7 @@ export interface CreateTicketInput {
     subject: string
     body_md: string
     priority?: TicketPriority
+    assignee_id?: string
 }
 
 export interface SupportArticle {
