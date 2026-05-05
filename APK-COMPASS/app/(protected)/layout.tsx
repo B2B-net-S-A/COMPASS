@@ -16,7 +16,6 @@ import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
 import nextDynamic from 'next/dynamic'
 
-const InternalCommunicator = nextDynamic(() => import('@/components/communicator/InternalCommunicator').then(m => m.InternalCommunicator), { ssr: false })
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 
 export default async function ProtectedLayout({
@@ -93,7 +92,6 @@ export default async function ProtectedLayout({
                     <LayoutPreferencesProvider>
                         {children}
                     </LayoutPreferencesProvider>
-                    <InternalCommunicator currentUser={userData} />
                     <Tour initialDone={profile?.onboarding_tour_done ?? false} />
                 </AppLayout>
             </ThemeProvider>
