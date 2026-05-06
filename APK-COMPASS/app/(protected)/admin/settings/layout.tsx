@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Wrench, Mail, Users, ShieldCheck, Crown, Palette } from 'lucide-react'
+import { Wrench, Mail, Users, ShieldCheck, Crown, Palette, KeyRound } from 'lucide-react'
 import { checkIsSuperAdmin } from '@/lib/actions/admin-management'
 
 interface NavItem {
@@ -42,6 +42,12 @@ const settingsGroups: NavGroup[] = [
                 title: "Administratorzy",
                 href: "/admin/settings/admins",
                 icon: Crown,
+                superAdminOnly: true,
+            },
+            {
+                title: "Użytkownicy",
+                href: "/admin/settings/users",
+                icon: KeyRound,
                 superAdminOnly: true,
             },
         ]
