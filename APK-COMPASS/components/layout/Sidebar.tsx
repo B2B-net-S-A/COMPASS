@@ -16,6 +16,7 @@ import {
     Cog,
     ShieldCheck,
     Inbox,
+    Mailbox,
     PenSquare,
     Sparkles,
     type LucideIcon,
@@ -30,6 +31,7 @@ export interface SidebarBadgeCounts {
     news?: number
     adminTickets?: number
     adminPitches?: number
+    adminInbox?: number
     consultantSupport?: number
 }
 
@@ -105,6 +107,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         links: [
             { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: null },
             { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null, badgeCount: badges?.adminTickets },
+            { name: t('nav_admin_inbox'), href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox },
             { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
             { name: t('nav_admin_incubator'), href: '/admin/incubator', icon: Sparkles, feature: null, badgeCount: badges?.adminPitches },
             { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
