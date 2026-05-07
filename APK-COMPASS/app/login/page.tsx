@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader } from '@/co
 import { AlertCircle, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
 import Link from 'next/link'
-import { login, signup, verifyMfaAction } from './actions'
+import { login, signup, verifyMfaAction, signInWithMicrosoft } from './actions'
 
 // ─── Loading Step Messages ──────────────────────────────────────────────────
 const LOADING_STEPS = [
@@ -51,6 +51,31 @@ export default function LoginPage() {
     useEffect(() => {
         setIsDesktop(window.innerWidth >= 768)
     }, [])
+
+    // Pick up error from /auth/callback redirects (e.g. ?error=domain_not_allowed)
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        const err = params.get('error')
+        if (err === 'domain_not_allowed') {
+            setError('Logowanie przez Microsoft jest dostępne tylko dla kont @b2bnetwork.pl.')
+        } else if (err === 'auth_failed') {
+            setError('Logowanie nie powiodło się. Spróbuj ponownie.')
+        }
+    }, [])
+
+    const [ssoLoading, setSsoLoading] = useState(false)
+    async function handleMicrosoftLogin() {
+        setError(null)
+        setSuccess(null)
+        setSsoLoading(true)
+        const result = await signInWithMicrosoft()
+        // Server action redirects on success; only returns here on error
+        if (result?.error) {
+            setError(result.error)
+            setSsoLoading(false)
+            triggerShake()
+        }
+    }
 
     // ─── Shake trigger ──────────────────────────────────────────────────
     const triggerShake = useCallback(() => {
@@ -330,6 +355,40 @@ export default function LoginPage() {
                                 <p className="text-center text-xs text-muted-foreground login-status-pulse">
                                     {statusText}
                                 </p>
+                            )}
+
+                            {/* Microsoft 365 SSO (only on login screen, not signup) */}
+                            {!isSignUp && (
+                                <>
+                                    <div className="relative my-2">
+                                        <div className="absolute inset-0 flex items-center">
+                                            <span className="w-full border-t border-border" />
+                                        </div>
+                                        <div className="relative flex justify-center text-xs uppercase">
+                                            <span className="bg-card px-2 text-muted-foreground">lub</span>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="w-full"
+                                        disabled={loading || ssoLoading}
+                                        onClick={handleMicrosoftLogin}
+                                        data-testid="login-microsoft"
+                                    >
+                                        {ssoLoading ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <svg className="mr-2 h-4 w-4" viewBox="0 0 21 21" aria-hidden="true">
+                                                <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+                                                <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+                                                <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+                                                <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+                                            </svg>
+                                        )}
+                                        Zaloguj przez Microsoft 365
+                                    </Button>
+                                </>
                             )}
                         </form>
                     ) : (
