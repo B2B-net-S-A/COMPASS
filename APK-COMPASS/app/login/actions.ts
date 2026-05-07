@@ -9,9 +9,8 @@ import { logAudit } from '@/lib/actions/audit'
 import { verifyMFACode } from '@/lib/mfa'
 import { cookies } from 'next/headers'
 
-import { type SupabaseClient } from '@supabase/supabase-js'
-import { isSuperAdmin } from '@/lib/auth/super-admins'
 import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
+import { syncRole } from '@/lib/auth/sync-role'
 
 // ─── Friendly Error Messages ────────────────────────────────────────────────
 // Maps raw Supabase/system errors to user-friendly Polish messages
@@ -73,35 +72,6 @@ function friendlySignupError(raw: string, err?: { code?: string }): string {
     // Fallback — include sanitized original for debugging
     console.error('[SIGNUP_FALLBACK_ERROR]', raw, code)
     return `Wystąpił problem z rejestracją. Spróbuj ponownie za chwilę.`
-}
-
-// ─── Role Sync ───────────────────────────────────────────────────────────────
-// Determines the correct role for a user at login time.
-// Priority: Super Admin > Admin (from admin_access_list) > Centrala > Consultant
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Phase 16 (2026-05-07): two-role model. enum user_role = (consultant | admin).
-// `centrala_access_list` was dropped together with the centrala module.
-// Authorization rule: SUPER_ADMIN_EMAILS env OR admin_access_list ⇒ admin; otherwise consultant.
-async function syncRole(supabase: SupabaseClient, userId: string, email: string, currentRole: string): Promise<'admin' | 'consultant'> {
-    const emailLower = email.toLowerCase()
-
-    // 1. Super admins (env-based) and 2. admin_access_list (DB-based) both grant DB role 'admin'.
-    let shouldBeAdmin = isSuperAdmin(emailLower)
-    if (!shouldBeAdmin) {
-        const { data: adminEntry } = await supabase
-            .from('admin_access_list')
-            .select('id')
-            .eq('email', emailLower)
-            .maybeSingle()
-        shouldBeAdmin = !!adminEntry
-    }
-
-    const target: 'admin' | 'consultant' = shouldBeAdmin ? 'admin' : 'consultant'
-    if (currentRole !== target) {
-        await supabase.from('profiles').update({ role: target }).eq('id', userId)
-    }
-    return target
 }
 
 const BYPASS_EMAIL = process.env.BYPASS_EMAIL?.toLowerCase() ?? ''
