@@ -1,0 +1,123 @@
+'use client'
+
+import { useState } from 'react'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Loader2 } from 'lucide-react'
+import type { TimesheetEntryRow } from '@/lib/actions/internal-timesheet'
+
+interface Props {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    initial?: TimesheetEntryRow | null
+    minDate: string
+    maxDate: string
+    saving: boolean
+    onSubmit: (values: { workDate: string; hours: number; project: string | null; description: string }) => void
+}
+
+export function TimesheetEntryDialog({ open, onOpenChange, initial, minDate, maxDate, saving, onSubmit }: Props) {
+    const [workDate, setWorkDate] = useState<string>(initial?.work_date ?? minDate)
+    const [hours, setHours] = useState<string>(initial?.hours?.toString() ?? '8')
+    const [project, setProject] = useState<string>(initial?.project ?? '')
+    const [description, setDescription] = useState<string>(initial?.description ?? '')
+
+    function handleSubmit(e: React.FormEvent) {
+        e.preventDefault()
+        const h = Number(hours)
+        if (!Number.isFinite(h) || h <= 0 || h > 24) {
+            alert('Liczba godzin musi być w zakresie (0, 24].')
+            return
+        }
+        if (!description.trim()) {
+            alert('Opis jest wymagany.')
+            return
+        }
+        onSubmit({
+            workDate,
+            hours: h,
+            project: project.trim() || null,
+            description: description.trim(),
+        })
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>{initial ? 'Edytuj wpis' : 'Nowy wpis'}</DialogTitle>
+                    <DialogDescription>
+                        Logowane godziny przepracowane danego dnia.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form onSubmit={handleSubmit} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="entry_date">Data</Label>
+                            <Input
+                                id="entry_date"
+                                type="date"
+                                value={workDate}
+                                min={minDate}
+                                max={maxDate}
+                                onChange={(e) => setWorkDate(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="entry_hours">Godziny</Label>
+                            <Input
+                                id="entry_hours"
+                                type="number"
+                                step="0.25"
+                                min="0.25"
+                                max="24"
+                                value={hours}
+                                onChange={(e) => setHours(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <Label htmlFor="entry_project">Projekt (opcjonalny)</Label>
+                        <Input
+                            id="entry_project"
+                            placeholder="np. Klient X / Onboarding"
+                            value={project}
+                            onChange={(e) => setProject(e.target.value)}
+                            maxLength={100}
+                        />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <Label htmlFor="entry_desc">Opis prac</Label>
+                        <Textarea
+                            id="entry_desc"
+                            rows={3}
+                            maxLength={500}
+                            placeholder="Co dokładnie robiłeś tego dnia…"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            required
+                        />
+                    </div>
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+                            Anuluj
+                        </Button>
+                        <Button type="submit" disabled={saving}>
+                            {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            Zapisz
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    )
+}

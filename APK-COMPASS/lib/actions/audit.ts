@@ -15,6 +15,16 @@ export type AuditAction =
     | 'DELETE_USER'
     | 'MFA_VERIFY'
     | 'MFA_SENT'
+    // Phase 11 — HR Internal
+    | 'EMPLOYEE_PROFILE_UPDATE'
+    | 'ATTENDANCE_UPDATE'
+    | 'LEAVE_APPROVED'
+    | 'LEAVE_REJECTED'
+    | 'LEAVE_CANCELLED'
+    | 'TIMESHEET_SUBMITTED'
+    | 'TIMESHEET_APPROVED'
+    | 'TIMESHEET_REJECTED'
+    | 'TIMESHEET_UNLOCKED'
 
 export async function logAudit(
     userId: string | null,

@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { getSuperAdmins, isSuperAdmin } from '@/lib/auth/super-admins'
 import { logAudit } from '@/lib/actions/audit'
+import { DB_ROLES, type DbRole, roleLabelPl } from '@/lib/types/role'
+import { sendRoleChangeEmail } from '@/lib/email'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -291,5 +293,137 @@ export async function checkUserAdminAccess(): Promise<boolean> {
         return true
     } catch {
         return false
+    }
+}
+
+// ─── Phase 11: change role ──────────────────────────────────────────────────
+
+export async function setUserRole(targetUserId: string, newRole: DbRole): Promise<void> {
+    const { user: actor } = await requireSuperAdmin()
+    if (!DB_ROLES.includes(newRole)) {
+        throw new Error(`Nieprawidłowa rola: ${newRole}`)
+    }
+
+    const target = await fetchTargetUser(targetUserId)
+    ensureCanModify(actor.id, target)
+
+    const admin = createServiceClient()
+    const { data: profile, error: profileErr } = await admin
+        .from('profiles')
+        .select('role, full_name')
+        .eq('id', target.id)
+        .single<{ role: string | null; full_name: string | null }>()
+    if (profileErr) throw new Error(`Nie udało się odczytać profilu: ${profileErr.message}`)
+
+    const oldRole = profile?.role ?? 'consultant'
+    if (oldRole === newRole) {
+        return
+    }
+
+    const { error: updateErr } = await admin
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('id', target.id)
+    if (updateErr) throw new Error(`Błąd zmiany roli: ${updateErr.message}`)
+
+    await logAudit(actor.id, 'ROLE_CHANGE', {
+        target_user_id: target.id,
+        target_email: target.email ?? null,
+        old_role: oldRole,
+        new_role: newRole,
+    })
+
+    if (target.email) {
+        const action: 'added' | 'removed' = newRole === 'consultant' ? 'removed' : 'added'
+        try {
+            await sendRoleChangeEmail(
+                target.email,
+                profile?.full_name ?? target.email,
+                roleLabelPl(newRole),
+                action
+            )
+        } catch (e) {
+            console.error('[setUserRole] role-change email failed:', e)
+        }
+    }
+}
+
+// ─── Phase 11: edit HR profile fields (default_location, annual_leave_days, …) ───
+
+export interface EmployeeProfileInput {
+    default_location?: 'onsite' | 'remote'
+    annual_leave_days?: number
+    employment_type?: 'uop' | 'b2b'
+    work_start_date?: string | null
+}
+
+export interface EmployeeProfileFields {
+    default_location: 'onsite' | 'remote' | null
+    annual_leave_days: number | null
+    employment_type: 'uop' | 'b2b' | null
+    work_start_date: string | null
+}
+
+export async function setEmployeeProfile(targetUserId: string, fields: EmployeeProfileInput): Promise<void> {
+    const { user: actor } = await requireSuperAdmin()
+    const target = await fetchTargetUser(targetUserId)
+    ensureCanModify(actor.id, target)
+
+    const updates: Record<string, unknown> = {}
+    if (fields.default_location !== undefined) {
+        if (!['onsite', 'remote'].includes(fields.default_location)) {
+            throw new Error('default_location musi być "onsite" lub "remote".')
+        }
+        updates.default_location = fields.default_location
+    }
+    if (fields.annual_leave_days !== undefined) {
+        const n = Number(fields.annual_leave_days)
+        if (!Number.isFinite(n) || n < 0 || n > 60) {
+            throw new Error('annual_leave_days musi być w zakresie 0–60.')
+        }
+        updates.annual_leave_days = Math.round(n)
+    }
+    if (fields.employment_type !== undefined) {
+        if (!['uop', 'b2b'].includes(fields.employment_type)) {
+            throw new Error('employment_type musi być "uop" lub "b2b".')
+        }
+        updates.employment_type = fields.employment_type
+    }
+    if (fields.work_start_date !== undefined) {
+        if (fields.work_start_date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(fields.work_start_date)) {
+            throw new Error('work_start_date musi być w formacie YYYY-MM-DD lub null.')
+        }
+        updates.work_start_date = fields.work_start_date
+    }
+
+    if (Object.keys(updates).length === 0) {
+        return
+    }
+
+    const admin = createServiceClient()
+    const { error } = await admin.from('profiles').update(updates).eq('id', target.id)
+    if (error) throw new Error(`Błąd zmiany profilu pracownika: ${error.message}`)
+
+    await logAudit(actor.id, 'EMPLOYEE_PROFILE_UPDATE', {
+        target_user_id: target.id,
+        target_email: target.email ?? null,
+        fields: updates,
+    })
+}
+
+export async function getEmployeeProfileFields(targetUserId: string): Promise<EmployeeProfileFields> {
+    await requireSuperAdmin()
+    const admin = createServiceClient()
+    const { data, error } = await admin
+        .from('profiles')
+        .select('default_location, annual_leave_days, employment_type, work_start_date')
+        .eq('id', targetUserId)
+        .single<EmployeeProfileFields>()
+    if (error) throw new Error(`Nie udało się odczytać profilu: ${error.message}`)
+    return {
+        default_location: data?.default_location ?? null,
+        annual_leave_days: data?.annual_leave_days ?? null,
+        employment_type: data?.employment_type ?? null,
+        work_start_date: data?.work_start_date ?? null,
     }
 }

@@ -23,6 +23,8 @@ export const dictionary = {
         group_main: 'Główne',
         group_growth: 'Rozwój',
         group_community: 'Społeczność',
+        group_internal: 'Strefa wewnętrzna',
+        group_internal_admin: 'Administracja HR',
         group_admin: 'Administracja',
         group_account: 'Konto',
 
@@ -46,6 +48,15 @@ export const dictionary = {
         nav_admin_incubator: 'Pitche / Projekty',
         nav_admin_users: 'Użytkownicy',
         nav_admin_settings: 'Ustawienia platformy',
+
+        // Navigation — internal employee zone (Phase 11)
+        nav_internal_attendance: 'Lista obecności',
+        nav_internal_calendar: 'Kalendarz urlopów',
+        nav_internal_leave: 'Moje urlopy',
+        nav_internal_timesheet: 'Timesheet',
+        nav_internal_admin_leave: 'Wnioski urlopowe',
+        nav_internal_admin_timesheets: 'Timesheety',
+        nav_internal_admin_employees: 'Pracownicy wewnętrzni',
 
         // Mobile bottom-nav (short labels, ≤8 chars)
         mobile_home: 'Pulpit',
@@ -95,6 +106,8 @@ export const dictionary = {
         group_main: 'Main',
         group_growth: 'Growth',
         group_community: 'Community',
+        group_internal: 'Internal',
+        group_internal_admin: 'HR Admin',
         group_admin: 'Administration',
         group_account: 'Account',
 
@@ -118,6 +131,15 @@ export const dictionary = {
         nav_admin_incubator: 'Pitches / Projects',
         nav_admin_users: 'Users',
         nav_admin_settings: 'Platform settings',
+
+        // Navigation — internal employee zone (Phase 11)
+        nav_internal_attendance: 'Attendance',
+        nav_internal_calendar: 'Vacation calendar',
+        nav_internal_leave: 'My leave',
+        nav_internal_timesheet: 'Timesheet',
+        nav_internal_admin_leave: 'Leave requests',
+        nav_internal_admin_timesheets: 'Timesheets',
+        nav_internal_admin_employees: 'Internal employees',
 
         // Mobile bottom-nav
         mobile_home: 'Home',
