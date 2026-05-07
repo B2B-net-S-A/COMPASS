@@ -283,3 +283,29 @@ export async function signup(formData: FormData) {
 
     return { success: 'Rejestracja zakończona sukcesem! Możesz się teraz zalogować.' }
 }
+
+// ─── Microsoft 365 SSO (Azure Entra) ─────────────────────────────────────────
+// Tenant: b2bnetwork.pl. Single-tenant Azure app + post-callback domain check
+// in app/auth/callback/route.ts as defense-in-depth.
+
+export async function signInWithMicrosoft() {
+    const supabase = createClient()
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+        || process.env.NEXT_PUBLIC_APP_URL
+        || 'http://localhost:10000'
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+            scopes: 'email openid profile',
+            redirectTo: `${siteUrl}/auth/callback`,
+        },
+    })
+
+    if (error || !data?.url) {
+        console.error('[SSO_AZURE] signInWithOAuth failed:', error?.message)
+        return { error: 'Nie udało się rozpocząć logowania przez Microsoft. Spróbuj ponownie lub użyj email + hasło.' }
+    }
+
+    redirect(data.url)
+}
