@@ -25,8 +25,6 @@ interface EnvVars {
     TEST_PASSWORD: string
     TEST_CONSULTANT_EMAIL: string
     TEST_ADMIN_EMAIL: string
-    TEST_CENTRALA_EMAIL: string
-    TEST_ADMINISTRATOR_EMAIL: string
 }
 
 function loadEnvTest(): EnvVars {
@@ -46,8 +44,6 @@ function loadEnvTest(): EnvVars {
         'TEST_PASSWORD',
         'TEST_CONSULTANT_EMAIL',
         'TEST_ADMIN_EMAIL',
-        'TEST_CENTRALA_EMAIL',
-        'TEST_ADMINISTRATOR_EMAIL',
     ]
     for (const key of required) {
         if (!env[key]) throw new Error(`Missing ${key} in .env.test`)
@@ -122,11 +118,9 @@ async function main() {
         auth: { persistSession: false },
     })
 
-    const targets: Array<{ email: string; role: string }> = [
+    const targets: Array<{ email: string; role: 'admin' | 'consultant' }> = [
         { email: env.TEST_CONSULTANT_EMAIL, role: 'consultant' },
         { email: env.TEST_ADMIN_EMAIL, role: 'admin' },
-        { email: env.TEST_CENTRALA_EMAIL, role: 'centrala' },
-        { email: env.TEST_ADMINISTRATOR_EMAIL, role: 'administrator' },
     ]
 
     let createdCount = 0
@@ -140,7 +134,7 @@ async function main() {
 
     console.log(`\n=== Done ===`)
     console.log(`Created: ${createdCount}, Already existed: ${targets.length - createdCount}`)
-    console.log(`\nNote: 'administrator' role checks may also need ${env.TEST_ADMINISTRATOR_EMAIL} added to SUPER_ADMIN_EMAILS env on Hetzner.`)
+    console.log(`\nNote: TEST_ADMIN_EMAIL must also be added to admin_access_list (or SUPER_ADMIN_EMAILS) for syncRole to keep the admin role across logins.`)
 }
 
 main().catch(e => {

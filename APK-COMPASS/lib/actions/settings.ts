@@ -38,7 +38,7 @@ export async function updateSystemSetting(key: string, value: string) {
         .eq('id', user.id)
         .single()
 
-    if (!['admin', 'administrator', 'centrala'].includes(profile?.role || '')) {
+    if (!['admin'].includes(profile?.role || '')) {
         throw new Error('Only administrators can update system settings')
     }
 
@@ -78,7 +78,7 @@ export async function getAllSystemSettings() {
         .eq('id', user.id)
         .single()
 
-    if (!['admin', 'administrator', 'centrala'].includes(profile?.role || '')) {
+    if (!['admin'].includes(profile?.role || '')) {
         throw new Error('Only administrators can view system settings')
     }
 

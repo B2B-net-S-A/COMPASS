@@ -21,7 +21,7 @@ export default async function NewCoursePage({ searchParams }: PageProps) {
         role = profile?.role || 'consultant'
     }
 
-    const isAdminOrTrainer = ['admin', 'trainer'].includes(role)
+    const isAdminOrTrainer = ['admin'].includes(role)
     const defaultType = searchParams.type === 'company' && isAdminOrTrainer ? 'company' : 'consultant'
 
     return (

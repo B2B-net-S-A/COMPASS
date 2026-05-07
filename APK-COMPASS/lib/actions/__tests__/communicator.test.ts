@@ -196,7 +196,7 @@ describe('sendBroadcastToAll — admin only', () => {
         expect(result.recipientCount).toBe(0)
     })
 
-    it.each(['admin', 'administrator', 'centrala'])('allows %s role', async (role) => {
+    it.each(['admin'])('allows %s role', async (role) => {
         const rpcSpy = vi.fn(async () => 'broadcast-conv-id')
         setup({
             user: { id: 'u-admin', email: 'a@x.com' },

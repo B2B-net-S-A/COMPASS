@@ -56,7 +56,7 @@ async function isAdminOrCentrala(supabase: ReturnType<typeof createClient>, user
         .eq('id', userId)
         .single()
     const role = data?.role || ''
-    return ['admin', 'administrator', 'centrala'].includes(role)
+    return ['admin'].includes(role)
 }
 
 // ============================================================

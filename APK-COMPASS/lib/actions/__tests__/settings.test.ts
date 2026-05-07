@@ -50,7 +50,7 @@ describe('updateSystemSetting', () => {
         await expect(updateSystemSetting('k', 'v')).rejects.toThrow(/Only administrators/)
     })
 
-    it.each(['admin', 'administrator', 'centrala'])('allows %s to upsert a setting', async (role) => {
+    it.each(['admin'])('allows %s to upsert a setting', async (role) => {
         setup({
             user: { id: 'u1', email: 'x@x.com' },
             tables: { profiles: [{ id: 'u1', role }], system_settings: [] },

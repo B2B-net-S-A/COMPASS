@@ -33,7 +33,7 @@ export async function uploadNewDocument(formData: FormData) {
     // If public, check permissions
     if (isPublic) {
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-        if (!['admin', 'administrator', 'centrala'].includes(profile?.role || '')) {
+        if (!['admin'].includes(profile?.role || '')) {
             throw new Error('Only admins can upload public documents')
         }
     }
@@ -123,7 +123,7 @@ export async function uploadNewVersion(formData: FormData) {
     // For public docs, check admin permissions
     if (doc.is_public) {
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-        if (!['admin', 'administrator', 'centrala'].includes(profile?.role || '')) {
+        if (!['admin'].includes(profile?.role || '')) {
             throw new Error('Only admins can update public documents')
         }
     } else if (doc.owner_id !== user.id) {
@@ -211,7 +211,7 @@ export async function deleteDocument(documentId: string) {
     // Check permissions: owner or admin
     if (doc.owner_id !== user.id) {
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-        if (!['admin', 'administrator', 'centrala'].includes(profile?.role || '')) {
+        if (!['admin'].includes(profile?.role || '')) {
             throw new Error('Unauthorized to delete this document')
         }
     }
@@ -336,7 +336,7 @@ export async function reindexAllDocuments() {
     if (!user) throw new Error('Unauthorized')
 
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-    if (!['admin', 'administrator'].includes(profile?.role || '')) {
+    if (!['admin'].includes(profile?.role || '')) {
         throw new Error('Admin only')
     }
 

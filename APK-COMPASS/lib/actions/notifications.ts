@@ -200,7 +200,7 @@ export async function createNotification(params: {
             .eq('id', user.id)
             .single()
 
-        if (!['admin', 'administrator'].includes(profile?.role || '') && params.userId !== user.id) {
+        if (!['admin'].includes(profile?.role || '') && params.userId !== user.id) {
             return { success: false, error: 'Brak uprawnień: Tylko administratorzy mogą tworzyć powiadomienia dla innych użytkowników' }
         }
 

@@ -178,7 +178,7 @@ export async function createNewsPost(input: CreateNewsPostInput): Promise<NewsAc
 
         // Notify all matching consultants on publish (no-op if draft)
         if (input.publish) {
-            const targetRoles = audience ?? ['consultant', 'admin', 'trainer']
+            const targetRoles = audience ?? ['consultant', 'admin']
             const { data: targets } = await supabase.from('profiles').select('id').in('role', targetRoles)
             const ids = ((targets ?? []) as Array<{ id: string }>).map((p) => p.id)
             if (ids.length > 0) {

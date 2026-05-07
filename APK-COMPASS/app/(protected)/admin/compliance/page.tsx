@@ -18,7 +18,7 @@ export default async function CompliancePage() {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !['admin', 'administrator'].includes(profile.role)) {
+  if (!profile || !['admin'].includes(profile.role)) {
     redirect('/home')
   }
 

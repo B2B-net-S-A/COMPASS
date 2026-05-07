@@ -14,7 +14,7 @@ interface PostComposerProps {
     initial?: NewsPost
 }
 
-const ROLES = ['consultant', 'admin', 'trainer'] as const
+const ROLES = ['consultant', 'admin'] as const
 
 export function PostComposer({ initial }: PostComposerProps) {
     const router = useRouter()

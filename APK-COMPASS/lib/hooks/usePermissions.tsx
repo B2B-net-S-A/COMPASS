@@ -9,7 +9,7 @@ type UserPermissions = Record<PermissionFeature, PermissionValue>
 
 interface PermissionsContextValue {
     permissions: UserPermissions | null
-    role: 'consultant' | 'admin' | 'centrala' | 'administrator'
+    role: 'consultant' | 'admin'
 }
 
 const PermissionsContext = createContext<PermissionsContextValue>({
@@ -22,7 +22,7 @@ const PermissionsContext = createContext<PermissionsContextValue>({
 interface PermissionsProviderProps {
     children: ReactNode
     permissions: UserPermissions | null
-    role: 'consultant' | 'admin' | 'centrala' | 'administrator'
+    role: 'consultant' | 'admin'
 }
 
 export function PermissionsProvider({ children, permissions, role }: PermissionsProviderProps) {
@@ -37,7 +37,7 @@ export function PermissionsProvider({ children, permissions, role }: Permissions
 
 export function usePermissions() {
     const { permissions, role } = useContext(PermissionsContext)
-    const isAdmin = role === 'administrator' || role === 'admin'
+    const isAdmin = role === 'admin'
 
     /**
      * Check if the current user has access to a feature.

@@ -123,7 +123,7 @@ export async function addAdminMember(email: string, fullName?: string) {
         .maybeSingle()
 
     if (profile) {
-        await supabase.from('profiles').update({ role: 'administrator' }).eq('id', profile.id)
+        await supabase.from('profiles').update({ role: 'admin' }).eq('id', profile.id)
     }
 
     return { success: true }

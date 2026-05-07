@@ -12,7 +12,7 @@ async function requireAdmin(supabase: ReturnType<typeof createClient>): Promise<
     if (!user) return { error: 'Brak autoryzacji' }
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     const role = profile?.role || ''
-    if (!['admin', 'administrator', 'centrala'].includes(role)) {
+    if (!['admin'].includes(role)) {
         return { error: 'Niewystarczające uprawnienia' }
     }
     return { userId: user.id }
@@ -198,7 +198,7 @@ export async function archiveCourse(courseId: string): Promise<ActionResult<void
         if (!course) return { success: false, error: 'Kurs nie istnieje' }
 
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-        const isAdmin = ['admin', 'administrator', 'centrala'].includes(profile?.role || '')
+        const isAdmin = ['admin'].includes(profile?.role || '')
         if (course.author_id !== user.id && !isAdmin) {
             return { success: false, error: 'Brak uprawnień' }
         }

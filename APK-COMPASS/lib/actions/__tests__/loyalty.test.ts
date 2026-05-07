@@ -34,7 +34,7 @@ describe('addLoyaltyPoints', () => {
         expect(result).toEqual({ success: false, error: 'Niewystarczające uprawnienia' })
     })
 
-    it.each(['admin', 'administrator', 'centrala'])('allows %s role to add points', async (role) => {
+    it.each(['admin'])('allows %s role to add points', async (role) => {
         setupClient({
             user: { id: 'u-admin', email: 'a@x.com' },
             tables: {

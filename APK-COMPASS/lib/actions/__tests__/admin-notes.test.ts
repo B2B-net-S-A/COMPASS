@@ -34,7 +34,7 @@ describe('addAdminNote', () => {
         expect(result.error).toMatch(/uprawnie/)
     })
 
-    it.each(['admin', 'administrator', 'centrala'])('allows %s to add note to a profile', async (role) => {
+    it.each(['admin'])('allows %s to add note to a profile', async (role) => {
         setup({
             user: { id: 'u-admin', email: 'a@x.com' },
             tables: {

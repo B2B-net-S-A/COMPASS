@@ -32,7 +32,7 @@ export async function addLoyaltyPoints(
             .eq('id', user.id)
             .single()
 
-        const allowedRoles = ['admin', 'administrator', 'centrala']
+        const allowedRoles = ['admin']
         const hasPermission = allowedRoles.includes(callerProfile?.role || '')
 
         // If not admin, maybe allow self-triggering for specific system events? 
@@ -145,7 +145,7 @@ export async function updateLoyaltyRule(id: string, updates: Partial<LoyaltyRule
 
     // Check admin role
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-    if (!['admin', 'administrator', 'centrala'].includes(profile?.role || '')) {
+    if (!['admin'].includes(profile?.role || '')) {
         return { success: false, error: 'Niewystarczające uprawnienia' }
     }
 
@@ -310,7 +310,7 @@ export async function getLoyaltyBreakdown(
                 .select('role')
                 .eq('id', user.id)
                 .single()
-            if (!['admin', 'administrator', 'centrala'].includes(callerProfile?.role || '')) {
+            if (!['admin'].includes(callerProfile?.role || '')) {
                 return { success: false, error: 'Niewystarczające uprawnienia' }
             }
             userId = targetUserId
@@ -519,7 +519,7 @@ export async function getAllConsultantsLoyalty(): Promise<AllConsultantsLoyaltyR
             .eq('id', user.id)
             .single()
 
-        if (!['admin', 'administrator', 'centrala'].includes(callerProfile?.role || '')) {
+        if (!['admin'].includes(callerProfile?.role || '')) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 
@@ -590,7 +590,7 @@ export async function exportLoyaltyCsv(
                 .select('role')
                 .eq('id', user.id)
                 .single()
-            if (!['admin', 'administrator', 'centrala'].includes(callerProfile?.role || '')) {
+            if (!['admin'].includes(callerProfile?.role || '')) {
                 return { success: false, error: 'Niewystarczające uprawnienia' }
             }
             userId = targetUserId
@@ -674,7 +674,7 @@ export async function getLoyaltyOverview(targetUserId?: string): Promise<{ succe
                 .select('role')
                 .eq('id', user.id)
                 .single()
-            if (!['admin', 'trainer'].includes(callerProfile?.role || '')) {
+            if (!['admin'].includes(callerProfile?.role || '')) {
                 return { success: false, error: 'Niewystarczające uprawnienia' }
             }
             userId = targetUserId
@@ -738,7 +738,7 @@ export async function confirmPendingTransaction(transactionId: string): Promise<
             .select('role')
             .eq('id', user.id)
             .single()
-        if (!['admin', 'trainer'].includes(callerProfile?.role || '')) {
+        if (!['admin'].includes(callerProfile?.role || '')) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 
@@ -775,7 +775,7 @@ export async function reverseTransaction(transactionId: string, reason: string):
             .select('role')
             .eq('id', user.id)
             .single()
-        if (!['admin', 'trainer'].includes(callerProfile?.role || '')) {
+        if (!['admin'].includes(callerProfile?.role || '')) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 

@@ -80,55 +80,28 @@ function friendlySignupError(raw: string, err?: { code?: string }): string {
 // Priority: Super Admin > Admin (from admin_access_list) > Centrala > Consultant
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Phase 8 hotfix (2026-05-05): Phase 1.5 cast profiles.role to user_role enum
-// (consultant | admin | trainer). Legacy values 'administrator' and 'centrala'
-// are no longer valid DB values — they're collapsed to 'admin' at the DB level
-// but returned as marker strings to the caller for permissions/MFA gating.
-async function syncRole(supabase: SupabaseClient, userId: string, email: string, currentRole: string): Promise<string> {
+// Phase 16 (2026-05-07): two-role model. enum user_role = (consultant | admin).
+// `centrala_access_list` was dropped together with the centrala module.
+// Authorization rule: SUPER_ADMIN_EMAILS env OR admin_access_list ⇒ admin; otherwise consultant.
+async function syncRole(supabase: SupabaseClient, userId: string, email: string, currentRole: string): Promise<'admin' | 'consultant'> {
     const emailLower = email.toLowerCase()
 
-    // 1. Super Admins — hardcoded list (lib/auth/super-admins.ts).
-    //    DB stores 'admin'; we return 'administrator' marker for downstream gates.
-    if (isSuperAdmin(emailLower)) {
-        if (currentRole !== 'admin') {
-            await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
-        }
-        return 'administrator'
+    // 1. Super admins (env-based) and 2. admin_access_list (DB-based) both grant DB role 'admin'.
+    let shouldBeAdmin = isSuperAdmin(emailLower)
+    if (!shouldBeAdmin) {
+        const { data: adminEntry } = await supabase
+            .from('admin_access_list')
+            .select('id')
+            .eq('email', emailLower)
+            .maybeSingle()
+        shouldBeAdmin = !!adminEntry
     }
 
-    // 2. admin_access_list (DB-driven admins — same DB role 'admin', marker 'administrator')
-    const { data: adminEntry } = await supabase
-        .from('admin_access_list')
-        .select('id')
-        .eq('email', emailLower)
-        .maybeSingle()
-
-    if (adminEntry) {
-        if (currentRole !== 'admin') {
-            await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
-        }
-        return 'administrator'
+    const target: 'admin' | 'consultant' = shouldBeAdmin ? 'admin' : 'consultant'
+    if (currentRole !== target) {
+        await supabase.from('profiles').update({ role: target }).eq('id', userId)
     }
-
-    // 3. centrala_access_list — also gets DB 'admin', marker 'centrala' for permissions matrix
-    const { data: centralaEntry } = await supabase
-        .from('centrala_access_list')
-        .select('id')
-        .eq('email', emailLower)
-        .maybeSingle()
-
-    if (centralaEntry) {
-        if (currentRole !== 'admin') {
-            await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
-        }
-        return 'centrala'
-    }
-
-    // 4. Not in any list → consultant. Downgrade if previously elevated.
-    if (currentRole !== 'consultant') {
-        await supabase.from('profiles').update({ role: 'consultant' }).eq('id', userId)
-    }
-    return 'consultant'
+    return target
 }
 
 const BYPASS_EMAIL = process.env.BYPASS_EMAIL?.toLowerCase() ?? ''
@@ -204,7 +177,7 @@ export async function login(formData: FormData) {
     }
 
     // 5b. Set MFA cookie for admin/centrala roles
-    if (role === 'admin' || role === 'administrator' || role === 'centrala') {
+    if (role === 'admin') {
         cookies().set('mfa_verified', 'true', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',

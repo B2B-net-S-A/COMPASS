@@ -116,13 +116,12 @@ describe('addAdminMember', () => {
         expect(currentClient._tables.admin_access_list).toHaveLength(1)
     })
 
-    it('updates profile.role to "administrator" when user already has a profile', async () => {
+    it('updates profile.role to "admin" when user already has a profile', async () => {
         process.env.SUPER_ADMIN_EMAILS = 'super@b2bnetwork.pl'
         setup({
             user: { id: 'u-super', email: 'super@b2bnetwork.pl' },
             tables: {
                 admin_access_list: [],
-                centrala_access_list: [],
                 profiles: [{ id: 'profile-uuid', email: 'existing@b2bnetwork.pl', role: 'consultant' }],
             },
         })
@@ -130,7 +129,7 @@ describe('addAdminMember', () => {
         const { addAdminMember } = await import('../admin-management')
         await addAdminMember('existing@b2bnetwork.pl')
         const profile = currentClient._tables.profiles[0]
-        expect(profile.role).toBe('administrator')
+        expect(profile.role).toBe('admin')
     })
 })
 
@@ -141,7 +140,7 @@ describe('removeAdminMember', () => {
             user: { id: 'u-super', email: 'super@b2bnetwork.pl' },
             tables: {
                 admin_access_list: [{ id: 'a1', email: 'admin@b2bnetwork.pl' }],
-                profiles: [{ id: 'profile-uuid', email: 'admin@b2bnetwork.pl', role: 'administrator' }],
+                profiles: [{ id: 'profile-uuid', email: 'admin@b2bnetwork.pl', role: 'admin' }],
             },
         })
         vi.resetModules()

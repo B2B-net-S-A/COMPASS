@@ -42,7 +42,7 @@ describe('getReviewQueue', () => {
         if (!result.success) expect(result.error).toMatch(/Niewystarczające uprawnienia/)
     })
 
-    it.each(['admin', 'administrator', 'centrala'])('returns pending_review courses for %s', async (role) => {
+    it.each(['admin'])('returns pending_review courses for %s', async (role) => {
         setupClient({
             user: { id: 'u-admin', email: 'a@x.com' },
             tables: {

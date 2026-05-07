@@ -142,7 +142,7 @@ export async function getConsultantProfile360(consultantId: string) {
         .eq('id', user.id)
         .single()
 
-    if (!callerProfile || !['admin', 'administrator', 'centrala', 'trainer'].includes(callerProfile.role)) {
+    if (!callerProfile || callerProfile.role !== 'admin') {
         return { success: false as const, error: 'Brak uprawnień' }
     }
 
