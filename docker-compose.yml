@@ -11,6 +11,12 @@ services:
         # GH Actions deploy.yml on every push to main (see PR #2).
         GIT_SHA: ${GIT_SHA:-unknown}
         BUILT_AT: ${BUILT_AT:-unknown}
+        # Sentry build-time args. DSN is public (browser bundle); auth token is
+        # build-only and stripped before runtime image. Both come from Coolify
+        # env vault with is_buildtime=true.
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+        NEXT_PUBLIC_GIT_SHA: ${GIT_SHA:-unknown}
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
     image: compass-app:latest
     container_name: compass-app
     restart: unless-stopped
@@ -28,6 +34,11 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       CRON_SECRET: ${CRON_SECRET}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
+      # Sentry runtime envs (server-side, NOT NEXT_PUBLIC_). DSN unset = SDK no-op.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      SENTRY_PROFILES_SAMPLE_RATE: ${SENTRY_PROFILES_SAMPLE_RATE:-0.1}
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:10000/api/health"]
       interval: 30s
