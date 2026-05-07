@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { logger } from '@/lib/logger'
 import {
     QUIZ_MIN_QUESTIONS,
     QUIZ_MAX_QUESTIONS,
@@ -115,7 +116,7 @@ export async function createCourse(input: CreateCourseInput): Promise<ActionResu
         return { success: true, data: { courseId: data.id, slug: data.slug } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd tworzenia kursu'
-        console.error('[createCourse]', error)
+        logger.error({ event: 'courses.create.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -170,7 +171,7 @@ export async function updateCourse(courseId: string, patch: UpdateCoursePatch): 
         return { success: true, data: { slug: course.slug } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd aktualizacji kursu'
-        console.error('[updateCourse]', error)
+        logger.error({ event: 'courses.update.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -194,7 +195,7 @@ export async function getMyCourses(): Promise<ActionResult<Course[]>> {
         return { success: true, data: (data ?? []) as Course[] }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania kursów'
-        console.error('[getMyCourses]', error)
+        logger.error({ event: 'courses.get_my.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -269,7 +270,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
         return { success: true, data: { items, total: count ?? items.length } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania katalogu'
-        console.error('[listPublishedCourses]', error)
+        logger.error({ event: 'courses.list_published.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -348,7 +349,7 @@ export async function getCourseDetail(slugOrId: string): Promise<ActionResult<Co
         return { success: true, data: detail }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania szczegółów kursu'
-        console.error('[getCourseDetail]', error)
+        logger.error({ event: 'courses.get_detail.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -397,7 +398,7 @@ export async function getCourseLessons(courseId: string): Promise<ActionResult<C
         return { success: true, data: lessons }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania lekcji'
-        console.error('[getCourseLessons]', error)
+        logger.error({ event: 'courses.get_lessons.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -448,7 +449,7 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
         return { success: true, data: { lessonId: data.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd dodawania lekcji'
-        console.error('[addLesson]', error)
+        logger.error({ event: 'courses.add_lesson.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -494,7 +495,7 @@ export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): 
         return { success: true, data: { courseId: course.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd aktualizacji lekcji'
-        console.error('[updateLesson]', error)
+        logger.error({ event: 'courses.update_lesson.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -537,7 +538,7 @@ export async function reorderLessons(courseId: string, orderedIds: string[]): Pr
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zmiany kolejności'
-        console.error('[reorderLessons]', error)
+        logger.error({ event: 'courses.reorder_lessons.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -569,7 +570,7 @@ export async function deleteLesson(lessonId: string): Promise<ActionResult<{ cou
         return { success: true, data: { courseId: course.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd usuwania lekcji'
-        console.error('[deleteLesson]', error)
+        logger.error({ event: 'courses.delete_lesson.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -621,7 +622,7 @@ export async function getCourseQuizForAuthor(courseId: string): Promise<ActionRe
         return { success: true, data: result }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania quizu'
-        console.error('[getCourseQuizForAuthor]', error)
+        logger.error({ event: 'courses.get_quiz.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -697,7 +698,7 @@ export async function setQuizQuestions(courseId: string, questions: QuizQuestion
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu quizu'
-        console.error('[setQuizQuestions]', error)
+        logger.error({ event: 'courses.set_quiz_questions.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -749,7 +750,7 @@ export async function submitForReview(courseId: string): Promise<ActionResult<vo
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wysyłania do moderacji'
-        console.error('[submitForReview]', error)
+        logger.error({ event: 'courses.submit_for_review.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -794,7 +795,7 @@ export async function uploadCourseAttachment(formData: FormData): Promise<Action
         return { success: true, data: attachment }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd uploadu pliku'
-        console.error('[uploadCourseAttachment]', error)
+        logger.error({ event: 'courses.upload_attachment.failed', error })
         return { success: false, error: msg }
     }
 }

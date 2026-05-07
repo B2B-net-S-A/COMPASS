@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { logger } from '@/lib/logger'
 
 let _resend: Resend | null = null
 function getResend(): Resend {
@@ -52,13 +53,13 @@ export async function sendEquipmentRequestEmail(
         })
 
         if (error) {
-            console.error('Resend error:', error)
+            logger.error({ event: 'email.equipment_request.resend_failed', error })
             throw new Error(`Failed to send email: ${error.message}`)
         }
 
         return { success: true }
     } catch (err) {
-        console.error('Email sending failed:', err)
+        logger.error({ event: 'email.equipment_request.send_failed', error: err })
         // Don't throw - we don't want to fail the request if email fails
         return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
     }
@@ -90,13 +91,13 @@ export async function sendBenefitDeclarationEmail(
         })
 
         if (error) {
-            console.error('Resend error:', error)
+            logger.error({ event: 'email.benefit_declaration.resend_failed', error })
             throw new Error(`Failed to send email: ${error.message}`)
         }
 
         return { success: true }
     } catch (err) {
-        console.error('Email sending failed:', err)
+        logger.error({ event: 'email.benefit_declaration.send_failed', error: err })
         return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
     }
 }
@@ -152,13 +153,13 @@ export async function sendRoleChangeEmail(
         })
 
         if (error) {
-            console.error('Resend role-change error:', error)
+            logger.error({ event: 'email.role_change.resend_failed', error })
             throw new Error(`Failed to send role-change email: ${error.message}`)
         }
 
         return { success: true }
     } catch (err) {
-        console.error('Role-change email failed:', err)
+        logger.error({ event: 'email.role_change.send_failed', error: err })
         return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
     }
 }
@@ -199,13 +200,13 @@ export async function sendBroadcastEmail(
         })
 
         if (error) {
-            console.error('Resend broadcast error:', error)
+            logger.error({ event: 'email.broadcast.resend_failed', error })
             throw new Error(`Failed to send broadcast email: ${error.message}`)
         }
 
         return { success: true }
     } catch (err) {
-        console.error('Broadcast email failed:', err)
+        logger.error({ event: 'email.broadcast.send_failed', error: err })
         return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
     }
 }

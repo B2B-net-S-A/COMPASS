@@ -8,6 +8,7 @@ import { Mail, Save, Loader2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { getSystemSetting, updateSystemSetting } from "@/lib/actions/settings"
 import { DigestPreview } from "@/components/admin/DigestPreview"
+import { logger } from "@/lib/logger"
 
 export default function NotificationsSettingsPage() {
     const [email, setEmail] = useState('')
@@ -26,7 +27,7 @@ export default function NotificationsSettingsPage() {
                 setEmail(notificationEmail)
             }
         } catch (error) {
-            console.error('Failed to load settings:', error)
+            logger.error({ event: 'admin.notification_settings.load_failed', error })
             setMessage({ type: 'error', text: 'Nie udało się załadować ustawień' })
         } finally {
             setLoading(false)
@@ -46,7 +47,7 @@ export default function NotificationsSettingsPage() {
             await updateSystemSetting('notification_email', email)
             setMessage({ type: 'success', text: 'Ustawienia zapisane pomyślnie' })
         } catch (error) {
-            console.error('Failed to save settings:', error)
+            logger.error({ event: 'admin.notification_settings.save_failed', error })
             setMessage({ type: 'error', text: 'Nie udało się zapisać ustawień' })
         } finally {
             setSaving(false)

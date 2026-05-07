@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { cleanDuplicateCandidates } from '@/lib/actions/maintenance'
 import { Trash2, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
+import { logger } from '@/lib/logger'
 
 export default function AdminSettingsPage() {
     const [cleaning, setCleaning] = useState(false)
@@ -28,7 +29,7 @@ export default function AdminSettingsPage() {
             const res = await cleanDuplicateCandidates()
             setResult(res)
         } catch (error) {
-            console.error(error)
+            logger.error({ event: 'admin.settings.duplicate_cleanup_failed', error })
             setResult({ count: 0, message: `Błąd krytyczny: ${(error as Error).message}` })
         } finally {
             setCleaning(false)
