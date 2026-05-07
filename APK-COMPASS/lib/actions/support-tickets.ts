@@ -135,11 +135,21 @@ export async function listTickets(options: ListTicketsOptions): Promise<SupportA
         const limit = Math.min(100, Math.max(1, options.limit ?? 25))
         const offset = Math.max(0, options.offset ?? 0)
 
+        // Phase 10: exclude inbox-* categories — those have their own queue at /admin/inbox.
+        const { data: inboxCats } = await supabase
+            .from('support_categories')
+            .select('id')
+            .like('slug', 'inbox_%')
+        const inboxCategoryIds = (inboxCats ?? []).map((c: { id: string }) => c.id)
+
         let query = supabase
             .from('support_tickets')
             .select('*', { count: 'exact' })
             .order('updated_at', { ascending: false })
 
+        if (inboxCategoryIds.length > 0) {
+            query = query.not('category_id', 'in', `(${inboxCategoryIds.join(',')})`)
+        }
         if (options.scope === 'mine') {
             query = query.eq('user_id', user.id)
         }
