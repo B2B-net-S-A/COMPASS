@@ -133,9 +133,9 @@ export function NewInboxTicketDialog({
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Nowe zgłoszenie z maila</DialogTitle>
+                    <DialogTitle>Nowe zgłoszenie</DialogTitle>
                     <DialogDescription>
-                        Wklej treść maila i wypełnij metadane. Termin SLA zostanie obliczony automatycznie.
+                        Wklej treść maila <em>albo</em> opisz sprawę własnymi słowami. Termin SLA zostanie obliczony automatycznie z priorytetu (P1=2, P2=5, P3=10 dni roboczych).
                     </DialogDescription>
                 </DialogHeader>
 
@@ -152,7 +152,7 @@ export function NewInboxTicketDialog({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="email-from">Od (email nadawcy, opcjonalnie)</Label>
+                        <Label htmlFor="email-from">Email nadawcy (opcjonalnie — jeśli zgłoszenie pochodzi z maila)</Label>
                         <Input
                             id="email-from"
                             type="email"
@@ -163,12 +163,12 @@ export function NewInboxTicketDialog({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="body">Treść maila *</Label>
+                        <Label htmlFor="body">Treść / opis sprawy *</Label>
                         <Textarea
                             id="body"
                             value={bodyMd}
                             onChange={(e) => setBodyMd(e.target.value)}
-                            placeholder="Wklej pełną treść maila..."
+                            placeholder="Wklej treść maila albo opisz sprawę własnymi słowami..."
                             rows={8}
                             className="font-mono text-xs"
                         />
