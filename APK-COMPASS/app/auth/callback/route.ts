@@ -4,10 +4,20 @@ import { NextResponse } from "next/server";
 
 const ALLOWED_DOMAIN = "@b2bnetwork.pl";
 
+// Coolify forwards traffic to the container on 0.0.0.0:10000, so request.url
+// has an internal origin. Use the configured public site URL for redirects so
+// the browser stays on the public hostname. Fall back to the request origin
+// only for local dev where this env var isn't set.
+function publicOrigin(request: Request): string {
+    const fromEnv = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
+    if (fromEnv) return fromEnv.replace(/\/+$/, '');
+    return new URL(request.url).origin;
+}
+
 export async function GET(request: Request) {
     const requestUrl = new URL(request.url);
     const code = requestUrl.searchParams.get("code");
-    const origin = requestUrl.origin;
+    const origin = publicOrigin(request);
     const next = requestUrl.searchParams.get("next") || "/home";
 
     if (code) {
