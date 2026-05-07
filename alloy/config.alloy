@@ -1,0 +1,67 @@
+// Grafana Alloy config — Compass slice of the observability rollout.
+// River syntax (Alloy's HCL-like config DSL).
+//
+// Pipeline: docker socket discovery → relabel (extract compose service /
+// project labels) → loki.source.docker reads container stdout/stderr →
+// loki.write pushes to Grafana Cloud Loki.
+//
+// Labels emitted to Loki:
+//   app="compass"
+//   service=<compose service name, e.g. "app">
+//   host=<HOSTNAME env, e.g. "compass-prod">
+//
+// Required env vars (Coolify env vault, runtime=true):
+//   GRAFANA_LOKI_URL    e.g. https://logs-prod-eu-west-2.grafana.net
+//   GRAFANA_LOKI_USER   numeric user ID
+//   GRAFANA_LOKI_TOKEN  Grafana Cloud API token, scope logs:write
+//   HOSTNAME            free-form server identifier (default "unknown")
+
+// Discover all running Docker containers via the host's Docker socket.
+discovery.docker "containers" {
+    host = "unix:///var/run/docker.sock"
+}
+
+// Extract compose service name + project as labels Loki can filter on.
+discovery.relabel "containers" {
+    targets = discovery.docker.containers.targets
+
+    rule {
+        source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label  = "service"
+    }
+    rule {
+        source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label  = "compose_project"
+    }
+    rule {
+        source_labels = ["__meta_docker_container_name"]
+        target_label  = "container"
+    }
+}
+
+// Tail container logs from the Docker socket.
+loki.source.docker "containers" {
+    host       = "unix:///var/run/docker.sock"
+    targets    = discovery.relabel.containers.output
+    forward_to = [loki.write.grafana_cloud.receiver]
+
+    labels = {
+        app  = "compass",
+        host = sys.env("HOSTNAME"),
+    }
+}
+
+// Push to Grafana Cloud Loki. Basic-auth uses the user ID + API token from
+// the Coolify env vault. Falls open if env vars are missing — Alloy logs
+// a warning but does not crash, which is what we want before the first
+// Grafana credentials provisioning.
+loki.write "grafana_cloud" {
+    endpoint {
+        url = sys.env("GRAFANA_LOKI_URL") + "/loki/api/v1/push"
+
+        basic_auth {
+            username = sys.env("GRAFANA_LOKI_USER")
+            password = sys.env("GRAFANA_LOKI_TOKEN")
+        }
+    }
+}

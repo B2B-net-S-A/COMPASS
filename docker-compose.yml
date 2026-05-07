@@ -41,3 +41,31 @@ services:
         max-file: "5"
         # Tag is consumed by Grafana Alloy (PR #10) as `service`/`app` labels in Loki.
         tag: "{{.ImageName}}/{{.Name}}/{{.ID}}"
+
+  # Grafana Alloy log shipper. Profiled so the service only starts when
+  # Coolify (or local dev) sets COMPOSE_PROFILES=observability — keeps
+  # this PR safe to merge before Grafana Cloud credentials are provisioned
+  # in the env vault. Once GRAFANA_LOKI_* are set, flip the profile and
+  # logs start flowing.
+  alloy:
+    image: grafana/alloy:latest
+    container_name: compass-alloy
+    restart: unless-stopped
+    profiles: ["observability"]
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+    environment:
+      GRAFANA_LOKI_URL: ${GRAFANA_LOKI_URL}
+      GRAFANA_LOKI_USER: ${GRAFANA_LOKI_USER}
+      GRAFANA_LOKI_TOKEN: ${GRAFANA_LOKI_TOKEN}
+      HOSTNAME: ${ALLOY_HOSTNAME:-compass-prod}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
