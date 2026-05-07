@@ -20,8 +20,8 @@ export default async function MessagesPage() {
         .eq('id', user.id)
         .single()
 
-    const role = (profile?.role as 'consultant' | 'admin' | 'centrala' | 'administrator') || 'consultant'
-    const isAdmin = role === 'admin' || role === 'centrala' || role === 'administrator'
+    const role = (profile?.role as 'consultant' | 'admin') || 'consultant'
+    const isAdmin = role === 'admin'
 
     return (
         <div className="h-[calc(100vh-5rem)]">

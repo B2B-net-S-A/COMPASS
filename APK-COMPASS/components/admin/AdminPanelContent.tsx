@@ -3,8 +3,6 @@
 import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, TrendingUp, Clock, Briefcase, AlertTriangle, UserPlus, FileWarning, UserSearch } from "lucide-react"
-import { RecruiterEfficiencyTab } from './RecruiterEfficiencyTab'
-import { DeliveryLeadEfficiencyTab } from './DeliveryLeadEfficiencyTab'
 import { ConsultantAnalysisTab } from './ConsultantAnalysisTab'
 import { ActivityFeedTab } from './ActivityFeedTab'
 import { ExpiringContractsWidget } from './ExpiringContractsWidget'
@@ -15,8 +13,6 @@ interface AdminPanelContentProps {
 }
 
 const tabs = [
-    { id: 'recruiters', label: 'Efektywność Rekruterów', icon: '👥' },
-    { id: 'delivery', label: 'Efektywność Delivery Lead', icon: '🎯' },
     { id: 'consultants', label: 'Analiza Konsultantów', icon: '👤' },
     { id: 'activity', label: 'Ostatnia Aktywność', icon: '📊' },
 ] as const
@@ -24,7 +20,7 @@ const tabs = [
 type TabId = typeof tabs[number]['id']
 
 export function AdminPanelContent({ dashboardData }: AdminPanelContentProps) {
-    const [activeTab, setActiveTab] = useState<TabId>('recruiters')
+    const [activeTab, setActiveTab] = useState<TabId>('consultants')
     const data = dashboardData
 
     return (
@@ -162,12 +158,6 @@ export function AdminPanelContent({ dashboardData }: AdminPanelContentProps) {
 
             {/* ─── Tab Content ────────────────────────────────────────────── */}
             <div>
-                {activeTab === 'recruiters' && (
-                    <RecruiterEfficiencyTab recruiters={data?.recruiters || []} />
-                )}
-                {activeTab === 'delivery' && (
-                    <DeliveryLeadEfficiencyTab deliveryLeads={data?.deliveryLeads || []} />
-                )}
                 {activeTab === 'consultants' && (
                     <ConsultantAnalysisTab consultants={data?.consultants || []} />
                 )}

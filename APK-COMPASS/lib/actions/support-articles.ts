@@ -11,7 +11,7 @@ import type {
 
 async function isAdminOrTrainer(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
-    return ['admin', 'trainer'].includes(data?.role ?? '')
+    return ['admin'].includes(data?.role ?? '')
 }
 
 function slugify(text: string): string {

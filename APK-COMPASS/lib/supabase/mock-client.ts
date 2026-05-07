@@ -40,7 +40,7 @@ function getProfilesStore(): TableStore {
       id: BYPASS_USER_ID,
       email: getBypassEmail(),
       full_name: getBypassFullName(),
-      role: 'administrator',
+      role: 'admin',
       avatar_url: null,
       phone: null,
       created_at: new Date().toISOString(),

@@ -13,7 +13,7 @@ export async function addAdminNote(consultantId: string, content: string, catego
         .eq('id', user.id)
         .single()
 
-    if (!profile || !['admin', 'administrator', 'centrala'].includes(profile.role)) {
+    if (!profile || !['admin'].includes(profile.role)) {
         return { success: false, error: 'Brak uprawnień' }
     }
 
@@ -78,7 +78,7 @@ export async function getAdminNotes(consultantId: string) {
         .eq('id', user.id)
         .single()
 
-    if (!profile || !['admin', 'administrator', 'centrala'].includes(profile.role)) {
+    if (!profile || !['admin'].includes(profile.role)) {
         return { success: false, error: 'Brak uprawnień' }
     }
 

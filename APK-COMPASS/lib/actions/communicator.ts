@@ -369,7 +369,7 @@ export async function sendBroadcastToAll(
 
     // Only admin can send broadcasts
     const { data: myProfile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
-    if (!myProfile || !['admin', 'administrator', 'centrala'].includes(myProfile.role)) {
+    if (!myProfile || !['admin'].includes(myProfile.role)) {
         return { error: 'Tylko administrator może wysyłać ogłoszenia', recipientCount: 0 }
     }
 

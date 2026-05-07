@@ -1,13 +1,14 @@
 // ─── Types and constants for role permissions ────────────────────────────────
 // This file must NOT have 'use server' — it's shared between client and server.
+//
+// Phase 16 (2026-05-07): simplified to 2 roles (admin, consultant). The legacy
+// recruiter/delivery_lead/finance "centrala" sub-roles, the role_permissions
+// table, and the admin permission-matrix UI were removed together with the
+// centrala module. Permissions are now derived purely from DEFAULT_PERMISSIONS.
 
-export type PermissionRole = 'recruiter' | 'delivery_lead' | 'finance' | 'consultant'
+export type PermissionRole = 'admin' | 'consultant'
 
-// Phase 0 (2026-05-04): added new platform panels (home, learning, league, support, news, incubator, notifications).
-// Legacy keys (candidates, service_hub, development, import, referrals, rates) retained until Phase 1 cleanup
-// to keep `/admin/{candidates,rates,import,referrals}/...` pages compilable while the new IA rolls out.
 export type PermissionFeature =
-    // New platform panels
     | 'home'
     | 'learning'
     | 'league'
@@ -15,32 +16,18 @@ export type PermissionFeature =
     | 'news'
     | 'incubator'
     | 'notifications'
-    // Utility (kept)
     | 'dashboard'
     | 'projects'
     | 'messages'
     | 'documents'
     | 'loyalty'
     | 'settings'
-    // Legacy (Phase 1 cleanup target)
-    | 'candidates'
-    | 'service_hub'
-    | 'development'
-    | 'import'
-    | 'referrals'
-    | 'rates'
 
-export type PermissionValue = 'true' | 'false' | 'portfolio' | 'full' | 'readonly'
+export type PermissionValue = 'true' | 'false' | 'full' | 'readonly'
 
 export type PermissionsMap = Record<PermissionRole, Record<PermissionFeature, PermissionValue>>
 
-export interface PermissionUpdate {
-    role: PermissionRole
-    feature: PermissionFeature
-    value: PermissionValue
-}
-
-const NEW_PANEL_DEFAULTS = {
+const ALL_PANELS_TRUE = {
     home: 'true' as const,
     learning: 'true' as const,
     league: 'true' as const,
@@ -51,36 +38,22 @@ const NEW_PANEL_DEFAULTS = {
 }
 
 export const DEFAULT_PERMISSIONS: PermissionsMap = {
-    recruiter: {
-        ...NEW_PANEL_DEFAULTS,
-        dashboard: 'true', projects: 'portfolio', candidates: 'portfolio',
-        service_hub: 'true', messages: 'true', documents: 'true',
-        loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', settings: 'false',
-        rates: 'true',
-    },
-    delivery_lead: {
-        ...NEW_PANEL_DEFAULTS,
-        dashboard: 'true', projects: 'portfolio', candidates: 'portfolio',
-        service_hub: 'true', messages: 'true', documents: 'true',
-        loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', settings: 'false',
-        rates: 'true',
-    },
-    finance: {
-        ...NEW_PANEL_DEFAULTS,
-        dashboard: 'true', projects: 'full', candidates: 'readonly',
-        service_hub: 'true', messages: 'true', documents: 'true',
-        loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', settings: 'false',
-        rates: 'true',
+    admin: {
+        ...ALL_PANELS_TRUE,
+        dashboard: 'full',
+        projects: 'full',
+        messages: 'full',
+        documents: 'full',
+        loyalty: 'full',
+        settings: 'full',
     },
     consultant: {
-        ...NEW_PANEL_DEFAULTS,
-        dashboard: 'true', projects: 'full', candidates: 'false',
-        service_hub: 'true', messages: 'true', documents: 'true',
-        loyalty: 'true', development: 'true', import: 'false',
-        referrals: 'true', settings: 'false',
-        rates: 'false',
+        ...ALL_PANELS_TRUE,
+        dashboard: 'true',
+        projects: 'full',
+        messages: 'true',
+        documents: 'true',
+        loyalty: 'true',
+        settings: 'false',
     },
 }

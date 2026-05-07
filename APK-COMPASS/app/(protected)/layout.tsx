@@ -11,9 +11,8 @@ import { getUnreadNewsCount } from '@/lib/actions/news'
 import { listTickets } from '@/lib/actions/support-tickets'
 import { listAllPitchesAdmin } from '@/lib/actions/incubator'
 import { getUnreadGuardianMessages } from '@/lib/actions/communicator'
-import type { PermissionRole, PermissionsMap, PermissionFeature, PermissionValue } from '@/lib/types/permissions'
+import type { PermissionRole, PermissionsMap } from '@/lib/types/permissions'
 import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
-import { isSuperAdmin } from '@/lib/auth/super-admins'
 import nextDynamic from 'next/dynamic'
 
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
@@ -64,22 +63,14 @@ export default async function ProtectedLayout({
             permissionsMap = DEFAULT_PERMISSIONS
         }
 
-        const baseRole = (profile?.role as 'consultant' | 'admin' | 'centrala' | 'administrator') || 'consultant'
-        const role = isSuperAdmin(user.email) ? 'administrator' : baseRole
+        const role = (profile?.role as 'consultant' | 'admin') || 'consultant'
 
-        if (role === 'centrala' || role === 'administrator' || role === 'admin') {
+        if (role === 'admin') {
             const mfaVerified = cookies().get('mfa_verified')?.value === 'true'
             if (!mfaVerified) redirect('/login')
         }
 
-        let permissionRole: PermissionRole = 'consultant'
-        if (role === 'centrala') {
-            const { data: accessEntry } = await supabase.from('centrala_access_list').select('centrala_role').eq('email', user.email!).maybeSingle()
-            permissionRole = (accessEntry?.centrala_role as PermissionRole) || 'recruiter'
-        } else if (role === 'administrator' || role === 'admin') {
-            permissionRole = 'recruiter'
-        }
-
+        const permissionRole: PermissionRole = role
         const userPermissions = permissionsMap[permissionRole]
         const userData = {
             ...user,
@@ -92,7 +83,7 @@ export default async function ProtectedLayout({
         // Phase 7: sidebar badge counts (unread news for all; admin counts for admins).
         // Phase 9: unread guardian messages for consultants (Support Center badge).
         // Phase 10: inbox kanban open ticket count for handlers (admin or is_inbox_handler).
-        const isAdminLike = role === 'administrator' || role === 'admin' || role === 'centrala'
+        const isAdminLike = role === 'admin'
         const isInboxHandler = isAdminLike || profile?.is_inbox_handler === true
         const [newsRes, adminTicketsRes, adminPitchesRes, consultantSupport, adminInbox] = await Promise.all([
             getUnreadNewsCount(),

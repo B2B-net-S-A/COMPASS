@@ -39,22 +39,13 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
     }
 
     const getRoleLabel = (role: string) => {
-        switch (role) {
-            case 'admin':
-            case 'administrator':
-                return 'Administrator Systemu'
-            case 'centrala':
-            case 'consultant_manager':
-                return 'Centrala / Management'
-            default:
-                return 'Użytkownik'
-        }
+        if (role === 'admin') return 'Administrator Systemu'
+        if (role === 'consultant') return 'Konsultant'
+        return 'Użytkownik'
     }
 
-    const getRoleBadgeVariant = (role: string) => {
-        if (role === 'admin' || role === 'administrator') return 'destructive'
-        if (role === 'centrala' || role === 'consultant_manager') return 'default' // primary
-        return 'secondary'
+    const getRoleBadgeVariant = (role: string): 'destructive' | 'secondary' => {
+        return role === 'admin' ? 'destructive' : 'secondary'
     }
 
     return (
@@ -72,7 +63,7 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
                                 {profile.full_name || profile.email}
                             </h2>
                             <Badge variant={getRoleBadgeVariant(profile.role)} className="w-fit px-3 py-1">
-                                {profile.role === 'admin' || profile.role === 'administrator' ? (
+                                {profile.role === 'admin' ? (
                                     <Shield className="w-3 h-3 mr-1" />
                                 ) : (
                                     <Briefcase className="w-3 h-3 mr-1" />

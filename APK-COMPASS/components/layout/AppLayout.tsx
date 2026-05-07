@@ -12,7 +12,7 @@ import type { PermissionFeature, PermissionValue } from '@/lib/types/permissions
 interface AppLayoutProps {
     children: React.ReactNode
     user: any
-    role: 'consultant' | 'admin' | 'centrala' | 'administrator'
+    role: 'consultant' | 'admin'
     permissions?: Record<PermissionFeature, PermissionValue>
     sidebarBadges?: SidebarBadgeCounts
 }

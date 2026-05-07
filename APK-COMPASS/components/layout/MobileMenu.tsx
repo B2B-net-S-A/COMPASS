@@ -21,7 +21,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 
 interface MobileMenuProps {
-    role: 'consultant' | 'admin' | 'centrala' | 'administrator'
+    role: 'consultant' | 'admin'
     user: {
         email?: string | null
         full_name?: string | null

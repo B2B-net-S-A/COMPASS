@@ -150,7 +150,7 @@ describe('updateCourse', () => {
         expect(currentClient._tables.courses[0].title).toBe('New title')
     })
 
-    it.each(['admin', 'administrator', 'centrala'])('allows %s to update any course', async (role) => {
+    it.each(['admin'])('allows %s to update any course', async (role) => {
         setupClient({
             user: { id: 'u-admin', email: 'admin@x.com' },
             tables: {

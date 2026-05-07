@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Wrench, Mail, Users, ShieldCheck, Crown, Palette, KeyRound } from 'lucide-react'
+import { Wrench, Mail, Crown, Palette, KeyRound } from 'lucide-react'
 import { checkIsSuperAdmin } from '@/lib/actions/admin-management'
 
 interface NavItem {
@@ -27,16 +27,6 @@ const settingsGroups: NavGroup[] = [
                 title: "Powiadomienia Email",
                 href: "/admin/settings/notifications",
                 icon: Mail,
-            },
-            {
-                title: "Zarządzanie Centralą",
-                href: "/admin/settings/team",
-                icon: Users,
-            },
-            {
-                title: "Uprawnienia Ról",
-                href: "/admin/settings/permissions",
-                icon: ShieldCheck,
             },
             {
                 title: "Administratorzy",

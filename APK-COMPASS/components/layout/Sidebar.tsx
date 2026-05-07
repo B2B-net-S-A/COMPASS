@@ -36,7 +36,7 @@ export interface SidebarBadgeCounts {
 }
 
 interface SidebarProps {
-    role: 'consultant' | 'admin' | 'centrala' | 'administrator'
+    role: 'consultant' | 'admin'
     isOpen?: boolean
     setIsOpen?: (isOpen: boolean) => void
     user: {
@@ -67,7 +67,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     const { t } = useTranslation()
     const { brandName } = useTheme()
 
-    const isAdmin = role === 'administrator' || role === 'admin' || role === 'centrala'
+    const isAdmin = role === 'admin'
 
     // Consultant + admin both see the 5 platform panels.
     const platformGroups: NavGroup[] = [

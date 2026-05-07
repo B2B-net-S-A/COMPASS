@@ -77,7 +77,7 @@ export async function getSkillGaps(): Promise<ProjectsAnalysis> {
     let effectiveSkills = userSkills
     let candidateSkillsUsed = false
 
-    if (userSkills.size === 0 && ['admin', 'administrator', 'centrala'].includes(profile?.role || '')) {
+    if (userSkills.size === 0 && ['admin'].includes(profile?.role || '')) {
         // Admin doesn't have personal skills — use aggregate from candidates to show system works
         const { data: sampleCandidate } = await supabase
             .from('candidates')

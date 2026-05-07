@@ -180,67 +180,7 @@ export function AdminProfileSection({ userProfile, isSuperAdmin = false, dashboa
                     </CardContent>
                 </Card>
 
-                {/* Centrala Team */}
-                {data && data.centralaTeam.length > 0 && (
-                    <Card className="bg-background/50 border-burgundy/15">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base text-white flex items-center gap-2">
-                                <span>👥</span> Zespół Centrali
-                            </CardTitle>
-                            <p className="text-xs text-muted-foreground">Podgląd struktury zespołu Centrali.</p>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-white/10">
-                                            <th className="text-left text-xs font-semibold text-muted-foreground uppercase px-4 py-2">Członek</th>
-                                            <th className="text-left text-xs font-semibold text-muted-foreground uppercase px-4 py-2">Podgrupa</th>
-                                            <th className="text-center text-xs font-semibold text-muted-foreground uppercase px-4 py-2">Portfolio</th>
-                                            <th className="text-center text-xs font-semibold text-muted-foreground uppercase px-4 py-2">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {data.centralaTeam.map((member, idx) => (
-                                            <tr key={member.id || idx} className="border-b border-white/5 hover:bg-white/5">
-                                                <td className="px-4 py-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <Avatar className="h-7 w-7 border border-white/10">
-                                                            <AvatarImage src={member.avatar_url || ''} />
-                                                            <AvatarFallback className="bg-muted text-xs text-foreground">
-                                                                {getInitials(member.full_name)}
-                                                            </AvatarFallback>
-                                                        </Avatar>
-                                                        <span className="text-sm text-white">{member.full_name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <Badge variant="outline" className={`text-xs ${member.centrala_role === 'recruiter'
-                                                            ? 'border-primary/30 text-foreground'
-                                                            : member.centrala_role === 'delivery_lead'
-                                                                ? 'border-primary/30 text-primary'
-                                                                : 'border-muted-foreground/30 text-muted-foreground'
-                                                        }`}>
-                                                        {member.centrala_role === 'recruiter' ? 'Rekruter' :
-                                                            member.centrala_role === 'delivery_lead' ? 'Delivery Lead' : 'Finance'}
-                                                    </Badge>
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <span className="text-sm font-medium text-white">{member.portfolio_count}</span>
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-                                                        Aktywna
-                                                    </Badge>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
+                {/* Phase 16: "Zespół Centrali" section removed together with the centrala module. */}
             </div>
 
             {/* Right Column */}

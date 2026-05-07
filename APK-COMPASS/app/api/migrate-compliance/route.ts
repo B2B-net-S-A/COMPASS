@@ -60,14 +60,14 @@ const RLS_POLICIES = [
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'legal_docs_admin_read') THEN
       CREATE POLICY "legal_docs_admin_read" ON um_legal_documents FOR SELECT TO authenticated
-        USING (visibility = 'admin' AND EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'administrator')));
+        USING (visibility = 'admin' AND EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role::text = 'admin'));
     END IF;
   END $$;`,
 
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'legal_docs_admin_manage') THEN
       CREATE POLICY "legal_docs_admin_manage" ON um_legal_documents FOR ALL TO authenticated
-        USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'administrator')));
+        USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role::text = 'admin'));
     END IF;
   END $$;`,
 
@@ -86,7 +86,7 @@ const RLS_POLICIES = [
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'user_consents_admin_read') THEN
       CREATE POLICY "user_consents_admin_read" ON um_user_consents FOR SELECT TO authenticated
-        USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'administrator')));
+        USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role::text = 'admin'));
     END IF;
   END $$;`,
 ]
