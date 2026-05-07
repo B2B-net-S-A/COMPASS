@@ -29,11 +29,51 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Update build metadata in Coolify env vault
+        # Push GIT_SHA + BUILT_AT into Coolify env vault BEFORE triggering deploy
+        # so the next docker build receives them as ARG/ENV. /api/health then
+        # returns the real version + deploy timestamp instead of "unknown".
+        # Patch is idempotent — Coolify upserts envs by key.
+        run: |
+          GIT_SHA="${{ github.sha }}"
+          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for entry in \
+            "GIT_SHA=$GIT_SHA" \
+            "BUILT_AT=$BUILT_AT"
+          do
+            key="${entry%%=*}"
+            value="${entry#*=}"
+            payload=$(jq -nc \
+              --arg k "$key" --arg v "$value" \
+              '{key: $k, value: $v, is_buildtime: true, is_runtime: true, is_preview: false, is_shared: false}')
+            http=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X PATCH \
+              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/json" \
+              -d "$payload" \
+              "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}/envs")
+            if [ "$http" -ge 400 ]; then
+              echo "::warning::PATCH $key returned HTTP $http: $(cat /tmp/resp.json)"
+              # Try POST as fallback (in case env doesn't exist yet)
+              http=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+                -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+                -H "Content-Type: application/json" \
+                -H "Accept: application/json" \
+                -d "$payload" \
+                "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}/envs")
+              if [ "$http" -ge 400 ]; then
+                echo "::error::Failed to set $key (POST also returned HTTP $http): $(cat /tmp/resp.json)"
+                exit 1
+              fi
+            fi
+            echo "✅ $key set (HTTP $http)"
+          done
+
       - name: Trigger deployment
         run: |
           response=$(curl -fsSL -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=false")
+            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true")
           echo "Response: $response"
           deployment_uuid=$(echo "$response" | jq -r '.deployments[0].deployment_uuid')
           if [ -z "$deployment_uuid" ] || [ "$deployment_uuid" = "null" ]; then
