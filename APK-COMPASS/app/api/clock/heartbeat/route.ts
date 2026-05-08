@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logAudit } from '@/lib/actions/audit'
@@ -100,11 +101,17 @@ export async function POST(request: Request) {
 
     recordBeat(body.sessionId)
 
-    // Flag tampering as audit
+    // Flag tampering as audit + Sentry breadcrumb (no error, just observability).
     if (!isTrusted) {
         await logAudit(user.id, 'WORK_CLOCK_TAMPERED', {
             session_id: body.sessionId,
             ts,
+        })
+        Sentry.addBreadcrumb({
+            category: 'work-clock',
+            level: 'warning',
+            message: 'Heartbeat with isTrusted=false',
+            data: { sessionId: body.sessionId, userId: user.id },
         })
     }
 

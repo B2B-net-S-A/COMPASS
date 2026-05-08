@@ -103,6 +103,27 @@ git revert HEAD && git push origin main
 - **Multi-stage Dockerfile** z `pdf-lib` i `pdf2json` — zaufaj cache, ale `npm ci` jest cięższy niż w pozostałych apkach.
 - **Monorepo gotcha:** wszystkie `npm` komendy odpalaj z `APK-COMPASS/` lub z `--prefix APK-COMPASS`.
 
+## Coolify cron jobs (Phase 17 — Smart Work Clock)
+
+Po merge PR #54 trzeba dodać 2 nowe cron joby w panelu Coolify (`https://coolify-compass.dynaminds.pl` → Resources → compass → Schedules):
+
+| Nazwa | Schedule (cron) | Komenda |
+|---|---|---|
+| `clock-daily-cutoff` | `0 4 * * *` (codziennie 04:00 UTC = 05:00/06:00 PL) | `curl -fsS "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff?secret=$CRON_SECRET"` |
+| `clock-idle-reaper` | `*/15 * * * *` (co 15 min) | `curl -fsS "https://compass.dynaminds.pl/api/cron/clock-idle-reaper?secret=$CRON_SECRET"` |
+
+**Co robią:**
+- `clock-daily-cutoff`: zamyka sesje pracy (`work_clock_sessions` z `ended_at IS NULL`) starsze niż 16h. Reason: `daily_cutoff`.
+- `clock-idle-reaper`: zamyka sesje gdzie `last_heartbeat < NOW() - 60 min` (network drop, laptop sleep bez sendBeacon). Reason: `idle_timeout`.
+
+**Auth:** `CRON_SECRET` env var (już istnieje w Coolify dla `timesheet-reminder`).
+
+**Verify po skonfigurowaniu:**
+```bash
+curl -fsS "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff?secret=$CRON_SECRET" | jq
+# expect: { ok: true, scanned: N, closed: N, emailed: N }
+```
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

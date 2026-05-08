@@ -46,6 +46,45 @@ describe('aggregateHeartbeats', () => {
         ])
         expect(result.totalHeartbeats).toBe(2)
     })
+
+    // DST edge cases — Polish "Spring Forward" 29.03.2026 (02:00→03:00) and
+    // "Fall Back" 25.10.2026 (03:00→02:00). Aggregation works on UTC ms so
+    // these don't affect counts; the test guards against accidental wall-clock
+    // arithmetic in future refactors.
+    it('counts heartbeats correctly across DST spring forward (29.03.2026)', () => {
+        // Heartbeats every 30s spanning 01:30 → 03:30 local (would be 4h
+        // wall-clock but only 3h actual due to DST jump).
+        const heartbeats: Array<{ ts: string; was_active: boolean }> = []
+        // 01:30:00 UTC+1 == 00:30 UTC. 03:30 UTC+2 == 01:30 UTC. Only 1h elapsed.
+        const start = new Date('2026-03-29T00:30:00Z').getTime()
+        for (let i = 0; i < 120; i++) {
+            heartbeats.push({
+                ts: new Date(start + i * 30_000).toISOString(),
+                was_active: true,
+            })
+        }
+        const result = aggregateHeartbeats(heartbeats)
+        // 120 heartbeats × 30s = 3600s of active time, regardless of DST shift
+        expect(result.activeSeconds).toBe(120 * 30)
+        expect(result.totalHeartbeats).toBe(120)
+    })
+
+    it('counts heartbeats correctly across DST fall back (25.10.2026)', () => {
+        // Spans 02:30 → 03:30 with the "extra" hour from fall back.
+        // Real elapsed wall-clock is 2h but UTC shows 1h; still counts each
+        // heartbeat as 30s.
+        const heartbeats: Array<{ ts: string; was_active: boolean }> = []
+        const start = new Date('2026-10-25T00:30:00Z').getTime()
+        for (let i = 0; i < 240; i++) {
+            heartbeats.push({
+                ts: new Date(start + i * 30_000).toISOString(),
+                was_active: true,
+            })
+        }
+        const result = aggregateHeartbeats(heartbeats)
+        expect(result.activeSeconds).toBe(240 * 30)
+        expect(result.totalHeartbeats).toBe(240)
+    })
 })
 
 describe('isSustainedIdle', () => {
