@@ -14,13 +14,29 @@ export const dynamic = 'force-dynamic'
  * Complements the in-request sustained-idle detection in /api/clock/heartbeat.
  *
  * Trigger: every 15 min via Coolify cron.
+ *
+ * Auth (preferred — secret NOT logged in CF/proxy/Sentry traces):
+ *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-idle-reaper" \
+ *        -H "Authorization: Bearer $CRON_SECRET"
+ *
+ * Legacy query-based fallback (deprecated, will warn):
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-idle-reaper?secret=$CRON_SECRET"
  */
 export async function GET(request: Request) {
+    if (!process.env.CRON_SECRET) {
+        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
+    }
     const url = new URL(request.url)
-    const secret = url.searchParams.get('secret')
-    if (!secret || secret !== process.env.CRON_SECRET) {
+    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+    const querySecret = url.searchParams.get('secret')
+    const provided = headerSecret || querySecret
+    if (!provided || provided !== process.env.CRON_SECRET) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (!headerSecret && querySecret) {
+        console.warn(
+            '[cron/clock-idle-reaper] secret in query param — migrate caller to Authorization: Bearer header',
+        )
     }
 
     const admin = createServiceClient()
