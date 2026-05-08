@@ -39,3 +39,5 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+        # Tag is consumed by Grafana Alloy (PR #10) as `service`/`app` labels in Loki.
+        tag: "{{.ImageName}}/{{.Name}}/{{.ID}}"
