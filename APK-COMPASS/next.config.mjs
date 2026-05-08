@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs'
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
@@ -66,4 +68,23 @@ const nextConfig = {
     },
 };
 
-export default nextConfig;
+// Wrap with Sentry's webpack plugin. Source maps upload only runs when
+// SENTRY_AUTH_TOKEN is provided at build time (Coolify env vault, buildtime=true).
+// Without the token the wrapper is a no-op for upload but still injects the
+// Sentry instrumentation hooks needed for releases + breadcrumbs.
+export default withSentryConfig(nextConfig, {
+    org: 'b2bnet-sa',
+    project: 'compass',
+    // Suppress logs locally; let CI logs surface them.
+    silent: !process.env.CI,
+    // Hide .map files from prod assets (uploaded to Sentry only).
+    hideSourceMaps: true,
+    // Disable Sentry SDK's own logger to avoid console noise.
+    disableLogger: true,
+    // Auth token for source maps upload — Coolify provides at build time.
+    authToken: process.env.SENTRY_AUTH_TOKEN,
+    // Skip upload entirely if no auth token (still wraps for runtime hooks).
+    sourcemaps: {
+        disable: !process.env.SENTRY_AUTH_TOKEN,
+    },
+});
