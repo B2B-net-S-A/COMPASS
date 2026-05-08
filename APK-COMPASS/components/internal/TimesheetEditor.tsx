@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Pencil, Plus, Trash2, Loader2, Send, FileDown, ChevronLeft, ChevronRight, Wand2 } from 'lucide-react'
+import { Pencil, Plus, Trash2, Loader2, Send, FileDown, ChevronLeft, ChevronRight, Wand2, Clock, AlertTriangle } from 'lucide-react'
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -20,6 +20,7 @@ import {
     type TimesheetEntryRow,
     type TimesheetWithEntries,
 } from '@/lib/actions/internal-timesheet'
+import { suggestTimesheetEntriesFromClock } from '@/lib/actions/internal-clock'
 import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 
 interface Props {
@@ -130,6 +131,40 @@ export function TimesheetEditor({ timesheet }: Props) {
             try {
                 await submitTimesheet(timesheet.id)
                 toastSuccess('Timesheet złożony')
+                router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            }
+        })
+    }
+
+    async function handleFillFromClock() {
+        const hasSuggestions = timesheet.entries.some(
+            (e) => e.source === 'clock_suggested' || e.source === 'clock_accepted',
+        )
+        const ok = await confirm({
+            title: hasSuggestions ? 'Odśwież propozycje z zegara?' : 'Wypełnij z trackingu zegara?',
+            description: hasSuggestions
+                ? `Usunie istniejące wpisy oznaczone „z zegara" i wstawi je ponownie z aktualnych danych. Wpisy ręczne pozostaną nietknięte.`
+                : `${format(ref, 'LLLL yyyy', { locale: pl })}: wstawi propozycje wpisów na podstawie sesji z work clock. Pomija dni z urlopem/L4 i dni z istniejącymi wpisami. Możesz potem edytować — każda zmiana >1h od trackingu zostanie oznaczona jako wymagająca akceptacji admina.`,
+            confirmLabel: hasSuggestions ? 'Odśwież' : 'Wypełnij',
+        })
+        if (!ok) return
+        startTransition(async () => {
+            try {
+                const res = await suggestTimesheetEntriesFromClock({
+                    timesheetId: timesheet.id,
+                    overwriteSuggestions: hasSuggestions,
+                })
+                if (res.inserted === 0 && res.total_days_with_tracking === 0) {
+                    toast.warning('Brak danych z trackingu w tym miesiącu')
+                } else {
+                    const parts = [`Dodano ${res.inserted} wpisów z trackingu`]
+                    if (res.skipped_existing > 0) {
+                        parts.push(`pominięto ${res.skipped_existing} (już istniały)`)
+                    }
+                    toastSuccess(parts.join(' · '))
+                }
                 router.refresh()
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd')
@@ -256,6 +291,32 @@ export function TimesheetEditor({ timesheet }: Props) {
                                         </td>
                                         <td className="py-2 pr-2 text-xs max-w-[400px]">
                                             <span className="line-clamp-2">{e.description}</span>
+                                            {(e.source === 'clock_suggested' || e.source === 'clock_accepted') && (
+                                                <span
+                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-blue-300"
+                                                    title={
+                                                        e.tracked_hours != null
+                                                            ? `Z trackingu: ${Number(e.tracked_hours).toFixed(2)}h`
+                                                            : 'Wpis z trackingu'
+                                                    }
+                                                >
+                                                    <Clock className="h-3 w-3" />
+                                                    z zegara
+                                                </span>
+                                            )}
+                                            {e.correction_required && (
+                                                <span
+                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-amber-300"
+                                                    title={
+                                                        e.tracked_hours != null
+                                                            ? `Różnica vs tracking: ${(Number(e.hours) - Number(e.tracked_hours)).toFixed(2)}h`
+                                                            : 'Wymaga zatwierdzenia korekty'
+                                                    }
+                                                >
+                                                    <AlertTriangle className="h-3 w-3" />
+                                                    wymaga korekty
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="py-2 pr-2 text-right font-mono text-xs">
                                             {Number(e.hours).toFixed(2)}
@@ -314,6 +375,15 @@ export function TimesheetEditor({ timesheet }: Props) {
                         >
                             <Wand2 className="h-4 w-4 mr-2" />
                             Wypełnij miesiąc 8h
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handleFillFromClock}
+                            disabled={pending}
+                            title="Wstawi propozycje wpisów na podstawie zarejestrowanych sesji pracy. Wpisy >1h różnicy od trackingu wymagają akceptacji admina."
+                        >
+                            <Clock className="h-4 w-4 mr-2" />
+                            Wypełnij z trackingu
                         </Button>
                         <Button
                             variant="default"

@@ -25,6 +25,16 @@ export type AuditAction =
     | 'TIMESHEET_APPROVED'
     | 'TIMESHEET_REJECTED'
     | 'TIMESHEET_UNLOCKED'
+    // Phase 17 — Smart Work Clock
+    | 'WORK_CLOCK_CONSENT_ACCEPTED'
+    | 'WORK_CLOCK_CONSENT_REVOKED'
+    | 'WORK_CLOCK_STARTED'
+    | 'WORK_CLOCK_STOPPED'
+    | 'WORK_CLOCK_AUTO_STOPPED'
+    | 'WORK_CLOCK_TRANSFERRED'
+    | 'WORK_CLOCK_TAMPERED'
+    | 'TIMESHEET_CORRECTION_APPROVED'
+    | 'TIMESHEET_CORRECTION_REJECTED'
 
 export async function logAudit(
     userId: string | null,

@@ -435,3 +435,98 @@ export async function sendTimesheetReminder(
         return { success: false }
     }
 }
+
+// ─── Phase 17: Smart Work Clock email templates ─────────────────────────────
+
+const CLOCK_AUTO_STOP_REASON_LABEL: Record<string, string> = {
+    idle_timeout: 'wykryto bezczynność powyżej 60 minut',
+    daily_cutoff: 'minęło 16 godzin od rozpoczęcia',
+    sleep_detected: 'urządzenie weszło w tryb uśpienia',
+    taken_over: 'sesja została przejęta na innym urządzeniu',
+    admin_close: 'administrator zamknął sesję',
+}
+
+export async function sendClockAutoStopped(
+    recipientEmail: string,
+    recipientName: string,
+    reason: string,
+    activeHours: number,
+): Promise<{ success: boolean }> {
+    const reasonLabel = CLOCK_AUTO_STOP_REASON_LABEL[reason] ?? reason
+    const subject = '[COMPASS HR] Sesja pracy zamknięta automatycznie'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twoja aktywna sesja pracy została zamknięta automatycznie, ponieważ ${reasonLabel}.
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Zarejestrowany czas pracy:</strong> ${activeHours.toFixed(2)} h</li>
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Sprawdź szczegóły w sekcji <strong>Strefa wewnętrzna → Zegar</strong>.
+            Jeśli auto-zamknięcie było błędne, możesz manualnie wpisać brakujące godziny w timesheet
+            (zostaną oflagowane jako wymagające akceptacji administratora).
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Auto-zamknięcie sesji', heading: subject, bodyHtml, accent: '#f59e0b' }),
+        })
+        if (error) {
+            console.error('Resend clock-auto-stop error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Clock auto-stop email failed:', err)
+        return { success: false }
+    }
+}
+
+export async function sendCorrectionDecision(
+    recipientEmail: string,
+    recipientName: string,
+    decision: 'approved' | 'rejected',
+    workDate: string,
+    declaredHours: number,
+    trackedHours: number | null,
+    note?: string | null,
+): Promise<{ success: boolean }> {
+    const isApproved = decision === 'approved'
+    const subject = isApproved
+        ? `[COMPASS HR] Korekta godzin zaakceptowana — ${workDate}`
+        : `[COMPASS HR] Korekta godzin odrzucona — ${workDate}`
+    const accent = isApproved ? '#22c55e' : '#f59e0b'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twoja korekta godzin pracy z dnia <strong>${workDate}</strong> została
+            <strong>${isApproved ? 'zaakceptowana' : 'odrzucona'}</strong> przez administratora.
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Zadeklarowane:</strong> ${declaredHours.toFixed(2)} h</li>
+            ${trackedHours != null ? `<li><strong>Z trackingu:</strong> ${trackedHours.toFixed(2)} h</li>` : ''}
+        </ul>
+        ${note ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Komentarz admina:</strong> ${note}</p>` : ''}
+        ${!isApproved ? `<p style="color: #d1d5db; font-size: 14px;">Wpis godzin zostanie przywrócony do wartości z trackingu. Możesz złożyć poprawiony timesheet.</p>` : ''}
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Decyzja: korekta godzin', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            console.error('Resend correction-decision error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Correction-decision email failed:', err)
+        return { success: false }
+    }
+}
