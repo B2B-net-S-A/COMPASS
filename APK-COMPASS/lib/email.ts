@@ -284,6 +284,55 @@ export async function sendLeaveRequestSubmitted(
     }
 }
 
+/**
+ * H2.3: notify adminów że user anulował zatwierdzony future urlop.
+ */
+export async function sendLeaveCancelledByUser(
+    recipientEmails: string[],
+    requesterName: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+): Promise<{ success: boolean }> {
+    if (recipientEmails.length === 0) return { success: true }
+    const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
+    const subject = `[COMPASS HR] Anulowano zatwierdzony urlop — ${requesterName}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">
+            Pracownik <strong>${requesterName}</strong> anulował zatwierdzony urlop:
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Typ:</strong> ${typeLabel}</li>
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Saldo urlopu zostało automatycznie odzyskane. Sprawdź jeśli kolega z zespołu ma teraz konflikt z planem urlopów.
+        </p>
+    `
+    const html = wrapHrEmail({
+        tag: 'Anulacja urlopu',
+        heading: subject,
+        bodyHtml,
+        accent: '#f59e0b',
+    })
+    try {
+        for (const to of recipientEmails) {
+            const { error } = await getResend().emails.send({
+                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                to,
+                subject,
+                html,
+            })
+            if (error) console.error('Resend leave-cancelled error:', error)
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Leave-cancelled email failed:', err)
+        return { success: false }
+    }
+}
+
 export async function sendLeaveDecision(
     recipientEmail: string,
     recipientName: string,
@@ -399,30 +448,110 @@ export async function sendTimesheetDecision(
     }
 }
 
+/**
+ * A1.5: Email reminderowy dla studenta który zaczął kurs ale ≥3 dni nie zrobił postępu.
+ * Wysyłany przez cron `/api/cron/course-inactivity` (max 1×/tydz per enrollment).
+ */
+export async function sendCourseInactivityReminder(
+    recipientEmail: string,
+    recipientName: string,
+    args: {
+        courseTitle: string
+        courseSlug: string
+        progressPercent: number
+        completedLessons: number
+        totalLessons: number
+        lastAccessDaysAgo: number
+        appUrl: string
+    },
+): Promise<{ success: boolean }> {
+    const remaining = args.totalLessons - args.completedLessons
+    const subject = `[COMPASS Akademia] Wróć do kursu "${args.courseTitle}"`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zaczynałeś świetnie kurs <strong>${args.courseTitle}</strong>, ale od ${args.lastAccessDaysAgo}
+            ${args.lastAccessDaysAgo === 1 ? 'dnia nie zaglądałeś' : 'dni nie zaglądasz'}.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Postęp: <strong>${args.progressPercent}%</strong> (${args.completedLessons}/${args.totalLessons} lekcji).
+            Zostały tylko <strong>${remaining}</strong> ${remaining === 1 ? 'lekcja' : 'lekcje'} do końca.
+        </p>
+        <p style="margin-top: 20px;">
+            <a href="${args.appUrl}/learning/${args.courseSlug}/lekcja/first"
+               style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                Kontynuuj kurs
+            </a>
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass Akademia <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({
+                tag: 'Akademia',
+                heading: 'Wróć do kursu',
+                bodyHtml,
+                accent: '#3b82f6',
+            }),
+        })
+        if (error) {
+            console.error('Resend course-inactivity error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Course-inactivity email failed:', err)
+        return { success: false }
+    }
+}
+
+export type TimesheetReminderPhase = 'warning' | 'final'
+
 export async function sendTimesheetReminder(
     recipientEmail: string,
     recipientName: string,
     year: number,
     month: number,
+    phase: TimesheetReminderPhase = 'warning',
 ): Promise<{ success: boolean }> {
-    const subject = `[COMPASS HR] Przypomnienie: timesheet ${year}-${String(month).padStart(2, '0')}`
-    const bodyHtml = `
-        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
-        <p style="color: #d1d5db; font-size: 14px;">
-            Przypominamy o złożeniu timesheetu za <strong>${year}-${String(month).padStart(2, '0')}</strong>.
-            Wypełnij wpisy w sekcji <strong>Timesheet</strong> i kliknij „Złóż timesheet".
-        </p>
-    `
+    const monthLabel = `${year}-${String(month).padStart(2, '0')}`
+    const isFinal = phase === 'final'
+    const subject = isFinal
+        ? `[COMPASS HR] OSTATNIA SZANSA: timesheet ${monthLabel}`
+        : `[COMPASS HR] Przypomnienie: timesheet ${monthLabel}`
+    const bodyHtml = isFinal
+        ? `
+            <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+            <p style="color: #d1d5db; font-size: 14px;">
+                <strong style="color: #ef4444;">Ostatnia szansa</strong> na złożenie timesheetu za
+                <strong>${monthLabel}</strong>. Bez zaakceptowanego timesheetu naliczenie wynagrodzenia
+                za ten miesiąc nie nastąpi.
+            </p>
+            <p style="color: #d1d5db; font-size: 14px;">
+                Otwórz <strong>Timesheet → ${monthLabel}</strong>, uzupełnij wpisy i kliknij
+                „Złóż timesheet" jak najszybciej.
+            </p>
+        `
+        : `
+            <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+            <p style="color: #d1d5db; font-size: 14px;">
+                Przypominamy o złożeniu timesheetu za <strong>${monthLabel}</strong>.
+                Wypełnij wpisy w sekcji <strong>Timesheet</strong> i kliknij „Złóż timesheet"
+                najpóźniej do 5. dnia następnego miesiąca.
+            </p>
+        `
     try {
         const { error } = await getResend().emails.send({
             from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({
-                tag: 'Przypomnienie',
+                tag: isFinal ? 'OSTATNIA SZANSA' : 'Przypomnienie',
                 heading: subject,
                 bodyHtml,
-                accent: '#f59e0b',
+                accent: isFinal ? '#ef4444' : '#f59e0b',
             }),
         })
         if (error) {

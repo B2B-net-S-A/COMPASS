@@ -1,0 +1,50 @@
+{
+  "name": "ComPass",
+  "short_name": "ComPass",
+  "description": "Consultant Management Platform & Success System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0b",
+  "theme_color": "#3A8DFF",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "pl",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/compass_icon_192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/compass_icon_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Akademia",
+      "short_name": "Akademia",
+      "description": "Szkolenia i kursy",
+      "url": "/learning",
+      "icons": [{ "src": "/compass_icon_192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Timesheet",
+      "short_name": "Timesheet",
+      "description": "Rejestrowanie godzin pracy",
+      "url": "/internal",
+      "icons": [{ "src": "/compass_icon_192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Urlop",
+      "short_name": "Urlop",
+      "description": "Złóż wniosek urlopowy",
+      "url": "/internal?tab=leave",
+      "icons": [{ "src": "/compass_icon_192.png", "sizes": "192x192" }]
+    }
+  ]
+}

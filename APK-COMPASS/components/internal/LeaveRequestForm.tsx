@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Paperclip } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { createLeaveRequest, type LeaveType } from '@/lib/actions/internal-leave'
+import { createLeaveRequest, uploadLeaveProof, type LeaveType } from '@/lib/actions/internal-leave'
 
 const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
@@ -30,6 +30,8 @@ export function LeaveRequestForm() {
     const [halfDay, setHalfDay] = useState<'' | 'morning' | 'afternoon'>('')
     const [note, setNote] = useState<string>('')
     const [docUrl, setDocUrl] = useState<string>('')
+    const [docFile, setDocFile] = useState<File | null>(null)
+    const [uploadingDoc, setUploadingDoc] = useState(false)
 
     const showHalfDay = startDate && endDate && startDate === endDate
     const showDocsField = leaveType === 'sick_leave'
@@ -47,13 +49,27 @@ export function LeaveRequestForm() {
 
         startTransition(async () => {
             try {
+                // H2.4: jeśli wybrany plik, najpierw upload do storage
+                let finalDocUrl: string | null = docUrl || null
+                if (docFile) {
+                    setUploadingDoc(true)
+                    try {
+                        const fd = new FormData()
+                        fd.append('file', docFile)
+                        const upRes = await uploadLeaveProof(fd)
+                        finalDocUrl = upRes.path
+                    } finally {
+                        setUploadingDoc(false)
+                    }
+                }
+
                 const res = await createLeaveRequest({
                     startDate,
                     endDate,
                     leaveType,
                     halfDay: showHalfDay && halfDay ? halfDay : null,
                     note: note || null,
-                    documentationUrl: docUrl || null,
+                    documentationUrl: finalDocUrl,
                 })
                 toastSuccess(
                     res.autoApproved
@@ -64,6 +80,7 @@ export function LeaveRequestForm() {
                 setEndDate('')
                 setNote('')
                 setDocUrl('')
+                setDocFile(null)
                 setHalfDay('')
                 router.refresh()
             } catch (e: unknown) {
@@ -104,6 +121,7 @@ export function LeaveRequestForm() {
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                                 required
+                                className="min-h-[44px] text-base"
                             />
                         </div>
                         <div className="space-y-1.5">
@@ -114,6 +132,7 @@ export function LeaveRequestForm() {
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                                 required
+                                className="min-h-[44px] text-base"
                             />
                         </div>
                     </div>
@@ -135,16 +154,36 @@ export function LeaveRequestForm() {
                     )}
 
                     {showDocsField && (
-                        <div className="space-y-1.5">
-                            <Label htmlFor="doc_url">Link do skanu zwolnienia (opcjonalnie)</Label>
-                            <Input
-                                id="doc_url"
-                                type="url"
-                                placeholder="https://drive.google.com/…"
-                                value={docUrl}
-                                onChange={(e) => setDocUrl(e.target.value)}
-                            />
-                        </div>
+                        <>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="doc_file" className="flex items-center gap-1.5">
+                                    <Paperclip className="w-3.5 h-3.5" />
+                                    Załącz skan zwolnienia (PDF/JPG, max 5 MB)
+                                </Label>
+                                <Input
+                                    id="doc_file"
+                                    type="file"
+                                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                                    onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
+                                />
+                                {docFile && (
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Wybrany: {docFile.name} ({(docFile.size / 1024).toFixed(0)} KB)
+                                    </p>
+                                )}
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="doc_url">…lub podaj link (opcjonalnie)</Label>
+                                <Input
+                                    id="doc_url"
+                                    type="url"
+                                    placeholder="https://drive.google.com/…"
+                                    value={docUrl}
+                                    onChange={(e) => setDocUrl(e.target.value)}
+                                    disabled={!!docFile}
+                                />
+                            </div>
+                        </>
                     )}
 
                     <div className="space-y-1.5">
@@ -159,9 +198,9 @@ export function LeaveRequestForm() {
                         />
                     </div>
 
-                    <Button type="submit" disabled={pending} className="w-full sm:w-auto">
-                        {pending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        Złóż wniosek
+                    <Button type="submit" disabled={pending || uploadingDoc} className="w-full sm:w-auto min-h-[44px]">
+                        {(pending || uploadingDoc) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                        {uploadingDoc ? 'Wgrywam załącznik…' : 'Złóż wniosek'}
                     </Button>
                 </form>
             </CardContent>

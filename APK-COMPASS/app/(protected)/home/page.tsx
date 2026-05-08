@@ -10,13 +10,17 @@ import {
     Sparkles,
     Inbox,
     ShieldCheck,
+    PlayCircle,
 } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import { pl } from 'date-fns/locale'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/server'
 import { TierBadge } from '@/components/league/TierBadge'
 import { ProgressRing } from '@/components/league/ProgressRing'
+import { LearningStreakWidget } from '@/components/learning/LearningStreakWidget'
 import { TicketStatusBadge } from '@/components/support/TicketStatusBadge'
 import { getLoyaltyOverview } from '@/lib/actions/loyalty'
 import { getMyEnrollments } from '@/lib/actions/course-learning'
@@ -35,9 +39,15 @@ export default async function HomePage() {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, role')
+        .select('full_name, role, learning_streak_current, learning_streak_longest, learning_streak_last_date')
         .eq('id', user.id)
-        .single()
+        .single<{
+            full_name: string | null
+            role: string | null
+            learning_streak_current: number | null
+            learning_streak_longest: number | null
+            learning_streak_last_date: string | null
+        }>()
 
     const isAdmin = (profile?.role as string) === 'admin'
 
@@ -55,7 +65,22 @@ export default async function HomePage() {
     const overview = overviewRes.success ? overviewRes.data : null
 
     const allEnrollments = enrollRes.success ? enrollRes.data : []
-    const inProgress = allEnrollments.filter((e) => !e.completed_at).slice(0, 3)
+    // A1.1: aktywne kursy sortowane po ostatniej wizycie (najświeższe pierwsze),
+    // fallback na datę zapisu. To zasila widget "Wróć do nauki".
+    const inProgress = allEnrollments
+        .filter((e) => !e.completed_at)
+        .sort((a, b) => {
+            const aTime = a.last_accessed_at ?? a.enrolled_at
+            const bTime = b.last_accessed_at ?? b.enrolled_at
+            return bTime.localeCompare(aTime)
+        })
+        .slice(0, 3)
+    // Najświeższy kurs (z wizytą w ostatnich 7 dniach) → wyróżniony hero widget.
+    const recentlyActive = inProgress.find((e) => {
+        if (!e.last_accessed_at) return false
+        const ageMs = Date.now() - new Date(e.last_accessed_at).getTime()
+        return ageMs < 7 * 24 * 60 * 60 * 1000
+    })
 
     const recentNews = (newsRes.success ? newsRes.data : []).slice(0, 3)
     const unreadNewsCount = (newsRes.success ? newsRes.data : []).filter((n) => !n.is_read).length
@@ -124,6 +149,45 @@ export default async function HomePage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {(recentlyActive || (profile?.learning_streak_longest ?? 0) > 0) && (
+                <div className="grid gap-4 md:grid-cols-3">
+                    {recentlyActive && (
+                        <Link
+                            href={`/learning/${recentlyActive.course.slug}/lekcja/${recentlyActive.last_accessed_lesson_id ?? 'first'}`}
+                            className="block md:col-span-2"
+                        >
+                            <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 hover:border-primary/50 transition-colors h-full">
+                                <CardContent className="p-4 flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                                        <PlayCircle className="w-5 h-5 text-primary" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs uppercase tracking-wide text-primary font-medium mb-0.5">Wróć do nauki</p>
+                                        <p className="text-sm font-semibold truncate">{recentlyActive.course.title}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <div className="h-1 flex-1 rounded-full bg-white/5 overflow-hidden max-w-[200px]">
+                                                <div className="h-full bg-primary" style={{ width: `${recentlyActive.progress_percent}%` }} />
+                                            </div>
+                                            <span className="text-[10px] text-muted-foreground tabular-nums">{recentlyActive.progress_percent}%</span>
+                                        </div>
+                                    </div>
+                                    <ArrowRight className="w-4 h-4 text-primary shrink-0" />
+                                </CardContent>
+                            </Card>
+                        </Link>
+                    )}
+                    {(profile?.learning_streak_longest ?? 0) > 0 && (
+                        <div className={recentlyActive ? '' : 'md:col-span-3'}>
+                            <LearningStreakWidget
+                                current={profile?.learning_streak_current ?? 0}
+                                longest={profile?.learning_streak_longest ?? 0}
+                                lastDate={profile?.learning_streak_last_date ?? null}
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
 
             {isAdmin && (adminOpenTickets.length > 0 || adminPendingPitches.length > 0) && (
                 <div className="grid gap-4 md:grid-cols-2">
@@ -203,7 +267,7 @@ export default async function HomePage() {
                             inProgress.map((e) => (
                                 <Link
                                     key={e.enrollment_id}
-                                    href={`/learning/${e.course.slug}/lekcja/first`}
+                                    href={`/learning/${e.course.slug}/lekcja/${e.last_accessed_lesson_id ?? 'first'}`}
                                     className="block p-3 rounded-md bg-card hover:bg-white/5 border border-white/5 hover:border-primary/30 transition-colors"
                                 >
                                     <div className="flex items-center justify-between gap-2 mb-1">
@@ -213,6 +277,11 @@ export default async function HomePage() {
                                     <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
                                         <div className="h-full bg-primary" style={{ width: `${e.progress_percent}%` }} />
                                     </div>
+                                    {e.last_accessed_at && (
+                                        <p className="text-[10px] text-muted-foreground mt-1.5">
+                                            Ostatnio: {formatDistanceToNow(new Date(e.last_accessed_at), { addSuffix: true, locale: pl })}
+                                        </p>
+                                    )}
                                 </Link>
                             ))
                         )}

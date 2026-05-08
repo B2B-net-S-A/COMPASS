@@ -16,14 +16,32 @@ interface Props {
     minDate: string
     maxDate: string
     saving: boolean
+    /** H2.6: istniejące wpisy (do duplicate-warning gdy user dodaje na zajęty dzień). */
+    existingEntries?: ReadonlyArray<Pick<TimesheetEntryRow, 'id' | 'work_date' | 'hours' | 'project'>>
     onSubmit: (values: { workDate: string; hours: number; project: string | null; description: string }) => void
 }
 
-export function TimesheetEntryDialog({ open, onOpenChange, initial, minDate, maxDate, saving, onSubmit }: Props) {
+export function TimesheetEntryDialog({
+    open,
+    onOpenChange,
+    initial,
+    minDate,
+    maxDate,
+    saving,
+    existingEntries,
+    onSubmit,
+}: Props) {
     const [workDate, setWorkDate] = useState<string>(initial?.work_date ?? minDate)
     const [hours, setHours] = useState<string>(initial?.hours?.toString() ?? '8')
     const [project, setProject] = useState<string>(initial?.project ?? '')
     const [description, setDescription] = useState<string>(initial?.description ?? '')
+
+    // H2.6: znajdź istniejące wpisy dla wybranego dnia (excluding bieżący przy edycji).
+    const conflictingEntries = (existingEntries ?? []).filter(
+        (e) => e.work_date === workDate && e.id !== initial?.id,
+    )
+    const hasConflict = conflictingEntries.length > 0
+    const conflictingTotalHours = conflictingEntries.reduce((sum, e) => sum + e.hours, 0)
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -36,6 +54,18 @@ export function TimesheetEntryDialog({ open, onOpenChange, initial, minDate, max
             alert('Opis jest wymagany.')
             return
         }
+        // H2.6: confirm gdy user dodaje wpis na dzień który już ma wpisy.
+        if (hasConflict) {
+            const projectsList = conflictingEntries
+                .map((e) => e.project ?? '(bez projektu)')
+                .join(', ')
+            const ok = window.confirm(
+                `Ten dzień ma już ${conflictingEntries.length} ${
+                    conflictingEntries.length === 1 ? 'wpis' : 'wpisy'
+                } na łącznie ${conflictingTotalHours}h (${projectsList}).\n\nDodać kolejny wpis (${h}h)? Suma: ${conflictingTotalHours + h}h.`,
+            )
+            if (!ok) return
+        }
         onSubmit({
             workDate,
             hours: h,
@@ -46,7 +76,7 @@ export function TimesheetEntryDialog({ open, onOpenChange, initial, minDate, max
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[95vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{initial ? 'Edytuj wpis' : 'Nowy wpis'}</DialogTitle>
                     <DialogDescription>
@@ -54,10 +84,10 @@ export function TimesheetEntryDialog({ open, onOpenChange, initial, minDate, max
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
-                            <Label htmlFor="entry_date">Data</Label>
+                            <Label htmlFor="entry_date" className="text-sm">Data</Label>
                             <Input
                                 id="entry_date"
                                 type="date"
@@ -66,36 +96,47 @@ export function TimesheetEntryDialog({ open, onOpenChange, initial, minDate, max
                                 max={maxDate}
                                 onChange={(e) => setWorkDate(e.target.value)}
                                 required
+                                className="min-h-[44px] text-base"
                             />
+                            {hasConflict && (
+                                <p className="text-[11px] text-amber-400 mt-1">
+                                    ⚠ Ten dzień ma już {conflictingEntries.length}{' '}
+                                    {conflictingEntries.length === 1 ? 'wpis' : 'wpisy'} ({conflictingTotalHours}h)
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="entry_hours">Godziny</Label>
+                            <Label htmlFor="entry_hours" className="text-sm">Godziny</Label>
                             <Input
                                 id="entry_hours"
                                 type="number"
                                 step="0.25"
                                 min="0.25"
                                 max="24"
+                                inputMode="decimal"
+                                pattern="[0-9]*\.?[0-9]*"
                                 value={hours}
                                 onChange={(e) => setHours(e.target.value)}
                                 required
+                                className="min-h-[44px] text-base"
                             />
                         </div>
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label htmlFor="entry_project">Projekt (opcjonalny)</Label>
+                        <Label htmlFor="entry_project" className="text-sm">Projekt (opcjonalny)</Label>
                         <Input
                             id="entry_project"
                             placeholder="np. Klient X / Onboarding"
                             value={project}
                             onChange={(e) => setProject(e.target.value)}
                             maxLength={100}
+                            className="min-h-[44px] text-base"
                         />
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label htmlFor="entry_desc">Opis prac</Label>
+                        <Label htmlFor="entry_desc" className="text-sm">Opis prac</Label>
                         <Textarea
                             id="entry_desc"
                             rows={3}
@@ -104,14 +145,21 @@ export function TimesheetEntryDialog({ open, onOpenChange, initial, minDate, max
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             required
+                            className="text-base"
                         />
                     </div>
 
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+                    <DialogFooter className="flex-col sm:flex-row gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => onOpenChange(false)}
+                            disabled={saving}
+                            className="w-full sm:w-auto min-h-[44px]"
+                        >
                             Anuluj
                         </Button>
-                        <Button type="submit" disabled={saving}>
+                        <Button type="submit" disabled={saving} className="w-full sm:w-auto min-h-[44px]">
                             {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                             Zapisz
                         </Button>

@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Check, X, Loader2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -35,6 +36,83 @@ export function LeaveQueue({ requests }: Props) {
     const [busyId, setBusyId] = useState<string | null>(null)
     const [rejectTarget, setRejectTarget] = useState<PendingLeaveRow | null>(null)
     const [rejectReason, setRejectReason] = useState('')
+    // H2.2: bulk selection
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    const [bulkRejectOpen, setBulkRejectOpen] = useState(false)
+    const [bulkRejectReason, setBulkRejectReason] = useState('')
+
+    const allSelected = requests.length > 0 && selectedIds.size === requests.length
+    const someSelected = selectedIds.size > 0
+
+    const toggleAll = () => {
+        if (allSelected) setSelectedIds(new Set())
+        else setSelectedIds(new Set(requests.map((r) => r.id)))
+    }
+
+    const toggleOne = (id: string) => {
+        const next = new Set(selectedIds)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        setSelectedIds(next)
+    }
+
+    function handleBulkApprove() {
+        if (selectedIds.size === 0) return
+        if (!window.confirm(`Zaakceptować ${selectedIds.size} wnioski/-ów?`)) return
+        const ids = Array.from(selectedIds)
+        startTransition(async () => {
+            let ok = 0
+            let fail = 0
+            for (const id of ids) {
+                try {
+                    await approveLeaveRequest(id)
+                    ok += 1
+                } catch (e: unknown) {
+                    fail += 1
+                    console.error('[bulkApprove] failed for', id, e)
+                }
+            }
+            if (fail === 0) {
+                toastSuccess(`Zaakceptowano ${ok} wnioski/-ów`)
+            } else {
+                toast.error(`Zaakceptowano ${ok}, niepowodzeń: ${fail}`)
+            }
+            setSelectedIds(new Set())
+            router.refresh()
+        })
+    }
+
+    function handleBulkRejectSubmit() {
+        if (selectedIds.size === 0) return
+        const reason = bulkRejectReason.trim()
+        if (!reason) {
+            toast.error('Powód odrzucenia jest wymagany.')
+            return
+        }
+        const ids = Array.from(selectedIds)
+        setBulkRejectOpen(false)
+        setBulkRejectReason('')
+        startTransition(async () => {
+            let ok = 0
+            let fail = 0
+            for (const id of ids) {
+                try {
+                    await rejectLeaveRequest(id, reason)
+                    ok += 1
+                } catch (e: unknown) {
+                    fail += 1
+                    console.error('[bulkReject] failed for', id, e)
+                }
+            }
+            if (fail === 0) {
+                toastSuccess(`Odrzucono ${ok} wnioski/-ów`)
+            } else {
+                toast.error(`Odrzucono ${ok}, niepowodzeń: ${fail}`)
+            }
+            setSelectedIds(new Set())
+            router.refresh()
+        })
+    }
 
     function fmt(d: string): string {
         return format(parseISO(d), 'd LLL yyyy', { locale: pl })
@@ -87,11 +165,48 @@ export function LeaveQueue({ requests }: Props) {
     return (
         <>
             <Card>
-                <CardHeader>
+                <CardHeader className="flex-row items-center justify-between">
                     <CardTitle className="text-base">
                         Wnioski oczekujące ({requests.length})
                     </CardTitle>
+                    {/* H2.2: bulk action toolbar */}
+                    {requests.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <Checkbox
+                                checked={allSelected}
+                                onCheckedChange={toggleAll}
+                                aria-label="Zaznacz wszystkie"
+                            />
+                            <span className="text-xs text-muted-foreground">
+                                {someSelected ? `${selectedIds.size} zaznaczone` : 'Zaznacz wszystkie'}
+                            </span>
+                        </div>
+                    )}
                 </CardHeader>
+                {someSelected && (
+                    <div className="px-6 pb-3 flex flex-wrap gap-2 items-center bg-amber-500/5 border-y border-amber-500/20">
+                        <span className="text-xs font-medium text-amber-300">
+                            Akcje masowe ({selectedIds.size}):
+                        </span>
+                        <Button size="sm" onClick={handleBulkApprove} disabled={pending} className="gap-1">
+                            <Check className="h-3.5 w-3.5" />
+                            Zatwierdź wszystkie
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setBulkRejectOpen(true)}
+                            disabled={pending}
+                            className="gap-1 text-destructive hover:text-destructive"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                            Odrzuć z tym samym powodem
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} disabled={pending}>
+                            Anuluj
+                        </Button>
+                    </div>
+                )}
                 <CardContent>
                     {requests.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-8 text-center">
@@ -101,12 +216,22 @@ export function LeaveQueue({ requests }: Props) {
                         <div className="space-y-3">
                             {requests.map((req) => {
                                 const busy = busyId === req.id
+                                const checked = selectedIds.has(req.id)
                                 return (
                                     <div
                                         key={req.id}
-                                        className="border rounded-lg p-4 flex flex-wrap items-start justify-between gap-3"
+                                        className={`border rounded-lg p-4 flex flex-wrap items-start justify-between gap-3 ${
+                                            checked ? 'border-amber-500/40 bg-amber-500/5' : ''
+                                        }`}
                                     >
                                         <div className="flex items-start gap-3 flex-1 min-w-0">
+                                            <Checkbox
+                                                checked={checked}
+                                                onCheckedChange={() => toggleOne(req.id)}
+                                                disabled={pending}
+                                                className="mt-1"
+                                                aria-label={`Zaznacz wniosek ${req.user_email}`}
+                                            />
                                             <Avatar className="h-9 w-9">
                                                 <AvatarImage src={req.user_avatar_url || undefined} />
                                                 <AvatarFallback className="text-xs">
@@ -211,6 +336,44 @@ export function LeaveQueue({ requests }: Props) {
                         </Button>
                         <Button onClick={handleRejectSubmit} disabled={!rejectReason.trim()}>
                             Odrzuć wniosek
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* H2.2: bulk reject dialog */}
+            <Dialog
+                open={bulkRejectOpen}
+                onOpenChange={(o) => {
+                    if (!o) {
+                        setBulkRejectOpen(false)
+                        setBulkRejectReason('')
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Odrzucenie {selectedIds.size} wniosków</DialogTitle>
+                        <DialogDescription>
+                            Powód zostanie zastosowany dla wszystkich zaznaczonych wniosków.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        <Label htmlFor="bulk_reject_reason">Wspólny powód (wymagany)</Label>
+                        <Textarea
+                            id="bulk_reject_reason"
+                            rows={3}
+                            value={bulkRejectReason}
+                            onChange={(e) => setBulkRejectReason(e.target.value)}
+                            placeholder="np. wszystkie naraz nie mogą pójść — proszę przesunąć terminy"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setBulkRejectOpen(false)}>
+                            Anuluj
+                        </Button>
+                        <Button onClick={handleBulkRejectSubmit} disabled={!bulkRejectReason.trim()}>
+                            Odrzuć {selectedIds.size} wnioski/-ów
                         </Button>
                     </DialogFooter>
                 </DialogContent>
