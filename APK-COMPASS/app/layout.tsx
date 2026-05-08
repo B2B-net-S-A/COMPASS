@@ -18,9 +18,26 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "ComPass",
   description: "Consultant Management Platform & Success System",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: "/favicon.svg",
+    apple: "/compass_icon_192.png",
   },
+  appleWebApp: {
+    capable: true,
+    title: "ComPass",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport = {
+  themeColor: "#3A8DFF",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

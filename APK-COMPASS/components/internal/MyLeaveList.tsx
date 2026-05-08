@@ -112,20 +112,30 @@ export function MyLeaveList({ requests }: Props) {
                                             </p>
                                         )}
                                     </div>
-                                    {req.status === 'pending' && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            disabled={pending && busyId === req.id}
-                                            onClick={() => handleCancel(req)}
-                                        >
-                                            {busyId === req.id ? (
-                                                <Loader2 className="h-3 w-3 animate-spin" />
-                                            ) : (
-                                                'Anuluj'
-                                            )}
-                                        </Button>
-                                    )}
+                                    {(() => {
+                                        // H2.3: cancel button
+                                        // - pending: zawsze
+                                        // - approved: tylko gdy start_date > today (future)
+                                        const today = new Date().toISOString().slice(0, 10)
+                                        const canCancel =
+                                            req.status === 'pending' ||
+                                            (req.status === 'approved' && req.start_date > today)
+                                        if (!canCancel) return null
+                                        return (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                disabled={pending && busyId === req.id}
+                                                onClick={() => handleCancel(req)}
+                                            >
+                                                {busyId === req.id ? (
+                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : (
+                                                    'Anuluj'
+                                                )}
+                                            </Button>
+                                        )
+                                    })()}
                                 </div>
                             )
                         })}

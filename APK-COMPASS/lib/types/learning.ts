@@ -34,6 +34,8 @@ export interface Course {
     completions_count: number
     created_at: string
     updated_at: string
+    /** A2.2: kursy wymagane przed zapisem (musi być completed). */
+    prerequisite_course_ids: string[]
 }
 
 export interface CourseListItem extends Course {
@@ -56,6 +58,8 @@ export interface CourseLesson {
     video_url: string | null
     attachments: CourseAttachment[]
     estimated_minutes: number | null
+    /** A2.4: drip release — odblokuj X dni po ukończeniu poprzedniej lekcji. 0 = od razu. */
+    unlock_after_days: number
 }
 
 export interface CourseQuizQuestionPublic {
@@ -160,6 +164,10 @@ export interface CourseEnrollmentWithProgress {
     completed_at: string | null
     points_awarded: boolean
     progress_percent: number
+    /** A1.1: ID ostatnio odwiedzonej lekcji (NULL gdy user nigdy nie wszedł). */
+    last_accessed_lesson_id: string | null
+    /** A1.1: Timestamp ostatniej wizyty w lekcji. */
+    last_accessed_at: string | null
 }
 
 export interface RecommendedCourse {
@@ -174,3 +182,52 @@ export type ActionResult<T> = { success: true; data: T } | { success: false; err
 export const QUIZ_MIN_QUESTIONS = 4
 export const QUIZ_MAX_QUESTIONS = 10
 export const QUIZ_OPTIONS_PER_QUESTION = 4
+
+// ============================================================
+// A2.1 — Learning Paths
+// ============================================================
+
+export type LearningPathStatus = 'draft' | 'published' | 'archived'
+
+export interface LearningPath {
+    id: string
+    slug: string
+    title: string
+    description: string | null
+    cover_image_url: string | null
+    level: CourseLevel
+    estimated_hours: number | null
+    status: LearningPathStatus
+    author_id: string
+    enrollments_count: number
+    completions_count: number
+    created_at: string
+    updated_at: string
+}
+
+export interface LearningPathCourseLink {
+    course_id: string
+    order_index: number
+    is_required: boolean
+}
+
+export interface LearningPathDetail extends LearningPath {
+    courses: Array<{
+        course: Course
+        order_index: number
+        is_required: boolean
+        is_completed: boolean
+        is_enrolled: boolean
+    }>
+    is_enrolled_in_path: boolean
+    completed_courses_count: number
+    total_courses_count: number
+    progress_percent: number
+    completed_at: string | null
+}
+
+export interface LearningPathListItem extends LearningPath {
+    course_count: number
+    is_enrolled: boolean
+    progress_percent: number
+}

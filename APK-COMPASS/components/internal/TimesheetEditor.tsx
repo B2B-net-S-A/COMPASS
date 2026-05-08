@@ -194,6 +194,8 @@ export function TimesheetEditor({ timesheet }: Props) {
                 })
                 const parts = [`Dodano ${res.inserted} dni × 8h`]
                 if (res.skipped_leave > 0) parts.push(`${res.skipped_leave} pominięte (urlop)`)
+                if (res.skipped_pending_leave > 0)
+                    parts.push(`${res.skipped_pending_leave} pominięte (oczekujący wniosek urlopowy)`)
                 if (res.skipped_existing > 0) parts.push(`${res.skipped_existing} pominięte (już istniały)`)
                 toastSuccess(parts.join(' · '))
                 router.refresh()
@@ -240,6 +242,18 @@ export function TimesheetEditor({ timesheet }: Props) {
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
+                {/* H2.7: po reject status auto wraca do 'draft' z rejection_note,
+                    user widzi powód i może natychmiast edytować + wysłać ponownie. */}
+                {timesheet.status === 'draft' && timesheet.rejection_note && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                        <strong>Odrzucony przez admina:</strong> {timesheet.rejection_note}
+                        <p className="text-xs mt-1 text-red-300/80">
+                            Popraw wpisy zgodnie z uwagami i wyślij timesheet ponownie. Po następnym
+                            wysłaniu komunikat zniknie.
+                        </p>
+                    </div>
+                )}
+                {/* Stary status 'rejected' (jeśli kiedyś wystąpi w danych historycznych) */}
                 {timesheet.status === 'rejected' && timesheet.rejection_note && (
                     <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
                         <strong>Odrzucony przez admina:</strong> {timesheet.rejection_note}
@@ -266,7 +280,69 @@ export function TimesheetEditor({ timesheet }: Props) {
                         Brak wpisów. Dodaj pierwszy poniżej.
                     </p>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <>
+                        {/* H3.2: mobile-first layout — lista kart na <md, tabela na >=md */}
+                        <div className="md:hidden space-y-2">
+                            {timesheet.entries.map((e) => (
+                                <div
+                                    key={e.id}
+                                    className="border border-border/40 rounded-lg p-3 bg-card hover:bg-muted/20 active:bg-muted/30"
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold capitalize">
+                                                {format(parseISO(e.work_date), 'EEEE, d LLLL', { locale: pl })}
+                                            </p>
+                                            {e.project && (
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    {e.project}
+                                                </p>
+                                            )}
+                                            <p className="text-sm mt-1.5 break-words whitespace-pre-wrap">
+                                                {e.description}
+                                            </p>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <p className="text-lg font-bold tabular-nums text-primary">
+                                                {Number(e.hours).toFixed(2)}h
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {editable && (
+                                        <div className="flex gap-2 mt-3 pt-2 border-t border-border/30">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="flex-1 min-h-[44px]"
+                                                onClick={() => setEditingEntry(e)}
+                                                disabled={pending}
+                                            >
+                                                <Pencil className="h-4 w-4 mr-2" />
+                                                Edytuj
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="flex-1 min-h-[44px] text-destructive hover:text-destructive"
+                                                onClick={() => handleDelete(e)}
+                                                disabled={pending}
+                                            >
+                                                <Trash2 className="h-4 w-4 mr-2" />
+                                                Usuń
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            <div className="border-t pt-3 flex justify-between items-center font-bold">
+                                <span>Razem</span>
+                                <span className="text-xl tabular-nums text-primary">
+                                    {totalHours.toFixed(2)} h
+                                </span>
+                            </div>
+                        </div>
+
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b text-xs text-muted-foreground">
@@ -359,11 +435,16 @@ export function TimesheetEditor({ timesheet }: Props) {
                             </tfoot>
                         </table>
                     </div>
+                    </>
                 )}
 
                 {editable && (
-                    <div className="flex flex-wrap gap-2 pt-2 border-t">
-                        <Button onClick={() => setCreating(true)} disabled={pending}>
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 pt-2 border-t">
+                        <Button
+                            onClick={() => setCreating(true)}
+                            disabled={pending}
+                            className="min-h-[44px] w-full sm:w-auto"
+                        >
                             <Plus className="h-4 w-4 mr-2" />
                             Dodaj wpis
                         </Button>
@@ -372,6 +453,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                             onClick={handleQuickFill}
                             disabled={pending}
                             title="Wypełni cały miesiąc 8h × dzień roboczy. Pomija weekendy, święta i Twoje urlopy."
+                            className="min-h-[44px] w-full sm:w-auto"
                         >
                             <Wand2 className="h-4 w-4 mr-2" />
                             Wypełnij miesiąc 8h
@@ -389,7 +471,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                             variant="default"
                             onClick={handleSubmit}
                             disabled={pending || timesheet.entries.length === 0}
-                            className="ml-auto"
+                            className="min-h-[44px] w-full sm:w-auto sm:ml-auto"
                         >
                             <Send className="h-4 w-4 mr-2" />
                             Złóż timesheet
@@ -405,6 +487,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                     minDate={minDate}
                     maxDate={maxDate}
                     saving={pending}
+                    existingEntries={timesheet.entries}
                     onOpenChange={(o) => {
                         if (!o) {
                             setEditingEntry(null)

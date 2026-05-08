@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { GraduationCap, BookOpen, CheckCircle2, Star, ArrowRight } from 'lucide-react'
+import { GraduationCap, BookOpen, CheckCircle2, Star, ArrowRight, Award } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -80,7 +80,7 @@ export default async function MyEnrollmentsPage() {
                                             </div>
                                         </div>
                                     </div>
-                                    <Link href={`/learning/${e.course.slug}/lekcja/first`}>
+                                    <Link href={`/learning/${e.course.slug}/lekcja/${e.last_accessed_lesson_id ?? 'first'}`}>
                                         <Button size="sm" className="gap-2">
                                             Kontynuuj <ArrowRight className="w-3.5 h-3.5" />
                                         </Button>
@@ -118,11 +118,19 @@ export default async function MyEnrollmentsPage() {
                                             Ukończono: {new Date(e.completed_at!).toLocaleDateString('pl-PL')}
                                         </p>
                                     </div>
-                                    <Link href={`/learning/${e.course.slug}`}>
-                                        <Button variant="outline" size="sm" className="gap-2">
-                                            Zobacz <ArrowRight className="w-3.5 h-3.5" />
-                                        </Button>
-                                    </Link>
+                                    <div className="flex flex-wrap gap-2">
+                                        <a href={`/api/akademia/certificate?courseId=${e.course.id}`}>
+                                            <Button size="sm" className="gap-2 bg-amber-500 hover:bg-amber-600 text-white">
+                                                <Award className="w-3.5 h-3.5" />
+                                                Certyfikat
+                                            </Button>
+                                        </a>
+                                        <Link href={`/learning/${e.course.slug}`}>
+                                            <Button variant="outline" size="sm" className="gap-2">
+                                                Zobacz <ArrowRight className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </Link>
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

@@ -25,6 +25,8 @@ export type AuditAction =
     | 'TIMESHEET_APPROVED'
     | 'TIMESHEET_REJECTED'
     | 'TIMESHEET_UNLOCKED'
+    // H2.8 — tamper-evidence dla PDF approved timesheet
+    | 'TIMESHEET_HASH_MISMATCH'
     // Phase 17 — Smart Work Clock
     | 'WORK_CLOCK_CONSENT_ACCEPTED'
     | 'WORK_CLOCK_CONSENT_REVOKED'

@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
+import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
 import { format } from 'date-fns'
@@ -237,6 +238,12 @@ export interface QuickFillMonthResult {
     inserted: number
     skipped_existing: number
     skipped_leave: number
+    /**
+     * H2.9: dni pominięte z powodu PENDING wniosków urlopowych (jeszcze nie zatwierdzonych).
+     * Pomijamy je domyślnie żeby uniknąć race condition: user wypełnia → admin zatwierdza
+     * urlop → konflikt między timesheet entries a sync attendance.
+     */
+    skipped_pending_leave: number
     total_working_days: number
 }
 
@@ -282,7 +289,7 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<QuickF
         if (error) throw new Error(`Błąd czyszczenia wpisów: ${error.message}`)
     }
 
-    const [holidaysRes, attendanceRes, existingRes] = await Promise.all([
+    const [holidaysRes, attendanceRes, existingRes, pendingLeavesRes] = await Promise.all([
         supabase
             .from('public_holidays')
             .select('date, name_pl')
@@ -300,6 +307,15 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<QuickF
                   .from('timesheet_entries')
                   .select('work_date')
                   .eq('timesheet_id', input.timesheetId),
+        // H2.9: pending leave_requests przecinające miesiąc — pomijamy aby
+        // nie wpisać godzin w dni których admin za chwilę zatwierdzi jako urlop.
+        supabase
+            .from('leave_requests')
+            .select('start_date, end_date')
+            .eq('user_id', header.user_id)
+            .eq('status', 'pending')
+            .lte('start_date', monthEnd)
+            .gte('end_date', monthStart),
     ])
 
     const holidays = (holidaysRes.data ?? []) as PublicHolidayDate[]
@@ -311,6 +327,16 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<QuickF
     const existingDates = new Set(
         ((existingRes.data ?? []) as Array<{ work_date: string }>).map((e) => e.work_date),
     )
+
+    // H2.9: rozwiń każdy pending leave do zbioru dat wewnątrz miesiąca.
+    const pendingLeaveDates = new Set<string>()
+    for (const lr of (pendingLeavesRes.data ?? []) as Array<{ start_date: string; end_date: string }>) {
+        const start = new Date(Math.max(new Date(lr.start_date).getTime(), new Date(monthStart).getTime()))
+        const end = new Date(Math.min(new Date(lr.end_date).getTime(), new Date(monthEnd).getTime()))
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            pendingLeaveDates.add(format(d, 'yyyy-MM-dd'))
+        }
+    }
 
     const allWorkingDays = workingDaysInMonth(header.year, header.month, holidays)
     const totalWorkingDays = allWorkingDays.length
@@ -324,11 +350,16 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<QuickF
     }> = []
     let skippedLeave = 0
     let skippedExisting = 0
+    let skippedPendingLeave = 0
 
     for (const day of allWorkingDays) {
         const iso = format(day, 'yyyy-MM-dd')
         if (blockedDates.has(iso)) {
             skippedLeave++
+            continue
+        }
+        if (pendingLeaveDates.has(iso)) {
+            skippedPendingLeave++
             continue
         }
         if (existingDates.has(iso)) {
@@ -353,6 +384,7 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<QuickF
         inserted: rows.length,
         skipped_existing: skippedExisting,
         skipped_leave: skippedLeave,
+        skipped_pending_leave: skippedPendingLeave,
         total_working_days: totalWorkingDays,
     }
 }
@@ -460,6 +492,9 @@ export async function submitTimesheet(timesheetId: string): Promise<void> {
         .update({
             status: 'submitted',
             submitted_at: new Date().toISOString(),
+            // H2.7: czyść rejection_note po resubmit — user zaadresował feedback,
+            // baner "był rejected" znika.
+            rejection_note: null,
         })
         .eq('id', timesheetId)
     if (error) throw new Error(`Błąd składania: ${error.message}`)
@@ -470,13 +505,23 @@ export async function submitTimesheet(timesheetId: string): Promise<void> {
         month: header.month,
     })
 
-    // Notify admins
+    // Notify admins (email + H3.3 push)
     const adminEmails = await fetchAdminEmails()
+    const requesterName = await fetchUserDisplayName(ctx.userId, ctx.email)
     if (adminEmails.length > 0) {
-        const requesterName = await fetchUserDisplayName(ctx.userId, ctx.email)
         sendTimesheetSubmitted(adminEmails, requesterName, header.year, header.month).catch((e) =>
             console.error('[submitTimesheet] notify failed:', e),
         )
+    }
+    const adminClient = createServiceClient()
+    const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin')
+    for (const a of (admins ?? []) as Array<{ id: string }>) {
+        sendPushToUserId(a.id, {
+            title: 'Timesheet do akceptacji',
+            body: `${requesterName}: ${header.year}-${String(header.month).padStart(2, '0')}`,
+            url: '/internal/admin?tab=timesheets',
+            tag: `timesheet-submit-${header.year}-${header.month}-${header.user_id}`,
+        }).catch((e) => console.error('[submitTimesheet] admin push failed:', e))
     }
 }
 
@@ -529,6 +574,13 @@ export async function approveTimesheet(timesheetId: string): Promise<void> {
             header.month,
         ).catch((e) => console.error('[approveTimesheet] notify failed:', e))
     }
+    // H3.3: Push notification
+    sendPushToUserId(header.user_id, {
+        title: 'Timesheet zatwierdzony',
+        body: `${header.year}-${String(header.month).padStart(2, '0')} został zaakceptowany.`,
+        url: `/internal/timesheet/${header.year}/${header.month}/pdf`,
+        tag: `timesheet-${header.year}-${header.month}`,
+    }).catch((e) => console.error('[approveTimesheet] push failed:', e))
 }
 
 export async function rejectTimesheet(timesheetId: string, reason: string): Promise<void> {
@@ -549,11 +601,15 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
     const { error } = await admin
         .from('timesheets')
         .update({
-            status: 'rejected',
+            // H2.7: po reject wracamy do 'draft' — user może natychmiast edytować
+            // i wysłać ponownie. Audit log + email zachowują info o decyzji.
+            // rejection_note zostaje aż do następnego submit (czyści submitTimesheet).
+            status: 'draft',
             rejection_note: reason.trim(),
             approved_by: null,
             approved_at: null,
             pdf_hash: null,
+            submitted_at: null,
         })
         .eq('id', timesheetId)
     if (error) throw new Error(`Błąd odrzucenia: ${error.message}`)
@@ -563,10 +619,6 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
         target_user_id: header.user_id,
         reason: reason.trim(),
     })
-
-    // Po reject status idzie z 'submitted' → 'rejected'. Owner odzyska edycję
-    // przez `unlockTimesheet` (admin) lub osobny user action `reopenTimesheet` (TODO MVP).
-    // Na MVP — admin musi reopenować, lub user zlozyl ponownie po decyzji.
 
     const userInfo = await fetchUserContact(header.user_id)
     if (userInfo) {
@@ -579,6 +631,13 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
             reason,
         ).catch((e) => console.error('[rejectTimesheet] notify failed:', e))
     }
+    // H3.3: Push notification
+    sendPushToUserId(header.user_id, {
+        title: 'Timesheet odrzucony — popraw',
+        body: `Powód: ${reason.slice(0, 100)}`,
+        url: `/internal/timesheet/${header.year}/${header.month}`,
+        tag: `timesheet-${header.year}-${header.month}`,
+    }).catch((e) => console.error('[rejectTimesheet] push failed:', e))
 }
 
 export async function unlockTimesheet(timesheetId: string): Promise<void> {
