@@ -9,6 +9,8 @@ import {
 import { logAudit } from '@/lib/actions/audit'
 import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
+import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
+import { format } from 'date-fns'
 
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 
@@ -210,6 +212,143 @@ export async function addEntry(input: AddEntryInput): Promise<TimesheetEntryRow>
         .single<TimesheetEntryRow>()
     if (error || !data) throw new Error(`Błąd dodania wpisu: ${error?.message ?? 'unknown'}`)
     return data
+}
+
+// ─── Phase 12.1: quick-fill whole month with 8h on working days ─────────────
+
+const DEFAULT_QUICK_FILL_DESCRIPTION = 'Praca standardowa'
+
+export interface QuickFillMonthInput {
+    timesheetId: string
+    hoursPerDay?: number
+    project?: string | null
+    description?: string
+    /** When true, removes existing entries first; otherwise skips dates that already have entries. */
+    overwrite?: boolean
+}
+
+export interface QuickFillMonthResult {
+    inserted: number
+    skipped_existing: number
+    skipped_leave: number
+    total_working_days: number
+}
+
+/**
+ * Bulk-fill the timesheet for every working day of its month with N hours
+ * (default 8). Skips weekends, public holidays, and days the user has on
+ * approved/auto leave (vacation, sick, parental, unpaid). Description defaults
+ * to "Praca standardowa" — DB requires NOT NULL.
+ */
+export async function quickFillMonth(input: QuickFillMonthInput): Promise<QuickFillMonthResult> {
+    const ctx = await requireInternalOrAdminAction()
+    const supabase = createClient()
+
+    const hours = input.hoursPerDay ?? 8
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+        throw new Error('hoursPerDay musi być w zakresie (0, 24].')
+    }
+    const description = (input.description ?? '').trim() || DEFAULT_QUICK_FILL_DESCRIPTION
+    const project = input.project?.trim() || null
+
+    const { data: header, error: fetchErr } = await supabase
+        .from('timesheets')
+        .select('id, user_id, year, month, status')
+        .eq('id', input.timesheetId)
+        .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'year' | 'month' | 'status'>>()
+    if (fetchErr || !header) throw new Error('Timesheet nie istnieje.')
+    if (header.user_id !== ctx.userId && !ctx.isAdmin) {
+        throw new Error('To nie jest Twój timesheet.')
+    }
+    if (header.status !== 'draft') {
+        throw new Error('Można wypełnić tylko timesheet w statusie "draft".')
+    }
+
+    const monthStart = `${header.year}-${String(header.month).padStart(2, '0')}-01`
+    const monthEndDate = new Date(header.year, header.month, 0)
+    const monthEnd = format(monthEndDate, 'yyyy-MM-dd')
+
+    if (input.overwrite) {
+        const { error } = await supabase
+            .from('timesheet_entries')
+            .delete()
+            .eq('timesheet_id', input.timesheetId)
+        if (error) throw new Error(`Błąd czyszczenia wpisów: ${error.message}`)
+    }
+
+    const [holidaysRes, attendanceRes, existingRes] = await Promise.all([
+        supabase
+            .from('public_holidays')
+            .select('date, name_pl')
+            .gte('date', monthStart)
+            .lte('date', monthEnd),
+        supabase
+            .from('attendance_records')
+            .select('date, status')
+            .eq('user_id', header.user_id)
+            .gte('date', monthStart)
+            .lte('date', monthEnd),
+        input.overwrite
+            ? Promise.resolve({ data: [] as Array<{ work_date: string }> })
+            : supabase
+                  .from('timesheet_entries')
+                  .select('work_date')
+                  .eq('timesheet_id', input.timesheetId),
+    ])
+
+    const holidays = (holidaysRes.data ?? []) as PublicHolidayDate[]
+    const blockedDates = new Set(
+        ((attendanceRes.data ?? []) as Array<{ date: string; status: string }>)
+            .filter((a) => HOURS_BLOCKING_STATUSES.includes(a.status))
+            .map((a) => a.date),
+    )
+    const existingDates = new Set(
+        ((existingRes.data ?? []) as Array<{ work_date: string }>).map((e) => e.work_date),
+    )
+
+    const allWorkingDays = workingDaysInMonth(header.year, header.month, holidays)
+    const totalWorkingDays = allWorkingDays.length
+
+    const rows: Array<{
+        timesheet_id: string
+        work_date: string
+        hours: number
+        project: string | null
+        description: string
+    }> = []
+    let skippedLeave = 0
+    let skippedExisting = 0
+
+    for (const day of allWorkingDays) {
+        const iso = format(day, 'yyyy-MM-dd')
+        if (blockedDates.has(iso)) {
+            skippedLeave++
+            continue
+        }
+        if (existingDates.has(iso)) {
+            skippedExisting++
+            continue
+        }
+        rows.push({
+            timesheet_id: input.timesheetId,
+            work_date: iso,
+            hours,
+            project,
+            description,
+        })
+    }
+
+    if (rows.length > 0) {
+        const { error } = await supabase.from('timesheet_entries').insert(rows)
+        if (error) throw new Error(`Błąd wypełniania timesheetu: ${error.message}`)
+    }
+
+    return {
+        inserted: rows.length,
+        skipped_existing: skippedExisting,
+        skipped_leave: skippedLeave,
+        total_working_days: totalWorkingDays,
+    }
 }
 
 export interface UpdateEntryInput {

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Pencil, Plus, Trash2, Loader2, Send, FileDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Pencil, Plus, Trash2, Loader2, Send, FileDown, ChevronLeft, ChevronRight, Wand2 } from 'lucide-react'
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -14,6 +14,7 @@ import { useConfirm } from '@/components/shared/ConfirmDialog'
 import {
     addEntry,
     deleteEntry,
+    quickFillMonth,
     submitTimesheet,
     updateEntry,
     type TimesheetEntryRow,
@@ -129,6 +130,37 @@ export function TimesheetEditor({ timesheet }: Props) {
             try {
                 await submitTimesheet(timesheet.id)
                 toastSuccess('Timesheet złożony')
+                router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            }
+        })
+    }
+
+    async function handleQuickFill() {
+        const hasEntries = timesheet.entries.length > 0
+        const ok = await confirm({
+            title: hasEntries
+                ? 'Nadpisać miesiąc 8h × dzień roboczy?'
+                : 'Wypełnić miesiąc 8h × dzień roboczy?',
+            description: hasEntries
+                ? `${format(ref, 'LLLL yyyy', { locale: pl })}: USUNIE wszystkie istniejące wpisy i wypełni od zera 8h dla każdego dnia roboczego (pomijając weekendy, święta i Twoje urlopy).`
+                : `${format(ref, 'LLLL yyyy', { locale: pl })}: wypełni 8h dla każdego dnia roboczego (pomija weekendy, święta i Twoje urlopy). Możesz potem ręcznie poprawić poszczególne dni.`,
+            confirmLabel: hasEntries ? 'Nadpisz' : 'Wypełnij',
+            variant: hasEntries ? 'destructive' : 'default',
+        })
+        if (!ok) return
+        startTransition(async () => {
+            try {
+                const res = await quickFillMonth({
+                    timesheetId: timesheet.id,
+                    hoursPerDay: 8,
+                    overwrite: hasEntries,
+                })
+                const parts = [`Dodano ${res.inserted} dni × 8h`]
+                if (res.skipped_leave > 0) parts.push(`${res.skipped_leave} pominięte (urlop)`)
+                if (res.skipped_existing > 0) parts.push(`${res.skipped_existing} pominięte (już istniały)`)
+                toastSuccess(parts.join(' · '))
                 router.refresh()
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd')
@@ -273,6 +305,15 @@ export function TimesheetEditor({ timesheet }: Props) {
                         <Button onClick={() => setCreating(true)} disabled={pending}>
                             <Plus className="h-4 w-4 mr-2" />
                             Dodaj wpis
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handleQuickFill}
+                            disabled={pending}
+                            title="Wypełni cały miesiąc 8h × dzień roboczy. Pomija weekendy, święta i Twoje urlopy."
+                        >
+                            <Wand2 className="h-4 w-4 mr-2" />
+                            Wypełnij miesiąc 8h
                         </Button>
                         <Button
                             variant="default"
