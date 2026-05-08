@@ -7,6 +7,10 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        # Build-time metadata for /api/health. Coolify env vault sets these via
+        # GH Actions deploy.yml on every push to main (see PR #2).
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILT_AT: ${BUILT_AT:-unknown}
     image: compass-app:latest
     container_name: compass-app
     restart: unless-stopped
