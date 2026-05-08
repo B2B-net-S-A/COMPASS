@@ -20,7 +20,7 @@ describe('generateDailyDigest', () => {
     it('returns auth error when not signed in', async () => {
         setupClient({ user: null })
         const { generateDailyDigest } = await import('../email-digest')
-        const result = await generateDailyDigest('u1')
+        const result = await generateDailyDigest()
         expect(result.success).toBe(false)
         expect(result.error).toMatch(/zalogowany/)
     })
@@ -31,7 +31,7 @@ describe('generateDailyDigest', () => {
             tables: { notifications: [] },
         })
         const { generateDailyDigest } = await import('../email-digest')
-        const result = await generateDailyDigest('u1')
+        const result = await generateDailyDigest()
         expect(result.success).toBe(true)
         expect(result.digest).toEqual([])
     })
@@ -51,7 +51,7 @@ describe('generateDailyDigest', () => {
             },
         })
         const { generateDailyDigest } = await import('../email-digest')
-        const result = await generateDailyDigest('u1') as { success: true; digest: Array<{ title: string }> }
+        const result = await generateDailyDigest() as { success: true; digest: Array<{ title: string }> }
         expect(result.digest.map(d => d.title)).toEqual(['Recent unread'])
     })
 
@@ -66,7 +66,7 @@ describe('generateDailyDigest', () => {
             },
         })
         const { generateDailyDigest } = await import('../email-digest')
-        const result = await generateDailyDigest('u1') as { success: true; digest: Array<{ title: string; body: string }> }
+        const result = await generateDailyDigest() as { success: true; digest: Array<{ title: string; body: string }> }
         expect(result.digest[0].title).toBe('EnTitle')
         expect(result.digest[0].body).toBe('EnBody')
     })
@@ -79,7 +79,7 @@ describe('getDigestHtml', () => {
             tables: { notifications: [] },
         })
         const { getDigestHtml } = await import('../email-digest')
-        const html = await getDigestHtml('u1')
+        const html = await getDigestHtml()
         expect(html).toBe('')
     })
 
@@ -94,7 +94,7 @@ describe('getDigestHtml', () => {
             },
         })
         const { getDigestHtml } = await import('../email-digest')
-        const html = await getDigestHtml('u1')
+        const html = await getDigestHtml()
         expect(html).toContain('Hello')
         expect(html).toContain('World')
         expect(html).toContain('/notifications')
@@ -111,7 +111,7 @@ describe('getDigestHtml', () => {
             },
         })
         const { getDigestHtml } = await import('../email-digest')
-        const html = await getDigestHtml('u1')
+        const html = await getDigestHtml()
         expect(html).not.toContain('<script>')
         expect(html).toContain('&lt;script&gt;')
     })

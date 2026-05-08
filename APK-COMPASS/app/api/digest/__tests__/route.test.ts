@@ -26,18 +26,19 @@ function makeRequest(body: unknown): Request {
 }
 
 describe('POST /api/digest', () => {
-    it('returns 400 when userId is missing from body', async () => {
+    it('returns 401 when user is not authenticated', async () => {
+        generateDailyDigest.mockResolvedValue({ success: false, error: 'Nie jesteś zalogowany' })
         const { POST } = await import('../route')
         const response = await POST(makeRequest({}))
-        expect(response.status).toBe(400)
+        expect(response.status).toBe(401)
         const body = await response.json()
-        expect(body.error).toMatch(/userId/i)
+        expect(body.error).toBe('Nie jesteś zalogowany')
     })
 
-    it('returns 500 when generateDailyDigest reports failure', async () => {
+    it('returns 500 when generateDailyDigest reports a non-auth failure', async () => {
         generateDailyDigest.mockResolvedValue({ success: false, error: 'DB error' })
         const { POST } = await import('../route')
-        const response = await POST(makeRequest({ userId: 'u1' }))
+        const response = await POST(makeRequest({}))
         expect(response.status).toBe(500)
         const body = await response.json()
         expect(body.error).toBe('DB error')
@@ -52,7 +53,7 @@ describe('POST /api/digest', () => {
             ],
         })
         const { POST } = await import('../route')
-        const response = await POST(makeRequest({ userId: 'u1', sendEmail: false }))
+        const response = await POST(makeRequest({ sendEmail: false }))
         expect(response.status).toBe(200)
         const body = await response.json()
         expect(body.success).toBe(true)
@@ -69,31 +70,30 @@ describe('POST /api/digest', () => {
         })
         getDigestHtml.mockResolvedValue('<html>digest</html>')
         const { POST } = await import('../route')
-        const response = await POST(makeRequest({ userId: 'u1', sendEmail: true }))
+        const response = await POST(makeRequest({ sendEmail: true }))
         const body = await response.json()
         expect(body.success).toBe(true)
         expect(body.itemCount).toBe(1)
         expect(body.html).toBe('<html>digest</html>')
-        expect(getDigestHtml).toHaveBeenCalledWith('u1')
+        // Security: getDigestHtml is now called WITHOUT a userId argument; the
+        // user is resolved from the session inside the action itself.
+        expect(getDigestHtml).toHaveBeenCalledWith()
     })
 
     it('does NOT call getDigestHtml when sendEmail=true but digest is empty', async () => {
         generateDailyDigest.mockResolvedValue({ success: true, digest: [] })
         const { POST } = await import('../route')
-        const response = await POST(makeRequest({ userId: 'u1', sendEmail: true }))
+        const response = await POST(makeRequest({ sendEmail: true }))
         const body = await response.json()
         expect(body.success).toBe(true)
         expect(body.itemCount).toBe(0)
         expect(getDigestHtml).not.toHaveBeenCalled()
     })
 
-    it('returns 500 with generic error on JSON parse failure / unexpected exception', async () => {
+    it('returns 500 with generic error on unexpected exception in the action', async () => {
+        generateDailyDigest.mockRejectedValue(new Error('boom'))
         const { POST } = await import('../route')
-        const badRequest = new Request('https://compass.test/api/digest', {
-            method: 'POST',
-            body: 'not-json',
-        })
-        const response = await POST(badRequest)
+        const response = await POST(makeRequest({}))
         expect(response.status).toBe(500)
         const body = await response.json()
         expect(body.error).toBe('Błąd serwera')

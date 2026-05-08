@@ -10,6 +10,11 @@ if (dsn) {
         dsn,
         environment: process.env.SENTRY_ENVIRONMENT ?? 'production',
         release: process.env.GIT_SHA,
+        // Security/RODO: Compass handles HR-classified data. Disable default
+        // PII collection so Sentry events don't auto-attach request headers
+        // (Cookie with Supabase session tokens), IP address, or user identifiers.
+        // We attach explicit, scrubbed user context elsewhere when needed.
+        sendDefaultPii: false,
         tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.1'),
         profilesSampleRate: parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? '0.1'),
         // Don't capture transactions for healthcheck — it runs every 30s and

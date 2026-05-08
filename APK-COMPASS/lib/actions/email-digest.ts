@@ -10,7 +10,12 @@ interface DigestItem {
     action_url?: string
 }
 
-export async function generateDailyDigest(userId: string): Promise<{
+// Security: userId parameter REMOVED — was an IDOR vector. The function now
+// scopes notifications strictly to the authenticated user (user.id from the
+// Supabase session). Caller-supplied userId was previously trusted and queried
+// directly against the notifications table, allowing any authenticated user
+// to read another user's digest by passing their UUID.
+export async function generateDailyDigest(): Promise<{
     success: boolean
     digest?: DigestItem[]
     error?: string
@@ -25,7 +30,7 @@ export async function generateDailyDigest(userId: string): Promise<{
         const { data: notifications, error } = await supabase
             .from('notifications')
             .select('*')
-            .eq('user_id', userId)
+            .eq('user_id', user.id)
             .eq('is_read', false)
             .gte('created_at', yesterday)
             .order('created_at', { ascending: false })
@@ -46,8 +51,10 @@ export async function generateDailyDigest(userId: string): Promise<{
     }
 }
 
-export async function getDigestHtml(userId: string): Promise<string> {
-    const result = await generateDailyDigest(userId)
+// Security: userId parameter REMOVED — same IDOR concern as generateDailyDigest.
+// The HTML now reflects strictly the calling user's notifications.
+export async function getDigestHtml(): Promise<string> {
+    const result = await generateDailyDigest()
     if (!result.success || !result.digest?.length) {
         return ''
     }

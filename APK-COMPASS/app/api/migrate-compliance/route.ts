@@ -92,10 +92,25 @@ const RLS_POLICIES = [
 ]
 
 export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const secret = url.searchParams.get('secret')
-  if (secret !== process.env.CRON_SECRET) {
+  // Security: refuse to run if CRON_SECRET is unconfigured. Without this guard,
+  // an env-vault misconfiguration (CRON_SECRET removed but route still
+  // deployed) would skip authentication entirely. This route runs `exec_sql`
+  // RPC + upsert with the Supabase service-role key, so any auth gap = full
+  // destructive DB access for unauthenticated callers.
+  if (!process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Not configured' }, { status: 503 })
+  }
+  // Prefer Authorization: Bearer <secret> header — query strings end up in CF
+  // / proxy / Sentry trace logs, leaking the secret. Fall back to ?secret= for
+  // legacy callers but log a deprecation warning to drive migration.
+  const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+  const querySecret = new URL(request.url).searchParams.get('secret')
+  const provided = headerSecret || querySecret
+  if (!provided || provided !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!headerSecret && querySecret) {
+    console.warn('[migrate-compliance] secret in query param — migrate caller to Authorization: Bearer header (query strings appear in proxy/Sentry/CF logs)')
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
