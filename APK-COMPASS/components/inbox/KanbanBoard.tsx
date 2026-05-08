@@ -67,16 +67,19 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
 
     return (
         <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 overflow-x-auto pb-4">
+            <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1 snap-x snap-mandatory md:snap-none">
                 {COLUMN_ORDER.map((status) => {
                     const items = columns[status] ?? []
                     return (
-                        <div key={status} className="space-y-2 min-w-[260px]">
-                            <div className="flex items-center justify-between px-1">
-                                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        <div
+                            key={status}
+                            className="space-y-2 flex-shrink-0 w-[280px] md:w-[260px] md:flex-1 md:min-w-[240px] snap-start"
+                        >
+                            <div className="flex items-center justify-between gap-2 px-1">
+                                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">
                                     {TICKET_STATUS_LABEL[status]}
                                 </h3>
-                                <span className="text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded bg-white/5">
+                                <span className="text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded bg-white/5 flex-shrink-0">
                                     {items.length}
                                 </span>
                             </div>
