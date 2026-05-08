@@ -49,7 +49,10 @@ export const dictionary = {
         nav_admin_users: 'Użytkownicy',
         nav_admin_settings: 'Ustawienia platformy',
 
-        // Navigation — internal employee zone (Phase 11)
+        // Navigation — internal employee zone (Phase 12: collapsed to single hub link)
+        nav_internal_hub: 'HR (obecność / urlopy / timesheet)',
+        nav_internal_admin_hub: 'Administracja HR',
+        // Phase 11 sub-page labels (kept for back-compat with old translations + tab labels)
         nav_internal_attendance: 'Lista obecności',
         nav_internal_calendar: 'Kalendarz urlopów',
         nav_internal_leave: 'Moje urlopy',
@@ -132,7 +135,10 @@ export const dictionary = {
         nav_admin_users: 'Users',
         nav_admin_settings: 'Platform settings',
 
-        // Navigation — internal employee zone (Phase 11)
+        // Navigation — internal employee zone (Phase 12: collapsed to single hub link)
+        nav_internal_hub: 'HR (attendance / leave / timesheet)',
+        nav_internal_admin_hub: 'HR administration',
+        // Phase 11 sub-page labels (kept for back-compat with old translations + tab labels)
         nav_internal_attendance: 'Attendance',
         nav_internal_calendar: 'Vacation calendar',
         nav_internal_leave: 'My leave',

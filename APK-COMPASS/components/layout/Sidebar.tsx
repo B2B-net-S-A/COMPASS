@@ -19,10 +19,7 @@ import {
     Mailbox,
     PenSquare,
     Sparkles,
-    Calendar,
     CalendarCheck,
-    ClipboardList,
-    Receipt,
     Users,
     type LucideIcon,
 } from 'lucide-react'
@@ -60,6 +57,8 @@ interface NavLink {
     icon: LucideIcon
     feature: PermissionFeature | null
     badgeCount?: number
+    /** When true, link is "active" only when pathname matches exactly. */
+    exactMatch?: boolean
 }
 
 interface NavGroup {
@@ -120,25 +119,19 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    // Phase 11: internal employee zone (attendance, vacations, timesheets).
-    // Visible to internal employees and admins; hidden from consultants.
+    // Phase 12: collapsed to single-link hubs (sub-pages live behind ?tab=).
+    // exactMatch on /internal so it doesn't stay highlighted while user is on /internal/admin.
     const internalGroup: NavGroup = {
         heading: t('group_internal'),
         links: [
-            { name: t('nav_internal_attendance'), href: '/internal/attendance', icon: CalendarCheck, feature: null },
-            { name: t('nav_internal_calendar'), href: '/internal/calendar', icon: Calendar, feature: null },
-            { name: t('nav_internal_leave'), href: '/internal/leave', icon: ClipboardList, feature: null },
-            { name: t('nav_internal_timesheet'), href: '/internal/timesheet', icon: Receipt, feature: null },
+            { name: t('nav_internal_hub'), href: '/internal', icon: CalendarCheck, feature: null, exactMatch: true },
         ],
     }
 
-    // Phase 11: HR admin sub-zone (approvals, bulk export, employee profile editor).
     const internalAdminGroup: NavGroup = {
         heading: t('group_internal_admin'),
         links: [
-            { name: t('nav_internal_admin_leave'), href: '/internal/admin/leave-requests', icon: ClipboardList, feature: null },
-            { name: t('nav_internal_admin_timesheets'), href: '/internal/admin/timesheets', icon: Receipt, feature: null },
-            { name: t('nav_internal_admin_employees'), href: '/internal/admin/employees', icon: Users, feature: null },
+            { name: t('nav_internal_admin_hub'), href: '/internal/admin', icon: Users, feature: null },
         ],
     }
 
@@ -177,7 +170,9 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                             </div>
                             {visibleLinks.map((link) => {
                                 const Icon = link.icon
-                                const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`)
+                                const isActive = link.exactMatch
+                                    ? pathname === link.href
+                                    : pathname === link.href || pathname.startsWith(`${link.href}/`)
                                 const testId = `nav-${link.href.replace(/^\//, '').replace(/\//g, '-')}`
 
                                 return (
