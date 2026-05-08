@@ -45,7 +45,7 @@ jobs:
             value="${entry#*=}"
             payload=$(jq -nc \
               --arg k "$key" --arg v "$value" \
-              '{key: $k, value: $v, is_buildtime: true, is_runtime: true, is_preview: false, is_shared: false}')
+              '{key: $k, value: $v, is_buildtime: true, is_runtime: true, is_preview: false}')
             http=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X PATCH \
               -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
               -H "Content-Type: application/json" \
