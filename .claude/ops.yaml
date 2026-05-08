@@ -1,0 +1,15 @@
+# Dynaminds ops config for Compass (HR app)
+# Used by ~/.claude/scripts/sync-ops-commands.sh to generate .claude/commands/ops-*.md
+# Re-run after editing: ~/.claude/scripts/sync-ops-commands.sh .
+
+repo_name: compass
+repo_name_upper: COMPASS
+app_url: https://compass.dynaminds.pl
+coolify_url: https://coolify-compass.dynaminds.pl
+app_uuid: w136dv828ofipvjfnxrqi643
+server_ip: 178.104.220.48
+db_user: ""
+health_path: /api/health
+snapshot_token_env: COMPASS_SNAPSHOT_TOKEN
+primary_service_name: app
+db_query_instructions: Use mcp__supabase MCP server (project Compass). Tools execute_sql, list_tables, apply_migration. Free-tier RLS enforces row-level security.
