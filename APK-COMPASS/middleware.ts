@@ -40,6 +40,25 @@ export async function middleware(request: NextRequest) {
         const isPublicPath = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/forgot-password') || pathname.startsWith('/privacy-policy') || pathname.startsWith('/terms') || pathname.startsWith('/help')
         const onboardingDone = request.cookies.get('onboarding_done')?.value === 'true'
 
+        // Security defense-in-depth: gate /internal/* at the edge regardless of
+        // whether the eventual handler is a layout-wrapped page or a bare route
+        // handler. The protected layout (app/(protected)/internal/layout.tsx)
+        // already calls requireInternalOrAdminLayout(), but that doesn't fire
+        // for bare route handlers under /internal — those rely on per-handler
+        // guards. This middleware check ensures a future route handler added
+        // without an explicit guard cannot leak HR data to a consultant.
+        if (pathname.startsWith('/internal')) {
+            const { data: internalProfile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
+                .single()
+            const role = internalProfile?.role
+            if (role !== 'admin' && role !== 'internal') {
+                return NextResponse.redirect(new URL('/home', request.url))
+            }
+        }
+
         if (!isPublicPath && !isOnboarding && !onboardingDone) {
             const { data: profile } = await supabase
                 .from('profiles')
@@ -54,6 +73,7 @@ export async function middleware(request: NextRequest) {
                 response.cookies.set('onboarding_done', 'true', {
                     httpOnly: true,
                     secure: process.env.NODE_ENV === 'production',
+                    sameSite: 'lax',
                     path: '/',
                     maxAge: 60 * 60 * 24 * 30,
                 })

@@ -93,12 +93,14 @@ export async function login(formData: FormData) {
         cookieStore.set('emergency_auth_user', BYPASS_EMAIL, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24 * 7, // 7 dni
         })
         cookieStore.set('mfa_verified', 'true', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24,
         })
@@ -142,6 +144,7 @@ export async function login(formData: FormData) {
         cookies().set('onboarding_done', 'true', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24 * 30,
         })
@@ -152,6 +155,7 @@ export async function login(formData: FormData) {
         cookies().set('mfa_verified', 'true', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24 // 24 hours
         })
@@ -171,6 +175,7 @@ export async function verifyMfaAction(userId: string, code: string) {
     cookies().set('mfa_verified', 'true', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
         path: '/',
         maxAge: 60 * 30 // 30 minutes session per spec
     })

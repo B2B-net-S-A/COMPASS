@@ -1,22 +1,23 @@
 import { NextResponse } from 'next/server'
 import { getDigestHtml, generateDailyDigest } from '@/lib/actions/email-digest'
 
+// Security: userId no longer accepted from request body — the digest is scoped
+// to the authenticated user via session lookup inside generateDailyDigest().
+// Previous IDOR vector (caller could pass any userId and read someone else's
+// digest) is closed.
 export async function POST(request: Request) {
     try {
-        const { userId, sendEmail } = await request.json()
+        const { sendEmail } = await request.json().catch(() => ({}))
 
-        if (!userId) {
-            return NextResponse.json({ error: 'userId wymagany' }, { status: 400 })
-        }
-
-        const digest = await generateDailyDigest(userId)
+        const digest = await generateDailyDigest()
 
         if (!digest.success) {
-            return NextResponse.json({ error: digest.error }, { status: 500 })
+            const status = digest.error === 'Nie jesteś zalogowany' ? 401 : 500
+            return NextResponse.json({ error: digest.error }, { status })
         }
 
         if (sendEmail && digest.digest && digest.digest.length > 0) {
-            const html = await getDigestHtml(userId)
+            const html = await getDigestHtml()
             return NextResponse.json({
                 success: true,
                 itemCount: digest.digest.length,
