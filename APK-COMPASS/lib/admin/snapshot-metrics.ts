@@ -15,13 +15,18 @@ export type SnapshotKpis = {
     audit_logs: { last_24h: number }
 }
 
+// Filter callback receives the post-select() builder (PostgrestFilterBuilder).
+// Typed as `any` because the supabase-js generic chain is not worth pinning
+// here — runtime behavior is the same regardless.
+type FilterFn = (q: any) => any
+
 async function safeCount(
     supabase: SupabaseClient,
     table: string,
-    extra?: (q: ReturnType<SupabaseClient['from']>) => unknown,
+    extra?: FilterFn,
 ): Promise<number> {
-    let query = supabase.from(table).select('*', { count: 'exact', head: true })
-    if (extra) query = extra(query) as typeof query
+    let query: any = supabase.from(table).select('*', { count: 'exact', head: true })
+    if (extra) query = extra(query)
     const { count, error } = await query
     if (error) return 0
     return count ?? 0
@@ -41,13 +46,13 @@ export async function computeKpiSnapshot(supabase: SupabaseClient): Promise<Snap
         auditLast24h,
     ] = await Promise.all([
         safeCount(supabase, 'profiles'),
-        safeCount(supabase, 'profiles', (q) => (q as any).eq('is_active', true)),
-        safeCount(supabase, 'contracts', (q) => (q as any).eq('status', 'active')),
+        safeCount(supabase, 'profiles', (q) => q.eq('is_active', true)),
+        safeCount(supabase, 'contracts', (q) => q.eq('status', 'active')),
         safeCount(supabase, 'centrala_benefit_declarations'),
         safeCount(supabase, 'centrala_referrals'),
         safeCount(supabase, 'centrala_equipment_requests'),
         safeCount(supabase, 'centrala_invoices'),
-        safeCount(supabase, 'audit_logs', (q) => (q as any).gte('created_at', dayAgo)),
+        safeCount(supabase, 'audit_logs', (q) => q.gte('created_at', dayAgo)),
     ])
 
     return {
