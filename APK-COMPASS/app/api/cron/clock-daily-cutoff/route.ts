@@ -14,13 +14,29 @@ export const dynamic = 'force-dynamic'
  * shifts (start 18:00, work past midnight, close at 10:00 next day).
  *
  * Trigger: Coolify cron daily at 04:00 UTC.
+ *
+ * Auth (preferred — secret NOT logged in CF/proxy/Sentry traces):
+ *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff" \
+ *        -H "Authorization: Bearer $CRON_SECRET"
+ *
+ * Legacy query-based fallback (deprecated, will warn):
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff?secret=$CRON_SECRET"
  */
 export async function GET(request: Request) {
+    if (!process.env.CRON_SECRET) {
+        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
+    }
     const url = new URL(request.url)
-    const secret = url.searchParams.get('secret')
-    if (!secret || secret !== process.env.CRON_SECRET) {
+    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+    const querySecret = url.searchParams.get('secret')
+    const provided = headerSecret || querySecret
+    if (!provided || provided !== process.env.CRON_SECRET) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (!headerSecret && querySecret) {
+        console.warn(
+            '[cron/clock-daily-cutoff] secret in query param — migrate caller to Authorization: Bearer header',
+        )
     }
 
     const admin = createServiceClient()
