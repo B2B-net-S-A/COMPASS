@@ -27,6 +27,16 @@ export type AuditAction =
     | 'TIMESHEET_UNLOCKED'
     // H2.8 — tamper-evidence dla PDF approved timesheet
     | 'TIMESHEET_HASH_MISMATCH'
+    // Phase 17 — Smart Work Clock
+    | 'WORK_CLOCK_CONSENT_ACCEPTED'
+    | 'WORK_CLOCK_CONSENT_REVOKED'
+    | 'WORK_CLOCK_STARTED'
+    | 'WORK_CLOCK_STOPPED'
+    | 'WORK_CLOCK_AUTO_STOPPED'
+    | 'WORK_CLOCK_TRANSFERRED'
+    | 'WORK_CLOCK_TAMPERED'
+    | 'TIMESHEET_CORRECTION_APPROVED'
+    | 'TIMESHEET_CORRECTION_REJECTED'
 
 export async function logAudit(
     userId: string | null,

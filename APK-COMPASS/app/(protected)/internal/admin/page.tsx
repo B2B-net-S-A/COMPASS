@@ -1,14 +1,16 @@
-import { ClipboardList, Receipt, Users } from 'lucide-react'
+import { ClipboardList, Receipt, Users, AlertTriangle } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AdminLeaveRequestsPanel } from '@/components/internal/panels/AdminLeaveRequestsPanel'
 import { AdminTimesheetsPanel } from '@/components/internal/panels/AdminTimesheetsPanel'
 import { AdminEmployeesPanel } from '@/components/internal/panels/AdminEmployeesPanel'
+import { AdminClockReviewPanel } from '@/components/internal/panels/AdminClockReviewPanel'
 
 export const dynamic = 'force-dynamic'
 
 const TABS: ReadonlyArray<HubTab> = [
     { id: 'leave-requests', label: 'Wnioski urlopowe', icon: ClipboardList },
     { id: 'timesheets', label: 'Timesheety', icon: Receipt },
+    { id: 'clock-review', label: 'Korekty zegara', icon: AlertTriangle },
     { id: 'employees', label: 'Pracownicy', icon: Users },
 ]
 
@@ -49,6 +51,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
 
             {tab === 'leave-requests' && <AdminLeaveRequestsPanel />}
             {tab === 'timesheets' && <AdminTimesheetsPanel year={year} month={month} />}
+            {tab === 'clock-review' && <AdminClockReviewPanel year={year} month={month} />}
             {tab === 'employees' && <AdminEmployeesPanel />}
         </div>
     )

@@ -30,6 +30,8 @@ export interface TimesheetHeader {
     updated_at: string
 }
 
+export type TimesheetEntrySource = 'manual' | 'clock_suggested' | 'clock_accepted'
+
 export interface TimesheetEntryRow {
     id: string
     timesheet_id: string
@@ -38,6 +40,10 @@ export interface TimesheetEntryRow {
     project: string | null
     description: string
     created_at: string
+    // Phase 17 — work clock integration
+    source: TimesheetEntrySource
+    tracked_hours: number | null
+    correction_required: boolean
 }
 
 export interface TimesheetWithEntries extends TimesheetHeader {
@@ -414,11 +420,41 @@ export async function updateEntry(input: UpdateEntryInput): Promise<void> {
     }
     if (Object.keys(updates).length === 0) return
 
+    // Phase 17: when user edits hours, transition source clock_suggested → clock_accepted
+    // (signals the user actively reviewed the suggestion).
+    if (input.hours !== undefined) {
+        const { data: existing } = await supabase
+            .from('timesheet_entries')
+            .select('source')
+            .eq('id', input.entryId)
+            .maybeSingle<{ source: string }>()
+        if (existing?.source === 'clock_suggested') {
+            updates.source = 'clock_accepted'
+        }
+    }
+
     const { error } = await supabase
         .from('timesheet_entries')
         .update(updates)
         .eq('id', input.entryId)
     if (error) throw new Error(`Błąd aktualizacji wpisu: ${error.message}`)
+
+    // Phase 17: discrepancy detection — fire-and-forget after successful update.
+    if (input.hours !== undefined) {
+        const { data: row } = await supabase
+            .from('timesheet_entries')
+            .select('hours, tracked_hours')
+            .eq('id', input.entryId)
+            .maybeSingle<{ hours: number; tracked_hours: number | null }>()
+        if (row) {
+            const { applyCorrectionFlag } = await import('./internal-clock')
+            applyCorrectionFlag({
+                entryId: input.entryId,
+                declaredHours: Number(row.hours),
+                trackedHours: row.tracked_hours == null ? null : Number(row.tracked_hours),
+            }).catch((e) => console.error('[updateEntry] correction flag failed:', e))
+        }
+    }
 }
 
 export async function deleteEntry(entryId: string): Promise<void> {

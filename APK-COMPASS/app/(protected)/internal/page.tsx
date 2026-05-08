@@ -1,9 +1,10 @@
-import { CalendarCheck, Calendar, ClipboardList, Receipt } from 'lucide-react'
+import { CalendarCheck, Calendar, ClipboardList, Receipt, Clock } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AttendancePanel } from '@/components/internal/panels/AttendancePanel'
 import { CalendarPanel } from '@/components/internal/panels/CalendarPanel'
 import { LeavePanel } from '@/components/internal/panels/LeavePanel'
 import { TimesheetPanel } from '@/components/internal/panels/TimesheetPanel'
+import { ClockPanel } from '@/components/internal/panels/ClockPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +13,7 @@ const TABS: ReadonlyArray<HubTab> = [
     { id: 'calendar', label: 'Kalendarz', icon: Calendar },
     { id: 'leave', label: 'Urlopy', icon: ClipboardList },
     { id: 'timesheet', label: 'Timesheet', icon: Receipt },
+    { id: 'clock', label: 'Zegar', icon: Clock },
 ]
 
 const VALID_TAB_IDS = TABS.map((t) => t.id)
@@ -57,6 +59,7 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
             )}
             {tab === 'leave' && <LeavePanel />}
             {tab === 'timesheet' && <TimesheetPanel year={year} month={month} />}
+            {tab === 'clock' && <ClockPanel year={year} month={month} />}
         </div>
     )
 }
