@@ -53,6 +53,14 @@ export function LessonPlayer({
                 return
             }
             setIsCompleted(true)
+            // A1.4: pokazujemy toast gdy user osiągnął milestone passy 7/14/21+
+            if (res.data?.streak?.milestone_reached && typeof window !== 'undefined') {
+                const days = res.data.streak.current
+                // Lazy-import toast żeby nie obciążać bundle gdy nie potrzebne
+                import('@/lib/toast-success').then(({ toastSuccess }) => {
+                    toastSuccess(`🔥 ${days} dni z rzędu! +25 pkt loyalty za passę nauki.`)
+                })
+            }
             router.refresh()
         })
     }

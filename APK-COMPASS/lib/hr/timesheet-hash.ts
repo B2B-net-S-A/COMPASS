@@ -1,7 +1,9 @@
 // Phase 11: deterministic content hash for timesheets.
-// SHA-256 over a canonical serialization of entries — used as anti-tamper
-// fingerprint stored on `timesheets.pdf_hash` at approve time and rendered
-// in the PDF footer.
+// SHA-256 over a canonical serialization of entries — anti-tamper fingerprint
+// stored on `timesheets.pdf_hash` at approve time, rendered in the PDF footer,
+// AND validated on every PDF generation (H2.8). Mismatch = entries zostały
+// zmienione przez bypass RLS (np. admin direct DB) po approve → audit log
+// + 409 response w PDF route.
 
 import { createHash } from 'crypto'
 

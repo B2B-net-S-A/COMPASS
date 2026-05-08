@@ -39,12 +39,41 @@ export async function enrollInCourse(courseId: string): Promise<ActionResult<{ e
         // Verify course is published (RLS will reject otherwise)
         const { data: course, error: courseErr } = await supabase
             .from('courses')
-            .select('id, status, slug')
+            .select('id, status, slug, prerequisite_course_ids')
             .eq('id', courseId)
-            .single()
+            .single<{ id: string; status: string; slug: string; prerequisite_course_ids: string[] | null }>()
         if (courseErr || !course) return { success: false, error: 'Kurs nie istnieje lub brak dostępu' }
         if (course.status !== 'published') {
             return { success: false, error: 'Kurs nie jest opublikowany' }
+        }
+
+        // A2.2: walidacja prerequisites — user musi mieć completed enrollments w wymaganych kursach
+        const prereqs = course.prerequisite_course_ids ?? []
+        if (prereqs.length > 0) {
+            const { data: completedEnrolls } = await supabase
+                .from('course_enrollments')
+                .select('course_id')
+                .eq('user_id', user.id)
+                .in('course_id', prereqs)
+                .not('completed_at', 'is', null)
+            const completedSet = new Set(
+                (completedEnrolls ?? []).map((e) => (e as { course_id: string }).course_id),
+            )
+            const missing = prereqs.filter((id) => !completedSet.has(id))
+            if (missing.length > 0) {
+                // Pobierz tytuły brakujących kursów (dla user-friendly error)
+                const { data: missingCourses } = await supabase
+                    .from('courses')
+                    .select('title')
+                    .in('id', missing)
+                const titles = (missingCourses ?? [])
+                    .map((c) => (c as { title: string }).title)
+                    .join(', ')
+                return {
+                    success: false,
+                    error: `Brakuje ukończonych kursów wymaganych: ${titles}`,
+                }
+            }
         }
 
         const { data, error } = await supabase
@@ -66,8 +95,13 @@ export async function enrollInCourse(courseId: string): Promise<ActionResult<{ e
 
 /**
  * Oznacza lekcję jako ukończoną (append do `completed_lessons` UUID[] z dedup).
+ * Aktualizuje też `last_accessed_lesson_id` + `last_accessed_at` (A1.1)
+ * oraz bump streak nauki (A1.4) tylko przy NEW completion (nie idempotent).
  */
-export async function markLessonComplete(courseId: string, lessonId: string): Promise<ActionResult<void>> {
+export async function markLessonComplete(
+    courseId: string,
+    lessonId: string,
+): Promise<ActionResult<{ streak: { current: number; milestone_reached: boolean } | null }>> {
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -75,27 +109,157 @@ export async function markLessonComplete(courseId: string, lessonId: string): Pr
 
         const { data: enrollment, error: enrErr } = await supabase
             .from('course_enrollments')
-            .select('id, completed_lessons')
+            .select('id, completed_lessons, lesson_completion_dates')
             .eq('user_id', user.id)
             .eq('course_id', courseId)
-            .single()
+            .single<{
+                id: string
+                completed_lessons: string[] | null
+                lesson_completion_dates: Record<string, string> | null
+            }>()
         if (enrErr || !enrollment) return { success: false, error: 'Nie jesteś zapisany na ten kurs' }
 
         const completed: string[] = Array.isArray(enrollment.completed_lessons) ? enrollment.completed_lessons : []
-        if (completed.includes(lessonId)) {
-            return { success: true, data: undefined } // already marked
+        const completionDates: Record<string, string> = enrollment.lesson_completion_dates ?? {}
+        const nowIso = new Date().toISOString()
+        const alreadyMarked = completed.includes(lessonId)
+
+        const updatePayload: {
+            completed_lessons?: string[]
+            lesson_completion_dates?: Record<string, string>
+            last_accessed_lesson_id: string
+            last_accessed_at: string
+        } = {
+            last_accessed_lesson_id: lessonId,
+            last_accessed_at: nowIso,
+        }
+        if (!alreadyMarked) {
+            updatePayload.completed_lessons = [...completed, lessonId]
+            // A2.4: zapisz timestamp ukończenia dla drip release gating
+            updatePayload.lesson_completion_dates = { ...completionDates, [lessonId]: nowIso }
         }
 
         const { error } = await supabase
             .from('course_enrollments')
-            .update({ completed_lessons: [...completed, lessonId] })
+            .update(updatePayload)
             .eq('id', enrollment.id)
+        if (error) throw error
+
+        // A1.4: bump streak tylko przy NEW completion (re-marking nie liczy się)
+        let streakInfo: { current: number; milestone_reached: boolean } | null = null
+        if (!alreadyMarked) {
+            streakInfo = await bumpLearningStreak(user.id)
+        }
+
+        return { success: true, data: { streak: streakInfo } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd oznaczania lekcji'
+        console.error('[markLessonComplete]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * A1.4: Aktualizuje passę nauki (learning_streak_*) w profilu usera.
+ * Rules:
+ *  - Jeśli last_date == today → no-op (już dziś coś zrobił)
+ *  - Jeśli last_date == yesterday → streak++
+ *  - Inaczej (gap ≥1 dzień lub null) → reset to 1
+ *  - Update longest jeśli current > longest
+ *  - Co 7 kolejnych dni (current % 7 == 0): INSERT loyalty_transactions +25 pkt
+ *
+ * Zwraca current streak + milestone flag (dla UI toast).
+ * Jest internal helper — niewystawiony jako server action.
+ */
+async function bumpLearningStreak(
+    userId: string,
+): Promise<{ current: number; milestone_reached: boolean }> {
+    const supabase = createClient()
+    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('learning_streak_current, learning_streak_longest, learning_streak_last_date')
+        .eq('id', userId)
+        .single<{
+            learning_streak_current: number
+            learning_streak_longest: number
+            learning_streak_last_date: string | null
+        }>()
+
+    if (!profile) {
+        return { current: 0, milestone_reached: false }
+    }
+
+    if (profile.learning_streak_last_date === today) {
+        // Już dziś coś zrobił — no-op, ale zwracamy current dla UI
+        return { current: profile.learning_streak_current, milestone_reached: false }
+    }
+
+    let newCurrent: number
+    if (profile.learning_streak_last_date === yesterday) {
+        newCurrent = profile.learning_streak_current + 1
+    } else {
+        // Gap (>=1 dzień przerwy) lub pierwsza aktywność → reset
+        newCurrent = 1
+    }
+    const newLongest = Math.max(newCurrent, profile.learning_streak_longest)
+    const milestoneReached = newCurrent > 0 && newCurrent % 7 === 0
+
+    const { error: updErr } = await supabase
+        .from('profiles')
+        .update({
+            learning_streak_current: newCurrent,
+            learning_streak_longest: newLongest,
+            learning_streak_last_date: today,
+        })
+        .eq('id', userId)
+    if (updErr) console.error('[bumpLearningStreak] update profile failed:', updErr)
+
+    if (milestoneReached) {
+        // INSERT loyalty_transactions +25 pkt za passę 7/14/21/... dni
+        const { error: lpErr } = await supabase.from('loyalty_transactions').insert({
+            user_id: userId,
+            source_type: 'learning_streak_milestone',
+            points: 25,
+            description: `Passa nauki: ${newCurrent} dni z rzędu`,
+        })
+        if (lpErr) console.error('[bumpLearningStreak] loyalty insert failed:', lpErr)
+    }
+
+    return { current: newCurrent, milestone_reached: milestoneReached }
+}
+
+/**
+ * A1.1: rejestruje wejście użytkownika do lekcji — aktualizuje
+ * `last_accessed_lesson_id` + `last_accessed_at` w course_enrollments.
+ * Idempotent: cicho ignoruje gdy user nie jest zapisany albo brak auth.
+ *
+ * Wywoływane z lesson page (server-side) za każdym renderem strony lekcji.
+ * Kontynuacja: na home page widget "Wróć do nauki" wskazuje ostatnio
+ * odwiedzoną lekcję (najwyższy last_accessed_at z aktywnych enrollments).
+ */
+export async function recordLessonAccess(courseId: string, lessonId: string): Promise<ActionResult<void>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: true, data: undefined } // silent no-op
+
+        const { error } = await supabase
+            .from('course_enrollments')
+            .update({
+                last_accessed_lesson_id: lessonId,
+                last_accessed_at: new Date().toISOString(),
+            })
+            .eq('user_id', user.id)
+            .eq('course_id', courseId)
         if (error) throw error
 
         return { success: true, data: undefined }
     } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd oznaczania lekcji'
-        console.error('[markLessonComplete]', error)
+        const msg = error instanceof Error ? error.message : 'Błąd rejestracji wejścia'
+        console.error('[recordLessonAccess]', error)
         return { success: false, error: msg }
     }
 }
@@ -242,7 +406,7 @@ export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentW
 
         const { data: enrollments, error } = await supabase
             .from('course_enrollments')
-            .select('id, course_id, enrolled_at, completed_lessons, completed_at, points_awarded')
+            .select('id, course_id, enrolled_at, completed_lessons, completed_at, points_awarded, last_accessed_lesson_id, last_accessed_at')
             .eq('user_id', user.id)
             .order('enrolled_at', { ascending: false })
         if (error) throw error
@@ -254,6 +418,8 @@ export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentW
             completed_lessons: string[] | null
             completed_at: string | null
             points_awarded: boolean
+            last_accessed_lesson_id: string | null
+            last_accessed_at: string | null
         }>
         if (enrolls.length === 0) return { success: true, data: [] }
 
@@ -288,6 +454,8 @@ export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentW
                     completed_at: e.completed_at,
                     points_awarded: e.points_awarded,
                     progress_percent: progress,
+                    last_accessed_lesson_id: e.last_accessed_lesson_id,
+                    last_accessed_at: e.last_accessed_at,
                 }
             })
             .filter((x): x is CourseEnrollmentWithProgress => x !== null)

@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
+import { logAudit } from '@/lib/actions/audit'
+import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
 import {
     generateTimesheetPdf,
     timesheetPdfFilename,
@@ -67,13 +69,40 @@ export async function GET(
 
     if (!profileRes.data) return new Response('Profile missing', { status: 500 })
 
+    const entries: TimesheetEntryForPdf[] = (entriesRes.data ?? []) as TimesheetEntryForPdf[]
+
+    // H2.8: tamper-evidence check — recompute hash z aktualnych entries
+    // i porównaj z hashem zapisanym przy approve. Mismatch = ktoś zmienił dane
+    // przez bypass RLS (admin direct DB access). Loguj do audit, blokuj download.
+    if (header.pdf_hash) {
+        const currentHash = computeTimesheetHash(
+            entries.map((e) => ({
+                work_date: e.work_date,
+                hours: e.hours,
+                project: e.project,
+                description: e.description,
+            })),
+        )
+        if (currentHash !== header.pdf_hash) {
+            await logAudit(ctx.userId, 'TIMESHEET_HASH_MISMATCH', {
+                timesheet_id: header.id,
+                target_user_id: targetUserId,
+                stored_hash: header.pdf_hash,
+                current_hash: currentHash,
+            }).catch(() => {})
+            return new Response(
+                'Wykryto rozbieżność integralności timesheetu (hash mismatch). Skontaktuj się z adminem.',
+                { status: 409 },
+            )
+        }
+    }
+
     const tsForPdf: TimesheetForPdf = {
         year: header.year,
         month: header.month,
         pdf_hash: header.pdf_hash,
         approved_at: header.approved_at,
     }
-    const entries: TimesheetEntryForPdf[] = (entriesRes.data ?? []) as TimesheetEntryForPdf[]
     const pdfBytes = await generateTimesheetPdf({
         timesheet: tsForPdf,
         entries,

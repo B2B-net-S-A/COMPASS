@@ -51,6 +51,7 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
                 video_url: null,
                 attachments: [],
                 estimated_minutes: null,
+                unlock_after_days: 0,
             }
             setLessons([...lessons, newLesson])
             setExpandedId(newLesson.id)

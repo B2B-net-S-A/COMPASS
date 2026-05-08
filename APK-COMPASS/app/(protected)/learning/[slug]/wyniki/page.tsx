@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Trophy, X, Sparkles, ArrowLeft, RefreshCw } from 'lucide-react'
+import { Trophy, X, Sparkles, ArrowLeft, RefreshCw, Award } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RatingWidget } from '@/components/learning/RatingWidget'
+import { LinkedInShareButton } from '@/components/learning/LinkedInShareButton'
+import { CourseSurveyForm } from '@/components/learning/CourseSurveyForm'
 import { getCourseDetail } from '@/lib/actions/courses'
 
 export const dynamic = 'force-dynamic'
@@ -74,13 +76,20 @@ export default async function QuizResultsPage({ params, searchParams }: PageProp
                         </div>
                     )}
 
-                    <div className="flex justify-center gap-2 pt-2">
+                    <div className="flex flex-wrap justify-center gap-2 pt-2">
                         {!passed && (
                             <Link href={`/learning/${course.slug}/quiz`}>
                                 <Button className="gap-2">
                                     <RefreshCw className="w-4 h-4" /> Spróbuj ponownie
                                 </Button>
                             </Link>
+                        )}
+                        {passed && (
+                            <a href={`/api/akademia/certificate?courseId=${course.id}`}>
+                                <Button className="gap-2 bg-amber-500 hover:bg-amber-600 text-white">
+                                    <Award className="w-4 h-4" /> Pobierz certyfikat
+                                </Button>
+                            </a>
                         )}
                         <Link href={`/learning/${course.slug}`}>
                             <Button variant="outline" className="gap-2">
@@ -92,11 +101,15 @@ export default async function QuizResultsPage({ params, searchParams }: PageProp
             </Card>
 
             {passed && (
-                <RatingWidget
-                    courseId={course.id}
-                    initialRating={course.user_rating?.rating}
-                    initialComment={course.user_rating?.comment}
-                />
+                <>
+                    <LinkedInShareButton courseTitle={course.title} courseId={course.id} />
+                    <RatingWidget
+                        courseId={course.id}
+                        initialRating={course.user_rating?.rating}
+                        initialComment={course.user_rating?.comment}
+                    />
+                    <CourseSurveyForm courseId={course.id} />
+                </>
             )}
         </div>
     )
