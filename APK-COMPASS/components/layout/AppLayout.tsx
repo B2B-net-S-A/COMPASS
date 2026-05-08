@@ -25,7 +25,7 @@ export function AppLayout({ children, user, role, permissions, sidebarBadges }: 
                     {/* Desktop sidebar — always visible md+ */}
                     <Sidebar role={role} user={user} permissions={permissions} badges={sidebarBadges} />
 
-                    <div className="flex flex-1 flex-col">
+                    <div className="flex flex-1 flex-col min-w-0">
                         <TopBar user={user} />
 
                         <main className="flex-1 p-4 md:p-8 pb-28 md:pb-8 overflow-y-auto">
