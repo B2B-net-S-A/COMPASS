@@ -19,6 +19,11 @@ import {
     Mailbox,
     PenSquare,
     Sparkles,
+    Calendar,
+    CalendarCheck,
+    ClipboardList,
+    Receipt,
+    Users,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -36,7 +41,7 @@ export interface SidebarBadgeCounts {
 }
 
 interface SidebarProps {
-    role: 'consultant' | 'admin'
+    role: 'consultant' | 'admin' | 'internal'
     isOpen?: boolean
     setIsOpen?: (isOpen: boolean) => void
     user: {
@@ -68,6 +73,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     const { brandName } = useTheme()
 
     const isAdmin = role === 'admin'
+    const isInternal = role === 'internal'
 
     // Consultant + admin both see the 5 platform panels.
     const platformGroups: NavGroup[] = [
@@ -114,7 +120,34 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    const groups: NavGroup[] = isAdmin ? [...platformGroups, adminGroup] : platformGroups
+    // Phase 11: internal employee zone (attendance, vacations, timesheets).
+    // Visible to internal employees and admins; hidden from consultants.
+    const internalGroup: NavGroup = {
+        heading: t('group_internal'),
+        links: [
+            { name: t('nav_internal_attendance'), href: '/internal/attendance', icon: CalendarCheck, feature: null },
+            { name: t('nav_internal_calendar'), href: '/internal/calendar', icon: Calendar, feature: null },
+            { name: t('nav_internal_leave'), href: '/internal/leave', icon: ClipboardList, feature: null },
+            { name: t('nav_internal_timesheet'), href: '/internal/timesheet', icon: Receipt, feature: null },
+        ],
+    }
+
+    // Phase 11: HR admin sub-zone (approvals, bulk export, employee profile editor).
+    const internalAdminGroup: NavGroup = {
+        heading: t('group_internal_admin'),
+        links: [
+            { name: t('nav_internal_admin_leave'), href: '/internal/admin/leave-requests', icon: ClipboardList, feature: null },
+            { name: t('nav_internal_admin_timesheets'), href: '/internal/admin/timesheets', icon: Receipt, feature: null },
+            { name: t('nav_internal_admin_employees'), href: '/internal/admin/employees', icon: Users, feature: null },
+        ],
+    }
+
+    const groups: NavGroup[] = (() => {
+        const out: NavGroup[] = [...platformGroups]
+        if (isAdmin || isInternal) out.push(internalGroup)
+        if (isAdmin) out.push(internalAdminGroup, adminGroup)
+        return out
+    })()
 
     // Apply per-feature permission filter (admins always pass).
     const filterByPermission = (link: NavLink): boolean => {

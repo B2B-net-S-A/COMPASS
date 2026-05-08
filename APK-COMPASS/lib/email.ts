@@ -209,3 +209,228 @@ export async function sendBroadcastEmail(
         return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
     }
 }
+
+// ─── Phase 11: HR Internal email templates ──────────────────────────────────
+
+const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
+    vacation: 'Urlop wypoczynkowy',
+    sick_leave: 'L4 / chorobowe',
+    parental_leave: 'Opieka rodzicielska',
+    unpaid_leave: 'Urlop bezpłatny',
+    training: 'Szkolenie',
+    other: 'Inne',
+}
+
+function wrapHrEmail(opts: { tag: string; heading: string; bodyHtml: string; accent?: string }): string {
+    const accent = opts.accent ?? '#3A8DFF'
+    return `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass</h1>
+            </div>
+            <div style="padding: 32px;">
+                <div style="background: rgba(58, 141, 255, 0.08); border: 1px solid ${accent}33; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                    <p style="color: ${accent}; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: bold;">${opts.tag}</p>
+                    <h2 style="color: #ffffff; font-size: 18px; margin: 0;">${opts.heading}</h2>
+                </div>
+                ${opts.bodyHtml}
+                <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;" />
+                <p style="color: #6b7280; font-size: 11px; margin-top: 16px;">
+                    Wiadomość wygenerowana automatycznie przez system ComPass.
+                </p>
+            </div>
+        </div>
+    `
+}
+
+export async function sendLeaveRequestSubmitted(
+    recipientEmails: string[],
+    requesterName: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    note: string | null,
+): Promise<{ success: boolean }> {
+    if (recipientEmails.length === 0) return { success: true }
+    const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
+    const subject = `[COMPASS HR] Nowy wniosek urlopowy — ${requesterName}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">${requesterName} złożył wniosek urlopowy do akceptacji:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Typ:</strong> ${typeLabel}</li>
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+            ${note ? `<li><strong>Notatka:</strong> ${note}</li>` : ''}
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px;">Zaakceptuj/odrzuć w panelu administracyjnym.</p>
+    `
+    const html = wrapHrEmail({ tag: 'Nowy wniosek urlopowy', heading: subject, bodyHtml })
+
+    try {
+        for (const to of recipientEmails) {
+            const { error } = await getResend().emails.send({
+                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                to,
+                subject,
+                html,
+            })
+            if (error) console.error('Resend leave-submitted error:', error)
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Leave-submitted email failed:', err)
+        return { success: false }
+    }
+}
+
+export async function sendLeaveDecision(
+    recipientEmail: string,
+    recipientName: string,
+    decision: 'approved' | 'rejected',
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    decisionNote?: string | null,
+): Promise<{ success: boolean }> {
+    const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
+    const isApproved = decision === 'approved'
+    const subject = isApproved
+        ? `[COMPASS HR] Wniosek urlopowy zaakceptowany`
+        : `[COMPASS HR] Wniosek urlopowy odrzucony`
+    const accent = isApproved ? '#22c55e' : '#f59e0b'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">Twój wniosek urlopowy został <strong>${isApproved ? 'zaakceptowany' : 'odrzucony'}</strong>:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Typ:</strong> ${typeLabel}</li>
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+            ${decisionNote ? `<li><strong>Komentarz admina:</strong> ${decisionNote}</li>` : ''}
+        </ul>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Decyzja urlopowa', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            console.error('Resend leave-decision error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Leave-decision email failed:', err)
+        return { success: false }
+    }
+}
+
+export async function sendTimesheetSubmitted(
+    recipientEmails: string[],
+    requesterName: string,
+    year: number,
+    month: number,
+): Promise<{ success: boolean }> {
+    if (recipientEmails.length === 0) return { success: true }
+    const subject = `[COMPASS HR] Timesheet ${year}-${String(month).padStart(2, '0')} — ${requesterName}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${requesterName} złożył timesheet za <strong>${year}-${String(month).padStart(2, '0')}</strong> do akceptacji.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">Zaakceptuj/odrzuć w panelu administracyjnym.</p>
+    `
+    const html = wrapHrEmail({ tag: 'Timesheet do akceptacji', heading: subject, bodyHtml })
+    try {
+        for (const to of recipientEmails) {
+            const { error } = await getResend().emails.send({
+                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                to,
+                subject,
+                html,
+            })
+            if (error) console.error('Resend timesheet-submitted error:', error)
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Timesheet-submitted email failed:', err)
+        return { success: false }
+    }
+}
+
+export async function sendTimesheetDecision(
+    recipientEmail: string,
+    recipientName: string,
+    decision: 'approved' | 'rejected',
+    year: number,
+    month: number,
+    rejectionNote?: string | null,
+): Promise<{ success: boolean }> {
+    const isApproved = decision === 'approved'
+    const subject = isApproved
+        ? `[COMPASS HR] Timesheet ${year}-${String(month).padStart(2, '0')} zaakceptowany`
+        : `[COMPASS HR] Timesheet ${year}-${String(month).padStart(2, '0')} odrzucony`
+    const accent = isApproved ? '#22c55e' : '#f59e0b'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twój timesheet za <strong>${year}-${String(month).padStart(2, '0')}</strong> został
+            <strong>${isApproved ? 'zaakceptowany' : 'odrzucony'}</strong>.
+        </p>
+        ${rejectionNote ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Komentarz:</strong> ${rejectionNote}</p>` : ''}
+        ${isApproved ? `<p style="color: #d1d5db; font-size: 14px;">PDF dostępny do pobrania w sekcji <strong>Timesheet</strong>.</p>` : ''}
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Decyzja timesheet', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            console.error('Resend timesheet-decision error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Timesheet-decision email failed:', err)
+        return { success: false }
+    }
+}
+
+export async function sendTimesheetReminder(
+    recipientEmail: string,
+    recipientName: string,
+    year: number,
+    month: number,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS HR] Przypomnienie: timesheet ${year}-${String(month).padStart(2, '0')}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Przypominamy o złożeniu timesheetu za <strong>${year}-${String(month).padStart(2, '0')}</strong>.
+            Wypełnij wpisy w sekcji <strong>Timesheet</strong> i kliknij „Złóż timesheet".
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({
+                tag: 'Przypomnienie',
+                heading: subject,
+                bodyHtml,
+                accent: '#f59e0b',
+            }),
+        })
+        if (error) {
+            console.error('Resend timesheet-reminder error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Timesheet-reminder email failed:', err)
+        return { success: false }
+    }
+}

@@ -16,12 +16,16 @@ import {
     Settings,
     Bell,
     MoreHorizontal,
+    CalendarCheck,
+    Calendar,
+    ClipboardList,
+    Receipt,
     type LucideIcon,
 } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 
 interface MobileMenuProps {
-    role: 'consultant' | 'admin'
+    role: 'consultant' | 'admin' | 'internal'
     user: {
         email?: string | null
         full_name?: string | null
@@ -123,7 +127,47 @@ export function MobileMenu({ role }: MobileMenuProps) {
                             )
                         })}
                     </nav>
-                    {role !== 'consultant' && (
+                    {(role === 'admin' || role === 'internal') && (
+                        <div className="border-t pt-4 pb-2">
+                            <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                                {t('group_internal')}
+                            </p>
+                            <Link
+                                href="/internal/attendance"
+                                onClick={() => setMoreOpen(false)}
+                                className="mt-2 flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                            >
+                                <CalendarCheck className="h-5 w-5" />
+                                {t('nav_internal_attendance')}
+                            </Link>
+                            <Link
+                                href="/internal/calendar"
+                                onClick={() => setMoreOpen(false)}
+                                className="flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                            >
+                                <Calendar className="h-5 w-5" />
+                                {t('nav_internal_calendar')}
+                            </Link>
+                            <Link
+                                href="/internal/leave"
+                                onClick={() => setMoreOpen(false)}
+                                className="flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                            >
+                                <ClipboardList className="h-5 w-5" />
+                                {t('nav_internal_leave')}
+                            </Link>
+                            <Link
+                                href="/internal/timesheet"
+                                onClick={() => setMoreOpen(false)}
+                                className="flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                            >
+                                <Receipt className="h-5 w-5" />
+                                {t('nav_internal_timesheet')}
+                            </Link>
+                        </div>
+                    )}
+
+                    {role === 'admin' && (
                         <div className="border-t pt-4 pb-2">
                             <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                                 {t('group_admin')}

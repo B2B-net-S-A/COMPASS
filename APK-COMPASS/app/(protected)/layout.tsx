@@ -63,14 +63,16 @@ export default async function ProtectedLayout({
             permissionsMap = DEFAULT_PERMISSIONS
         }
 
-        const role = (profile?.role as 'consultant' | 'admin') || 'consultant'
+        const role = (profile?.role as 'consultant' | 'admin' | 'internal') || 'consultant'
 
         if (role === 'admin') {
             const mfaVerified = cookies().get('mfa_verified')?.value === 'true'
             if (!mfaVerified) redirect('/login')
         }
 
-        const permissionRole: PermissionRole = role
+        // Internal employees inherit consultant feature flags (no admin elevation
+        // for platform features; HR-zone access is gated by canAccessInternalZone).
+        const permissionRole: PermissionRole = role === 'admin' ? 'admin' : 'consultant'
         const userPermissions = permissionsMap[permissionRole]
         const userData = {
             ...user,

@@ -27,19 +27,23 @@ import {
     Search,
     Users,
     Ban,
+    UserCog,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { SetPasswordDialog } from '@/components/admin/SetPasswordDialog'
+import { EmployeeProfileDialog } from '@/components/admin/EmployeeProfileDialog'
 import {
     listAllUsers,
     sendPasswordResetLink,
     signOutAllSessions,
     setUserBan,
+    setUserRole,
     checkUserAdminAccess,
     type UserAdminItem,
 } from '@/lib/actions/user-admin'
+import { DB_ROLES, type DbRole, roleLabelPl } from '@/lib/types/role'
 
 const PAGE_SIZE = 50
 
@@ -54,6 +58,7 @@ export function UserManagementPanel() {
     const [pendingId, setPendingId] = useState<string | null>(null)
     const [confirm, ConfirmUI] = useConfirm()
     const [passwordTarget, setPasswordTarget] = useState<UserAdminItem | null>(null)
+    const [profileTarget, setProfileTarget] = useState<UserAdminItem | null>(null)
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Debounce search input (300 ms).
@@ -139,6 +144,27 @@ export function UserManagementPanel() {
             await signOutAllSessions(user.id)
             toastSuccess(`Sesje ${user.email} zakończone`)
             loadUsers()
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Nieznany błąd'
+            toast.error(msg)
+        } finally {
+            setPendingId(null)
+        }
+    }
+
+    async function handleChangeRole(user: UserAdminItem, newRole: DbRole) {
+        if (user.role === newRole) return
+        const ok = await confirm({
+            title: 'Zmiana roli',
+            description: `Zmienić rolę ${user.email} z "${roleLabelPl(user.role)}" na "${roleLabelPl(newRole)}"? Użytkownik dostanie email z powiadomieniem.`,
+            confirmLabel: 'Zmień rolę',
+        })
+        if (!ok) return
+        setPendingId(user.id)
+        try {
+            await setUserRole(user.id, newRole)
+            toastSuccess(`Rola ${user.email} zmieniona na ${roleLabelPl(newRole)}`)
+            await loadUsers()
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Nieznany błąd'
             toast.error(msg)
@@ -284,12 +310,24 @@ export function UserManagementPanel() {
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                {user.role ? (
+                                                {locked ? (
                                                     <Badge variant="outline" className="text-xs">
-                                                        {user.role}
+                                                        {roleLabelPl(user.role)}
                                                     </Badge>
                                                 ) : (
-                                                    <span className="text-xs text-muted-foreground">—</span>
+                                                    <select
+                                                        aria-label={`Rola ${user.email}`}
+                                                        disabled={busy}
+                                                        value={(DB_ROLES as readonly string[]).includes(user.role ?? '') ? user.role! : 'consultant'}
+                                                        onChange={(e) => handleChangeRole(user, e.target.value as DbRole)}
+                                                        className="h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                                                    >
+                                                        {DB_ROLES.map((r) => (
+                                                            <option key={r} value={r}>
+                                                                {roleLabelPl(r)}
+                                                            </option>
+                                                        ))}
+                                                    </select>
                                                 )}
                                             </TableCell>
                                             <TableCell>
@@ -332,6 +370,9 @@ export function UserManagementPanel() {
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem onClick={() => setPasswordTarget(user)}>
                                                             <KeyRound className="mr-2 h-4 w-4" /> Ustaw hasło teraz
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => setProfileTarget(user)}>
+                                                            <UserCog className="mr-2 h-4 w-4" /> Edytuj profil HR
                                                         </DropdownMenuItem>
                                                         <DropdownMenuSeparator />
                                                         <DropdownMenuItem onClick={() => handleSignOut(user)}>
@@ -396,6 +437,15 @@ export function UserManagementPanel() {
                     onOpenChange={(o) => { if (!o) setPasswordTarget(null) }}
                     targetUserId={passwordTarget.id}
                     targetEmail={passwordTarget.email}
+                    onSuccess={loadUsers}
+                />
+            )}
+            {profileTarget && (
+                <EmployeeProfileDialog
+                    open={!!profileTarget}
+                    onOpenChange={(o) => { if (!o) setProfileTarget(null) }}
+                    targetUserId={profileTarget.id}
+                    targetEmail={profileTarget.email}
                     onSuccess={loadUsers}
                 />
             )}
