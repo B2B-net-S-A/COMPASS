@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { logger } from '@/lib/logger'
 
 /**
  * Add loyalty points to a user
@@ -62,7 +63,7 @@ export async function addLoyaltyPoints(
         revalidatePath('/admin')
         return { success: true }
     } catch (error: any) {
-        console.error('Error adding points:', error)
+        logger.error({ event: 'loyalty.add_points.failed', error })
         return { success: false, error: error.message }
     }
 }
@@ -83,7 +84,7 @@ export async function searchUsers(query: string) {
         .limit(10)
 
     if (error) {
-        console.error('Search error:', error)
+        logger.error({ event: 'loyalty.search_users.failed', error, query })
         return []
     }
 
@@ -126,14 +127,14 @@ export async function getLoyaltyRules() {
             .order('points', { ascending: false })
 
         if (error) {
-            console.warn('Error fetching loyalty rules (table might generally be missing, using defaults):', error.message)
+            logger.warn({ event: 'loyalty.rules.fetch_table_missing', error })
             // Return defaults with fake IDs if table assumes missing
             return DEFAULT_RULES.map((r, i) => ({ ...r, id: `mock-${i}` }))
         }
 
         return data as LoyaltyRule[]
     } catch (e) {
-        console.error('Exception fetching rules:', e)
+        logger.error({ event: 'loyalty.rules.fetch_failed', error: e })
         return DEFAULT_RULES.map((r, i) => ({ ...r, id: `mock-${i}` }))
     }
 }
@@ -184,7 +185,7 @@ export async function getLoyaltyHistory(limit = 10) {
 
         return { success: true, history: data }
     } catch (error: any) {
-        console.error('Error fetching loyalty history:', error)
+        logger.error({ event: 'loyalty.history.fetch_failed', error })
         return { success: false, error: error.message }
     }
 }
@@ -472,7 +473,7 @@ export async function getLoyaltyBreakdown(
             },
         }
     } catch (error: any) {
-        console.error('Error in getLoyaltyBreakdown:', error)
+        logger.error({ event: 'loyalty.breakdown.failed', error })
         return { success: false, error: error.message }
     }
 }
@@ -559,7 +560,7 @@ export async function getAllConsultantsLoyalty(): Promise<AllConsultantsLoyaltyR
             stats: { totalConsultants, avgPoints, tierDistribution, topPerformer },
         }
     } catch (error: any) {
-        console.error('Error in getAllConsultantsLoyalty:', error)
+        logger.error({ event: 'loyalty.all_consultants.failed', error })
         return { success: false, error: error.message }
     }
 }
@@ -636,7 +637,7 @@ export async function exportLoyaltyCsv(
 
         return { success: true, csv }
     } catch (error: any) {
-        console.error('Error exporting CSV:', error)
+        logger.error({ event: 'loyalty.export_csv.failed', error })
         return { success: false, error: error.message }
     }
 }
@@ -718,7 +719,7 @@ export async function getLoyaltyOverview(targetUserId?: string): Promise<{ succe
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Nieznany błąd'
-        console.error('Error in getLoyaltyOverview:', error)
+        logger.error({ event: 'loyalty.overview.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -868,7 +869,7 @@ export async function getLeaderboard(limit = 50): Promise<{ success: true; data:
         return { success: true, data: rows }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Nieznany błąd'
-        console.error('[getLeaderboard]', error)
+        logger.error({ event: 'loyalty.leaderboard.failed', error })
         return { success: false, error: msg }
     }
 }
@@ -926,7 +927,7 @@ export async function getLoyaltyHistoryV2(
         return { success: true, data: { items, total: count ?? items.length } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Nieznany błąd'
-        console.error('[getLoyaltyHistoryV2]', error)
+        logger.error({ event: 'loyalty.history_v2.failed', error })
         return { success: false, error: msg }
     }
 }

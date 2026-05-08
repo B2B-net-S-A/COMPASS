@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { syncRole } from "@/lib/auth/sync-role";
+import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
 const ALLOWED_DOMAIN = "@b2bnetwork.pl";
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
 
         if (error) {
-            console.error("[AUTH_CALLBACK] code exchange failed:", error.message);
+            logger.error({ event: 'auth.callback.code_exchange_failed', error });
             return NextResponse.redirect(`${origin}/login?error=auth_failed`);
         }
 
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
             try {
                 await syncRole(supabase, user.id, user.email, currentRole);
             } catch (e) {
-                console.error("[AUTH_CALLBACK] syncRole failed:", e);
+                logger.error({ event: 'auth.callback.sync_role_failed', error: e, userId: user.id });
             }
         }
     }

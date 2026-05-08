@@ -14,6 +14,7 @@ import { getUnreadGuardianMessages } from '@/lib/actions/communicator'
 import type { PermissionRole, PermissionsMap } from '@/lib/types/permissions'
 import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
 import nextDynamic from 'next/dynamic'
+import { logger } from '@/lib/logger'
 
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 
@@ -115,7 +116,7 @@ export default async function ProtectedLayout({
     } catch (e) {
         const err = e as { digest?: string }
         if (err?.digest !== 'NEXT_REDIRECT') {
-            console.error('[ProtectedLayout]', e)
+            logger.error({ event: 'protected_layout.failed', error: e })
         }
         redirect('/login')
     }

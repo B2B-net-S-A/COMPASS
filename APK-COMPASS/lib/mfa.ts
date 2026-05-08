@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { logAudit } from './actions/audit'
+import { logger } from './logger'
 
 // Helper to generate a 6-digit code
 function generateCode(): string {
@@ -22,7 +23,7 @@ export async function sendMFACode(userId: string, email: string) {
     })
 
     if (error) {
-        console.error('Error storing MFA code:', error)
+        logger.error({ event: 'mfa.code.store_failed', error, userId })
         return { error: 'Błąd generowania kodu MFA' }
     }
 

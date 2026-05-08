@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 
 /**
  * Pobiera załącznik PDF z bucketu `documents` (path zaczyna się od `courses/`)
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
         })
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Server error'
-        console.error('[GET /api/learning/attachment]', error)
+        logger.error({ event: 'api.learning.attachment.failed', error })
         return NextResponse.json({ error: msg }, { status: 500 })
     }
 }

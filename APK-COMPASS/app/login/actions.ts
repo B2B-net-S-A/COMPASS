@@ -11,6 +11,7 @@ import { cookies } from 'next/headers'
 
 import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
 import { syncRole } from '@/lib/auth/sync-role'
+import { logger } from '@/lib/logger'
 
 // ─── Friendly Error Messages ────────────────────────────────────────────────
 // Maps raw Supabase/system errors to user-friendly Polish messages
@@ -70,7 +71,7 @@ function friendlySignupError(raw: string, err?: { code?: string }): string {
         return 'Rejestracja jest tymczasowo wyłączona. Skontaktuj się z administratorem.'
     }
     // Fallback — include sanitized original for debugging
-    console.error('[SIGNUP_FALLBACK_ERROR]', raw, code)
+    logger.error({ event: 'auth.signup.fallback_error', raw, code })
     return `Wystąpił problem z rejestracją. Spróbuj ponownie za chwilę.`
 }
 
@@ -113,7 +114,7 @@ export async function login(formData: FormData) {
     })
 
     if (error) {
-        console.error('[LOGIN_DEBUG] Auth error:', error)
+        logger.error({ event: 'auth.login.failed', error, email })
         return { error: friendlyLoginError(error.message) }
     }
 
@@ -241,7 +242,7 @@ export async function signup(formData: FormData) {
 
     if (error) {
         // Log pełnej odpowiedzi, żeby w razie problemu widzieć dokładny komunikat/code z Supabase
-        console.error('[SIGNUP_DEBUG]', { message: error.message, code: (error as { code?: string }).code })
+        logger.error({ event: 'auth.signup.failed', error, code: (error as { code?: string }).code })
         return { error: friendlySignupError(error.message, error as { code?: string }) }
     }
 
@@ -273,7 +274,7 @@ export async function signInWithMicrosoft() {
     })
 
     if (error || !data?.url) {
-        console.error('[SSO_AZURE] signInWithOAuth failed:', error?.message)
+        logger.error({ event: 'auth.sso.azure.signin_failed', error })
         return { error: 'Nie udało się rozpocząć logowania przez Microsoft. Spróbuj ponownie lub użyj email + hasło.' }
     }
 

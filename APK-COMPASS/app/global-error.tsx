@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { logger } from '@/lib/logger'
 
 export default function GlobalError({
     error,
@@ -10,7 +11,7 @@ export default function GlobalError({
     reset: () => void
 }) {
     useEffect(() => {
-        console.error('[GlobalError]', error)
+        logger.error({ event: 'global_error', error, digest: error.digest })
         window.location.href = '/login'
     }, [error])
 

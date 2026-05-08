@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 
 /**
  * Phase 10 (2026-05-06): subscribe to changes on inbox tickets so the Kanban
@@ -37,7 +38,7 @@ export function useRealtimeInboxTickets({
                 )
                 .subscribe()
         } catch (e) {
-            console.warn('[Realtime inbox-tickets] subscription failed:', e)
+            logger.warn({ event: 'realtime.inbox_tickets.subscribe_failed', error: e })
         }
 
         return () => {

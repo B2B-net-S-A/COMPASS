@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 const MAX_ATTEMPTS = 5
 const WINDOW_MINUTES = 15
@@ -23,7 +24,7 @@ export async function checkRateLimit(email: string): Promise<{ allowed: boolean;
         .gt('attempt_time', timeWindow)
 
     if (error) {
-        console.error('Rate limit check failed:', error)
+        logger.error({ event: 'auth.rate_limit.check_failed', error, email })
         return { allowed: true, remaining: MAX_ATTEMPTS } // Fail open if DB error? Or fail closed? Fail open is safer for UX, but risky.
     }
 
