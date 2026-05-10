@@ -2,9 +2,12 @@
 // Kept in a separate module because 'use server' files (server actions) can
 // only export async functions.
 
-// Phase 17b R7: bump to v2 because mic/cam permission state detection is a
-// new scope that requires re-consent under KP art. 22³ §2.
-export const WORK_MONITORING_TERMS_VERSION = 'v2-2026-05-09'
+// Phase 17b R7 → v2: mic/cam permission state detection (PR-B)
+// Phase 17b R12 → v3: opt-in route_path tracking for AI timeline (PR-C2)
+//
+// Each bump invalidates existing consents → users must re-accept on next
+// session start (MonitoringConsentDialog enforces version check).
+export const WORK_MONITORING_TERMS_VERSION = 'v3-2026-05-10'
 
 export const HOURS_BLOCKING_ATTENDANCE: readonly string[] = [
     'vacation',

@@ -80,6 +80,14 @@ export function MonitoringConsentDialog({ open, onOpenChange, onAccepted }: Prop
                         aktywności. Każda pauza jest zapisywana w historii sesji.
                     </p>
                     <p>
+                        <strong className="text-foreground">Opcjonalnie: AI Timeline (Phase 17b R12).</strong>{' '}
+                        Jeśli włączysz tracking trasy w sesji, system zapisze JAKIE strony Compass
+                        odwiedziłeś (np. <code>/internal/akademia</code>) co 5 minut, żeby pokazać
+                        Ci później blokowy podział aktywności (&bdquo;9:00-10:30 Akademia&rdquo;).
+                        <strong> Tylko ścieżki Compass — nie zewnętrzne URL, nie query params.</strong>
+                        {' '}Retencja 30 dni. Możesz wyłączyć w dowolnym momencie.
+                    </p>
+                    <p>
                         <strong className="text-foreground">Retencja:</strong> sesje przechowujemy
                         przez 5 lat (Kodeks Pracy art. 94⁴), heartbeats (audit trail) — 90 dni.
                     </p>
