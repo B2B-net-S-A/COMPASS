@@ -17,10 +17,30 @@ export interface AggregationResult {
     idleSeconds: number
     totalHeartbeats: number
     activeHeartbeats: number
+    /** R3: heartbeats that fell within a paused range and were not counted */
+    skippedDuringPause: number
+}
+
+/**
+ * R3: a closed pause range. Heartbeats with ts in [from, to) are NOT counted
+ * toward active_seconds (user explicitly paused tracking).
+ */
+export interface PausedRange {
+    from: string | Date
+    to: string | Date
 }
 
 function toDate(ts: string | Date): Date {
     return ts instanceof Date ? ts : new Date(ts)
+}
+
+function isInPausedRange(tsMs: number, ranges: ReadonlyArray<PausedRange>): boolean {
+    for (const r of ranges) {
+        const fromMs = toDate(r.from).getTime()
+        const toMs = toDate(r.to).getTime()
+        if (tsMs >= fromMs && tsMs < toMs) return true
+    }
+    return false
 }
 
 /**
@@ -28,21 +48,38 @@ function toDate(ts: string | Date): Date {
  *
  * Each heartbeat counts as HEARTBEAT_INTERVAL_SECONDS of either active or idle
  * time. Duplicates by ts (rare — DB has UNIQUE(session_id, ts)) are deduped here
- * defensively. Heartbeats arriving out of order are sorted before counting so
- * that a future "gap detection" extension can subtract long gaps.
+ * defensively.
+ *
+ * R3: pausedRanges (optional) — heartbeats with ts inside any range are skipped
+ * (counted in `skippedDuringPause` only). Used when user explicitly paused via
+ * "Pauza 30/60/120 min" button.
  */
-export function aggregateHeartbeats(heartbeats: ReadonlyArray<HeartbeatRow>): AggregationResult {
+export function aggregateHeartbeats(
+    heartbeats: ReadonlyArray<HeartbeatRow>,
+    pausedRanges: ReadonlyArray<PausedRange> = [],
+): AggregationResult {
     if (heartbeats.length === 0) {
-        return { activeSeconds: 0, idleSeconds: 0, totalHeartbeats: 0, activeHeartbeats: 0 }
+        return {
+            activeSeconds: 0,
+            idleSeconds: 0,
+            totalHeartbeats: 0,
+            activeHeartbeats: 0,
+            skippedDuringPause: 0,
+        }
     }
 
     const seen = new Set<number>()
     let active = 0
     let idle = 0
+    let skipped = 0
     for (const hb of heartbeats) {
         const tsMs = toDate(hb.ts).getTime()
         if (seen.has(tsMs)) continue
         seen.add(tsMs)
+        if (pausedRanges.length > 0 && isInPausedRange(tsMs, pausedRanges)) {
+            skipped += 1
+            continue
+        }
         if (hb.was_active) active += 1
         else idle += 1
     }
@@ -52,6 +89,7 @@ export function aggregateHeartbeats(heartbeats: ReadonlyArray<HeartbeatRow>): Ag
         idleSeconds: idle * HEARTBEAT_INTERVAL_SECONDS,
         totalHeartbeats: active + idle,
         activeHeartbeats: active,
+        skippedDuringPause: skipped,
     }
 }
 

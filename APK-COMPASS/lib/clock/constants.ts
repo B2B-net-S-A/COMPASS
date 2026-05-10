@@ -19,6 +19,18 @@ export type ClockClosedReason =
     | 'taken_over'
     | 'admin_close'
 
+/** R3 (Phase 17b): user-explicit pause classification */
+export type ClockPauseReason = 'break_30' | 'break_60' | 'break_120' | 'manual'
+
+/** R2 (Phase 17b): a recently auto-closed session that the user can act on via IdleResumeDialog */
+export interface RecentlyClosedSession {
+    id: string
+    ended_at: string
+    closed_reason: ClockClosedReason
+    active_seconds: number
+    started_at: string
+}
+
 export type ClockLocation = 'onsite' | 'remote'
 
 export interface ClockConsentState {
@@ -40,6 +52,12 @@ export interface ClockSessionRow {
     device_label: string | null
     client_tz: string
     location: ClockLocation
+    // Phase 17b R2: merge audit + soft-disregard
+    merged_from_session_id?: string | null
+    user_disregarded?: boolean
+    // Phase 17b R3: pause
+    paused_until?: string | null
+    pause_reason?: ClockPauseReason | null
 }
 
 export interface ClockSessionLive extends ClockSessionRow {

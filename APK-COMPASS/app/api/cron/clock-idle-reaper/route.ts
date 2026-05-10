@@ -41,12 +41,17 @@ export async function GET(request: Request) {
 
     const admin = createServiceClient()
     const stalenessTs = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const nowTs = new Date().toISOString()
 
+    // Phase 17b R3: skip sessions that are explicitly paused (paused_until > now).
+    // Server-side belt-and-suspenders: even if cron fires during a 120-min pause,
+    // we don't auto-close the session as idle.
     const { data: stale, error } = await admin
         .from('work_clock_sessions')
-        .select('id, user_id, last_heartbeat')
+        .select('id, user_id, last_heartbeat, paused_until')
         .is('ended_at', null)
         .lt('last_heartbeat', stalenessTs)
+        .or(`paused_until.is.null,paused_until.lte.${nowTs}`)
 
     if (error) {
         console.error('[clock-idle-reaper] fetch error:', error)
@@ -59,11 +64,21 @@ export async function GET(request: Request) {
     const now = new Date().toISOString()
 
     for (const s of sessions) {
-        const { data: hb } = await admin
-            .from('work_clock_heartbeats')
-            .select('ts, was_active')
-            .eq('session_id', s.id)
-        const agg = aggregateHeartbeats((hb ?? []) as Array<{ ts: string; was_active: boolean }>)
+        const [{ data: hb }, { data: pauses }] = await Promise.all([
+            admin.from('work_clock_heartbeats').select('ts, was_active').eq('session_id', s.id),
+            admin
+                .from('work_clock_session_pauses')
+                .select('paused_at, resumed_at')
+                .eq('session_id', s.id),
+        ])
+        const pausedRanges = ((pauses ?? []) as Array<{
+            paused_at: string
+            resumed_at: string | null
+        }>).map((p) => ({ from: p.paused_at, to: p.resumed_at ?? nowTs }))
+        const agg = aggregateHeartbeats(
+            (hb ?? []) as Array<{ ts: string; was_active: boolean }>,
+            pausedRanges,
+        )
 
         const { error: updateErr } = await admin
             .from('work_clock_sessions')

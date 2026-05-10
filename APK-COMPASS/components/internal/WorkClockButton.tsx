@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Play, Square, Pause, Loader2, Clock } from 'lucide-react'
+import { Play, Square, Pause, Loader2, Clock, Coffee, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
     AlertDialog,
@@ -13,9 +13,17 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useWorkClock } from '@/lib/hooks/useWorkClock'
 import { toast } from '@/lib/toast'
 import { MonitoringConsentDialog } from './MonitoringConsentDialog'
+import { IdleWarningToast } from './IdleWarningToast'
+import { IdleResumeDialog } from './IdleResumeDialog'
 import { getMyConsentState } from '@/lib/actions/internal-clock'
 
 function formatDuration(seconds: number): string {
@@ -23,6 +31,14 @@ function formatDuration(seconds: number): string {
     const m = Math.floor((seconds % 3600) / 60)
     const s = seconds % 60
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function formatRemainingPause(pausedUntilIso: string): string {
+    const remainingMs = new Date(pausedUntilIso).getTime() - Date.now()
+    if (remainingMs <= 0) return '0:00'
+    const m = Math.floor(remainingMs / 60_000)
+    const s = Math.floor((remainingMs % 60_000) / 1000)
+    return `${m}:${String(s).padStart(2, '0')}`
 }
 
 export function WorkClockButton() {
@@ -95,6 +111,25 @@ export function WorkClockButton() {
         }
     }
 
+    async function handlePause(minutes: 30 | 60 | 120) {
+        try {
+            const reason = (`break_${minutes}` as const) as 'break_30' | 'break_60' | 'break_120'
+            await clock.pause(minutes, reason)
+            toast.success(`Pauza ${minutes} min — zegar zatrzymany`)
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : 'Błąd pauzy')
+        }
+    }
+
+    async function handleResume() {
+        try {
+            await clock.resume()
+            toast.success('Praca wznowiona')
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : 'Błąd wznowienia')
+        }
+    }
+
     // Stopped + no consent → show CTA opening consent dialog
     if (!hasConsent) {
         return (
@@ -119,7 +154,7 @@ export function WorkClockButton() {
         )
     }
 
-    // Stopped + consent → start button
+    // Stopped + consent → start button (with R2 IdleResumeDialog if applicable)
     if (!clock.sessionId) {
         return (
             <>
@@ -148,24 +183,37 @@ export function WorkClockButton() {
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+                {clock.lastClosedSession && (
+                    <IdleResumeDialog
+                        closed={clock.lastClosedSession}
+                        onClose={clock.clearLastClosedSession}
+                        onSessionStarted={() => {
+                            clock.clearLastClosedSession()
+                            clock.refreshFromServer()
+                        }}
+                    />
+                )}
             </>
         )
     }
 
-    // Running → counter + stop
-    const stateLabel =
-        clock.state === 'idle'
-            ? 'Idle (>20 min)'
-            : clock.state === 'paused_hidden'
-              ? 'Wstrzymany (karta nieaktywna)'
-              : 'Pracujesz'
+    // Running / paused — counter + controls
+    const isPaused = clock.state === 'paused_break'
+    const stateLabel = isPaused
+        ? `Pauza (${formatRemainingPause(clock.pausedUntil ?? new Date().toISOString())} do końca)`
+        : clock.state === 'idle'
+          ? 'Idle (>20 min)'
+          : clock.state === 'paused_hidden'
+            ? 'Wstrzymany (karta nieaktywna)'
+            : 'Pracujesz'
 
-    const accent =
-        clock.state === 'idle'
-            ? 'bg-amber-600 hover:bg-amber-700'
-            : clock.state === 'paused_hidden'
-              ? 'bg-slate-600 hover:bg-slate-700'
-              : 'bg-blue-600 hover:bg-blue-700'
+    const accent = isPaused
+        ? 'bg-purple-600 hover:bg-purple-700'
+        : clock.state === 'idle'
+          ? 'bg-amber-600 hover:bg-amber-700'
+          : clock.state === 'paused_hidden'
+            ? 'bg-slate-600 hover:bg-slate-700'
+            : 'bg-blue-600 hover:bg-blue-700'
 
     return (
         <>
@@ -176,19 +224,60 @@ export function WorkClockButton() {
                         {formatDuration(clock.elapsedSeconds)}
                     </div>
                 </div>
-                <Button
-                    size="lg"
-                    className={`shadow-xl text-white ${accent}`}
-                    onClick={() => setStopConfirmOpen(true)}
-                >
-                    {clock.state === 'idle' ? (
-                        <Pause className="h-4 w-4 mr-2" />
-                    ) : (
-                        <Square className="h-4 w-4 mr-2" />
-                    )}
-                    Stop
-                </Button>
+                {isPaused ? (
+                    <Button
+                        size="lg"
+                        className={`shadow-xl text-white ${accent}`}
+                        onClick={handleResume}
+                    >
+                        <Play className="h-4 w-4 mr-2" />
+                        Wznów
+                    </Button>
+                ) : (
+                    <>
+                        {/* R3: pause dropdown */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    size="lg"
+                                    variant="outline"
+                                    className="shadow-xl bg-zinc-900/95 border-zinc-700 text-zinc-100 hover:bg-zinc-800"
+                                >
+                                    <Coffee className="h-4 w-4 mr-2" />
+                                    Pauza
+                                    <ChevronUp className="h-3 w-3 ml-1 opacity-60" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handlePause(30)}>
+                                    30 minut
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handlePause(60)}>
+                                    1 godzina
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handlePause(120)}>
+                                    2 godziny
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button
+                            size="lg"
+                            className={`shadow-xl text-white ${accent}`}
+                            onClick={() => setStopConfirmOpen(true)}
+                        >
+                            {clock.state === 'idle' ? (
+                                <Pause className="h-4 w-4 mr-2" />
+                            ) : (
+                                <Square className="h-4 w-4 mr-2" />
+                            )}
+                            Stop
+                        </Button>
+                    </>
+                )}
             </div>
+
+            {/* R1: idle warning at 50 min */}
+            <IdleWarningToast show={clock.showIdleWarning} onConfirm={clock.keepAlive} />
 
             <AlertDialog open={stopConfirmOpen} onOpenChange={setStopConfirmOpen}>
                 <AlertDialogContent>
