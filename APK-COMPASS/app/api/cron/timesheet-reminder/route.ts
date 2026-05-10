@@ -42,17 +42,37 @@ export async function GET(request: Request) {
 
     const now = new Date()
     const dayOfMonth = now.getDate()
+    const dayOfWeek = now.getDay() // 0=Sunday … 6=Saturday
 
-    // Phase auto-detect z fallback do explicit ?phase
+    // Phase 17b R9 (PR-B): added 'mon-nudge' (gentle Mon) and 'wed-warning'
+    // (urgency Wed). Auto-detect picks based on weekday/day-of-month if no
+    // explicit ?phase is given.
     const phaseParam = url.searchParams.get('phase')
+    const VALID_PHASES = ['mon-nudge', 'wed-warning', 'warning', 'final'] as const
     const phase: TimesheetReminderPhase =
-        phaseParam === 'warning' || phaseParam === 'final'
-            ? phaseParam
+        phaseParam && (VALID_PHASES as readonly string[]).includes(phaseParam)
+            ? (phaseParam as TimesheetReminderPhase)
             : dayOfMonth < 15
-              ? 'final'
-              : 'warning'
+              ? 'final' // first half of month → cron for previous month's final
+              : dayOfWeek === 1
+                ? 'mon-nudge'
+                : dayOfWeek === 3
+                  ? 'wed-warning'
+                  : 'warning'
 
-    // Target month: warning = current month, final = previous month
+    // R9 antispam guard: mon-nudge in first 5 days of the month is irrelevant
+    // (nobody fills timesheet on day 1-5 for current month — they're still
+    // working). Skip early to avoid noise.
+    if (phase === 'mon-nudge' && dayOfMonth < 5) {
+        return NextResponse.json({
+            ok: true,
+            phase,
+            skipped: 'too_early_in_month',
+            day_of_month: dayOfMonth,
+        })
+    }
+
+    // Target month: final = previous month, others = current month
     let targetYear = now.getFullYear()
     let targetMonth = now.getMonth() + 1
     if (phase === 'final') {

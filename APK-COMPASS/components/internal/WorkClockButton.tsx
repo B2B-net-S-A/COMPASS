@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Play, Square, Pause, Loader2, Clock, Coffee, ChevronUp } from 'lucide-react'
+import { Play, Square, Pause, Loader2, Clock, Coffee, ChevronUp, Phone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
     AlertDialog,
@@ -219,7 +219,18 @@ export function WorkClockButton() {
         <>
             <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2">
                 <div className="bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg px-4 py-3 shadow-xl">
-                    <div className="text-xs text-muted-foreground">{stateLabel}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        {stateLabel}
+                        {clock.mediaActive && (
+                            <span
+                                className="inline-flex items-center gap-1 text-[10px] text-green-300 border border-green-500/30 bg-green-500/10 rounded px-1 py-0.5"
+                                title="Wykryto aktywny call — próg idle wydłużony do 60 min"
+                            >
+                                <Phone className="h-2.5 w-2.5" />
+                                Call
+                            </span>
+                        )}
+                    </div>
                     <div className="text-2xl font-mono font-semibold tabular-nums">
                         {formatDuration(clock.elapsedSeconds)}
                     </div>

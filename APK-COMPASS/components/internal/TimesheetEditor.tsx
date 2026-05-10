@@ -20,7 +20,11 @@ import {
     type TimesheetEntryRow,
     type TimesheetWithEntries,
 } from '@/lib/actions/internal-timesheet'
-import { suggestTimesheetEntriesFromClock } from '@/lib/actions/internal-clock'
+import {
+    clearAutoFilledTimesheet,
+    suggestTimesheetEntriesFromClock,
+} from '@/lib/actions/internal-clock'
+import { Sparkles } from 'lucide-react'
 import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 
 interface Props {
@@ -205,6 +209,34 @@ export function TimesheetEditor({ timesheet }: Props) {
         })
     }
 
+    // R8: detect auto-filled draft to show banner
+    const wasAutoFilled =
+        timesheet.status === 'draft' &&
+        Boolean(timesheet.auto_filled_at) &&
+        timesheet.entries.some(
+            (e) => e.source === 'clock_suggested' || e.source === 'clock_accepted',
+        )
+
+    async function handleClearAutoFill() {
+        const ok = await confirm({
+            title: 'Wyczyścić auto-fill?',
+            description:
+                'Usunie wpisy oznaczone „z zegara". Wpisy ręczne pozostaną. System nie będzie regenerować propozycji w tym miesiącu.',
+            confirmLabel: 'Wyczyść',
+            variant: 'destructive',
+        })
+        if (!ok) return
+        startTransition(async () => {
+            try {
+                await clearAutoFilledTimesheet(timesheet.id)
+                toastSuccess('Auto-fill wyczyszczony')
+                router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            }
+        })
+    }
+
     return (
         <Card>
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -218,6 +250,21 @@ export function TimesheetEditor({ timesheet }: Props) {
                     <p className="text-sm text-muted-foreground mt-1">
                         Suma: <strong>{totalHours.toFixed(2)} h</strong> / {timesheet.entries.length} wpisów
                     </p>
+                    {wasAutoFilled && (
+                        <div className="mt-2 inline-flex items-center gap-2 text-xs bg-blue-500/10 border border-blue-500/30 text-blue-200 rounded px-3 py-1.5">
+                            <Sparkles className="h-3.5 w-3.5" />
+                            <span>
+                                Draft gotowy z trackingu — przejrzyj, edytuj jeśli trzeba i złóż.
+                            </span>
+                            <button
+                                onClick={handleClearAutoFill}
+                                disabled={pending}
+                                className="text-blue-300 hover:text-blue-100 underline ml-1"
+                            >
+                                Wyczyść auto-fill
+                            </button>
+                        </div>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     {timesheet.status === 'approved' && (

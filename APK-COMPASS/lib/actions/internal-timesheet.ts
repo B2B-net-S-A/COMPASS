@@ -28,6 +28,9 @@ export interface TimesheetHeader {
     pdf_hash: string | null
     created_at: string
     updated_at: string
+    // Phase 17b R8 (PR-B): auto-fill default flow flags
+    auto_filled_at?: string | null
+    user_cleared_auto_fill?: boolean
 }
 
 export type TimesheetEntrySource = 'manual' | 'clock_suggested' | 'clock_accepted'

@@ -16,6 +16,7 @@ import {
     detectorReducer,
     DEFAULT_IDLE_THRESHOLD_MS,
     DEFAULT_HEARTBEAT_INTERVAL_MS,
+    effectiveIdleThreshold,
     isSleepGap,
     shouldSendActive,
     shouldWarnIdle,
@@ -23,6 +24,7 @@ import {
     type ClockState,
     type PauseReason,
 } from '@/lib/clock/idle-detector'
+import { useMediaActivity } from '@/lib/hooks/useMediaActivity'
 
 const LEADER_KEY = 'compass-work-clock-leader'
 const LEADER_TTL_MS = 90_000
@@ -67,6 +69,8 @@ export interface WorkClockState {
     // R3: when paused, ISO of auto-resume + reason
     pausedUntil: string | null
     pauseReason: PauseReason | null
+    // R7: true when mic/cam active → idle threshold extended
+    mediaActive: boolean
 }
 
 interface BroadcastMessage {
@@ -183,9 +187,14 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         lastClosedSession: null,
         pausedUntil: null,
         pauseReason: null,
+        mediaActive: false,
     })
 
     const [snapshot, dispatch] = useReducer(detectorReducer, initialSnapshot)
+    // R7: detect mic/cam activity (media session API)
+    const { isMediaActive } = useMediaActivity(enabled)
+    // R7: effective threshold = base × 3 when on a call
+    const effectiveThresholdMs = effectiveIdleThreshold(idleThresholdMs, isMediaActive)
     const clientIdRef = useRef<string>('')
     const channelRef = useRef<BroadcastChannel | null>(null)
     const lastActivityDispatchRef = useRef<number>(0)
@@ -314,11 +323,11 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         if (!enabled) return
         const id = window.setInterval(() => {
             const now = Date.now()
-            dispatch({ type: 'tick', ts: now, config: { idleThresholdMs, heartbeatIntervalMs } })
+            dispatch({ type: 'tick', ts: now, config: { idleThresholdMs: effectiveThresholdMs, heartbeatIntervalMs } })
             setState((prev) => {
                 if (!prev.sessionId || prev.state === 'stopped') return prev
-                // R1: derive showIdleWarning from current snapshot
-                const warn = shouldWarnIdle(now, snapshot, { idleThresholdMs })
+                // R1: derive showIdleWarning from current snapshot — use effective threshold (R7)
+                const warn = shouldWarnIdle(now, snapshot, { idleThresholdMs: effectiveThresholdMs })
                 let elapsed = prev.elapsedSeconds
                 if (prev.state === 'active' && !document.hidden) {
                     elapsed = prev.elapsedSeconds + 1
@@ -333,7 +342,8 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                 if (
                     warn === prev.showIdleWarning &&
                     elapsed === prev.elapsedSeconds &&
-                    nextPausedUntil === prev.pausedUntil
+                    nextPausedUntil === prev.pausedUntil &&
+                    isMediaActive === prev.mediaActive
                 ) {
                     return prev
                 }
@@ -343,11 +353,12 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                     showIdleWarning: warn,
                     pausedUntil: nextPausedUntil,
                     pauseReason: nextPauseReason,
+                    mediaActive: isMediaActive,
                 }
             })
         }, 1000)
         return () => window.clearInterval(id)
-    }, [enabled, idleThresholdMs, heartbeatIntervalMs, snapshot])
+    }, [enabled, effectiveThresholdMs, heartbeatIntervalMs, snapshot, isMediaActive])
 
     // Sync local state from snapshot
     useEffect(() => {
@@ -391,7 +402,7 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
             const wasActive = shouldSendActive({
                 nowMs: Date.now(),
                 snapshot,
-                config: { idleThresholdMs },
+                config: { idleThresholdMs: effectiveThresholdMs },
             })
             try {
                 await fetch('/api/clock/heartbeat', {
@@ -567,6 +578,7 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                 lastClosedSession: null,
                 pausedUntil: null,
                 pauseReason: null,
+                mediaActive: false,
             })
             try {
                 window.localStorage.removeItem(LEADER_KEY)

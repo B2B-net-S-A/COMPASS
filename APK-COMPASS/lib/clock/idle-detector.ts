@@ -11,6 +11,12 @@ export const PAUSE_PRESETS_MINUTES = [30, 60, 120] as const
 export type PausePresetMinutes = (typeof PAUSE_PRESETS_MINUTES)[number]
 export type PauseReason = 'break_30' | 'break_60' | 'break_120' | 'manual'
 
+// R7 (mic/cam): when media is active, extend idle threshold to 3× default (60 min)
+export const MEDIA_ACTIVE_IDLE_MULTIPLIER = 3
+export function effectiveIdleThreshold(baseMs: number, mediaActive: boolean): number {
+    return mediaActive ? baseMs * MEDIA_ACTIVE_IDLE_MULTIPLIER : baseMs
+}
+
 export function pauseReasonForDuration(minutes: number): PauseReason {
     if (minutes === 30) return 'break_30'
     if (minutes === 60) return 'break_60'
