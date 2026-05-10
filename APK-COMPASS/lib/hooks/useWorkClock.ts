@@ -5,6 +5,11 @@
 // server every ~30s, detects idle/sleep, syncs across multi-tab via
 // BroadcastChannel + localStorage leader election, and uses sendBeacon for
 // reliable session-close on unload.
+//
+// Phase 17b additions:
+//   R1: warning state at 50 min idle (before 60 min auto-close)
+//   R2: lastClosedSession surface for IdleResumeDialog (4-option modal)
+//   R3: pause/resume API + pausedUntilMs tracking, multi-tab pause sync
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
@@ -13,7 +18,10 @@ import {
     DEFAULT_HEARTBEAT_INTERVAL_MS,
     isSleepGap,
     shouldSendActive,
+    shouldWarnIdle,
     type ClockSnapshot,
+    type ClockState,
+    type PauseReason,
 } from '@/lib/clock/idle-detector'
 
 const LEADER_KEY = 'compass-work-clock-leader'
@@ -31,6 +39,16 @@ export interface ActiveSessionDTO {
     device_label: string | null
     recomputedActiveSeconds: number
     isSustainedIdle: boolean
+    paused_until: string | null
+    pause_reason: PauseReason | null
+}
+
+export interface RecentlyClosedSessionDTO {
+    id: string
+    started_at: string
+    ended_at: string
+    closed_reason: 'idle_timeout' | 'sleep_detected'
+    active_seconds: number
 }
 
 export interface WorkClockState {
@@ -39,16 +57,25 @@ export interface WorkClockState {
     startedAt: string | null
     /** Local tick — increments every second when active, frozen otherwise. Server is source of truth on read. */
     elapsedSeconds: number
-    state: 'stopped' | 'active' | 'idle' | 'paused_hidden'
+    state: ClockState
     isLeader: boolean
     error: string | null
+    // R1: derived warning (true between 50 and 60 min idle)
+    showIdleWarning: boolean
+    // R2: surfaced from /api/clock/active for IdleResumeDialog
+    lastClosedSession: RecentlyClosedSessionDTO | null
+    // R3: when paused, ISO of auto-resume + reason
+    pausedUntil: string | null
+    pauseReason: PauseReason | null
 }
 
 interface BroadcastMessage {
-    type: 'state_changed' | 'leader_ping' | 'session_ended'
+    type: 'state_changed' | 'session_ended' | 'paused' | 'resumed'
     sessionId?: string | null
     elapsedSeconds?: number
-    state?: WorkClockState['state']
+    state?: ClockState
+    pausedUntil?: string | null
+    pauseReason?: PauseReason | null
     timestamp: number
 }
 
@@ -57,6 +84,7 @@ const initialSnapshot: ClockSnapshot = {
     lastActivityMs: 0,
     lastTickMs: 0,
     pageVisible: typeof document !== 'undefined' ? !document.hidden : true,
+    pausedUntilMs: null,
 }
 
 function generateClientId(): string {
@@ -129,6 +157,13 @@ export interface UseWorkClockReturn extends WorkClockState {
     stop: () => Promise<void>
     transfer: (input?: { location?: 'onsite' | 'remote' }) => Promise<void>
     refreshFromServer: () => Promise<void>
+    // R1: user clicked "Yes I'm here"
+    keepAlive: () => void
+    // R3: pause/resume
+    pause: (durationMinutes: 30 | 60 | 120, reason: PauseReason) => Promise<void>
+    resume: () => Promise<void>
+    // R2: explicit dismiss (used after IdleResumeDialog action)
+    clearLastClosedSession: () => void
 }
 
 export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockReturn {
@@ -144,6 +179,10 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         state: 'stopped',
         isLeader: false,
         error: null,
+        showIdleWarning: false,
+        lastClosedSession: null,
+        pausedUntil: null,
+        pauseReason: null,
     })
 
     const [snapshot, dispatch] = useReducer(detectorReducer, initialSnapshot)
@@ -152,7 +191,7 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
     const lastActivityDispatchRef = useRef<number>(0)
     const sessionIdRef = useRef<string | null>(null)
 
-    // Mount: initialise IDs + channel + load active session
+    // Mount: initialise IDs + channel
     useEffect(() => {
         if (!enabled || typeof window === 'undefined') return
         clientIdRef.current = generateClientId()
@@ -171,14 +210,34 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         try {
             const res = await fetch('/api/clock/active', { method: 'GET', credentials: 'same-origin' })
             if (!res.ok) {
-                setState((prev) => ({ ...prev, loading: false, sessionId: null, state: 'stopped', error: null }))
+                setState((prev) => ({
+                    ...prev,
+                    loading: false,
+                    sessionId: null,
+                    state: 'stopped',
+                    error: null,
+                    pausedUntil: null,
+                    pauseReason: null,
+                }))
                 dispatch({ type: 'stop' })
                 sessionIdRef.current = null
                 return
             }
-            const data = (await res.json()) as { session: ActiveSessionDTO | null }
+            const data = (await res.json()) as {
+                session: ActiveSessionDTO | null
+                lastClosedSession: RecentlyClosedSessionDTO | null
+            }
             if (!data.session) {
-                setState((prev) => ({ ...prev, loading: false, sessionId: null, state: 'stopped', error: null }))
+                setState((prev) => ({
+                    ...prev,
+                    loading: false,
+                    sessionId: null,
+                    state: 'stopped',
+                    error: null,
+                    pausedUntil: null,
+                    pauseReason: null,
+                    lastClosedSession: data.lastClosedSession ?? null,
+                }))
                 dispatch({ type: 'stop' })
                 sessionIdRef.current = null
                 return
@@ -186,16 +245,29 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
             sessionIdRef.current = data.session.id
             const startedAtMs = new Date(data.session.started_at).getTime()
             const recomputed = data.session.recomputedActiveSeconds ?? data.session.active_seconds
+            const pausedUntilMs = data.session.paused_until
+                ? new Date(data.session.paused_until).getTime()
+                : null
             setState((prev) => ({
                 ...prev,
                 loading: false,
                 sessionId: data.session!.id,
                 startedAt: data.session!.started_at,
                 elapsedSeconds: recomputed,
-                state: data.session!.isSustainedIdle ? 'idle' : 'active',
+                state: pausedUntilMs && pausedUntilMs > Date.now()
+                    ? 'paused_break'
+                    : data.session!.isSustainedIdle
+                      ? 'idle'
+                      : 'active',
                 error: null,
+                pausedUntil: data.session!.paused_until,
+                pauseReason: data.session!.pause_reason,
+                lastClosedSession: data.lastClosedSession ?? null,
             }))
             dispatch({ type: 'start', ts: startedAtMs })
+            if (pausedUntilMs && pausedUntilMs > Date.now()) {
+                dispatch({ type: 'pause', ts: Date.now(), pausedUntilMs })
+            }
         } catch (e) {
             setState((prev) => ({
                 ...prev,
@@ -215,10 +287,8 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         if (!enabled || typeof window === 'undefined') return
         const handler = (ev: Event) => {
             const now = Date.now()
-            // MouseEvent.isTrusted gate — programmatic events get logged but still counted
             const evWithTrust = ev as Event & { isTrusted?: boolean }
             const trusted = evWithTrust.isTrusted !== false
-            // Debounce
             if (now - lastActivityDispatchRef.current < ACTIVITY_DEBOUNCE_MS) return
             lastActivityDispatchRef.current = now
             dispatch({ type: 'activity', ts: now })
@@ -239,7 +309,7 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         }
     }, [enabled])
 
-    // 1-second tick for UI counter + state transitions
+    // 1-second tick for UI counter + state transitions + R1 warning + R3 auto-resume
     useEffect(() => {
         if (!enabled) return
         const id = window.setInterval(() => {
@@ -247,14 +317,37 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
             dispatch({ type: 'tick', ts: now, config: { idleThresholdMs, heartbeatIntervalMs } })
             setState((prev) => {
                 if (!prev.sessionId || prev.state === 'stopped') return prev
+                // R1: derive showIdleWarning from current snapshot
+                const warn = shouldWarnIdle(now, snapshot, { idleThresholdMs })
+                let elapsed = prev.elapsedSeconds
                 if (prev.state === 'active' && !document.hidden) {
-                    return { ...prev, elapsedSeconds: prev.elapsedSeconds + 1 }
+                    elapsed = prev.elapsedSeconds + 1
                 }
-                return prev
+                // R3: detect auto-resume — server-side pause clears via tick
+                let nextPausedUntil = prev.pausedUntil
+                let nextPauseReason = prev.pauseReason
+                if (prev.pausedUntil && new Date(prev.pausedUntil).getTime() <= now) {
+                    nextPausedUntil = null
+                    nextPauseReason = null
+                }
+                if (
+                    warn === prev.showIdleWarning &&
+                    elapsed === prev.elapsedSeconds &&
+                    nextPausedUntil === prev.pausedUntil
+                ) {
+                    return prev
+                }
+                return {
+                    ...prev,
+                    elapsedSeconds: elapsed,
+                    showIdleWarning: warn,
+                    pausedUntil: nextPausedUntil,
+                    pauseReason: nextPauseReason,
+                }
             })
         }, 1000)
         return () => window.clearInterval(id)
-    }, [enabled, idleThresholdMs, heartbeatIntervalMs])
+    }, [enabled, idleThresholdMs, heartbeatIntervalMs, snapshot])
 
     // Sync local state from snapshot
     useEffect(() => {
@@ -273,7 +366,7 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         }
     }, [enabled, snapshot.lastTickMs, snapshot.state, state.sessionId, refreshFromServer, heartbeatIntervalMs, snapshot])
 
-    // Heartbeat sender — only when leader
+    // Heartbeat sender — only when leader, only when not paused
     useEffect(() => {
         if (!enabled) return
         if (!state.sessionId) return
@@ -291,6 +384,8 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         const sendHeartbeat = async (final = false) => {
             if (!state.sessionId) return
             if (!isTabLeader(clientIdRef.current)) return
+            // R3: don't send heartbeats while paused (server filters them anyway, but save the round-trip)
+            if (state.pausedUntil && new Date(state.pausedUntil).getTime() > Date.now()) return
             refreshLeadership(clientIdRef.current)
             const trusted = (window as Window & { __compassClockTrusted?: boolean }).__compassClockTrusted !== false
             const wasActive = shouldSendActive({
@@ -336,7 +431,7 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                                 wasActive: false,
                                 pageVisible: false,
                                 isTrusted: trusted,
-                                final: false, // don't auto-close on tab close — other tabs may still be live
+                                final: false,
                             }),
                         ],
                         { type: 'application/json' },
@@ -352,9 +447,9 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
             window.clearInterval(intervalId)
             window.removeEventListener('beforeunload', beforeUnload)
         }
-    }, [enabled, state.sessionId, snapshot, idleThresholdMs, heartbeatIntervalMs])
+    }, [enabled, state.sessionId, snapshot, idleThresholdMs, heartbeatIntervalMs, state.pausedUntil])
 
-    // BroadcastChannel sync between tabs
+    // BroadcastChannel sync between tabs (R3: extended with paused/resumed)
     useEffect(() => {
         if (!enabled || !channelRef.current) return
         const ch = channelRef.current
@@ -375,9 +470,24 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                     state: 'stopped',
                     elapsedSeconds: 0,
                     startedAt: null,
+                    pausedUntil: null,
+                    pauseReason: null,
                 }))
                 dispatch({ type: 'stop' })
                 sessionIdRef.current = null
+            } else if (msg.type === 'paused') {
+                const pauseTs = msg.pausedUntil ? new Date(msg.pausedUntil).getTime() : null
+                if (pauseTs) {
+                    dispatch({ type: 'pause', ts: Date.now(), pausedUntilMs: pauseTs })
+                    setState((prev) => ({
+                        ...prev,
+                        pausedUntil: msg.pausedUntil ?? null,
+                        pauseReason: msg.pauseReason ?? null,
+                    }))
+                }
+            } else if (msg.type === 'resumed') {
+                dispatch({ type: 'resume', ts: Date.now() })
+                setState((prev) => ({ ...prev, pausedUntil: null, pauseReason: null }))
             }
         }
         ch.addEventListener('message', onMessage)
@@ -421,6 +531,8 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                     elapsedSeconds: 0,
                     state: 'active',
                     error: null,
+                    pausedUntil: null,
+                    pauseReason: null,
                 }))
             } catch (e) {
                 setState((prev) => ({
@@ -451,6 +563,10 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                 state: 'stopped',
                 isLeader: false,
                 error: null,
+                showIdleWarning: false,
+                lastClosedSession: null,
+                pausedUntil: null,
+                pauseReason: null,
             })
             try {
                 window.localStorage.removeItem(LEADER_KEY)
@@ -483,6 +599,8 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                 elapsedSeconds: 0,
                 state: 'active',
                 error: null,
+                pausedUntil: null,
+                pauseReason: null,
             }))
         } catch (e) {
             setState((prev) => ({
@@ -494,11 +612,104 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
         }
     }, [])
 
+    // R1: user clicked "Yes I'm here" — reset idle counter on client; next heartbeat will report active
+    const keepAlive = useCallback(() => {
+        const now = Date.now()
+        dispatch({ type: 'activity', ts: now })
+        setState((prev) => ({ ...prev, showIdleWarning: false }))
+    }, [])
+
+    // R3: pause for N minutes
+    const pause = useCallback(
+        async (durationMinutes: 30 | 60 | 120, reason: PauseReason) => {
+            if (!state.sessionId) return
+            try {
+                const res = await fetch('/api/clock/pause', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: state.sessionId,
+                        durationMinutes,
+                        reason,
+                    }),
+                })
+                if (!res.ok) {
+                    const err = (await res.json().catch(() => ({}))) as { error?: string }
+                    throw new Error(err.error || 'pause_failed')
+                }
+                const data = (await res.json()) as { pausedUntil: string; pauseReason: PauseReason }
+                const pausedUntilMs = new Date(data.pausedUntil).getTime()
+                dispatch({ type: 'pause', ts: Date.now(), pausedUntilMs })
+                setState((prev) => ({
+                    ...prev,
+                    pausedUntil: data.pausedUntil,
+                    pauseReason: data.pauseReason,
+                    state: 'paused_break',
+                }))
+                channelRef.current?.postMessage({
+                    type: 'paused',
+                    pausedUntil: data.pausedUntil,
+                    pauseReason: data.pauseReason,
+                    timestamp: Date.now(),
+                } satisfies BroadcastMessage)
+            } catch (e) {
+                setState((prev) => ({
+                    ...prev,
+                    error: e instanceof Error ? e.message : 'pause_failed',
+                }))
+                throw e
+            }
+        },
+        [state.sessionId],
+    )
+
+    const resume = useCallback(async () => {
+        if (!state.sessionId) return
+        try {
+            const res = await fetch('/api/clock/resume', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: state.sessionId, viaAutomatic: false }),
+            })
+            if (!res.ok) {
+                const err = (await res.json().catch(() => ({}))) as { error?: string }
+                throw new Error(err.error || 'resume_failed')
+            }
+            dispatch({ type: 'resume', ts: Date.now() })
+            setState((prev) => ({
+                ...prev,
+                pausedUntil: null,
+                pauseReason: null,
+                state: 'active',
+            }))
+            channelRef.current?.postMessage({
+                type: 'resumed',
+                timestamp: Date.now(),
+            } satisfies BroadcastMessage)
+        } catch (e) {
+            setState((prev) => ({
+                ...prev,
+                error: e instanceof Error ? e.message : 'resume_failed',
+            }))
+            throw e
+        }
+    }, [state.sessionId])
+
+    const clearLastClosedSession = useCallback(() => {
+        setState((prev) => ({ ...prev, lastClosedSession: null }))
+    }, [])
+
     return {
         ...state,
         start,
         stop,
         transfer,
         refreshFromServer,
+        keepAlive,
+        pause,
+        resume,
+        clearLastClosedSession,
     }
 }

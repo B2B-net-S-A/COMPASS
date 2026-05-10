@@ -4,8 +4,11 @@ import {
     isSleepGap,
     nextState,
     shouldSendActive,
+    shouldWarnIdle,
+    pauseReasonForDuration,
     DEFAULT_IDLE_THRESHOLD_MS,
     DEFAULT_HEARTBEAT_INTERVAL_MS,
+    IDLE_WARNING_MS,
     SLEEP_DETECTION_FACTOR,
     type ClockSnapshot,
 } from '../idle-detector'
@@ -15,6 +18,7 @@ const baseSnapshot: ClockSnapshot = {
     lastActivityMs: 1_000_000,
     lastTickMs: 1_000_000,
     pageVisible: true,
+    pausedUntilMs: null,
 }
 
 describe('nextState', () => {
@@ -133,6 +137,68 @@ describe('shouldSendActive', () => {
     })
 })
 
+describe('shouldWarnIdle (R1)', () => {
+    it('false when stopped', () => {
+        expect(
+            shouldWarnIdle(5_000_000, { ...baseSnapshot, state: 'stopped' }),
+        ).toBe(false)
+    })
+
+    it('false when paused (R3 wins)', () => {
+        expect(
+            shouldWarnIdle(baseSnapshot.lastActivityMs + IDLE_WARNING_MS + 1, {
+                ...baseSnapshot,
+                pausedUntilMs: 999_999_999_999,
+            }),
+        ).toBe(false)
+    })
+
+    it('false when page hidden', () => {
+        expect(
+            shouldWarnIdle(baseSnapshot.lastActivityMs + IDLE_WARNING_MS + 1, {
+                ...baseSnapshot,
+                pageVisible: false,
+            }),
+        ).toBe(false)
+    })
+
+    it('false before warning threshold', () => {
+        expect(
+            shouldWarnIdle(baseSnapshot.lastActivityMs + IDLE_WARNING_MS - 1, baseSnapshot),
+        ).toBe(false)
+    })
+
+    it('true at exactly warning threshold', () => {
+        expect(
+            shouldWarnIdle(baseSnapshot.lastActivityMs + IDLE_WARNING_MS, baseSnapshot),
+        ).toBe(true)
+    })
+
+    it('true past warning threshold', () => {
+        expect(
+            shouldWarnIdle(baseSnapshot.lastActivityMs + IDLE_WARNING_MS + 60_000, baseSnapshot),
+        ).toBe(true)
+    })
+
+    it('respects custom warning ms', () => {
+        expect(
+            shouldWarnIdle(baseSnapshot.lastActivityMs + 5000, baseSnapshot, { warningMs: 4000 }),
+        ).toBe(true)
+    })
+})
+
+describe('pauseReasonForDuration (R3)', () => {
+    it('maps preset durations', () => {
+        expect(pauseReasonForDuration(30)).toBe('break_30')
+        expect(pauseReasonForDuration(60)).toBe('break_60')
+        expect(pauseReasonForDuration(120)).toBe('break_120')
+    })
+    it('falls back to manual for non-preset', () => {
+        expect(pauseReasonForDuration(45)).toBe('manual')
+        expect(pauseReasonForDuration(15)).toBe('manual')
+    })
+})
+
 describe('detectorReducer', () => {
     it('start transitions from stopped to active', () => {
         const result = detectorReducer(
@@ -212,5 +278,78 @@ describe('detectorReducer', () => {
         const stopped: ClockSnapshot = { ...baseSnapshot, state: 'stopped' }
         const result = detectorReducer(stopped, { type: 'tick', ts: 5_000_000 })
         expect(result.state).toBe('stopped')
+    })
+
+    // R3 pause / resume tests
+    it('pause sets state to paused_break and pausedUntilMs', () => {
+        const result = detectorReducer(baseSnapshot, {
+            type: 'pause',
+            ts: 1_000_000,
+            pausedUntilMs: 5_000_000,
+        })
+        expect(result.state).toBe('paused_break')
+        expect(result.pausedUntilMs).toBe(5_000_000)
+    })
+
+    it('resume clears pausedUntilMs and goes active', () => {
+        const paused: ClockSnapshot = {
+            ...baseSnapshot,
+            state: 'paused_break',
+            pausedUntilMs: 5_000_000,
+        }
+        const result = detectorReducer(paused, { type: 'resume', ts: 6_000_000 })
+        expect(result.state).toBe('active')
+        expect(result.pausedUntilMs).toBeNull()
+        expect(result.lastActivityMs).toBe(6_000_000)
+    })
+
+    it('tick auto-resumes after pausedUntilMs has elapsed', () => {
+        const paused: ClockSnapshot = {
+            ...baseSnapshot,
+            state: 'paused_break',
+            pausedUntilMs: 1_000_000,
+        }
+        const result = detectorReducer(paused, { type: 'tick', ts: 1_500_000 })
+        expect(result.pausedUntilMs).toBeNull()
+        expect(result.state).toBe('active')
+    })
+
+    it('activity during pause does NOT exit pause (DeskTime convention)', () => {
+        const paused: ClockSnapshot = {
+            ...baseSnapshot,
+            state: 'paused_break',
+            pausedUntilMs: 5_000_000,
+        }
+        const result = detectorReducer(paused, { type: 'activity', ts: 2_000_000 })
+        expect(result.state).toBe('paused_break')
+        expect(result.pausedUntilMs).toBe(5_000_000)
+        expect(result.lastActivityMs).toBe(2_000_000)
+    })
+
+    it('pause ignored when stopped', () => {
+        const stopped: ClockSnapshot = { ...baseSnapshot, state: 'stopped' }
+        const result = detectorReducer(stopped, {
+            type: 'pause',
+            ts: 1_000_000,
+            pausedUntilMs: 5_000_000,
+        })
+        expect(result.state).toBe('stopped')
+    })
+
+    it('nextState returns paused_break when pausedUntilMs in future', () => {
+        const result = nextState({
+            nowMs: 1_000_000,
+            snapshot: { ...baseSnapshot, pausedUntilMs: 5_000_000 },
+        })
+        expect(result).toBe('paused_break')
+    })
+
+    it('shouldSendActive false when paused', () => {
+        expect(
+            shouldSendActive({
+                nowMs: 1_000_000,
+                snapshot: { ...baseSnapshot, pausedUntilMs: 5_000_000 },
+            }),
+        ).toBe(false)
     })
 })

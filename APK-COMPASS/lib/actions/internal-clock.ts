@@ -5,7 +5,7 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import { requireAdminAction, requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendCorrectionDecision } from '@/lib/email'
-import { aggregateHeartbeats, isCorrectionRequired } from '@/lib/clock/aggregation'
+import { aggregateHeartbeats, isCorrectionRequired, type PausedRange } from '@/lib/clock/aggregation'
 import {
     HOURS_BLOCKING_ATTENDANCE,
     WORK_MONITORING_TERMS_VERSION,
@@ -49,15 +49,44 @@ async function fetchHeartbeatsForSession(
     return (data ?? []) as Array<{ ts: string; was_active: boolean }>
 }
 
+/**
+ * Phase 17b R3: fetch all pause ranges for a session. Open pauses (resumed_at IS NULL)
+ * are clamped to the current moment so aggregation can still proceed mid-pause.
+ */
+async function fetchPausedRangesForSession(
+    supabaseAdmin: ReturnType<typeof createServiceClient>,
+    sessionId: string,
+): Promise<PausedRange[]> {
+    const { data, error } = await supabaseAdmin
+        .from('work_clock_session_pauses')
+        .select('paused_at, resumed_at')
+        .eq('session_id', sessionId)
+        .order('paused_at')
+    if (error) {
+        // Soft-fail: if pauses table query errors, fall back to no-pause aggregation
+        console.error('[internal-clock] fetchPausedRangesForSession failed', error)
+        return []
+    }
+    const now = new Date().toISOString()
+    return ((data ?? []) as Array<{ paused_at: string; resumed_at: string | null }>).map((r) => ({
+        from: r.paused_at,
+        to: r.resumed_at ?? now,
+    }))
+}
+
 async function recomputeActiveSeconds(
     supabaseAdmin: ReturnType<typeof createServiceClient>,
     sessionId: string,
-): Promise<{ activeSeconds: number; idleSeconds: number; isSustainedIdle: boolean }> {
-    const heartbeats = await fetchHeartbeatsForSession(supabaseAdmin, sessionId)
-    const agg = aggregateHeartbeats(heartbeats)
+): Promise<{ activeSeconds: number; idleSeconds: number; isSustainedIdle: boolean; skippedDuringPause: number }> {
+    const [heartbeats, pausedRanges] = await Promise.all([
+        fetchHeartbeatsForSession(supabaseAdmin, sessionId),
+        fetchPausedRangesForSession(supabaseAdmin, sessionId),
+    ])
+    const agg = aggregateHeartbeats(heartbeats, pausedRanges)
     return {
         activeSeconds: agg.activeSeconds,
         idleSeconds: agg.idleSeconds,
+        skippedDuringPause: agg.skippedDuringPause,
         isSustainedIdle: heartbeats.length >= 120 && heartbeats.slice(-120).every((h) => !h.was_active),
     }
 }
@@ -789,4 +818,266 @@ export async function applyCorrectionFlag(input: FlagCorrectionInput): Promise<v
                   }),
         })
         .eq('id', input.entryId)
+}
+
+// ─── Phase 17b R2: Idle resume modal ────────────────────────────────────────
+
+const RESUME_GRACE_MINUTES = 30
+
+export interface RecentlyClosedSessionDTO {
+    id: string
+    started_at: string
+    ended_at: string
+    closed_reason: 'idle_timeout' | 'sleep_detected'
+    active_seconds: number
+}
+
+/**
+ * Returns the most recent auto-closed session (idle_timeout or sleep_detected)
+ * for the current user, but ONLY if it was closed within the last 30 minutes.
+ * Used by client-side IdleResumeDialog to show the 4-option modal.
+ */
+export async function getRecentlyAutoClosedSession(): Promise<RecentlyClosedSessionDTO | null> {
+    const ctx = await requireInternalOrAdminAction()
+    const supabase = createClient()
+    const cutoff = new Date(Date.now() - RESUME_GRACE_MINUTES * 60 * 1000).toISOString()
+    const { data } = await supabase
+        .from('work_clock_sessions')
+        .select('id, started_at, ended_at, closed_reason, active_seconds, user_disregarded')
+        .eq('user_id', ctx.userId)
+        .in('closed_reason', ['idle_timeout', 'sleep_detected'])
+        .gt('ended_at', cutoff)
+        .eq('user_disregarded', false)
+        .order('ended_at', { ascending: false })
+        .limit(1)
+        .maybeSingle<{
+            id: string
+            started_at: string
+            ended_at: string
+            closed_reason: 'idle_timeout' | 'sleep_detected'
+            active_seconds: number
+            user_disregarded: boolean
+        }>()
+    if (!data) return null
+    return {
+        id: data.id,
+        started_at: data.started_at,
+        ended_at: data.ended_at,
+        closed_reason: data.closed_reason,
+        active_seconds: data.active_seconds,
+    }
+}
+
+/**
+ * "Discard idle time" — user chose to drop the auto-closed session entirely.
+ * Soft mark only (KP retention 5y).
+ */
+export async function discardAutoClosedSession(sessionId: string): Promise<void> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+    const { data: row } = await admin
+        .from('work_clock_sessions')
+        .select('id, user_id, ended_at, user_disregarded')
+        .eq('id', sessionId)
+        .single<{ id: string; user_id: string; ended_at: string | null; user_disregarded: boolean }>()
+    if (!row) throw new Error('Sesja nie istnieje.')
+    if (row.user_id !== ctx.userId && !ctx.isAdmin) {
+        throw new Error('To nie jest Twoja sesja.')
+    }
+    if (row.user_disregarded) return // idempotent
+    await admin
+        .from('work_clock_sessions')
+        .update({ user_disregarded: true })
+        .eq('id', sessionId)
+    await logAudit(ctx.userId, 'WORK_CLOCK_RESUME_DISCARDED', { session_id: sessionId })
+}
+
+/**
+ * "Keep tracking (merge)" — user chose to keep the idle hours and continue working.
+ * Starts a new session with merged_from_session_id pointing at the old one.
+ * The old session keeps its active_seconds; the new session starts fresh.
+ * Aggregating hours for the day SUMs both via work_clock_daily view (already does).
+ */
+export async function mergeWithPreviousSession(
+    prevSessionId: string,
+    deviceLabel: string,
+    clientTz: string,
+): Promise<StartClockResult> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+
+    const { data: prev } = await admin
+        .from('work_clock_sessions')
+        .select('id, user_id, ended_at, location')
+        .eq('id', prevSessionId)
+        .single<{ id: string; user_id: string; ended_at: string | null; location: ClockLocation }>()
+    if (!prev) throw new Error('Poprzednia sesja nie istnieje.')
+    if (prev.user_id !== ctx.userId) throw new Error('To nie jest Twoja sesja.')
+    if (!prev.ended_at) throw new Error('Poprzednia sesja jest jeszcze aktywna — nie można scalić.')
+
+    // Make sure no live session exists (UNIQUE WHERE ended_at IS NULL would block insert anyway)
+    const { data: existing } = await admin
+        .from('work_clock_sessions')
+        .select('id')
+        .eq('user_id', ctx.userId)
+        .is('ended_at', null)
+        .maybeSingle<{ id: string }>()
+    if (existing) {
+        throw new Error('Masz już aktywną sesję — nie można scalić.')
+    }
+
+    const now = new Date().toISOString()
+    const { data: created, error } = await admin
+        .from('work_clock_sessions')
+        .insert({
+            user_id: ctx.userId,
+            started_at: now,
+            last_heartbeat: now,
+            active_seconds: 0,
+            idle_seconds: 0,
+            device_label: deviceLabel.trim().slice(0, 100),
+            client_tz: clientTz.trim().slice(0, 64),
+            location: prev.location,
+            created_by: ctx.userId,
+            merged_from_session_id: prevSessionId,
+        })
+        .select('id, started_at, location')
+        .single<{ id: string; started_at: string; location: ClockLocation }>()
+    if (error || !created) {
+        throw new Error(`Błąd scalenia: ${error?.message ?? 'unknown'}`)
+    }
+
+    await logAudit(ctx.userId, 'WORK_CLOCK_RESUME_MERGED', {
+        new_session_id: created.id,
+        merged_from: prevSessionId,
+    })
+
+    return {
+        sessionId: created.id,
+        startedAt: created.started_at,
+        location: created.location,
+        resumedExisting: false,
+    }
+}
+
+// ─── Phase 17b R3: Pause / Resume ───────────────────────────────────────────
+
+export interface PauseClockInput {
+    sessionId: string
+    durationMinutes: 30 | 60 | 120 | number
+    reason: 'break_30' | 'break_60' | 'break_120' | 'manual'
+}
+
+export interface PauseClockResult {
+    pausedUntil: string
+    pauseReason: 'break_30' | 'break_60' | 'break_120' | 'manual'
+}
+
+/**
+ * Pause an active session for N minutes. Records open pause row in
+ * work_clock_session_pauses. Auto-resumes when paused_until elapses (cron or
+ * on next heartbeat). Heartbeats arriving during pause are NOT counted toward
+ * active_seconds (aggregateHeartbeats filters by paused ranges).
+ */
+export async function pauseClockSession(input: PauseClockInput): Promise<PauseClockResult> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!Number.isFinite(input.durationMinutes) || input.durationMinutes < 1 || input.durationMinutes > 480) {
+        throw new Error('Czas pauzy musi być w zakresie 1-480 minut.')
+    }
+    const admin = createServiceClient()
+
+    const { data: session } = await admin
+        .from('work_clock_sessions')
+        .select('id, user_id, ended_at, paused_until')
+        .eq('id', input.sessionId)
+        .single<{
+            id: string
+            user_id: string
+            ended_at: string | null
+            paused_until: string | null
+        }>()
+    if (!session) throw new Error('Sesja nie istnieje.')
+    if (session.user_id !== ctx.userId) throw new Error('To nie jest Twoja sesja.')
+    if (session.ended_at) throw new Error('Sesja już zakończona.')
+
+    const pausedUntil = new Date(Date.now() + input.durationMinutes * 60 * 1000).toISOString()
+
+    // If already paused, overwrite (extend / shorten) — close previous open pause first
+    if (session.paused_until) {
+        await admin
+            .from('work_clock_session_pauses')
+            .update({ resumed_at: new Date().toISOString() })
+            .eq('session_id', input.sessionId)
+            .is('resumed_at', null)
+    }
+
+    // Insert new open pause row
+    const { error: insertErr } = await admin
+        .from('work_clock_session_pauses')
+        .insert({
+            session_id: input.sessionId,
+            paused_at: new Date().toISOString(),
+            pause_reason: input.reason,
+            created_by: ctx.userId,
+        })
+    if (insertErr) throw new Error(`Błąd pauzy: ${insertErr.message}`)
+
+    const { error: updateErr } = await admin
+        .from('work_clock_sessions')
+        .update({
+            paused_until: pausedUntil,
+            pause_reason: input.reason,
+        })
+        .eq('id', input.sessionId)
+    if (updateErr) throw new Error(`Błąd zapisu pauzy: ${updateErr.message}`)
+
+    await logAudit(ctx.userId, 'WORK_CLOCK_PAUSED', {
+        session_id: input.sessionId,
+        duration_minutes: input.durationMinutes,
+        reason: input.reason,
+        paused_until: pausedUntil,
+    })
+
+    return { pausedUntil, pauseReason: input.reason }
+}
+
+/**
+ * Explicit user resume (before paused_until elapses). Closes the open pause row
+ * and clears paused_until on the session. Cron auto-resume calls this with
+ * `viaAutomatic=true` for audit clarity.
+ */
+export async function resumeClockSession(
+    sessionId: string,
+    viaAutomatic = false,
+): Promise<void> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+
+    const { data: session } = await admin
+        .from('work_clock_sessions')
+        .select('id, user_id, ended_at, paused_until')
+        .eq('id', sessionId)
+        .single<{ id: string; user_id: string; ended_at: string | null; paused_until: string | null }>()
+    if (!session) throw new Error('Sesja nie istnieje.')
+    if (session.user_id !== ctx.userId && !ctx.isAdmin) {
+        throw new Error('To nie jest Twoja sesja.')
+    }
+    if (!session.paused_until) return // idempotent
+
+    const now = new Date().toISOString()
+    await admin
+        .from('work_clock_session_pauses')
+        .update({ resumed_at: now })
+        .eq('session_id', sessionId)
+        .is('resumed_at', null)
+
+    await admin
+        .from('work_clock_sessions')
+        .update({ paused_until: null, pause_reason: null, last_heartbeat: now })
+        .eq('id', sessionId)
+
+    await logAudit(ctx.userId, 'WORK_CLOCK_RESUMED', {
+        session_id: sessionId,
+        via_automatic: viaAutomatic,
+    })
 }

@@ -37,6 +37,11 @@ export type AuditAction =
     | 'WORK_CLOCK_TAMPERED'
     | 'TIMESHEET_CORRECTION_APPROVED'
     | 'TIMESHEET_CORRECTION_REJECTED'
+    // Phase 17b — R2 (resume modal) + R3 (pause)
+    | 'WORK_CLOCK_RESUME_MERGED'
+    | 'WORK_CLOCK_RESUME_DISCARDED'
+    | 'WORK_CLOCK_PAUSED'
+    | 'WORK_CLOCK_RESUMED'
 
 export async function logAudit(
     userId: string | null,

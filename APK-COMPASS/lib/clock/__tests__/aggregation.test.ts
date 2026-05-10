@@ -15,6 +15,7 @@ describe('aggregateHeartbeats', () => {
             idleSeconds: 0,
             totalHeartbeats: 0,
             activeHeartbeats: 0,
+            skippedDuringPause: 0,
         })
     })
 
@@ -45,6 +46,46 @@ describe('aggregateHeartbeats', () => {
             { ts: '2026-05-08T10:00:30Z', was_active: false },
         ])
         expect(result.totalHeartbeats).toBe(2)
+    })
+
+    // R3: paused ranges
+    it('skips heartbeats inside paused ranges (R3)', () => {
+        const result = aggregateHeartbeats(
+            [
+                { ts: '2026-05-08T10:00:00Z', was_active: true },  // before pause
+                { ts: '2026-05-08T10:05:00Z', was_active: true },  // during pause - skipped
+                { ts: '2026-05-08T10:10:00Z', was_active: true },  // during pause - skipped
+                { ts: '2026-05-08T10:30:00Z', was_active: true },  // after pause
+            ],
+            [
+                { from: '2026-05-08T10:01:00Z', to: '2026-05-08T10:20:00Z' },
+            ],
+        )
+        expect(result.activeHeartbeats).toBe(2)
+        expect(result.skippedDuringPause).toBe(2)
+        expect(result.activeSeconds).toBe(2 * HEARTBEAT_INTERVAL_SECONDS)
+    })
+
+    it('open paused range (no resumed_at) clamps to now (caller responsibility)', () => {
+        // Caller maps resumed_at=NULL to "now". Tested implicitly via internal-clock helper.
+        const now = new Date()
+        const future = new Date(now.getTime() + 1000)
+        const past = new Date(now.getTime() - 1000)
+        const result = aggregateHeartbeats(
+            [{ ts: past.toISOString(), was_active: true }],
+            [{ from: past.toISOString(), to: future.toISOString() }],
+        )
+        expect(result.activeHeartbeats).toBe(0)
+        expect(result.skippedDuringPause).toBe(1)
+    })
+
+    it('no paused ranges = backward compatible behaviour', () => {
+        const result = aggregateHeartbeats([
+            { ts: '2026-05-08T10:00:00Z', was_active: true },
+            { ts: '2026-05-08T10:00:30Z', was_active: true },
+        ])
+        expect(result.activeHeartbeats).toBe(2)
+        expect(result.skippedDuringPause).toBe(0)
     })
 
     // DST edge cases — Polish "Spring Forward" 29.03.2026 (02:00→03:00) and
