@@ -62,13 +62,22 @@ export function MonitoringConsentDialog({ open, onOpenChange, onAccepted }: Prop
                     <p>
                         <strong className="text-foreground">Czego NIE mierzymy:</strong> nie
                         zapisujemy treści tego, co piszesz, nie robimy zrzutów ekranu, nie czytamy
-                        adresów stron ani treści dokumentów. Zegar nie ma dostępu do mikrofonu ani
-                        kamery.
+                        adresów stron ani treści dokumentów. NIE słuchamy mikrofonu ani nie
+                        oglądamy kamery — sprawdzamy jedynie <em>czy</em> masz aktywny call
+                        (status sesji medialnej w przeglądarce), żeby nie liczyć Cię jako idle podczas
+                        spotkania (Phase 17b R7).
                     </p>
                     <p>
                         <strong className="text-foreground">Idle detection:</strong> jeśli przez
                         20+ minut nie wykryjemy aktywności, czas przerwy nie zostanie zaliczony do
-                        godzin pracy. Po 60 min sustained idle sesja zostanie automatycznie zamknięta.
+                        godzin pracy. Po 50 min pojawi się ostrzeżenie &bdquo;Czy wciąż pracujesz?&rdquo;,
+                        po 60 min sesja zostanie automatycznie zamknięta. Podczas wykrytego callu
+                        próg wydłużamy do 60 min (Phase 17b R7).
+                    </p>
+                    <p>
+                        <strong className="text-foreground">Pauza:</strong> w każdej chwili możesz
+                        kliknąć &bdquo;Pauza&rdquo; (30/60/120 min) — w tym czasie zegar nie liczy
+                        aktywności. Każda pauza jest zapisywana w historii sesji.
                     </p>
                     <p>
                         <strong className="text-foreground">Retencja:</strong> sesje przechowujemy

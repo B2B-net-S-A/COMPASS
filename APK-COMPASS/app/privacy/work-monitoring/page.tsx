@@ -11,8 +11,9 @@ export default function WorkMonitoringPolicyPage() {
         <main className="max-w-3xl mx-auto px-6 py-12 prose prose-invert">
             <h1>Polityka monitoringu czasu pracy</h1>
             <p className="text-sm text-muted-foreground">
-                Wersja: <strong>v1-2026-05-08</strong> · Obowiązuje pracowników z rolą{' '}
-                <code>internal</code> oraz <code>admin</code>.
+                Wersja: <strong>v2-2026-05-09</strong> · Obowiązuje pracowników z rolą{' '}
+                <code>internal</code> oraz <code>admin</code>. Wersja v2 dodaje wykrywanie
+                aktywnych calli (R7) — wymaga ponownej akceptacji zgody.
             </p>
 
             <h2>1. Cel monitoringu</h2>

@@ -507,7 +507,89 @@ export async function sendCourseInactivityReminder(
     }
 }
 
-export type TimesheetReminderPhase = 'warning' | 'final'
+// Phase 17b R9 (PR-B): added 'mon-nudge' and 'wed-warning' phases for the
+// Harvest-style escalation cadence (Mon gentle → Wed warning → Fri/end-of-month final).
+export type TimesheetReminderPhase = 'mon-nudge' | 'wed-warning' | 'warning' | 'final'
+
+interface ReminderTemplate {
+    subject: string
+    body: string
+    tag: string
+    accent: string
+}
+
+function buildReminderTemplate(
+    phase: TimesheetReminderPhase,
+    monthLabel: string,
+    recipientName: string,
+): ReminderTemplate {
+    if (phase === 'mon-nudge') {
+        return {
+            subject: `[COMPASS HR] Hej, pamiętaj o timesheet ${monthLabel}`,
+            body: `
+                <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+                <p style="color: #d1d5db; font-size: 14px;">
+                    Krótka notka — w tym miesiącu nie złożyłeś jeszcze timesheetu za
+                    <strong>${monthLabel}</strong>. Smart Work Clock przygotował już draft
+                    z trackingu, więc wystarczy go przejrzeć i zatwierdzić.
+                </p>
+                <p style="color: #d1d5db; font-size: 14px;">
+                    Bez stresu — pełny termin jest do 5. dnia kolejnego miesiąca.
+                </p>
+            `,
+            tag: 'Hej, pamiętaj',
+            accent: '#3b82f6',
+        }
+    }
+    if (phase === 'wed-warning') {
+        return {
+            subject: `[COMPASS HR] Przypomnienie: timesheet ${monthLabel} (termin za 3 dni)`,
+            body: `
+                <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+                <p style="color: #d1d5db; font-size: 14px;">
+                    Przypominamy: timesheet za <strong>${monthLabel}</strong> ma być złożony
+                    do końca tygodnia (5. dnia kolejnego miesiąca). Otwórz <strong>Timesheet</strong>,
+                    przejrzyj draft z trackingu i kliknij <em>Złóż</em>.
+                </p>
+            `,
+            tag: 'Termin za 3 dni',
+            accent: '#f59e0b',
+        }
+    }
+    if (phase === 'final') {
+        return {
+            subject: `[COMPASS HR] OSTATNIA SZANSA: timesheet ${monthLabel}`,
+            body: `
+                <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+                <p style="color: #d1d5db; font-size: 14px;">
+                    <strong style="color: #ef4444;">Ostatnia szansa</strong> na złożenie timesheetu za
+                    <strong>${monthLabel}</strong>. Bez zaakceptowanego timesheetu naliczenie wynagrodzenia
+                    za ten miesiąc nie nastąpi.
+                </p>
+                <p style="color: #d1d5db; font-size: 14px;">
+                    Otwórz <strong>Timesheet → ${monthLabel}</strong>, uzupełnij wpisy i kliknij
+                    „Złóż timesheet" jak najszybciej.
+                </p>
+            `,
+            tag: 'OSTATNIA SZANSA',
+            accent: '#ef4444',
+        }
+    }
+    // default: warning (legacy 25-of-month reminder)
+    return {
+        subject: `[COMPASS HR] Przypomnienie: timesheet ${monthLabel}`,
+        body: `
+            <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+            <p style="color: #d1d5db; font-size: 14px;">
+                Przypominamy o złożeniu timesheetu za <strong>${monthLabel}</strong>.
+                Wypełnij wpisy w sekcji <strong>Timesheet</strong> i kliknij „Złóż timesheet"
+                najpóźniej do 5. dnia następnego miesiąca.
+            </p>
+        `,
+        tag: 'Przypomnienie',
+        accent: '#f59e0b',
+    }
+}
 
 export async function sendTimesheetReminder(
     recipientEmail: string,
@@ -517,41 +599,17 @@ export async function sendTimesheetReminder(
     phase: TimesheetReminderPhase = 'warning',
 ): Promise<{ success: boolean }> {
     const monthLabel = `${year}-${String(month).padStart(2, '0')}`
-    const isFinal = phase === 'final'
-    const subject = isFinal
-        ? `[COMPASS HR] OSTATNIA SZANSA: timesheet ${monthLabel}`
-        : `[COMPASS HR] Przypomnienie: timesheet ${monthLabel}`
-    const bodyHtml = isFinal
-        ? `
-            <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
-            <p style="color: #d1d5db; font-size: 14px;">
-                <strong style="color: #ef4444;">Ostatnia szansa</strong> na złożenie timesheetu za
-                <strong>${monthLabel}</strong>. Bez zaakceptowanego timesheetu naliczenie wynagrodzenia
-                za ten miesiąc nie nastąpi.
-            </p>
-            <p style="color: #d1d5db; font-size: 14px;">
-                Otwórz <strong>Timesheet → ${monthLabel}</strong>, uzupełnij wpisy i kliknij
-                „Złóż timesheet" jak najszybciej.
-            </p>
-        `
-        : `
-            <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
-            <p style="color: #d1d5db; font-size: 14px;">
-                Przypominamy o złożeniu timesheetu za <strong>${monthLabel}</strong>.
-                Wypełnij wpisy w sekcji <strong>Timesheet</strong> i kliknij „Złóż timesheet"
-                najpóźniej do 5. dnia następnego miesiąca.
-            </p>
-        `
+    const tpl = buildReminderTemplate(phase, monthLabel, recipientName)
     try {
         const { error } = await getResend().emails.send({
             from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
-            subject,
+            subject: tpl.subject,
             html: wrapHrEmail({
-                tag: isFinal ? 'OSTATNIA SZANSA' : 'Przypomnienie',
-                heading: subject,
-                bodyHtml,
-                accent: isFinal ? '#ef4444' : '#f59e0b',
+                tag: tpl.tag,
+                heading: tpl.subject,
+                bodyHtml: tpl.body,
+                accent: tpl.accent,
             }),
         })
         if (error) {

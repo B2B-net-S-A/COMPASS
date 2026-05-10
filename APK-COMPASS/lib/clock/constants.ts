@@ -2,7 +2,9 @@
 // Kept in a separate module because 'use server' files (server actions) can
 // only export async functions.
 
-export const WORK_MONITORING_TERMS_VERSION = 'v1-2026-05-08'
+// Phase 17b R7: bump to v2 because mic/cam permission state detection is a
+// new scope that requires re-consent under KP art. 22³ §2.
+export const WORK_MONITORING_TERMS_VERSION = 'v2-2026-05-09'
 
 export const HOURS_BLOCKING_ATTENDANCE: readonly string[] = [
     'vacation',
