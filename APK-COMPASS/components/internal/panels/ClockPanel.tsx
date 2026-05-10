@@ -1,12 +1,15 @@
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
+import { format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
+    getMyActivityRateForDay,
     getMyClockMonth,
     getMyClockSessionsForMonth,
 } from '@/lib/actions/internal-clock'
 import type { ClockSessionListItem } from '@/lib/clock/constants'
+import { ActivityRateSparkline } from '@/components/internal/ActivityRateSparkline'
 
 interface Props {
     year?: number
@@ -43,9 +46,12 @@ export async function ClockPanel({ year, month }: Props) {
     const y = year ?? now.getFullYear()
     const m = Math.min(12, Math.max(1, month ?? now.getMonth() + 1))
 
-    const [monthData, sessions] = await Promise.all([
+    const today = format(new Date(), 'yyyy-MM-dd')
+    const [monthData, sessions, todayActivity] = await Promise.all([
         getMyClockMonth(y, m),
         getMyClockSessionsForMonth(y, m),
+        // R4: today's activity sparkline (user-only data — never shown to admin)
+        getMyActivityRateForDay(today).catch(() => []),
     ])
 
     const prevMonth = m === 1 ? 12 : m - 1
@@ -71,9 +77,28 @@ export async function ClockPanel({ year, month }: Props) {
                     <Link href="/internal?tab=timesheet" className="text-blue-400 underline">
                         sekcja Timesheet
                     </Link>
-                    .
+                    .{' '}
+                    <Link
+                        href="/privacy/work-monitoring"
+                        target="_blank"
+                        className="inline-flex items-center gap-1 text-blue-400 underline"
+                    >
+                        <ShieldCheck className="h-3 w-3" />
+                        Polityka monitoringu
+                    </Link>
                 </p>
             </div>
+
+            {todayActivity.length > 0 && (
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Twoja aktywność dzisiaj</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ActivityRateSparkline buckets={todayActivity} />
+                    </CardContent>
+                </Card>
+            )}
 
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

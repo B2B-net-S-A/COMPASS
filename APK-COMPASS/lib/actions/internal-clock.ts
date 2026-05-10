@@ -820,6 +820,83 @@ export async function applyCorrectionFlag(input: FlagCorrectionInput): Promise<v
         .eq('id', input.entryId)
 }
 
+// ─── Phase 17b R4: Activity rate sparkline (user-only) ─────────────────────
+
+export interface ActivityRateBucket {
+    bucketStart: string
+    /** Percentage 0-100 of heartbeats in the 10-min bucket that were `was_active=true`. */
+    rate: number
+    /** Total heartbeats observed in the bucket (for confidence — buckets with <5 are statistically noisy). */
+    sampleSize: number
+}
+
+/**
+ * R4: Activity rate per 10-min bucket for the CURRENT USER ONLY for a given date.
+ *
+ * Critical privacy contract:
+ *  - This function does NOT accept a `targetUserId` parameter.
+ *  - It always returns data for `ctx.userId` (the caller).
+ *  - Even when called by an admin, it returns the admin's OWN data, never another user's.
+ *  - This breaks intentionally with the `is_admin()` bypass pattern of other server actions.
+ *  - Activity rate per-bucket is considered surveillance-grade if shown to admin (Hubstaff).
+ *  - Compass policy: aggregate hours visible to admin via timesheets; granular rate is private.
+ *
+ * Hubstaff formula: `(active_count / 20) * 100` where 20 = max heartbeats per 10-min window.
+ */
+export async function getMyActivityRateForDay(date: string): Promise<ActivityRateBucket[]> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new Error('date musi być w formacie YYYY-MM-DD')
+    }
+    const admin = createServiceClient()
+
+    // Fetch all sessions for the user that overlap the date
+    const dayStart = `${date}T00:00:00.000Z`
+    const dayEnd = `${date}T23:59:59.999Z`
+
+    const { data: sessions } = await admin
+        .from('work_clock_sessions')
+        .select('id')
+        .eq('user_id', ctx.userId)
+        .or(`started_at.lte.${dayEnd},ended_at.gte.${dayStart}`)
+
+    const sessionIds = ((sessions ?? []) as Array<{ id: string }>).map((s) => s.id)
+    if (sessionIds.length === 0) return []
+
+    const { data: hb } = await admin
+        .from('work_clock_heartbeats')
+        .select('ts, was_active')
+        .in('session_id', sessionIds)
+        .gte('ts', dayStart)
+        .lte('ts', dayEnd)
+        .order('ts')
+
+    const heartbeats = (hb ?? []) as Array<{ ts: string; was_active: boolean }>
+    if (heartbeats.length === 0) return []
+
+    // Bucket into 10-min windows (UTC-keyed; client-side rendering converts to local TZ).
+    const TEN_MIN_MS = 10 * 60 * 1000
+    const MAX_HEARTBEATS_PER_BUCKET = 20 // 30s interval × 20 = 10 min
+    const buckets = new Map<number, { active: number; total: number }>()
+
+    for (const h of heartbeats) {
+        const ts = new Date(h.ts).getTime()
+        const bucketKey = Math.floor(ts / TEN_MIN_MS) * TEN_MIN_MS
+        const existing = buckets.get(bucketKey) ?? { active: 0, total: 0 }
+        existing.total += 1
+        if (h.was_active) existing.active += 1
+        buckets.set(bucketKey, existing)
+    }
+
+    return Array.from(buckets.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([key, v]) => ({
+            bucketStart: new Date(key).toISOString(),
+            rate: Math.round((v.active / MAX_HEARTBEATS_PER_BUCKET) * 100),
+            sampleSize: v.total,
+        }))
+}
+
 // ─── Phase 17b R2: Idle resume modal ────────────────────────────────────────
 
 const RESUME_GRACE_MINUTES = 30
