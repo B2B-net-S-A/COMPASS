@@ -10,6 +10,7 @@ import {
 } from '@/lib/actions/internal-clock'
 import type { ClockSessionListItem } from '@/lib/clock/constants'
 import { ActivityRateSparkline } from '@/components/internal/ActivityRateSparkline'
+import { ClockTimelineView } from '@/components/internal/ClockTimelineView'
 
 interface Props {
     year?: number
@@ -99,6 +100,9 @@ export async function ClockPanel({ year, month }: Props) {
                     </CardContent>
                 </Card>
             )}
+
+            {/* R12: AI timeline (only renders content if route metadata exists) */}
+            <ClockTimelineView date={today} />
 
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
