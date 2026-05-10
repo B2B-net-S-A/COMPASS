@@ -108,6 +108,69 @@ export function isSustainedIdle(
 }
 
 /**
+ * R11 (PR-C1): find the peak 60-min activity window from a heartbeat list.
+ * Used by clock-daily-summary cron to tell user "your peak hour was 10-11am".
+ * Returns null when not enough data to compute (less than 60 min of heartbeats).
+ */
+export interface PeakWindow {
+    start: Date
+    end: Date
+    activeHeartbeats: number
+    /** 0..1 — fraction of heartbeats in the window that were was_active=true */
+    score: number
+}
+
+export function findPeakActivityWindow(
+    heartbeats: ReadonlyArray<HeartbeatRow>,
+    windowMinutes = 60,
+): PeakWindow | null {
+    if (heartbeats.length === 0) return null
+    const sorted = [...heartbeats].sort(
+        (a, b) => toDate(a.ts).getTime() - toDate(b.ts).getTime(),
+    )
+    const windowMs = windowMinutes * 60 * 1000
+
+    let bestStart = 0
+    let bestEnd = 0
+    let bestActive = 0
+    let bestTotal = 0
+
+    let leftIdx = 0
+    let activeInWindow = 0
+    let totalInWindow = 0
+
+    for (let rightIdx = 0; rightIdx < sorted.length; rightIdx++) {
+        const right = sorted[rightIdx]
+        const rightMs = toDate(right.ts).getTime()
+        if (right.was_active) activeInWindow++
+        totalInWindow++
+
+        // shrink left until window <= windowMs
+        while (rightMs - toDate(sorted[leftIdx].ts).getTime() > windowMs) {
+            if (sorted[leftIdx].was_active) activeInWindow--
+            totalInWindow--
+            leftIdx++
+        }
+
+        // candidate window
+        if (activeInWindow > bestActive) {
+            bestActive = activeInWindow
+            bestTotal = totalInWindow
+            bestStart = toDate(sorted[leftIdx].ts).getTime()
+            bestEnd = rightMs
+        }
+    }
+
+    if (bestActive === 0) return null
+    return {
+        start: new Date(bestStart),
+        end: new Date(bestEnd),
+        activeHeartbeats: bestActive,
+        score: bestTotal === 0 ? 0 : bestActive / bestTotal,
+    }
+}
+
+/**
  * Decide whether a timesheet entry needs admin correction approval.
  * - Declared > 13h (KP art. 129) → always flag
  * - |declared - tracked| > threshold → flag
