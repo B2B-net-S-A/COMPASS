@@ -42,37 +42,19 @@ interface StartTimerInput {
 }
 
 /**
- * Start timer. Jeśli inny aktywny timer istnieje → throw (UI musi go najpierw zatrzymać).
+ * Phase 17b R5: H3.6 timer is deprecated. Use Smart Work Clock (Phase 17)
+ * floating button "Start pracy" instead. This function throws to surface the
+ * change to any caller (UI is already removed in PR-A2; this guards against
+ * direct API/server-action callers).
  */
-export async function startTimer(input: StartTimerInput = {}): Promise<TimesheetTimerRow> {
-    const ctx = await requireInternalOrAdminAction()
-    const supabase = createClient()
-
-    // Sprawdź czy już istnieje aktywny
-    const existing = await getActiveTimer()
-    if (existing) {
-        throw new Error('Inny timer już biega. Zatrzymaj go najpierw.')
-    }
-
-    const description = input.description?.trim() || 'Praca standardowa'
-    const project = input.project?.trim() || null
-    const workDate = new Date().toISOString().slice(0, 10)
-
-    const { data, error } = await supabase
-        .from('timesheet_timers')
-        .insert({
-            user_id: ctx.userId,
-            started_at: new Date().toISOString(),
-            work_date: workDate,
-            project,
-            description,
-        })
-        .select('*')
-        .single<TimesheetTimerRow>()
-    if (error) throw new Error(`Błąd start timera: ${error.message}`)
-
-    revalidatePath('/internal')
-    return data
+export async function startTimer(_input: StartTimerInput = {}): Promise<TimesheetTimerRow> {
+    void _input
+    await requireInternalOrAdminAction()
+    // Throwing — no need for ctx/userId
+    throw new Error(
+        'Timer H3.6 został zastąpiony przez Smart Work Clock (Phase 17). ' +
+            'Użyj zielonego przycisku "Start pracy" w prawym dolnym rogu.',
+    )
 }
 
 /**
@@ -80,7 +62,7 @@ export async function startTimer(input: StartTimerInput = {}): Promise<Timesheet
  * Min 1 minuta (60s) — krótsze odrzucamy żeby nie zaśmiecać.
  */
 export async function stopActiveTimer(): Promise<TimesheetTimerRow> {
-    const ctx = await requireInternalOrAdminAction()
+    await requireInternalOrAdminAction()
     const supabase = createClient()
 
     const active = await getActiveTimer()

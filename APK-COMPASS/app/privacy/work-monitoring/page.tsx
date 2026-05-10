@@ -59,8 +59,28 @@ export default function WorkMonitoringPolicyPage() {
             <h2>4. Logika idle detection</h2>
             <p>
                 Po 20 minutach bez zdarzeń aktywności w przeglądarce, czas przerwy nie jest
-                zaliczany do godzin pracy. Po 60 minutach sustained idle sesja jest automatycznie
-                zamykana, a pracownik otrzymuje powiadomienie e-mail.
+                zaliczany do godzin pracy. Po 50 minutach pojawia się ostrzeżenie
+                <em>&bdquo;Czy wciąż pracujesz?&rdquo;</em> — możesz kliknąć aby kontynuować.
+                Po 60 minutach sustained idle sesja jest automatycznie zamykana, a pracownik
+                otrzymuje powiadomienie e-mail. Po powrocie do pracy zobaczysz dialog z 4 opcjami:
+                kontynuować, odrzucić, dodać manualnie lub odrzucić i rozpocząć nową sesję.
+            </p>
+
+            <h2>4a. Pauza (Twoja kontrola nad pomiarem)</h2>
+            <p>
+                W każdej chwili możesz kliknąć przycisk <strong>&bdquo;Pauza&rdquo;</strong> i
+                wybrać 30, 60 lub 120 minut. W tym czasie zegar nie liczy aktywności — idealne
+                na wizytę u lekarza, prywatną rozmowę, lunch poza biurkiem. Po upływie czasu
+                pauza automatycznie się kończy. Każda pauza jest zapisywana w historii sesji
+                (dla audytu KP art. 94⁴), ale czas pauzy NIE jest zaliczany do godzin pracy.
+            </p>
+
+            <h2>4b. Aktywność dzienna (tylko dla Ciebie)</h2>
+            <p>
+                W sekcji &bdquo;Strefa wewnętrzna → Zegar&rdquo; widzisz wykres swojej aktywności
+                w 10-minutowych slotach (procent czasu z aktywnością klawiatury/myszy).
+                <strong> Ten wykres jest tylko dla Ciebie — administrator nie widzi tych danych.</strong>
+                {' '}Admin widzi wyłącznie sumę godzin w timesheet.
             </p>
 
             <h2>5. Retencja danych</h2>
