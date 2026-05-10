@@ -623,6 +623,73 @@ export async function sendTimesheetReminder(
     }
 }
 
+// ─── Phase 17b R11 (PR-C1): Daily personal summary email (RescueTime style) ──
+
+export interface ClockDailySummary {
+    workDate: string
+    activeHours: number
+    sessionCount: number
+    /** First clock-in (local time formatted) */
+    firstClockIn: string | null
+    /** Last clock-out (local time formatted) */
+    lastClockOut: string | null
+    /** Peak 60-min window (formatted "10:00-11:00") if found */
+    peakWindowLabel: string | null
+    /** Number of pauses recorded */
+    pauseCount: number
+    /** Total minutes spent in explicit pauses */
+    pauseMinutes: number
+}
+
+export async function sendClockDailySummary(
+    recipientEmail: string,
+    recipientName: string,
+    summary: ClockDailySummary,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Twoje wczoraj — ${summary.activeHours.toFixed(2)} h pracy (${summary.workDate})`
+    const body = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Krótkie podsumowanie wczorajszego dnia pracy
+            (<strong>${summary.workDate}</strong>):
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.8;">
+            <li><strong>Czas pracy:</strong> ${summary.activeHours.toFixed(2)} h</li>
+            <li><strong>Liczba sesji:</strong> ${summary.sessionCount}</li>
+            ${summary.firstClockIn ? `<li><strong>Pierwsze wejście:</strong> ${summary.firstClockIn}</li>` : ''}
+            ${summary.lastClockOut ? `<li><strong>Ostatnie wyjście:</strong> ${summary.lastClockOut}</li>` : ''}
+            ${summary.peakWindowLabel ? `<li><strong>Szczyt aktywności:</strong> ${summary.peakWindowLabel}</li>` : ''}
+            ${summary.pauseCount > 0 ? `<li><strong>Pauzy:</strong> ${summary.pauseCount} (łącznie ${summary.pauseMinutes} min)</li>` : ''}
+        </ul>
+        <p style="color: #6b7280; font-size: 12px; margin-top: 16px;">
+            Te dane są <strong>tylko dla Ciebie</strong> — admin nie widzi szczegółowej
+            aktywności, tylko sumę godzin w timesheet. Możesz wyłączyć podsumowanie
+            dzienne w ustawieniach (Profil → Preferencje powiadomień).
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({
+                tag: 'Daily summary',
+                heading: subject,
+                bodyHtml: body,
+                accent: '#3b82f6',
+            }),
+        })
+        if (error) {
+            console.error('Resend clock-daily-summary error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        console.error('Clock-daily-summary email failed:', err)
+        return { success: false }
+    }
+}
+
 // ─── Phase 17: Smart Work Clock email templates ─────────────────────────────
 
 const CLOCK_AUTO_STOP_REASON_LABEL: Record<string, string> = {
