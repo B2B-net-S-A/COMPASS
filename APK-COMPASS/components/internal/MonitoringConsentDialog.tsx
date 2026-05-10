@@ -20,11 +20,15 @@ import { toast } from '@/lib/toast'
 interface Props {
     open: boolean
     onOpenChange: (open: boolean) => void
-    onAccepted: () => void
+    /** Called after successful consent. routeTrackingOptIn signals user wants R12 timeline. */
+    onAccepted: (routeTrackingOptIn: boolean) => void
 }
+
+const ROUTE_TRACKING_PREF_KEY = 'compass-route-tracking-opt-in'
 
 export function MonitoringConsentDialog({ open, onOpenChange, onAccepted }: Props) {
     const [accepted, setAccepted] = useState(false)
+    const [routeTrackingOptIn, setRouteTrackingOptIn] = useState(false)
     const [pending, startTransition] = useTransition()
 
     function handleAccept() {
@@ -32,8 +36,22 @@ export function MonitoringConsentDialog({ open, onOpenChange, onAccepted }: Prop
         startTransition(async () => {
             try {
                 await acceptMonitoringConsent(WORK_MONITORING_TERMS_VERSION)
-                toast.success('Zgoda zarejestrowana — możesz włączyć zegar pracy')
-                onAccepted()
+                // Persist R12 opt-in pref locally; will be applied on session start
+                try {
+                    if (routeTrackingOptIn) {
+                        window.localStorage.setItem(ROUTE_TRACKING_PREF_KEY, 'true')
+                    } else {
+                        window.localStorage.removeItem(ROUTE_TRACKING_PREF_KEY)
+                    }
+                } catch {
+                    /* ignore localStorage errors */
+                }
+                toast.success(
+                    routeTrackingOptIn
+                        ? 'Zgoda + tracking trasy włączony — możesz uruchomić zegar'
+                        : 'Zgoda zarejestrowana — możesz uruchomić zegar',
+                )
+                onAccepted(routeTrackingOptIn)
                 onOpenChange(false)
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd zapisu zgody')
@@ -106,6 +124,23 @@ export function MonitoringConsentDialog({ open, onOpenChange, onAccepted }: Prop
                             <ExternalLink className="h-3 w-3" />
                         </Link>
                     </p>
+                </div>
+
+                <div className="flex items-start gap-2 pt-3 border-t border-zinc-800">
+                    <Checkbox
+                        id="route-tracking-checkbox"
+                        checked={routeTrackingOptIn}
+                        onCheckedChange={(v) => setRouteTrackingOptIn(v === true)}
+                    />
+                    <label
+                        htmlFor="route-tracking-checkbox"
+                        className="text-sm leading-tight cursor-pointer"
+                    >
+                        <strong className="text-foreground">Opcjonalnie:</strong> włącz AI Timeline —
+                        zapisuj jakie strony Compass odwiedzam co 5 min, żeby zobaczyć blokowy
+                        podział aktywności (&bdquo;9:00-10:30 Akademia&rdquo;). Tylko ścieżki
+                        Compass, retencja 30 dni. Wyłączysz w dowolnym momencie.
+                    </label>
                 </div>
 
                 <div className="flex items-start gap-2 pt-2">

@@ -20,11 +20,26 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useWorkClock } from '@/lib/hooks/useWorkClock'
+import { useRouteTracking } from '@/lib/hooks/useRouteTracking'
 import { toast } from '@/lib/toast'
 import { MonitoringConsentDialog } from './MonitoringConsentDialog'
 import { IdleWarningToast } from './IdleWarningToast'
 import { IdleResumeDialog } from './IdleResumeDialog'
-import { getMyConsentState } from '@/lib/actions/internal-clock'
+import {
+    enableRouteTrackingForSession,
+    getMyConsentState,
+} from '@/lib/actions/internal-clock'
+
+const ROUTE_TRACKING_PREF_KEY = 'compass-route-tracking-opt-in'
+
+function getRouteTrackingPref(): boolean {
+    if (typeof window === 'undefined') return false
+    try {
+        return window.localStorage.getItem(ROUTE_TRACKING_PREF_KEY) === 'true'
+    } catch {
+        return false
+    }
+}
 
 function formatDuration(seconds: number): string {
     const h = Math.floor(seconds / 3600)
@@ -43,6 +58,9 @@ function formatRemainingPause(pausedUntilIso: string): string {
 
 export function WorkClockButton() {
     const clock = useWorkClock({ enabled: true })
+    // R12: auto-collect route_path when session is active (server is silent no-op
+    // if user opted out of tracking via consent dialog).
+    useRouteTracking({ sessionId: clock.sessionId, enabled: clock.sessionId !== null })
     const [hasConsent, setHasConsent] = useState<boolean | null>(null)
     const [consentDialogOpen, setConsentDialogOpen] = useState(false)
     const [stopConfirmOpen, setStopConfirmOpen] = useState(false)
@@ -77,6 +95,22 @@ export function WorkClockButton() {
     async function handleStart() {
         try {
             await clock.start()
+            // R12: if user opted in to route tracking, enable it for this session
+            if (getRouteTrackingPref()) {
+                // Need sessionId — re-read after start; clock.sessionId may not be set yet
+                // due to React render cycle. Fetch the active session to get its id.
+                try {
+                    const res = await fetch('/api/clock/active', { credentials: 'same-origin' })
+                    if (res.ok) {
+                        const data = (await res.json()) as { session: { id: string } | null }
+                        if (data.session?.id) {
+                            await enableRouteTrackingForSession(data.session.id)
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[WorkClockButton] enable route tracking failed', e)
+                }
+            }
             toast.success('Zegar pracy uruchomiony')
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : 'Błąd startu'
@@ -149,6 +183,8 @@ export function WorkClockButton() {
                     open={consentDialogOpen}
                     onOpenChange={setConsentDialogOpen}
                     onAccepted={() => setHasConsent(true)}
+                    /* routeTrackingOptIn is persisted in localStorage by the dialog
+                       and read by handleStart() on next session start */
                 />
             </>
         )

@@ -820,6 +820,18 @@ export async function applyCorrectionFlag(input: FlagCorrectionInput): Promise<v
         .eq('id', input.entryId)
 }
 
+// ─── Phase 17b R11 (PR-D): user toggle for daily summary email ─────────────
+
+export async function setMyClockSummaryEmailPreference(enabled: boolean): Promise<void> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+    const { error } = await admin
+        .from('profiles')
+        .update({ clock_daily_summary_email: enabled })
+        .eq('id', ctx.userId)
+    if (error) throw new Error(`Błąd zapisu preferencji: ${error.message}`)
+}
+
 // ─── Phase 17b R12: AI timeline (route metadata + clusterer) ───────────────
 
 export interface TimelineBlockDTO {
