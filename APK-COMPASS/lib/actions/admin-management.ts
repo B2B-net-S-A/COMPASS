@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getSuperAdmins, isSuperAdmin } from '@/lib/auth/super-admins'
+import { parseOrThrow } from '@/lib/validators/common'
+import { addAdminMemberInputSchema, removeAdminMemberInputSchema } from '@/lib/validators/admin'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,11 +78,8 @@ export async function getAdminMembers(): Promise<AdminMember[]> {
 export async function addAdminMember(email: string) {
     const { supabase, user } = await requireSuperAdmin()
 
-    if (!email.trim().endsWith('@b2bnetwork.pl')) {
-        throw new Error('Tylko adresy @b2bnetwork.pl są dozwolone.')
-    }
-
-    const emailLower = email.trim().toLowerCase()
+    // Zod walidacja: format email + domain @b2bnetwork.pl (Phase 18.4).
+    const { email: emailLower } = parseOrThrow(addAdminMemberInputSchema, { email })
 
     // Prevent adding Super Admins (they already have full access)
     if (isSuperAdmin(emailLower)) {
@@ -119,17 +118,20 @@ export async function addAdminMember(email: string) {
 export async function removeAdminMember(id: string) {
     const { supabase } = await requireSuperAdmin()
 
+    // Zod walidacja: id musi być UUID (Phase 18.4).
+    const { id: validId } = parseOrThrow(removeAdminMemberInputSchema, { id })
+
     // Get email before deletion
     const { data: member } = await supabase
         .from('admin_access_list')
         .select('email')
-        .eq('id', id)
+        .eq('id', validId)
         .single()
 
     const { error } = await supabase
         .from('admin_access_list')
         .delete()
-        .eq('id', id)
+        .eq('id', validId)
 
     if (error) {
         console.error('Error removing admin member:', error)

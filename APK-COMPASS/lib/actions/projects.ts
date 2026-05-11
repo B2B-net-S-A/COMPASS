@@ -2,6 +2,12 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { parseOrThrow } from '@/lib/validators/common'
+import {
+    deleteProjectInputSchema,
+    deleteProjectsInputSchema,
+    updateProjectInputSchema,
+} from '@/lib/validators/projects'
 
 export async function deleteProject(projectId: string) {
     const supabase = createClient()
@@ -11,15 +17,16 @@ export async function deleteProject(projectId: string) {
         throw new Error('Unauthorized')
     }
 
-    // Optional: Check if user is admin if you have a role system
-    // const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-    // if (profile?.role !== 'admin') throw new Error('Forbidden')
+    // Phase 18.4: UUID walidacja zanim trafi do .eq() — chroni przed
+    // przypadkowym SQL injection przez Supabase parser i przed wywołaniem
+    // delete z nullable input.
+    const { projectId: validId } = parseOrThrow(deleteProjectInputSchema, { projectId })
 
     // 1. Get project to check for file_url (to delete from storage)
     const { data: project } = await supabase
         .from('projects')
         .select('file_url')
-        .eq('id', projectId)
+        .eq('id', validId)
         .single()
 
     // 2. Delete file from storage if exists
@@ -38,7 +45,7 @@ export async function deleteProject(projectId: string) {
     const { error } = await supabase
         .from('projects')
         .delete()
-        .eq('id', projectId)
+        .eq('id', validId)
 
     if (error) {
         throw new Error(`Failed to delete project: ${error.message}`)
@@ -55,11 +62,15 @@ export async function deleteProjects(projectIds: string[]) {
 
     if (!user) throw new Error('Unauthorized')
 
+    // Phase 18.4: Walidacja każdego UUID + limit 500 (chroni przed
+    // wysłaniem 100k IDs które mogłyby zatkać DB połączenie).
+    const { projectIds: validIds } = parseOrThrow(deleteProjectsInputSchema, { projectIds })
+
     // 1. Get projects to check for file_urls
     const { data: projects } = await supabase
         .from('projects')
         .select('file_url')
-        .in('id', projectIds)
+        .in('id', validIds)
 
     // 2. Delete files from storage
     const filesToDelete = projects
@@ -76,7 +87,7 @@ export async function deleteProjects(projectIds: string[]) {
     const { error } = await supabase
         .from('projects')
         .delete()
-        .in('id', projectIds)
+        .in('id', validIds)
 
     if (error) {
         throw new Error(`Failed to delete projects: ${error.message}`)
@@ -93,10 +104,19 @@ export async function updateProject(projectId: string, updates: Record<string, u
 
     if (!user) throw new Error('Unauthorized')
 
+    // Phase 18.4: Zod allowlist field walidacji. Wcześniej `updates` był
+    // przekazywany bezpośrednio do .update() — można było wstrzyknąć dowolne
+    // kolumny (role, owner_id, embedding). Teraz tylko explicit fields,
+    // .strict() rzuca błąd dla nieoczekiwanych kluczy.
+    const { projectId: validId, updates: safeUpdates } = parseOrThrow(
+        updateProjectInputSchema,
+        { projectId, updates },
+    )
+
     const { error } = await supabase
         .from('projects')
-        .update(updates)
-        .eq('id', projectId)
+        .update(safeUpdates)
+        .eq('id', validId)
 
     if (error) {
         throw new Error(`Failed to update project: ${error.message}`)
