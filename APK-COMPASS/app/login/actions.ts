@@ -150,7 +150,7 @@ export async function login(formData: FormData) {
         })
     }
 
-    // 5b. Set MFA cookie for admin/centrala roles
+    // 5b. Set MFA cookie for admin role
     if (role === 'admin') {
         cookies().set('mfa_verified', 'true', {
             httpOnly: true,
@@ -161,7 +161,9 @@ export async function login(formData: FormData) {
         })
     }
 
-    redirect('/home')
+    // Konsultant biurowy (role='internal') ląduje na /internal (HR Hub) — to jego landing,
+    // bo nie ma dostępu do platform features (learning/league/incubator/news/support).
+    redirect(role === 'internal' ? '/internal' : '/home')
 }
 
 export async function verifyMfaAction(userId: string, code: string) {

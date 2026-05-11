@@ -36,7 +36,7 @@ export const dictionary = {
         nav_news: 'Aktualności',
         nav_incubator: 'Inkubator',
         nav_profile: 'Profil',
-        nav_settings: 'Ustawienia',
+        nav_settings: 'Moje preferencje',
         nav_notifications: 'Powiadomienia',
 
         // Navigation — admin
@@ -122,7 +122,7 @@ export const dictionary = {
         nav_news: 'News',
         nav_incubator: 'Incubator',
         nav_profile: 'Profile',
-        nav_settings: 'Settings',
+        nav_settings: 'My preferences',
         nav_notifications: 'Notifications',
 
         // Navigation — admin

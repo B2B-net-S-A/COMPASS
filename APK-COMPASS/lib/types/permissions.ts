@@ -1,12 +1,17 @@
 // ─── Types and constants for role permissions ────────────────────────────────
 // This file must NOT have 'use server' — it's shared between client and server.
 //
-// Phase 16 (2026-05-07): simplified to 2 roles (admin, consultant). The legacy
-// recruiter/delivery_lead/finance "centrala" sub-roles, the role_permissions
-// table, and the admin permission-matrix UI were removed together with the
-// centrala module. Permissions are now derived purely from DEFAULT_PERMISSIONS.
+// Phase 16 (2026-05-07): simplified to 2 roles (admin, consultant) + legacy
+// "internal" enum value retained as Konsultant biurowy (HR-only zone).
+// The role_permissions table and admin permission-matrix UI były usunięte —
+// permissions są derived from DEFAULT_PERMISSIONS.
+//
+// Role mapping (Compass docelowo):
+//   - admin       → Super Admin (wszystko)
+//   - consultant  → Konsultant IT (platform: home/learning/league/incubator/news/support)
+//   - internal    → Konsultant biurowy (TYLKO /internal/* HR Hub, bez platform features)
 
-export type PermissionRole = 'admin' | 'consultant'
+export type PermissionRole = 'admin' | 'consultant' | 'internal'
 
 export type PermissionFeature =
     | 'home'
@@ -55,5 +60,23 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         documents: 'true',
         loyalty: 'true',
         settings: 'false',
+    },
+    // Konsultant biurowy — HR-only zone. Wszystkie platform features OFF.
+    // Sidebar `filterByPermission` (Sidebar.tsx) automatycznie ukryje grupy
+    // Growth + Community. Middleware (middleware.ts) blokuje /home + platform paths.
+    internal: {
+        home: 'false',
+        learning: 'false',
+        league: 'false',
+        support: 'false',
+        news: 'false',
+        incubator: 'false',
+        notifications: 'true', // HR powiadomienia (urlopy, timesheety)
+        dashboard: 'false',
+        projects: 'false',
+        loyalty: 'false',
+        messages: 'true',      // może komunikować się z admin/HR
+        documents: 'true',
+        settings: 'full',
     },
 }

@@ -44,10 +44,10 @@ describe('DB_ROLES', () => {
 })
 
 describe('roleLabelPl', () => {
-    it('returns Polish labels for known roles', () => {
-        expect(roleLabelPl('internal')).toBe('Pracownik wewnętrzny')
-        expect(roleLabelPl('consultant')).toBe('Konsultant')
-        expect(roleLabelPl('admin')).toBe('Admin')
+    it('returns Polish labels for the 3 Compass roles', () => {
+        expect(roleLabelPl('internal')).toBe('Konsultant biurowy')
+        expect(roleLabelPl('consultant')).toBe('Konsultant IT')
+        expect(roleLabelPl('admin')).toBe('Super Admin')
     })
     it('falls back to Nieznana', () => {
         expect(roleLabelPl(null)).toBe('Nieznana')
