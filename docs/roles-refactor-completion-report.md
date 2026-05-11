@@ -43,6 +43,20 @@ Pliki zmienione:
 - [app/login/actions.ts](../APK-COMPASS/app/login/actions.ts) + [app/auth/callback/route.ts](../APK-COMPASS/app/auth/callback/route.ts) — `redirect(role==='internal' ? '/internal' : '/home')`
 - [lib/actions/user-admin.ts](../APK-COMPASS/lib/actions/user-admin.ts) — `setUserRole`: auto-set `onboarding_completed=true` przy promote→internal (bez tego biurowi utknęliby w consultant onboarding flow)
 
+### [#77 — feat(admin) admin invite flow + ukrycie self-signup](https://github.com/artur-t-96/compass/pull/77)
+
+**Merged:** 2026-05-11T13:46:08Z · commit `e5df2de` · CI: green · Deployed: ✓ (po jednym retry — Sentry CLI 504 timeout zewnętrzny)
+
+Pliki:
+- `lib/actions/user-admin.ts` — nowa server action `inviteUser({email, fullName, role, employmentType, workStartDate})` wzywająca `supabase.auth.admin.inviteUserByEmail()` + override profile fields, auto `onboarding_completed=true` dla `internal`, audit log `INVITE_USER`
+- `components/admin/InviteUserDialog.tsx` — modal z formularzem (HR fields warunkowo dla `internal`)
+- `components/admin/UserManagementPanel.tsx` — button "Zaproś użytkownika" w header
+- `app/login/page.tsx` — usunięty toggle "Zarejestruj się", zastąpiony komunikatem "Skontaktuj się z administratorem"
+- `lib/actions/audit.ts` — nowy AuditAction `INVITE_USER`
+- E2E testy signup → "self-signup disabled" tests
+
+Smoke ✓: HTML `/login` zawiera komunikat "Skontaktuj się z administratorem", brak `Zarejestruj się` button.
+
 ## Pozostałe kroki
 
 ### PR #3 — Supabase identity linking (MANUAL action — wymaga Twojej akcji)
@@ -57,16 +71,9 @@ Pliki zmienione:
 
 **Bezpieczne włączenie:** pre-flight check pokazał 0 userów z duplikatami providerów (`SELECT user_id FROM auth.identities GROUP BY user_id HAVING COUNT(*) > 1` → empty).
 
-### PR #4 — admin invite flow + ukrycie signup (opcjonalny, ~2h)
+### PR #4 — admin invite flow + ukrycie signup ✓ DONE (PR #77)
 
-W planie zaznaczone jako opcjonalne. **Czeka na Twoją decyzję czy idziemy.**
-
-Co by zrobiło:
-- Nowa server action `inviteUser()` z `supabase.auth.admin.inviteUserByEmail()` + INSERT profile + opcjonalne HR fields
-- Button "Zaproś użytkownika" w `/admin/settings/users` + modal z polami: email, imię, role (Konsultant IT / biurowy), employment_type/start_date dla biurowych
-- Schowanie self-signup formularza na `/login` (toggle button "Zarejestruj się" zostanie usunięty, MS SSO + login email/password zostają dla legacy)
-
-**Why optional:** signup form już działa, ale daje samoobsługowe dodawanie. Admin invite daje HR/IT kontrolę kogo wpuszcza + pre-fill pól HR.
+Zrealizowane w [#77](https://github.com/artur-t-96/compass/pull/77) — sekcja powyżej.
 
 ## Verification
 
