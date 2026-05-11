@@ -9,6 +9,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // `import 'server-only'` rzuci błąd buildowy jeśli ktokolwiek zaimportuje ten
 // moduł z client component / client bundlu — zabezpiecza przed leakiem
 // SUPABASE_SERVICE_ROLE_KEY do przeglądarki.
+//
+// Phase 18.5: `Database` type dostępny w `lib/supabase/database.types.ts` —
+// per-query opt-in (cast `as SupabaseClient<Database>` gdy chcesz typed access).
+// Server-wide typing odroczone: ujawnia ~50 legacy bug-ów wymagających
+// osobnego cleanup PR (tabela `candidates` archived, etc.).
 // ─────────────────────────────────────────────────────────────────────────────
 
 let cached: SupabaseClient | null = null

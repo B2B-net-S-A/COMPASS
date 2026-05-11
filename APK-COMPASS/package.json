@@ -17,6 +17,7 @@
     "test:rls": "playwright test e2e/04-rls-database.spec.ts",
     "test:communicator": "playwright test e2e/03-communicator.spec.ts",
     "test:eval": "tsx scripts/eval_matching.ts",
+    "db:types": "supabase gen types typescript --project-id shduiynzemftkqqefscd --schema public > lib/supabase/database.types.ts",
     "ship": "bash scripts/git-ship.sh",
     "deploy": "bash scripts/render-deploy.sh",
     "deploy:clear": "bash scripts/render-deploy.sh --clear-cache"
