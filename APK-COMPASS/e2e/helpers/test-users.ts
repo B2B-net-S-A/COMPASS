@@ -8,7 +8,7 @@ import { type Page } from '@playwright/test'
 export interface TestUser {
     email: string
     password: string
-    role: 'consultant' | 'admin' | 'centrala' | 'administrator'
+    role: 'consultant' | 'admin' | 'internal'
 }
 
 function need(name: string): string {
@@ -26,11 +26,8 @@ export const TEST_USERS = {
     admin(): TestUser {
         return { email: need('TEST_ADMIN_EMAIL'), password: need('TEST_PASSWORD'), role: 'admin' }
     },
-    centrala(): TestUser {
-        return { email: need('TEST_CENTRALA_EMAIL'), password: need('TEST_PASSWORD'), role: 'centrala' }
-    },
-    administrator(): TestUser {
-        return { email: need('TEST_ADMINISTRATOR_EMAIL'), password: need('TEST_PASSWORD'), role: 'administrator' }
+    internal(): TestUser {
+        return { email: need('TEST_INTERNAL_EMAIL'), password: need('TEST_PASSWORD'), role: 'internal' }
     },
 }
 

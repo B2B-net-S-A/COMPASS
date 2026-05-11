@@ -1,15 +1,17 @@
 /**
- * Idempotent script to set up the 4 E2E test users on Hetzner staging Supabase.
+ * Idempotent script to set up the 3 E2E test users on Hetzner staging Supabase.
  *
  * Run once after pasting SUPABASE_SERVICE_ROLE_KEY into .env.test:
  *   npx tsx scripts/setup-test-users.ts
  *
  * What it does:
- *   1. Reads .env.test for service_role key + 4 test emails + password
- *   2. For each role (consultant / admin / centrala / administrator):
+ *   1. Reads .env.test for service_role key + 3 test emails + password
+ *   2. For each role (consultant / admin / internal):
  *        - Creates the user via admin.createUser with email_confirm:true (no inbox round trip)
- *        - Updates profiles.role to the target role (default for consultant)
+ *        - Updates profiles.role to the target role
  *   3. Reports a summary of what was created vs already existed
+ *
+ * Legacy roles `centrala` and `administrator` were dropped in Phase 16 (PR #27).
  *
  * Cleanup later:
  *   npx tsx scripts/cleanup-test-users.ts
@@ -25,6 +27,7 @@ interface EnvVars {
     TEST_PASSWORD: string
     TEST_CONSULTANT_EMAIL: string
     TEST_ADMIN_EMAIL: string
+    TEST_INTERNAL_EMAIL: string
 }
 
 function loadEnvTest(): EnvVars {
@@ -44,6 +47,7 @@ function loadEnvTest(): EnvVars {
         'TEST_PASSWORD',
         'TEST_CONSULTANT_EMAIL',
         'TEST_ADMIN_EMAIL',
+        'TEST_INTERNAL_EMAIL',
     ]
     for (const key of required) {
         if (!env[key]) throw new Error(`Missing ${key} in .env.test`)
@@ -118,9 +122,10 @@ async function main() {
         auth: { persistSession: false },
     })
 
-    const targets: Array<{ email: string; role: 'admin' | 'consultant' }> = [
+    const targets: Array<{ email: string; role: 'admin' | 'consultant' | 'internal' }> = [
         { email: env.TEST_CONSULTANT_EMAIL, role: 'consultant' },
         { email: env.TEST_ADMIN_EMAIL, role: 'admin' },
+        { email: env.TEST_INTERNAL_EMAIL, role: 'internal' },
     ]
 
     let createdCount = 0

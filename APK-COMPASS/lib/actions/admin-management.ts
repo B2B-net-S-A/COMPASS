@@ -73,7 +73,7 @@ export async function getAdminMembers(): Promise<AdminMember[]> {
     })
 }
 
-export async function addAdminMember(email: string, fullName?: string) {
+export async function addAdminMember(email: string) {
     const { supabase, user } = await requireSuperAdmin()
 
     if (!email.trim().endsWith('@b2bnetwork.pl')) {
@@ -87,23 +87,10 @@ export async function addAdminMember(email: string, fullName?: string) {
         throw new Error('Super Admin nie wymaga dodawania — ma uprawnienia automatycznie.')
     }
 
-    // Check if already in centrala list — should be removed from there first
-    const { data: centralaEntry } = await supabase
-        .from('centrala_access_list')
-        .select('id')
-        .eq('email', emailLower)
-        .maybeSingle()
-
-    if (centralaEntry) {
-        // Auto-remove from centrala list (promotion to admin)
-        await supabase.from('centrala_access_list').delete().eq('id', centralaEntry.id)
-    }
-
     const { error } = await supabase
         .from('admin_access_list')
         .insert({
             email: emailLower,
-            full_name: fullName?.trim() || null,
             added_by: user.id,
         })
 

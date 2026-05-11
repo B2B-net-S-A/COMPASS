@@ -2,8 +2,10 @@ import { test, expect } from '@playwright/test'
 import { loginAs, TEST_USERS } from './helpers/test-users'
 
 /**
- * Smoke E2E for the 4 role accounts created via scripts/setup-test-users.ts.
+ * Smoke E2E for the 3 role accounts created via scripts/setup-test-users.ts.
  * Verifies that login works and that role-appropriate UI elements appear post-login.
+ * Roles: consultant (Konsultant IT) | internal (Konsultant biurowy) | admin (Super Admin).
+ * Legacy roles `centrala` and `administrator` were dropped in Phase 16 (PR #27).
  */
 
 test.describe.configure({ mode: 'serial' })
@@ -21,14 +23,8 @@ test('admin: can login', async ({ page }) => {
     await expect(page).not.toHaveURL(/\/login/)
 })
 
-test('centrala: can login', async ({ page }) => {
-    const user = TEST_USERS.centrala()
-    await loginAs(page, user)
-    await expect(page).not.toHaveURL(/\/login/)
-})
-
-test('administrator: can login', async ({ page }) => {
-    const user = TEST_USERS.administrator()
+test('internal: can login', async ({ page }) => {
+    const user = TEST_USERS.internal()
     await loginAs(page, user)
     await expect(page).not.toHaveURL(/\/login/)
 })
