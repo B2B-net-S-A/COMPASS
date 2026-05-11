@@ -49,6 +49,13 @@ export default async function HomePage() {
             learning_streak_last_date: string | null
         }>()
 
+    // Konsultant biurowy (role='internal') nie widzi /home — HR Hub jest jego landingiem.
+    // Middleware już to robi na edge, ale dublujemy server-side jako defense-in-depth
+    // gdyby middleware został zmodyfikowany lub pominięty.
+    if (profile?.role === 'internal') {
+        redirect('/internal')
+    }
+
     const isAdmin = (profile?.role as string) === 'admin'
 
     const [overviewRes, enrollRes, newsRes, ticketsRes, pitchesRes, adminTicketsRes, adminPitchesRes] = await Promise.all([

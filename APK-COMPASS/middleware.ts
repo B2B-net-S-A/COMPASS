@@ -40,36 +40,52 @@ export async function middleware(request: NextRequest) {
         const isPublicPath = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/forgot-password') || pathname.startsWith('/privacy-policy') || pathname.startsWith('/terms') || pathname.startsWith('/help')
         const onboardingDone = request.cookies.get('onboarding_done')?.value === 'true'
 
-        // Security defense-in-depth: gate /internal/* at the edge regardless of
-        // whether the eventual handler is a layout-wrapped page or a bare route
-        // handler. The protected layout (app/(protected)/internal/layout.tsx)
-        // already calls requireInternalOrAdminLayout(), but that doesn't fire
-        // for bare route handlers under /internal — those rely on per-handler
-        // guards. This middleware check ensures a future route handler added
-        // without an explicit guard cannot leak HR data to a consultant.
-        if (pathname.startsWith('/internal')) {
-            const { data: internalProfile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', user.id)
-                .single()
-            const role = internalProfile?.role
-            if (role !== 'admin' && role !== 'internal') {
-                return NextResponse.redirect(new URL('/home', request.url))
-            }
-        }
+        // Single profile fetch — wcześniej były 2 osobne SELECT-y dla /internal guard
+        // i onboarding gate. Łączymy w jeden żeby zmniejszyć latency edge.
+        const needsProfile = pathname.startsWith('/internal')
+            || pathname === '/home'
+            || pathname.startsWith('/learning')
+            || pathname.startsWith('/league')
+            || pathname.startsWith('/incubator')
+            || pathname.startsWith('/news')
+            || pathname.startsWith('/support')
+            || (!isPublicPath && !isOnboarding && !onboardingDone)
 
-        if (!isPublicPath && !isOnboarding && !onboardingDone) {
+        let role: string | undefined
+        let onboardingCompleted: boolean | undefined
+        if (needsProfile) {
             const { data: profile } = await supabase
                 .from('profiles')
                 .select('role, onboarding_completed')
                 .eq('id', user.id)
                 .single()
+            role = profile?.role as string | undefined
+            onboardingCompleted = profile?.onboarding_completed as boolean | undefined
+        }
 
-            if (profile?.role === 'consultant' && !profile?.onboarding_completed) {
+        // Security defense-in-depth: gate /internal/* at the edge — admin + internal only.
+        // Bez tego layout (app/(protected)/internal/layout.tsx) jest sole guard, a bare
+        // route handlers pod /internal mogłyby leakować HR data do konsultanta.
+        if (pathname.startsWith('/internal')) {
+            if (role !== 'admin' && role !== 'internal') {
+                return NextResponse.redirect(new URL('/home', request.url))
+            }
+        }
+
+        // Konsultant biurowy (role='internal') NIE widzi platform features.
+        // Inverse guard po /internal check (admin nadal przechodzi do /home/learning/etc).
+        if (role === 'internal') {
+            const platformPaths = ['/home', '/learning', '/league', '/incubator', '/news', '/support']
+            if (platformPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
+                return NextResponse.redirect(new URL('/internal', request.url))
+            }
+        }
+
+        if (!isPublicPath && !isOnboarding && !onboardingDone) {
+            if (role === 'consultant' && !onboardingCompleted) {
                 const redirectUrl = new URL('/onboarding', request.url)
                 return NextResponse.redirect(redirectUrl)
-            } else if (profile?.onboarding_completed || profile?.role !== 'consultant') {
+            } else if (onboardingCompleted || role !== 'consultant') {
                 response.cookies.set('onboarding_done', 'true', {
                     httpOnly: true,
                     secure: process.env.NODE_ENV === 'production',

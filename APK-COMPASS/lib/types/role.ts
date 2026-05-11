@@ -25,14 +25,18 @@ export function canAccessInternalZone(role: string | null | undefined): boolean 
     return isAdminLike(role) || isInternalEmployee(role)
 }
 
+// UI labelki dla 3 ról Compass (post-refactor 2026-05-11):
+//   admin       → Super Admin (wszystko)
+//   consultant  → Konsultant IT (platform: learning/league/incubator/news/support)
+//   internal    → Konsultant biurowy (TYLKO /internal/* HR Hub)
 export function roleLabelPl(role: string | null | undefined): string {
     switch (role) {
         case 'admin':
-            return 'Admin'
+            return 'Super Admin'
         case 'consultant':
-            return 'Konsultant'
+            return 'Konsultant IT'
         case 'internal':
-            return 'Pracownik wewnętrzny'
+            return 'Konsultant biurowy'
         default:
             return 'Nieznana'
     }

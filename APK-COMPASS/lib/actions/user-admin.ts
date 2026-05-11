@@ -320,9 +320,17 @@ export async function setUserRole(targetUserId: string, newRole: DbRole): Promis
         return
     }
 
+    // Konsultant biurowy nie ma consultant-style onboarding (HR-only zone), więc
+    // przy promote na 'internal' auto-set onboarding_completed=true żeby user nie
+    // utknął na /onboarding przy następnym loginie (middleware:69 sprawdza ten flag).
+    const updateData: { role: DbRole; onboarding_completed?: boolean } = { role: newRole }
+    if (newRole === 'internal') {
+        updateData.onboarding_completed = true
+    }
+
     const { error: updateErr } = await admin
         .from('profiles')
-        .update({ role: newRole })
+        .update(updateData)
         .eq('id', target.id)
     if (updateErr) throw new Error(`Błąd zmiany roli: ${updateErr.message}`)
 

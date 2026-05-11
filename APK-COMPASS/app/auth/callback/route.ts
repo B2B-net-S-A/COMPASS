@@ -19,7 +19,8 @@ export async function GET(request: Request) {
     const requestUrl = new URL(request.url);
     const code = requestUrl.searchParams.get("code");
     const origin = publicOrigin(request);
-    const next = requestUrl.searchParams.get("next") || "/home";
+    const nextParam = requestUrl.searchParams.get("next");
+    let syncedRole: string | null = null;
 
     if (code) {
         const supabase = createClient();
@@ -50,12 +51,17 @@ export async function GET(request: Request) {
                 .single();
             const currentRole = profile?.role ?? 'consultant';
             try {
-                await syncRole(supabase, user.id, user.email, currentRole);
+                syncedRole = await syncRole(supabase, user.id, user.email, currentRole);
             } catch (e) {
                 logger.error({ event: 'auth.callback.sync_role_failed', error: e, userId: user.id });
+                syncedRole = currentRole;
             }
         }
     }
 
+    // Konsultant biurowy ląduje na /internal (HR Hub) jeśli explicit next nie zostal podany.
+    // Honorujemy ?next= jeśli przekazany (np. invitation link który chce specyficznie /onboarding).
+    const fallback = syncedRole === 'internal' ? '/internal' : '/home';
+    const next = nextParam || fallback;
     return NextResponse.redirect(`${origin}${next}`);
 }
