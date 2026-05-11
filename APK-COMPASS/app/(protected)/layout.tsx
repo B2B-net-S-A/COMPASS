@@ -17,10 +17,11 @@ import nextDynamic from 'next/dynamic'
 import { logger } from '@/lib/logger'
 
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
-const WorkClockButton = nextDynamic(
-    () => import('@/components/internal/WorkClockButton').then((m) => m.WorkClockButton),
-    { ssr: false },
-)
+// Smart Work Clock (Phase 17) UI disabled — to re-enable, uncomment import + render below.
+// const WorkClockButton = nextDynamic(
+//     () => import('@/components/internal/WorkClockButton').then((m) => m.WorkClockButton),
+//     { ssr: false },
+// )
 
 async function countOpenInboxTickets(supabase: ReturnType<typeof createClient>): Promise<number> {
     try {
@@ -114,7 +115,8 @@ export default async function ProtectedLayout({
                         {children}
                     </LayoutPreferencesProvider>
                     <Tour initialDone={profile?.onboarding_tour_done ?? false} />
-                    {(role === 'internal' || role === 'admin') && <WorkClockButton />}
+                    {/* Smart Work Clock (Phase 17) UI disabled — re-enable when feature returns. */}
+                    {/* {(role === 'internal' || role === 'admin') && <WorkClockButton />} */}
                 </AppLayout>
             </ThemeProvider>
         )
