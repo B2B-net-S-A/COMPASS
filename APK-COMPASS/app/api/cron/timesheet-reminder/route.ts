@@ -1,7 +1,7 @@
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/admin'
 import { sendTimesheetReminder, type TimesheetReminderPhase } from '@/lib/email'
+import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,25 +22,8 @@ export const dynamic = 'force-dynamic'
  * Auto-detect (gdy brak ?phase): day < 15 → final (poprzedni miesiąc), inaczej warning (bieżący).
  * Można też explicit ?year=&month= dla manual testing.
  */
-export async function GET(request: Request) {
-    // Security: refuse if CRON_SECRET is unconfigured (Coolify env vault hiccup).
-    if (!process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
-    }
-    // Prefer Authorization: Bearer header — query strings end up in CF access
-    // logs, Sentry transaction traces, and reverse proxy logs. Fall back to
-    // ?secret= for legacy callers; warn so we can migrate them off.
+export const GET = withCronAuth(async (request, { admin }) => {
     const url = new URL(request.url)
-    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-    const querySecret = url.searchParams.get('secret')
-    const provided = headerSecret || querySecret
-    if (!provided || provided !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (!headerSecret && querySecret) {
-        logCompat.warn('[cron/timesheet-reminder] secret in query param — migrate caller to Authorization: Bearer header')
-    }
-
     const now = new Date()
     const dayOfMonth = now.getDate()
     const dayOfWeek = now.getDay() // 0=Sunday … 6=Saturday
@@ -90,8 +73,6 @@ export async function GET(request: Request) {
     if (yearParam) targetYear = parseInt(yearParam, 10)
     if (monthParam) targetMonth = parseInt(monthParam, 10)
 
-    const admin = createServiceClient()
-
     const { data: employees, error: employeesErr } = await admin
         .from('profiles')
         .select('id, full_name, email, employment_type')
@@ -139,4 +120,4 @@ export async function GET(request: Request) {
         reminders_sent: sent,
         reminders_failed: failed,
     })
-}
+})

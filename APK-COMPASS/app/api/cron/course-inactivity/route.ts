@@ -1,7 +1,7 @@
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/admin'
 import { sendCourseInactivityReminder } from '@/lib/email'
+import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,22 +19,7 @@ export const dynamic = 'force-dynamic'
  * Anty-spam: max 1 email / enrollment / tydzień.
  * Anty-noise: tylko enrollments z >0% progress (nie polecaj kursu który user nigdy nie tknął).
  */
-export async function GET(request: Request) {
-    if (!process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
-    }
-    const url = new URL(request.url)
-    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-    const querySecret = url.searchParams.get('secret')
-    const provided = headerSecret || querySecret
-    if (!provided || provided !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (!headerSecret && querySecret) {
-        logCompat.warn('[cron/course-inactivity] secret in query param — migrate caller to Authorization: Bearer header')
-    }
-
-    const admin = createServiceClient()
+export const GET = withCronAuth(async (_request, { admin }) => {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://compass.dynaminds.pl'
@@ -156,4 +141,4 @@ export async function GET(request: Request) {
         failed,
         skipped,
     })
-}
+})

@@ -1,6 +1,6 @@
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/admin'
+import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,19 +17,7 @@ export const dynamic = 'force-dynamic'
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-route-retention" \
  *        -H "Authorization: Bearer $CRON_SECRET"
  */
-export async function GET(request: Request) {
-    if (!process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
-    }
-    const url = new URL(request.url)
-    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-    const querySecret = url.searchParams.get('secret')
-    const provided = headerSecret || querySecret
-    if (!provided || provided !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const admin = createServiceClient()
+export const GET = withCronAuth(async (_request, { admin }) => {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
     const { count, error } = await admin
@@ -43,4 +31,4 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({ ok: true, cutoff, deleted: count ?? 0 })
-}
+})

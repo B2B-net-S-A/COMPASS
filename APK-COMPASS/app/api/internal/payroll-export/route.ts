@@ -1,6 +1,6 @@
 import { logCompat } from '@/lib/logger'
-import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/admin'
+import { NextResponse } from 'next/server'
+import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,21 +38,8 @@ export const dynamic = 'force-dynamic'
  *     ]
  *   }
  */
-export async function GET(request: NextRequest) {
-    if (!process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
-    }
+export const GET = withCronAuth(async (request, { admin }) => {
     const url = new URL(request.url)
-    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-    const querySecret = url.searchParams.get('secret')
-    const provided = headerSecret || querySecret
-    if (!provided || provided !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (!headerSecret && querySecret) {
-        logCompat.warn('[internal/payroll-export] secret in query param — migrate caller to Authorization: Bearer header')
-    }
-
     const yearParam = url.searchParams.get('year')
     const monthParam = url.searchParams.get('month')
     const year = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear()
@@ -73,8 +60,6 @@ export async function GET(request: NextRequest) {
     const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
     const monthEndDate = new Date(year, month, 0)
     const monthEnd = monthEndDate.toISOString().slice(0, 10)
-
-    const admin = createServiceClient()
 
     // Pull all UoP employees (B2B nie payroll)
     const { data: employees, error: empErr } = await admin
@@ -248,4 +233,4 @@ export async function GET(request: NextRequest) {
         total_employees: uopEmployees.length,
         employees: records,
     })
-}
+})
