@@ -1,12 +1,47 @@
-import { Resend } from 'resend'
 import { logger } from '@/lib/logger'
+import { sendEmail, type SendResult } from '@/lib/email/sender'
 
-let _resend: Resend | null = null
-function getResend(): Resend {
-    if (!_resend) {
-        _resend = new Resend(process.env.RESEND_API_KEY)
+// Phase 17b PR-E — Provider-agnostic email send.
+//
+// `getResend()` is kept as a backwards-compatible shim so all 14 templates
+// below stay unchanged. Under the hood it routes through lib/email/sender.ts
+// which picks the active provider (Microsoft Graph vs Resend) at runtime via
+// MAIL_PROVIDER env var. Default fallback = Resend if Azure creds are not set.
+//
+// The shim returns the same `{ data, error }` shape as Resend SDK so existing
+// `if (error) { ... }` handlers keep working without any change.
+function getResend(): {
+    emails: {
+        send: (args: {
+            from: string
+            to: string
+            subject: string
+            html: string
+        }) => Promise<{ data: { id?: string } | null; error: { message: string } | null }>
     }
-    return _resend
+} {
+    return {
+        emails: {
+            send: async (args) => {
+                const result: SendResult = await sendEmail({
+                    to: args.to,
+                    subject: args.subject,
+                    html: args.html,
+                    from: args.from, // honor explicit per-call from (legacy templates pass it)
+                })
+                if (!result.success) {
+                    return {
+                        data: null,
+                        error: { message: result.error ?? 'send_failed' },
+                    }
+                }
+                return {
+                    data: { id: result.messageId },
+                    error: null,
+                }
+            },
+        },
+    }
 }
 
 interface EquipmentRequestEmailData {
