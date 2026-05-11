@@ -75,7 +75,10 @@ export async function regenerateCourseEmbedding(courseId: string): Promise<Actio
         const { error } = await admin
             .from('courses')
             .update({
-                embedding,
+                // pgvector column — Supabase JS akceptuje number[] w runtime,
+                // ale DB types tipują jako `string | null` (vector serializuje
+                // do "[1.2,3.4,...]" string format).
+                embedding: embedding as unknown as string,
                 embedding_generated_at: new Date().toISOString(),
             })
             .eq('id', courseId)
@@ -141,7 +144,7 @@ export async function getRecommendedCoursesV2(): Promise<
         // 2. Generate embedding + call RPC
         const queryEmbedding = await generateEmbedding(userQuery)
         const { data: matches, error: matchErr } = await supabase.rpc('match_courses', {
-            query_embedding: queryEmbedding,
+            query_embedding: queryEmbedding as unknown as string,
             match_threshold: 0.3,
             match_count: 30,
         })
@@ -320,7 +323,7 @@ Tylko pola które są w zapytaniu. Nie zmyślaj.`,
 
         // 3. RPC match
         const { data: matches } = await supabase.rpc('match_courses', {
-            query_embedding: queryEmbedding,
+            query_embedding: queryEmbedding as unknown as string,
             match_threshold: 0.3,
             match_count: 30,
         })

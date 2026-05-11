@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
             .in('user_id', userIds),
         admin
             .from('attendance_records')
-            .select('user_id, date, status, hours_worked')
+            .select('user_id, date, status')
             .gte('date', monthStart)
             .lte('date', monthEnd)
             .in('user_id', userIds),
@@ -150,7 +150,6 @@ export async function GET(request: NextRequest) {
         user_id: string
         date: string
         status: string
-        hours_worked: number | null
     }
     type HolidayRow = { date: string; name_pl: string }
 
@@ -216,11 +215,14 @@ export async function GET(request: NextRequest) {
             leaveDaysByType[l.leave_type] = (leaveDaysByType[l.leave_type] ?? 0) + count
         }
 
+        // Phase 18.7: kolumna hours_worked nie istnieje w attendance_records.
+        // Filtruję po samym status='present' (granularność: dzień obecny lub
+        // nie). Dokładniejsze hours przychodzą z timesheet_entries (osobne pole).
         const attendanceDays = {
-            onsite: empAtt.filter((a) => a.status === 'present' && (a.hours_worked ?? 0) > 0)
+            onsite: empAtt.filter((a) => a.status === 'present')
                 .filter((a) => empLeaves.every((l) => !(a.date >= l.start_date && a.date <= l.end_date)))
-                .length, // simplified
-            remote: empAtt.filter((a) => a.status === 'present' && (a.hours_worked ?? 0) > 0).length,
+                .length,
+            remote: empAtt.filter((a) => a.status === 'present').length,
         }
 
         return {

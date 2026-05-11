@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from './database.types'
 
 // ─── Service-role Supabase client ────────────────────────────────────────────
 // RLS-bypass client. Wywoływać TYLKO po przejściu `requireSuperAdmin()`
@@ -10,15 +11,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // moduł z client component / client bundlu — zabezpiecza przed leakiem
 // SUPABASE_SERVICE_ROLE_KEY do przeglądarki.
 //
-// Phase 18.5: `Database` type dostępny w `lib/supabase/database.types.ts` —
-// per-query opt-in (cast `as SupabaseClient<Database>` gdy chcesz typed access).
-// Server-wide typing odroczone: ujawnia ~50 legacy bug-ów wymagających
-// osobnego cleanup PR (tabela `candidates` archived, etc.).
+// Phase 18.5: typed with Database from generated types — eliminuje większość
+// `as any` casts w lib/actions/.
 // ─────────────────────────────────────────────────────────────────────────────
 
-let cached: SupabaseClient | null = null
+let cached: SupabaseClient<Database> | null = null
 
-export function createServiceClient(): SupabaseClient {
+export function createServiceClient(): SupabaseClient<Database> {
     if (cached) return cached
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -31,7 +30,7 @@ export function createServiceClient(): SupabaseClient {
         throw new Error('SUPABASE_SERVICE_ROLE_KEY nie jest skonfigurowany — service client niedostępny.')
     }
 
-    cached = createClient(url, serviceKey, {
+    cached = createClient<Database>(url, serviceKey, {
         auth: {
             autoRefreshToken: false,
             persistSession: false,

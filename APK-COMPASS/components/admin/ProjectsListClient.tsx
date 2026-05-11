@@ -50,7 +50,8 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
             if (sbError) {
                 setError(sbError.message)
             } else {
-                setProjects(data || [])
+                // Phase 18.7: required_skills jest nullable w DB types — fallback do [].
+                setProjects((data || []).map(p => ({ ...p, required_skills: p.required_skills ?? [] })) as Project[])
                 setSelectedProjects(new Set())
             }
         } catch (err: unknown) {
