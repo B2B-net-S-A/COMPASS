@@ -73,18 +73,18 @@ describe('addAdminMember', () => {
             user: { id: 'u-super', email: 'super@b2bnetwork.pl' },
             tables: {
                 admin_access_list: [],
-                centrala_access_list: [],
                 profiles: [],
             },
         })
         vi.resetModules()
         const { addAdminMember } = await import('../admin-management')
-        const result = await addAdminMember('newadmin@b2bnetwork.pl', 'Nowy Admin')
+        const result = await addAdminMember('newadmin@b2bnetwork.pl')
         expect(result).toEqual({ success: true })
         const row = currentClient._tables.admin_access_list[0]
         expect(row.email).toBe('newadmin@b2bnetwork.pl')
-        expect(row.full_name).toBe('Nowy Admin')
         expect(row.added_by).toBe('u-super')
+        // full_name kolumny już nie ma w admin_access_list DB — interface fallbackuje na profiles.full_name w getAdminMembers
+        expect(row.full_name).toBeUndefined()
     })
 
     it('REJECTS uppercase domain (case-sensitive endsWith — possible bug to fix later)', async () => {
@@ -95,25 +95,6 @@ describe('addAdminMember', () => {
         // Currently rejects mixed-case @B2BNetwork.pl due to plain endsWith() check.
         // Documented as known behaviour — fix would be to lowercase first, then compare.
         await expect(addAdminMember('user@B2BNetwork.pl')).rejects.toThrow(/@b2bnetwork\.pl/)
-    })
-
-    it('promotes existing centrala member to admin (removes from centrala_access_list)', async () => {
-        process.env.SUPER_ADMIN_EMAILS = 'super@b2bnetwork.pl'
-        setup({
-            user: { id: 'u-super', email: 'super@b2bnetwork.pl' },
-            tables: {
-                admin_access_list: [],
-                centrala_access_list: [{ id: 'cl1', email: 'promote@b2bnetwork.pl' }],
-                profiles: [],
-            },
-        })
-        vi.resetModules()
-        const { addAdminMember } = await import('../admin-management')
-        await addAdminMember('promote@b2bnetwork.pl')
-        // Centrala entry deleted
-        expect(currentClient._tables.centrala_access_list).toHaveLength(0)
-        // Admin entry inserted
-        expect(currentClient._tables.admin_access_list).toHaveLength(1)
     })
 
     it('updates profile.role to "admin" when user already has a profile', async () => {

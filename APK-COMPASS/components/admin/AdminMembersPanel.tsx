@@ -27,7 +27,6 @@ export function AdminMembersPanel() {
     const [members, setMembers] = useState<AdminMember[]>([])
     const [superAdminEmails, setSuperAdminEmails] = useState<readonly string[]>([])
     const [email, setEmail] = useState('')
-    const [fullName, setFullName] = useState('')
     const [submitting, setSubmitting] = useState(false)
     const [confirm, ConfirmUI] = useConfirm()
 
@@ -60,10 +59,9 @@ export function AdminMembersPanel() {
 
         setSubmitting(true)
         try {
-            await addAdminMember(email, fullName || undefined)
+            await addAdminMember(email)
             toastSuccess(`Dodano ${email} jako Administratora`)
             setEmail('')
-            setFullName('')
             loadData()
         } catch (err: any) {
             toast.error(err.message || 'Błąd dodawania')
@@ -168,15 +166,6 @@ export function AdminMembersPanel() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                            />
-                        </div>
-                        <div className="grid gap-1.5 min-w-[150px]">
-                            <Label htmlFor="admin-name">Imię i nazwisko</Label>
-                            <Input
-                                id="admin-name"
-                                placeholder="Jan Kowalski"
-                                value={fullName}
-                                onChange={(e) => setFullName(e.target.value)}
                             />
                         </div>
                         <Button type="submit" disabled={submitting}>

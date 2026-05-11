@@ -34,7 +34,7 @@ export function EmployeeProfileDialog({
     const [fields, setFields] = useState<EmployeeProfileFields>({
         default_location: 'onsite',
         annual_leave_days: 26,
-        employment_type: 'uop',
+        employment_type: 'b2b',
         work_start_date: null,
     })
 
@@ -48,7 +48,7 @@ export function EmployeeProfileDialog({
                 setFields({
                     default_location: data.default_location ?? 'onsite',
                     annual_leave_days: data.annual_leave_days ?? 26,
-                    employment_type: data.employment_type ?? 'uop',
+                    employment_type: data.employment_type ?? 'b2b',
                     work_start_date: data.work_start_date ?? null,
                 })
             })
@@ -117,13 +117,13 @@ export function EmployeeProfileDialog({
                             <select
                                 id="employment_type"
                                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                value={fields.employment_type ?? 'uop'}
+                                value={fields.employment_type ?? 'b2b'}
                                 onChange={(e) =>
                                     setFields({ ...fields, employment_type: e.target.value as 'uop' | 'b2b' })
                                 }
                             >
-                                <option value="uop">Umowa o pracę (UoP)</option>
                                 <option value="b2b">B2B</option>
+                                <option value="uop">Umowa o pracę (UoP)</option>
                             </select>
                         </div>
 
