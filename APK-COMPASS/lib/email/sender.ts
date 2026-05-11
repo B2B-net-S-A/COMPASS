@@ -137,7 +137,12 @@ async function sendViaResend(msg: EmailMessage): Promise<SendResult> {
 async function sendViaGraph(msg: EmailMessage): Promise<SendResult> {
     try {
         const client = await getGraphClient()
-        const fromAddress = (msg.from ?? getDefaultFrom()).replace(/^.*<([^>]+)>.*$/, '$1') // strip "Name <addr>" → "addr"
+        // Graph requires a REAL mailbox in the tenant as sender. The hardcoded
+        // `from` in legacy templates (noreply@compass.b2bnetwork.pl, a Resend-only
+        // subdomain) is invalid here. Always use MAIL_FROM env var when set, falling
+        // back to msg.from only when MAIL_FROM is missing (Resend backwards compat).
+        const fromHeader = process.env.MAIL_FROM ?? msg.from ?? getDefaultFrom()
+        const fromAddress = fromHeader.replace(/^.*<([^>]+)>.*$/, '$1').trim() // strip "Name <addr>" → "addr"
         await client
             .api(`/users/${encodeURIComponent(fromAddress)}/sendMail`)
             .post({
