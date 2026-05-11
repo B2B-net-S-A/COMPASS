@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { getSuperAdmins, isSuperAdmin } from '@/lib/auth/super-admins'
 import { parseOrThrow } from '@/lib/validators/common'
@@ -43,7 +45,7 @@ export async function getAdminMembers(): Promise<AdminMember[]> {
         .order('created_at', { ascending: false })
 
     if (error) {
-        console.error('Error fetching admin members:', error)
+        logCompat.error('Error fetching admin members:', error)
         throw new Error('Failed to fetch admin members')
     }
 
@@ -97,7 +99,7 @@ export async function addAdminMember(email: string) {
         if (error.code === '23505') {
             throw new Error('Ten adres email jest już na liście administratorów.')
         }
-        console.error('Error adding admin member:', error)
+        logCompat.error('Error adding admin member:', error)
         throw new Error('Błąd dodawania: ' + error.message)
     }
 
@@ -134,7 +136,7 @@ export async function removeAdminMember(id: string) {
         .eq('id', validId)
 
     if (error) {
-        console.error('Error removing admin member:', error)
+        logCompat.error('Error removing admin member:', error)
         throw new Error('Błąd usuwania: ' + error.message)
     }
 

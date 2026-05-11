@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     if (!headerSecret && querySecret) {
-        console.warn('[internal/payroll-export] secret in query param — migrate caller to Authorization: Bearer header')
+        logCompat.warn('[internal/payroll-export] secret in query param — migrate caller to Authorization: Bearer header')
     }
 
     const yearParam = url.searchParams.get('year')

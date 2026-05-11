@@ -1,4 +1,6 @@
 
+
+import { logCompat } from '@/lib/logger'
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -191,7 +193,7 @@ export function ChatWindow({ conversation, currentUser, onBack, onClose }: ChatW
             */
 
         } catch (error: any) {
-            console.error('Upload error:', error)
+            logCompat.error('Upload error:', error)
             toast.error("Błąd wysyłania pliku")
         } finally {
             setIsUploading(false)

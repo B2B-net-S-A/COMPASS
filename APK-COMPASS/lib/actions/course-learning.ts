@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type {
@@ -88,7 +90,7 @@ export async function enrollInCourse(courseId: string): Promise<ActionResult<{ e
         return { success: true, data: { enrollmentId: data.id, alreadyEnrolled: false } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu na kurs'
-        console.error('[enrollInCourse]', error)
+        logCompat.error('[enrollInCourse]', error)
         return { success: false, error: msg }
     }
 }
@@ -154,7 +156,7 @@ export async function markLessonComplete(
         return { success: true, data: { streak: streakInfo } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd oznaczania lekcji'
-        console.error('[markLessonComplete]', error)
+        logCompat.error('[markLessonComplete]', error)
         return { success: false, error: msg }
     }
 }
@@ -215,7 +217,7 @@ async function bumpLearningStreak(
             learning_streak_last_date: today,
         })
         .eq('id', userId)
-    if (updErr) console.error('[bumpLearningStreak] update profile failed:', updErr)
+    if (updErr) logCompat.error('[bumpLearningStreak] update profile failed:', updErr)
 
     if (milestoneReached) {
         // INSERT loyalty_transactions +25 pkt za passę 7/14/21/... dni
@@ -225,7 +227,7 @@ async function bumpLearningStreak(
             points: 25,
             description: `Passa nauki: ${newCurrent} dni z rzędu`,
         })
-        if (lpErr) console.error('[bumpLearningStreak] loyalty insert failed:', lpErr)
+        if (lpErr) logCompat.error('[bumpLearningStreak] loyalty insert failed:', lpErr)
     }
 
     return { current: newCurrent, milestone_reached: milestoneReached }
@@ -259,7 +261,7 @@ export async function recordLessonAccess(courseId: string, lessonId: string): Pr
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd rejestracji wejścia'
-        console.error('[recordLessonAccess]', error)
+        logCompat.error('[recordLessonAccess]', error)
         return { success: false, error: msg }
     }
 }
@@ -292,7 +294,7 @@ export async function getQuizForAttempt(courseId: string): Promise<ActionResult<
         return { success: true, data: questions }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania quizu'
-        console.error('[getQuizForAttempt]', error)
+        logCompat.error('[getQuizForAttempt]', error)
         return { success: false, error: msg }
     }
 }
@@ -325,7 +327,7 @@ export async function submitQuizAttempt(
         return { success: true, data: result }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu odpowiedzi quizu'
-        console.error('[submitQuizAttempt]', error)
+        logCompat.error('[submitQuizAttempt]', error)
         return { success: false, error: msg }
     }
 }
@@ -390,7 +392,7 @@ export async function submitRating(
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu oceny'
-        console.error('[submitRating]', error)
+        logCompat.error('[submitRating]', error)
         return { success: false, error: msg }
     }
 }
@@ -463,7 +465,7 @@ export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentW
         return { success: true, data: result }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania zapisów'
-        console.error('[getMyEnrollments]', error)
+        logCompat.error('[getMyEnrollments]', error)
         return { success: false, error: msg }
     }
 }
@@ -584,7 +586,7 @@ export async function getRecommendedCourses(): Promise<ActionResult<{ items: Rec
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd rekomendacji'
-        console.error('[getRecommendedCourses]', error)
+        logCompat.error('[getRecommendedCourses]', error)
         return { success: false, error: msg }
     }
 }

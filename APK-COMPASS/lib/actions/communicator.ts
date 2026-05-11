@@ -1,4 +1,6 @@
 
+
+import { logCompat } from '@/lib/logger'
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
@@ -54,7 +56,7 @@ export async function getConversations(): Promise<{ data: Conversation[], error:
         .order('last_read_at', { ascending: false })
 
     if (error) {
-        console.error('Error fetching conversations:', error)
+        logCompat.error('Error fetching conversations:', error)
         return { data: [], error: 'Nie udało się pobrać rozmów' }
     }
 
@@ -202,7 +204,7 @@ export async function getMessages(conversationId: string): Promise<{ data: any[]
         .order('created_at', { ascending: true }) // Older first
 
     if (error) {
-        console.error('Error fetching messages:', error)
+        logCompat.error('Error fetching messages:', error)
         return { data: [], error: error.message }
     }
 
@@ -233,7 +235,7 @@ export async function sendMessage(
         })
 
     if (error) {
-        console.error('Send message error:', error)
+        logCompat.error('Send message error:', error)
         return { error: 'Nie udało się wysłać wiadomości: ' + error.message }
     }
 
@@ -289,7 +291,7 @@ export async function getAllUsersToMessage(): Promise<{ data: any[], error: stri
     const { data, error } = await queryBuilder
 
     if (error) {
-        console.error('Get all users error:', error)
+        logCompat.error('Get all users error:', error)
         return { data: [], error: error.message }
     }
 
@@ -322,7 +324,7 @@ export async function searchUsersToMessage(query: string): Promise<{ data: any[]
     const { data, error } = await queryBuilder
 
     if (error) {
-        console.error('Search users error:', error)
+        logCompat.error('Search users error:', error)
         return { data: [], error: error.message }
     }
 
@@ -425,10 +427,10 @@ export async function sendBroadcastToAll(
             // Fire and forget — don't block the response
             Promise.allSettled(emailPromises).then(results => {
                 const failed = results.filter(r => r.status === 'rejected').length
-                if (failed > 0) console.error(`${failed} emails failed to send`)
+                if (failed > 0) logCompat.error(`${failed} emails failed to send`)
             })
         } catch (emailErr) {
-            console.error('Email sending setup failed:', emailErr)
+            logCompat.error('Email sending setup failed:', emailErr)
             // Don't fail the whole operation if email fails
         }
     }

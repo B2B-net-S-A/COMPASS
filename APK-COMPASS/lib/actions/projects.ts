@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { parseOrThrow } from '@/lib/validators/common'
@@ -36,7 +38,7 @@ export async function deleteProject(projectId: string) {
             .remove([project.file_url])
 
         if (storageError) {
-            console.error('Failed to delete project file:', storageError)
+            logCompat.error('Failed to delete project file:', storageError)
             // We continue to delete the row even if file deletion fails
         }
     }
@@ -172,7 +174,7 @@ export async function getProjectMatches(projectId: string): Promise<ProjectMatch
     })
 
     if (error || !matches) {
-        console.error('Error fetching Stage 1 matches:', error)
+        logCompat.error('Error fetching Stage 1 matches:', error)
         return []
     }
 
@@ -196,12 +198,12 @@ export async function getProjectMatches(projectId: string): Promise<ProjectMatch
                 .in('candidate_id', (matches as CandidateMatch[]).map(m => m.id))
 
             if (dbErr) {
-                console.warn('Database error in match_results:', dbErr.message)
+                logCompat.warn('Database error in match_results:', dbErr.message)
             } else {
                 persistedResults = data || []
             }
         } catch (dbErr) {
-            console.warn('match_results table might be missing, skipping cache:', dbErr)
+            logCompat.warn('match_results table might be missing, skipping cache:', dbErr)
         }
 
         const resultsMap = new Map((persistedResults || []).map(r => [r.candidate_id, r]))
@@ -224,7 +226,7 @@ export async function getProjectMatches(projectId: string): Promise<ProjectMatch
         }).sort((a, b) => b.similarity - a.similarity)
 
     } catch (err) {
-        console.error('Stage 2 failed, falling back to Stage 1:', err)
+        logCompat.error('Stage 2 failed, falling back to Stage 1:', err)
         return (matches as ProjectMatch[]) || []
     }
 }

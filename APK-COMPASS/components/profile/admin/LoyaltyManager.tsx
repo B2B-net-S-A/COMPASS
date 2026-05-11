@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -83,7 +85,7 @@ export function LoyaltyManager() {
                 alert('Błąd: ' + result.error)
             }
         } catch (error) {
-            console.error(error)
+            logCompat.error(error)
             alert('Wystąpił błąd.')
         } finally {
             setLoading(false)

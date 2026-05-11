@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from '@/lib/toast'
@@ -58,7 +60,7 @@ export function useRealtimeNotifications({
                 )
                 .subscribe()
         } catch (e) {
-            console.warn('[Realtime] Subscription failed, falling back to polling:', e)
+            logCompat.warn('[Realtime] Subscription failed, falling back to polling:', e)
         }
 
         return () => {
@@ -66,7 +68,9 @@ export function useRealtimeNotifications({
                 try {
                     const supabase = createClient()
                     supabase.removeChannel(channel)
-                } catch {}
+                } catch {
+                    // Cleanup unmount — patrz useRealtimeTicketComments.
+                }
             }
         }
     }, [userId, enabled, handleNewNotification])

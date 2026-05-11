@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 // Phase 17 — useWorkClock hook.
 // Tracks live work-clock session state on the client, sends heartbeats to the
 // server every ~30s, detects idle/sleep, syncs across multi-tab via
@@ -420,7 +422,7 @@ export function useWorkClock(options: UseWorkClockOptions = {}): UseWorkClockRet
                     keepalive: final,
                 })
             } catch (e) {
-                console.warn('[useWorkClock] heartbeat failed:', e)
+                logCompat.warn('[useWorkClock] heartbeat failed:', e)
             }
         }
 

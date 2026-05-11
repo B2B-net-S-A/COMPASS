@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { getOrCreateMyTimesheet } from '@/lib/actions/internal-timesheet'
 import {
     suggestTimesheetEntriesFromClock,
@@ -45,7 +46,7 @@ export async function TimesheetPanel({ year, month }: Props) {
             timesheet = await getOrCreateMyTimesheet(y, m)
         } catch (e) {
             // Non-fatal: log and continue with empty draft
-            console.error('[TimesheetPanel] auto-fill failed', e)
+            logCompat.error('[TimesheetPanel] auto-fill failed', e)
         }
     }
 

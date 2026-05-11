@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -15,7 +17,7 @@ export async function getSystemSetting(key: string): Promise<string | null> {
         .single()
 
     if (error) {
-        console.error(`Failed to get setting ${key}:`, error)
+        logCompat.error(`Failed to get setting ${key}:`, error)
         return null
     }
 
@@ -55,7 +57,7 @@ export async function updateSystemSetting(key: string, value: string) {
         })
 
     if (error) {
-        console.error('Failed to update setting:', error)
+        logCompat.error('Failed to update setting:', error)
         throw new Error(`Failed to update setting: ${error.message}`)
     }
 
@@ -88,7 +90,7 @@ export async function getAllSystemSettings() {
         .order('key', { ascending: true })
 
     if (error) {
-        console.error('Failed to get settings:', error)
+        logCompat.error('Failed to get settings:', error)
         throw new Error('Failed to fetch settings')
     }
 

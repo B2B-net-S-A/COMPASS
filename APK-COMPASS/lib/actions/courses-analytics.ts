@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 
@@ -115,7 +117,7 @@ export async function getAuthorAnalytics(): Promise<{
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania analityki'
-        console.error('[getAuthorAnalytics]', error)
+        logCompat.error('[getAuthorAnalytics]', error)
         return { success: false, error: msg }
     }
 }
@@ -233,7 +235,7 @@ export async function getAdminLmsAnalytics(): Promise<{
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania analityki'
-        console.error('[getAdminLmsAnalytics]', error)
+        logCompat.error('[getAdminLmsAnalytics]', error)
         return { success: false, error: msg }
     }
 }

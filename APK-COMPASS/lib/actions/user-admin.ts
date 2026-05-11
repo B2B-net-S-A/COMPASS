@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { getSuperAdmins, isSuperAdmin } from '@/lib/auth/super-admins'
@@ -137,7 +139,7 @@ async function fetchProfilesForUsers(userIds: string[]): Promise<Map<string, Pro
         .select('id, full_name, role, avatar_url')
         .in('id', userIds)
     if (error) {
-        console.error('[user-admin] Failed to fetch profiles:', error)
+        logCompat.error('[user-admin] Failed to fetch profiles:', error)
         return new Map()
     }
     const map = new Map<string, ProfileRow>()
@@ -232,7 +234,7 @@ export async function forceSetPassword(targetUserId: string, newPassword: string
         target_user_id: target.id,
     })
     if (rpcError) {
-        console.error('[user-admin] revoke sessions RPC failed:', rpcError)
+        logCompat.error('[user-admin] revoke sessions RPC failed:', rpcError)
         // Non-fatal — password change already revokes refresh tokens
     }
 
@@ -351,7 +353,7 @@ export async function setUserRole(targetUserId: string, newRole: DbRole): Promis
                 action
             )
         } catch (e) {
-            console.error('[setUserRole] role-change email failed:', e)
+            logCompat.error('[setUserRole] role-change email failed:', e)
         }
     }
 }

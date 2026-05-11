@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { logCompat } from '@/lib/logger'
 import { deterministicEmbedding, installVoyageFetchMock, resetVoyageMock, setVoyageMockBehavior } from '@/test/mocks/voyage'
 
 const ORIGINAL_FETCH = global.fetch
@@ -60,8 +61,12 @@ describe('generateEmbedding', () => {
     it('falls back to mock embedding when VOYAGE_API_KEY missing', async () => {
         delete process.env.VOYAGE_API_KEY
         vi.resetModules()
+        // Phase 18.7: po resetModules musimy re-import logCompat — embeddings.ts
+        // dostaje świeży moduł logger po reset, a stary `logCompat` z top-import
+        // wskazuje na stary cached moduł (spy nie chwyta).
+        const { logCompat: freshLogCompat } = await import('@/lib/logger')
+        const warn = vi.spyOn(freshLogCompat, 'warn').mockImplementation(() => {})
         const { generateEmbedding } = await import('../embeddings')
-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
         const v = await generateEmbedding('whatever')
         expect(v).toHaveLength(1024)
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('VOYAGE_API_KEY missing'))
@@ -71,8 +76,9 @@ describe('generateEmbedding', () => {
     it('falls back to mock embedding on 429 rate limit (does not throw)', async () => {
         setVoyageMockBehavior('rate_limit')
         vi.resetModules()
+        const { logCompat: freshLogCompat } = await import('@/lib/logger')
+        const warn = vi.spyOn(freshLogCompat, 'warn').mockImplementation(() => {})
         const { generateEmbedding } = await import('../embeddings')
-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
         const v = await generateEmbedding('x')
         expect(v).toHaveLength(1024)
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('Voyage AI error'))
@@ -82,8 +88,9 @@ describe('generateEmbedding', () => {
     it('falls back to mock embedding on network error', async () => {
         setVoyageMockBehavior('network_error')
         vi.resetModules()
+        const { logCompat: freshLogCompat } = await import('@/lib/logger')
+        const warn = vi.spyOn(freshLogCompat, 'warn').mockImplementation(() => {})
         const { generateEmbedding } = await import('../embeddings')
-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
         const v = await generateEmbedding('x')
         expect(v).toHaveLength(1024)
         warn.mockRestore()

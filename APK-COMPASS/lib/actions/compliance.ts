@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { CURRENT_TERMS_VERSION } from '@/lib/constants/compliance'
 import { getFallbackDoc } from '@/lib/constants/fallback-docs'
@@ -108,7 +110,7 @@ export async function saveUserConsents(input: SaveConsentsInput): Promise<{ erro
   })
 
   if (error) {
-    console.error('[saveUserConsents]', error)
+    logCompat.error('[saveUserConsents]', error)
     return { error: 'Błąd zapisu zgód. Spróbuj ponownie.' }
   }
 

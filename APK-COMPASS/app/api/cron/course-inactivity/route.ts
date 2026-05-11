@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { sendCourseInactivityReminder } from '@/lib/email'
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     if (!headerSecret && querySecret) {
-        console.warn('[cron/course-inactivity] secret in query param — migrate caller to Authorization: Bearer header')
+        logCompat.warn('[cron/course-inactivity] secret in query param — migrate caller to Authorization: Bearer header')
     }
 
     const admin = createServiceClient()
@@ -50,7 +51,7 @@ export async function GET(request: Request) {
         .or(`last_inactivity_email_at.is.null,last_inactivity_email_at.lt.${sevenDaysAgo}`)
         .limit(500) // safety cap
     if (enrErr) {
-        console.error('[course-inactivity] enrollments fetch error:', enrErr)
+        logCompat.error('[course-inactivity] enrollments fetch error:', enrErr)
         return NextResponse.json({ error: enrErr.message }, { status: 500 })
     }
 

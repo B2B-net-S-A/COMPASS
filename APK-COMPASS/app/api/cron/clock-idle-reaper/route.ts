@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { aggregateHeartbeats } from '@/lib/clock/aggregation'
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     if (!headerSecret && querySecret) {
-        console.warn(
+        logCompat.warn(
             '[cron/clock-idle-reaper] secret in query param — migrate caller to Authorization: Bearer header',
         )
     }
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
         .or(`paused_until.is.null,paused_until.lte.${nowTs}`)
 
     if (error) {
-        console.error('[clock-idle-reaper] fetch error:', error)
+        logCompat.error('[clock-idle-reaper] fetch error:', error)
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
             })
             .eq('id', s.id)
         if (updateErr) {
-            console.error('[clock-idle-reaper] close failed for', s.id, updateErr)
+            logCompat.error('[clock-idle-reaper] close failed for', s.id, updateErr)
             continue
         }
         closed++

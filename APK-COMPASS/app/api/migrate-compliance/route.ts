@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   if (!headerSecret && querySecret) {
-    console.warn('[migrate-compliance] secret in query param — migrate caller to Authorization: Bearer header (query strings appear in proxy/Sentry/CF logs)')
+    logCompat.warn('[migrate-compliance] secret in query param — migrate caller to Authorization: Bearer header (query strings appear in proxy/Sentry/CF logs)')
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

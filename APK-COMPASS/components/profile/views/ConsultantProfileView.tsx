@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useEffect } from 'react'
 import { getMyFavoriteProjects } from '@/lib/actions/favorites'
 import { useLayoutPreferences } from '@/lib/contexts/LayoutPreferencesContext'
@@ -86,7 +88,7 @@ export function ConsultantProfileView() {
                     })
                 }
             } catch (e) {
-                console.error('Failed to load profile', e)
+                logCompat.error('Failed to load profile', e)
             }
         }
         const loadFavorites = async () => {
@@ -169,7 +171,7 @@ export function ConsultantProfileView() {
             setIsDirty(false)
         } catch (error: unknown) {
             const err = error as Error
-            console.error(err)
+            logCompat.error(err)
             alert('Wystąpił błąd podczas zapisywania profilu: ' + (err?.message || 'Nieznany błąd'))
         } finally {
             setLoading(false)
@@ -193,7 +195,7 @@ export function ConsultantProfileView() {
                 alert('Avatar zaktualizowany! Odśwież stronę, aby zobaczyć zmiany.')
             }
         } catch (error) {
-            console.error(error)
+            logCompat.error(error)
             alert('Błąd podczas wgrywania avatara.')
         } finally {
             setAvatarLoading(false)
@@ -259,7 +261,7 @@ export function ConsultantProfileView() {
                 alert('Błąd uploadu: ' + result.error)
             }
         } catch (err) {
-            console.error(err)
+            logCompat.error(err)
             alert('Wystąpił krytyczny błąd.')
         } finally {
             setLoading(false)

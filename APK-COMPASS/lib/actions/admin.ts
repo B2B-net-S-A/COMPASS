@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { parseFile } from '@/lib/files/parsers'
 import { generateEmbedding } from '@/lib/ai/embeddings'
@@ -60,7 +62,7 @@ export async function analyzeGap(projectId: string) {
         return analysis
 
     } catch (error) {
-        console.error('Gap Analysis Error:', error)
+        logCompat.error('Gap Analysis Error:', error)
         return { error: 'Nie udało się przeanalizować luki kompetencyjnej' }
     }
 }
@@ -96,7 +98,7 @@ export async function parseProjectSpec(formData: FormData) {
         return extractedData
 
     } catch (error) {
-        console.error('Project Parse Error:', error)
+        logCompat.error('Project Parse Error:', error)
         throw new Error('Failed to parse project spec')
     }
 }

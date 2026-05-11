@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { FavoriteProject } from '@/lib/types'
@@ -65,7 +67,7 @@ export async function toggleFavoriteProject(projectId: string) {
         .maybeSingle()
 
     if (fetchError) {
-        console.error('Error fetching favorite status:', fetchError)
+        logCompat.error('Error fetching favorite status:', fetchError)
         throw new Error('Failed to toggle favorite')
     }
 
@@ -110,7 +112,7 @@ export async function getMyFavoriteProjects(): Promise<(FavoriteProject & { proj
         .order('created_at', { ascending: false })
 
     if (error) {
-        console.error('Failed to get favorites:', error)
+        logCompat.error('Failed to get favorites:', error)
         return []
     }
     return data || []
@@ -126,7 +128,7 @@ export async function getUserFavoriteProjects(userId: string): Promise<(Favorite
         .order('created_at', { ascending: false })
 
     if (error) {
-        console.error('Failed to get user favorites:', error)
+        logCompat.error('Failed to get user favorites:', error)
         return []
     }
     return data || []

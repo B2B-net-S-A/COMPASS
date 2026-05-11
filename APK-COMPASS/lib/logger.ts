@@ -9,7 +9,7 @@
  * the global console.log audit hook.
  *
  * Usage:
- *   import { logger } from '@/lib/logger'
+ *   import { logger, logCompat } from '@/lib/logger'
  *   logger.error({ event: 'auth.callback.failed', error, requestId })
  *   logger.info({ event: 'user.signed_in', userId })
  */
@@ -111,5 +111,32 @@ export const logger = {
     },
     error(payload: LogPayload): void {
         emit('error', payload)
+    },
+}
+
+// ─── Compatibility adapter dla legacy console.* migracji ──────────────────
+// Akceptuje console-style varargs (`logCompat.error('msg', err, ctx)`) i
+// produkuje structured log record z `event = 'legacy.<level>'`. Używane do
+// szybkiej masowej migracji z `console.*` w plikach gdzie pełny refactor na
+// structured logger.error({ event: ..., ...payload }) byłby zbyt drogi.
+//
+// Plan: stopniowo refactorować callsites z `logCompat.error('Resend X failed:', err)`
+// na `logger.error({ event: 'email.resend.X.failed', error: err })` — wtedy
+// Grafana Loki query'e na `{event="email.resend.*"}` zaczynają działać.
+export const logCompat = {
+    debug(...args: unknown[]): void {
+        emit('debug', { event: 'legacy.debug', args: args.map(serializeError) })
+    },
+    info(...args: unknown[]): void {
+        emit('info', { event: 'legacy.info', args: args.map(serializeError) })
+    },
+    log(...args: unknown[]): void {
+        emit('info', { event: 'legacy.log', args: args.map(serializeError) })
+    },
+    warn(...args: unknown[]): void {
+        emit('warn', { event: 'legacy.warn', args: args.map(serializeError) })
+    },
+    error(...args: unknown[]): void {
+        emit('error', { event: 'legacy.error', args: args.map(serializeError) })
     },
 }

@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { aggregateHeartbeats } from '@/lib/clock/aggregation'
 import { logAudit } from '@/lib/actions/audit'
@@ -32,7 +33,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         .lt('started_at', cutoffTs)
 
     if (error) {
-        console.error('[clock-daily-cutoff] fetch error:', error)
+        logCompat.error('[clock-daily-cutoff] fetch error:', error)
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -68,7 +69,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
             })
             .eq('id', s.id)
         if (updateErr) {
-            console.error('[clock-daily-cutoff] close failed for', s.id, updateErr)
+            logCompat.error('[clock-daily-cutoff] close failed for', s.id, updateErr)
             continue
         }
         closed++

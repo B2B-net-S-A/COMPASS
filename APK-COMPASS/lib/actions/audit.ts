@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 
@@ -62,9 +64,9 @@ export async function logAudit(
         })
 
         if (error) {
-            console.error('Failed to write audit log:', error)
+            logCompat.error('Failed to write audit log:', error)
         }
     } catch (e) {
-        console.error('Error logging audit:', e)
+        logCompat.error('Error logging audit:', e)
     }
 }

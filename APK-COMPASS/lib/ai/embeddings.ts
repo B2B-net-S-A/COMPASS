@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 /**
  * Embeddings via Voyage AI (voyage-3-large, 1024 dim).
  *
@@ -23,7 +24,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const cleanText = text.replace(/\n/g, ' ').slice(0, 32000)
 
     if (!apiKey) {
-        console.warn('VOYAGE_API_KEY missing — returning mock embedding')
+        logCompat.warn('VOYAGE_API_KEY missing — returning mock embedding')
         return mockEmbedding()
     }
 
@@ -51,7 +52,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
         return data.data[0]?.embedding ?? mockEmbedding()
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'unknown'
-        console.warn(`Voyage AI error (${msg}) — returning mock embedding`)
+        logCompat.warn(`Voyage AI error (${msg}) — returning mock embedding`)
         return mockEmbedding()
     }
 }

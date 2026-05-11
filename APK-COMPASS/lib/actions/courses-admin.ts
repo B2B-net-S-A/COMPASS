@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { Course, CourseListItem, ActionResult } from '@/lib/types/learning'
@@ -62,7 +64,7 @@ export async function getReviewQueue(): Promise<ActionResult<CourseListItem[]>> 
         return { success: true, data: items }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania kolejki moderacji'
-        console.error('[getReviewQueue]', error)
+        logCompat.error('[getReviewQueue]', error)
         return { success: false, error: msg }
     }
 }
@@ -115,7 +117,7 @@ export async function approveCourse(courseId: string): Promise<ActionResult<{ fi
         return { success: true, data: { firstPublishBonus } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zatwierdzania kursu'
-        console.error('[approveCourse]', error)
+        logCompat.error('[approveCourse]', error)
         return { success: false, error: msg }
     }
 }
@@ -175,7 +177,7 @@ export async function rejectCourse(courseId: string, reason: string): Promise<Ac
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd odrzucania kursu'
-        console.error('[rejectCourse]', error)
+        logCompat.error('[rejectCourse]', error)
         return { success: false, error: msg }
     }
 }
@@ -216,7 +218,7 @@ export async function archiveCourse(courseId: string): Promise<ActionResult<void
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd archiwizacji'
-        console.error('[archiveCourse]', error)
+        logCompat.error('[archiveCourse]', error)
         return { success: false, error: msg }
     }
 }

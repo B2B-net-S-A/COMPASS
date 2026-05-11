@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -172,7 +174,7 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
                         ]
                         changed = true
                     } catch (err) {
-                        console.error(`Failed to fetch summary for project ${id}:`, err)
+                        logCompat.error(`Failed to fetch summary for project ${id}:`, err)
                     }
                 }
             }))

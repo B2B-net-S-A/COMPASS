@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -70,7 +72,7 @@ export async function cleanDuplicateCandidates() {
                 .in('id', idsToDelete)
 
             if (deleteError) {
-                console.error('Delete Error:', deleteError)
+                logCompat.error('Delete Error:', deleteError)
                 return { count: 0, message: `Błąd usuwania API: ${deleteError.message}` }
             }
         }
@@ -78,7 +80,7 @@ export async function cleanDuplicateCandidates() {
         try {
             revalidatePath('/admin/candidates')
         } catch (e) {
-            console.warn('Revalidate path failed:', e)
+            logCompat.warn('Revalidate path failed:', e)
         }
 
         return {
@@ -89,7 +91,7 @@ export async function cleanDuplicateCandidates() {
         }
 
     } catch (err: any) {
-        console.error('Maintenance Action Critical Error:', err)
+        logCompat.error('Maintenance Action Critical Error:', err)
         return { count: 0, message: `Błąd krytyczny serwera: ${err.message || 'Nieznany błąd'}` }
     }
 }

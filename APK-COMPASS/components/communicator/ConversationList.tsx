@@ -1,4 +1,6 @@
 
+
+import { logCompat } from '@/lib/logger'
 'use client'
 
 import { useState } from 'react'
@@ -36,7 +38,7 @@ export function ConversationList({ conversations, onSelect, currentUser, onClose
         setSearching(true)
         const { data, error } = await searchUsersToMessage(query)
         if (error) {
-            console.error(error)
+            logCompat.error(error)
         } else {
             setSearchResults(data)
         }

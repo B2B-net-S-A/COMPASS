@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import {
@@ -171,7 +173,7 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
                 input.startDate,
                 input.endDate,
                 input.note ?? null,
-            ).catch((e) => console.error('[createLeaveRequest] notify failed:', e))
+            ).catch((e) => logCompat.error('[createLeaveRequest] notify failed:', e))
         }
         // H3.3: Push do adminów
         const adminClient = createServiceClient()
@@ -182,7 +184,7 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
                 body: `${requesterName}: ${input.startDate} – ${input.endDate}`,
                 url: '/internal/admin?tab=leave-requests',
                 tag: `leave-new-${inserted.id}`,
-            }).catch((e) => console.error('[createLeaveRequest] admin push failed:', e))
+            }).catch((e) => logCompat.error('[createLeaveRequest] admin push failed:', e))
         }
     }
 
@@ -248,7 +250,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
 
         // Cleanup attendance records (remove op)
         await syncAttendanceFromLeave(id, row.user_id, 'remove').catch((e) =>
-            console.error('[cancelMyLeaveRequest] attendance cleanup failed:', e),
+            logCompat.error('[cancelMyLeaveRequest] attendance cleanup failed:', e),
         )
 
         await logAudit(ctx.userId, 'LEAVE_CANCELLED', {
@@ -263,7 +265,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
         const userName = await fetchUserDisplayName(ctx.userId, ctx.email)
         if (adminEmails.length > 0) {
             sendLeaveCancelledByUser(adminEmails, userName, row.leave_type, row.start_date, row.end_date).catch((e) =>
-                console.error('[cancelMyLeaveRequest] admin email failed:', e),
+                logCompat.error('[cancelMyLeaveRequest] admin email failed:', e),
             )
         }
 
@@ -279,7 +281,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
                 body: `${userName}: ${row.start_date} – ${row.end_date}`,
                 url: '/internal/admin?tab=leave-requests',
                 tag: `leave-cancelled-${id}`,
-            }).catch((e) => console.error('[cancelMyLeaveRequest] admin push failed:', e))
+            }).catch((e) => logCompat.error('[cancelMyLeaveRequest] admin push failed:', e))
         }
         return
     }
@@ -439,7 +441,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
     if (error) throw new Error(`Błąd akceptacji: ${error.message}`)
 
     await syncAttendanceFromLeave(id, row.user_id, 'create').catch((e) =>
-        console.error('[approveLeaveRequest] attendance sync failed:', e),
+        logCompat.error('[approveLeaveRequest] attendance sync failed:', e),
     )
 
     await logAudit(ctx.userId, 'LEAVE_APPROVED', { leave_id: id, target_user_id: row.user_id })
@@ -455,7 +457,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
             row.start_date,
             row.end_date,
             decisionNote,
-        ).catch((e) => console.error('[approveLeaveRequest] notify failed:', e))
+        ).catch((e) => logCompat.error('[approveLeaveRequest] notify failed:', e))
     }
     // H3.3: Push notification (fire-and-forget)
     sendPushToUserId(row.user_id, {
@@ -463,7 +465,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
         body: `Twój wniosek (${row.start_date} – ${row.end_date}) został zaakceptowany.`,
         url: '/internal?tab=leave',
         tag: `leave-${id}`,
-    }).catch((e) => console.error('[approveLeaveRequest] push failed:', e))
+    }).catch((e) => logCompat.error('[approveLeaveRequest] push failed:', e))
 }
 
 export async function rejectLeaveRequest(id: string, decisionNote: string): Promise<void> {
@@ -506,7 +508,7 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
             row.start_date,
             row.end_date,
             decisionNote,
-        ).catch((e) => console.error('[rejectLeaveRequest] notify failed:', e))
+        ).catch((e) => logCompat.error('[rejectLeaveRequest] notify failed:', e))
     }
     // H3.3: Push (fire-and-forget)
     sendPushToUserId(row.user_id, {
@@ -514,7 +516,7 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
         body: `Powód: ${decisionNote.slice(0, 100)}`,
         url: '/internal?tab=leave',
         tag: `leave-${id}`,
-    }).catch((e) => console.error('[rejectLeaveRequest] push failed:', e))
+    }).catch((e) => logCompat.error('[rejectLeaveRequest] push failed:', e))
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
@@ -591,7 +593,7 @@ async function syncAttendanceFromLeave(
         const { error } = await admin
             .from('attendance_records')
             .upsert(rows, { onConflict: 'user_id,date' })
-        if (error) console.error('[syncAttendanceFromLeave] upsert error:', error)
+        if (error) logCompat.error('[syncAttendanceFromLeave] upsert error:', error)
     } else {
         const { error } = await admin
             .from('attendance_records')
@@ -600,6 +602,6 @@ async function syncAttendanceFromLeave(
             .gte('date', leave.start_date)
             .lte('date', leave.end_date)
             .in('status', ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'training', 'other'])
-        if (error) console.error('[syncAttendanceFromLeave] delete error:', error)
+        if (error) logCompat.error('[syncAttendanceFromLeave] delete error:', error)
     }
 }

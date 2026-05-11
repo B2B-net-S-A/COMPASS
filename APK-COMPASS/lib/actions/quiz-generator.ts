@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { chatJSON } from '@/lib/ai/llm'
 import type { ActionResult, QuizQuestionInput } from '@/lib/types/learning'
@@ -145,7 +147,7 @@ Odpowiedź w JSON:
         return { success: true, data: { questions: validated } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd generowania quizu'
-        console.error('[generateQuizFromCourse]', error)
+        logCompat.error('[generateQuizFromCourse]', error)
         return { success: false, error: msg }
     }
 }

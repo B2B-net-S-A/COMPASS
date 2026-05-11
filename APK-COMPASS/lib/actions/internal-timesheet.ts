@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import {
@@ -455,7 +457,7 @@ export async function updateEntry(input: UpdateEntryInput): Promise<void> {
                 entryId: input.entryId,
                 declaredHours: Number(row.hours),
                 trackedHours: row.tracked_hours == null ? null : Number(row.tracked_hours),
-            }).catch((e) => console.error('[updateEntry] correction flag failed:', e))
+            }).catch((e) => logCompat.error('[updateEntry] correction flag failed:', e))
         }
     }
 }
@@ -513,7 +515,7 @@ export async function submitTimesheet(timesheetId: string): Promise<void> {
     const requesterName = await fetchUserDisplayName(ctx.userId, ctx.email)
     if (adminEmails.length > 0) {
         sendTimesheetSubmitted(adminEmails, requesterName, header.year, header.month).catch((e) =>
-            console.error('[submitTimesheet] notify failed:', e),
+            logCompat.error('[submitTimesheet] notify failed:', e),
         )
     }
     const adminClient = createServiceClient()
@@ -524,7 +526,7 @@ export async function submitTimesheet(timesheetId: string): Promise<void> {
             body: `${requesterName}: ${header.year}-${String(header.month).padStart(2, '0')}`,
             url: '/internal/admin?tab=timesheets',
             tag: `timesheet-submit-${header.year}-${header.month}-${header.user_id}`,
-        }).catch((e) => console.error('[submitTimesheet] admin push failed:', e))
+        }).catch((e) => logCompat.error('[submitTimesheet] admin push failed:', e))
     }
 }
 
@@ -575,7 +577,7 @@ export async function approveTimesheet(timesheetId: string): Promise<void> {
             'approved',
             header.year,
             header.month,
-        ).catch((e) => console.error('[approveTimesheet] notify failed:', e))
+        ).catch((e) => logCompat.error('[approveTimesheet] notify failed:', e))
     }
     // H3.3: Push notification
     sendPushToUserId(header.user_id, {
@@ -583,7 +585,7 @@ export async function approveTimesheet(timesheetId: string): Promise<void> {
         body: `${header.year}-${String(header.month).padStart(2, '0')} został zaakceptowany.`,
         url: `/internal/timesheet/${header.year}/${header.month}/pdf`,
         tag: `timesheet-${header.year}-${header.month}`,
-    }).catch((e) => console.error('[approveTimesheet] push failed:', e))
+    }).catch((e) => logCompat.error('[approveTimesheet] push failed:', e))
 }
 
 export async function rejectTimesheet(timesheetId: string, reason: string): Promise<void> {
@@ -632,7 +634,7 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
             header.year,
             header.month,
             reason,
-        ).catch((e) => console.error('[rejectTimesheet] notify failed:', e))
+        ).catch((e) => logCompat.error('[rejectTimesheet] notify failed:', e))
     }
     // H3.3: Push notification
     sendPushToUserId(header.user_id, {
@@ -640,7 +642,7 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
         body: `Powód: ${reason.slice(0, 100)}`,
         url: `/internal/timesheet/${header.year}/${header.month}`,
         tag: `timesheet-${header.year}-${header.month}`,
-    }).catch((e) => console.error('[rejectTimesheet] push failed:', e))
+    }).catch((e) => logCompat.error('[rejectTimesheet] push failed:', e))
 }
 
 export async function unlockTimesheet(timesheetId: string): Promise<void> {

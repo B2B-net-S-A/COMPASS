@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
         .lt('ts_bucket_5min', cutoff)
 
     if (error) {
-        console.error('[clock-route-retention] delete error:', error)
+        logCompat.error('[clock-route-retention] delete error:', error)
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 

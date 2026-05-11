@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -63,7 +65,7 @@ export function AdminLoyaltyOverview() {
                 setStats(result.stats || null)
             }
         } catch (e) {
-            console.error('Error loading consultants loyalty:', e)
+            logCompat.error('Error loading consultants loyalty:', e)
         } finally {
             setLoading(false)
         }

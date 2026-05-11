@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { generateEmbedding } from '@/lib/ai/embeddings'
@@ -87,7 +89,7 @@ export async function regenerateCourseEmbedding(courseId: string): Promise<Actio
         return { success: true, data: { generated: true } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd regeneracji embedding'
-        console.error('[regenerateCourseEmbedding]', error)
+        logCompat.error('[regenerateCourseEmbedding]', error)
         return { success: false, error: msg }
     }
 }
@@ -150,7 +152,7 @@ export async function getRecommendedCoursesV2(): Promise<
         })
 
         if (matchErr) {
-            console.warn('[getRecommendedCoursesV2] match_courses RPC failed, fallback to tag overlap', matchErr)
+            logCompat.warn('[getRecommendedCoursesV2] match_courses RPC failed, fallback to tag overlap', matchErr)
             // Fallback do legacy
             const { getRecommendedCourses } = await import('./course-learning')
             const legacy = await getRecommendedCourses()
@@ -227,7 +229,7 @@ export async function getRecommendedCoursesV2(): Promise<
         return { success: true, data: { items, method: 'embeddings' } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd rekomendacji'
-        console.error('[getRecommendedCoursesV2]', error)
+        logCompat.error('[getRecommendedCoursesV2]', error)
         return { success: false, error: msg }
     }
 }
@@ -370,7 +372,7 @@ Tylko pola które są w zapytaniu. Nie zmyślaj.`,
         return { success: true, data: { items, parsedQuery: parsed } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wyszukiwania'
-        console.error('[smartSearchCourses]', error)
+        logCompat.error('[smartSearchCourses]', error)
         return { success: false, error: msg }
     }
 }

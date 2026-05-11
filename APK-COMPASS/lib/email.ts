@@ -1,4 +1,4 @@
-import { logger } from '@/lib/logger'
+import { logger, logCompat } from '@/lib/logger'
 import { sendEmail, type SendResult } from '@/lib/email/sender'
 
 // Phase 17b PR-E — Provider-agnostic email send.
@@ -310,11 +310,11 @@ export async function sendLeaveRequestSubmitted(
                 subject,
                 html,
             })
-            if (error) console.error('Resend leave-submitted error:', error)
+            if (error) logCompat.error('Resend leave-submitted error:', error)
         }
         return { success: true }
     } catch (err) {
-        console.error('Leave-submitted email failed:', err)
+        logCompat.error('Leave-submitted email failed:', err)
         return { success: false }
     }
 }
@@ -359,11 +359,11 @@ export async function sendLeaveCancelledByUser(
                 subject,
                 html,
             })
-            if (error) console.error('Resend leave-cancelled error:', error)
+            if (error) logCompat.error('Resend leave-cancelled error:', error)
         }
         return { success: true }
     } catch (err) {
-        console.error('Leave-cancelled email failed:', err)
+        logCompat.error('Leave-cancelled email failed:', err)
         return { success: false }
     }
 }
@@ -401,12 +401,12 @@ export async function sendLeaveDecision(
             html: wrapHrEmail({ tag: 'Decyzja urlopowa', heading: subject, bodyHtml, accent }),
         })
         if (error) {
-            console.error('Resend leave-decision error:', error)
+            logCompat.error('Resend leave-decision error:', error)
             return { success: false }
         }
         return { success: true }
     } catch (err) {
-        console.error('Leave-decision email failed:', err)
+        logCompat.error('Leave-decision email failed:', err)
         return { success: false }
     }
 }
@@ -434,11 +434,11 @@ export async function sendTimesheetSubmitted(
                 subject,
                 html,
             })
-            if (error) console.error('Resend timesheet-submitted error:', error)
+            if (error) logCompat.error('Resend timesheet-submitted error:', error)
         }
         return { success: true }
     } catch (err) {
-        console.error('Timesheet-submitted email failed:', err)
+        logCompat.error('Timesheet-submitted email failed:', err)
         return { success: false }
     }
 }
@@ -473,12 +473,12 @@ export async function sendTimesheetDecision(
             html: wrapHrEmail({ tag: 'Decyzja timesheet', heading: subject, bodyHtml, accent }),
         })
         if (error) {
-            console.error('Resend timesheet-decision error:', error)
+            logCompat.error('Resend timesheet-decision error:', error)
             return { success: false }
         }
         return { success: true }
     } catch (err) {
-        console.error('Timesheet-decision email failed:', err)
+        logCompat.error('Timesheet-decision email failed:', err)
         return { success: false }
     }
 }
@@ -532,12 +532,12 @@ export async function sendCourseInactivityReminder(
             }),
         })
         if (error) {
-            console.error('Resend course-inactivity error:', error)
+            logCompat.error('Resend course-inactivity error:', error)
             return { success: false }
         }
         return { success: true }
     } catch (err) {
-        console.error('Course-inactivity email failed:', err)
+        logCompat.error('Course-inactivity email failed:', err)
         return { success: false }
     }
 }
@@ -648,12 +648,12 @@ export async function sendTimesheetReminder(
             }),
         })
         if (error) {
-            console.error('Resend timesheet-reminder error:', error)
+            logCompat.error('Resend timesheet-reminder error:', error)
             return { success: false }
         }
         return { success: true }
     } catch (err) {
-        console.error('Timesheet-reminder email failed:', err)
+        logCompat.error('Timesheet-reminder email failed:', err)
         return { success: false }
     }
 }
@@ -715,12 +715,12 @@ export async function sendClockDailySummary(
             }),
         })
         if (error) {
-            console.error('Resend clock-daily-summary error:', error)
+            logCompat.error('Resend clock-daily-summary error:', error)
             return { success: false }
         }
         return { success: true }
     } catch (err) {
-        console.error('Clock-daily-summary email failed:', err)
+        logCompat.error('Clock-daily-summary email failed:', err)
         return { success: false }
     }
 }
@@ -765,12 +765,12 @@ export async function sendClockAutoStopped(
             html: wrapHrEmail({ tag: 'Auto-zamknięcie sesji', heading: subject, bodyHtml, accent: '#f59e0b' }),
         })
         if (error) {
-            console.error('Resend clock-auto-stop error:', error)
+            logCompat.error('Resend clock-auto-stop error:', error)
             return { success: false }
         }
         return { success: true }
     } catch (err) {
-        console.error('Clock auto-stop email failed:', err)
+        logCompat.error('Clock auto-stop email failed:', err)
         return { success: false }
     }
 }
@@ -810,12 +810,12 @@ export async function sendCorrectionDecision(
             html: wrapHrEmail({ tag: 'Decyzja: korekta godzin', heading: subject, bodyHtml, accent }),
         })
         if (error) {
-            console.error('Resend correction-decision error:', error)
+            logCompat.error('Resend correction-decision error:', error)
             return { success: false }
         }
         return { success: true }
     } catch (err) {
-        console.error('Correction-decision email failed:', err)
+        logCompat.error('Correction-decision email failed:', err)
         return { success: false }
     }
 }

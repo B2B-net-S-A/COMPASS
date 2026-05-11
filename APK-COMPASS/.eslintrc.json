@@ -5,7 +5,7 @@
     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     "react/no-unescaped-entities": "warn",
     "react-hooks/exhaustive-deps": "warn",
-    "no-console": ["warn", { "allow": ["warn"] }]
+    "no-console": "error"
   },
   "overrides": [
     {

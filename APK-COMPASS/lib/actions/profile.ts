@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/ai/embeddings'
@@ -80,7 +82,7 @@ export async function updateProfileFull(
             try {
                 updates.embedding = await generateEmbedding(data.bio)
             } catch (e) {
-                console.warn('[ProfileUpdate] Failed to generate embedding:', e)
+                logCompat.warn('[ProfileUpdate] Failed to generate embedding:', e)
             }
         }
 
@@ -94,7 +96,7 @@ export async function updateProfileFull(
             const looksLikeMissingColumn = msg.includes('column') && (msg.includes('phone') || msg.includes('does not exist') || msg.includes('undefined'))
             if (looksLikeMissingColumn && updates.phone !== undefined) {
                 const { phone: _p, ...updatesWithoutPhone } = updates
-                console.warn('[ProfileUpdate] Retrying without phone (column may be missing):', _p)
+                logCompat.warn('[ProfileUpdate] Retrying without phone (column may be missing):', _p)
                 const retry = await supabase.from('profiles').update(updatesWithoutPhone).eq('id', user.id)
                 if (retry.error) {
                     return { success: false, error: `Błąd zapisu: ${retry.error.message}` }
@@ -113,7 +115,7 @@ export async function updateProfileFull(
         return { success: true }
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        console.error('[ProfileUpdate] Unexpected error:', e)
+        logCompat.error('[ProfileUpdate] Unexpected error:', e)
         return { success: false, error: msg || 'Nie udało się zapisać zmian. Spróbuj ponownie.' }
     }
 }

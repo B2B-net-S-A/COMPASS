@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createMockSupabaseClient, getBypassEmail, isSupabaseConfigured, BYPASS_USER } from './mock-client'
@@ -28,7 +29,7 @@ export function createClient() {
         // correctly with RLS policies. The bypass was only needed when
         // Supabase wasn't configured.
         if (emergencyUser) {
-            console.info('[SERVER] Bypass cookie detected but Supabase is configured — ignoring bypass, using normal auth flow.')
+            logCompat.info('[SERVER] Bypass cookie detected but Supabase is configured — ignoring bypass, using normal auth flow.')
         }
 
         // ─── Normal authenticated flow ─────────────────────────────────

@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useTransition } from 'react'
 import { Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -47,7 +49,7 @@ export function FavoriteButton({
                     onToggle?.(result.is_favorite)
                 }
             } catch (err) {
-                console.error('Failed to toggle favorite:', err)
+                logCompat.error('Failed to toggle favorite:', err)
                 // Revert on error
                 onToggle?.(isFavorite)
             }

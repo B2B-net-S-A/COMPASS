@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useRef } from 'react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -75,7 +77,7 @@ export function WelcomePanel({
                 toastSuccess(locale === 'pl' ? 'Zdjęcie profilowe zostało zaktualizowane!' : 'Zdjęcie profilowe zostało zaktualizowane!')
             }
         } catch (error) {
-            console.error('Avatar upload error:', error)
+            logCompat.error('Avatar upload error:', error)
             toast.error(locale === 'pl' ? 'Nie udało się wgrać zdjęcia. Spróbuj ponownie.' : 'Nie udało się wgrać zdjęcia. Spróbuj ponownie.')
         } finally {
             setAvatarLoading(false)

@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import {
@@ -51,7 +53,7 @@ export async function subscribePush(
         return { success: true }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu subscription'
-        console.error('[subscribePush]', error)
+        logCompat.error('[subscribePush]', error)
         return { success: false, error: msg }
     }
 }
@@ -76,7 +78,7 @@ export async function unsubscribePush(endpoint: string): Promise<{ success: bool
         return { success: true }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd unsubscribe'
-        console.error('[unsubscribePush]', error)
+        logCompat.error('[unsubscribePush]', error)
         return { success: false, error: msg }
     }
 }
@@ -121,7 +123,7 @@ export async function sendPushToUserId(
 
         return { sent: result.sent, failed: result.failed }
     } catch (error: unknown) {
-        console.error('[sendPushToUserId]', error)
+        logCompat.error('[sendPushToUserId]', error)
         return { sent: 0, failed: 0 }
     }
 }

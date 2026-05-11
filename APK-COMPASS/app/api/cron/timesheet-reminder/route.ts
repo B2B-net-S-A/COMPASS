@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { sendTimesheetReminder, type TimesheetReminderPhase } from '@/lib/email'
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     if (!headerSecret && querySecret) {
-        console.warn('[cron/timesheet-reminder] secret in query param — migrate caller to Authorization: Bearer header')
+        logCompat.warn('[cron/timesheet-reminder] secret in query param — migrate caller to Authorization: Bearer header')
     }
 
     const now = new Date()
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
         .select('id, full_name, email, employment_type')
         .in('role', ['internal', 'admin'])
     if (employeesErr) {
-        console.error('[timesheet-reminder] employees fetch error:', employeesErr)
+        logCompat.error('[timesheet-reminder] employees fetch error:', employeesErr)
         return NextResponse.json({ error: employeesErr.message }, { status: 500 })
     }
 

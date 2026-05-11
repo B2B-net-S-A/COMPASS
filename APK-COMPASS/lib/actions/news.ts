@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type {
@@ -91,7 +93,7 @@ export async function listNewsForUser(): Promise<NewsActionResult<NewsPostListIt
         return { success: true, data: enriched }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania newsów'
-        console.error('[listNewsForUser]', error)
+        logCompat.error('[listNewsForUser]', error)
         return { success: false, error: msg }
     }
 }
@@ -200,7 +202,7 @@ export async function createNewsPost(input: CreateNewsPostInput): Promise<NewsAc
         return { success: true, data: { id: data.id, slug: data.slug } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd publikacji posta'
-        console.error('[createNewsPost]', error)
+        logCompat.error('[createNewsPost]', error)
         return { success: false, error: msg }
     }
 }

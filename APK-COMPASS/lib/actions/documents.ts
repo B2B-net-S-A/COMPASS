@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { indexDocumentText } from './document-indexing'
@@ -91,7 +93,7 @@ export async function uploadNewDocument(formData: FormData) {
         }
     } catch (e) {
         // Non-critical — don't fail upload if indexing fails
-        console.warn('AI indexing skipped:', e)
+        logCompat.warn('AI indexing skipped:', e)
     }
 
     revalidatePath('/documents')
@@ -223,7 +225,7 @@ export async function deleteDocument(documentId: string) {
             .from('documents')
             .remove(filePaths)
         if (storageError) {
-            console.error('Storage cleanup warning:', storageError.message)
+            logCompat.error('Storage cleanup warning:', storageError.message)
         }
     }
 
@@ -264,7 +266,7 @@ export async function getUnifiedDocuments(ownerId?: string, isPublic: boolean = 
     const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
-        console.error('Fetch error:', error)
+        logCompat.error('Fetch error:', error)
         return []
     }
 

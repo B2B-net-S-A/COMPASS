@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 
@@ -31,7 +33,7 @@ export async function addKnowledgeDocument(content: string, category: string, me
         .single()
 
     if (error) {
-        console.error('addKnowledgeDocument error:', error.code, error.message)
+        logCompat.error('addKnowledgeDocument error:', error.code, error.message)
         throw new Error(`Failed to add knowledge: ${error.message} (code: ${error.code})`)
     }
     return data
@@ -51,7 +53,7 @@ export async function getKnowledgeHistory(category?: string) {
 
     const { data, error } = await query
     if (error) {
-        console.error('getKnowledgeHistory error:', error)
+        logCompat.error('getKnowledgeHistory error:', error)
         throw new Error(`Failed to fetch knowledge: ${error.message}`)
     }
     return data || []
@@ -133,7 +135,7 @@ export async function uploadKnowledgeFile(
                     })
 
                 if (insertError) {
-                    console.error(`Insert error chunk ${i}:`, insertError.message, insertError.code)
+                    logCompat.error(`Insert error chunk ${i}:`, insertError.message, insertError.code)
                     // If first chunk fails with RLS/permission error, bail early
                     if (i === 0 && (insertError.code === '42501' || insertError.message.includes('policy'))) {
                         return { success: false, chunksIndexed: 0, fileName, error: `Brak uprawnień do zapisu w bazie wiedzy (RLS). Kod: ${insertError.code}` }
@@ -142,7 +144,7 @@ export async function uploadKnowledgeFile(
                     indexed++
                 }
             } catch (embErr: any) {
-                console.error(`Error indexing chunk ${i}:`, embErr)
+                logCompat.error(`Error indexing chunk ${i}:`, embErr)
                 if (i === 0) {
                     return { success: false, chunksIndexed: 0, fileName, error: `Błąd indeksowania: ${embErr.message}` }
                 }
@@ -151,7 +153,7 @@ export async function uploadKnowledgeFile(
 
         return { success: true, chunksIndexed: indexed, fileName }
     } catch (err: any) {
-        console.error('Upload knowledge file error:', err)
+        logCompat.error('Upload knowledge file error:', err)
         return { success: false, chunksIndexed: 0, fileName, error: err.message || 'Błąd przetwarzania pliku' }
     }
 }

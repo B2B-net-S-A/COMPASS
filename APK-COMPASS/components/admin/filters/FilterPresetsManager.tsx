@@ -33,7 +33,7 @@ export function FilterPresetsManager({ currentFilters, onApplyPreset, storageKey
 
     const savePresets = (updated: FilterPreset[]) => {
         setPresets(updated)
-        try { localStorage.setItem(fullKey, JSON.stringify(updated)) } catch {}
+        try { localStorage.setItem(fullKey, JSON.stringify(updated)) } catch { /* localStorage quota exceeded — preset nie zapisany, ale UI state OK */ }
     }
 
     const handleSave = () => {

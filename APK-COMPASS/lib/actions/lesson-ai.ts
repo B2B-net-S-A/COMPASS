@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { chatText } from '@/lib/ai/llm'
 import type { ActionResult } from '@/lib/types/learning'
@@ -102,7 +104,7 @@ Zachowuj zwięzłość — każdy bullet do 25 słów.`,
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd generowania streszczenia'
-        console.error('[getOrGenerateLessonSummary]', error)
+        logCompat.error('[getOrGenerateLessonSummary]', error)
         return { success: false, error: msg }
     }
 }

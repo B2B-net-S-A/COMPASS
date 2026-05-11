@@ -121,7 +121,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
                 setColorModeState(storedMode)
                 applyColorMode(storedMode)
             }
-        } catch {}
+        } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
 
         // Phase 18.7: usunąłem DB sync — kolumna `theme` nie istnieje w
         // profiles. Theme to UX preference per-device (localStorage wystarcza),
@@ -132,20 +132,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const setTheme = useCallback((id: ThemeId) => {
         setThemeState(id)
         applyThemeClass(id)
-        try { localStorage.setItem(STORAGE_KEY, id) } catch {}
+        try { localStorage.setItem(STORAGE_KEY, id) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
     }, [])
 
     const setColorMode = useCallback((mode: ColorMode) => {
         setColorModeState(mode)
         applyColorMode(mode)
-        try { localStorage.setItem(MODE_STORAGE_KEY, mode) } catch {}
+        try { localStorage.setItem(MODE_STORAGE_KEY, mode) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
     }, [])
 
     const toggleColorMode = useCallback(() => {
         setColorModeState(prev => {
             const next = prev === 'dark' ? 'light' : 'dark'
             applyColorMode(next)
-            try { localStorage.setItem(MODE_STORAGE_KEY, next) } catch {}
+            try { localStorage.setItem(MODE_STORAGE_KEY, next) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
             return next
         })
     }, [])

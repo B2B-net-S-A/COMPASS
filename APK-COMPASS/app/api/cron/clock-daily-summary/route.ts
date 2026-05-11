@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { findPeakActivityWindow } from '@/lib/clock/aggregation'
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     if (!headerSecret && querySecret) {
-        console.warn(
+        logCompat.warn(
             '[cron/clock-daily-summary] secret in query param — migrate caller to Authorization: Bearer header',
         )
     }
