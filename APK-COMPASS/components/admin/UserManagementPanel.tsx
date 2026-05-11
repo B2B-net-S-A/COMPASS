@@ -28,12 +28,14 @@ import {
     Users,
     Ban,
     UserCog,
+    UserPlus,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { SetPasswordDialog } from '@/components/admin/SetPasswordDialog'
 import { EmployeeProfileDialog } from '@/components/admin/EmployeeProfileDialog'
+import { InviteUserDialog } from '@/components/admin/InviteUserDialog'
 import {
     listAllUsers,
     sendPasswordResetLink,
@@ -59,6 +61,7 @@ export function UserManagementPanel() {
     const [confirm, ConfirmUI] = useConfirm()
     const [passwordTarget, setPasswordTarget] = useState<UserAdminItem | null>(null)
     const [profileTarget, setProfileTarget] = useState<UserAdminItem | null>(null)
+    const [inviteOpen, setInviteOpen] = useState(false)
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Debounce search input (300 ms).
@@ -224,15 +227,21 @@ export function UserManagementPanel() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-2">
-                <h3 className="text-lg font-medium flex items-center gap-2">
-                    <Users className="h-5 w-5 text-primary" />
-                    Zarządzanie użytkownikami
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                    Lista wszystkich kont w systemie. Możesz wysłać link resetu hasła, ustawić nowe hasło,
-                    wylogować sesje oraz zablokować dostęp.
-                </p>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex flex-col gap-2">
+                    <h3 className="text-lg font-medium flex items-center gap-2">
+                        <Users className="h-5 w-5 text-primary" />
+                        Zarządzanie użytkownikami
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                        Lista wszystkich kont w systemie. Możesz wysłać link resetu hasła, ustawić nowe hasło,
+                        wylogować sesje oraz zablokować dostęp.
+                    </p>
+                </div>
+                <Button onClick={() => setInviteOpen(true)} className="shrink-0">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Zaproś użytkownika
+                </Button>
             </div>
 
             <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 text-xs text-blue-200">
@@ -449,6 +458,11 @@ export function UserManagementPanel() {
                     onSuccess={loadUsers}
                 />
             )}
+            <InviteUserDialog
+                open={inviteOpen}
+                onOpenChange={setInviteOpen}
+                onSuccess={loadUsers}
+            />
         </div>
     )
 }

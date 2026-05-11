@@ -435,3 +435,90 @@ export async function getEmployeeProfileFields(targetUserId: string): Promise<Em
         work_start_date: data?.work_start_date ?? null,
     }
 }
+
+// ─── Phase: admin invite flow ────────────────────────────────────────────────
+// Super Admin tworzy konto dla pracownika bez O365 (np. biurowa Pani z HR).
+// Supabase wysyła email z linkiem aktywacyjnym → user ustawia hasło → automatic
+// login → redirect na /internal (jeśli internal) lub /home (jeśli consultant).
+//
+// Nie tworzy adminów — Super Admin role dodaje się przez /admin/settings/admins
+// (admin_access_list), które syncRole() automatycznie podbija przy loginie.
+
+export interface InviteUserInput {
+    email: string
+    fullName?: string
+    role: 'consultant' | 'internal'
+    employmentType?: 'uop' | 'b2b'
+    workStartDate?: string | null
+}
+
+export async function inviteUser(input: InviteUserInput): Promise<{ userId: string }> {
+    const { user: actor } = await requireSuperAdmin()
+
+    const email = input.email.trim().toLowerCase()
+    if (!email.endsWith('@b2bnetwork.pl')) {
+        throw new Error('Email musi być w domenie @b2bnetwork.pl')
+    }
+    if (input.role !== 'consultant' && input.role !== 'internal') {
+        throw new Error('Niedozwolona rola. Wybierz Konsultant IT lub Konsultant biurowy. Super Admina dodaje się przez Administratorzy.')
+    }
+
+    const admin = createServiceClient()
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || ''
+    const redirectTo = appUrl ? `${appUrl}/auth/callback` : undefined
+
+    // 1. Invite via Supabase Auth — wysyła email z linkiem aktywacyjnym.
+    //    handle_new_user trigger w DB stworzy automatycznie row w `profiles`
+    //    z domyślnym role='consultant'. Overrideujemy w kroku 2.
+    const { data, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+        data: {
+            full_name: input.fullName?.trim() || undefined,
+        },
+        redirectTo,
+    })
+    if (inviteErr) {
+        const msg = inviteErr.message?.toLowerCase() ?? ''
+        if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
+            throw new Error('Konto z tym adresem email już istnieje.')
+        }
+        throw new Error(`Błąd zaproszenia: ${inviteErr.message}`)
+    }
+    const userId = data?.user?.id
+    if (!userId) {
+        throw new Error('Supabase nie zwróciło ID użytkownika.')
+    }
+
+    // 2. Override profile fields z wybranymi opcjami HR.
+    //    onboarding_completed=true dla 'internal' (biurowi nie mają consultant onboarding).
+    const updates: Record<string, unknown> = {
+        role: input.role,
+        full_name: input.fullName?.trim() || null,
+    }
+    if (input.role === 'internal') {
+        updates.onboarding_completed = true
+    }
+    if (input.employmentType) {
+        updates.employment_type = input.employmentType
+    }
+    if (input.workStartDate !== undefined) {
+        updates.work_start_date = input.workStartDate
+    }
+
+    const { error: profileErr } = await admin
+        .from('profiles')
+        .update(updates)
+        .eq('id', userId)
+    if (profileErr) {
+        throw new Error(`Profile update fail: ${profileErr.message}`)
+    }
+
+    await logAudit(actor.id, 'INVITE_USER', {
+        target_user_id: userId,
+        target_email: email,
+        role: input.role,
+        employment_type: input.employmentType ?? null,
+        work_start_date: input.workStartDate ?? null,
+    })
+
+    return { userId }
+}
