@@ -104,8 +104,13 @@ export function summarizeClockMonth(
 /**
  * Pick the audit action name based on how the session ended.
  * Manual = WORK_CLOCK_STOPPED, everything else = WORK_CLOCK_AUTO_STOPPED.
+ *
+ * Returns a literal union so callers passing the result into the typed
+ * `AuditAction` union don't need to assert.
  */
-export function getAuditActionForStop(reason: ClockClosedReason): string {
+export function getAuditActionForStop(
+    reason: ClockClosedReason,
+): 'WORK_CLOCK_STOPPED' | 'WORK_CLOCK_AUTO_STOPPED' {
     return reason === 'manual' ? 'WORK_CLOCK_STOPPED' : 'WORK_CLOCK_AUTO_STOPPED'
 }
 
