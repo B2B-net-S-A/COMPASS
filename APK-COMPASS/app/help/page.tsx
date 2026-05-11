@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getLegalDocument } from '@/lib/actions/compliance'
+import { sanitizeHtml } from '@/lib/html/sanitize'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Centrum Pomocy | ComPass' }
@@ -24,7 +25,7 @@ export default async function HelpPage() {
               [&_li]:mb-1
               [&_a]:text-primary [&_a]:underline
               [&_strong]:font-semibold"
-            dangerouslySetInnerHTML={{ __html: doc.content_html }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(doc.content_html) }}
           />
           <p className="text-xs text-muted-foreground mb-6">
             Ostatnia aktualizacja: {new Date(doc.updated_at).toLocaleDateString('pl-PL')}
