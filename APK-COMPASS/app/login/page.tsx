@@ -433,22 +433,9 @@ export default function LoginPage() {
                         </div>
                     )}
                 </CardContent>
-                <CardFooter className="flex flex-col space-y-2 text-center text-sm text-muted-foreground">
-                    <p>
-                        {isSignUp ? 'Masz już konto?' : 'Nie masz konta?'}
-                        <button
-                            type="button"
-                            className="ml-1 text-primary hover:underline font-medium"
-                            onClick={() => {
-                                setIsSignUp(!isSignUp)
-                                setError(null)
-                                setSuccess(null)
-                                setFailCount(0)
-                            }}
-                        >
-                            {isSignUp ? 'Zaloguj się' : 'Zarejestruj się'}
-                        </button>
-                    </p>
+                <CardFooter className="flex flex-col space-y-2 text-center text-xs text-muted-foreground">
+                    {/* Self-signup disabled — nowe konta wyłącznie przez admin invite (/admin/settings/users). */}
+                    <p>Nie masz jeszcze konta? Skontaktuj się z administratorem.</p>
                 </CardFooter>
                 <div className="text-center pb-4 space-y-2">
                     <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground/60">

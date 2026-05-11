@@ -8,6 +8,7 @@ export type AuditAction =
     | 'LOGIN_FAILED'
     | 'LOGOUT'
     | 'REGISTER'
+    | 'INVITE_USER'
     | 'PASSWORD_RESET'
     | 'ROLE_CHANGE'
     | 'BLOCK_USER'

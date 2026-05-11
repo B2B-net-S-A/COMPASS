@@ -34,42 +34,22 @@ describe('<LoginPage /> — login mode', () => {
     })
 })
 
-describe('<LoginPage /> — signup mode (bug #001 fix)', () => {
-    async function switchToSignup() {
-        const user = userEvent.setup()
+// Self-signup wyłączony (admin invite flow zastępuje) — testy mode='signup' usunięte.
+// Nowe konta są tworzone wyłącznie przez admin invite w /admin/settings/users.
+// Stara `signup()` server action zachowana ale UI jej nie wywołuje.
+describe('<LoginPage /> — self-signup is disabled', () => {
+    it('does not render signup toggle button in footer', async () => {
         const LoginPage = (await import('../page')).default
         render(<LoginPage />)
-        // Click the "Zarejestruj się" toggle button (not submit; it's the button to switch mode)
-        const toggleButtons = screen.getAllByRole('button', { name: /Zarejestruj się/ })
-        // The one in the footer is the toggle; the submit one only appears AFTER toggling
-        await user.click(toggleButtons[toggleButtons.length - 1])
-        return user
-    }
-
-    it('shows the @b2bnetwork.pl domain hint under email field after switching to signup (FIX #001)', async () => {
-        await switchToSignup()
-        const hint = screen.getByText(/Rejestracja dostępna tylko dla email z domeny/i)
-        expect(hint).toBeInTheDocument()
-        // The hint should mention the specific domain
-        expect(hint.textContent).toMatch(/@b2bnetwork\.pl/)
+        // Brak buttona "Zarejestruj się" w footerze (tylko "Zaloguj się" submit button jeśli w trybie login)
+        const toggleButtons = screen.queryAllByRole('button', { name: /Zarejestruj się/i })
+        expect(toggleButtons).toHaveLength(0)
     })
 
-    it('shows "Imię i Nazwisko" field in signup mode', async () => {
-        await switchToSignup()
-        expect(screen.getByLabelText(/Imię i Nazwisko/)).toBeInTheDocument()
-    })
-
-    it('shows GDPR consent label in signup mode', async () => {
-        await switchToSignup()
-        expect(screen.getByText(/RODO/i)).toBeInTheDocument()
-    })
-
-    it('hint disappears when switching back to login mode', async () => {
-        const user = await switchToSignup()
-        // Now toggle back to login by clicking the "Zaloguj się" footer button
-        const toggleBack = screen.getByRole('button', { name: /Zaloguj się/i })
-        await user.click(toggleBack)
-        expect(screen.queryByText(/Rejestracja dostępna tylko dla email/i)).not.toBeInTheDocument()
+    it('shows hint "skontaktuj się z administratorem" in footer', async () => {
+        const LoginPage = (await import('../page')).default
+        render(<LoginPage />)
+        expect(screen.getByText(/Skontaktuj się z administratorem/i)).toBeInTheDocument()
     })
 })
 
