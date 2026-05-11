@@ -1,25 +1,27 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { logAudit } from './actions/audit'
 import { logger } from './logger'
 
-// Helper to generate a 6-digit code
 function generateCode(): string {
     return Math.floor(100000 + Math.random() * 900000).toString()
 }
 
+// verification_codes has RLS enabled with no policies (Phase 18.1 — security
+// hardening). MFA codes are plaintext and sensitive; exposing the table via
+// the anon-key client would allow account takeover by reading other users'
+// codes. Service-role client bypasses RLS and is the only safe access path.
 export async function sendMFACode(userId: string, email: string) {
-    const supabase = createClient()
+    const supabase = createServiceClient()
     const code = generateCode()
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
-    // 1. Store code in DB
     const { error } = await supabase.from('verification_codes').insert({
         user_id: userId,
         code,
         type: 'MFA',
-        expires_at: expiresAt.toISOString()
+        expires_at: expiresAt.toISOString(),
     })
 
     if (error) {
@@ -27,23 +29,18 @@ export async function sendMFACode(userId: string, email: string) {
         return { error: 'Błąd generowania kodu MFA' }
     }
 
-    // 2. Send Email (Mocked for now, or use Supabase Mailer if available)
-    // In a real app, this would use Resend/SendGrid/Supabase Auth's email
-    // MFA code sent to email (code logged only in development)
     if (process.env.NODE_ENV === 'development') {
-        console.log(`[MFA] Code for ${email}: ${code}`)
+        logger.info({ event: 'mfa.code.dev_log', email, code })
     }
 
-    // Log the event
     await logAudit(userId, 'MFA_SENT', { email })
 
     return { success: true }
 }
 
 export async function verifyMFACode(userId: string, code: string) {
-    const supabase = createClient()
+    const supabase = createServiceClient()
 
-    // 1. Check if code exists, is valid, and not expired
     const { data, error } = await supabase
         .from('verification_codes')
         .select('*')
@@ -59,7 +56,6 @@ export async function verifyMFACode(userId: string, code: string) {
         return { error: 'Nieprawidłowy lub przeterminowany kod.' }
     }
 
-    // 2. Mark as used
     await supabase
         .from('verification_codes')
         .update({ used_at: new Date().toISOString() })
