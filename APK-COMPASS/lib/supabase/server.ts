@@ -2,6 +2,12 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createMockSupabaseClient, getBypassEmail, isSupabaseConfigured, BYPASS_USER } from './mock-client'
 
+// Phase 18.5: `Database` type dostępny w `lib/supabase/database.types.ts` —
+// można importować per-query gdy chcesz typed access:
+//   `const supabase = createClient() as SupabaseClient<Database>`
+// Server-wide typing odroczone: ujawnia ~50 legacy bug-ów (tabela `candidates`
+// archived, kolumny `slug` zmienione, etc.) wymagających osobnego cleanup PR.
+
 export function createClient() {
     try {
         const cookieStore = cookies()

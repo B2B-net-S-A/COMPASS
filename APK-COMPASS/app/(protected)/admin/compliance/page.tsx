@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { listLegalDocuments } from '@/lib/actions/compliance'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Shield, FileText, Users, ExternalLink } from 'lucide-react'
@@ -18,16 +19,14 @@ export default async function CompliancePage() {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !['admin'].includes(profile.role)) {
+  if (!profile?.role || !['admin'].includes(profile.role)) {
     redirect('/home')
   }
 
-  // Fetch all legal documents
-  const { data: documents } = await supabase
-    .from('um_legal_documents')
-    .select('id, slug, title, version, visibility, requires_acceptance, is_active, updated_at')
-    .order('visibility')
-    .order('title')
+  // Fetch legal documents via compliance action — handles slug/document_type
+  // schema normalisation and falls back to bundled docs when the DB row is
+  // missing (e.g. slugs blocked by the prod CHECK constraint).
+  const documents = await listLegalDocuments()
 
   // Fetch consent stats
   const { count: totalConsents } = await supabase
@@ -65,7 +64,7 @@ export default async function CompliancePage() {
             <FileText className="h-4 w-4" />
             <span className="text-sm">Dokumenty</span>
           </div>
-          <p className="text-2xl font-bold">{documents?.length || 0}</p>
+          <p className="text-2xl font-bold">{documents.length}</p>
         </div>
         <div className="bg-card border rounded-lg p-4">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -102,7 +101,7 @@ export default async function CompliancePage() {
               </tr>
             </thead>
             <tbody>
-              {documents?.map((doc) => {
+              {documents.map((doc) => {
                 const vis = visibilityLabels[doc.visibility] || visibilityLabels.authenticated
                 return (
                   <tr key={doc.id} className="border-b last:border-0 hover:bg-muted/30">

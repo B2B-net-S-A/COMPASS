@@ -2,6 +2,9 @@ import { createBrowserClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createMockSupabaseClient, isSupabaseConfigured } from './mock-client'
 
+// Phase 18.5: `Database` type dostępny w `lib/supabase/database.types.ts` —
+// per-query opt-in (cast `as SupabaseClient<Database>` gdy chcesz typed access).
+
 // Singleton — one instance per browser tab to avoid auth lock conflicts
 let client: SupabaseClient | null = null
 

@@ -20,19 +20,20 @@ export async function GET() {
     // 3. Try to read from knowledge table
     const { data: docs, error: readErr } = await supabase
         .from('compass_assist_knowledge')
-        .select('id, content, category, metadata, created_at')
+        .select('id, title, content, category, tags, created_at')
         .limit(5)
 
     // 4. Try a test insert
-    let insertResult = null
-    let insertError = null
+    let insertResult: { id: string } | null = null
+    let insertError: { message: string; code?: string; details?: string } | null = null
     try {
         const { data: inserted, error: insErr } = await supabase
             .from('compass_assist_knowledge')
             .insert({
+                title: '__TEST_DIAGNOSTIC__',
                 content: '__TEST_DIAGNOSTIC__',
                 category: 'ogolne',
-                metadata: { test: true },
+                tags: ['diagnostic'],
             })
             .select('id')
             .single()
@@ -46,8 +47,9 @@ export async function GET() {
                 await supabase.from('compass_assist_knowledge').delete().eq('id', inserted.id)
             }
         }
-    } catch (e: any) {
-        insertError = { message: e.message }
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        insertError = { message: msg }
     }
 
     return NextResponse.json({
@@ -56,12 +58,18 @@ export async function GET() {
         knowledge: {
             readCount: docs?.length || 0,
             readError: readErr?.message || null,
-            docs: docs?.map(d => ({ id: d.id, category: d.category, content: d.content?.substring(0, 80), metadata: d.metadata })),
+            docs: docs?.map(d => ({
+                id: d.id,
+                title: d.title,
+                category: d.category,
+                content: d.content?.substring(0, 80),
+                tags: d.tags,
+            })),
         },
         insertTest: {
             success: !!insertResult,
             error: insertError,
-            result: insertResult
-        }
+            result: insertResult,
+        },
     })
 }
