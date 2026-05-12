@@ -88,7 +88,7 @@ jobs:
     name: Smoke test /api/health
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Wait for Coolify build + restart
         run: sleep 90
@@ -102,7 +102,11 @@ jobs:
             exit 1
           fi
           EXPECTED_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          for i in $(seq 1 12); do
+          # Coolify build trwa typowo 5-7 min, plus restart ~30s. 32 retries × 15s
+          # = 8 min, plus initial 90s wait = ~9.5 min total window. Wcześniejszych
+          # 12 retries × 15s = 3 min za krótko → fałszywe "deploy failure" gdy
+          # build wciąż w toku ale aplikacja deploy'uje się poprawnie.
+          for i in $(seq 1 32); do
             response=$(curl -fsSL "$APP_URL/api/health" 2>/dev/null || echo '')
             if [ -n "$response" ]; then
               status=$(echo "$response" | jq -r '.status // "missing"')
@@ -113,14 +117,14 @@ jobs:
                   echo "✅ Pass: status=$status version=$version"
                   exit 0
                 fi
-                echo "Attempt $i: stale version (got $version_short, expected $EXPECTED_SHA), retrying in 15s..."
+                echo "Attempt $i/32: stale version (got $version_short, expected $EXPECTED_SHA), retrying in 15s..."
               else
-                echo "Attempt $i: status=$status, retrying in 15s..."
+                echo "Attempt $i/32: status=$status, retrying in 15s..."
               fi
             else
-              echo "Attempt $i: no response, retrying in 15s..."
+              echo "Attempt $i/32: no response, retrying in 15s..."
             fi
             sleep 15
           done
-          echo "::error::Smoke test failed after 12 attempts (3 min)"
+          echo "::error::Smoke test failed after 32 attempts (8 min)"
           exit 1
