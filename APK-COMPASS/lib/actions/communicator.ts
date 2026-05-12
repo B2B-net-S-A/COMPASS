@@ -1,8 +1,6 @@
-
-
-import { logCompat } from '@/lib/logger'
 'use server'
 
+import { logCompat } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -103,7 +101,7 @@ export async function getConversations(): Promise<{ data: Conversation[], error:
             owner_id: conv.owner_id,
             last_message_at: conv.last_message_at,
             participants: otherParticipants,
-            last_message: lastMsg ? {
+            last_message: lastMsg && lastMsg.content && lastMsg.created_at ? {
                 content: lastMsg.content,
                 created_at: lastMsg.created_at,
                 sender_id: lastMsg.sender_id,

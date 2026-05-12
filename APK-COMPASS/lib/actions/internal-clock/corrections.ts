@@ -1,6 +1,7 @@
 'use server'
 
 import { createServiceClient } from '@/lib/supabase/admin'
+import { logCompat } from '@/lib/logger'
 import { requireAdminAction, requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendCorrectionDecision } from '@/lib/email'
@@ -119,7 +120,7 @@ export async function approveCorrection(entryId: string, note?: string): Promise
             Number(row.hours),
             row.tracked_hours == null ? null : Number(row.tracked_hours),
             note,
-        ).catch((e) => console.error('[approveCorrection] notify failed:', e))
+        ).catch((e) => logCompat.error('[approveCorrection] notify failed:', e))
     }
 }
 
@@ -159,7 +160,7 @@ export async function rejectCorrection(entryId: string, note: string): Promise<v
             Number(row.hours),
             row.tracked_hours == null ? null : Number(row.tracked_hours),
             note,
-        ).catch((e) => console.error('[rejectCorrection] notify failed:', e))
+        ).catch((e) => logCompat.error('[rejectCorrection] notify failed:', e))
     }
 }
 

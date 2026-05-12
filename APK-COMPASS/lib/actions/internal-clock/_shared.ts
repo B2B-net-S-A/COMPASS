@@ -5,6 +5,7 @@
 // sub-action files in this directory import from here.
 
 import { createServiceClient } from '@/lib/supabase/admin'
+import { logCompat } from '@/lib/logger'
 import { headers } from 'next/headers'
 import { aggregateHeartbeats, type PausedRange } from '@/lib/clock/aggregation'
 import { isSustainedIdleFromTail } from '@/lib/clock/session-lifecycle'
@@ -36,7 +37,7 @@ export async function fetchPausedRangesForSession(
         .eq('session_id', sessionId)
         .order('paused_at')
     if (error) {
-        console.error('[internal-clock] fetchPausedRangesForSession failed', error)
+        logCompat.error('[internal-clock] fetchPausedRangesForSession failed', error)
         return []
     }
     const now = new Date().toISOString()

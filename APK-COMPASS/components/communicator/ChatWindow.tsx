@@ -1,8 +1,6 @@
-
-
-import { logCompat } from '@/lib/logger'
 'use client'
 
+import { logCompat } from '@/lib/logger'
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Conversation, getMessages, markAsRead, sendMessage } from '@/lib/actions/communicator'

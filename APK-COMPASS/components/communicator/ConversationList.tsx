@@ -1,8 +1,6 @@
-
-
-import { logCompat } from '@/lib/logger'
 'use client'
 
+import { logCompat } from '@/lib/logger'
 import { useState } from 'react'
 import { Conversation, getOrCreateDirectConversation, searchUsersToMessage } from '@/lib/actions/communicator'
 import { ScrollArea } from '@/components/ui/scroll-area'
