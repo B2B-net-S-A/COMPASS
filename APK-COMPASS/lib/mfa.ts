@@ -3,9 +3,12 @@
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logAudit } from './actions/audit'
 import { logger } from './logger'
+import { MFA_CODE_DIGITS, MFA_CODE_VALIDITY_MINUTES } from '@/lib/constants/auth'
 
 function generateCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString()
+    // Generuje N-cyfrowy kod (default 6) jako string z padding zerami.
+    const max = Math.pow(10, MFA_CODE_DIGITS)
+    return String(Math.floor(Math.random() * max)).padStart(MFA_CODE_DIGITS, '0')
 }
 
 // verification_codes has RLS enabled with no policies (Phase 18.1 — security
@@ -15,7 +18,7 @@ function generateCode(): string {
 export async function sendMFACode(userId: string, email: string) {
     const supabase = createServiceClient()
     const code = generateCode()
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
+    const expiresAt = new Date(Date.now() + MFA_CODE_VALIDITY_MINUTES * 60 * 1000)
 
     const { error } = await supabase.from('verification_codes').insert({
         user_id: userId,

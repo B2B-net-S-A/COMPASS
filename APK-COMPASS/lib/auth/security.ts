@@ -3,9 +3,10 @@
 import { createServiceClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { logger } from '@/lib/logger'
-
-const MAX_ATTEMPTS = 5
-const WINDOW_MINUTES = 15
+import {
+    LOGIN_RATE_LIMIT_MAX_ATTEMPTS as MAX_ATTEMPTS,
+    LOGIN_RATE_LIMIT_WINDOW_MINUTES as WINDOW_MINUTES,
+} from '@/lib/constants/auth'
 
 // login_attempts has RLS enabled with no policies (Phase 18.1 — security hardening).
 // We must use the service_role client to read/write rate-limit data; the anon-key
