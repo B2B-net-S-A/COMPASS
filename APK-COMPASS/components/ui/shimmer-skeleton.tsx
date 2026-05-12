@@ -1,11 +1,12 @@
-'use client'
-
 import { cn } from '@/lib/utils'
 
 /**
  * Shimmer Skeleton System
  * Professional shimmer wave animation for loading states.
  * Replaces plain animate-pulse with a moving gradient sweep.
+ *
+ * Phase 18.9: SC (no 'use client') — pure CSS animations, no JS hooks.
+ * Pozwala server-side render skeletons bez hydration overhead.
  *
  * Performance: Pure CSS — zero JS runtime, GPU-accelerated.
  * Duration: 1.2s cycle (optimal for perceived loading speed).

@@ -7,7 +7,13 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import { requireAdminAction, requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendCorrectionDecision } from '@/lib/email'
-import { aggregateHeartbeats, isCorrectionRequired, type PausedRange } from '@/lib/clock/aggregation'
+import { aggregateHeartbeats, isCorrectionRequired } from '@/lib/clock/aggregation'
+import {
+    captureRequestMetadata,
+    fetchHeartbeatsForSession,
+    fetchPausedRangesForSession,
+    recomputeActiveSeconds,
+} from '@/lib/clock/session-helpers'
 import {
     HOURS_BLOCKING_ATTENDANCE,
     WORK_MONITORING_TERMS_VERSION,
@@ -26,7 +32,6 @@ import {
     type SuggestEntriesInput,
     type SuggestEntriesResult,
 } from '@/lib/clock/constants'
-import { headers } from 'next/headers'
 import { endOfMonth, format, startOfMonth } from 'date-fns'
 
 // Re-export the consent terms version constant via a small async helper so
@@ -36,76 +41,10 @@ export async function getWorkMonitoringTermsVersion(): Promise<string> {
     return WORK_MONITORING_TERMS_VERSION
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function fetchHeartbeatsForSession(
-    supabaseAdmin: ReturnType<typeof createServiceClient>,
-    sessionId: string,
-): Promise<Array<{ ts: string; was_active: boolean }>> {
-    const { data, error } = await supabaseAdmin
-        .from('work_clock_heartbeats')
-        .select('ts, was_active')
-        .eq('session_id', sessionId)
-        .order('ts')
-    if (error) throw new Error(`Błąd pobierania heartbeats: ${error.message}`)
-    return (data ?? []) as Array<{ ts: string; was_active: boolean }>
-}
-
-/**
- * Phase 17b R3: fetch all pause ranges for a session. Open pauses (resumed_at IS NULL)
- * are clamped to the current moment so aggregation can still proceed mid-pause.
- */
-async function fetchPausedRangesForSession(
-    supabaseAdmin: ReturnType<typeof createServiceClient>,
-    sessionId: string,
-): Promise<PausedRange[]> {
-    const { data, error } = await supabaseAdmin
-        .from('work_clock_session_pauses')
-        .select('paused_at, resumed_at')
-        .eq('session_id', sessionId)
-        .order('paused_at')
-    if (error) {
-        // Soft-fail: if pauses table query errors, fall back to no-pause aggregation
-        logCompat.error('[internal-clock] fetchPausedRangesForSession failed', error)
-        return []
-    }
-    const now = new Date().toISOString()
-    return ((data ?? []) as Array<{ paused_at: string; resumed_at: string | null }>).map((r) => ({
-        from: r.paused_at,
-        to: r.resumed_at ?? now,
-    }))
-}
-
-async function recomputeActiveSeconds(
-    supabaseAdmin: ReturnType<typeof createServiceClient>,
-    sessionId: string,
-): Promise<{ activeSeconds: number; idleSeconds: number; isSustainedIdle: boolean; skippedDuringPause: number }> {
-    const [heartbeats, pausedRanges] = await Promise.all([
-        fetchHeartbeatsForSession(supabaseAdmin, sessionId),
-        fetchPausedRangesForSession(supabaseAdmin, sessionId),
-    ])
-    const agg = aggregateHeartbeats(heartbeats, pausedRanges)
-    return {
-        activeSeconds: agg.activeSeconds,
-        idleSeconds: agg.idleSeconds,
-        skippedDuringPause: agg.skippedDuringPause,
-        isSustainedIdle: heartbeats.length >= 120 && heartbeats.slice(-120).every((h) => !h.was_active),
-    }
-}
-
-function captureRequestMetadata(): { ip: string | null; ua: string | null } {
-    try {
-        const h = headers()
-        const ip =
-            h.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-            h.get('x-real-ip') ||
-            null
-        const ua = h.get('user-agent')
-        return { ip, ua }
-    } catch {
-        return { ip: null, ua: null }
-    }
-}
+// Phase 18.10: pure helpery (fetchHeartbeats, fetchPausedRanges,
+// recomputeActiveSeconds, captureRequestMetadata) wyciągnięte do
+// `lib/clock/session-helpers.ts`. Internal-clock.ts pozostaje server actions
+// surface (consent, sessions lifecycle, admin review, suggest entries).
 
 // ─── Consent ─────────────────────────────────────────────────────────────────
 
