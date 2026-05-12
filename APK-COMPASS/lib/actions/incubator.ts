@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type {
@@ -57,7 +59,7 @@ async function notify(
     try {
         await supabase.from('notifications').insert(rows)
     } catch (e) {
-        console.warn('[notify]', e)
+        logCompat.warn('[notify]', e)
     }
 }
 
@@ -110,7 +112,7 @@ export async function submitPitch(input: CreatePitchInput): Promise<IncubatorAct
         return { success: true, data: { pitchId: data.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd składania pitcha'
-        console.error('[submitPitch]', error)
+        logCompat.error('[submitPitch]', error)
         return { success: false, error: msg }
     }
 }

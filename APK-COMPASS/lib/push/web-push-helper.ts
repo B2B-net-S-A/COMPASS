@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 /**
  * H3.3: Web Push helper — VAPID setup + send wrapper.
  *
@@ -19,7 +20,7 @@ function ensureInitialized(): boolean {
     const privateKey = process.env.VAPID_PRIVATE_KEY
     const subject = process.env.VAPID_SUBJECT ?? 'mailto:admin@dynaminds.pl'
     if (!publicKey || !privateKey) {
-        console.warn('[web-push] VAPID keys not configured — push disabled')
+        logCompat.warn('[web-push] VAPID keys not configured — push disabled')
         return false
     }
     webpush.setVapidDetails(subject, publicKey, privateKey)

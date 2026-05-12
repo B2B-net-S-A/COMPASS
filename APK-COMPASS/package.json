@@ -2,6 +2,9 @@
   "name": "apk-compass",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0 <23.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -17,6 +20,7 @@
     "test:rls": "playwright test e2e/04-rls-database.spec.ts",
     "test:communicator": "playwright test e2e/03-communicator.spec.ts",
     "test:eval": "tsx scripts/eval_matching.ts",
+    "db:types": "supabase gen types typescript --project-id shduiynzemftkqqefscd --schema public > lib/supabase/database.types.ts",
     "ship": "bash scripts/git-ship.sh",
     "deploy": "bash scripts/render-deploy.sh",
     "deploy:clear": "bash scripts/render-deploy.sh --clear-cache"
@@ -46,6 +50,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.3.1",
+    "isomorphic-dompurify": "^3.12.0",
     "isomorphic-fetch": "^3.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.563.0",

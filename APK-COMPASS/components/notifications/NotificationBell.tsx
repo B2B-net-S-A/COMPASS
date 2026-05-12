@@ -37,8 +37,12 @@ export function NotificationBell({ locale = 'pl' }: { locale?: 'pl' | 'en' }) {
             const supabase = createClient()
             supabase.auth.getUser().then(({ data: { user } }) => {
                 if (user) setUserId(user.id)
-            }).catch(() => {})
-        } catch {}
+            }).catch(() => {
+                // Brak usera = brak subskrypcji realtime. UI fallback do polling.
+            })
+        } catch {
+            // createClient throws gdy Supabase env vars brakuje — graceful degrade.
+        }
     }, [])
 
     // Load notifications

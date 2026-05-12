@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 import { revalidatePath } from 'next/cache'
@@ -32,7 +34,7 @@ export async function uploadAvatar(formData: FormData) {
         .upload(filePath, file)
 
     if (error) {
-        console.error('Avatar upload error:', error)
+        logCompat.error('Avatar upload error:', error)
         throw new Error('Upload failed')
     }
 
@@ -99,7 +101,7 @@ export async function uploadCV(formData: FormData) {
                 }
             }
         } catch (imgErr) {
-            console.error('Image extraction failed:', imgErr)
+            logCompat.error('Image extraction failed:', imgErr)
         }
 
         // 3. Update Profile with File Path
@@ -123,7 +125,7 @@ export async function uploadCV(formData: FormData) {
         return { success: true }
 
     } catch (error: any) {
-        console.error('CV Upload Error:', error)
+        logCompat.error('CV Upload Error:', error)
         return { success: false, error: error.message || 'Nie udało się przetworzyć CV' }
     }
 }
@@ -241,7 +243,7 @@ ${sanitizedText.slice(0, 10000)}`,
         }
 
     } catch (error: any) {
-        console.error('AI Generation Error:', error)
+        logCompat.error('AI Generation Error:', error)
         return { success: false, error: error.message || 'Nie udało się wygenerować profilu' }
     }
 }
@@ -268,13 +270,13 @@ export async function uploadReferralCV(formData: FormData) {
             .upload(filePath, file)
 
         if (uploadError) {
-            console.error('Referral CV upload error:', uploadError)
+            logCompat.error('Referral CV upload error:', uploadError)
             return { success: false, error: 'Nie udało się przesłać pliku' }
         }
 
         return { success: true, path: filePath }
     } catch (error: any) {
-        console.error('Referral CV Upload Error:', error)
+        logCompat.error('Referral CV Upload Error:', error)
         return { success: false, error: error.message || 'Nie udało się przesłać CV' }
     }
 }
@@ -330,7 +332,7 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
                 }
             }
         } catch (imgErr) {
-            console.error('Image extraction failed:', imgErr)
+            logCompat.error('Image extraction failed:', imgErr)
         }
 
         // 3. Update Candidate Record
@@ -372,7 +374,7 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
         return { success: true }
 
     } catch (error: any) {
-        console.error('Admin CV Upload Error:', error)
+        logCompat.error('Admin CV Upload Error:', error)
         return { success: false, error: error.message || 'Nie udało się przetworzyć CV' }
     }
 }
@@ -451,7 +453,7 @@ ${sanitizedText.slice(0, 10000)}`,
         return { success: true }
 
     } catch (error: any) {
-        console.error('Admin AI Generation Error:', error)
+        logCompat.error('Admin AI Generation Error:', error)
         throw error
     }
 }

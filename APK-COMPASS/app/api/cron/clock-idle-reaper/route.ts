@@ -1,8 +1,9 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/admin'
 import { aggregateHeartbeats } from '@/lib/clock/aggregation'
 import { logAudit } from '@/lib/actions/audit'
 import { sendClockAutoStopped } from '@/lib/email'
+import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,27 +20,10 @@ export const dynamic = 'force-dynamic'
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-idle-reaper" \
  *        -H "Authorization: Bearer $CRON_SECRET"
  *
- * Legacy query-based fallback (deprecated, will warn):
+ * Legacy query-based fallback (deprecated, withCronAuth loguje warning):
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-idle-reaper?secret=$CRON_SECRET"
  */
-export async function GET(request: Request) {
-    if (!process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
-    }
-    const url = new URL(request.url)
-    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-    const querySecret = url.searchParams.get('secret')
-    const provided = headerSecret || querySecret
-    if (!provided || provided !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (!headerSecret && querySecret) {
-        console.warn(
-            '[cron/clock-idle-reaper] secret in query param — migrate caller to Authorization: Bearer header',
-        )
-    }
-
-    const admin = createServiceClient()
+export const GET = withCronAuth(async (_request, { admin }) => {
     const stalenessTs = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     const nowTs = new Date().toISOString()
 
@@ -54,7 +38,7 @@ export async function GET(request: Request) {
         .or(`paused_until.is.null,paused_until.lte.${nowTs}`)
 
     if (error) {
-        console.error('[clock-idle-reaper] fetch error:', error)
+        logCompat.error('[clock-idle-reaper] fetch error:', error)
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -90,7 +74,7 @@ export async function GET(request: Request) {
             })
             .eq('id', s.id)
         if (updateErr) {
-            console.error('[clock-idle-reaper] close failed for', s.id, updateErr)
+            logCompat.error('[clock-idle-reaper] close failed for', s.id, updateErr)
             continue
         }
         closed++
@@ -122,4 +106,4 @@ export async function GET(request: Request) {
         closed,
         emailed,
     })
-}
+})

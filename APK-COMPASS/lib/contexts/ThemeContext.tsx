@@ -121,54 +121,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
                 setColorModeState(storedMode)
                 applyColorMode(storedMode)
             }
-        } catch {}
+        } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
 
-        if (!localTheme) {
-            ;(async () => {
-                try {
-                    const supabase = createClient()
-                    const { data: { user } } = await supabase.auth.getUser()
-                    if (user) {
-                        const { data } = await supabase.from('profiles').select('theme').eq('id', user.id).single()
-                        const dbTheme = data?.theme as ThemeId | null
-                        if (dbTheme && THEMES[dbTheme]) {
-                            setThemeState(dbTheme)
-                            applyThemeClass(dbTheme)
-                            try { localStorage.setItem(STORAGE_KEY, dbTheme) } catch {}
-                        }
-                    }
-                } catch {}
-            })()
-        }
+        // Phase 18.7: usunąłem DB sync — kolumna `theme` nie istnieje w
+        // profiles. Theme to UX preference per-device (localStorage wystarcza),
+        // sync DB był martwy kod (failuje w runtime od czasu cleanup profiles
+        // schema).
     }, [])
 
     const setTheme = useCallback((id: ThemeId) => {
         setThemeState(id)
         applyThemeClass(id)
-        try { localStorage.setItem(STORAGE_KEY, id) } catch {}
-
-        ;(async () => {
-            try {
-                const supabase = createClient()
-                const { data: { user } } = await supabase.auth.getUser()
-                if (user) {
-                    await supabase.from('profiles').update({ theme: id }).eq('id', user.id)
-                }
-            } catch {}
-        })()
+        try { localStorage.setItem(STORAGE_KEY, id) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
     }, [])
 
     const setColorMode = useCallback((mode: ColorMode) => {
         setColorModeState(mode)
         applyColorMode(mode)
-        try { localStorage.setItem(MODE_STORAGE_KEY, mode) } catch {}
+        try { localStorage.setItem(MODE_STORAGE_KEY, mode) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
     }, [])
 
     const toggleColorMode = useCallback(() => {
         setColorModeState(prev => {
             const next = prev === 'dark' ? 'light' : 'dark'
             applyColorMode(next)
-            try { localStorage.setItem(MODE_STORAGE_KEY, next) } catch {}
+            try { localStorage.setItem(MODE_STORAGE_KEY, next) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
             return next
         })
     }, [])

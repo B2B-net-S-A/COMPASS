@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState } from 'react'
 import { analyzeGap } from '@/lib/actions/admin'
 import { Button } from "@/components/ui/button"
@@ -33,7 +35,7 @@ export function ProjectGapAnalysis({ projectId, projectTitle }: { projectId: str
             const data = await analyzeGap(projectId)
             setResult(data)
         } catch (error) {
-            console.error(error)
+            logCompat.error(error)
             setResult({ error: 'Nie udało się przeprowadzić analizy.' })
         } finally {
             setLoading(false)

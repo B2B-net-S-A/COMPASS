@@ -1,8 +1,16 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/ai/embeddings'
+import { parseOrThrow } from '@/lib/validators/common'
+import {
+    consultantIdSchema,
+    profileUpdateInputSchema,
+    updateUserBioInputSchema,
+} from '@/lib/validators/profile'
 
 // Phase 1.0 (2026-05-04): extracted from legacy lib/actions/matching.ts.
 // Drops candidate-syncing logic (candidates table is archived to compass_legacy).
@@ -38,10 +46,13 @@ export async function updateUserBio(bio: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
-    const embedding = await generateEmbedding(bio)
+    // Phase 18.4: Zod walidacja długości bio (max 5000).
+    const { bio: validBio } = parseOrThrow(updateUserBioInputSchema, { bio })
+
+    const embedding = await generateEmbedding(validBio)
     const { error } = await supabase
         .from('profiles')
-        .update({ bio, embedding })
+        .update({ bio: validBio, embedding })
         .eq('id', user.id)
     if (error) throw new Error(error.message)
 
@@ -56,7 +67,12 @@ export async function updateProfileFull(
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Nie jesteś zalogowany.' }
 
-        const updates: ProfileUpdateData = { ...data }
+        // Phase 18.4: Zod walidacja każdego pola + odrzucenie sensitive fields
+        // (role, email, embedding, loyalty_*, onboarding_*). Nawet jeśli atakujący
+        // wyśle `{ role: 'admin' }` w request body, ten field jest dropowany przed
+        // dotarciem do .update().
+        const parsed = parseOrThrow(profileUpdateInputSchema, data)
+        const updates: ProfileUpdateData = { ...parsed }
 
         if (updates.available_from === '') {
             updates.available_from = null
@@ -66,7 +82,7 @@ export async function updateProfileFull(
             try {
                 updates.embedding = await generateEmbedding(data.bio)
             } catch (e) {
-                console.warn('[ProfileUpdate] Failed to generate embedding:', e)
+                logCompat.warn('[ProfileUpdate] Failed to generate embedding:', e)
             }
         }
 
@@ -80,7 +96,7 @@ export async function updateProfileFull(
             const looksLikeMissingColumn = msg.includes('column') && (msg.includes('phone') || msg.includes('does not exist') || msg.includes('undefined'))
             if (looksLikeMissingColumn && updates.phone !== undefined) {
                 const { phone: _p, ...updatesWithoutPhone } = updates
-                console.warn('[ProfileUpdate] Retrying without phone (column may be missing):', _p)
+                logCompat.warn('[ProfileUpdate] Retrying without phone (column may be missing):', _p)
                 const retry = await supabase.from('profiles').update(updatesWithoutPhone).eq('id', user.id)
                 if (retry.error) {
                     return { success: false, error: `Błąd zapisu: ${retry.error.message}` }
@@ -99,7 +115,7 @@ export async function updateProfileFull(
         return { success: true }
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        console.error('[ProfileUpdate] Unexpected error:', e)
+        logCompat.error('[ProfileUpdate] Unexpected error:', e)
         return { success: false, error: msg || 'Nie udało się zapisać zmian. Spróbuj ponownie.' }
     }
 }
@@ -136,6 +152,9 @@ export async function getConsultantProfile360(consultantId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false as const, error: 'Nie jesteś zalogowany' }
 
+    // Phase 18.4: UUID walidacja przed .eq().
+    const { consultantId: validId } = parseOrThrow(consultantIdSchema, { consultantId })
+
     const { data: callerProfile } = await supabase
         .from('profiles')
         .select('role')
@@ -151,7 +170,7 @@ export async function getConsultantProfile360(consultantId: string) {
     const { data: profile } = await supabase
         .from('profiles')
         .select(selectCols)
-        .eq('id', consultantId)
+        .eq('id', validId)
         .single()
 
     if (profile) {

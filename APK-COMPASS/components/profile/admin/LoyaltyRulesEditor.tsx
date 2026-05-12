@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -40,7 +42,7 @@ export function LoyaltyRulesEditor() {
                 setIsMockData(true)
             }
         } catch (error) {
-            console.error(error)
+            logCompat.error(error)
             toast.error('Błąd pobierania konfiguracji')
         } finally {
             setLoading(false)

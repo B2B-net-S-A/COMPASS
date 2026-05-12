@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 
 // Image Parser Utility
 import mammoth from 'mammoth'
@@ -62,7 +63,7 @@ export async function extractImagesFromPdf(buffer: Buffer): Promise<Buffer | nul
                                 }
                             }
                         } catch (e) {
-                            console.warn('Failed to extract JPEG buffer:', e)
+                            logCompat.warn('Failed to extract JPEG buffer:', e)
                         }
                     }
                 }
@@ -72,7 +73,7 @@ export async function extractImagesFromPdf(buffer: Buffer): Promise<Buffer | nul
         return bestImage;
 
     } catch (error) {
-        console.error("Error extracting from PDF", error);
+        logCompat.error("Error extracting from PDF", error);
         return null;
     }
 }

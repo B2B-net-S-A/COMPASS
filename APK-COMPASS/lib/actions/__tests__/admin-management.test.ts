@@ -87,14 +87,20 @@ describe('addAdminMember', () => {
         expect(row.full_name).toBeUndefined()
     })
 
-    it('REJECTS uppercase domain (case-sensitive endsWith — possible bug to fix later)', async () => {
+    it('ACCEPTS mixed-case domain @B2BNetwork.pl (Phase 18.4 — Zod lowercases first)', async () => {
+        // Phase 18.4 fix: addAdminMemberInputSchema lowercases input before
+        // domain check, so mixed-case is now accepted (regression of original
+        // case-sensitive endsWith check, intentional improvement).
         process.env.SUPER_ADMIN_EMAILS = 'super@b2bnetwork.pl'
-        setup({ user: { id: 'u-super', email: 'super@b2bnetwork.pl' } })
+        setup({
+            user: { id: 'u-super', email: 'super@b2bnetwork.pl' },
+            tables: { admin_access_list: [], profiles: [] },
+        })
         vi.resetModules()
         const { addAdminMember } = await import('../admin-management')
-        // Currently rejects mixed-case @B2BNetwork.pl due to plain endsWith() check.
-        // Documented as known behaviour — fix would be to lowercase first, then compare.
-        await expect(addAdminMember('user@B2BNetwork.pl')).rejects.toThrow(/@b2bnetwork\.pl/)
+        const result = await addAdminMember('user@B2BNetwork.pl')
+        expect(result).toEqual({ success: true })
+        expect(currentClient._tables.admin_access_list[0].email).toBe('user@b2bnetwork.pl')
     })
 
     it('updates profile.role to "admin" when user already has a profile', async () => {
@@ -120,13 +126,13 @@ describe('removeAdminMember', () => {
         setup({
             user: { id: 'u-super', email: 'super@b2bnetwork.pl' },
             tables: {
-                admin_access_list: [{ id: 'a1', email: 'admin@b2bnetwork.pl' }],
+                admin_access_list: [{ id: '00000000-0000-4000-8000-00000000000a', email: 'admin@b2bnetwork.pl' }],
                 profiles: [{ id: 'profile-uuid', email: 'admin@b2bnetwork.pl', role: 'admin' }],
             },
         })
         vi.resetModules()
         const { removeAdminMember } = await import('../admin-management')
-        await removeAdminMember('a1')
+        await removeAdminMember('00000000-0000-4000-8000-00000000000a')
         expect(currentClient._tables.admin_access_list).toHaveLength(0)
         expect(currentClient._tables.profiles[0].role).toBe('consultant')
     })

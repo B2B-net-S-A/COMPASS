@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -66,7 +68,7 @@ export function ProjectCard({
             const match = await getMyProjectMatch(project.id)
             setMyMatch(match)
         } catch (err) {
-            console.error("Failed to analyze match", err)
+            logCompat.error("Failed to analyze match", err)
         } finally {
             setLoadingMyMatch(false)
         }
@@ -79,7 +81,7 @@ export function ProjectCard({
             const data = await getProjectMatches(project.id)
             setMatches(data)
         } catch (err) {
-            console.error("Failed to load matches", err)
+            logCompat.error("Failed to load matches", err)
         } finally {
             setLoadingMatches(false)
         }

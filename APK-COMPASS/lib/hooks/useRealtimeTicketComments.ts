@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -38,7 +40,7 @@ export function useRealtimeTicketComments({
                 )
                 .subscribe()
         } catch (e) {
-            console.warn('[Realtime ticket-comments] subscription failed:', e)
+            logCompat.warn('[Realtime ticket-comments] subscription failed:', e)
         }
 
         return () => {
@@ -46,7 +48,11 @@ export function useRealtimeTicketComments({
                 try {
                     const supabase = createClient()
                     supabase.removeChannel(channel)
-                } catch {}
+                } catch {
+                    // Cleanup w useEffect unmount — błąd removeChannel nic nie
+                    // poprawi (component już znika), logujemy tylko silentnie
+                    // żeby nie zaśmiecać Sentry przy unmount race-conditions.
+                }
             }
         }
     }, [ticketId, enabled, onNewComment])

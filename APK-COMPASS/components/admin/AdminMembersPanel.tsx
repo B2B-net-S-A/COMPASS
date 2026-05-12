@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,7 +49,7 @@ export function AdminMembersPanel() {
                 setSuperAdminEmails(superAdmins)
             }
         } catch (err) {
-            console.error('Error loading admin panel:', err)
+            logCompat.error('Error loading admin panel:', err)
         } finally {
             setLoading(false)
         }

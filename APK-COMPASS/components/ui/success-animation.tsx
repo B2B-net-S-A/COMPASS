@@ -1,11 +1,12 @@
-'use client'
-
 import { cn } from '@/lib/utils'
 
 /**
  * Animated Success Checkmark
  * SVG checkmark that draws itself with a smooth animation.
  * Used in toast notifications for success feedback.
+ *
+ * Phase 18.9: SC (no 'use client') — pure CSS animation on SVG stroke,
+ * no JS hooks. Mogą być renderowane SSR.
  *
  * Performance: Pure CSS animation on SVG stroke — zero JS runtime.
  * Duration: ~500ms total (circle 400ms + check 300ms with 200ms delay)

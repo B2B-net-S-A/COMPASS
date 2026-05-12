@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useRef, useState, useEffect } from 'react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -71,7 +73,7 @@ export function AdminWelcomePanel({ user, isSuperAdmin = false }: AdminWelcomePa
                 router.refresh()
             }
         } catch (error) {
-            console.error('Avatar upload error:', error)
+            logCompat.error('Avatar upload error:', error)
             toast.error('Nie udało się wgrać zdjęcia. Spróbuj ponownie.')
         } finally {
             setIsUploading(false)

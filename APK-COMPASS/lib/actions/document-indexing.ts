@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -30,7 +32,7 @@ export async function indexDocumentText(
         .eq('id', documentId)
 
     if (error) {
-        console.error('Failed to index document:', error.message)
+        logCompat.error('Failed to index document:', error.message)
         return false
     }
 

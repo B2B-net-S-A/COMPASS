@@ -1,23 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
+import { withAuth } from '@/lib/api/with-auth'
 
 /**
  * Pobiera załącznik PDF z bucketu `documents` (path zaczyna się od `courses/`)
- * i streamuje do klienta. Wymaga autentykacji.
+ * i streamuje do klienta. Wymaga autentykacji (withAuth wrapper).
  *
  * Strategia auth: użytkownik musi być zalogowany. Walidacja "czy ma dostęp do
  * konkretnego course'a" odbywa się na poziomie RLS bucketu (jeśli skonfigurowane)
  * lub w przyszłości — sprawdzeniem enrollment przed download.
  */
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request, { supabase }) => {
     try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-
         const path = request.nextUrl.searchParams.get('path')
         if (!path || !path.startsWith('courses/')) {
             return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
@@ -44,4 +38,4 @@ export async function GET(request: NextRequest) {
         logger.error({ event: 'api.learning.attachment.failed', error })
         return NextResponse.json({ error: msg }, { status: 500 })
     }
-}
+})

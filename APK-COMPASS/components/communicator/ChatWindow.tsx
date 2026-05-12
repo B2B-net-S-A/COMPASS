@@ -1,6 +1,6 @@
-
 'use client'
 
+import { logCompat } from '@/lib/logger'
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Conversation, getMessages, markAsRead, sendMessage } from '@/lib/actions/communicator'
@@ -191,7 +191,7 @@ export function ChatWindow({ conversation, currentUser, onBack, onClose }: ChatW
             */
 
         } catch (error: any) {
-            console.error('Upload error:', error)
+            logCompat.error('Upload error:', error)
             toast.error("Błąd wysyłania pliku")
         } finally {
             setIsUploading(false)

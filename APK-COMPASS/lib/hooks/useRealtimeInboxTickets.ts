@@ -46,7 +46,9 @@ export function useRealtimeInboxTickets({
                 try {
                     const supabase = createClient()
                     supabase.removeChannel(channel)
-                } catch {}
+                } catch {
+                    // Cleanup unmount — patrz useRealtimeTicketComments.
+                }
             }
         }
     }, [enabled, onChange])

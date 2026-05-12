@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { computeDueDate } from '@/lib/utils/sla'
@@ -158,7 +160,7 @@ export async function listInboxTickets(filter?: {
         return { success: true, data: grouped }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania zgłoszeń'
-        console.error('[listInboxTickets]', error)
+        logCompat.error('[listInboxTickets]', error)
         return { success: false, error: msg }
     }
 }
@@ -227,8 +229,8 @@ export async function getInboxTicketDetail(
                 category_id: ticket.category_id,
                 subject: ticket.subject,
                 body_md: ticket.body_md,
-                status: ticket.status,
-                priority: ticket.priority,
+                status: ticket.status as 'open' | 'in_progress' | 'waiting_user' | 'resolved' | 'closed',
+                priority: ticket.priority as 'low' | 'normal' | 'high' | 'urgent',
                 resolved_at: ticket.resolved_at,
                 created_at: ticket.created_at,
                 updated_at: ticket.updated_at,
@@ -246,7 +248,7 @@ export async function getInboxTicketDetail(
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania zgłoszenia'
-        console.error('[getInboxTicketDetail]', error)
+        logCompat.error('[getInboxTicketDetail]', error)
         return { success: false, error: msg }
     }
 }
@@ -333,7 +335,7 @@ export async function createInboxTicket(
                     priority: 'normal',
                 })
             } catch (e) {
-                console.warn('[createInboxTicket] notification insert failed:', e)
+                logCompat.warn('[createInboxTicket] notification insert failed:', e)
             }
         }
 
@@ -341,7 +343,7 @@ export async function createInboxTicket(
         return { success: true, data: { ticketId: ticket.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd tworzenia zgłoszenia'
-        console.error('[createInboxTicket]', error)
+        logCompat.error('[createInboxTicket]', error)
         return { success: false, error: msg }
     }
 }
@@ -381,7 +383,7 @@ export async function moveInboxTicket(
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zmiany statusu'
-        console.error('[moveInboxTicket]', error)
+        logCompat.error('[moveInboxTicket]', error)
         return { success: false, error: msg }
     }
 }
@@ -439,7 +441,7 @@ export async function assignInboxTicket(
                     priority: 'normal',
                 })
             } catch (e) {
-                console.warn('[assignInboxTicket] notification insert failed:', e)
+                logCompat.warn('[assignInboxTicket] notification insert failed:', e)
             }
         }
 
@@ -448,7 +450,7 @@ export async function assignInboxTicket(
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd przypisania'
-        console.error('[assignInboxTicket]', error)
+        logCompat.error('[assignInboxTicket]', error)
         return { success: false, error: msg }
     }
 }
@@ -477,7 +479,7 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
         return { success: true, data: items }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania handlerów'
-        console.error('[listInboxHandlers]', error)
+        logCompat.error('[listInboxHandlers]', error)
         return { success: false, error: msg }
     }
 }
@@ -507,7 +509,7 @@ export async function searchConsultants(query: string): Promise<SupportActionRes
         return { success: true, data: (data ?? []) as ProfileLite[] }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wyszukiwania konsultantów'
-        console.error('[searchConsultants]', error)
+        logCompat.error('[searchConsultants]', error)
         return { success: false, error: msg }
     }
 }

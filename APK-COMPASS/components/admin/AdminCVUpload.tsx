@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useRef } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,7 +46,7 @@ export function AdminCVUpload({ candidateId }: AdminCVUploadProps) {
                 alert('Błąd: ' + result.error)
             }
         } catch (err: any) {
-            console.error(err)
+            logCompat.error(err)
             alert('Wystąpił błąd podczas wgrywania pliku: ' + err.message)
         } finally {
             setLoading(false)

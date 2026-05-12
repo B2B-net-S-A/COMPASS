@@ -1,7 +1,8 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/admin'
 import { findPeakActivityWindow } from '@/lib/clock/aggregation'
 import { sendClockDailySummary, type ClockDailySummary } from '@/lib/email'
+import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,25 +25,7 @@ export const dynamic = 'force-dynamic'
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-daily-summary" \
  *        -H "Authorization: Bearer $CRON_SECRET"
  */
-export async function GET(request: Request) {
-    if (!process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
-    }
-    const url = new URL(request.url)
-    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-    const querySecret = url.searchParams.get('secret')
-    const provided = headerSecret || querySecret
-    if (!provided || provided !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (!headerSecret && querySecret) {
-        console.warn(
-            '[cron/clock-daily-summary] secret in query param — migrate caller to Authorization: Bearer header',
-        )
-    }
-
-    const admin = createServiceClient()
-
+export const GET = withCronAuth(async (_request, { admin }) => {
     // Compute "yesterday" UTC date
     const now = new Date()
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
@@ -192,4 +175,4 @@ export async function GET(request: Request) {
         skipped,
         failed,
     })
-}
+})

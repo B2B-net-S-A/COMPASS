@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -43,7 +45,7 @@ export function LoyaltyTransactionList({ initialTransactions, initialPagination,
                 setPagination(result.transactionsPagination!)
             }
         } catch (e) {
-            console.error('Error loading more transactions:', e)
+            logCompat.error('Error loading more transactions:', e)
         } finally {
             setLoading(false)
         }

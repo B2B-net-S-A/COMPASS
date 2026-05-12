@@ -1,10 +1,9 @@
-import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import {
     certificateFilename,
     computeCertificateHash,
     generateCertificatePdf,
 } from '@/lib/pdf/certificate'
+import { withAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,17 +18,11 @@ export const dynamic = 'force-dynamic'
  *  - Pierwsze pobranie: zapisuje certificate_issued_at + certificate_hash w course_enrollments
  *  - Kolejne: reużywa zapisanego hasha (deterministyczny — to samo PDF)
  */
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request, { supabase, user }) => {
     const courseId = request.nextUrl.searchParams.get('courseId')
     if (!courseId) {
         return new Response('Brak parametru courseId', { status: 400 })
     }
-
-    const supabase = createClient()
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return new Response('Unauthorized', { status: 401 })
 
     // Pull enrollment + course + author w jednym query
     const { data: enrollment, error: enrErr } = await supabase
@@ -106,4 +99,4 @@ export async function GET(request: NextRequest) {
             'Cache-Control': 'private, no-cache',
         },
     })
-}
+})

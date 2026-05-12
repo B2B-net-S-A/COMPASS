@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -69,7 +71,7 @@ export function LeaveQueue({ requests }: Props) {
                     ok += 1
                 } catch (e: unknown) {
                     fail += 1
-                    console.error('[bulkApprove] failed for', id, e)
+                    logCompat.error('[bulkApprove] failed for', id, e)
                 }
             }
             if (fail === 0) {
@@ -101,7 +103,7 @@ export function LeaveQueue({ requests }: Props) {
                     ok += 1
                 } catch (e: unknown) {
                     fail += 1
-                    console.error('[bulkReject] failed for', id, e)
+                    logCompat.error('[bulkReject] failed for', id, e)
                 }
             }
             if (fail === 0) {

@@ -1,6 +1,6 @@
-
 'use client'
 
+import { logCompat } from '@/lib/logger'
 import { useState } from 'react'
 import { Conversation, getOrCreateDirectConversation, searchUsersToMessage } from '@/lib/actions/communicator'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -36,7 +36,7 @@ export function ConversationList({ conversations, onSelect, currentUser, onClose
         setSearching(true)
         const { data, error } = await searchUsersToMessage(query)
         if (error) {
-            console.error(error)
+            logCompat.error(error)
         } else {
             setSearchResults(data)
         }

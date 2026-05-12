@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 // Phase 17b PR-E — Email provider abstraction.
 //
 // Note: not marked 'server-only' because lib/email.ts imports this and is
@@ -174,7 +175,7 @@ export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
         provider === 'graph' ? await sendViaGraph(msg) : await sendViaResend(msg)
     if (!result.success) {
         // Single console line keeps Sentry breadcrumbs clean and grep-able
-        console.error(`[email/${provider}] send failed`, {
+        logCompat.error(`[email/${provider}] send failed`, {
             to: msg.to,
             subject: msg.subject,
             error: result.error,

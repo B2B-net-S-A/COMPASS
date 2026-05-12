@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { generateEmbedding } from '@/lib/ai/embeddings'
@@ -75,7 +77,10 @@ export async function regenerateCourseEmbedding(courseId: string): Promise<Actio
         const { error } = await admin
             .from('courses')
             .update({
-                embedding,
+                // pgvector column — Supabase JS akceptuje number[] w runtime,
+                // ale DB types tipują jako `string | null` (vector serializuje
+                // do "[1.2,3.4,...]" string format).
+                embedding: embedding as unknown as string,
                 embedding_generated_at: new Date().toISOString(),
             })
             .eq('id', courseId)
@@ -84,7 +89,7 @@ export async function regenerateCourseEmbedding(courseId: string): Promise<Actio
         return { success: true, data: { generated: true } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd regeneracji embedding'
-        console.error('[regenerateCourseEmbedding]', error)
+        logCompat.error('[regenerateCourseEmbedding]', error)
         return { success: false, error: msg }
     }
 }
@@ -141,13 +146,13 @@ export async function getRecommendedCoursesV2(): Promise<
         // 2. Generate embedding + call RPC
         const queryEmbedding = await generateEmbedding(userQuery)
         const { data: matches, error: matchErr } = await supabase.rpc('match_courses', {
-            query_embedding: queryEmbedding,
+            query_embedding: queryEmbedding as unknown as string,
             match_threshold: 0.3,
             match_count: 30,
         })
 
         if (matchErr) {
-            console.warn('[getRecommendedCoursesV2] match_courses RPC failed, fallback to tag overlap', matchErr)
+            logCompat.warn('[getRecommendedCoursesV2] match_courses RPC failed, fallback to tag overlap', matchErr)
             // Fallback do legacy
             const { getRecommendedCourses } = await import('./course-learning')
             const legacy = await getRecommendedCourses()
@@ -224,7 +229,7 @@ export async function getRecommendedCoursesV2(): Promise<
         return { success: true, data: { items, method: 'embeddings' } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd rekomendacji'
-        console.error('[getRecommendedCoursesV2]', error)
+        logCompat.error('[getRecommendedCoursesV2]', error)
         return { success: false, error: msg }
     }
 }
@@ -320,7 +325,7 @@ Tylko pola które są w zapytaniu. Nie zmyślaj.`,
 
         // 3. RPC match
         const { data: matches } = await supabase.rpc('match_courses', {
-            query_embedding: queryEmbedding,
+            query_embedding: queryEmbedding as unknown as string,
             match_threshold: 0.3,
             match_count: 30,
         })
@@ -367,7 +372,7 @@ Tylko pola które są w zapytaniu. Nie zmyślaj.`,
         return { success: true, data: { items, parsedQuery: parsed } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wyszukiwania'
-        console.error('[smartSearchCourses]', error)
+        logCompat.error('[smartSearchCourses]', error)
         return { success: false, error: msg }
     }
 }

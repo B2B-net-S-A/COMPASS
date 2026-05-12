@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useEffect, useCallback } from 'react'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { Card, CardContent } from "@/components/ui/card"
@@ -89,7 +91,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                 setDocuments([])
             }
         } catch (err) {
-            console.error('Failed to load documents:', err)
+            logCompat.error('Failed to load documents:', err)
             setDocuments([])
         } finally {
             setLoading(false)
@@ -243,7 +245,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                 e.preventDefault()
                                 e.stopPropagation()
                                 setIsUploadOpen((prev) => !prev)
-                                console.log('Toggling upload form:', !isUploadOpen)
+                                logCompat.log('Toggling upload form:', !isUploadOpen)
                             }}
                         >
                             <Plus className={`w-4 h-4 mr-2 transition-transform ${isUploadOpen ? 'rotate-45' : ''}`} />

@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { createClient } from '@/lib/supabase/server'
@@ -162,10 +163,10 @@ export async function POST(request: Request) {
                     profile.full_name ?? profile.email,
                     'idle_timeout',
                     agg.activeSeconds / 3600,
-                ).catch((e) => console.error('[heartbeat] auto-stop email failed:', e))
+                ).catch((e) => logCompat.error('[heartbeat] auto-stop email failed:', e))
             }
         } catch (e) {
-            console.error('[heartbeat] profile lookup failed:', e)
+            logCompat.error('[heartbeat] profile lookup failed:', e)
         }
     } else if (body.final) {
         // Manual final beacon — close session

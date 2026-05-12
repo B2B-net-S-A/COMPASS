@@ -2,19 +2,36 @@ import { isWeekend, addDays } from 'date-fns'
 
 // Polish public holidays — refresh annually before each new year.
 // 2026: Nowy Rok, Trzech Króli, Wielkanoc Pn, 1.05, 3.05, Boże Ciało, 15.08, 1.11, 11.11, 25-26.12.
-// TODO(2026-12): Add 2027 entries before 2027-01-01.
+// 2027: Wielkanoc Pn = 2027-03-29, Boże Ciało = 2027-05-27, reszta jest fixed-date.
+// Source: public_holidays table (migration 20260507120001_phase11b_hr_internal_schema.sql).
+// TODO(2027-12): Add 2028 entries before 2028-01-01.
 const POLISH_HOLIDAYS: ReadonlySet<string> = new Set([
+    // 2026
     '2026-01-01',
     '2026-01-06',
-    '2026-04-06',
+    '2026-04-05', // Niedziela Wielkanocna
+    '2026-04-06', // Poniedziałek Wielkanocny
     '2026-05-01',
     '2026-05-03',
-    '2026-06-04',
+    '2026-06-04', // Boże Ciało
     '2026-08-15',
     '2026-11-01',
     '2026-11-11',
     '2026-12-25',
     '2026-12-26',
+    // 2027
+    '2027-01-01',
+    '2027-01-06',
+    '2027-03-28', // Niedziela Wielkanocna
+    '2027-03-29', // Poniedziałek Wielkanocny
+    '2027-05-01',
+    '2027-05-03',
+    '2027-05-27', // Boże Ciało
+    '2027-08-15',
+    '2027-11-01',
+    '2027-11-11',
+    '2027-12-25',
+    '2027-12-26',
 ])
 
 export function isPolishHoliday(date: Date): boolean {

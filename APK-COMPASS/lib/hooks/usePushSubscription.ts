@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useCallback, useEffect, useState } from 'react'
 import { subscribePush, unsubscribePush } from '@/lib/actions/push-subscriptions'
 
@@ -66,7 +68,7 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
                     if (!cancelled) setIsSubscribed(!!sub)
                 }
             } catch (e) {
-                console.warn('[usePushSubscription] init error', e)
+                logCompat.warn('[usePushSubscription] init error', e)
             } finally {
                 if (!cancelled) setIsLoading(false)
             }

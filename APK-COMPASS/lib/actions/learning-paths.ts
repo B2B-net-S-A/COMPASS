@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type {
@@ -111,7 +113,7 @@ export async function listLearningPaths(): Promise<ActionResult<LearningPathList
         return { success: true, data: items }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania ścieżek'
-        console.error('[listLearningPaths]', error)
+        logCompat.error('[listLearningPaths]', error)
         return { success: false, error: msg }
     }
 }
@@ -218,7 +220,7 @@ export async function getLearningPathDetail(slug: string): Promise<ActionResult<
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania ścieżki'
-        console.error('[getLearningPathDetail]', error)
+        logCompat.error('[getLearningPathDetail]', error)
         return { success: false, error: msg }
     }
 }
@@ -256,7 +258,7 @@ export async function enrollInLearningPath(pathId: string): Promise<ActionResult
         return { success: true, data: { enrollmentId: (data as { id: string }).id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zapisu na ścieżkę'
-        console.error('[enrollInLearningPath]', error)
+        logCompat.error('[enrollInLearningPath]', error)
         return { success: false, error: msg }
     }
 }
@@ -314,7 +316,7 @@ export async function checkLearningPathCompletion(
         return { success: true, data: { now_completed: false } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd weryfikacji'
-        console.error('[checkLearningPathCompletion]', error)
+        logCompat.error('[checkLearningPathCompletion]', error)
         return { success: false, error: msg }
     }
 }

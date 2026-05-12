@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMockSupabaseClient, type MockSupabase, type MockSupabaseConfig } from '@/test/mocks/supabase'
 
@@ -35,14 +36,18 @@ describe('logAudit', () => {
         expect(currentClient._tables.audit_logs[0].user_id).toBeNull()
     })
 
-    it('does not throw when supabase write fails — only logs to console.error', async () => {
+    it('does not throw when supabase write fails — only logs to logCompat.error', async () => {
         // Force an insert error by making the table read-only via overriding from()
         const client = createMockSupabaseClient({})
         client.from = vi.fn(() => ({
             insert: vi.fn(async () => ({ error: { message: 'boom' } })),
         })) as unknown as typeof client.from
         currentClient = client
-        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        // Phase 18.7: po migracji console.error → logCompat.error, spy musi
+        // celować w logCompat. Plus logCompat emituje do process.stderr w Node
+        // env (lub globalThis.console.error w Edge), więc spy na console nadal
+        // łapie w testowym (happy-dom) env.
+        const errorSpy = vi.spyOn(logCompat, 'error').mockImplementation(() => {})
         const { logAudit } = await import('../audit')
         await expect(logAudit('u1', 'LOGIN')).resolves.toBeUndefined()
         expect(errorSpy).toHaveBeenCalled()

@@ -1,3 +1,4 @@
+import { logCompat } from '@/lib/logger'
 import PDFParser from 'pdf2json'
 import mammoth from 'mammoth'
 
@@ -8,20 +9,20 @@ export async function parseBuffer(buffer: Buffer, type: string, fileName: string
 
         return new Promise((resolve, reject) => {
             parser.on('pdfParser_dataError', (errData: unknown) => {
-                console.error('PDF Parser Error:', errData)
+                logCompat.error('PDF Parser Error:', errData)
                 reject(new Error((errData as { parserError?: string })?.parserError ?? 'PDF parse error'))
             })
             parser.on('pdfParser_dataReady', () => {
                 const text = parser.getRawTextContent()
-                console.log('PDF Extracted Text Length:', text.length)
-                if (text.length < 100) console.warn('PDF Text Warning: Extracted text is very short:', text)
+                logCompat.log('PDF Extracted Text Length:', text.length)
+                if (text.length < 100) logCompat.warn('PDF Text Warning: Extracted text is very short:', text)
                 resolve(text)
             })
 
             try {
                 parser.parseBuffer(buffer)
             } catch (e) {
-                console.error('PDF ParseBuffer Exception:', e)
+                logCompat.error('PDF ParseBuffer Exception:', e)
                 reject(e)
             }
         })

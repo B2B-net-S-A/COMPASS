@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ActionResult } from '@/lib/types/learning'
@@ -87,7 +89,7 @@ export async function submitCourseSurvey(
         return { success: true, data }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wysyłania ankiety'
-        console.error('[submitCourseSurvey]', error)
+        logCompat.error('[submitCourseSurvey]', error)
         return { success: false, error: msg }
     }
 }
@@ -162,7 +164,7 @@ export async function getCourseSurveyAggregate(
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd agregacji'
-        console.error('[getCourseSurveyAggregate]', error)
+        logCompat.error('[getCourseSurveyAggregate]', error)
         return { success: false, error: msg }
     }
 }

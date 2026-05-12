@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type {
@@ -37,7 +39,7 @@ async function notifyUsers(
     try {
         await supabase.from('notifications').insert(rows)
     } catch (e) {
-        console.warn('[notify] Failed to insert notifications:', e)
+        logCompat.warn('[notify] Failed to insert notifications:', e)
     }
 }
 
@@ -109,7 +111,7 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportAct
         return { success: true, data: { ticketId: data.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd tworzenia ticketu'
-        console.error('[createTicket]', error)
+        logCompat.error('[createTicket]', error)
         return { success: false, error: msg }
     }
 }
@@ -212,7 +214,7 @@ export async function listTickets(options: ListTicketsOptions): Promise<SupportA
         return { success: true, data: { items, total: count ?? items.length } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania ticketów'
-        console.error('[listTickets]', error)
+        logCompat.error('[listTickets]', error)
         return { success: false, error: msg }
     }
 }
@@ -303,7 +305,7 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
         }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania ticketu'
-        console.error('[getTicketDetail]', error)
+        logCompat.error('[getTicketDetail]', error)
         return { success: false, error: msg }
     }
 }
@@ -355,7 +357,7 @@ export async function addComment(ticketId: string, body: string, isInternal = fa
         return { success: true, data: { commentId: data.id } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd dodawania komentarza'
-        console.error('[addComment]', error)
+        logCompat.error('[addComment]', error)
         return { success: false, error: msg }
     }
 }
@@ -401,7 +403,7 @@ export async function changeTicketStatus(ticketId: string, status: TicketStatus)
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zmiany statusu'
-        console.error('[changeTicketStatus]', error)
+        logCompat.error('[changeTicketStatus]', error)
         return { success: false, error: msg }
     }
 }
@@ -438,7 +440,7 @@ export async function assignTicket(ticketId: string, assigneeId: string | null):
         return { success: true, data: undefined }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd przypisania'
-        console.error('[assignTicket]', error)
+        logCompat.error('[assignTicket]', error)
         return { success: false, error: msg }
     }
 }

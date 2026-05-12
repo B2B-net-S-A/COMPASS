@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/admin'
+import { logCompat } from '@/lib/logger'
+import { NextResponse } from 'next/server'
+import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,21 +38,8 @@ export const dynamic = 'force-dynamic'
  *     ]
  *   }
  */
-export async function GET(request: NextRequest) {
-    if (!process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Not configured' }, { status: 503 })
-    }
+export const GET = withCronAuth(async (request, { admin }) => {
     const url = new URL(request.url)
-    const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-    const querySecret = url.searchParams.get('secret')
-    const provided = headerSecret || querySecret
-    if (!provided || provided !== process.env.CRON_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (!headerSecret && querySecret) {
-        console.warn('[internal/payroll-export] secret in query param — migrate caller to Authorization: Bearer header')
-    }
-
     const yearParam = url.searchParams.get('year')
     const monthParam = url.searchParams.get('month')
     const year = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear()
@@ -72,8 +60,6 @@ export async function GET(request: NextRequest) {
     const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
     const monthEndDate = new Date(year, month, 0)
     const monthEnd = monthEndDate.toISOString().slice(0, 10)
-
-    const admin = createServiceClient()
 
     // Pull all UoP employees (B2B nie payroll)
     const { data: employees, error: empErr } = await admin
@@ -121,7 +107,7 @@ export async function GET(request: NextRequest) {
             .in('user_id', userIds),
         admin
             .from('attendance_records')
-            .select('user_id, date, status, hours_worked')
+            .select('user_id, date, status')
             .gte('date', monthStart)
             .lte('date', monthEnd)
             .in('user_id', userIds),
@@ -150,7 +136,6 @@ export async function GET(request: NextRequest) {
         user_id: string
         date: string
         status: string
-        hours_worked: number | null
     }
     type HolidayRow = { date: string; name_pl: string }
 
@@ -216,11 +201,14 @@ export async function GET(request: NextRequest) {
             leaveDaysByType[l.leave_type] = (leaveDaysByType[l.leave_type] ?? 0) + count
         }
 
+        // Phase 18.7: kolumna hours_worked nie istnieje w attendance_records.
+        // Filtruję po samym status='present' (granularność: dzień obecny lub
+        // nie). Dokładniejsze hours przychodzą z timesheet_entries (osobne pole).
         const attendanceDays = {
-            onsite: empAtt.filter((a) => a.status === 'present' && (a.hours_worked ?? 0) > 0)
+            onsite: empAtt.filter((a) => a.status === 'present')
                 .filter((a) => empLeaves.every((l) => !(a.date >= l.start_date && a.date <= l.end_date)))
-                .length, // simplified
-            remote: empAtt.filter((a) => a.status === 'present' && (a.hours_worked ?? 0) > 0).length,
+                .length,
+            remote: empAtt.filter((a) => a.status === 'present').length,
         }
 
         return {
@@ -245,4 +233,4 @@ export async function GET(request: NextRequest) {
         total_employees: uopEmployees.length,
         employees: records,
     })
-}
+})

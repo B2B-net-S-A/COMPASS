@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 import type { Notification, NotificationType, NotificationPriority } from '@/lib/types'
 
 /**
@@ -34,13 +35,13 @@ export async function getRecentNotifications(
         const { data, error } = await query
 
         if (error) {
-            console.error('Error fetching notifications:', error)
+            logger.error({ event: 'notifications.fetch.db_error', error, user_id: user.id })
             return { success: false, error: error.message }
         }
 
         return { success: true, notifications: data as Notification[] }
     } catch (error: any) {
-        console.error('Notifications fetch error:', error)
+        logger.error({ event: 'notifications.fetch.unexpected', error })
         return { success: false, error: error.message || 'Nie udało się pobrać powiadomień' }
     }
 }
@@ -64,13 +65,13 @@ export async function getUnreadNotificationCount(): Promise<{ success: boolean; 
             .eq('is_read', false)
 
         if (error) {
-            console.error('Error counting notifications:', error)
+            logger.error({ event: 'notifications.count.db_error', error, user_id: user.id })
             return { success: false, error: error.message }
         }
 
         return { success: true, count: count || 0 }
     } catch (error: any) {
-        console.error('Notification count error:', error)
+        logger.error({ event: 'notifications.count.unexpected', error })
         return { success: false, error: error.message || 'Nie udało się policzyć powiadomień' }
     }
 }
@@ -97,13 +98,13 @@ export async function markNotificationAsRead(notificationId: string): Promise<{ 
             .eq('user_id', user.id)
 
         if (error) {
-            console.error('Error marking notification as read:', error)
+            logger.error({ event: 'notifications.mark_read.db_error', error, notification_id: notificationId })
             return { success: false, error: error.message }
         }
 
         return { success: true }
     } catch (error: any) {
-        console.error('Mark as read error:', error)
+        logger.error({ event: 'notifications.mark_read.unexpected', error })
         return { success: false, error: error.message || 'Nie udało się oznaczyć powiadomienia jako przeczytane' }
     }
 }
@@ -130,13 +131,13 @@ export async function markAllNotificationsAsRead(): Promise<{ success: boolean; 
             .eq('is_read', false)
 
         if (error) {
-            console.error('Error marking all notifications as read:', error)
+            logger.error({ event: 'notifications.mark_all_read.db_error', error })
             return { success: false, error: error.message }
         }
 
         return { success: true }
     } catch (error: any) {
-        console.error('Mark all as read error:', error)
+        logger.error({ event: 'notifications.mark_all_read.unexpected', error })
         return { success: false, error: error.message || 'Nie udało się oznaczyć wszystkich jako przeczytane' }
     }
 }
@@ -160,13 +161,13 @@ export async function deleteNotification(notificationId: string): Promise<{ succ
             .eq('user_id', user.id)
 
         if (error) {
-            console.error('Error deleting notification:', error)
+            logger.error({ event: 'notifications.delete.db_error', error, notification_id: notificationId })
             return { success: false, error: error.message }
         }
 
         return { success: true }
     } catch (error: any) {
-        console.error('Delete notification error:', error)
+        logger.error({ event: 'notifications.delete.unexpected', error })
         return { success: false, error: error.message || 'Nie udało się usunąć powiadomienia' }
     }
 }
@@ -217,13 +218,13 @@ export async function createNotification(params: {
             })
 
         if (error) {
-            console.error('Error creating notification:', error)
+            logger.error({ event: 'notifications.create.db_error', error, target_user_id: params.userId })
             return { success: false, error: error.message }
         }
 
         return { success: true, notificationId: data as string }
     } catch (error: any) {
-        console.error('Create notification error:', error)
+        logger.error({ event: 'notifications.create.unexpected', error })
         return { success: false, error: error.message || 'Nie udało się utworzyć powiadomienia' }
     }
 }

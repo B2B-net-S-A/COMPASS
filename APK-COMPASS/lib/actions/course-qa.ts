@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ActionResult } from '@/lib/types/learning'
@@ -89,7 +91,7 @@ export async function listCourseQuestions(
         return { success: true, data: items }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania pytań'
-        console.error('[listCourseQuestions]', error)
+        logCompat.error('[listCourseQuestions]', error)
         return { success: false, error: msg }
     }
 }
@@ -143,7 +145,7 @@ export async function listAnswersForQuestion(
         return { success: true, data: items }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania odpowiedzi'
-        console.error('[listAnswersForQuestion]', error)
+        logCompat.error('[listAnswersForQuestion]', error)
         return { success: false, error: msg }
     }
 }
@@ -193,7 +195,7 @@ export async function askQuestion(input: {
         return { success: true, data }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zadawania pytania'
-        console.error('[askQuestion]', error)
+        logCompat.error('[askQuestion]', error)
         return { success: false, error: msg }
     }
 }
@@ -258,7 +260,7 @@ export async function answerQuestion(input: {
         return { success: true, data }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd odpowiedzi'
-        console.error('[answerQuestion]', error)
+        logCompat.error('[answerQuestion]', error)
         return { success: false, error: msg }
     }
 }

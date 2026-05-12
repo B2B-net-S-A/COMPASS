@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 
 export interface ProjectsAnalysis {
@@ -104,7 +106,7 @@ export async function getSkillGaps(): Promise<ProjectsAnalysis> {
             })
             matchedProjects = projects || []
         } catch (e) {
-            console.warn('Embedding match failed:', e)
+            logCompat.warn('Embedding match failed:', e)
         }
     }
 

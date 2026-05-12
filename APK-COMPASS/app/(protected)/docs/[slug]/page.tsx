@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { getLegalDocument } from '@/lib/actions/compliance'
+import { sanitizeHtml } from '@/lib/html/sanitize'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,7 @@ export default async function LegalDocPage({ params }: Props) {
             [&_li]:mb-1
             [&_a]:text-primary [&_a]:underline
             [&_strong]:font-semibold"
-          dangerouslySetInnerHTML={{ __html: doc.content_html }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(doc.content_html) }}
         />
 
         <div className="mt-8 pt-4 border-t text-xs text-muted-foreground">

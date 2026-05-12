@@ -1,31 +1,38 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { logger } from '@/lib/logger'
+import {
+    LOGIN_RATE_LIMIT_MAX_ATTEMPTS as MAX_ATTEMPTS,
+    LOGIN_RATE_LIMIT_WINDOW_MINUTES as WINDOW_MINUTES,
+} from '@/lib/constants/auth'
 
-const MAX_ATTEMPTS = 5
-const WINDOW_MINUTES = 15
-
+// login_attempts has RLS enabled with no policies (Phase 18.1 — security hardening).
+// We must use the service_role client to read/write rate-limit data; the anon-key
+// client would be denied by RLS. This is intentional: only the server-side login
+// flow should ever touch this table, and exposing it via REST/anon was a leak risk
+// (anyone could enumerate email addresses by polling failed-attempt counts).
 export async function checkRateLimit(email: string): Promise<{ allowed: boolean; remaining: number }> {
-    const supabase = createClient()
+    const supabase = createServiceClient()
     const headerStore = headers()
     void headerStore.get('x-forwarded-for') // reserved for future ip-based limit
 
     const timeWindow = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString()
 
-    // Count failed attempts in the last window
     const { count, error } = await supabase
         .from('login_attempts')
         .select('*', { count: 'exact', head: true })
         .eq('email', email)
-        // .eq('ip_address', ip) // Limit by Email AND IP? Spec says "na adres e-mail" (per email address)
         .eq('success', false)
         .gt('attempt_time', timeWindow)
 
     if (error) {
         logger.error({ event: 'auth.rate_limit.check_failed', error, email })
-        return { allowed: true, remaining: MAX_ATTEMPTS } // Fail open if DB error? Or fail closed? Fail open is safer for UX, but risky.
+        // Fail open: a DB error should not lock everyone out. Mitigated by the
+        // fact that login itself still goes through Supabase Auth which has its
+        // own (separate) brute-force protection.
+        return { allowed: true, remaining: MAX_ATTEMPTS }
     }
 
     const attempts = count || 0
@@ -33,19 +40,23 @@ export async function checkRateLimit(email: string): Promise<{ allowed: boolean;
 
     return {
         allowed: attempts < MAX_ATTEMPTS,
-        remaining
+        remaining,
     }
 }
 
 export async function logLoginAttempt(email: string, success: boolean) {
-    const supabase = createClient()
+    const supabase = createServiceClient()
     const headerStore = headers()
     const ip = headerStore.get('x-forwarded-for') || 'unknown'
 
-    await supabase.from('login_attempts').insert({
+    const { error } = await supabase.from('login_attempts').insert({
         email,
         ip_address: ip,
         success,
-        attempt_time: new Date().toISOString()
+        attempt_time: new Date().toISOString(),
     })
+
+    if (error) {
+        logger.error({ event: 'auth.login_attempt.insert_failed', error, email, success })
+    }
 }

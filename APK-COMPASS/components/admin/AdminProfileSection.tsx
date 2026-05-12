@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -54,7 +56,7 @@ export function AdminProfileSection({ userProfile, isSuperAdmin = false, dashboa
             })
             // Odpowiedź w nieoczekiwanym formacie (np. błąd Next) — traktuj jak błąd
             if (!result || typeof result !== 'object' || !('success' in result)) {
-                console.error('Profile update unexpected response:', result)
+                logCompat.error('Profile update unexpected response:', result)
                 toast.error('Nie udało się zapisać zmian. Spróbuj ponownie lub sprawdź logi serwera.')
                 return
             }
@@ -70,7 +72,7 @@ export function AdminProfileSection({ userProfile, isSuperAdmin = false, dashboa
             }
             router.refresh()
         } catch (error: unknown) {
-            console.error('Failed to update admin profile:', error)
+            logCompat.error('Failed to update admin profile:', error)
             // W produkcji Next często zwraca ogólny komunikat — nigdy nie pokazuj go użytkownikowi
             toast.error('Nie udało się zapisać zmian. Sprawdź połączenie i spróbuj ponownie. W razie powtórzenia sprawdź logi serwera (Render).')
         } finally {

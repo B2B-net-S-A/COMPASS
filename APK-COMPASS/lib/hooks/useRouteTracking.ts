@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 // Phase 17b R12 (PR-D follow-up) — Auto-call recordRouteVisit on Compass route
 // changes. Only fires when:
 //   1. user has active session (from useWorkClock state)
@@ -44,7 +46,7 @@ export function useRouteTracking({ sessionId, enabled }: Options): void {
                 await recordRouteVisit(sessionId, pathname, pageTitle ?? undefined)
             } catch (e) {
                 // Non-fatal — server may have rejected (session ended, opt-out, etc.)
-                console.warn('[useRouteTracking] silent fail', e)
+                logCompat.warn('[useRouteTracking] silent fail', e)
             }
         })()
     }, [pathname, sessionId, enabled])

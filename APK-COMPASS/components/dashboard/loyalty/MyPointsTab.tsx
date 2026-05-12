@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Loader2, Trophy, Star, Target, Calendar } from 'lucide-react'
@@ -36,7 +38,7 @@ export function MyPointsTab({ targetUserId, showUnearned = true }: Props) {
             const result = await getLoyaltyBreakdown(targetUserId, 0, 20)
             setData(result)
         } catch (e) {
-            console.error('Error loading breakdown:', e)
+            logCompat.error('Error loading breakdown:', e)
         } finally {
             setLoading(false)
         }

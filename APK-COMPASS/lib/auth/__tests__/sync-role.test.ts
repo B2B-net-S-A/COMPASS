@@ -10,56 +10,34 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 const mockedIsSuperAdmin = vi.mocked(isSuperAdmin)
 
+// Phase 18.3: syncRole jest teraz cienkim wrapperem nad RPC `sync_user_role`
+// (atomic w bazie). Mockujemy `supabase.rpc()` zamiast od skomplikowanego
+// łańcucha `from().select().eq().maybeSingle()` i `from().update().eq()`.
+
 interface MockSupabase {
     client: SupabaseClient
-    fromCalls: string[]
-    updatePayloads: unknown[]
-    updateEqCalls: Array<[string, string]>
-    setAdminEntry: (entry: { id: string } | null) => void
+    rpcCalls: Array<{ fn: string; args: Record<string, unknown> }>
+    setRpcReturn: (returnValue: unknown, error?: { message: string } | null) => void
 }
 
 function buildMockSupabase(): MockSupabase {
-    const fromCalls: string[] = []
-    const updatePayloads: unknown[] = []
-    const updateEqCalls: Array<[string, string]> = []
-    let adminEntry: { id: string } | null = null
+    const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = []
+    let nextReturn: unknown = 'consultant'
+    let nextError: { message: string } | null = null
 
     const client = {
-        from: vi.fn((table: string) => {
-            fromCalls.push(table)
-            if (table === 'admin_access_list') {
-                return {
-                    select: vi.fn(() => ({
-                        eq: vi.fn(() => ({
-                            maybeSingle: vi.fn(async () => ({ data: adminEntry, error: null })),
-                        })),
-                    })),
-                }
-            }
-            if (table === 'profiles') {
-                return {
-                    update: vi.fn((payload: unknown) => {
-                        updatePayloads.push(payload)
-                        return {
-                            eq: vi.fn(async (column: string, value: string) => {
-                                updateEqCalls.push([column, value])
-                                return { data: null, error: null }
-                            }),
-                        }
-                    }),
-                }
-            }
-            throw new Error(`unexpected table: ${table}`)
+        rpc: vi.fn(async (fn: string, args: Record<string, unknown>) => {
+            rpcCalls.push({ fn, args })
+            return { data: nextReturn, error: nextError }
         }),
     } as unknown as SupabaseClient
 
     return {
         client,
-        fromCalls,
-        updatePayloads,
-        updateEqCalls,
-        setAdminEntry: (entry) => {
-            adminEntry = entry
+        rpcCalls,
+        setRpcReturn: (returnValue, error = null) => {
+            nextReturn = returnValue
+            nextError = error
         },
     }
 }
@@ -69,93 +47,78 @@ describe('syncRole', () => {
         mockedIsSuperAdmin.mockReset()
     })
 
-    it('promotes super-admin email from consultant to admin', async () => {
+    it('calls sync_user_role RPC with super-admin flag', async () => {
         mockedIsSuperAdmin.mockReturnValue(true)
         const m = buildMockSupabase()
+        m.setRpcReturn('admin')
 
         const result = await syncRole(m.client, 'user-1', 'super@b2bnetwork.pl', 'consultant')
 
         expect(result).toBe('admin')
-        expect(m.updatePayloads).toEqual([{ role: 'admin' }])
-        expect(m.updateEqCalls).toEqual([['id', 'user-1']])
+        expect(m.rpcCalls).toHaveLength(1)
+        expect(m.rpcCalls[0]).toEqual({
+            fn: 'sync_user_role',
+            args: {
+                p_user_id: 'user-1',
+                p_email: 'super@b2bnetwork.pl',
+                p_is_super_admin: true,
+            },
+        })
     })
 
-    it('keeps existing admin (in admin_access_list) without writing', async () => {
+    it('calls RPC with super-admin=false for non-super-admin', async () => {
         mockedIsSuperAdmin.mockReturnValue(false)
         const m = buildMockSupabase()
-        m.setAdminEntry({ id: 'access-1' })
+        m.setRpcReturn('admin')
 
         const result = await syncRole(m.client, 'user-2', 'admin@b2bnetwork.pl', 'admin')
 
         expect(result).toBe('admin')
-        expect(m.updatePayloads).toEqual([])
-        expect(m.fromCalls).toContain('admin_access_list')
-        expect(m.fromCalls).not.toContain('profiles')
+        expect(m.rpcCalls[0].args).toEqual({
+            p_user_id: 'user-2',
+            p_email: 'admin@b2bnetwork.pl',
+            p_is_super_admin: false,
+        })
     })
 
-    it('preserves internal role for non-admin user (regression: Phase 11a fix)', async () => {
+    it('returns whatever the RPC returns (internal preserved)', async () => {
         mockedIsSuperAdmin.mockReturnValue(false)
         const m = buildMockSupabase()
-        m.setAdminEntry(null)
+        m.setRpcReturn('internal')
 
         const result = await syncRole(m.client, 'user-3', 'olaf@b2bnetwork.pl', 'internal')
 
         expect(result).toBe('internal')
-        expect(m.updatePayloads).toEqual([])
-        expect(m.fromCalls).not.toContain('profiles')
     })
 
-    it('keeps consultant unchanged for non-admin user', async () => {
+    it('lowercases email before passing to RPC', async () => {
         mockedIsSuperAdmin.mockReturnValue(false)
         const m = buildMockSupabase()
-        m.setAdminEntry(null)
+        m.setRpcReturn('consultant')
 
-        const result = await syncRole(m.client, 'user-4', 'consultant@b2bnetwork.pl', 'consultant')
-
-        expect(result).toBe('consultant')
-        expect(m.updatePayloads).toEqual([])
-    })
-
-    it('demotes ex-admin to consultant when removed from admin_access_list', async () => {
-        mockedIsSuperAdmin.mockReturnValue(false)
-        const m = buildMockSupabase()
-        m.setAdminEntry(null)
-
-        const result = await syncRole(m.client, 'user-5', 'ex-admin@b2bnetwork.pl', 'admin')
-
-        expect(result).toBe('consultant')
-        expect(m.updatePayloads).toEqual([{ role: 'consultant' }])
-        expect(m.updateEqCalls).toEqual([['id', 'user-5']])
-    })
-
-    it('admin promotion overrides internal role', async () => {
-        mockedIsSuperAdmin.mockReturnValue(true)
-        const m = buildMockSupabase()
-
-        const result = await syncRole(m.client, 'user-6', 'super@b2bnetwork.pl', 'internal')
-
-        expect(result).toBe('admin')
-        expect(m.updatePayloads).toEqual([{ role: 'admin' }])
-    })
-
-    it('lowercases email before checking admin_access_list', async () => {
-        mockedIsSuperAdmin.mockReturnValue(false)
-        const m = buildMockSupabase()
-        m.setAdminEntry(null)
-        const eqSpy = vi.fn(() => ({
-            maybeSingle: vi.fn(async () => ({ data: null, error: null })),
-        }))
-        const selectSpy = vi.fn(() => ({ eq: eqSpy }))
-        ;(m.client.from as unknown as ReturnType<typeof vi.fn>).mockImplementation((table: string) => {
-            if (table === 'admin_access_list') {
-                return { select: selectSpy }
-            }
-            return { update: vi.fn(() => ({ eq: vi.fn(async () => ({ data: null, error: null })) })) }
-        })
-
-        await syncRole(m.client, 'user-7', 'OLAF@B2BNETWORK.PL', 'consultant')
+        await syncRole(m.client, 'user-4', 'OLAF@B2BNETWORK.PL', 'consultant')
 
         expect(mockedIsSuperAdmin).toHaveBeenCalledWith('olaf@b2bnetwork.pl')
-        expect(eqSpy).toHaveBeenCalledWith('email', 'olaf@b2bnetwork.pl')
+        expect(m.rpcCalls[0].args.p_email).toBe('olaf@b2bnetwork.pl')
+    })
+
+    it('throws if RPC fails (fail closed)', async () => {
+        mockedIsSuperAdmin.mockReturnValue(false)
+        const m = buildMockSupabase()
+        m.setRpcReturn(null, { message: 'profile not found' })
+
+        await expect(syncRole(m.client, 'user-5', 'missing@b2bnetwork.pl', 'consultant'))
+            .rejects.toThrow('sync_user_role failed: profile not found')
+    })
+
+    it('atomic: single RPC call replaces 2-step SELECT+UPDATE flow', async () => {
+        mockedIsSuperAdmin.mockReturnValue(false)
+        const m = buildMockSupabase()
+        m.setRpcReturn('consultant')
+
+        await syncRole(m.client, 'user-6', 'consultant@b2bnetwork.pl', 'consultant')
+
+        // Tylko 1 call do bazy, nie 2. Atomiczność po stronie Postgresa.
+        expect(m.rpcCalls).toHaveLength(1)
     })
 })

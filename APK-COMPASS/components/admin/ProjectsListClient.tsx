@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -50,7 +52,8 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
             if (sbError) {
                 setError(sbError.message)
             } else {
-                setProjects(data || [])
+                // Phase 18.7: required_skills jest nullable w DB types — fallback do [].
+                setProjects((data || []).map(p => ({ ...p, required_skills: p.required_skills ?? [] })) as Project[])
                 setSelectedProjects(new Set())
             }
         } catch (err: unknown) {
@@ -171,7 +174,7 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
                         ]
                         changed = true
                     } catch (err) {
-                        console.error(`Failed to fetch summary for project ${id}:`, err)
+                        logCompat.error(`Failed to fetch summary for project ${id}:`, err)
                     }
                 }
             }))

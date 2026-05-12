@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type {
@@ -74,7 +76,7 @@ export async function listArticlesByCategory(categorySlug?: string, options: { o
         return { success: true, data: items }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania artykułów'
-        console.error('[listArticlesByCategory]', error)
+        logCompat.error('[listArticlesByCategory]', error)
         return { success: false, error: msg }
     }
 }
@@ -131,7 +133,7 @@ export async function createArticle(input: CreateArticleInput): Promise<SupportA
         return { success: true, data: { articleId: data.id, slug: data.slug } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd tworzenia artykułu'
-        console.error('[createArticle]', error)
+        logCompat.error('[createArticle]', error)
         return { success: false, error: msg }
     }
 }

@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -78,7 +80,7 @@ export async function getDashboardStats() {
             }
         }
     } catch (error: unknown) {
-        console.error('Dashboard stats error:', error)
+        logCompat.error('Dashboard stats error:', error)
         return { success: false, error: error instanceof Error ? error.message : 'Nie udało się pobrać statystyk' }
     }
 }
@@ -107,7 +109,7 @@ export async function getContractStatus() {
 
         if (error && error.code !== 'PGRST116') {
             // PGRST116 = no rows returned (expected if no contract)
-            console.error('Contract status error:', error)
+            logCompat.error('Contract status error:', error)
             return { success: false, error: error.message }
         }
 
@@ -127,7 +129,7 @@ export async function getContractStatus() {
             hasContract: !!contract
         }
     } catch (error: unknown) {
-        console.error('Contract status error:', error)
+        logCompat.error('Contract status error:', error)
         return { success: false, error: error instanceof Error ? error.message : 'Nie udało się pobrać statusu kontraktu' }
     }
 }
@@ -212,7 +214,7 @@ export async function getQuickActions() {
             actions
         }
     } catch (error: unknown) {
-        console.error('Quick actions error:', error)
+        logCompat.error('Quick actions error:', error)
         return { success: false, error: error instanceof Error ? error.message : 'Nie udało się pobrać szybkich akcji' }
     }
 }

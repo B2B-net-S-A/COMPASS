@@ -1,5 +1,7 @@
 'use client'
 
+import { logCompat } from '@/lib/logger'
+
 import { useEffect, useState } from 'react'
 import { Play, Square, Pause, Loader2, Clock, Coffee, ChevronUp, Phone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -108,7 +110,7 @@ export function WorkClockButton() {
                         }
                     }
                 } catch (e) {
-                    console.warn('[WorkClockButton] enable route tracking failed', e)
+                    logCompat.warn('[WorkClockButton] enable route tracking failed', e)
                 }
             }
             toast.success('Zegar pracy uruchomiony')

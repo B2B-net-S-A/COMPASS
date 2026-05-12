@@ -1,5 +1,7 @@
 'use server'
 
+import { logCompat } from '@/lib/logger'
+
 import { createClient } from '@/lib/supabase/server'
 import { requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { revalidatePath } from 'next/cache'
@@ -178,7 +180,7 @@ export async function convertTimerToEntry(timerId: string, timesheetId: string):
         .from('timesheet_timers')
         .update({ converted_entry_id: entry.id })
         .eq('id', timerId)
-    if (updErr) console.warn('[convertTimerToEntry] mark converted failed:', updErr)
+    if (updErr) logCompat.warn('[convertTimerToEntry] mark converted failed:', updErr)
 
     revalidatePath(`/internal/timesheet/${ts.year}/${ts.month}`)
 }
