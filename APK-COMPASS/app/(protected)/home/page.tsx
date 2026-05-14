@@ -29,6 +29,7 @@ import { listTickets } from '@/lib/actions/support-tickets'
 import { listMyPitches, listAllPitchesAdmin } from '@/lib/actions/incubator'
 import type { TierName } from '@/lib/league-config'
 import { PITCH_STATUS_LABEL } from '@/lib/types/incubator'
+import { isFeatureComingSoon } from '@/lib/types/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,6 +58,8 @@ export default async function HomePage() {
     }
 
     const isAdmin = (profile?.role as string) === 'admin'
+    const learningHidden = isFeatureComingSoon('learning')
+    const leagueHidden = isFeatureComingSoon('league')
 
     const [overviewRes, enrollRes, newsRes, ticketsRes, pitchesRes, adminTicketsRes, adminPitchesRes] = await Promise.all([
         getLoyaltyOverview(),
@@ -106,7 +109,7 @@ export default async function HomePage() {
             <Card className="bg-gradient-to-br from-primary/10 via-card to-card border-primary/20">
                 <CardContent className="p-6">
                     <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-                        {overview && (
+                        {overview && !leagueHidden && (
                             <ProgressRing
                                 value={overview.progress_pct}
                                 tier={overview.tier as TierName}
@@ -122,7 +125,7 @@ export default async function HomePage() {
                             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
                                 Cześć, <span className="text-primary">{greetingName}</span>
                             </h1>
-                            {overview && (
+                            {overview && !leagueHidden && (
                                 <div className="flex flex-wrap items-center gap-2">
                                     <TierBadge tier={overview.tier} />
                                     {overview.next_tier && (
@@ -140,24 +143,30 @@ export default async function HomePage() {
                                     )}
                                 </div>
                             )}
-                            <div className="flex gap-2 pt-1">
-                                <Link href="/league">
-                                    <Button size="sm" variant="outline" className="gap-1">
-                                        <Trophy className="w-4 h-4" /> League
-                                    </Button>
-                                </Link>
-                                <Link href="/learning">
-                                    <Button size="sm" variant="outline" className="gap-1">
-                                        <GraduationCap className="w-4 h-4" /> Akademia
-                                    </Button>
-                                </Link>
-                            </div>
+                            {(!leagueHidden || !learningHidden) && (
+                                <div className="flex gap-2 pt-1">
+                                    {!leagueHidden && (
+                                        <Link href="/league">
+                                            <Button size="sm" variant="outline" className="gap-1">
+                                                <Trophy className="w-4 h-4" /> League
+                                            </Button>
+                                        </Link>
+                                    )}
+                                    {!learningHidden && (
+                                        <Link href="/learning">
+                                            <Button size="sm" variant="outline" className="gap-1">
+                                                <GraduationCap className="w-4 h-4" /> Akademia
+                                            </Button>
+                                        </Link>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </CardContent>
             </Card>
 
-            {(recentlyActive || (profile?.learning_streak_longest ?? 0) > 0) && (
+            {!learningHidden && (recentlyActive || (profile?.learning_streak_longest ?? 0) > 0) && (
                 <div className="grid gap-4 md:grid-cols-3">
                     {recentlyActive && (
                         <Link
@@ -252,48 +261,50 @@ export default async function HomePage() {
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
-                <Card className="bg-white/5 border-white/10">
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <GraduationCap className="w-5 h-5 text-primary" />
-                            W trakcie nauki
-                        </CardTitle>
-                        <Link href="/learning/moje">
-                            <Button variant="link" size="sm" className="gap-1 px-0">
-                                Wszystkie <ArrowRight className="w-3 h-3" />
-                            </Button>
-                        </Link>
-                    </CardHeader>
-                    <CardContent className="space-y-2 pt-0">
-                        {inProgress.length === 0 ? (
-                            <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-white/10 rounded">
-                                Brak aktywnych szkoleń.{' '}
-                                <Link href="/learning" className="text-primary hover:underline">Przeglądaj katalog</Link>
-                            </div>
-                        ) : (
-                            inProgress.map((e) => (
-                                <Link
-                                    key={e.enrollment_id}
-                                    href={`/learning/${e.course.slug}/lekcja/${e.last_accessed_lesson_id ?? 'first'}`}
-                                    className="block p-3 rounded-md bg-card hover:bg-white/5 border border-white/5 hover:border-primary/30 transition-colors"
-                                >
-                                    <div className="flex items-center justify-between gap-2 mb-1">
-                                        <p className="text-sm font-medium truncate flex-1">{e.course.title}</p>
-                                        <span className="text-[10px] text-muted-foreground tabular-nums">{e.progress_percent}%</span>
-                                    </div>
-                                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                                        <div className="h-full bg-primary" style={{ width: `${e.progress_percent}%` }} />
-                                    </div>
-                                    {e.last_accessed_at && (
-                                        <p className="text-[10px] text-muted-foreground mt-1.5">
-                                            Ostatnio: {formatDistanceToNow(new Date(e.last_accessed_at), { addSuffix: true, locale: pl })}
-                                        </p>
-                                    )}
-                                </Link>
-                            ))
-                        )}
-                    </CardContent>
-                </Card>
+                {!learningHidden && (
+                    <Card className="bg-white/5 border-white/10">
+                        <CardHeader className="flex flex-row items-center justify-between pb-3">
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <GraduationCap className="w-5 h-5 text-primary" />
+                                W trakcie nauki
+                            </CardTitle>
+                            <Link href="/learning/moje">
+                                <Button variant="link" size="sm" className="gap-1 px-0">
+                                    Wszystkie <ArrowRight className="w-3 h-3" />
+                                </Button>
+                            </Link>
+                        </CardHeader>
+                        <CardContent className="space-y-2 pt-0">
+                            {inProgress.length === 0 ? (
+                                <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-white/10 rounded">
+                                    Brak aktywnych szkoleń.{' '}
+                                    <Link href="/learning" className="text-primary hover:underline">Przeglądaj katalog</Link>
+                                </div>
+                            ) : (
+                                inProgress.map((e) => (
+                                    <Link
+                                        key={e.enrollment_id}
+                                        href={`/learning/${e.course.slug}/lekcja/${e.last_accessed_lesson_id ?? 'first'}`}
+                                        className="block p-3 rounded-md bg-card hover:bg-white/5 border border-white/5 hover:border-primary/30 transition-colors"
+                                    >
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                            <p className="text-sm font-medium truncate flex-1">{e.course.title}</p>
+                                            <span className="text-[10px] text-muted-foreground tabular-nums">{e.progress_percent}%</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                            <div className="h-full bg-primary" style={{ width: `${e.progress_percent}%` }} />
+                                        </div>
+                                        {e.last_accessed_at && (
+                                            <p className="text-[10px] text-muted-foreground mt-1.5">
+                                                Ostatnio: {formatDistanceToNow(new Date(e.last_accessed_at), { addSuffix: true, locale: pl })}
+                                            </p>
+                                        )}
+                                    </Link>
+                                ))
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
 
                 <Card className="bg-white/5 border-white/10">
                     <CardHeader className="flex flex-row items-center justify-between pb-3">

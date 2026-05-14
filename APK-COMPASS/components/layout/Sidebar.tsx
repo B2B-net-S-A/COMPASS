@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
 import { useTheme } from '@/lib/contexts/ThemeContext'
-import type { PermissionFeature, PermissionValue } from '@/lib/types/permissions'
+import { isFeatureComingSoon, type PermissionFeature, type PermissionValue } from '@/lib/types/permissions'
 
 // Phase 7 (2026-05-04): Sidebar badge counts fetched server-side in
 // app/(protected)/layout.tsx and passed through. Display badge if count > 0.
@@ -110,7 +110,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     const adminGroup: NavGroup = {
         heading: t('group_admin'),
         links: [
-            { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: null },
+            { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: 'learning' },
             { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null, badgeCount: badges?.adminTickets },
             { name: t('nav_admin_inbox'), href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox },
             { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
@@ -143,7 +143,9 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     })()
 
     // Apply per-feature permission filter (admins always pass).
+    // Globalny gate dla coming-soon idzie pierwszy — ukrywa nawet adminom.
     const filterByPermission = (link: NavLink): boolean => {
+        if (isFeatureComingSoon(link.feature)) return false
         if (isAdmin) return true
         if (!link.feature) return true
         if (!permissions) return true

@@ -8,7 +8,6 @@ import { useTranslation } from '@/lib/i18n/context'
 import {
     LayoutDashboard,
     GraduationCap,
-    Trophy,
     Newspaper,
     LifeBuoy,
     Lightbulb,
@@ -21,6 +20,7 @@ import {
     type LucideIcon,
 } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { isFeatureComingSoon } from '@/lib/types/permissions'
 
 interface MobileMenuProps {
     role: 'consultant' | 'admin' | 'internal'
@@ -44,21 +44,23 @@ export function MobileMenu({ role }: MobileMenuProps) {
     const [moreOpen, setMoreOpen] = useState(false)
 
     // 4 fixed bottom-nav slots + More drawer (5th slot).
+    // Learning + League są coming-soon, więc bottom nav promuje pozostałe
+    // platform modules: Incubator + Support (przeniesione z drawer'a).
     const bottomNav: NavItem[] = [
         { name: t('mobile_home'), href: '/home', icon: LayoutDashboard },
-        { name: t('mobile_learning'), href: '/learning', icon: GraduationCap },
-        { name: t('mobile_league'), href: '/league', icon: Trophy },
         { name: t('mobile_news'), href: '/news', icon: Newspaper },
+        { name: t('mobile_incubator'), href: '/incubator', icon: Lightbulb },
+        { name: t('mobile_support'), href: '/support', icon: LifeBuoy },
     ]
 
-    // Items shown inside the "More" drawer.
+    // Items shown inside the "More" drawer (Incubator + Support przeniesione na bottom).
     const moreItems: NavItem[] = [
-        { name: t('nav_support'), href: '/support', icon: LifeBuoy },
-        { name: t('nav_incubator'), href: '/incubator', icon: Lightbulb },
         { name: t('nav_notifications'), href: '/notifications', icon: Bell },
         { name: t('nav_profile'), href: '/profile', icon: User },
         { name: t('nav_settings'), href: '/settings', icon: Settings },
     ]
+
+    const showAdminLearning = !isFeatureComingSoon('learning')
 
     const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
@@ -156,18 +158,23 @@ export function MobileMenu({ role }: MobileMenuProps) {
                             <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                                 {t('group_admin')}
                             </p>
-                            <Link
-                                href="/admin/learning"
-                                onClick={() => setMoreOpen(false)}
-                                className="mt-2 flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
-                            >
-                                <GraduationCap className="h-5 w-5" />
-                                {t('nav_admin_learning')}
-                            </Link>
+                            {showAdminLearning && (
+                                <Link
+                                    href="/admin/learning"
+                                    onClick={() => setMoreOpen(false)}
+                                    className="mt-2 flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                                >
+                                    <GraduationCap className="h-5 w-5" />
+                                    {t('nav_admin_learning')}
+                                </Link>
+                            )}
                             <Link
                                 href="/admin/settings"
                                 onClick={() => setMoreOpen(false)}
-                                className="flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                                className={cn(
+                                    "flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted",
+                                    showAdminLearning ? '' : 'mt-2',
+                                )}
                             >
                                 <Settings className="h-5 w-5" />
                                 {t('nav_admin_settings')}

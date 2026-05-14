@@ -42,6 +42,19 @@ const ALL_PANELS_TRUE = {
     notifications: 'true' as const,
 }
 
+// Globalny gate dla modułów które są w repo, ale jeszcze niewypuszczone do
+// użytkowników (admin też nie widzi w nav). Po launch wystarczy usunąć
+// feature z tego setu — kod i routes już istnieją.
+export const COMING_SOON_FEATURES: ReadonlySet<PermissionFeature> = new Set<PermissionFeature>([
+    'learning',
+    'league',
+])
+
+export function isFeatureComingSoon(feature: PermissionFeature | null | undefined): boolean {
+    if (!feature) return false
+    return COMING_SOON_FEATURES.has(feature)
+}
+
 export const DEFAULT_PERMISSIONS: PermissionsMap = {
     admin: {
         ...ALL_PANELS_TRUE,
