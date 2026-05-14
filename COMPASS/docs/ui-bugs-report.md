@@ -100,7 +100,7 @@ W signup formie user akceptuje "Politykę prywatności" przez RODO checkbox + si
 - W razie audytu/skargi UODO → poważne ryzyko kary
 
 ### Diagnoza
-Frontend ([app/privacy-policy/page.tsx:9–15](APK-COMPASS/app/privacy-policy/page.tsx)) poprawnie czyta z `um_legal_documents` table przez Supabase. Pokazuje placeholder gdy `doc === null`.
+Frontend ([app/privacy-policy/page.tsx:9–15](COMPASS/app/privacy-policy/page.tsx)) poprawnie czyta z `um_legal_documents` table przez Supabase. Pokazuje placeholder gdy `doc === null`.
 
 Tabela `um_legal_documents` na prod jest **PUSTA**. Migracja `supabase/migrations/20260311_legal_documents_and_consents.sql` (która seedie 10 legal docs: privacy-policy, terms, help, security, cooperation, ai-notice, electronic-signature, access-management, incident-response, data-retention) **nie została uruchomiona** lub jej seed został usunięty.
 
@@ -112,9 +112,9 @@ curl -X GET "https://compass.dynaminds.pl/api/migrate-compliance?secret=$CRON_SE
 To uruchomi: tworzenie tabel (idempotent) + seed 10 dokumentów + RLS policies. Po wywołaniu wszystkie 3 strony (#003, #004, #005) zaczną pokazywać prawdziwą treść.
 
 ### Pliki referencyjne
-- [app/privacy-policy/page.tsx](APK-COMPASS/app/privacy-policy/page.tsx) — frontend (działa)
-- [app/api/migrate-compliance/route.ts](APK-COMPASS/app/api/migrate-compliance/route.ts) — endpoint do uruchomienia migracji
-- [supabase/migrations/20260311_legal_documents_and_consents.sql](APK-COMPASS/supabase/migrations/20260311_legal_documents_and_consents.sql) — seed danych
+- [app/privacy-policy/page.tsx](COMPASS/app/privacy-policy/page.tsx) — frontend (działa)
+- [app/api/migrate-compliance/route.ts](COMPASS/app/api/migrate-compliance/route.ts) — endpoint do uruchomienia migracji
+- [supabase/migrations/20260311_legal_documents_and_consents.sql](COMPASS/supabase/migrations/20260311_legal_documents_and_consents.sql) — seed danych
 
 ### Status
 **OTWARTY — wymaga natychmiastowego fixu.** Dopóki nie ma poprawnej polityki prywatności, blokuje produkcyjne onboarding nowych konsultantów.
@@ -137,7 +137,7 @@ Identyczna jak #003 — Regulamin musi istnieć żeby użytkownik mógł go skut
 Ten sam co #003 — `GET /api/migrate-compliance?secret=...` insertuje też dokument o slug `terms`.
 
 ### Pliki
-- [app/terms/page.tsx](APK-COMPASS/app/terms/page.tsx) (frontend — OK)
+- [app/terms/page.tsx](COMPASS/app/terms/page.tsx) (frontend — OK)
 
 ### Status
 **OTWARTY — wymaga fixu razem z #003 (jedno wywołanie migrate-compliance załatwi oba).**
@@ -178,7 +178,7 @@ OTWARTY.
 4. Zostaniesz przekierowany do `/consent` zamiast widzieć 404
 
 ### Diagnoza
-[middleware.ts:39–80](APK-COMPASS/middleware.ts) najpierw robi consent gate sprawdzanie i wszystkie URL przekierowuje do `/consent`. Dopiero PO submit consent dostaję się do faktycznej strony — gdzie wówczas jest 404.
+[middleware.ts:39–80](COMPASS/middleware.ts) najpierw robi consent gate sprawdzanie i wszystkie URL przekierowuje do `/consent`. Dopiero PO submit consent dostaję się do faktycznej strony — gdzie wówczas jest 404.
 
 ### Konsekwencja
 - Jeśli admin ma niezakceptowane consent + przejdzie po 404 link → utknie w consent loopie
@@ -188,7 +188,7 @@ OTWARTY.
 W middleware: jeśli requested URL nie pasuje do żadnej znanej route (i nie jest /consent /onboarding /login), pokaż 404 wraz z linkiem "Najpierw zaakceptuj regulaminy".
 
 ### Pliki
-- [middleware.ts](APK-COMPASS/middleware.ts) — kolejność guards (consent → not-found)
+- [middleware.ts](COMPASS/middleware.ts) — kolejność guards (consent → not-found)
 
 ### Status
 OTWARTY, niski priorytet. Zostawić do listy enhancement.
@@ -212,7 +212,7 @@ OTWARTY, niski priorytet. Zostawić do listy enhancement.
 **Złamane wymaganie RODO:** zgody są wymagane na pustkach. User akceptuje 4 dokumenty których nie może przeczytać. To typowy "dark pattern" prawnie nielegalny w UE.
 
 ### Fix
-Te same migrate-compliance jak w #003/#004/#005 wstawi te dokumenty. Plus należy zablokować consent UI gdy `getLegalDocument(slug) === null` ([app/(protected)/consent/page.tsx](APK-COMPASS/app/(protected)/consent/page.tsx)).
+Te same migrate-compliance jak w #003/#004/#005 wstawi te dokumenty. Plus należy zablokować consent UI gdy `getLegalDocument(slug) === null` ([app/(protected)/consent/page.tsx](COMPASS/app/(protected)/consent/page.tsx)).
 
 ### Status
 **KRYTYCZNY** — connected to #003/#004/#005. Jeden fix (migrate-compliance) załatwia większość, ale dodatkowo zablokować consent gdy doc missing (defense in depth).

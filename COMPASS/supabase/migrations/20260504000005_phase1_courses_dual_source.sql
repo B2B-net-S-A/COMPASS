@@ -47,7 +47,7 @@ INSERT INTO loyalty_rules (code, name, description, points, category, is_active,
 VALUES (
     'course_completed_company_student',
     'Ukończenie kursu firmowego',
-    'Punkty za ukończenie kursu firmowego (Dynaminds-authored)',
+    'Punkty za ukończenie kursu firmowego (B2Bnetwork-authored)',
     30,
     'Development',
     TRUE,

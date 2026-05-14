@@ -11,10 +11,10 @@ export default function IncubatorLandingPage() {
             <div>
                 <div className="flex items-center gap-3">
                     <Lightbulb className="w-8 h-8 text-primary" />
-                    <h1 className="text-3xl font-bold tracking-tight">Inkubator Dynaminds</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Inkubator B2Bnetwork</h1>
                 </div>
                 <p className="text-muted-foreground mt-1 max-w-2xl">
-                    Twoje pomysły i nasze produkty wewnętrzne. Zgłoś własne rozwiązanie lub dołącz do Dynaminds-owego projektu.
+                    Twoje pomysły i nasze produkty wewnętrzne. Zgłoś własne rozwiązanie lub dołącz do projektu B2Bnetwork.
                 </p>
             </div>
 
@@ -51,7 +51,7 @@ export default function IncubatorLandingPage() {
                         <Briefcase className="w-8 h-8 text-primary mb-2" />
                         <CardTitle className="text-xl">Pracuj nad naszym produktem</CardTitle>
                         <CardDescription>
-                            Wewnętrzne projekty Dynaminds otwarte na zaangażowanie konsultantów. Equity, royalty lub stała stawka.
+                            Wewnętrzne projekty B2Bnetwork otwarte na zaangażowanie konsultantów. Equity, royalty lub stała stawka.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>

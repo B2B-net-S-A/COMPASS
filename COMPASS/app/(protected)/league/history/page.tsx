@@ -35,7 +35,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
             <div>
                 <Link href="/league" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-2">
-                    ← Dynaminds League
+                    ← B2Bnetwork League
                 </Link>
                 <div className="flex items-center gap-3">
                     <HistoryIcon className="w-7 h-7 text-primary" />

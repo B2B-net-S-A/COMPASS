@@ -102,10 +102,10 @@ export const APPLICATION_STATUS_LABEL: Record<ApplicationStatus, string> = {
     rejected: 'Odrzucona',
 }
 
-export const NDA_TEXT = `Akceptując niniejsze postanowienia, oświadczam, że pomysł / projekt / koncepcja, którą zamierzam zgłosić w Inkubatorze Dynaminds, stanowi moją własność intelektualną lub mam do niego prawa.
+export const NDA_TEXT = `Akceptując niniejsze postanowienia, oświadczam, że pomysł / projekt / koncepcja, którą zamierzam zgłosić w Inkubatorze B2Bnetwork, stanowi moją własność intelektualną lub mam do niego prawa.
 
-Dynaminds zobowiązuje się do zachowania poufności otrzymanych informacji oraz nieprzekazywania ich osobom trzecim bez mojej zgody. Zgłoszenie pomysłu nie powoduje przeniesienia praw autorskich ani jakiegokolwiek innego prawa do pomysłu na Dynaminds.
+B2Bnetwork zobowiązuje się do zachowania poufności otrzymanych informacji oraz nieprzekazywania ich osobom trzecim bez mojej zgody. Zgłoszenie pomysłu nie powoduje przeniesienia praw autorskich ani jakiegokolwiek innego prawa do pomysłu na B2Bnetwork.
 
-Otrzymanie zgłoszenia nie stanowi zobowiązania Dynaminds do jego oceny w określonym terminie, ani do podjęcia jakichkolwiek działań w jego sprawie. Wszelkie warunki ewentualnej współpracy zostaną ustalone w odrębnej umowie.
+Otrzymanie zgłoszenia nie stanowi zobowiązania B2Bnetwork do jego oceny w określonym terminie, ani do podjęcia jakichkolwiek działań w jego sprawie. Wszelkie warunki ewentualnej współpracy zostaną ustalone w odrębnej umowie.
 
 Niniejsze oświadczenie nie zastępuje formalnej umowy o zachowaniu poufności (NDA), która może zostać zawarta przez strony w toku dalszych negocjacji.`

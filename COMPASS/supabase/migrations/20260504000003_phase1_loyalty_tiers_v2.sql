@@ -1,5 +1,5 @@
 -- ============================================================
--- Phase 1.1 — Dynaminds League: 7-tier loyalty rebrand
+-- Phase 1.1 — B2Bnetwork League: 7-tier loyalty rebrand
 -- Date: 2026-05-04
 --
 -- Purpose: Replace 4-tier (bronze/silver/gold/platinum) with 7-tier branded ladder
@@ -112,8 +112,8 @@ BEGIN
         VALUES (
             NEW.user_id,
             'loyalty_tier_up',
-            'Awans w Dynaminds League!',
-            'Promoted in Dynaminds League!',
+            'Awans w B2Bnetwork League!',
+            'Promoted in B2Bnetwork League!',
             format('Osiągnąłeś poziom %s!', new_tier::TEXT),
             format('You reached the %s tier!', new_tier::TEXT),
             'normal',

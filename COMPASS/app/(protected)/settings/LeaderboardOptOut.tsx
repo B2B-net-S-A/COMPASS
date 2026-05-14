@@ -34,7 +34,7 @@ export function LeaderboardOptOut({ initialOptOut }: LeaderboardOptOutProps) {
                     <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                             <Trophy className="w-4 h-4 text-amber-400" />
-                            <h3 className="font-semibold">Dynaminds League — widoczność w rankingu</h3>
+                            <h3 className="font-semibold">B2Bnetwork League — widoczność w rankingu</h3>
                         </div>
                         <p className="text-sm text-muted-foreground">
                             Domyślnie Twoje imię i punkty są widoczne w globalnym rankingu na <code>/league/leaderboard</code>.
@@ -47,7 +47,7 @@ export function LeaderboardOptOut({ initialOptOut }: LeaderboardOptOutProps) {
                         disabled={isPending}
                         role="switch"
                         aria-checked={!optOut}
-                        aria-label={`Widoczność w rankingu Dynaminds League: ${optOut ? 'ukryta' : 'widoczna'}`}
+                        aria-label={`Widoczność w rankingu B2Bnetwork League: ${optOut ? 'ukryta' : 'widoczna'}`}
                         className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 ${
                             !optOut ? 'bg-primary' : 'bg-white/20'
                         }`}

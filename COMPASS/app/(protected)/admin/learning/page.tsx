@@ -24,7 +24,7 @@ export default async function AdminAkademiaPage() {
                         <h1 className="text-3xl font-bold tracking-tight">Akademia — moderacja</h1>
                     </div>
                     <p className="text-muted-foreground mt-1">
-                        Kolejka kursów konsultanckich oczekujących zatwierdzenia + tworzenie kursów firmowych Dynaminds.
+                        Kolejka kursów konsultanckich oczekujących zatwierdzenia + tworzenie kursów firmowych B2Bnetwork.
                     </p>
                 </div>
                 <div className="flex items-center gap-2">

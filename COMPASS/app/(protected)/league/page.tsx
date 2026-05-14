@@ -44,7 +44,7 @@ export default async function LeaguePage() {
                 <div>
                     <div className="flex items-center gap-3">
                         <Trophy className="w-8 h-8 text-primary" />
-                        <h1 className="text-3xl font-bold tracking-tight">Dynaminds League</h1>
+                        <h1 className="text-3xl font-bold tracking-tight">B2Bnetwork League</h1>
                     </div>
                     <p className="text-muted-foreground mt-1 max-w-xl">
                         7 poziomów. Zbieraj punkty za rozwój, kursy, polecenia. Odblokuj kolejny tier.

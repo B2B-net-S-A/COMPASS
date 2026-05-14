@@ -21,7 +21,7 @@ export default async function ProjectsListPage() {
                     <Briefcase className="w-7 h-7 text-primary" />
                     <h1 className="text-3xl font-bold tracking-tight">Wewnętrzne projekty</h1>
                 </div>
-                <p className="text-muted-foreground mt-1">Projekty Dynaminds szukające zaangażowania konsultantów.</p>
+                <p className="text-muted-foreground mt-1">Projekty B2Bnetwork szukające zaangażowania konsultantów.</p>
             </div>
 
             {!result.success && (

@@ -50,8 +50,8 @@ Rozważone 3 podejścia:
 
 ## Files changed
 
-- **Modified:** `APK-COMPASS/lib/auth/sync-role.ts` (~10 linii diff) — preserve `internal`, type widening do `DbRole`, header comment update.
-- **Created:** `APK-COMPASS/lib/auth/__tests__/sync-role.test.ts` (164 linii) — 7 unit tests pokrywających wszystkie ścieżki:
+- **Modified:** `COMPASS/lib/auth/sync-role.ts` (~10 linii diff) — preserve `internal`, type widening do `DbRole`, header comment update.
+- **Created:** `COMPASS/lib/auth/__tests__/sync-role.test.ts` (164 linii) — 7 unit tests pokrywających wszystkie ścieżki:
   1. Super-admin promotion (consultant → admin)
   2. Admin_access_list hit (no-op write)
   3. **Internal preservation (regression test fix)**

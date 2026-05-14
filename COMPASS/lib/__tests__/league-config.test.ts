@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { TIER_CONFIG, type TierName, getTier, computeTierProgress, DEFAULT_TIER, TIER_COLORS } from '../league-config'
 
-describe('TIER_CONFIG (Dynaminds League — 7 tiers)', () => {
+describe('TIER_CONFIG (B2Bnetwork League — 7 tiers)', () => {
     it('has 7 tiers in canonical order', () => {
         expect(TIER_CONFIG).toHaveLength(7)
         expect(TIER_CONFIG.map(t => t.name)).toEqual([

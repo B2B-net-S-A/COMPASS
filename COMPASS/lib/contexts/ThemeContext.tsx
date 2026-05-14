@@ -21,8 +21,8 @@ export interface ThemeConfig {
 export const THEMES: Record<ThemeId, ThemeConfig> = {
     inframinds: {
         id: 'inframinds',
-        label: 'Inframinds',
-        brandName: 'Inframinds',
+        label: 'B2Bnetwork',
+        brandName: 'B2Bnetwork',
         className: '',
         preview: { bg: '#1D121B', primary: '#3A8DFF', card: '#241625' },
     },
@@ -35,8 +35,8 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
     },
     b2bnetwork: {
         id: 'b2bnetwork',
-        label: 'B2BNETWORK',
-        brandName: 'B2BNETWORK',
+        label: 'B2Bnetwork',
+        brandName: 'B2Bnetwork',
         className: 'theme-b2bnetwork',
         preview: { bg: '#142136', primary: '#f43a48', card: '#1C2D45' },
     },
@@ -60,7 +60,7 @@ const ThemeContext = createContext<ThemeContextValue>({
     theme: 'inframinds',
     themeConfig: THEMES.inframinds,
     setTheme: () => {},
-    brandName: 'Inframinds',
+    brandName: 'B2Bnetwork',
     colorMode: 'dark',
     setColorMode: () => {},
     toggleColorMode: () => {},

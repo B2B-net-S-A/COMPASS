@@ -47,8 +47,8 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                         <h1 className="text-3xl font-bold tracking-tight">Akademia</h1>
                     </div>
                     <p className="text-muted-foreground max-w-2xl">
-                        Kursy firmowe od Dynaminds i autorskie szkolenia konsultantów.
-                        Ucz się, dziel wiedzą, zbieraj punkty Dynaminds League za każdego studenta.
+                        Kursy firmowe od B2Bnetwork i autorskie szkolenia konsultantów.
+                        Ucz się, dziel wiedzą, zbieraj punkty B2Bnetwork League za każdego studenta.
                     </p>
                 </div>
                 <Link href="/learning/tworze/nowy">
@@ -128,8 +128,8 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                         </h2>
                         <p className="text-muted-foreground max-w-md mx-auto">
                             {typeParam === 'company'
-                                ? 'Dynaminds nie opublikowało jeszcze kursów firmowych w tym filtrze.'
-                                : 'Bądź pierwszą osobą, która podzieli się wiedzą! Stwórz szkolenie, opublikuj je i zarabiaj punkty Dynaminds League.'}
+                                ? 'B2Bnetwork nie opublikowało jeszcze kursów firmowych w tym filtrze.'
+                                : 'Bądź pierwszą osobą, która podzieli się wiedzą! Stwórz szkolenie, opublikuj je i zarabiaj punkty B2Bnetwork League.'}
                         </p>
                         <div className="flex justify-center gap-3 pt-2">
                             {typeParam ? (
@@ -245,7 +245,7 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                                         )}
                                         {c.course_type === 'company' && (
                                             <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-                                                <Building2 className="w-2.5 h-2.5" /> Dynaminds
+                                                <Building2 className="w-2.5 h-2.5" /> B2Bnetwork
                                             </p>
                                         )}
                                     </CardContent>

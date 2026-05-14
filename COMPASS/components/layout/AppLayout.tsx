@@ -36,7 +36,7 @@ export function AppLayout({ children, user, role, permissions, sidebarBadges }: 
                             <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
                                 <div className="flex items-center gap-2">
                                     <Logo size="sm" variant="monochrome" showText={false} />
-                                    <span>© {new Date().getFullYear()} APK Compass. All rights reserved.</span>
+                                    <span>© {new Date().getFullYear()} COMPASS. All rights reserved.</span>
                                 </div>
                                 <div className="flex gap-4">
                                     <Link href="/privacy-policy" className="hover:text-foreground transition-colors">Privacy Policy</Link>

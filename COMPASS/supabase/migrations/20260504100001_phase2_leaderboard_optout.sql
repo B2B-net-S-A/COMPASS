@@ -1,5 +1,5 @@
 -- ============================================================
--- Phase 2 — Dynaminds League refresh: leaderboard opt-out + onboarding flag
+-- Phase 2 — B2Bnetwork League refresh: leaderboard opt-out + onboarding flag
 -- Date: 2026-05-04
 --
 -- Adds two profile flags consumed by Phase 2 UI:

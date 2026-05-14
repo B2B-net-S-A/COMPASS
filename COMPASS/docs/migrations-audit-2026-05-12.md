@@ -1,6 +1,6 @@
 # Audyt migracji Supabase — Compass — 2026-05-12
 
-> Read-only raport mapujący 137 plików w `APK-COMPASS/supabase/migrations/` na 56 migracji zaaplikowanych w prod Supabase (`shduiynzemftkqqefscd`).
+> Read-only raport mapujący 137 plików w `COMPASS/supabase/migrations/` na 56 migracji zaaplikowanych w prod Supabase (`shduiynzemftkqqefscd`).
 > **Nie modyfikuje żadnych plików.** Cel: source-of-truth do następnego cleanup PR.
 
 **Wygenerowany:** 2026-05-12 (z branch `claude/priceless-grothendieck-6c892f`)

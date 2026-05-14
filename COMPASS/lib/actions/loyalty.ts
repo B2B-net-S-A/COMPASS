@@ -818,7 +818,7 @@ export async function reverseTransaction(transactionId: string, reason: string):
     }
 }
 
-// ─── Phase 2 (2026-05-04): Dynaminds League — leaderboard + history + opt-out ─────
+// ─── Phase 2 (2026-05-04): B2Bnetwork League — leaderboard + history + opt-out ─────
 
 export interface LeaderboardEntryRow {
     rank: number

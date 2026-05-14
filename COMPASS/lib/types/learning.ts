@@ -7,7 +7,7 @@
 export type CourseStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected'
 export type CourseLevel = 'beginner' | 'intermediate' | 'advanced'
 // Phase 1.1 (2026-05-04): course_type ENUM in DB; consultant=peer-authored (admin moderation),
-// company=Dynaminds-authored (admin/trainer creates, no peer-author bonus).
+// company=B2Bnetwork-authored (admin/trainer creates, no peer-author bonus).
 export type CourseType = 'consultant' | 'company'
 
 export interface Course {

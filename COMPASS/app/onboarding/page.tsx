@@ -180,7 +180,7 @@ export default function OnboardingPage() {
                                         Zgoda RODO (Wymagana)
                                     </label>
                                     <p className="text-xs text-muted-foreground">
-                                        Wyrażam zgodę na przetwarzanie danych w celu współpracy z Dynaminds.
+                                        Wyrażam zgodę na przetwarzanie danych w celu współpracy z B2Bnetwork.
                                     </p>
                                 </div>
                             </div>

@@ -445,7 +445,7 @@ export default function LoginPage() {
                         <span>·</span>
                         <a href="/help" target={isDesktop ? '_blank' : undefined} rel={isDesktop ? 'noopener noreferrer' : undefined} className="hover:text-primary transition-colors">Pomoc</a>
                     </div>
-                    <p className="text-xs text-muted-foreground/40">ComPass by Inframinds</p>
+                    <p className="text-xs text-muted-foreground/40">COMPASS</p>
                 </div>
             </Card>
         </div>

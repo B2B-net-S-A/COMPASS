@@ -36,11 +36,11 @@ export function Tour({ initialDone }: TourProps) {
         },
         {
             target: '[data-testid="nav-league"]',
-            content: 'Dynaminds League — 7 poziomów (Scout → Legend). Punkty za rozwój, polecenia, ukończone kursy.',
+            content: 'B2Bnetwork League — 7 poziomów (Scout → Legend). Punkty za rozwój, polecenia, ukończone kursy.',
         },
         {
             target: '[data-testid="nav-news"]',
-            content: 'Aktualności — komunikaty od Dynaminds, badge "Nowy" przy nieprzeczytanych.',
+            content: 'Aktualności — komunikaty od B2Bnetwork, badge "Nowy" przy nieprzeczytanych.',
         },
         {
             target: '[data-testid="nav-support"]',
@@ -48,7 +48,7 @@ export function Tour({ initialDone }: TourProps) {
         },
         {
             target: '[data-testid="nav-incubator"]',
-            content: 'Inkubator — zgłoś własny pomysł (do 500k inwestycji) lub dołącz do projektu wewnętrznego Dynaminds.',
+            content: 'Inkubator — zgłoś własny pomysł (do 500k inwestycji) lub dołącz do projektu wewnętrznego B2Bnetwork.',
         },
     ]
 

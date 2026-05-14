@@ -88,8 +88,8 @@ BEGIN
         VALUES (
             NEW.user_id,
             'loyalty_tier_up',
-            'Awans w Dynaminds League!',
-            'Promoted in Dynaminds League!',
+            'Awans w B2Bnetwork League!',
+            'Promoted in B2Bnetwork League!',
             format('Osiągnąłeś poziom %s!', new_tier::TEXT),
             format('You reached the %s tier!', new_tier::TEXT),
             'normal',

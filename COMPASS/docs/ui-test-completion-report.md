@@ -182,7 +182,7 @@
 
 ```bash
 # Lokalne — unit + coverage
-cd APK-COMPASS
+cd COMPASS
 npm install
 npm run test:unit                 # 203 tests, ~3s
 npm run test:coverage             # raport HTML w coverage/index.html

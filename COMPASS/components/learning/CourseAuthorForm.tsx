@@ -146,7 +146,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                                             : 'bg-white/5 text-muted-foreground border-white/10 hover:border-primary/40'
                                     }`}
                                 >
-                                    Kurs firmowy (Dynaminds)
+                                    Kurs firmowy (B2Bnetwork)
                                 </button>
                             </div>
                             {courseType === 'company' && (

@@ -1,5 +1,5 @@
 /**
- * Dynaminds League — 7-tier ladder configuration. Single source of truth.
+ * B2Bnetwork League — 7-tier ladder configuration. Single source of truth.
  *
  * Phase 1.2 (2026-05-04) — replaces lib/loyalty-config.ts (4-tier bronze/silver/gold/platinum).
  * Aligned with DB enum `loyalty_tier_t` and trigger `update_loyalty_status`

@@ -15,7 +15,7 @@ export default async function NewsPage() {
                     <Newspaper className="w-8 h-8 text-primary" />
                     <h1 className="text-3xl font-bold tracking-tight">Aktualności</h1>
                 </div>
-                <p className="text-muted-foreground mt-1">Najnowsze ogłoszenia i komunikaty od Dynaminds.</p>
+                <p className="text-muted-foreground mt-1">Najnowsze ogłoszenia i komunikaty od B2Bnetwork.</p>
             </div>
 
             {!result.success && (
