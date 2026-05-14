@@ -106,20 +106,27 @@ jobs:
           # = 8 min, plus initial 90s wait = ~9.5 min total window. Wcześniejszych
           # 12 retries × 15s = 3 min za krótko → fałszywe "deploy failure" gdy
           # build wciąż w toku ale aplikacja deploy'uje się poprawnie.
-          # Cloudflare Bot Fight Mode on compass.dynaminds.pl combines runner IP
-          # ASN (Azure datacenter) + UA + TLS fingerprint to compute bot score.
-          # Atlas PR #96 fix (`compass-smoke-test/1.0` UA) was insufficient here
-          # — Compass zone bot score is stricter. Mimicking a real browser UA
-          # + standard Accept/Cache headers brings the score below threshold.
-          # Health endpoint returns the same JSON for any UA, so this is purely
-          # a CF-bypass concern, not a backend-behavior one.
-          UA="Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
+          #
+          # Cloudflare bypass via --resolve to origin IP.
+          # Compass CF zone has stricter Bot Fight Mode than Atlas — combines
+          # GHA-runner ASN (Azure datacenter) + TLS fingerprint, so neither a
+          # custom UA (PR #91) nor a full Firefox-mimic UA + Accept/Cache headers
+          # (PR #92) brought the bot score below threshold; both saw 32 × 403.
+          # Resolving compass.dynaminds.pl to the origin IP routes the smoke
+          # test directly to Traefik on the Hetzner box, skipping the CF edge
+          # entirely. Traefik routes by Host header and the Let's Encrypt cert
+          # is valid for the hostname, so TLS verify still passes.
+          # If the origin IP ever changes (Hetzner reassign / rescale), update
+          # COMPASS_ORIGIN_IP here — see deployment.md Quick Reference.
+          COMPASS_ORIGIN_IP="178.104.220.48"
+          HOST="${APP_URL#https://}"
+          HOST="${HOST#http://}"
+          HOST="${HOST%%/*}"
+          UA="compass-smoke-test/1.0 (+github-actions; deploy.yml)"
           for i in $(seq 1 32); do
             response=$(curl -fsSL \
+              --resolve "$HOST:443:$COMPASS_ORIGIN_IP" \
               -A "$UA" \
-              -H "Accept: application/json, text/plain, */*" \
-              -H "Accept-Language: en-US,en;q=0.9" \
-              -H "Cache-Control: no-cache" \
               "$APP_URL/api/health" 2>/tmp/curl_err || echo '')
             if [ -n "$response" ]; then
               status=$(echo "$response" | jq -r '.status // "missing"')
