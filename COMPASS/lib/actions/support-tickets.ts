@@ -1,6 +1,7 @@
 'use server'
 
 import { logCompat } from '@/lib/logger'
+import { postToTeamsAlert } from '@/lib/teams/webhook'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -433,6 +434,19 @@ export async function assignTicket(ticketId: string, assigneeId: string | null):
 
         if (assigneeId && ticket?.subject) {
             await notifyUsers(supabase, [assigneeId], 'support_ticket_assigned', 'Przypisano Cię do ticketu', ticket.subject)
+
+            // PR3: Teams alert (#compass-alerts)
+            const { data: assignee } = await supabase
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', assigneeId)
+                .single<{ full_name: string | null; email: string }>()
+            postToTeamsAlert({
+                title: 'Ticket przypisany',
+                text: `**${ticket.subject}** → ${assignee?.full_name ?? assignee?.email ?? assigneeId}`,
+                themeColor: '22D3EE',
+                actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/support/tickets/${ticketId}`,
+            }).catch((e) => logCompat.error('[assignTicket] teams alert failed:', e))
         }
 
         revalidatePath(`/support/tickets/${ticketId}`)

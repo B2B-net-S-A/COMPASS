@@ -11,6 +11,7 @@ import {
 import { logAudit } from '@/lib/actions/audit'
 import { sendLeaveCancelledByUser, sendLeaveDecision, sendLeaveRequestSubmitted } from '@/lib/email'
 import { createLeaveEvent, deleteLeaveEvent } from '@/lib/calendar/graph-events'
+import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { totalVacationDaysUsed, type LeaveSpan } from '@/lib/hr/leave-balance'
 import { workingDaysBetween, type PublicHolidayDate } from '@/lib/hr/working-days'
@@ -485,6 +486,19 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
         url: '/internal?tab=leave',
         tag: `leave-${id}`,
     }).catch((e) => logCompat.error('[approveLeaveRequest] push failed:', e))
+
+    // PR3: Teams alert (#compass-alerts channel). Fire-and-forget.
+    postToTeamsAlert({
+        title: 'Urlop zatwierdzony',
+        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
+        themeColor: '22C55E',
+        facts: [
+            { name: 'Typ', value: row.leave_type },
+            { name: 'Decyzja', value: 'Zatwierdzony' },
+            ...(decisionNote ? [{ name: 'Komentarz', value: decisionNote }] : []),
+        ],
+        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
+    }).catch((e) => logCompat.error('[approveLeaveRequest] teams alert failed:', e))
 }
 
 export async function rejectLeaveRequest(id: string, decisionNote: string): Promise<void> {
@@ -546,6 +560,19 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
         url: '/internal?tab=leave',
         tag: `leave-${id}`,
     }).catch((e) => logCompat.error('[rejectLeaveRequest] push failed:', e))
+
+    // PR3: Teams alert
+    postToTeamsAlert({
+        title: 'Urlop odrzucony',
+        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
+        themeColor: 'F59E0B',
+        facts: [
+            { name: 'Typ', value: row.leave_type },
+            { name: 'Decyzja', value: 'Odrzucony' },
+            { name: 'Powód', value: decisionNote.slice(0, 200) },
+        ],
+        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
+    }).catch((e) => logCompat.error('[rejectLeaveRequest] teams alert failed:', e))
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
+import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
@@ -586,6 +587,16 @@ export async function approveTimesheet(timesheetId: string): Promise<void> {
         url: `/internal/timesheet/${header.year}/${header.month}/pdf`,
         tag: `timesheet-${header.year}-${header.month}`,
     }).catch((e) => logCompat.error('[approveTimesheet] push failed:', e))
+
+    // PR3: Teams alert
+    const monthLabel = `${header.year}-${String(header.month).padStart(2, '0')}`
+    postToTeamsAlert({
+        title: 'Timesheet zatwierdzony',
+        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — timesheet ${monthLabel}`,
+        themeColor: '22C55E',
+        facts: [{ name: 'Miesiąc', value: monthLabel }],
+        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=timesheets`,
+    }).catch((e) => logCompat.error('[approveTimesheet] teams alert failed:', e))
 }
 
 export async function rejectTimesheet(timesheetId: string, reason: string): Promise<void> {
@@ -643,6 +654,19 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
         url: `/internal/timesheet/${header.year}/${header.month}`,
         tag: `timesheet-${header.year}-${header.month}`,
     }).catch((e) => logCompat.error('[rejectTimesheet] push failed:', e))
+
+    // PR3: Teams alert
+    const monthLabel = `${header.year}-${String(header.month).padStart(2, '0')}`
+    postToTeamsAlert({
+        title: 'Timesheet odrzucony',
+        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — timesheet ${monthLabel}`,
+        themeColor: 'F59E0B',
+        facts: [
+            { name: 'Miesiąc', value: monthLabel },
+            { name: 'Powód', value: reason.slice(0, 200) },
+        ],
+        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=timesheets`,
+    }).catch((e) => logCompat.error('[rejectTimesheet] teams alert failed:', e))
 }
 
 export async function unlockTimesheet(timesheetId: string): Promise<void> {
