@@ -56,6 +56,10 @@ export default async function HomePage() {
     if (profile?.role === 'internal') {
         redirect('/internal')
     }
+    // Phase 19a: Finanse user landing → invoice review panel, never /home.
+    if (profile?.role === 'finanse') {
+        redirect('/internal/admin?tab=invoices')
+    }
 
     const isAdmin = (profile?.role as string) === 'admin'
     const learningHidden = isFeatureComingSoon('learning')
