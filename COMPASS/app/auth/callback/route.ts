@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { syncRole } from "@/lib/auth/sync-role";
+import { syncProfileFromGraph } from "@/lib/m365/people-sync";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
@@ -56,6 +57,13 @@ export async function GET(request: Request) {
                 logger.error({ event: 'auth.callback.sync_role_failed', error: e, userId: user.id });
                 syncedRole = currentRole;
             }
+
+            // PR4: pull jobTitle/department/manager/phone from Microsoft Graph
+            // and write them to the profile. Fire-and-forget — must never
+            // block login (Graph latency, throttling, missing permission etc.).
+            syncProfileFromGraph(user.id, user.email).catch((e) => {
+                logger.warn({ event: 'auth.callback.m365_sync_failed', error: e, userId: user.id });
+            });
         }
     }
 
