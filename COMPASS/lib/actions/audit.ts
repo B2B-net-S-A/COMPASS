@@ -45,6 +45,11 @@ export type AuditAction =
     | 'WORK_CLOCK_RESUME_DISCARDED'
     | 'WORK_CLOCK_PAUSED'
     | 'WORK_CLOCK_RESUMED'
+    // Phase 19 — Invoices (finanse role)
+    | 'INVOICE_SUBMITTED'
+    | 'INVOICE_APPROVED'
+    | 'INVOICE_REJECTED'
+    | 'INVOICE_RESUBMITTED'
 
 export async function logAudit(
     userId: string | null,
