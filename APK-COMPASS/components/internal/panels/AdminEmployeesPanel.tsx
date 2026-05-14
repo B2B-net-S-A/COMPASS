@@ -12,7 +12,6 @@ interface EmployeeRow {
     avatar_url: string | null
     role: string
     default_location: 'onsite' | 'remote' | null
-    annual_leave_days: number | null
     employment_type: 'uop' | 'b2b' | null
     work_start_date: string | null
 }
@@ -22,7 +21,7 @@ export async function AdminEmployeesPanel() {
     const { data } = await admin
         .from('profiles')
         .select(
-            'id, full_name, email, avatar_url, role, default_location, annual_leave_days, employment_type, work_start_date',
+            'id, full_name, email, avatar_url, role, default_location, employment_type, work_start_date',
         )
         .in('role', ['internal', 'admin'])
         .order('full_name')
@@ -34,7 +33,7 @@ export async function AdminEmployeesPanel() {
                 <h2 className="text-xl font-semibold">Pracownicy wewnętrzni</h2>
                 <p className="text-sm text-muted-foreground mt-1">
                     Lista pracowników internal + admin. Aby zmienić rolę lub edytować pola HR
-                    (lokalizacja, pula urlopu, typ umowy), użyj{' '}
+                    (lokalizacja, typ umowy), użyj{' '}
                     <Link href="/admin/settings/users" className="text-primary underline">
                         Zarządzania użytkownikami
                     </Link>
@@ -61,9 +60,6 @@ export async function AdminEmployeesPanel() {
                                         <th className="text-left py-2 pr-2 font-medium">Rola</th>
                                         <th className="text-left py-2 pr-2 font-medium">Lokalizacja</th>
                                         <th className="text-left py-2 pr-2 font-medium">Umowa</th>
-                                        <th className="text-right py-2 pr-2 font-medium">
-                                            Pula urlopu
-                                        </th>
                                         <th className="text-left py-2 pr-2 font-medium">Od</th>
                                     </tr>
                                 </thead>
@@ -100,9 +96,6 @@ export async function AdminEmployeesPanel() {
                                             </td>
                                             <td className="py-2 pr-2 text-xs">
                                                 {e.employment_type === 'b2b' ? 'B2B' : 'UoP'}
-                                            </td>
-                                            <td className="py-2 pr-2 text-right text-xs font-mono">
-                                                {e.annual_leave_days ?? '—'}
                                             </td>
                                             <td className="py-2 pr-2 text-xs">
                                                 {e.work_start_date ?? '—'}

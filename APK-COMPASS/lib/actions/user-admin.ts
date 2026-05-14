@@ -358,18 +358,19 @@ export async function setUserRole(targetUserId: string, newRole: DbRole): Promis
     }
 }
 
-// ─── Phase 11: edit HR profile fields (default_location, annual_leave_days, …) ───
+// ─── Phase 11: edit HR profile fields (default_location, employment_type, …) ───
+// `annual_leave_days` zostało usunięte z UI — wszyscy są na B2B (nielimitowane
+// urlopy, ale wymagane wnioski). Kolumna w DB pozostaje dla back-compat,
+// nie jest już ani zapisywana, ani odczytywana.
 
 export interface EmployeeProfileInput {
     default_location?: 'onsite' | 'remote'
-    annual_leave_days?: number
     employment_type?: 'uop' | 'b2b'
     work_start_date?: string | null
 }
 
 export interface EmployeeProfileFields {
     default_location: 'onsite' | 'remote' | null
-    annual_leave_days: number | null
     employment_type: 'uop' | 'b2b' | null
     work_start_date: string | null
 }
@@ -385,13 +386,6 @@ export async function setEmployeeProfile(targetUserId: string, fields: EmployeeP
             throw new Error('default_location musi być "onsite" lub "remote".')
         }
         updates.default_location = fields.default_location
-    }
-    if (fields.annual_leave_days !== undefined) {
-        const n = Number(fields.annual_leave_days)
-        if (!Number.isFinite(n) || n < 0 || n > 60) {
-            throw new Error('annual_leave_days musi być w zakresie 0–60.')
-        }
-        updates.annual_leave_days = Math.round(n)
     }
     if (fields.employment_type !== undefined) {
         if (!['uop', 'b2b'].includes(fields.employment_type)) {
@@ -426,13 +420,12 @@ export async function getEmployeeProfileFields(targetUserId: string): Promise<Em
     const admin = createServiceClient()
     const { data, error } = await admin
         .from('profiles')
-        .select('default_location, annual_leave_days, employment_type, work_start_date')
+        .select('default_location, employment_type, work_start_date')
         .eq('id', targetUserId)
         .single<EmployeeProfileFields>()
     if (error) throw new Error(`Nie udało się odczytać profilu: ${error.message}`)
     return {
         default_location: data?.default_location ?? null,
-        annual_leave_days: data?.annual_leave_days ?? null,
         employment_type: data?.employment_type ?? null,
         work_start_date: data?.work_start_date ?? null,
     }

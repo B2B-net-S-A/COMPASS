@@ -64,7 +64,7 @@ export const GET = withCronAuth(async (request, { admin }) => {
     // Pull all UoP employees (B2B nie payroll)
     const { data: employees, error: empErr } = await admin
         .from('profiles')
-        .select('id, full_name, email, employment_type, role, annual_leave_days')
+        .select('id, full_name, email, employment_type, role')
         .in('role', ['internal', 'admin'])
     if (empErr) {
         return NextResponse.json({ error: empErr.message }, { status: 500 })
@@ -75,7 +75,6 @@ export const GET = withCronAuth(async (request, { admin }) => {
         email: string
         employment_type: string | null
         role: string
-        annual_leave_days: number | null
     }>).filter((e) => e.employment_type !== 'b2b')
 
     if (uopEmployees.length === 0) {

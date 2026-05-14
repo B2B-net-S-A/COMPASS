@@ -33,7 +33,6 @@ export function EmployeeProfileDialog({
     const [saving, setSaving] = useState(false)
     const [fields, setFields] = useState<EmployeeProfileFields>({
         default_location: 'onsite',
-        annual_leave_days: 26,
         employment_type: 'b2b',
         work_start_date: null,
     })
@@ -47,7 +46,6 @@ export function EmployeeProfileDialog({
                 if (cancelled) return
                 setFields({
                     default_location: data.default_location ?? 'onsite',
-                    annual_leave_days: data.annual_leave_days ?? 26,
                     employment_type: data.employment_type ?? 'b2b',
                     work_start_date: data.work_start_date ?? null,
                 })
@@ -67,7 +65,6 @@ export function EmployeeProfileDialog({
         try {
             await setEmployeeProfile(targetUserId, {
                 default_location: fields.default_location ?? undefined,
-                annual_leave_days: fields.annual_leave_days ?? undefined,
                 employment_type: fields.employment_type ?? undefined,
                 work_start_date: fields.work_start_date,
             })
@@ -87,7 +84,7 @@ export function EmployeeProfileDialog({
                 <DialogHeader>
                     <DialogTitle>Profil pracownika wewnętrznego</DialogTitle>
                     <DialogDescription>
-                        {targetEmail} — pola HR (lokalizacja, typ umowy, pula urlopu).
+                        {targetEmail} — pola HR (lokalizacja, typ umowy, data rozpoczęcia pracy).
                     </DialogDescription>
                 </DialogHeader>
 
@@ -125,20 +122,6 @@ export function EmployeeProfileDialog({
                                 <option value="b2b">B2B</option>
                                 <option value="uop">Umowa o pracę (UoP)</option>
                             </select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label htmlFor="annual_leave_days">Pula urlopu (dni / rok)</Label>
-                            <Input
-                                id="annual_leave_days"
-                                type="number"
-                                min={0}
-                                max={60}
-                                value={fields.annual_leave_days ?? 26}
-                                onChange={(e) =>
-                                    setFields({ ...fields, annual_leave_days: Number(e.target.value) })
-                                }
-                            />
                         </div>
 
                         <div className="space-y-1.5">
