@@ -1,20 +1,24 @@
 // PR4 — Microsoft Graph People API → Compass profile sync.
 //
 // On SSO callback and weekly cron we pull jobTitle / department /
-// mobilePhone / manager.mail from Graph and write them to the Compass
-// `profiles` row. This means HR doesn't have to manually fill org-chart
-// fields — Azure AD is the source of truth, Compass mirrors it.
+// mobilePhone / manager.mail / photo from Graph and write them to the
+// Compass `profiles` row. This means HR doesn't have to manually fill
+// org-chart fields or upload avatars — Azure AD is the source of truth,
+// Compass mirrors it.
 //
-// Photo sync is intentionally NOT implemented in v1: requires Supabase
-// Storage upload + public-URL fetch + RLS coordination. avatar_url stays
-// whatever Supabase/Compass already set it to. Photo will come in a
-// follow-up PR if HR actually wants it.
+// Photo sync (PR4 v2): GET /users/{email}/photo metadata + /photo/$value
+// binary, upload to Supabase Storage bucket `avatars` under m365/{userId}.jpg,
+// stamp avatar_url with a content-hash query string for cache busting.
+// 404 on /photo = user hasn't uploaded one in Azure (normal) — skip.
 //
 // Requires Application permission `User.Read.All` (Microsoft Graph)
-// granted to the Compass Azure App (admin consent).
+// granted to the Compass Azure App (admin consent). The same permission
+// covers `/photo/$value` per Microsoft docs — no extra consent needed.
+
+import { createHash } from 'crypto'
 
 import { createServiceClient } from '@/lib/supabase/admin'
-import { extractGraphErrorInfo, getGraphClient } from '@/lib/graph/client'
+import { extractGraphErrorInfo, getGraphClient, type GraphLike } from '@/lib/graph/client'
 import { logger } from '@/lib/logger'
 
 export interface SyncProfileResult {
@@ -25,6 +29,7 @@ export interface SyncProfileResult {
         department: string
         job_title: string
         phone: string
+        avatar_url: string
     }>
     /** True when we skipped (missing credentials, missing email). */
     skipped?: boolean
@@ -41,6 +46,16 @@ interface GraphUser {
 interface GraphManager {
     mail?: string | null
 }
+
+interface GraphPhotoMetadata {
+    '@odata.mediaContentType'?: string | null
+    width?: number | null
+    height?: number | null
+}
+
+// Tenant photo limit per Microsoft docs is 4MB; we add a defensive ceiling
+// so a runaway response can't blow up storage or memory.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024
 
 /**
  * Fetch Graph user attributes + manager and write them back to profiles.
@@ -117,7 +132,10 @@ export async function syncProfileFromGraph(
         }
     }
 
-    // 3. Build updates (only set fields that Graph returned)
+    // 3. Fetch + upload profile photo (best-effort; never fails the sync)
+    const avatarUrl = await syncPhotoFromGraph(client, userId, userEmail)
+
+    // 4. Build updates (only set fields that Graph returned)
     const fields: NonNullable<SyncProfileResult['fields']> = {}
     if (typeof user.jobTitle === 'string' && user.jobTitle.trim()) {
         fields.job_title = user.jobTitle.trim()
@@ -132,8 +150,11 @@ export async function syncProfileFromGraph(
     if (manager && typeof manager.mail === 'string' && manager.mail.trim()) {
         fields.manager_email = manager.mail.trim().toLowerCase()
     }
+    if (avatarUrl) {
+        fields.avatar_url = avatarUrl
+    }
 
-    // 4. UPDATE profile (always stamp m365_synced_at so the weekly cron
+    // 5. UPDATE profile (always stamp m365_synced_at so the weekly cron
     // can use it as a bookmark even when Graph returned zero fields)
     const admin = createServiceClient()
     const { error } = await admin
@@ -160,5 +181,107 @@ export async function syncProfileFromGraph(
 function pickFirstPhone(mobile: string | null | undefined, business: string[] | null | undefined): string | undefined {
     if (mobile && mobile.trim()) return mobile.trim()
     if (business && business.length > 0 && business[0]?.trim()) return business[0].trim()
+    return undefined
+}
+
+/**
+ * Download the user's Azure AD photo and upload it to Supabase Storage.
+ *
+ * Returns a public URL with a content-hash query string so browsers refresh
+ * the cached avatar when bytes actually change. Returns undefined on any
+ * failure — photo is a nice-to-have, not a sync blocker.
+ *
+ * Storage layout: bucket `avatars`, path `m365/{userId}.{ext}` with upsert.
+ * The `m365/` prefix keeps Graph-sourced avatars separate from user-uploaded
+ * ones in `profiles/{userId}-{timestamp}.{ext}` (see lib/actions/files.ts).
+ */
+async function syncPhotoFromGraph(
+    client: GraphLike,
+    userId: string,
+    userEmail: string,
+): Promise<string | undefined> {
+    let metadata: GraphPhotoMetadata
+    try {
+        metadata = (await client
+            .api(`/users/${encodeURIComponent(userEmail)}/photo`)
+            .get()) as GraphPhotoMetadata
+    } catch (err) {
+        const { statusCode } = extractGraphErrorInfo(err)
+        if (statusCode === 404) {
+            // No photo uploaded in Azure — common for new users, ignore.
+            return undefined
+        }
+        const message = err instanceof Error ? err.message : 'unknown_graph_error'
+        logger.warn({ event: 'm365.people.photo_metadata_failed', error: message, userId })
+        return undefined
+    }
+
+    const mediaType = typeof metadata['@odata.mediaContentType'] === 'string'
+        ? metadata['@odata.mediaContentType']
+        : 'image/jpeg'
+
+    let buffer: Buffer
+    try {
+        const raw = await client
+            .api(`/users/${encodeURIComponent(userEmail)}/photo/$value`)
+            .responseType('arraybuffer')
+            .get()
+        const coerced = toBuffer(raw)
+        if (!coerced) {
+            logger.warn({ event: 'm365.people.photo_unexpected_response', userId })
+            return undefined
+        }
+        buffer = coerced
+    } catch (err) {
+        const { statusCode } = extractGraphErrorInfo(err)
+        if (statusCode === 404) return undefined
+        const message = err instanceof Error ? err.message : 'unknown_graph_error'
+        logger.warn({ event: 'm365.people.photo_download_failed', error: message, userId })
+        return undefined
+    }
+
+    if (buffer.byteLength === 0 || buffer.byteLength > MAX_PHOTO_BYTES) {
+        logger.warn({
+            event: 'm365.people.photo_size_invalid',
+            userId,
+            bytes: buffer.byteLength,
+        })
+        return undefined
+    }
+
+    const hashPrefix = createHash('sha256').update(buffer).digest('hex').slice(0, 12)
+    // Single path per user — overwriting in place avoids old-file leak as
+    // photos change. Extension is fixed (.jpg) because Supabase serves the
+    // file using the contentType we set on upload, not the URL suffix.
+    const path = `m365/${userId}.jpg`
+    const admin = createServiceClient()
+
+    const { error: uploadError } = await admin.storage
+        .from('avatars')
+        .upload(path, buffer, {
+            contentType: mediaType,
+            upsert: true,
+        })
+    if (uploadError) {
+        logger.warn({
+            event: 'm365.people.photo_upload_failed',
+            error: uploadError.message,
+            userId,
+        })
+        return undefined
+    }
+
+    const { data: { publicUrl } } = admin.storage.from('avatars').getPublicUrl(path)
+    // Cache-bust via content hash — same bytes → same URL → browser cache hit.
+    return `${publicUrl}?v=${hashPrefix}`
+}
+
+function toBuffer(value: unknown): Buffer | undefined {
+    if (value instanceof ArrayBuffer) {
+        return Buffer.from(new Uint8Array(value))
+    }
+    if (ArrayBuffer.isView(value)) {
+        return Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+    }
     return undefined
 }
