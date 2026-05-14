@@ -1,12 +1,12 @@
-=== QUALRIX / APK ComPass - ULUBIONE PROJEKTY (FAVORITE PROJECTS) ===
+=== QUALRIX / COMPASS - ULUBIONE PROJEKTY (FAVORITE PROJECTS) ===
 
-Rozbudowujemy aplikację APK ComPass (Qualrix) o funkcjonalność "Ulubione Projekty".
+Rozbudowujemy aplikację COMPASS (Qualrix) o funkcjonalność "Ulubione Projekty".
 Konsultant może oznaczyć dowolny projekt z listy Marketplace jako ulubiony (gwiazdka).
 Informacja o ulubionych projektach musi być widoczna w wielu kluczowych miejscach aplikacji.
 
 ## KONTEKST TECHNICZNY
 
-- Aplikacja: APK ComPass / Qualrix by B2B.net S.A.
+- Aplikacja: COMPASS / Qualrix by B2B.net S.A.
 - Stack: Next.js 14+ App Router, React 18, TypeScript, Tailwind CSS, shadcn/ui, Supabase
 - Database: PostgreSQL via Supabase (z pgvector)
 - Auth: Supabase Auth

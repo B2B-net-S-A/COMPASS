@@ -1,7 +1,7 @@
 services:
   app:
     build:
-      context: ./APK-COMPASS
+      context: ./COMPASS
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
