@@ -17,6 +17,13 @@ function getResend(): {
             to: string
             subject: string
             html: string
+            /**
+             * When true, Graph saves to Sent Items in the sender mailbox.
+             * Set for compliance-relevant templates (leave decision, timesheet
+             * decision, role change, broadcast). Default false. Resend ignores
+             * this flag (it always archives in Resend dashboard).
+             */
+            saveToSentItems?: boolean
         }) => Promise<{ data: { id?: string } | null; error: { message: string } | null }>
     }
 } {
@@ -28,6 +35,7 @@ function getResend(): {
                     subject: args.subject,
                     html: args.html,
                     from: args.from, // honor explicit per-call from (legacy templates pass it)
+                    saveToSentItems: args.saveToSentItems,
                 })
                 if (!result.success) {
                     return {
@@ -166,6 +174,7 @@ export async function sendRoleChangeEmail(
             from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
+            saveToSentItems: true, // compliance: role change audit trail
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
                     <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -213,6 +222,7 @@ export async function sendBroadcastEmail(
             from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: `[COMPASS] ${title}`,
+            saveToSentItems: true, // compliance: broadcast/announcement audit trail
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
                     <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -257,7 +267,7 @@ const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
     other: 'Inne',
 }
 
-function wrapHrEmail(opts: { tag: string; heading: string; bodyHtml: string; accent?: string }): string {
+export function wrapHrEmail(opts: { tag: string; heading: string; bodyHtml: string; accent?: string }): string {
     const accent = opts.accent ?? '#3A8DFF'
     return `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
@@ -398,6 +408,7 @@ export async function sendLeaveDecision(
             from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
+            saveToSentItems: true, // compliance: leave approve/reject audit trail
             html: wrapHrEmail({ tag: 'Decyzja urlopowa', heading: subject, bodyHtml, accent }),
         })
         if (error) {
@@ -470,6 +481,7 @@ export async function sendTimesheetDecision(
             from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
+            saveToSentItems: true, // compliance: timesheet approve/reject audit trail
             html: wrapHrEmail({ tag: 'Decyzja timesheet', heading: subject, bodyHtml, accent }),
         })
         if (error) {
@@ -807,6 +819,7 @@ export async function sendCorrectionDecision(
             from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
+            saveToSentItems: true, // compliance: correction approve/reject audit trail
             html: wrapHrEmail({ tag: 'Decyzja: korekta godzin', heading: subject, bodyHtml, accent }),
         })
         if (error) {
