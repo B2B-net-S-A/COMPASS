@@ -63,21 +63,24 @@ export async function middleware(request: NextRequest) {
             onboardingCompleted = profile?.onboarding_completed as boolean | undefined
         }
 
-        // Security defense-in-depth: gate /internal/* at the edge — admin + internal only.
+        // Security defense-in-depth: gate /internal/* at the edge — admin + internal + finanse only.
         // Bez tego layout (app/(protected)/internal/layout.tsx) jest sole guard, a bare
         // route handlers pod /internal mogłyby leakować HR data do konsultanta.
+        // Phase 19a (2026-05-14): added 'finanse' role for invoice review access.
         if (pathname.startsWith('/internal')) {
-            if (role !== 'admin' && role !== 'internal') {
+            if (role !== 'admin' && role !== 'internal' && role !== 'finanse') {
                 return NextResponse.redirect(new URL('/home', request.url))
             }
         }
 
-        // Konsultant biurowy (role='internal') NIE widzi platform features.
+        // Konsultant biurowy (role='internal') i Finanse NIE widzą platform features.
         // Inverse guard po /internal check (admin nadal przechodzi do /home/learning/etc).
-        if (role === 'internal') {
+        if (role === 'internal' || role === 'finanse') {
             const platformPaths = ['/home', '/learning', '/league', '/incubator', '/news', '/support']
             if (platformPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
-                return NextResponse.redirect(new URL('/internal', request.url))
+                // Finanse landing → /internal/admin?tab=invoices, internal → /internal
+                const landing = role === 'finanse' ? '/internal/admin?tab=invoices' : '/internal'
+                return NextResponse.redirect(new URL(landing, request.url))
             }
         }
 

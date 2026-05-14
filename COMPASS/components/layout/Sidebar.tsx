@@ -38,7 +38,7 @@ export interface SidebarBadgeCounts {
 }
 
 interface SidebarProps {
-    role: 'consultant' | 'admin' | 'internal'
+    role: 'consultant' | 'admin' | 'internal' | 'finanse'
     isOpen?: boolean
     setIsOpen?: (isOpen: boolean) => void
     user: {
@@ -73,6 +73,8 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
 
     const isAdmin = role === 'admin'
     const isInternal = role === 'internal'
+    // Phase 19a: Finanse — sees only invoice review panel (subset of internal admin).
+    const isFinance = role === 'finanse'
 
     // Consultant + admin both see the 5 platform panels.
     const platformGroups: NavGroup[] = [
@@ -135,10 +137,19 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
+    // Phase 19a: dedicated invoice-review group for Finanse role.
+    const financeGroup: NavGroup = {
+        heading: 'Finanse',
+        links: [
+            { name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null },
+        ],
+    }
+
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
         if (isAdmin || isInternal) out.push(internalGroup)
         if (isAdmin) out.push(internalAdminGroup, adminGroup)
+        if (isFinance) out.push(financeGroup)
         return out
     })()
 

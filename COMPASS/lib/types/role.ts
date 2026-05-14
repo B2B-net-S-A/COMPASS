@@ -5,8 +5,12 @@
 // added by Phase 11a. Super-admin elevation now grants 'admin' directly,
 // so there are NO legacy aliases ('centrala', 'administrator', 'trainer'
 // were dropped from the enum).
+//
+// Phase 19a (2026-05-14): added 'finanse' for accounting/finance role —
+// reviews invoices submitted by internal employees. NIE zatwierdza
+// timesheets (admin only). NIE widzi platform features.
 
-export const DB_ROLES = ['consultant', 'admin', 'internal'] as const
+export const DB_ROLES = ['consultant', 'admin', 'internal', 'finanse'] as const
 export type DbRole = (typeof DB_ROLES)[number]
 
 // Currently identical to DbRole (no app-only aliases). Kept as separate name
@@ -21,14 +25,25 @@ export function isInternalEmployee(role: string | null | undefined): boolean {
     return role === 'internal'
 }
 
-export function canAccessInternalZone(role: string | null | undefined): boolean {
-    return isAdminLike(role) || isInternalEmployee(role)
+// Phase 19a: dedicated finance role.
+export function isFinance(role: string | null | undefined): boolean {
+    return role === 'finanse'
 }
 
-// UI labelki dla 3 ról Compass (post-refactor 2026-05-11):
+// Phase 19a: who can approve/reject invoices. Admin always wins as super-role.
+export function canReviewInvoices(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isFinance(role)
+}
+
+export function canAccessInternalZone(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isInternalEmployee(role) || isFinance(role)
+}
+
+// UI labelki dla 4 ról Compass (post-refactor 2026-05-14, Phase 19a):
 //   admin       → Super Admin (wszystko)
 //   consultant  → Konsultant IT (platform: learning/league/incubator/news/support)
 //   internal    → Konsultant biurowy (TYLKO /internal/* HR Hub)
+//   finanse     → Finanse (TYLKO /internal/admin?tab=invoices — review faktur)
 export function roleLabelPl(role: string | null | undefined): string {
     switch (role) {
         case 'admin':
@@ -37,6 +52,8 @@ export function roleLabelPl(role: string | null | undefined): string {
             return 'Konsultant IT'
         case 'internal':
             return 'Konsultant biurowy'
+        case 'finanse':
+            return 'Finanse'
         default:
             return 'Nieznana'
     }

@@ -1,8 +1,9 @@
 // Phase 11: server-side guards for /internal/* routes and HR server actions.
+// Phase 19a (2026-05-14): added `requireInvoiceReviewerAction/Layout` for admin OR finanse.
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { canAccessInternalZone, isAdminLike, type AppRole } from '@/lib/types/role'
+import { canAccessInternalZone, canReviewInvoices, isAdminLike, type AppRole } from '@/lib/types/role'
 
 export interface InternalAuthContext {
     userId: string
@@ -72,5 +73,27 @@ export async function requireAdminAction(): Promise<InternalAuthContext> {
 export async function requireAdminLayout(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminLayout()
     if (!ctx.isAdmin) redirect('/internal')
+    return ctx
+}
+
+/**
+ * Phase 19a — Invoice reviewer guard (admin OR finanse).
+ * Server-action variant: throws on unauthorized.
+ */
+export async function requireInvoiceReviewerAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!canReviewInvoices(ctx.role)) {
+        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+    }
+    return ctx
+}
+
+/**
+ * Phase 19a — Invoice reviewer guard (admin OR finanse).
+ * Layout variant: redirects unauthorized to /internal.
+ */
+export async function requireInvoiceReviewerLayout(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminLayout()
+    if (!canReviewInvoices(ctx.role)) redirect('/internal')
     return ctx
 }

@@ -16,7 +16,7 @@ interface InviteUserDialogProps {
     onSuccess: () => void
 }
 
-type InviteRole = 'consultant' | 'internal'
+type InviteRole = 'consultant' | 'internal' | 'finanse'
 
 export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDialogProps) {
     const [email, setEmail] = useState('')
@@ -112,6 +112,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                         >
                             <option value="consultant">Konsultant IT (platform: learning, league, incubator…)</option>
                             <option value="internal">Konsultant biurowy (tylko HR Hub: urlopy, timesheety)</option>
+                            <option value="finanse">Finanse (księgowa/finansista — review faktur)</option>
                         </select>
                     </div>
 

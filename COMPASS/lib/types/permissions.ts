@@ -6,12 +6,15 @@
 // The role_permissions table and admin permission-matrix UI były usunięte —
 // permissions są derived from DEFAULT_PERMISSIONS.
 //
+// Phase 19a (2026-05-14): added 'finanse' for invoice-review-only access.
+//
 // Role mapping (Compass docelowo):
 //   - admin       → Super Admin (wszystko)
 //   - consultant  → Konsultant IT (platform: home/learning/league/incubator/news/support)
 //   - internal    → Konsultant biurowy (TYLKO /internal/* HR Hub, bez platform features)
+//   - finanse     → Finanse (TYLKO /internal/admin?tab=invoices — review faktur)
 
-export type PermissionRole = 'admin' | 'consultant' | 'internal'
+export type PermissionRole = 'admin' | 'consultant' | 'internal' | 'finanse'
 
 export type PermissionFeature =
     | 'home'
@@ -90,6 +93,24 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         loyalty: 'false',
         messages: 'true',      // może komunikować się z admin/HR
         documents: 'true',
+        settings: 'full',
+    },
+    // Phase 19a — Finanse: read-only on most, sees only /internal/admin?tab=invoices.
+    // Wszystkie platform features OFF (najwęższy scope), settings ON żeby mógł
+    // zmienić swoje preferencje.
+    finanse: {
+        home: 'false',
+        learning: 'false',
+        league: 'false',
+        support: 'false',
+        news: 'false',
+        incubator: 'false',
+        notifications: 'true', // powiadomienia o nowych fakturach
+        dashboard: 'false',
+        projects: 'false',
+        loyalty: 'false',
+        messages: 'false',
+        documents: 'false',
         settings: 'full',
     },
 }
