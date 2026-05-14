@@ -44,7 +44,9 @@ export async function uploadAvatar(formData: FormData) {
 
     await supabase
         .from('profiles')
-        .update({ avatar_url: publicUrl })
+        // Mark source as manual so m365 photo sync (lib/m365/people-sync.ts)
+        // doesn't clobber this on next SSO login / weekly cron.
+        .update({ avatar_url: publicUrl, avatar_source: 'manual' })
         .eq('id', user.id)
 
     revalidatePath('/profile')
@@ -105,12 +107,14 @@ export async function uploadCV(formData: FormData) {
         }
 
         // 3. Update Profile with File Path
-        const updateData: { cv_url: string; avatar_url?: string; } = {
+        const updateData: { cv_url: string; avatar_url?: string; avatar_source?: 'manual'; } = {
             cv_url: filePath,
         }
 
         if (extractedAvatarUrl) {
             updateData.avatar_url = extractedAvatarUrl
+            // CV-extracted avatar is user-initiated → protect from m365 sync.
+            updateData.avatar_source = 'manual'
         }
 
         const { error: updateError } = await supabase
@@ -336,11 +340,19 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
         }
 
         // 3. Update Candidate Record
-        const updateData: { cv_url: string; avatar_url?: string; } = {
+        const candidateUpdate: { cv_url: string; avatar_url?: string; } = {
+            cv_url: filePath,
+        }
+        // profiles has the avatar_source column, candidates doesn't —
+        // keep payloads separate to avoid PostgREST schema errors.
+        const profileUpdate: { cv_url: string; avatar_url?: string; avatar_source?: 'manual'; } = {
             cv_url: filePath,
         }
         if (extractedAvatarUrl) {
-            updateData.avatar_url = extractedAvatarUrl
+            candidateUpdate.avatar_url = extractedAvatarUrl
+            profileUpdate.avatar_url = extractedAvatarUrl
+            // Admin-uploaded CV avatar → protect from m365 sync overwrite.
+            profileUpdate.avatar_source = 'manual'
         }
 
         // Update candidates table directly since profiles table might be synonymous or synced
@@ -355,13 +367,13 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
         // Update 'candidates' table
         const { error: candidateError } = await supabase
             .from('candidates')
-            .update(updateData)
+            .update(candidateUpdate)
             .eq('id', candidateId)
 
         if (candidateError) throw new Error('Failed to update candidate record: ' + candidateError.message)
 
         // Try to update 'profiles' table too, just in case they are linked
-        await supabase.from('profiles').update(updateData).eq('id', candidateId)
+        await supabase.from('profiles').update(profileUpdate).eq('id', candidateId)
 
 
         // 4. Trigger AI Analysis automatically

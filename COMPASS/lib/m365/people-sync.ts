@@ -21,6 +21,8 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import { extractGraphErrorInfo, getGraphClient, type GraphLike } from '@/lib/graph/client'
 import { logger } from '@/lib/logger'
 
+export type AvatarSource = 'manual' | 'm365'
+
 export interface SyncProfileResult {
     success: boolean
     /** Set when sync ran and produced field updates. */
@@ -30,6 +32,7 @@ export interface SyncProfileResult {
         job_title: string
         phone: string
         avatar_url: string
+        avatar_source: AvatarSource
     }>
     /** True when we skipped (missing credentials, missing email). */
     skipped?: boolean
@@ -89,6 +92,15 @@ export async function syncProfileFromGraph(
         }
     }
 
+    // 0. Snapshot avatar_source so we can decide later whether the photo
+    // sync is allowed to overwrite avatar_url (manual uploads are honored).
+    // Lookup is best-effort: if it fails we treat the source as unknown
+    // (= allow m365 overwrite). Race with a concurrent manual upload is
+    // acceptable — admin can re-upload anytime; sync only runs hourly at
+    // worst (per-SSO or weekly cron).
+    const admin = createServiceClient()
+    const avatarSource = await readAvatarSource(admin, userId)
+
     // 1. Fetch user core fields
     let user: GraphUser
     try {
@@ -132,8 +144,15 @@ export async function syncProfileFromGraph(
         }
     }
 
-    // 3. Fetch + upload profile photo (best-effort; never fails the sync)
-    const avatarUrl = await syncPhotoFromGraph(client, userId, userEmail)
+    // 3. Fetch + upload profile photo (best-effort; never fails the sync).
+    // Skips entirely when the existing avatar was uploaded manually — we
+    // don't clobber HR/user choices with an Azure photo.
+    const avatarUrl = avatarSource === 'manual'
+        ? undefined
+        : await syncPhotoFromGraph(client, userId, userEmail)
+    if (avatarSource === 'manual') {
+        logger.info({ event: 'm365.people.photo_skipped_manual_avatar', userId })
+    }
 
     // 4. Build updates (only set fields that Graph returned)
     const fields: NonNullable<SyncProfileResult['fields']> = {}
@@ -152,11 +171,13 @@ export async function syncProfileFromGraph(
     }
     if (avatarUrl) {
         fields.avatar_url = avatarUrl
+        // Stamp source so future syncs know this avatar came from m365 and
+        // a subsequent manual upload (via uploadAvatar) will mark it 'manual'.
+        fields.avatar_source = 'm365'
     }
 
     // 5. UPDATE profile (always stamp m365_synced_at so the weekly cron
     // can use it as a bookmark even when Graph returned zero fields)
-    const admin = createServiceClient()
     const { error } = await admin
         .from('profiles')
         .update({
@@ -274,6 +295,29 @@ async function syncPhotoFromGraph(
     const { data: { publicUrl } } = admin.storage.from('avatars').getPublicUrl(path)
     // Cache-bust via content hash — same bytes → same URL → browser cache hit.
     return `${publicUrl}?v=${hashPrefix}`
+}
+
+/**
+ * Lookup current avatar_source for a profile. Returns undefined when the
+ * row doesn't exist or the column hasn't been backfilled yet — caller
+ * treats undefined as "no manual override, m365 may write".
+ */
+async function readAvatarSource(
+    admin: ReturnType<typeof createServiceClient>,
+    userId: string,
+): Promise<AvatarSource | undefined> {
+    const { data, error } = await admin
+        .from('profiles')
+        .select('avatar_source')
+        .eq('id', userId)
+        .maybeSingle()
+    if (error) {
+        logger.warn({ event: 'm365.people.avatar_source_lookup_failed', error: error.message, userId })
+        return undefined
+    }
+    const value = data?.avatar_source
+    if (value === 'manual' || value === 'm365') return value
+    return undefined
 }
 
 function toBuffer(value: unknown): Buffer | undefined {

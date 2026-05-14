@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── Module mocks ────────────────────────────────────────────────────────────
 
-const mockApi = vi.fn()
 const mockGetGraphClient = vi.fn()
 const mockStorageUpload = vi.fn()
 const mockStorageGetPublicUrl = vi.fn()
 const mockProfilesUpdate = vi.fn()
 const mockProfilesEq = vi.fn()
+const mockProfilesSelectMaybeSingle = vi.fn()
 
 vi.mock('@/lib/graph/client', () => ({
     getGraphClient: () => mockGetGraphClient(),
@@ -35,6 +35,11 @@ vi.mock('@/lib/supabase/admin', () => ({
                     mockProfilesUpdate(...args)
                     return { eq: (...eqArgs: unknown[]) => mockProfilesEq(...eqArgs) }
                 },
+                select: (_cols: string) => ({
+                    eq: (_col: string, _val: string) => ({
+                        maybeSingle: () => mockProfilesSelectMaybeSingle(),
+                    }),
+                }),
             }
         },
     }),
@@ -123,6 +128,8 @@ beforeEach(() => {
     })
     mockProfilesUpdate.mockReset()
     mockProfilesEq.mockReset().mockResolvedValue({ error: null })
+    // Default: no manual avatar source set → m365 sync is allowed to write.
+    mockProfilesSelectMaybeSingle.mockReset().mockResolvedValue({ data: { avatar_source: null }, error: null })
 })
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -150,10 +157,11 @@ describe('syncProfileFromGraph — photo sync (PR4 v2)', () => {
             expect.any(Buffer),
             { contentType: 'image/jpeg', upsert: true },
         )
-        // Profile UPDATE includes avatar_url alongside the other fields.
+        // Profile UPDATE includes avatar_url AND avatar_source='m365' alongside the other fields.
         expect(mockProfilesUpdate).toHaveBeenCalledWith(
             expect.objectContaining({
                 avatar_url: expect.stringContaining('?v='),
+                avatar_source: 'm365',
                 job_title: 'Dev',
                 department: 'IT',
                 manager_email: 'boss@b2bnetwork.pl',
@@ -254,6 +262,76 @@ describe('syncProfileFromGraph — photo sync (PR4 v2)', () => {
         expect(result.success).toBe(true)
         expect(result.fields?.avatar_url).toBeUndefined()
         expect(mockStorageUpload).not.toHaveBeenCalled()
+    })
+
+    it('respects manual avatar_source — skips Graph photo calls and never writes avatar_url', async () => {
+        mockProfilesSelectMaybeSingle.mockResolvedValue({ data: { avatar_source: 'manual' }, error: null })
+        const { syncProfileFromGraph } = await import('@/lib/m365/people-sync')
+
+        // photoMeta/photoBinary are deliberately set to error responses to assert
+        // that we never reach them when avatar_source='manual'.
+        const photoMeta = vi.fn(() => ({ statusCode: 500 }))
+        const photoBinary = vi.fn(() => ({ statusCode: 500 }))
+        const { client } = makeGraphStub({
+            user: { jobTitle: 'Dev', department: 'IT' },
+            manager: { mail: 'boss@b2bnetwork.pl' },
+            photoMeta,
+            photoBinary,
+        })
+        mockGetGraphClient.mockResolvedValue(client)
+
+        const result = await syncProfileFromGraph('user-manual', 'manual@b2bnetwork.pl')
+
+        expect(result.success).toBe(true)
+        expect(result.fields?.avatar_url).toBeUndefined()
+        expect(result.fields?.avatar_source).toBeUndefined()
+        expect(photoMeta).not.toHaveBeenCalled()
+        expect(photoBinary).not.toHaveBeenCalled()
+        expect(mockStorageUpload).not.toHaveBeenCalled()
+        // Other fields still flushed normally — only photo is protected.
+        expect(mockProfilesUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ job_title: 'Dev', manager_email: 'boss@b2bnetwork.pl' }),
+        )
+    })
+
+    it('refreshes photo when existing avatar_source is m365 (sync-managed avatars stay in sync)', async () => {
+        mockProfilesSelectMaybeSingle.mockResolvedValue({ data: { avatar_source: 'm365' }, error: null })
+        const { syncProfileFromGraph } = await import('@/lib/m365/people-sync')
+
+        const photoBytes = new Uint8Array([0xff, 0xd8, 0xff]).buffer
+        const { client } = makeGraphStub({
+            user: { jobTitle: 'Dev' },
+            manager: { statusCode: 404 },
+            photoMeta: { '@odata.mediaContentType': 'image/jpeg' },
+            photoBinary: photoBytes,
+        })
+        mockGetGraphClient.mockResolvedValue(client)
+
+        const result = await syncProfileFromGraph('user-m365', 'me@b2bnetwork.pl')
+
+        expect(result.fields?.avatar_url).toMatch(/\?v=[0-9a-f]{12}$/)
+        expect(result.fields?.avatar_source).toBe('m365')
+        expect(mockStorageUpload).toHaveBeenCalledTimes(1)
+    })
+
+    it('continues sync when avatar_source lookup fails (treats as unknown → allows m365 write)', async () => {
+        mockProfilesSelectMaybeSingle.mockResolvedValue({ data: null, error: { message: 'connection lost' } })
+        const { syncProfileFromGraph } = await import('@/lib/m365/people-sync')
+
+        const photoBytes = new Uint8Array([0xff, 0xd8, 0xff]).buffer
+        const { client } = makeGraphStub({
+            user: { jobTitle: 'Dev' },
+            manager: { statusCode: 404 },
+            photoMeta: { '@odata.mediaContentType': 'image/jpeg' },
+            photoBinary: photoBytes,
+        })
+        mockGetGraphClient.mockResolvedValue(client)
+
+        const result = await syncProfileFromGraph('user-x', 'x@b2bnetwork.pl')
+
+        expect(result.success).toBe(true)
+        expect(result.fields?.avatar_url).toBeDefined()
+        expect(result.fields?.avatar_source).toBe('m365')
     })
 
     it('produces the same cache-bust suffix for identical photo bytes', async () => {
