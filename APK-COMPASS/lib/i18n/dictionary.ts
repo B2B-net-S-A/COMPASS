@@ -66,6 +66,8 @@ export const dictionary = {
         mobile_learning: 'Nauka',
         mobile_league: 'League',
         mobile_news: 'Aktualności',
+        mobile_incubator: 'Inkubator',
+        mobile_support: 'Support',
         mobile_more: 'Więcej',
 
         // Panel landing taglines
@@ -152,6 +154,8 @@ export const dictionary = {
         mobile_learning: 'Learn',
         mobile_league: 'League',
         mobile_news: 'News',
+        mobile_incubator: 'Incubator',
+        mobile_support: 'Support',
         mobile_more: 'More',
 
         // Panel landing taglines

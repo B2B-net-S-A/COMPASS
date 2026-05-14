@@ -4,6 +4,7 @@ import { Bell, Clock } from 'lucide-react'
 import { LeaderboardOptOut } from './LeaderboardOptOut'
 import { PushSubscribeToggle } from '@/components/notifications/PushSubscribeToggle'
 import { ClockSummaryEmailToggle } from './ClockSummaryEmailToggle'
+import { isFeatureComingSoon } from '@/lib/types/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,7 +71,9 @@ export default async function UserSettingsPage() {
                 </Card>
             )}
 
-            <LeaderboardOptOut initialOptOut={optOut} />
+            {!isFeatureComingSoon('league') && (
+                <LeaderboardOptOut initialOptOut={optOut} />
+            )}
         </div>
     )
 }
