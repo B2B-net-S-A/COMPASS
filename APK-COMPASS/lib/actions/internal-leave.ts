@@ -56,17 +56,20 @@ export interface CreateLeaveInput {
     documentationUrl?: string | null
 }
 
+/**
+ * Statystyki urlopowe per rok (B2B — brak limitu dni, tylko info do planowania).
+ * `annual_leave_days` / `remaining_days` / `projected_remaining_days` zostały
+ * usunięte gdy zespół przeszedł na B2B (wszyscy mają nielimitowane urlopy
+ * pod warunkiem zgłoszenia wniosku).
+ */
 export interface MyLeaveBalance {
-    annual_leave_days: number
-    used_days: number
-    remaining_days: number
     year: number
-    /** H2.5: dni już zatwierdzone w przyszłości (planowane urlopy w bieżącym roku, start_date > today). */
+    /** Dni vacation już wykorzystane (zatwierdzone, start_date ≤ today). */
+    used_days: number
+    /** Dni vacation zatwierdzone na przyszłość (start_date > today). */
     pending_approved_future_days: number
-    /** H2.5: dni z pending wniosków (jeszcze nie zatwierdzone) w bieżącym roku. */
+    /** Dni vacation z wniosków oczekujących na akceptację. */
     pending_request_days: number
-    /** H2.5: projektowane dni pozostałe na koniec roku (remaining - approved future - pending). */
-    projected_remaining_days: number
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -320,12 +323,7 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
     const yearStart = `${year}-01-01`
     const yearEnd = `${year}-12-31`
 
-    const [profileRes, leavesRes, pendingRes, holidaysRes] = await Promise.all([
-        supabase
-            .from('profiles')
-            .select('annual_leave_days')
-            .eq('id', ctx.userId)
-            .single<{ annual_leave_days: number | null }>(),
+    const [leavesRes, pendingRes, holidaysRes] = await Promise.all([
         // Zatwierdzone urlopy wypoczynkowe (cały rok, do liczenia used + future)
         supabase
             .from('leave_requests')
@@ -335,7 +333,7 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
             .eq('leave_type', 'vacation')
             .gte('start_date', yearStart)
             .lte('start_date', yearEnd),
-        // H2.5: pending wnioski wypoczynkowe (jeszcze nie zatwierdzone)
+        // Pending wnioski wypoczynkowe (jeszcze nie zatwierdzone)
         supabase
             .from('leave_requests')
             .select('start_date, end_date, half_day, leave_type')
@@ -351,27 +349,18 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
             .lte('date', yearEnd),
     ])
 
-    const annual = profileRes.data?.annual_leave_days ?? 26
     const allApproved = (leavesRes.data ?? []) as LeaveSpan[]
     const pending = (pendingRes.data ?? []) as LeaveSpan[]
     const holidays = (holidaysRes.data ?? []) as PublicHolidayDate[]
 
-    // H2.5: split approved na "already used" (start <= today) i "future approved" (start > today)
     const past = allApproved.filter((s) => s.start_date <= today)
     const future = allApproved.filter((s) => s.start_date > today)
 
-    const used = totalVacationDaysUsed(past, holidays)
-    const futureApproved = totalVacationDaysUsed(future, holidays)
-    const pendingDays = totalVacationDaysUsed(pending, holidays)
-
     return {
-        annual_leave_days: annual,
-        used_days: used,
-        remaining_days: Math.max(0, annual - used),
         year,
-        pending_approved_future_days: futureApproved,
-        pending_request_days: pendingDays,
-        projected_remaining_days: Math.max(0, annual - used - futureApproved - pendingDays),
+        used_days: totalVacationDaysUsed(past, holidays),
+        pending_approved_future_days: totalVacationDaysUsed(future, holidays),
+        pending_request_days: totalVacationDaysUsed(pending, holidays),
     }
 }
 
