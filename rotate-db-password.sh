@@ -33,15 +33,15 @@ update_env() {
 }
 
 echo "=== Aktualizacja DATABASE_URL ==="
-update_env "$BASE_DIR/APK-COMPASS/.env.local"
+update_env "$BASE_DIR/COMPASS/.env.local"
 update_env "$BASE_DIR/compass-umowa-konsultant/.env.local"
 
 echo ""
 echo "=== Aktualizacja Render env vars ==="
 
 RENDER_API_KEY=""
-if [ -f "$BASE_DIR/APK-COMPASS/.env.local" ]; then
-  RENDER_API_KEY=$(grep "^RENDER_API_KEY=" "$BASE_DIR/APK-COMPASS/.env.local" | cut -d= -f2)
+if [ -f "$BASE_DIR/COMPASS/.env.local" ]; then
+  RENDER_API_KEY=$(grep "^RENDER_API_KEY=" "$BASE_DIR/COMPASS/.env.local" | cut -d= -f2)
 fi
 
 if [ -z "$RENDER_API_KEY" ]; then

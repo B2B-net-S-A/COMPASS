@@ -1,4 +1,4 @@
-# Dynaminds ops config for Compass (HR app)
+# B2Bnetwork ops config for COMPASS (HR app)
 # Used by ~/.claude/scripts/sync-ops-commands.sh to generate .claude/commands/ops-*.md
 # Re-run after editing: ~/.claude/scripts/sync-ops-commands.sh .
 

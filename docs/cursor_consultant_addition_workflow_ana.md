@@ -120,7 +120,7 @@ Brak manualnego dodawania konsultantów — nie ma UI do dodania konsultanta "z 
 Mock client w demo — w trybie bypass (bez Supabase) triggery bazodanowe nie odpalą się, więc sync profiles→candidates zależy wyłącznie od syncProfileToCandidate() w kodzie JS.
 Onboarding nie jest wymuszony — jeśli konsultant pominie onboarding, ma pusty profil i trafia do candidates z minimalnymi danymi (brak CV, bio, skills).
 
-I need to thoroughly understand the workflow for adding consultants to the database in this Next.js/Supabase app. Search in /sessions/blissful-hopeful-ramanujan/mnt/aplikacja zbyszka/APK-COMPASS/APK-COMPASS/
+I need to thoroughly understand the workflow for adding consultants to the database in this Next.js/Supabase app. Search in /sessions/blissful-hopeful-ramanujan/mnt/aplikacja zbyszka/COMPASS/COMPASS/
 
 Please find and read these key areas:
 
@@ -170,7 +170,7 @@ Twoja analiza jest **w dużej mierze poprawna**, ale jest kilka nieścisłości 
 
 Twój opis jest dokładny. Weryfikacja w kodzie:
 
-```186:209:APK-COMPASS/APK-COMPASS/app/login/actions.ts
+```186:209:COMPASS/COMPASS/app/login/actions.ts
     // 1. Domain Validation
     if (!email.toLowerCase().endsWith('@b2bnetwork.pl')) {
         return { error: 'Rejestracja dozwolona tylko dla domeny @b2bnetwork.pl' }
@@ -185,7 +185,7 @@ Twój opis jest dokładny. Weryfikacja w kodzie:
 
 Rola `consultant` jest ustawiana w metadanych auth:
 
-```217:221:APK-COMPASS/APK-COMPASS/app/login/actions.ts
+```217:221:COMPASS/COMPASS/app/login/actions.ts
             data: {
                 full_name: fullName.trim(),
                 gdpr_consent: true,
@@ -199,7 +199,7 @@ Rola `consultant` jest ustawiana w metadanych auth:
 
 Trigger `handle_new_user()` istnieje, ale **nie ustawia roli** wprost. Patrz na migrację:
 
-```27:35:APK-COMPASS/APK-COMPASS/supabase/migrations/20240502000000_initial_schema.sql
+```27:35:COMPASS/COMPASS/supabase/migrations/20240502000000_initial_schema.sql
 create function public.handle_new_user()
 returns trigger as $$
 begin
@@ -219,7 +219,7 @@ Zauważ: trigger wstawia tylko `id, email, full_name, avatar_url` -- **nie wstaw
 
 Twój opis priorytetu jest poprawny:
 
-```68:108:APK-COMPASS/APK-COMPASS/app/login/actions.ts
+```68:108:COMPASS/COMPASS/app/login/actions.ts
 async function syncRole(supabase: SupabaseClient, userId: string, email: string, currentRole: string): Promise<string> {
     // 1. Super Admins — hardcoded
     if (isSuperAdmin(emailLower)) { ... return 'administrator' }
@@ -243,7 +243,7 @@ Strona `/onboarding` istnieje i zawiera opisane elementy (CV, bio, GDPR). Ale:
 
 **Krytyczna luka**: Onboarding **NIE jest wymuszony** w middleware ani nigdzie indziej. Middleware (`middleware.ts`) nie sprawdza czy profil jest uzupełniony i nie przekierowuje na `/onboarding`. Jedyna logika w middleware to odświeżenie sesji Supabase:
 
-```5:38:APK-COMPASS/APK-COMPASS/middleware.ts
+```5:38:COMPASS/COMPASS/middleware.ts
 export async function middleware(request: NextRequest) {
     // ... supabase session refresh ...
     await supabase.auth.getUser()
@@ -255,7 +255,7 @@ Nie ma nigdzie redirectu do `/onboarding` po zalogowaniu -- login zawsze przekie
 
 Dodatkowo: onboarding po ukończeniu przekierowuje na `/dashboard`, nie `/home`:
 
-```72:73:APK-COMPASS/APK-COMPASS/app/onboarding/page.tsx
+```72:73:COMPASS/COMPASS/app/onboarding/page.tsx
             toastSuccess('Profil utworzony pomyślnie!')
             router.push('/dashboard')
 ```
@@ -289,7 +289,7 @@ Poprawne. Dane pobierane z `profiles` + `candidates` + `consultant_assignments` 
 ### Centrala
 Logika w `getConsultantsList()` jest **dokładnie** taka jak opisałeś:
 
-```47:77:APK-COMPASS/APK-COMPASS/lib/actions/centrala.ts
+```47:77:COMPASS/COMPASS/lib/actions/centrala.ts
     const needsFiltering = accessEntry
         && accessEntry.access_mode === 'portfolio'
         && accessEntry.centrala_role !== 'finance'
@@ -309,7 +309,7 @@ Poprawne. RLS na `candidates` tabeli ogranicza widoczność -- konsultant widzi 
 
 RLS na `candidates` ma **problem z rolami**. Oryginalna polityka sprawdza `role = 'admin'`:
 
-```20:26:APK-COMPASS/APK-COMPASS/FIX_CANDIDATES_RLS_FINAL.sql
+```20:26:COMPASS/COMPASS/FIX_CANDIDATES_RLS_FINAL.sql
 CREATE POLICY "Admins can manage candidates" ON candidates FOR ALL TO authenticated USING (
     EXISTS (
         SELECT 1

@@ -12,7 +12,7 @@ Informacja o ulubionych projektach musi być widoczna w wielu kluczowych miejsca
 
 ## KONTEKST TECHNICZNY
 
-- Aplikacja: Qualrix / ComPass by B2B.net S.A.
+- Aplikacja: COMPASS by B2B.net S.A.
 - Stack: Next.js 14+ App Router, React 18, TypeScript, Tailwind CSS, shadcn/ui, Supabase
 - Database: PostgreSQL via Supabase (z pgvector)
 - Auth: Supabase Auth
@@ -861,7 +861,7 @@ export const dictionary = {
         settings: 'Ustawienia',
         logout: 'Wyloguj się',
         welcome: 'Witaj',
-        panel: 'To jest Twój panel główny w aplikacji APK ComPass.',
+        panel: 'To jest Twój panel główny w aplikacji COMPASS.',
         notifications: 'Powiadomienia',
         // NOWE — Favorites:
         favorites_title: 'Ulubione Projekty',
@@ -889,7 +889,7 @@ export const dictionary = {
         settings: 'Settings',
         logout: 'Log out',
         welcome: 'Welcome',
-        panel: 'This is your main dashboard in APK ComPass application.',
+        panel: 'This is your main dashboard in COMPASS application.',
         notifications: 'Notifications',
         // NEW — Favorites:
         favorites_title: 'Favorite Projects',
@@ -987,5 +987,5 @@ export const dictionary = {
    ```
    Dodaj nowe pola (isFavorite, onFavoriteToggle, showFavoriteButton, favoriteCount) NIE USUWAJĄC istniejących.
 
-7. **Nazewnictwo aplikacji**: Aplikacja nosi nazwę "APK ComPass" (nie "Qualrix") w aktualnej wersji UI — widoczne w Sidebar.tsx.
+7. **Nazewnictwo aplikacji**: Aplikacja nosi nazwę "COMPASS" (nie "Qualrix") w aktualnej wersji UI — widoczne w Sidebar.tsx.
 ```

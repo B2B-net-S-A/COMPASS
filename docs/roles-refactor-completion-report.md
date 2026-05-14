@@ -35,13 +35,13 @@ Verified: `SELECT column_name FROM information_schema.columns WHERE table_name='
 **Merged:** 2026-05-11T13:15:13Z · commit `4878de9` · CI: green · Deployed: ✓ (status: healthy)
 
 Pliki zmienione:
-- [lib/types/permissions.ts](../APK-COMPASS/lib/types/permissions.ts) — `PermissionRole` poszerzony o `'internal'`, dodane `DEFAULT_PERMISSIONS.internal` z wszystkimi platform features `'false'`
-- [middleware.ts](../APK-COMPASS/middleware.ts) — inverse guard: jeśli `role==='internal'` i path platform → redirect `/internal`; jedno SELECT profile (wcześniej 2)
-- [lib/types/role.ts](../APK-COMPASS/lib/types/role.ts) — `roleLabelPl()`: Super Admin / Konsultant IT / Konsultant biurowy
-- [lib/i18n/dictionary.ts](../APK-COMPASS/lib/i18n/dictionary.ts) — `nav_settings`: "Ustawienia" → "Moje preferencje" (PL+EN)
-- [app/(protected)/home/page.tsx](../APK-COMPASS/app/\(protected\)/home/page.tsx) — defense-in-depth server-side redirect dla internal
-- [app/login/actions.ts](../APK-COMPASS/app/login/actions.ts) + [app/auth/callback/route.ts](../APK-COMPASS/app/auth/callback/route.ts) — `redirect(role==='internal' ? '/internal' : '/home')`
-- [lib/actions/user-admin.ts](../APK-COMPASS/lib/actions/user-admin.ts) — `setUserRole`: auto-set `onboarding_completed=true` przy promote→internal (bez tego biurowi utknęliby w consultant onboarding flow)
+- [lib/types/permissions.ts](../COMPASS/lib/types/permissions.ts) — `PermissionRole` poszerzony o `'internal'`, dodane `DEFAULT_PERMISSIONS.internal` z wszystkimi platform features `'false'`
+- [middleware.ts](../COMPASS/middleware.ts) — inverse guard: jeśli `role==='internal'` i path platform → redirect `/internal`; jedno SELECT profile (wcześniej 2)
+- [lib/types/role.ts](../COMPASS/lib/types/role.ts) — `roleLabelPl()`: Super Admin / Konsultant IT / Konsultant biurowy
+- [lib/i18n/dictionary.ts](../COMPASS/lib/i18n/dictionary.ts) — `nav_settings`: "Ustawienia" → "Moje preferencje" (PL+EN)
+- [app/(protected)/home/page.tsx](../COMPASS/app/\(protected\)/home/page.tsx) — defense-in-depth server-side redirect dla internal
+- [app/login/actions.ts](../COMPASS/app/login/actions.ts) + [app/auth/callback/route.ts](../COMPASS/app/auth/callback/route.ts) — `redirect(role==='internal' ? '/internal' : '/home')`
+- [lib/actions/user-admin.ts](../COMPASS/lib/actions/user-admin.ts) — `setUserRole`: auto-set `onboarding_completed=true` przy promote→internal (bez tego biurowi utknęliby w consultant onboarding flow)
 
 ### [#77 — feat(admin) admin invite flow + ukrycie self-signup](https://github.com/artur-t-96/compass/pull/77)
 

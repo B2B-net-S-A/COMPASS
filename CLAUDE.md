@@ -5,14 +5,14 @@
 
 ## Stack & ports
 
-- **Frontend:** Next.js 14.2.35 (App Router, React 18, standalone output) — w katalogu `APK-COMPASS/`.
+- **Frontend:** Next.js 14.2.35 (App Router, React 18, standalone output) — w katalogu `COMPASS/`.
 - **Database:** Supabase (external Postgres, Auth, Storage).
 - **Integracje:** Anthropic SDK, OpenAI, Resend (email).
 - **Test:** Vitest 4 (unit) + Playwright 1.58 (e2e).
 - **Package manager:** npm (Node 20).
 - **Port:** 10000 (Next.js standalone, env `APP_PORT` w compose).
 
-**Monorepo-ish:** root repo zawiera tylko `docker-compose.yml` + `.github/`; aplikacja Next.js w podkatalogu `APK-COMPASS/`.
+**Monorepo-ish:** root repo zawiera tylko `docker-compose.yml` + `.github/`; aplikacja Next.js w podkatalogu `COMPASS/`.
 
 ## Deploy
 
@@ -31,7 +31,7 @@
 
 ## Healthcheck endpoint
 
-- **URL:** `/api/health` (route w `APK-COMPASS/app/api/health/route.ts`).
+- **URL:** `/api/health` (route w `COMPASS/app/api/health/route.ts`).
 - **Shape:** `{status, version, deployedAt, checks: {supabase}}` (Faza 1.A done — commit `48fa896`).
 - **Logic:** Supabase HEAD `/rest/v1/?apikey=...` → 4xx = healthy (alive), 5xx/timeout = unhealthy.
 - **Compose healthcheck:** `wget --spider http://127.0.0.1:10000/api/health` co 30s, retries 3, start_period 40s.
@@ -59,9 +59,9 @@
 - **Test command:** `npm run test:unit` (Vitest) w CI; `npm test` lokalnie odpala Vitest **i** Playwright (wolne, nie do CI default).
 - **E2E w osobnym workflow:** `e2e-tests.yml` (nie `build-check.yml`).
 - **Concurrency lock:** deployy z `main` sekwencyjne (nie cancel-in-progress).
-- **Build context:** `./APK-COMPASS` (nie root). Dockerfile w `APK-COMPASS/Dockerfile`.
+- **Build context:** `./COMPASS` (nie root). Dockerfile w `COMPASS/Dockerfile`.
 - **Lint:** `next lint` (eslint-config-next 14.2.35).
-- **Typecheck:** `tsc --noEmit` (TS 5, w `APK-COMPASS/tsconfig.json`).
+- **Typecheck:** `tsc --noEmit` (TS 5, w `COMPASS/tsconfig.json`).
 
 **Faza 2 (DONE 2026-04-29):** gitleaks + ESLint + Vitest + Playwright w `build-check.yml`.
 
@@ -71,11 +71,11 @@
 cd /Users/arturtwardowski/Compass
 
 # Quick check
-npm --prefix APK-COMPASS run lint
-npm --prefix APK-COMPASS run test:unit
+npm --prefix COMPASS run lint
+npm --prefix COMPASS run test:unit
 
 # Local build + run
-cd APK-COMPASS && npm run build && PORT=10000 npm start
+cd COMPASS && npm run build && PORT=10000 npm start
 
 # Docker local (cały compose)
 cd /Users/arturtwardowski/Compass
@@ -101,7 +101,7 @@ git revert HEAD && git push origin main
 
 - **Akademia (recent work):** sprawdź `app/akademia/`, `lib/types/akademia.ts`. Faza 5 (AI rekomendacje) szła w niedawnych commitach (5889f1f, 65faef1).
 - **Multi-stage Dockerfile** z `pdf-lib` i `pdf2json` — zaufaj cache, ale `npm ci` jest cięższy niż w pozostałych apkach.
-- **Monorepo gotcha:** wszystkie `npm` komendy odpalaj z `APK-COMPASS/` lub z `--prefix APK-COMPASS`.
+- **Monorepo gotcha:** wszystkie `npm` komendy odpalaj z `COMPASS/` lub z `--prefix COMPASS`.
 
 ## Coolify cron jobs (Phase 17 — Smart Work Clock)
 
@@ -131,7 +131,7 @@ curl -fsS "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff?secret=$CRON
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
 
-- **JSON logger utility** — `APK-COMPASS/lib/logger.ts` (zero-dep) używany zamiast `console.error`. ~50 lokalizacji zmigrowanych w PR #32. Pozostałe ~100 w `lib/actions/` i `components/` migrowane stopniowo gdy pliki są edytowane (hook PostToolUse blokuje nowe `console.*`).
+- **JSON logger utility** — `COMPASS/lib/logger.ts` (zero-dep) używany zamiast `console.error`. ~50 lokalizacji zmigrowanych w PR #32. Pozostałe ~100 w `lib/actions/` i `components/` migrowane stopniowo gdy pliki są edytowane (hook PostToolUse blokuje nowe `console.*`).
 - **Sentry projekt:** `compass` (Next.js 14, App Router + middleware Edge runtime). SDK: `@sentry/nextjs ^8` (^9 wymagałoby Next 15).
 - **Source maps:** `withSentryConfig` z `hideSourceMaps: true` + upload przez `SENTRY_AUTH_TOKEN` (build-time only, nigdy w runtime image).
 - **GIT_SHA propagation:** `deploy.yml` PATCH-uje Coolify env vault na każdym pushu (nie magic var Coolify). `BUILT_AT = $(date -u +%Y-%m-%dT%H:%M:%SZ)` per deploy. `/api/health` zwraca prawdziwy short SHA, smoke test prefix-match przechodzi bez retry.

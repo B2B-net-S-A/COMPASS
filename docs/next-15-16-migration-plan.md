@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-- **Compass jest na Next 14.2.35** (App Router, React 18, standalone output, monorepo w `APK-COMPASS/`).
+- **Compass jest na Next 14.2.35** (App Router, React 18, standalone output, monorepo w `COMPASS/`).
 - Dependabot zaproponował **bezpośredni skok 14 → 16.2.6** (PR #48) — odrzucone, bo to przejście przez **dwa cykle breaking changes** w jednym PR (sync→async API w 15, React 19 + Turbopack default w 16).
 - Plan: **Fazowo**, każda faza w osobnym PR z UAT:
   - **Faza A: 14 → 15.4.x** (najnowsza stabilna 15.x w momencie migracji) — async API, Sentry SDK bump, fetch cache audit. **~20–30h.**
@@ -22,7 +22,7 @@ PR #48 = Dependabot 14.2.35 → 16.2.6 (skok przez dwie major). Powody zamknięc
 
 ## Audyt zakresu w Compass (stan 2026-05-11)
 
-Wszystkie grep'y na `APK-COMPASS/` (gdzie żyje aplikacja Next.js):
+Wszystkie grep'y na `COMPASS/` (gdzie żyje aplikacja Next.js):
 
 | Pattern | Count | Top files |
 |---|---:|---|
@@ -36,14 +36,14 @@ Wszystkie grep'y na `APK-COMPASS/` (gdzie żyje aplikacja Next.js):
 | `webpack(...)` hook w `next.config.mjs` | 0 | (czysty config — łatwiej z Turbopack) |
 | `@vercel/og` | 0 | (nie używamy, OK) |
 
-**Dep versions (`APK-COMPASS/package.json`):**
+**Dep versions (`COMPASS/package.json`):**
 - `next`: `^14.2.35`
 - `react`: `^18`, `react-dom`: `^18`
 - `@sentry/nextjs`: `^8.55.2` (Next 15 wymaga `^9`, Next 16 najprawdopodobniej `^10`)
 
 **Komendy do reweryfikacji audytu** (jeśli czas minął i kod się zmienił):
 ```bash
-cd /Users/arturtwardowski/Compass/APK-COMPASS
+cd /Users/arturtwardowski/Compass/COMPASS
 grep -rn "headers()" app lib 2>/dev/null | wc -l
 grep -rn "cookies()" app lib 2>/dev/null | wc -l
 grep -rln "params:" app | wc -l
@@ -88,17 +88,17 @@ grep -E '"(react|react-dom|next|@sentry/nextjs)"' package.json
 
 ### Faza A — checklist (PR `chore/next-15`)
 
-- [ ] **A.1** Bump w `APK-COMPASS/package.json`: `next: ^15.4.0`, `eslint-config-next: ^15.4.0`
+- [ ] **A.1** Bump w `COMPASS/package.json`: `next: ^15.4.0`, `eslint-config-next: ^15.4.0`
 - [ ] **A.2** Bump `@sentry/nextjs: ^9.x` + audit `sentry.*.config.ts` per Sentry migration guide
-- [ ] **A.3** Run `npx @next/codemod@latest next-async-request-api ./` w `APK-COMPASS/` → review diff
+- [ ] **A.3** Run `npx @next/codemod@latest next-async-request-api ./` w `COMPASS/` → review diff
 - [ ] **A.4** Manual fix wszystkich `headers()/cookies()` co codemod ominął (caller w sync function → przeniesienie do async)
 - [ ] **A.5** Fix `params`/`searchParams` w 22+15 plikach (Promise + await)
 - [ ] **A.6** Audyt 2 plików z explicit `fetch()` — czy zachowanie cache się nie zmienia
-- [ ] **A.7** `npm --prefix APK-COMPASS run typecheck` → 0 errors
-- [ ] **A.8** `npm --prefix APK-COMPASS run lint` → 0 errors
-- [ ] **A.9** `npm --prefix APK-COMPASS run test:unit` → all pass
-- [ ] **A.10** `cd APK-COMPASS && npm run build` → 0 errors
-- [ ] **A.11** `cd APK-COMPASS && npm run e2e` (Playwright) → critical flows pass
+- [ ] **A.7** `npm --prefix COMPASS run typecheck` → 0 errors
+- [ ] **A.8** `npm --prefix COMPASS run lint` → 0 errors
+- [ ] **A.9** `npm --prefix COMPASS run test:unit` → all pass
+- [ ] **A.10** `cd COMPASS && npm run build` → 0 errors
+- [ ] **A.11** `cd COMPASS && npm run e2e` (Playwright) → critical flows pass
 - [ ] **A.12** Local docker compose run + Chrome MCP smoke: login → /internal/timesheets → PDF export → /admin
 - [ ] **A.13** Deploy do prod → smoke `compass.dynaminds.pl` (loginflow, timesheet, akademia)
 - [ ] **A.14** Monitor Sentry 24h po deploy — żadne new error types
@@ -132,22 +132,22 @@ grep -E '"(react|react-dom|next|@sentry/nextjs)"' package.json
    - Sprawdź [@sentry/nextjs releases](https://github.com/getsentry/sentry-javascript/releases) — czy w momencie migracji `^10` jest oficjalnie compatible z Next 16. Jeśli nie, zostań na `^9`.
 
 4. **Middleware Edge runtime — drobne constraints**
-   - Compass middleware: `APK-COMPASS/middleware.ts` (Edge runtime). Drobne API zmiany w 16, sprawdź na konkretnym pliku.
+   - Compass middleware: `COMPASS/middleware.ts` (Edge runtime). Drobne API zmiany w 16, sprawdź na konkretnym pliku.
 
 5. **`unstable_*` API stabilization** — Compass nie używa `unstable_cache`, `unstable_after`, `unstable_noStore`. **OK.**
 
 ### Faza B — checklist (PR `chore/next-16`, **po merge Fazy A**)
 
-- [ ] **B.1** Bump w `APK-COMPASS/package.json`: `next: ^16.2.x`, `eslint-config-next: ^16.2.x`, `react: ^19`, `react-dom: ^19`, `@types/react: ^19`, `@types/react-dom: ^19`
+- [ ] **B.1** Bump w `COMPASS/package.json`: `next: ^16.2.x`, `eslint-config-next: ^16.2.x`, `react: ^19`, `react-dom: ^19`, `@types/react: ^19`, `@types/react-dom: ^19`
 - [ ] **B.2** Sprawdź `@sentry/nextjs` compatibility z Next 16 → bump `^10` jeśli wymagane
 - [ ] **B.3** Run `npx @next/codemod@latest upgrade ./` (auto-migrate gdzie się da)
 - [ ] **B.4** Run React 19 codemod: `npx codemod@latest react/19/migration-recipe` (act() + ref typing)
 - [ ] **B.5** Audit `pdf-lib` / `pdf2json` z Turbopack — local build + PDF generate test
-- [ ] **B.6** `npm --prefix APK-COMPASS run typecheck` → 0 errors
-- [ ] **B.7** `npm --prefix APK-COMPASS run lint` → 0 errors (eslint-config-next 16 ma nowe rules)
-- [ ] **B.8** `npm --prefix APK-COMPASS run test:unit` → all pass (Vitest może wymagać `act()` updates)
-- [ ] **B.9** `cd APK-COMPASS && npm run build` z Turbopack → 0 errors. Fallback `--webpack` jeśli regress.
-- [ ] **B.10** `cd APK-COMPASS && npm run e2e` (Playwright)
+- [ ] **B.6** `npm --prefix COMPASS run typecheck` → 0 errors
+- [ ] **B.7** `npm --prefix COMPASS run lint` → 0 errors (eslint-config-next 16 ma nowe rules)
+- [ ] **B.8** `npm --prefix COMPASS run test:unit` → all pass (Vitest może wymagać `act()` updates)
+- [ ] **B.9** `cd COMPASS && npm run build` z Turbopack → 0 errors. Fallback `--webpack` jeśli regress.
+- [ ] **B.10** `cd COMPASS && npm run e2e` (Playwright)
 - [ ] **B.11** Lokalna Chrome MCP weryfikacja: login → /internal/timesheets → PDF export → /admin → /akademia (z AI)
 - [ ] **B.12** Deploy do prod → smoke + monitor Sentry 48h
 
