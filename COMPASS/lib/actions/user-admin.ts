@@ -442,7 +442,7 @@ export async function getEmployeeProfileFields(targetUserId: string): Promise<Em
 export interface InviteUserInput {
     email: string
     fullName?: string
-    role: 'consultant' | 'internal'
+    role: 'consultant' | 'internal' | 'finanse'
     employmentType?: 'uop' | 'b2b'
     workStartDate?: string | null
 }
@@ -454,8 +454,8 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
     if (!email.endsWith('@b2bnetwork.pl')) {
         throw new Error('Email musi być w domenie @b2bnetwork.pl')
     }
-    if (input.role !== 'consultant' && input.role !== 'internal') {
-        throw new Error('Niedozwolona rola. Wybierz Konsultant IT lub Konsultant biurowy. Super Admina dodaje się przez Administratorzy.')
+    if (input.role !== 'consultant' && input.role !== 'internal' && input.role !== 'finanse') {
+        throw new Error('Niedozwolona rola. Wybierz Konsultant IT, Konsultant biurowy lub Finanse. Super Admina dodaje się przez Administratorzy.')
     }
 
     const admin = createServiceClient()
