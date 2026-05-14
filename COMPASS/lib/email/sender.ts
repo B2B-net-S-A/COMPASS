@@ -1,5 +1,10 @@
 import * as Sentry from '@sentry/nextjs'
 import { logCompat, logger } from '@/lib/logger'
+import {
+    extractGraphErrorInfo,
+    getGraphClient,
+    isRetryableGraphStatus,
+} from '@/lib/graph/client'
 // Phase 17b PR-E — Email provider abstraction.
 //
 // Note: not marked 'server-only' because lib/email.ts imports this and is
@@ -76,12 +81,6 @@ async function getResend(): Promise<Resend> {
     return _resend
 }
 
-interface GraphLike {
-    api: (path: string) => {
-        post: (body: unknown) => Promise<unknown>
-    }
-}
-
 // ─── Retry helpers ───────────────────────────────────────────────────────────
 
 const MAX_GRAPH_ATTEMPTS = 3
@@ -91,72 +90,10 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-interface GraphErrorInfo {
-    statusCode?: number
-    retryAfterMs?: number
-}
-
-/**
- * Microsoft Graph SDK errors expose `statusCode` and sometimes `headers`
- * (with `retry-after`). We pull both safely without trusting the shape.
- */
-function extractGraphErrorInfo(err: unknown): GraphErrorInfo {
-    if (typeof err !== 'object' || err === null) return {}
-    const e = err as { statusCode?: unknown; headers?: Record<string, unknown> }
-    const info: GraphErrorInfo = {}
-    if (typeof e.statusCode === 'number') info.statusCode = e.statusCode
-    const retryAfterRaw = e.headers?.['retry-after'] ?? e.headers?.['Retry-After']
-    if (typeof retryAfterRaw === 'string') {
-        const seconds = Number.parseInt(retryAfterRaw, 10)
-        if (Number.isFinite(seconds) && seconds > 0) {
-            info.retryAfterMs = seconds * 1000
-        }
-    }
-    return info
-}
-
-function isRetryableStatus(status: number | undefined): boolean {
-    if (status === undefined) return false
-    return status === 429 || (status >= 500 && status < 600)
-}
-
-/** Hash recipient → first 8 chars sha-like (lightweight, RODO-safe for Sentry tags). */
+/** Recipient domain only, for RODO-safe Sentry tagging. */
 function recipientDomain(addr: string): string {
     const idx = addr.indexOf('@')
     return idx === -1 ? 'unknown' : addr.slice(idx + 1).toLowerCase()
-}
-
-let _graphClient: GraphLike | null = null
-async function getGraphClient(): Promise<GraphLike> {
-    if (_graphClient) return _graphClient
-    const tenantId = process.env.AZURE_TENANT_ID
-    const clientId = process.env.AZURE_CLIENT_ID
-    const clientSecret = process.env.AZURE_CLIENT_SECRET
-    if (!tenantId || !clientId || !clientSecret) {
-        throw new Error(
-            'Microsoft Graph: AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET wymagane.',
-        )
-    }
-    // Imports are dynamic so the bundle does not pull MS Graph SDK on Resend-only deploys.
-    const [{ Client }, { ClientSecretCredential }] = await Promise.all([
-        import('@microsoft/microsoft-graph-client'),
-        import('@azure/identity'),
-    ])
-    // @ts-expect-error -- isomorphic-fetch has no type declarations; only side-effect import for global fetch polyfill
-    await import('isomorphic-fetch')
-
-    const credential = new ClientSecretCredential(tenantId, clientId, clientSecret)
-    _graphClient = Client.init({
-        authProvider: async (done: (err: Error | null, token: string | null) => void) => {
-            try {
-                const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default')
-                done(null, tokenResponse?.token ?? null)
-            } catch (e) {
-                done(e as Error, null)
-            }
-        },
-    }) as unknown as GraphLike
-    return _graphClient
 }
 
 // ─── Provider implementations ────────────────────────────────────────────────
@@ -228,7 +165,7 @@ async function sendViaGraph(msg: EmailMessage): Promise<SendResult> {
         } catch (err) {
             lastErr = err
             const { statusCode, retryAfterMs } = extractGraphErrorInfo(err)
-            const retryable = isRetryableStatus(statusCode)
+            const retryable = isRetryableGraphStatus(statusCode)
             const moreAttempts = attempt < MAX_GRAPH_ATTEMPTS
 
             if (!retryable || !moreAttempts) {

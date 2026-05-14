@@ -1339,6 +1339,7 @@ export type Database = {
           id: string
           leave_type: string
           note: string | null
+          outlook_event_id: string | null
           start_date: string
           status: string
           updated_at: string
@@ -1355,6 +1356,7 @@ export type Database = {
           id?: string
           leave_type: string
           note?: string | null
+          outlook_event_id?: string | null
           start_date: string
           status?: string
           updated_at?: string
@@ -1371,6 +1373,7 @@ export type Database = {
           id?: string
           leave_type?: string
           note?: string | null
+          outlook_event_id?: string | null
           start_date?: string
           status?: string
           updated_at?: string

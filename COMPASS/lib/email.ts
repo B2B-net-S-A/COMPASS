@@ -258,7 +258,7 @@ export async function sendBroadcastEmail(
 
 // ─── Phase 11: HR Internal email templates ──────────────────────────────────
 
-const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
+export const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
     vacation: 'Urlop wypoczynkowy',
     sick_leave: 'L4 / chorobowe',
     parental_leave: 'Opieka rodzicielska',
