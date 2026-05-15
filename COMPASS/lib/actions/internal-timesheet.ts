@@ -547,8 +547,8 @@ export async function approveTimesheet(timesheetId: string): Promise<void> {
         throw new Error('Można zaakceptować tylko timesheet w statusie "submitted".')
     }
 
-    // Phase 20: Manager team scope — verify target.manager_id = ctx.userId.
-    if (ctx.isManager && !ctx.isAdmin) {
+    // Phase 20 + 20e: team scope check — niezależnie od roli (admin pomija).
+    if (!ctx.isAdmin) {
         const { data: targetProfile } = await admin
             .from('profiles')
             .select('manager_id')
@@ -629,8 +629,8 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
         throw new Error('Można odrzucić tylko timesheet w statusie "submitted".')
     }
 
-    // Phase 20: Manager team scope — verify target.manager_id = ctx.userId.
-    if (ctx.isManager && !ctx.isAdmin) {
+    // Phase 20 + 20e: team scope check — niezależnie od roli (admin pomija).
+    if (!ctx.isAdmin) {
         const { data: targetProfile } = await admin
             .from('profiles')
             .select('manager_id')
@@ -737,8 +737,8 @@ export async function listAllTimesheetsForMonth(
         .eq('month', month)
         .order('status')
 
-    // Manager scope — filter to team members only via FK column on profiles.
-    if (ctx.isManager && !ctx.isAdmin) {
+    // Phase 20e: każdy nie-admin widzi tylko swój zespół (przez manager_id link).
+    if (!ctx.isAdmin) {
         const { data: teamIds } = await admin
             .from('profiles')
             .select('id')

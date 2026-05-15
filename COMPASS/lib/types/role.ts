@@ -57,9 +57,13 @@ export function canReviewInvoices(role: string | null | undefined): boolean {
     return isAdminLike(role) || isFinance(role)
 }
 
-// Phase 20: Manager performs stage 1 (merit) approval. Admin can do both stages.
+// Phase 20 + 20e: stage 1 approval allowed for anyone who CAN be a team manager.
+// admin/manager/finanse — w praktyce każdy HR-zone z direct reports.
+// Talent_community/internal teoretycznie też mogą być managerem zespołu (przez
+// manager_id link), ale wykluczamy z UI flow — gate przechodzi przez direct
+// reports check w samej akcji.
 export function canManagerApproveInvoice(role: string | null | undefined): boolean {
-    return isAdminLike(role) || isManager(role)
+    return isAdminLike(role) || isManager(role) || isFinance(role)
 }
 
 // Phase 11 + 19d + 20: HR-zone access (timesheet, faktura, work clock, calendar).
@@ -87,10 +91,10 @@ export function canManageCompliance(role: string | null | undefined): boolean {
     return isAdminLike(role) || isTalentCommunity(role)
 }
 
-// Phase 20: timesheet approval — admin (everyone) or manager (own team only).
-// Scope check (manager → own team) is enforced at app + RLS layer with manager_id.
+// Phase 20 + 20e: timesheet approval — admin (everyone) or manager/finanse (own team only).
+// Scope check (own team) is enforced at app + RLS layer with manager_id.
 export function canApproveTimesheets(role: string | null | undefined): boolean {
-    return isAdminLike(role) || isManager(role)
+    return isAdminLike(role) || isManager(role) || isFinance(role)
 }
 
 // Phase 20 (Manager): can submit their own invoice (treated as office worker).

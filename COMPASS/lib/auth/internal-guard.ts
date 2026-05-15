@@ -102,26 +102,27 @@ export async function requireAdminLayout(): Promise<InternalAuthContext> {
 }
 
 /**
- * Phase 20 — Timesheet approver guard (admin OR manager).
- * Manager has team-scoped access (target.manager_id = ctx.userId), enforced
- * separately in the action body. This guard only checks role membership.
+ * Phase 20 + 20e — Timesheet approver guard.
+ * Allowed: admin (everyone), manager (own team), finanse (own team via manager_id link).
+ * Team scope (target.manager_id = ctx.userId) enforced separately in action body.
  */
 export async function requireTimesheetApproverAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
-    if (!ctx.isAdmin && !ctx.isManager) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    if (!ctx.isAdmin && !ctx.isManager && ctx.role !== 'finanse') {
+        throw new Error('Wymagane uprawnienia: administrator, manager lub finanse.')
     }
     return ctx
 }
 
 /**
- * Phase 20 — Manager invoice approver guard (admin OR manager) — stage 1 (merit).
- * Manager has team-scoped access enforced separately.
+ * Phase 20 + 20e — Manager invoice approver guard — stage 1 (merit).
+ * Allowed: admin (everyone), manager (own team), finanse (own team via manager_id link).
+ * Team scope enforced separately in action body.
  */
 export async function requireManagerInvoiceApproverAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!canManagerApproveInvoice(ctx.role)) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+        throw new Error('Wymagane uprawnienia: administrator, manager lub finanse.')
     }
     return ctx
 }
@@ -174,8 +175,8 @@ export async function requireTalentCommunityOrAdminLayout(): Promise<InternalAut
 }
 
 /**
- * Phase 20 — Internal Admin Area layout guard.
- * Dopuszcza: admin (wszystko), finanse (invoice review), manager (team scope).
+ * Phase 20 + 20e — Internal Admin Area layout guard.
+ * Dopuszcza: admin (wszystko), finanse (invoice review + own team), manager (team scope).
  * NIE dopuszcza: konsultant IT, konsultant wewnętrzny, talent_community.
  * Talent Community Manager ma osobny obszar pod /admin/inbox + /admin/compliance.
  */
