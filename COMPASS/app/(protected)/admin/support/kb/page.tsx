@@ -1,13 +1,19 @@
 import Link from 'next/link'
-import { BookOpen, Plus } from 'lucide-react'
+import { BookOpen, Crown, Plus, Settings } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { listArticlesByCategory } from '@/lib/actions/support-articles'
+import { createClient } from '@/lib/supabase/server'
+import { isSuperAdmin } from '@/lib/auth/super-admins'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminKbPage() {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const superAdmin = isSuperAdmin(user?.email)
+
     const result = await listArticlesByCategory(undefined, { onlyPublished: false })
     const articles = result.success ? result.data : []
 
@@ -24,11 +30,22 @@ export default async function AdminKbPage() {
                     </div>
                     <p className="text-muted-foreground mt-1">Artykuły publikowane w /support/kb.</p>
                 </div>
-                <Link href="/admin/support/kb/new">
-                    <Button className="gap-2">
-                        <Plus className="w-4 h-4" /> Nowy artykuł
-                    </Button>
-                </Link>
+                <div className="flex items-center gap-2 flex-wrap">
+                    {superAdmin && (
+                        <Link href="/admin/support/kb/categories">
+                            <Button variant="outline" className="gap-2 border-yellow-500/30 text-yellow-400/90 hover:text-yellow-300">
+                                <Crown className="w-4 h-4" />
+                                <Settings className="w-4 h-4" />
+                                Zakładki + materiały
+                            </Button>
+                        </Link>
+                    )}
+                    <Link href="/admin/support/kb/new">
+                        <Button className="gap-2">
+                            <Plus className="w-4 h-4" /> Nowy artykuł
+                        </Button>
+                    </Link>
+                </div>
             </div>
 
             {!result.success && (

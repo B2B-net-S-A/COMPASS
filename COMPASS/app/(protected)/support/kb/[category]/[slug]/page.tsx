@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, Paperclip } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { listSupportCategories } from '@/lib/actions/support-tickets'
 import { getArticleBySlug } from '@/lib/actions/support-articles'
+import { listArticleAttachments } from '@/lib/actions/support-materials'
+import { DownloadList } from '@/components/support/DownloadList'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,10 +19,14 @@ export default async function ArticleDetailPage({ params }: PageProps) {
     if (!articleRes.success) notFound()
     const article = articleRes.data
 
-    const categoriesRes = await listSupportCategories()
+    const [categoriesRes, attachmentsRes] = await Promise.all([
+        listSupportCategories(),
+        listArticleAttachments(article.id),
+    ])
     const category = categoriesRes.success
         ? categoriesRes.data.find((c) => c.id === article.category_id)
         : null
+    const attachments = attachmentsRes.success ? attachmentsRes.data : []
 
     return (
         <article className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
@@ -55,6 +61,15 @@ export default async function ArticleDetailPage({ params }: PageProps) {
                     </div>
                 </CardContent>
             </Card>
+
+            {attachments.length > 0 && (
+                <section className="space-y-3">
+                    <h2 className="text-base font-semibold flex items-center gap-2">
+                        <Paperclip className="w-4 h-4 text-primary" /> Załączniki
+                    </h2>
+                    <DownloadList items={attachments} />
+                </section>
+            )}
 
             <div className="flex justify-between text-xs text-muted-foreground border-t border-white/5 pt-4">
                 <span>Aktualizacja: {new Date(article.updated_at).toLocaleString('pl-PL')}</span>

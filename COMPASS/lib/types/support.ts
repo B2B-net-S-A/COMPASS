@@ -13,6 +13,17 @@ export interface SupportCategory {
     name_en: string
     icon: string
     sort_order: number
+    is_active?: boolean
+}
+
+// Phase 21 — managed by super-admin via /admin/support/kb/categories
+export interface CategoryInput {
+    slug: string
+    name_pl: string
+    name_en?: string
+    icon?: string
+    sort_order?: number
+    is_active?: boolean
 }
 
 export interface SupportTicket {
@@ -168,3 +179,56 @@ export const INBOX_CATEGORY_SLUGS = [
 ] as const
 
 export type InboxCategorySlug = (typeof INBOX_CATEGORY_SLUGS)[number]
+
+// ============================================================
+// KB Materials & Attachments — Phase 21 (2026-05-16)
+// ============================================================
+
+export interface CategoryMaterial {
+    id: string
+    category_id: string
+    title: string
+    description: string | null
+    file_path: string
+    file_name: string
+    file_size: number
+    mime_type: string
+    sort_order: number
+    uploaded_by: string
+    created_at: string
+    updated_at: string
+}
+
+export interface ArticleAttachment {
+    id: string
+    article_id: string
+    title: string
+    file_path: string
+    file_name: string
+    file_size: number
+    mime_type: string
+    sort_order: number
+    uploaded_by: string
+    created_at: string
+    updated_at: string
+}
+
+export const MAX_MATERIAL_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB
+
+export const ALLOWED_MATERIAL_MIME = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+    'text/plain',
+    'text/csv',
+] as const
+
+export type AllowedMaterialMime = (typeof ALLOWED_MATERIAL_MIME)[number]
