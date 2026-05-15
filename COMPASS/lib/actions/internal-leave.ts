@@ -83,7 +83,7 @@ function validateDateString(value: string, label: string): void {
 }
 
 function validateLeaveType(value: string): asserts value is LeaveType {
-    const allowed: LeaveType[] = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'training', 'other']
+    const allowed: LeaveType[] = ['vacation', 'parental_leave', 'unpaid_leave', 'other']
     if (!(allowed as string[]).includes(value)) {
         throw new Error(`Nieprawidłowy typ urlopu: ${value}`)
     }

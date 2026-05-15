@@ -14,10 +14,8 @@ import { createLeaveRequest, uploadLeaveProof, type LeaveType } from '@/lib/acti
 
 const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'sick_leave', label: 'L4 / chorobowe (auto-akceptacja)', needsDocs: true },
     { value: 'parental_leave', label: 'Opieka rodzicielska' },
     { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
-    { value: 'training', label: 'Szkolenie / konferencja' },
     { value: 'other', label: 'Inne' },
 ]
 
