@@ -9,7 +9,7 @@ type UserPermissions = Record<PermissionFeature, PermissionValue>
 
 interface PermissionsContextValue {
     permissions: UserPermissions | null
-    role: 'consultant' | 'admin' | 'internal' | 'finanse'
+    role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
 }
 
 const PermissionsContext = createContext<PermissionsContextValue>({
@@ -22,7 +22,7 @@ const PermissionsContext = createContext<PermissionsContextValue>({
 interface PermissionsProviderProps {
     children: ReactNode
     permissions: UserPermissions | null
-    role: 'consultant' | 'admin' | 'internal' | 'finanse'
+    role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
 }
 
 export function PermissionsProvider({ children, permissions, role }: PermissionsProviderProps) {

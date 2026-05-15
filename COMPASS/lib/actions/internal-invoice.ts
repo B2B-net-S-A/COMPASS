@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import {
     requireInternalOrAdminAction,
     requireInvoiceReviewerAction,
+    requireManagerInvoiceApproverAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendInvoiceDecision, sendInvoiceSubmitted } from '@/lib/email'
@@ -14,7 +15,14 @@ import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type InvoiceStatus = 'submitted' | 'approved' | 'rejected'
+// Phase 20c: 2-stage approval workflow.
+//   submitted        — initial (waiting for manager merit OR finanse if no manager)
+//   manager_approved — manager OK'd merit (waiting for finanse final)
+//   approved         — finanse final OK (paid pipeline)
+//   rejected         — manager OR finanse rejected (see rejected_by_stage)
+export type InvoiceStatus = 'submitted' | 'manager_approved' | 'approved' | 'rejected'
+
+export type InvoiceRejectStage = 'manager' | 'finanse'
 
 export interface InvoiceRow {
     id: string
@@ -35,6 +43,11 @@ export interface InvoiceRow {
     reviewed_by: string | null
     reviewed_at: string | null
     rejection_reason: string | null
+    // Phase 20c
+    manager_reviewed_by: string | null
+    manager_reviewed_at: string | null
+    manager_review_note: string | null
+    rejected_by_stage: InvoiceRejectStage | null
     created_at: string
     updated_at: string
 }
@@ -143,6 +156,26 @@ async function fetchInvoiceReviewerUserIds(): Promise<string[]> {
     return (data ?? []).map((r: { id: string }) => r.id)
 }
 
+// Phase 20: fetch the manager_id + email of target user (for stage-1 notify).
+async function fetchTargetManager(
+    userId: string,
+): Promise<{ managerId: string; email: string | null } | null> {
+    const admin = createServiceClient()
+    const { data: target } = await admin
+        .from('profiles')
+        .select('manager_id')
+        .eq('id', userId)
+        .single<{ manager_id: string | null }>()
+    if (!target?.manager_id) return null
+    const { data: managerProfile } = await admin
+        .from('profiles')
+        .select('id, email')
+        .eq('id', target.manager_id)
+        .single<{ id: string; email: string | null }>()
+    if (!managerProfile) return null
+    return { managerId: managerProfile.id, email: managerProfile.email }
+}
+
 async function fetchUserContact(userId: string): Promise<{ email: string; full_name: string | null } | null> {
     const admin = createServiceClient()
     const { data } = await admin
@@ -239,9 +272,10 @@ export async function submitInvoice(
     file: File,
 ): Promise<InvoiceRow> {
     const ctx = await requireInternalOrAdminAction()
-    // Phase 19d: finanse (jak internal) to b2b pracownik biurowy — może wystawiać faktury.
-    if (ctx.role !== 'internal' && ctx.role !== 'finanse' && !ctx.isAdmin) {
-        throw new Error('Tylko pracownicy biurowi (internal/finanse) mogą wystawiać faktury.')
+    // Phase 19d + 20: HR-zone pracownicy biurowi (internal/finanse/manager/talent_community) mogą wystawiać faktury.
+    const HR_SUBMITTING_ROLES = ['internal', 'finanse', 'manager', 'talent_community']
+    if (!ctx.isAdmin && !HR_SUBMITTING_ROLES.includes(ctx.role)) {
+        throw new Error('Tylko pracownicy biurowi mogą wystawiać faktury.')
     }
     validateSubmitInput(input)
     validateInvoiceFile(file)
@@ -320,6 +354,28 @@ export async function submitInvoice(
         })
         .catch((e) => logCompat.error('[submitInvoice] push gather failed:', e))
 
+    // Phase 20: jeśli pracownik ma managera, dodatkowo notyfikuj managera (stage 1).
+    fetchTargetManager(ctx.userId)
+        .then(async (mgr) => {
+            if (!mgr) return
+            if (mgr.email) {
+                sendInvoiceSubmitted(
+                    [mgr.email],
+                    requesterName,
+                    data.invoice_number,
+                    data.period_year,
+                    data.period_month,
+                ).catch((e) => logCompat.error('[submitInvoice] manager email failed:', e))
+            }
+            await sendPushToUserId(mgr.managerId, {
+                title: 'Faktura do akceptacji merytorycznej',
+                body: `${requesterName}: ${data.invoice_number} (${data.period_year}-${String(data.period_month).padStart(2, '0')})`,
+                url: '/internal/admin?tab=invoices&scope=team',
+                tag: `invoice-manager-${data.id}`,
+            }).catch((e) => logCompat.error('[submitInvoice] manager push failed:', e))
+        })
+        .catch((e) => logCompat.error('[submitInvoice] manager notify failed:', e))
+
     return data
 }
 
@@ -363,6 +419,11 @@ export async function updateRejectedInvoice(
         rejection_reason: null,
         reviewed_by: null,
         reviewed_at: null,
+        // Phase 20c: reset manager review fields + stage marker on re-submit.
+        manager_reviewed_by: null,
+        manager_reviewed_at: null,
+        manager_review_note: null,
+        rejected_by_stage: null,
     }
     if (input.invoice_number !== undefined) {
         if (!input.invoice_number.trim()) throw new Error('Numer faktury nie może być pusty.')
@@ -495,6 +556,75 @@ export async function listInvoicesForReview(
         reviewed_by: r.reviewed_by,
         reviewed_at: r.reviewed_at,
         rejection_reason: r.rejection_reason,
+        manager_reviewed_by: r.manager_reviewed_by,
+        manager_reviewed_at: r.manager_reviewed_at,
+        manager_review_note: r.manager_review_note,
+        rejected_by_stage: r.rejected_by_stage,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        user_full_name: r.profiles?.full_name ?? null,
+        user_email: r.profiles?.email ?? '',
+    }))
+}
+
+// Phase 20: list invoices submitted by team members for manager review (stage 1).
+export async function listInvoicesForManagerReview(
+    filters: ListInvoicesForReviewFilters = {},
+): Promise<InvoiceWithUser[]> {
+    const ctx = await requireManagerInvoiceApproverAction()
+    const admin = createServiceClient()
+
+    let query = admin
+        .from('invoices')
+        .select(`
+            *,
+            profiles:profiles!invoices_user_id_fkey(full_name, email, manager_id)
+        `)
+        .order('created_at', { ascending: false })
+
+    if (filters.status && filters.status !== 'all') query = query.eq('status', filters.status)
+    if (filters.periodYear) query = query.eq('period_year', filters.periodYear)
+    if (filters.periodMonth) query = query.eq('period_month', filters.periodMonth)
+    if (filters.userId) query = query.eq('user_id', filters.userId)
+
+    // Manager scope — only invoices of users with manager_id = ctx.userId.
+    // Admin sees all (no scope filter).
+    if (ctx.isManager && !ctx.isAdmin) {
+        const { data: teamIds } = await admin
+            .from('profiles')
+            .select('id')
+            .eq('manager_id', ctx.userId)
+        const ids = ((teamIds ?? []) as Array<{ id: string }>).map((p) => p.id)
+        if (ids.length === 0) return []
+        query = query.in('user_id', ids)
+    }
+
+    const { data, error } = await query
+    if (error) throw new Error(`Błąd pobierania faktur: ${error.message}`)
+    const rows = (data ?? []) as Array<InvoiceRow & { profiles: { full_name: string | null; email: string; manager_id: string | null } | null }>
+    return rows.map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        invoice_number: r.invoice_number,
+        amount: r.amount,
+        currency: r.currency,
+        issue_date: r.issue_date,
+        due_date: r.due_date,
+        period_year: r.period_year,
+        period_month: r.period_month,
+        file_path: r.file_path,
+        file_name: r.file_name,
+        file_size: r.file_size,
+        file_hash: r.file_hash,
+        status: r.status,
+        notes: r.notes,
+        reviewed_by: r.reviewed_by,
+        reviewed_at: r.reviewed_at,
+        rejection_reason: r.rejection_reason,
+        manager_reviewed_by: r.manager_reviewed_by,
+        manager_reviewed_at: r.manager_reviewed_at,
+        manager_review_note: r.manager_review_note,
+        rejected_by_stage: r.rejected_by_stage,
         created_at: r.created_at,
         updated_at: r.updated_at,
         user_full_name: r.profiles?.full_name ?? null,
@@ -561,6 +691,9 @@ export async function getTimesheetForInvoiceReview(
 }
 
 export async function approveInvoice(invoiceId: string): Promise<void> {
+    // Phase 20c: stage 2 (finanse final approval). Requires:
+    //   — user has no manager → status='submitted' (skip stage 1)
+    //   — user has manager   → status='manager_approved' (stage 1 done)
     const ctx = await requireInvoiceReviewerAction()
     const admin = createServiceClient()
 
@@ -570,13 +703,25 @@ export async function approveInvoice(invoiceId: string): Promise<void> {
         .eq('id', invoiceId)
         .single<InvoiceRow>()
     if (fetchErr || !inv) throw new Error('Faktura nie istnieje.')
-    if (inv.status !== 'submitted') {
-        throw new Error('Można zaakceptować tylko fakturę w statusie "submitted".')
+    if (inv.status !== 'submitted' && inv.status !== 'manager_approved') {
+        throw new Error('Można zaakceptować tylko fakturę w statusie "submitted" lub "manager_approved".')
     }
-    // Phase 19d: self-approval guard. Finanse może wystawiać własne faktury, ale
-    // nie może ich sam zatwierdzać — must be approved by another reviewer.
+    // Phase 19d: self-approval guard.
     if (inv.user_id === ctx.userId) {
         throw new Error('Nie możesz zaakceptować własnej faktury — poproś drugiego reviewera (admin lub finanse).')
+    }
+
+    // Phase 20c: jeśli user ma managera, status MUSI być 'manager_approved' — manager review jest obowiązkowy.
+    const { data: targetProfile } = await admin
+        .from('profiles')
+        .select('manager_id')
+        .eq('id', inv.user_id)
+        .single<{ manager_id: string | null }>()
+    const userHasManager = !!targetProfile?.manager_id
+    if (userHasManager && inv.status === 'submitted') {
+        throw new Error(
+            'Faktura wymaga najpierw akceptacji merytorycznej przez managera. Poproś managera o review.',
+        )
     }
 
     // Compute file hash from current file (audit-grade).
@@ -599,9 +744,10 @@ export async function approveInvoice(invoiceId: string): Promise<void> {
             reviewed_at: new Date().toISOString(),
             file_hash: fileHash,
             rejection_reason: null,
+            rejected_by_stage: null,
         })
         .eq('id', invoiceId)
-        .eq('status', 'submitted') // concurrency guard
+        .in('status', ['submitted', 'manager_approved']) // concurrency guard
         .select('*')
         .single<InvoiceRow>()
     if (error || !updated) {
@@ -634,6 +780,7 @@ export async function approveInvoice(invoiceId: string): Promise<void> {
 }
 
 export async function rejectInvoice(invoiceId: string, reason: string): Promise<void> {
+    // Phase 20c: stage 2 (finanse) reject. Allowed from 'submitted' (no manager) or 'manager_approved'.
     const ctx = await requireInvoiceReviewerAction()
     if (!reason?.trim()) throw new Error('Powód odrzucenia jest wymagany.')
     const admin = createServiceClient()
@@ -648,8 +795,8 @@ export async function rejectInvoice(invoiceId: string, reason: string): Promise<
     if (inv.user_id === ctx.userId) {
         throw new Error('Nie możesz odrzucić własnej faktury — poproś drugiego reviewera (admin lub finanse).')
     }
-    if (inv.status !== 'submitted') {
-        throw new Error('Można odrzucić tylko fakturę w statusie "submitted".')
+    if (inv.status !== 'submitted' && inv.status !== 'manager_approved') {
+        throw new Error('Można odrzucić tylko fakturę w statusie "submitted" lub "manager_approved".')
     }
 
     const { data: updated, error } = await admin
@@ -659,9 +806,10 @@ export async function rejectInvoice(invoiceId: string, reason: string): Promise<
             reviewed_by: ctx.userId,
             reviewed_at: new Date().toISOString(),
             rejection_reason: reason.trim(),
+            rejected_by_stage: 'finanse',
         })
         .eq('id', invoiceId)
-        .eq('status', 'submitted')
+        .in('status', ['submitted', 'manager_approved'])
         .select('*')
         .single<InvoiceRow>()
     if (error || !updated) {
@@ -692,4 +840,171 @@ export async function rejectInvoice(invoiceId: string, reason: string): Promise<
         url: '/internal?tab=invoices',
         tag: `invoice-${invoiceId}`,
     }).catch((e) => logCompat.error('[rejectInvoice] push failed:', e))
+}
+
+// ─── Phase 20: Manager stage 1 — merit approval ─────────────────────────────
+
+/**
+ * Manager stage 1 — merit approval. Sets status='manager_approved'.
+ * After this, Finanse can perform final stage 2 approval.
+ * Optional `note` is shown to Finanse as additional context.
+ */
+export async function managerApproveInvoice(invoiceId: string, note?: string): Promise<void> {
+    const ctx = await requireManagerInvoiceApproverAction()
+    const admin = createServiceClient()
+
+    const { data: inv, error: fetchErr } = await admin
+        .from('invoices')
+        .select('*')
+        .eq('id', invoiceId)
+        .single<InvoiceRow>()
+    if (fetchErr || !inv) throw new Error('Faktura nie istnieje.')
+
+    // Self-approval guard (manager nie aprobuje swojej faktury).
+    if (inv.user_id === ctx.userId) {
+        throw new Error('Nie możesz zaakceptować własnej faktury.')
+    }
+
+    if (inv.status !== 'submitted') {
+        throw new Error('Można zaakceptować merytorycznie tylko fakturę w statusie "submitted".')
+    }
+
+    // Manager team scope — verify target.manager_id = ctx.userId.
+    if (ctx.isManager && !ctx.isAdmin) {
+        const { data: targetProfile } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', inv.user_id)
+            .single<{ manager_id: string | null }>()
+        if (targetProfile?.manager_id !== ctx.userId) {
+            throw new Error('Możesz akceptować faktury tylko swojego zespołu.')
+        }
+    }
+
+    const { data: updated, error } = await admin
+        .from('invoices')
+        .update({
+            status: 'manager_approved',
+            manager_reviewed_by: ctx.userId,
+            manager_reviewed_at: new Date().toISOString(),
+            manager_review_note: note?.trim() || null,
+        })
+        .eq('id', invoiceId)
+        .eq('status', 'submitted') // concurrency guard
+        .select('*')
+        .single<InvoiceRow>()
+    if (error || !updated) {
+        throw new Error('Faktura została już zmieniona przez innego użytkownika.')
+    }
+
+    await logAudit(ctx.userId, 'INVOICE_MANAGER_APPROVED', {
+        invoice_id: invoiceId,
+        target_user_id: inv.user_id,
+        amount: inv.amount,
+        note: note?.trim() || null,
+    })
+
+    // Notify finanse (stage 2 awaits action).
+    const reviewerEmails = await fetchInvoiceReviewerEmails()
+    const requesterName = await fetchUserDisplayName(inv.user_id, '')
+    if (reviewerEmails.length > 0) {
+        sendInvoiceSubmitted(
+            reviewerEmails,
+            requesterName,
+            inv.invoice_number,
+            inv.period_year,
+            inv.period_month,
+        ).catch((e) => logCompat.error('[managerApproveInvoice] email failed:', e))
+    }
+    fetchInvoiceReviewerUserIds()
+        .then(async (ids) => {
+            for (const id of ids) {
+                await sendPushToUserId(id, {
+                    title: 'Faktura zatwierdzona merytorycznie',
+                    body: `${requesterName}: ${inv.invoice_number} (${inv.period_year}-${String(inv.period_month).padStart(2, '0')}) — czeka na akceptację finansową.`,
+                    url: '/internal/admin?tab=invoices',
+                    tag: `invoice-stage2-${invoiceId}`,
+                }).catch((e) => logCompat.error('[managerApproveInvoice] push failed:', e))
+            }
+        })
+        .catch((e) => logCompat.error('[managerApproveInvoice] push gather failed:', e))
+}
+
+/**
+ * Manager stage 1 — merit rejection. Sets status='rejected' + rejected_by_stage='manager'.
+ * Worker can re-submit after fixing.
+ */
+export async function managerRejectInvoice(invoiceId: string, reason: string): Promise<void> {
+    const ctx = await requireManagerInvoiceApproverAction()
+    if (!reason?.trim()) throw new Error('Powód odrzucenia jest wymagany.')
+    const admin = createServiceClient()
+
+    const { data: inv, error: fetchErr } = await admin
+        .from('invoices')
+        .select('*')
+        .eq('id', invoiceId)
+        .single<InvoiceRow>()
+    if (fetchErr || !inv) throw new Error('Faktura nie istnieje.')
+
+    if (inv.user_id === ctx.userId) {
+        throw new Error('Nie możesz odrzucić własnej faktury.')
+    }
+
+    if (inv.status !== 'submitted') {
+        throw new Error('Można odrzucić merytorycznie tylko fakturę w statusie "submitted".')
+    }
+
+    if (ctx.isManager && !ctx.isAdmin) {
+        const { data: targetProfile } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', inv.user_id)
+            .single<{ manager_id: string | null }>()
+        if (targetProfile?.manager_id !== ctx.userId) {
+            throw new Error('Możesz odrzucać faktury tylko swojego zespołu.')
+        }
+    }
+
+    const { data: updated, error } = await admin
+        .from('invoices')
+        .update({
+            status: 'rejected',
+            manager_reviewed_by: ctx.userId,
+            manager_reviewed_at: new Date().toISOString(),
+            manager_review_note: reason.trim(),
+            rejection_reason: reason.trim(),
+            rejected_by_stage: 'manager',
+        })
+        .eq('id', invoiceId)
+        .eq('status', 'submitted')
+        .select('*')
+        .single<InvoiceRow>()
+    if (error || !updated) {
+        throw new Error('Faktura została już zmieniona przez innego użytkownika.')
+    }
+
+    await logAudit(ctx.userId, 'INVOICE_MANAGER_REJECTED', {
+        invoice_id: invoiceId,
+        target_user_id: inv.user_id,
+        reason: reason.trim(),
+    })
+
+    const userInfo = await fetchUserContact(inv.user_id)
+    if (userInfo) {
+        sendInvoiceDecision(
+            userInfo.email,
+            userInfo.full_name ?? userInfo.email,
+            'rejected',
+            inv.invoice_number,
+            inv.period_year,
+            inv.period_month,
+            reason,
+        ).catch((e) => logCompat.error('[managerRejectInvoice] email failed:', e))
+    }
+    sendPushToUserId(inv.user_id, {
+        title: 'Faktura odrzucona przez managera',
+        body: `${inv.invoice_number}: ${reason.slice(0, 80)}`,
+        url: '/internal?tab=invoices',
+        tag: `invoice-${invoiceId}`,
+    }).catch((e) => logCompat.error('[managerRejectInvoice] push failed:', e))
 }

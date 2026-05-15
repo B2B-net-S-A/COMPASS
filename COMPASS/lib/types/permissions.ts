@@ -3,18 +3,21 @@
 //
 // Phase 16 (2026-05-07): simplified to 2 roles (admin, consultant) + legacy
 // "internal" enum value retained as Konsultant biurowy (HR-only zone).
-// The role_permissions table and admin permission-matrix UI były usunięte —
-// permissions są derived from DEFAULT_PERMISSIONS.
-//
 // Phase 19a (2026-05-14): added 'finanse' for invoice-review-only access.
+// Phase 20 (2026-05-16): added 'manager' (team-scoped HR) + 'talent_community'
+//   (tickets+news+compliance+own HR). Wspólne sekcje dla wszystkich HR-zone
+//   ról: Inkubator, Aktualności, Support Center, strefa wewnętrzna.
+//   Konsultant IT widzi platform features (home/learning/league/incubator/news/support).
 //
-// Role mapping (Compass docelowo):
-//   - admin       → Super Admin (wszystko)
-//   - consultant  → Konsultant IT (platform: home/learning/league/incubator/news/support)
-//   - internal    → Konsultant biurowy (TYLKO /internal/* HR Hub, bez platform features)
-//   - finanse     → Finanse (TYLKO /internal/admin?tab=invoices — review faktur)
+// Role mapping (Compass docelowo, Phase 20):
+//   - admin            → Super Admin (wszystko)
+//   - consultant       → Konsultant IT (platform features, BEZ strefy wewnętrznej)
+//   - internal         → Konsultant wewnętrzny (HR Hub + wspólne)
+//   - finanse          → Finanse (HR Hub + akceptacja faktur etap 2 + wspólne)
+//   - manager          → Manager (HR Hub + akceptacja zespołu + wspólne)
+//   - talent_community → Talent Community Manager (HR Hub + tickets/news/compliance + wspólne)
 
-export type PermissionRole = 'admin' | 'consultant' | 'internal' | 'finanse'
+export type PermissionRole = 'admin' | 'consultant' | 'internal' | 'finanse' | 'manager' | 'talent_community'
 
 export type PermissionFeature =
     | 'home'
@@ -77,16 +80,17 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         loyalty: 'true',
         settings: 'false',
     },
-    // Konsultant biurowy — HR-only zone. Wszystkie platform features OFF.
-    // Sidebar `filterByPermission` (Sidebar.tsx) automatycznie ukryje grupy
-    // Growth + Community. Middleware (middleware.ts) blokuje /home + platform paths.
+    // Phase 20: HR-zone permissions baseline (Konsultant wewnętrzny / Manager / Finanse / TCM).
+    // Wspólne dla wszystkich: Inkubator + Aktualności + Support Center widoczne.
+    // Platform features (home/learning/league) UKRYTE — middleware redirectuje na /internal.
     internal: {
         home: 'false',
         learning: 'false',
         league: 'false',
-        support: 'false',
-        news: 'false',
-        incubator: 'false',
+        // Phase 20: wspólne sekcje (user requirement)
+        support: 'true',
+        news: 'true',
+        incubator: 'true',
         notifications: 'true', // HR powiadomienia (urlopy, timesheety)
         dashboard: 'false',
         projects: 'false',
@@ -95,22 +99,52 @@ export const DEFAULT_PERMISSIONS: PermissionsMap = {
         documents: 'true',
         settings: 'full',
     },
-    // Phase 19a — Finanse: read-only on most, sees only /internal/admin?tab=invoices.
-    // Wszystkie platform features OFF (najwęższy scope), settings ON żeby mógł
-    // zmienić swoje preferencje.
+    // Phase 19a + 20 — Finanse: HR Hub + akceptacja faktur etap 2 + wspólne sekcje.
     finanse: {
         home: 'false',
         learning: 'false',
         league: 'false',
-        support: 'false',
-        news: 'false',
-        incubator: 'false',
-        notifications: 'true', // powiadomienia o nowych fakturach
+        support: 'true',
+        news: 'true',
+        incubator: 'true',
+        notifications: 'true',
         dashboard: 'false',
         projects: 'false',
         loyalty: 'false',
-        messages: 'false',
-        documents: 'false',
+        messages: 'true',
+        documents: 'true',
+        settings: 'full',
+    },
+    // Phase 20 — Manager: HR Hub + akceptacja zespołu + wspólne sekcje.
+    manager: {
+        home: 'false',
+        learning: 'false',
+        league: 'false',
+        support: 'true',
+        news: 'true',
+        incubator: 'true',
+        notifications: 'true',
+        dashboard: 'false',
+        projects: 'false',
+        loyalty: 'false',
+        messages: 'true',
+        documents: 'true',
+        settings: 'full',
+    },
+    // Phase 20 — Talent Community Manager: HR Hub + tickets + news composer + compliance + wspólne sekcje.
+    talent_community: {
+        home: 'false',
+        learning: 'false',
+        league: 'false',
+        support: 'true',
+        news: 'true',
+        incubator: 'true',
+        notifications: 'true',
+        dashboard: 'false',
+        projects: 'false',
+        loyalty: 'false',
+        messages: 'true',
+        documents: 'true',
         settings: 'full',
     },
 }

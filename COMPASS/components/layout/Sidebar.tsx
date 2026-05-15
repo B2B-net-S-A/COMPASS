@@ -38,7 +38,8 @@ export interface SidebarBadgeCounts {
 }
 
 interface SidebarProps {
-    role: 'consultant' | 'admin' | 'internal' | 'finanse'
+    // Phase 20: extended to 6 roles. Server-side filter decides which links are visible.
+    role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
     isOpen?: boolean
     setIsOpen?: (isOpen: boolean) => void
     user: {
@@ -75,9 +76,16 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     const isInternal = role === 'internal'
     // Phase 19a: Finanse — sees only invoice review panel (subset of internal admin).
     const isFinance = role === 'finanse'
+    // Phase 20: dodatkowe role
+    const isManager = role === 'manager'
+    const isTalentCommunity = role === 'talent_community'
+    const isConsultant = role === 'consultant'
+    // HR-zone = wszyscy oprócz konsultanta IT.
+    const isHrZone = isAdmin || isInternal || isFinance || isManager || isTalentCommunity
 
-    // Consultant + admin both see the 5 platform panels.
-    const platformGroups: NavGroup[] = [
+    // Phase 20: Konsultant IT + admin widzą platform panels (home/learning/league).
+    // Pozostali widzą tylko wspólne (incubator/news/support) + HR Hub.
+    const fullPlatformGroups: NavGroup[] = [
         {
             heading: t('group_main'),
             links: [
@@ -107,6 +115,34 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
             ],
         },
     ]
+
+    // Phase 20: dla HR-zone (oprócz admina) — tylko wspólne sekcje (Inkubator/Aktualności/Support) + Account.
+    const commonHrZoneGroups: NavGroup[] = [
+        {
+            heading: t('group_growth'),
+            links: [
+                { name: t('nav_incubator'), href: '/incubator', icon: Lightbulb, feature: 'incubator' },
+            ],
+        },
+        {
+            heading: t('group_community'),
+            links: [
+                { name: t('nav_news'), href: '/news', icon: Newspaper, feature: 'news', badgeCount: badges?.news },
+                { name: t('nav_support'), href: '/support', icon: LifeBuoy, feature: 'support', badgeCount: badges?.consultantSupport },
+            ],
+        },
+        {
+            heading: t('group_account'),
+            links: [
+                { name: t('nav_profile'), href: '/profile', icon: User, feature: null },
+                { name: t('nav_settings'), href: '/settings', icon: Settings, feature: 'settings' },
+            ],
+        },
+    ]
+
+    const platformGroups: NavGroup[] = (isAdmin || isConsultant)
+        ? fullPlatformGroups
+        : commonHrZoneGroups
 
     // Admin extras — expanded as new admin pages ship per phase.
     const adminGroup: NavGroup = {
@@ -146,11 +182,32 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
+    // Phase 20: Manager group — team timesheet/invoice approvals.
+    const managerGroup: NavGroup = {
+        heading: 'Mój zespół',
+        links: [
+            { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets&scope=team', icon: Users, feature: null },
+            { name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null },
+        ],
+    }
+
+    // Phase 20: Talent Community Manager group — inbox + compliance + news composer.
+    const tcmGroup: NavGroup = {
+        heading: 'Talent Community',
+        links: [
+            { name: 'Kolejka zgłoszeń', href: '/admin/inbox', icon: Inbox, feature: null, badgeCount: badges?.adminInbox },
+            { name: 'Compliance', href: '/admin/compliance', icon: ShieldCheck, feature: null },
+            { name: 'News composer', href: '/admin/news', icon: PenSquare, feature: null },
+        ],
+    }
+
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
-        if (isAdmin || isInternal || isFinance) out.push(internalGroup)
+        if (isHrZone) out.push(internalGroup)
         if (isAdmin) out.push(internalAdminGroup, adminGroup)
         if (isFinance) out.push(financeGroup)
+        if (isManager) out.push(managerGroup)
+        if (isTalentCommunity) out.push(tcmGroup)
         return out
     })()
 

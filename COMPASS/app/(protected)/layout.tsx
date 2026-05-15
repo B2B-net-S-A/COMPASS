@@ -69,19 +69,19 @@ export default async function ProtectedLayout({
             permissionsMap = DEFAULT_PERMISSIONS
         }
 
-        const role = (profile?.role as 'consultant' | 'admin' | 'internal' | 'finanse') || 'consultant'
+        const role = (profile?.role as 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community') || 'consultant'
 
         // PR5b: usunięto cookie-based MFA check dla admin (lib/mfa.ts).
         // Microsoft Entra Conditional Access przejmuje wymuszanie MFA na
         // poziomie Azure dla wszystkich @b2bnetwork.pl (PR5a + Cfg).
 
-        // Internal employees inherit consultant feature flags (no admin elevation
-        // for platform features; HR-zone access is gated by canAccessInternalZone).
-        // Phase 19a: 'finanse' uses its own dedicated permission set (read-only on most).
+        // Phase 11 + 19a + 20: dedicated permission sets per role.
         const permissionRole: PermissionRole =
             role === 'admin' ? 'admin' :
             role === 'finanse' ? 'finanse' :
             role === 'internal' ? 'internal' :
+            role === 'manager' ? 'manager' :
+            role === 'talent_community' ? 'talent_community' :
             'consultant'
         const userPermissions = permissionsMap[permissionRole]
         const userData = {
@@ -114,7 +114,7 @@ export default async function ProtectedLayout({
 
         return (
             <ThemeProvider>
-                <AppLayout user={userData} role={role as 'consultant' | 'admin' | 'internal' | 'finanse'} permissions={userPermissions} sidebarBadges={sidebarBadges}>
+                <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges}>
                     <LayoutPreferencesProvider>
                         {children}
                     </LayoutPreferencesProvider>

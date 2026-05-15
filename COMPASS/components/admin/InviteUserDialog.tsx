@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Mail } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { inviteUser } from '@/lib/actions/user-admin'
+import { inviteUser, listManagerCandidates, type ManagerCandidate } from '@/lib/actions/user-admin'
 
 interface InviteUserDialogProps {
     open: boolean
@@ -16,7 +16,11 @@ interface InviteUserDialogProps {
     onSuccess: () => void
 }
 
-type InviteRole = 'consultant' | 'internal' | 'finanse'
+// Phase 20: 5 invite'owalnych ról (admin = via admin_access_list).
+type InviteRole = 'consultant' | 'internal' | 'finanse' | 'manager' | 'talent_community'
+
+// HR-zone roles (mają timesheet+faktury) — pokazujemy dla nich employment fields + manager selector.
+const HR_ZONE_ROLES: InviteRole[] = ['internal', 'finanse', 'manager', 'talent_community']
 
 export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDialogProps) {
     const [email, setEmail] = useState('')
@@ -24,7 +28,24 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     const [role, setRole] = useState<InviteRole>('consultant')
     const [employmentType, setEmploymentType] = useState<'uop' | 'b2b'>('b2b')
     const [workStartDate, setWorkStartDate] = useState<string>('')
+    const [managerId, setManagerId] = useState<string>('')
+    const [managerCandidates, setManagerCandidates] = useState<ManagerCandidate[]>([])
+    const [loadingManagers, setLoadingManagers] = useState(false)
     const [submitting, setSubmitting] = useState(false)
+
+    const isHrZone = HR_ZONE_ROLES.includes(role)
+
+    // Lazy-load lista managerów przy pierwszym otwarciu (oszczędzanie request'ów).
+    useEffect(() => {
+        if (!open || managerCandidates.length > 0 || loadingManagers) return
+        setLoadingManagers(true)
+        listManagerCandidates()
+            .then(setManagerCandidates)
+            .catch(() => {
+                // niezbyt krytyczne — admin może invite'ować bez managera, ustawia później.
+            })
+            .finally(() => setLoadingManagers(false))
+    }, [open, managerCandidates.length, loadingManagers])
 
     function reset() {
         setEmail('')
@@ -32,6 +53,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         setRole('consultant')
         setEmploymentType('b2b')
         setWorkStartDate('')
+        setManagerId('')
         setSubmitting(false)
     }
 
@@ -49,9 +71,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                 email: emailTrimmed,
                 fullName: fullName.trim() || undefined,
                 role,
-                // HR fields tylko dla biurowych (internal). IT (consultant) ich nie potrzebuje.
-                employmentType: role === 'internal' ? employmentType : undefined,
-                workStartDate: role === 'internal' && workStartDate ? workStartDate : null,
+                // HR fields tylko dla HR-zone (internal/finanse/manager/TCM). IT (consultant) nie potrzebuje.
+                employmentType: isHrZone ? employmentType : undefined,
+                workStartDate: isHrZone && workStartDate ? workStartDate : null,
+                managerId: isHrZone && managerId ? managerId : null,
             })
             toastSuccess(`Wysłano zaproszenie na ${emailTrimmed}. User dostanie email z linkiem aktywacyjnym.`)
             reset()
@@ -111,12 +134,14 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                             disabled={submitting}
                         >
                             <option value="consultant">Konsultant IT (platform: learning, league, incubator…)</option>
-                            <option value="internal">Konsultant biurowy (tylko HR Hub: urlopy, timesheety)</option>
-                            <option value="finanse">Finanse (księgowa/finansista — review faktur)</option>
+                            <option value="internal">Konsultant wewnętrzny (HR Hub: urlopy, timesheety)</option>
+                            <option value="manager">Manager (HR zespołu + akceptacja timesheet/faktury etap 1)</option>
+                            <option value="finanse">Finanse (review faktur etap 2 + własny HR)</option>
+                            <option value="talent_community">Talent Community Manager (zgłoszenia, news, compliance)</option>
                         </select>
                     </div>
 
-                    {role === 'internal' && (
+                    {isHrZone && (
                         <>
                             <div className="space-y-1.5">
                                 <Label htmlFor="invite-employment-type">Typ umowy</Label>
@@ -139,6 +164,26 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                                     value={workStartDate}
                                     onChange={(e) => setWorkStartDate(e.target.value)}
                                 />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="invite-manager">Manager (opcjonalnie)</Label>
+                                <select
+                                    id="invite-manager"
+                                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    value={managerId}
+                                    onChange={(e) => setManagerId(e.target.value)}
+                                    disabled={submitting || loadingManagers}
+                                >
+                                    <option value="">Brak (akceptacje obsługuje admin)</option>
+                                    {managerCandidates.map((m) => (
+                                        <option key={m.id} value={m.id}>
+                                            {m.full_name ?? m.email} ({m.role === 'admin' ? 'Super Admin' : 'Manager'})
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-muted-foreground">
+                                    Manager akceptuje timesheet zespołu i robi etap 1 akceptacji faktur.
+                                </p>
                             </div>
                         </>
                     )}

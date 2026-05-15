@@ -1202,9 +1202,13 @@ export type Database = {
           id: string
           invoice_number: string
           issue_date: string
+          manager_review_note: string | null
+          manager_reviewed_at: string | null
+          manager_reviewed_by: string | null
           notes: string | null
           period_month: number
           period_year: number
+          rejected_by_stage: string | null
           rejection_reason: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -1224,9 +1228,13 @@ export type Database = {
           id?: string
           invoice_number: string
           issue_date?: string
+          manager_review_note?: string | null
+          manager_reviewed_at?: string | null
+          manager_reviewed_by?: string | null
           notes?: string | null
           period_month: number
           period_year: number
+          rejected_by_stage?: string | null
           rejection_reason?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -1246,9 +1254,13 @@ export type Database = {
           id?: string
           invoice_number?: string
           issue_date?: string
+          manager_review_note?: string | null
+          manager_reviewed_at?: string | null
+          manager_reviewed_by?: string | null
           notes?: string | null
           period_month?: number
           period_year?: number
+          rejected_by_stage?: string | null
           rejection_reason?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -1257,6 +1269,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_manager_reviewed_by_fkey"
+            columns: ["manager_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_reviewed_by_fkey"
             columns: ["reviewed_by"]
@@ -1853,6 +1872,7 @@ export type Database = {
           loyalty_tier: Database["public"]["Enums"]["loyalty_tier_t"]
           m365_synced_at: string | null
           manager_email: string | null
+          manager_id: string | null
           max_monthly_hours: number | null
           onboarding_completed: boolean
           onboarding_tour_done: boolean
@@ -1910,6 +1930,7 @@ export type Database = {
           loyalty_tier?: Database["public"]["Enums"]["loyalty_tier_t"]
           m365_synced_at?: string | null
           manager_email?: string | null
+          manager_id?: string | null
           max_monthly_hours?: number | null
           onboarding_completed?: boolean
           onboarding_tour_done?: boolean
@@ -1967,6 +1988,7 @@ export type Database = {
           loyalty_tier?: Database["public"]["Enums"]["loyalty_tier_t"]
           m365_synced_at?: string | null
           manager_email?: string | null
+          manager_id?: string | null
           max_monthly_hours?: number | null
           onboarding_completed?: boolean
           onboarding_tour_done?: boolean
@@ -1983,7 +2005,15 @@ export type Database = {
           work_history?: Json | null
           work_start_date?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       projects: {
         Row: {
@@ -3267,7 +3297,13 @@ export type Database = {
         | "former_project"
         | "linkedin"
         | "other"
-      user_role: "consultant" | "admin" | "internal" | "finanse"
+      user_role:
+        | "consultant"
+        | "admin"
+        | "internal"
+        | "finanse"
+        | "manager"
+        | "talent_community"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3428,7 +3464,14 @@ export const Constants = {
         "linkedin",
         "other",
       ],
-      user_role: ["consultant", "admin", "internal", "finanse"],
+      user_role: [
+        "consultant",
+        "admin",
+        "internal",
+        "finanse",
+        "manager",
+        "talent_community",
+      ],
     },
   },
 } as const

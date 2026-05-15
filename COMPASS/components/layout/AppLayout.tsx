@@ -12,7 +12,8 @@ import type { PermissionFeature, PermissionValue } from '@/lib/types/permissions
 interface AppLayoutProps {
     children: React.ReactNode
     user: any
-    role: 'consultant' | 'admin' | 'internal' | 'finanse'
+    // Phase 20: extended to 6 roles.
+    role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
     permissions?: Record<PermissionFeature, PermissionValue>
     sidebarBadges?: SidebarBadgeCounts
 }
