@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import {
     requireAdminAction,
     requireInternalOrAdminAction,
+    requireTimesheetApproverAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
@@ -532,7 +533,8 @@ export async function submitTimesheet(timesheetId: string): Promise<void> {
 }
 
 export async function approveTimesheet(timesheetId: string): Promise<void> {
-    const ctx = await requireAdminAction()
+    // Phase 20: timesheet approver = admin OR manager (manager scoped to own team).
+    const ctx = await requireTimesheetApproverAction()
     const admin = createServiceClient()
 
     const { data: header, error: fetchErr } = await admin
@@ -543,6 +545,18 @@ export async function approveTimesheet(timesheetId: string): Promise<void> {
     if (fetchErr || !header) throw new Error('Timesheet nie istnieje.')
     if (header.status !== 'submitted') {
         throw new Error('Można zaakceptować tylko timesheet w statusie "submitted".')
+    }
+
+    // Phase 20: Manager team scope — verify target.manager_id = ctx.userId.
+    if (ctx.isManager && !ctx.isAdmin) {
+        const { data: targetProfile } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', header.user_id)
+            .single<{ manager_id: string | null }>()
+        if (targetProfile?.manager_id !== ctx.userId) {
+            throw new Error('Możesz akceptować timesheety tylko swojego zespołu.')
+        }
     }
 
     const { data: entries } = await admin
@@ -600,7 +614,8 @@ export async function approveTimesheet(timesheetId: string): Promise<void> {
 }
 
 export async function rejectTimesheet(timesheetId: string, reason: string): Promise<void> {
-    const ctx = await requireAdminAction()
+    // Phase 20: timesheet approver = admin OR manager (manager scoped to own team).
+    const ctx = await requireTimesheetApproverAction()
     if (!reason?.trim()) throw new Error('Powód odrzucenia jest wymagany.')
     const admin = createServiceClient()
 
@@ -612,6 +627,18 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
     if (fetchErr || !header) throw new Error('Timesheet nie istnieje.')
     if (header.status !== 'submitted') {
         throw new Error('Można odrzucić tylko timesheet w statusie "submitted".')
+    }
+
+    // Phase 20: Manager team scope — verify target.manager_id = ctx.userId.
+    if (ctx.isManager && !ctx.isAdmin) {
+        const { data: targetProfile } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', header.user_id)
+            .single<{ manager_id: string | null }>()
+        if (targetProfile?.manager_id !== ctx.userId) {
+            throw new Error('Możesz odrzucać timesheety tylko swojego zespołu.')
+        }
     }
 
     const { error } = await admin
@@ -694,20 +721,36 @@ export async function listAllTimesheetsForMonth(
     year: number,
     month: number,
 ): Promise<TimesheetWithEntriesAndUser[]> {
-    await requireAdminAction()
+    // Phase 20: manager widzi tylko swój zespół; admin widzi wszystko.
+    const ctx = await requireTimesheetApproverAction()
     validateYear(year)
     validateMonth(month)
     const admin = createServiceClient()
 
-    const { data, error } = await admin
+    let query = admin
         .from('timesheets')
         .select(`
             *,
-            profiles:profiles!timesheets_user_id_fkey(full_name, email)
+            profiles:profiles!timesheets_user_id_fkey(full_name, email, manager_id)
         `)
         .eq('year', year)
         .eq('month', month)
         .order('status')
+
+    // Manager scope — filter to team members only via FK column on profiles.
+    if (ctx.isManager && !ctx.isAdmin) {
+        const { data: teamIds } = await admin
+            .from('profiles')
+            .select('id')
+            .eq('manager_id', ctx.userId)
+        const ids = ((teamIds ?? []) as Array<{ id: string }>).map((p) => p.id)
+        if (ids.length === 0) {
+            return []
+        }
+        query = query.in('user_id', ids)
+    }
+
+    const { data, error } = await query
     if (error) throw new Error(`Błąd pobierania timesheetów: ${error.message}`)
 
     const headers = (data ?? []) as Array<TimesheetHeader & { profiles: { full_name: string | null; email: string } | null }>

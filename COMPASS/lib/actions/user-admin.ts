@@ -322,11 +322,12 @@ export async function setUserRole(targetUserId: string, newRole: DbRole): Promis
         return
     }
 
-    // Konsultant biurowy nie ma consultant-style onboarding (HR-only zone), więc
-    // przy promote na 'internal' auto-set onboarding_completed=true żeby user nie
-    // utknął na /onboarding przy następnym loginie (middleware:69 sprawdza ten flag).
+    // Phase 20: HR-zone role'e (wszyscy oprócz konsultanta IT) nie mają consultant-style
+    // onboarding (HR-only zone), więc przy promote auto-set onboarding_completed=true
+    // żeby user nie utknął na /onboarding przy następnym loginie.
+    const HR_ZONE_ROLES_FOR_ONBOARDING_SKIP: DbRole[] = ['internal', 'finanse', 'manager', 'talent_community']
     const updateData: { role: DbRole; onboarding_completed?: boolean } = { role: newRole }
-    if (newRole === 'internal') {
+    if (HR_ZONE_ROLES_FOR_ONBOARDING_SKIP.includes(newRole)) {
         updateData.onboarding_completed = true
     }
 
@@ -442,10 +443,21 @@ export async function getEmployeeProfileFields(targetUserId: string): Promise<Em
 export interface InviteUserInput {
     email: string
     fullName?: string
-    role: 'consultant' | 'internal' | 'finanse'
+    // Phase 20: 5 invite'owalnych ról (admin promote'uje się przez admin_access_list).
+    role: 'consultant' | 'internal' | 'finanse' | 'manager' | 'talent_community'
     employmentType?: 'uop' | 'b2b'
     workStartDate?: string | null
+    // Phase 20: optional manager_id (UUID). Dla pracowników biurowych (internal/finanse/manager/talent_community).
+    managerId?: string | null
 }
+
+const INVITABLE_ROLES: InviteUserInput['role'][] = [
+    'consultant',
+    'internal',
+    'finanse',
+    'manager',
+    'talent_community',
+]
 
 export async function inviteUser(input: InviteUserInput): Promise<{ userId: string }> {
     const { user: actor } = await requireSuperAdmin()
@@ -454,8 +466,8 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
     if (!email.endsWith('@b2bnetwork.pl')) {
         throw new Error('Email musi być w domenie @b2bnetwork.pl')
     }
-    if (input.role !== 'consultant' && input.role !== 'internal' && input.role !== 'finanse') {
-        throw new Error('Niedozwolona rola. Wybierz Konsultant IT, Konsultant biurowy lub Finanse. Super Admina dodaje się przez Administratorzy.')
+    if (!INVITABLE_ROLES.includes(input.role)) {
+        throw new Error('Niedozwolona rola. Wybierz Konsultant IT, Konsultant wewnętrzny, Manager, Finanse lub Talent Community Manager. Super Admina dodaje się przez Administratorzy.')
     }
 
     const admin = createServiceClient()
@@ -484,12 +496,13 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
     }
 
     // 2. Override profile fields z wybranymi opcjami HR.
-    //    onboarding_completed=true dla 'internal' (biurowi nie mają consultant onboarding).
+    //    Phase 20: onboarding_completed=true dla wszystkich HR-zone (internal/finanse/manager/TCM).
+    const HR_ZONE_FOR_INVITE: InviteUserInput['role'][] = ['internal', 'finanse', 'manager', 'talent_community']
     const updates: Record<string, unknown> = {
         role: input.role,
         full_name: input.fullName?.trim() || null,
     }
-    if (input.role === 'internal') {
+    if (HR_ZONE_FOR_INVITE.includes(input.role)) {
         updates.onboarding_completed = true
     }
     if (input.employmentType) {
@@ -497,6 +510,10 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
     }
     if (input.workStartDate !== undefined) {
         updates.work_start_date = input.workStartDate
+    }
+    // Phase 20: manager_id — only for HR-zone roles (admin's choice).
+    if (input.managerId !== undefined && HR_ZONE_FOR_INVITE.includes(input.role)) {
+        updates.manager_id = input.managerId
     }
 
     const { error: profileErr } = await admin
@@ -513,7 +530,83 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
         role: input.role,
         employment_type: input.employmentType ?? null,
         work_start_date: input.workStartDate ?? null,
+        manager_id: input.managerId ?? null,
     })
 
     return { userId }
+}
+
+// ─── Phase 20: Manager assignment ────────────────────────────────────────────
+
+export interface ManagerCandidate {
+    id: string
+    full_name: string | null
+    email: string
+    role: string
+}
+
+/**
+ * Phase 20: list of users who can be assigned as a manager (role IN admin/manager).
+ * Used by InviteUserDialog and admin user-edit pages.
+ */
+export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
+    await requireSuperAdmin()
+    const admin = createServiceClient()
+    const { data, error } = await admin
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .in('role', ['admin', 'manager'])
+        .order('full_name', { ascending: true })
+    if (error) throw new Error(`Błąd listowania managerów: ${error.message}`)
+    return ((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null; role: string }>)
+        .filter((r) => !!r.email)
+        .map((r) => ({
+            id: r.id,
+            full_name: r.full_name,
+            email: r.email!,
+            role: r.role,
+        }))
+}
+
+/**
+ * Phase 20: assign or unassign a manager for a target user.
+ * Pass `managerId=null` to unassign.
+ */
+export async function setUserManager(targetUserId: string, managerId: string | null): Promise<void> {
+    const { user: actor } = await requireSuperAdmin()
+    const target = await fetchTargetUser(targetUserId)
+    ensureCanModify(actor.id, target)
+
+    if (managerId !== null && managerId === target.id) {
+        throw new Error('Użytkownik nie może być swoim własnym managerem.')
+    }
+
+    const admin = createServiceClient()
+
+    // Validate managerId exists and has role IN (admin, manager).
+    if (managerId) {
+        const { data: mgr, error: mgrErr } = await admin
+            .from('profiles')
+            .select('id, role')
+            .eq('id', managerId)
+            .single<{ id: string; role: string }>()
+        if (mgrErr || !mgr) {
+            throw new Error('Wybrany manager nie istnieje.')
+        }
+        if (mgr.role !== 'admin' && mgr.role !== 'manager') {
+            throw new Error('Manager musi mieć rolę Super Admin lub Manager.')
+        }
+    }
+
+    const { error } = await admin
+        .from('profiles')
+        .update({ manager_id: managerId })
+        .eq('id', target.id)
+    if (error) throw new Error(`Błąd przypisania managera: ${error.message}`)
+
+    await logAudit(actor.id, 'MANAGER_ASSIGNED', {
+        target_user_id: target.id,
+        target_email: target.email ?? null,
+        manager_id: managerId,
+    })
 }

@@ -9,6 +9,8 @@ import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import {
     approveInvoice,
+    managerApproveInvoice,
+    managerRejectInvoice,
     rejectInvoice,
     getInvoiceFileSignedUrl,
     getTimesheetForInvoiceReview,
@@ -17,8 +19,15 @@ import {
     type TimesheetSummaryForInvoiceData,
 } from '@/lib/actions/internal-invoice'
 
+// Phase 20: reviewer mode determines which actions are visible.
+//   'admin'   → all stages (manager + finanse) visible based on status
+//   'manager' → stage 1 only (submitted → manager_approved / rejected)
+//   'finanse' → stage 2 only (submitted/manager_approved → approved / rejected)
+type ReviewerMode = 'admin' | 'manager' | 'finanse'
+
 interface Props {
     initialInvoices: InvoiceWithUser[]
+    reviewerMode?: ReviewerMode
 }
 
 function statusBadge(status: InvoiceStatus) {
@@ -27,6 +36,14 @@ function statusBadge(status: InvoiceStatus) {
             <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Zaakceptowana
+            </span>
+        )
+    }
+    if (status === 'manager_approved') {
+        return (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-500">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Etap 1 OK — czeka na finanse
             </span>
         )
     }
@@ -54,11 +71,16 @@ function formatAmount(amount: number, currency: string): string {
     return `${Number(amount).toFixed(2)} ${currency}`
 }
 
-export function InvoicesReviewPanel({ initialInvoices }: Props) {
+export function InvoicesReviewPanel({ initialInvoices, reviewerMode = 'admin' }: Props) {
     const [invoices, setInvoices] = useState<InvoiceWithUser[]>(initialInvoices)
-    const [filterStatus, setFilterStatus] = useState<InvoiceStatus | 'all'>('submitted')
+    // Phase 20: default filter zależy od reviewer mode.
+    //   manager → submitted (czekające na etap 1)
+    //   finanse → manager_approved (czekające na etap 2)
+    //   admin   → submitted (wszystko oczekujące)
+    const defaultFilter: InvoiceStatus = reviewerMode === 'finanse' ? 'manager_approved' : 'submitted'
+    const [filterStatus, setFilterStatus] = useState<InvoiceStatus | 'all'>(defaultFilter)
     const [expanded, setExpanded] = useState<string | null>(null)
-    const [rejectTarget, setRejectTarget] = useState<InvoiceWithUser | null>(null)
+    const [rejectTarget, setRejectTarget] = useState<{ invoice: InvoiceWithUser; stage: 'manager' | 'finanse' } | null>(null)
 
     const filtered =
         filterStatus === 'all'
@@ -73,26 +95,38 @@ export function InvoicesReviewPanel({ initialInvoices }: Props) {
                           ...i,
                           status,
                           rejection_reason: status === 'rejected' ? (reason ?? null) : null,
-                          reviewed_at: new Date().toISOString(),
+                          reviewed_at: status === 'approved' || status === 'rejected' ? new Date().toISOString() : i.reviewed_at,
+                          manager_reviewed_at: status === 'manager_approved' ? new Date().toISOString() : i.manager_reviewed_at,
                       }
                     : i,
             ),
         )
     }
 
+    const heading =
+        reviewerMode === 'manager'
+            ? 'Faktury zespołu — akceptacja merytoryczna (etap 1)'
+            : reviewerMode === 'finanse'
+                ? 'Faktury — akceptacja finansowa (etap 2)'
+                : 'Faktury do akceptacji'
+
+    const subheading =
+        reviewerMode === 'manager'
+            ? 'Weryfikuj zgodność godzin z timesheetem i kwoty. Po akceptacji merytorycznej faktura trafia do finansów.'
+            : reviewerMode === 'finanse'
+                ? 'Etap 2 — finalna akceptacja księgowa. Jeśli pracownik ma managera, etap 1 jest obowiązkowy.'
+                : 'Weryfikuj faktury wystawione przez pracowników biurowych. Każdą fakturę możesz porównać z godzinami z timesheetu pracownika.'
+
     return (
         <section className="space-y-4">
             <div>
-                <h2 className="text-xl font-semibold">Faktury do akceptacji</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Weryfikuj faktury wystawione przez pracowników biurowych. Każdą fakturę możesz porównać
-                    z godzinami z timesheetu pracownika (przycisk "Pokaż timesheet").
-                </p>
+                <h2 className="text-xl font-semibold">{heading}</h2>
+                <p className="text-sm text-muted-foreground mt-1">{subheading}</p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
                 <Label className="text-xs uppercase text-muted-foreground">Filtr:</Label>
-                {(['submitted', 'approved', 'rejected', 'all'] as const).map((s) => (
+                {(['submitted', 'manager_approved', 'approved', 'rejected', 'all'] as const).map((s) => (
                     <button
                         key={s}
                         type="button"
@@ -103,7 +137,15 @@ export function InvoicesReviewPanel({ initialInvoices }: Props) {
                                 : 'bg-muted text-muted-foreground hover:bg-muted/70'
                         }`}
                     >
-                        {s === 'submitted' ? 'Oczekujące' : s === 'approved' ? 'Zaakceptowane' : s === 'rejected' ? 'Odrzucone' : 'Wszystkie'}
+                        {s === 'submitted'
+                            ? 'Oczekujące'
+                            : s === 'manager_approved'
+                                ? 'Etap 1 OK'
+                                : s === 'approved'
+                                    ? 'Zaakceptowane'
+                                    : s === 'rejected'
+                                        ? 'Odrzucone'
+                                        : 'Wszystkie'}
                     </button>
                 ))}
             </div>
@@ -118,10 +160,13 @@ export function InvoicesReviewPanel({ initialInvoices }: Props) {
                         <InvoiceReviewRow
                             key={inv.id}
                             invoice={inv}
+                            reviewerMode={reviewerMode}
                             expanded={expanded === inv.id}
                             onToggle={() => setExpanded(expanded === inv.id ? null : inv.id)}
+                            onManagerApproved={() => onDecided(inv.id, 'manager_approved')}
                             onApproved={() => onDecided(inv.id, 'approved')}
-                            onRejectClick={() => setRejectTarget(inv)}
+                            onManagerRejectClick={() => setRejectTarget({ invoice: inv, stage: 'manager' })}
+                            onFinanceRejectClick={() => setRejectTarget({ invoice: inv, stage: 'finanse' })}
                         />
                     ))}
                 </div>
@@ -129,11 +174,12 @@ export function InvoicesReviewPanel({ initialInvoices }: Props) {
 
             {rejectTarget && (
                 <RejectInvoiceDialog
-                    invoice={rejectTarget}
+                    invoice={rejectTarget.invoice}
+                    stage={rejectTarget.stage}
                     open={!!rejectTarget}
                     onOpenChange={(o) => !o && setRejectTarget(null)}
                     onRejected={(reason) => {
-                        onDecided(rejectTarget.id, 'rejected', reason)
+                        onDecided(rejectTarget.invoice.id, 'rejected', reason)
                         setRejectTarget(null)
                     }}
                 />
@@ -144,30 +190,58 @@ export function InvoicesReviewPanel({ initialInvoices }: Props) {
 
 function InvoiceReviewRow({
     invoice,
+    reviewerMode,
     expanded,
     onToggle,
+    onManagerApproved,
     onApproved,
-    onRejectClick,
+    onManagerRejectClick,
+    onFinanceRejectClick,
 }: {
     invoice: InvoiceWithUser
+    reviewerMode: ReviewerMode
     expanded: boolean
     onToggle: () => void
+    onManagerApproved: () => void
     onApproved: () => void
-    onRejectClick: () => void
+    onManagerRejectClick: () => void
+    onFinanceRejectClick: () => void
 }) {
-    const [isApproving, startApproving] = useTransition()
+    const [isManagerApproving, startManagerApproving] = useTransition()
+    const [isFinanceApproving, startFinanceApproving] = useTransition()
+    const [managerNote, setManagerNote] = useState('')
 
-    function handleApprove() {
-        startApproving(async () => {
+    function handleManagerApprove() {
+        startManagerApproving(async () => {
+            try {
+                await managerApproveInvoice(invoice.id, managerNote.trim() || undefined)
+                toastSuccess(`Faktura ${invoice.invoice_number} zaakceptowana merytorycznie.`)
+                onManagerApproved()
+            } catch (err: unknown) {
+                toast.error(err instanceof Error ? err.message : 'Nieznany błąd')
+            }
+        })
+    }
+
+    function handleFinanceApprove() {
+        startFinanceApproving(async () => {
             try {
                 await approveInvoice(invoice.id)
-                toastSuccess(`Faktura ${invoice.invoice_number} zaakceptowana.`)
+                toastSuccess(`Faktura ${invoice.invoice_number} zaakceptowana finansowo.`)
                 onApproved()
             } catch (err: unknown) {
                 toast.error(err instanceof Error ? err.message : 'Nieznany błąd')
             }
         })
     }
+
+    // Phase 20: kto może co teraz?
+    //   admin   → zawsze może (manager etap 1, finanse etap 2)
+    //   manager → tylko etap 1 (status='submitted')
+    //   finanse → tylko etap 2 (status IN submitted, manager_approved)
+    const canManagerAct = (reviewerMode === 'admin' || reviewerMode === 'manager') && invoice.status === 'submitted'
+    const canFinanceAct = (reviewerMode === 'admin' || reviewerMode === 'finanse') &&
+        (invoice.status === 'submitted' || invoice.status === 'manager_approved')
 
     return (
         <div className="rounded-md border border-border bg-card overflow-hidden">
@@ -203,9 +277,19 @@ function InvoiceReviewRow({
                             <p className="text-xs uppercase text-muted-foreground mb-1">Uwagi pracownika</p>
                             <p>{invoice.notes ?? '—'}</p>
                         </div>
+                        {invoice.manager_review_note && invoice.status !== 'rejected' && (
+                            <div className="md:col-span-2">
+                                <p className="text-xs uppercase text-muted-foreground mb-1">
+                                    Komentarz managera (etap 1)
+                                </p>
+                                <p className="text-blue-300">{invoice.manager_review_note}</p>
+                            </div>
+                        )}
                         {invoice.rejection_reason && (
                             <div className="md:col-span-2">
-                                <p className="text-xs uppercase text-muted-foreground mb-1">Powód odrzucenia</p>
+                                <p className="text-xs uppercase text-muted-foreground mb-1">
+                                    Powód odrzucenia ({invoice.rejected_by_stage === 'manager' ? 'manager' : 'finanse'})
+                                </p>
                                 <p className="text-red-300">{invoice.rejection_reason}</p>
                             </div>
                         )}
@@ -216,19 +300,49 @@ function InvoiceReviewRow({
                         <TimesheetSummaryToggle invoiceId={invoice.id} />
                     </div>
 
-                    {invoice.status === 'submitted' && (
+                    {canManagerAct && (
+                        <div className="space-y-2 pt-2 border-t border-border">
+                            <Label htmlFor={`mgr-note-${invoice.id}`} className="text-xs uppercase text-muted-foreground">
+                                Komentarz dla finansów (opcjonalny)
+                            </Label>
+                            <textarea
+                                id={`mgr-note-${invoice.id}`}
+                                value={managerNote}
+                                onChange={(e) => setManagerNote(e.target.value)}
+                                rows={2}
+                                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                placeholder="np. Zgodne z timesheetem, projekt X."
+                            />
+                            <div className="flex items-center gap-2">
+                                <Button onClick={handleManagerApprove} disabled={isManagerApproving} size="sm">
+                                    {isManagerApproving ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                                    )}
+                                    Akceptuj merytorycznie (etap 1)
+                                </Button>
+                                <Button onClick={onManagerRejectClick} variant="outline" size="sm">
+                                    <XCircle className="mr-2 h-4 w-4" />
+                                    Odrzuć merytorycznie
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {canFinanceAct && (
                         <div className="flex items-center gap-2 pt-2 border-t border-border">
-                            <Button onClick={handleApprove} disabled={isApproving} size="sm">
-                                {isApproving ? (
+                            <Button onClick={handleFinanceApprove} disabled={isFinanceApproving} size="sm">
+                                {isFinanceApproving ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : (
                                     <CheckCircle2 className="mr-2 h-4 w-4" />
                                 )}
-                                Zaakceptuj
+                                Akceptuj finansowo (etap 2)
                             </Button>
-                            <Button onClick={onRejectClick} variant="outline" size="sm">
+                            <Button onClick={onFinanceRejectClick} variant="outline" size="sm">
                                 <XCircle className="mr-2 h-4 w-4" />
-                                Odrzuć
+                                Odrzuć finansowo
                             </Button>
                         </div>
                     )}
@@ -312,11 +426,13 @@ function TimesheetSummaryToggle({ invoiceId }: { invoiceId: string }) {
 
 function RejectInvoiceDialog({
     invoice,
+    stage,
     open,
     onOpenChange,
     onRejected,
 }: {
     invoice: InvoiceWithUser
+    stage: 'manager' | 'finanse'
     open: boolean
     onOpenChange: (open: boolean) => void
     onRejected: (reason: string) => void
@@ -332,7 +448,11 @@ function RejectInvoiceDialog({
         }
         startTransition(async () => {
             try {
-                await rejectInvoice(invoice.id, reason.trim())
+                if (stage === 'manager') {
+                    await managerRejectInvoice(invoice.id, reason.trim())
+                } else {
+                    await rejectInvoice(invoice.id, reason.trim())
+                }
                 toastSuccess(`Faktura ${invoice.invoice_number} odrzucona.`)
                 onRejected(reason.trim())
             } catch (err: unknown) {
@@ -341,14 +461,17 @@ function RejectInvoiceDialog({
         })
     }
 
+    const title = stage === 'manager' ? 'Odrzuć fakturę merytorycznie (etap 1)' : 'Odrzuć fakturę finansowo (etap 2)'
+    const description = stage === 'manager'
+        ? 'Pracownik dostanie email z powodem i będzie mógł poprawić. Po poprawie faktura ponownie wymaga akceptacji managera.'
+        : 'Pracownik dostanie email z powodem i będzie mógł poprawić.'
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Odrzuć fakturę</DialogTitle>
-                    <DialogDescription>
-                        Pracownik dostanie email z powodem i będzie mógł poprawić.
-                    </DialogDescription>
+                    <DialogTitle>{title}</DialogTitle>
+                    <DialogDescription>{description}</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-1.5">

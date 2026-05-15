@@ -49,6 +49,7 @@ export async function middleware(request: NextRequest) {
             || pathname.startsWith('/incubator')
             || pathname.startsWith('/news')
             || pathname.startsWith('/support')
+            || pathname.startsWith('/admin')
             || (!isPublicPath && !isOnboarding && !onboardingDone)
 
         let role: string | undefined
@@ -63,24 +64,43 @@ export async function middleware(request: NextRequest) {
             onboardingCompleted = profile?.onboarding_completed as boolean | undefined
         }
 
-        // Security defense-in-depth: gate /internal/* at the edge — admin + internal + finanse only.
+        // Phase 20: HR-zone roles (everyone EXCEPT consultant IT).
+        const HR_ZONE_ROLES = ['admin', 'internal', 'finanse', 'manager', 'talent_community']
+        const isHrZoneUser = role !== undefined && HR_ZONE_ROLES.includes(role)
+        // Roles that land on /internal (no platform features). Admin keeps full access.
+        const INTERNAL_LANDING_ROLES = ['internal', 'finanse', 'manager', 'talent_community']
+        const isInternalLanding = role !== undefined && INTERNAL_LANDING_ROLES.includes(role)
+        // Admin OR Talent Community Manager — handles inbox, compliance, news composer.
+        const isAdminOrTcm = role === 'admin' || role === 'talent_community'
+
+        // Security defense-in-depth: gate /internal/* at the edge — HR-zone roles only.
         // Bez tego layout (app/(protected)/internal/layout.tsx) jest sole guard, a bare
         // route handlers pod /internal mogłyby leakować HR data do konsultanta.
-        // Phase 19a (2026-05-14): added 'finanse' role for invoice review access.
+        // Phase 19a (2026-05-14): added 'finanse'. Phase 20 (2026-05-16): added manager + talent_community.
         if (pathname.startsWith('/internal')) {
-            if (role !== 'admin' && role !== 'internal' && role !== 'finanse') {
+            if (!isHrZoneUser) {
                 return NextResponse.redirect(new URL('/home', request.url))
             }
         }
 
-        // Konsultant biurowy (role='internal') i Finanse NIE widzą platform features.
-        // Inverse guard po /internal check (admin nadal przechodzi do /home/learning/etc).
-        // Phase 19d: finanse landing = /internal (HR Hub jak internal — wystawia własny
-        // timesheet i widzi swoje faktury). Link "Faktury do akceptacji" w sidebar
-        // prowadzi do /internal/admin?tab=invoices.
-        if (role === 'internal' || role === 'finanse') {
-            const platformPaths = ['/home', '/learning', '/league', '/incubator', '/news', '/support']
-            if (platformPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
+        // Phase 20: /admin/inbox + /admin/compliance + /admin/news — admin OR Talent Community Manager.
+        // Pozostałe /admin/* (np. /admin/users) zostają admin-only — layout enforced separately.
+        if (
+            pathname.startsWith('/admin/inbox') ||
+            pathname.startsWith('/admin/compliance') ||
+            pathname.startsWith('/admin/news')
+        ) {
+            if (!isAdminOrTcm) {
+                return NextResponse.redirect(new URL(isHrZoneUser ? '/internal' : '/home', request.url))
+            }
+        }
+
+        // Phase 20: pracownicy biurowi NIE widzą /home, /learning, /league (consultant IT + admin only).
+        // Aktualności (/news), Inkubator (/incubator), Support (/support) są WSPÓLNE dla wszystkich
+        // HR-zone ról — nie redirectujemy z nich.
+        if (isInternalLanding) {
+            const platformOnlyPaths = ['/home', '/learning', '/league']
+            if (platformOnlyPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
                 return NextResponse.redirect(new URL('/internal', request.url))
             }
         }

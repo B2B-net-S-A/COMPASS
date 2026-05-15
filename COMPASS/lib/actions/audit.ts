@@ -50,6 +50,10 @@ export type AuditAction =
     | 'INVOICE_APPROVED'
     | 'INVOICE_REJECTED'
     | 'INVOICE_RESUBMITTED'
+    // Phase 20 — Manager (2-stage invoice + team timesheet) + TCM
+    | 'INVOICE_MANAGER_APPROVED'
+    | 'INVOICE_MANAGER_REJECTED'
+    | 'MANAGER_ASSIGNED'
 
 export async function logAudit(
     userId: string | null,

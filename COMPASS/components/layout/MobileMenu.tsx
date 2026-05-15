@@ -23,7 +23,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { isFeatureComingSoon } from '@/lib/types/permissions'
 
 interface MobileMenuProps {
-    role: 'consultant' | 'admin' | 'internal' | 'finanse'
+    role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
     user: {
         email?: string | null
         full_name?: string | null
