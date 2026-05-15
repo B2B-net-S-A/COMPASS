@@ -44,13 +44,18 @@ async function notifyUsers(
     }
 }
 
-export async function listSupportCategories(): Promise<SupportActionResult<SupportCategory[]>> {
+export async function listSupportCategories(opts: { includeInactive?: boolean } = {}): Promise<SupportActionResult<SupportCategory[]>> {
     try {
         const supabase = createClient()
-        const { data, error } = await supabase
+        let query = supabase
             .from('support_categories')
             .select('*')
             .order('sort_order', { ascending: true })
+        if (!opts.includeInactive) {
+            // Defensive — pole dodane w Phase 21; jeśli kolumny nie ma (np. testy bez migracji), nadal zwracaj wszystko.
+            query = query.or('is_active.is.null,is_active.eq.true')
+        }
+        const { data, error } = await query
         if (error) throw error
         return { success: true, data: (data ?? []) as SupportCategory[] }
     } catch (error: unknown) {

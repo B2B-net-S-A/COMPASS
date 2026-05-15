@@ -1,20 +1,31 @@
 import Link from 'next/link'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, FileText } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { listSupportCategories } from '@/lib/actions/support-tickets'
 import { listArticlesByCategory } from '@/lib/actions/support-articles'
+import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 export default async function KnowledgeBasePage() {
-    const [categoriesRes, articlesRes] = await Promise.all([
+    const supabase = createClient()
+    const [categoriesRes, articlesRes, materialsRes] = await Promise.all([
         listSupportCategories(),
         listArticlesByCategory(undefined, { onlyPublished: true }),
+        supabase.from('support_category_materials').select('category_id'),
     ])
 
-    const categories = categoriesRes.success ? categoriesRes.data : []
-    const articles = articlesRes.success ? articlesRes.data : []
+    const categories = (categoriesRes.success ? categoriesRes.data : []).filter(
+        (c) => c.slug !== 'inbox_wypowiedzenie',
+    )
+    const articles = (articlesRes.success ? articlesRes.data : []).filter(
+        (a) => a.category_slug !== 'inbox_wypowiedzenie',
+    )
+    const materialCounts: Record<string, number> = {}
+    for (const m of (materialsRes.data ?? []) as Array<{ category_id: string }>) {
+        materialCounts[m.category_id] = (materialCounts[m.category_id] ?? 0) + 1
+    }
 
     return (
         <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
@@ -32,14 +43,21 @@ export default async function KnowledgeBasePage() {
             <div className="grid gap-3 md:grid-cols-2">
                 {categories.map((c) => {
                     const count = articles.filter((a) => a.category_slug === c.slug).length
+                    const materials = materialCounts[c.id] ?? 0
                     return (
                         <Link key={c.id} href={`/support/kb/${c.slug}`} className="block group">
                             <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors h-full">
                                 <CardContent className="p-5 flex items-center justify-between">
                                     <div>
                                         <h3 className="font-semibold group-hover:text-primary">{c.name_pl}</h3>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            {count} {count === 1 ? 'artykuł' : 'artykułów'}
+                                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
+                                            <span>{count} {count === 1 ? 'artykuł' : 'artykułów'}</span>
+                                            {materials > 0 && (
+                                                <span className="inline-flex items-center gap-1 text-primary/80">
+                                                    <FileText className="w-3 h-3" />
+                                                    {materials} {materials === 1 ? 'materiał' : 'materiałów'}
+                                                </span>
+                                            )}
                                         </p>
                                     </div>
                                     <Badge variant="outline" className="text-[10px]">{c.slug}</Badge>
