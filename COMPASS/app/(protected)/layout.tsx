@@ -69,7 +69,7 @@ export default async function ProtectedLayout({
             permissionsMap = DEFAULT_PERMISSIONS
         }
 
-        const role = (profile?.role as 'consultant' | 'admin' | 'internal') || 'consultant'
+        const role = (profile?.role as 'consultant' | 'admin' | 'internal' | 'finanse') || 'consultant'
 
         if (role === 'admin') {
             const mfaVerified = cookies().get('mfa_verified')?.value === 'true'
@@ -78,7 +78,12 @@ export default async function ProtectedLayout({
 
         // Internal employees inherit consultant feature flags (no admin elevation
         // for platform features; HR-zone access is gated by canAccessInternalZone).
-        const permissionRole: PermissionRole = role === 'admin' ? 'admin' : 'consultant'
+        // Phase 19a: 'finanse' uses its own dedicated permission set (read-only on most).
+        const permissionRole: PermissionRole =
+            role === 'admin' ? 'admin' :
+            role === 'finanse' ? 'finanse' :
+            role === 'internal' ? 'internal' :
+            'consultant'
         const userPermissions = permissionsMap[permissionRole]
         const userData = {
             ...user,
@@ -110,7 +115,7 @@ export default async function ProtectedLayout({
 
         return (
             <ThemeProvider>
-                <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges}>
+                <AppLayout user={userData} role={role as 'consultant' | 'admin' | 'internal' | 'finanse'} permissions={userPermissions} sidebarBadges={sidebarBadges}>
                     <LayoutPreferencesProvider>
                         {children}
                     </LayoutPreferencesProvider>

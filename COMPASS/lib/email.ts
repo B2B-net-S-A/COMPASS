@@ -483,6 +483,85 @@ export async function sendTimesheetDecision(
     }
 }
 
+// ─── Phase 19 — Invoices (finanse role) ─────────────────────────────────────
+
+export async function sendInvoiceSubmitted(
+    recipientEmails: string[],
+    requesterName: string,
+    invoiceNumber: string,
+    periodYear: number,
+    periodMonth: number,
+): Promise<{ success: boolean }> {
+    if (recipientEmails.length === 0) return { success: true }
+    const periodLabel = `${periodYear}-${String(periodMonth).padStart(2, '0')}`
+    const subject = `[COMPASS] Faktura ${invoiceNumber} (${periodLabel}) — ${requesterName}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${requesterName} wystawił fakturę <strong>${invoiceNumber}</strong> za okres
+            <strong>${periodLabel}</strong> do akceptacji.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">Zweryfikuj w panelu Finanse: /internal/admin?tab=invoices</p>
+    `
+    const html = wrapHrEmail({ tag: 'Faktura do akceptacji', heading: subject, bodyHtml })
+    try {
+        for (const to of recipientEmails) {
+            const { error } = await getResend().emails.send({
+                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                to,
+                subject,
+                html,
+            })
+            if (error) logCompat.error('Resend invoice-submitted error:', error)
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Invoice-submitted email failed:', err)
+        return { success: false }
+    }
+}
+
+export async function sendInvoiceDecision(
+    recipientEmail: string,
+    recipientName: string,
+    decision: 'approved' | 'rejected',
+    invoiceNumber: string,
+    periodYear: number,
+    periodMonth: number,
+    rejectionReason?: string | null,
+): Promise<{ success: boolean }> {
+    const isApproved = decision === 'approved'
+    const periodLabel = `${periodYear}-${String(periodMonth).padStart(2, '0')}`
+    const subject = isApproved
+        ? `[COMPASS] Faktura ${invoiceNumber} (${periodLabel}) zaakceptowana`
+        : `[COMPASS] Faktura ${invoiceNumber} (${periodLabel}) odrzucona`
+    const accent = isApproved ? '#22c55e' : '#f59e0b'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twoja faktura <strong>${invoiceNumber}</strong> za <strong>${periodLabel}</strong> została
+            <strong>${isApproved ? 'zaakceptowana' : 'odrzucona'}</strong>.
+        </p>
+        ${rejectionReason ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Komentarz:</strong> ${rejectionReason}</p>` : ''}
+        ${!isApproved ? `<p style="color: #d1d5db; font-size: 14px;">Możesz poprawić i wysłać ponownie w sekcji <strong>Faktury</strong>.</p>` : ''}
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Decyzja faktura', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend invoice-decision error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Invoice-decision email failed:', err)
+        return { success: false }
+    }
+}
+
 /**
  * A1.5: Email reminderowy dla studenta który zaczął kurs ale ≥3 dni nie zrobił postępu.
  * Wysyłany przez cron `/api/cron/course-inactivity` (max 1×/tydz per enrollment).

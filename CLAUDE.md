@@ -127,6 +127,36 @@ curl -fsS "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff?secret=$CRON
 # expect: { ok: true, scanned: N, closed: N, emailed: N }
 ```
 
+## Phase 19 — Faktury + rola Finanse (2026-05-14)
+
+Pełen workflow rozliczeń pracowników biurowych:
+
+1. **Pracownik biurowy (`internal`)** wpisuje godziny do timesheet → wysyła do akceptacji.
+2. **Admin** akceptuje/odrzuca timesheet z komentarzem (bez zmian, jak Phase 11–17).
+3. Po `approved` timesheet → user może wystawić **fakturę** (PDF, max 10 MB) za ten sam okres (`period_year` + `period_month`).
+4. **Finanse (nowa rola)** akceptuje/odrzuca fakturę z komentarzem. Może też podejrzeć timesheet pracownika (godziny + opisy per-day) podczas review — żeby porównać kwotę z godzinami.
+5. Po reject pracownik widzi czerwony banner z powodem, klika "Popraw i wyślij ponownie", edytuje dane i/lub plik, wysyła ponownie.
+
+**Kluczowe artefakty:**
+- 4 role w enum `user_role`: `consultant`, `admin`, `internal`, **`finanse`** (Phase 19a `ALTER TYPE ADD VALUE`).
+- Tabela `invoices` z `file_path` + `file_hash` (SHA-256 obliczany przy approve, audit-grade).
+- Trigger DB: invoice INSERT/UPDATE wymaga `approved` timesheet (twarda blokada).
+- Trigger DB: `unlockTimesheet` zablokowany jeśli istnieją aktywne (submitted/approved) faktury.
+- Storage bucket `invoices` (private) z folder-scoped RLS: `invoices/{user_id}/{ts}_{file}.pdf`.
+- Helper SQL: `is_finanse_or_admin()` używany w RLS faktur.
+- `sync_user_role()` RPC zaktualizowany (Phase 19c) żeby NIE downgrade'ował finanse → consultant przy każdym loginie.
+
+**Routes/UI:**
+- Pracownik: `/internal?tab=invoices` — lista swoich faktur, button "Wyślij fakturę".
+- Finanse + admin: `/internal/admin?tab=invoices` — kolejka do akceptacji + filtry (oczekujące/zaakceptowane/odrzucone).
+- Finanse landing: middleware redirectuje z `/home` na `/internal/admin?tab=invoices`.
+
+**Ops po deploy:**
+1. Aplikować 3 migracje przez `supabase db push` (Phase 19a → 19b → 19c).
+2. Nadać 1 osobie rolę `finanse` przez InviteUserDialog (`/internal/admin?tab=employees`) lub SQL `UPDATE profiles SET role='finanse' WHERE email='ksiegowa@b2bnetwork.pl'`.
+
+**Audit log actions:** `INVOICE_SUBMITTED`, `INVOICE_APPROVED`, `INVOICE_REJECTED`, `INVOICE_RESUBMITTED`.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

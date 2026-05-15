@@ -20,7 +20,7 @@ export default async function MessagesPage() {
         .eq('id', user.id)
         .single()
 
-    const role = (profile?.role as 'consultant' | 'admin') || 'consultant'
+    const role = (profile?.role as 'consultant' | 'admin' | 'internal' | 'finanse') || 'consultant'
     const isAdmin = role === 'admin'
 
     return (
