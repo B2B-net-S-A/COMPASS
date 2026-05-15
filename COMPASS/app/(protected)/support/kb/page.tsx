@@ -13,8 +13,12 @@ export default async function KnowledgeBasePage() {
         listArticlesByCategory(undefined, { onlyPublished: true }),
     ])
 
-    const categories = categoriesRes.success ? categoriesRes.data : []
-    const articles = articlesRes.success ? articlesRes.data : []
+    const categories = (categoriesRes.success ? categoriesRes.data : []).filter(
+        (c) => c.slug !== 'inbox_wypowiedzenie',
+    )
+    const articles = (articlesRes.success ? articlesRes.data : []).filter(
+        (a) => a.category_slug !== 'inbox_wypowiedzenie',
+    )
 
     return (
         <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
