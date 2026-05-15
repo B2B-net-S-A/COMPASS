@@ -25,8 +25,8 @@ interface UserResult {
     id: string
     full_name: string | null
     email: string | null
-    role: string
-    loyalty_points: number
+    role: string | null
+    loyalty_points: number | null
     loyalty_tier: string
 }
 
@@ -75,7 +75,7 @@ export function LoyaltyManager() {
             if (result.success) {
                 // Update local state loosely (points will be refreshed on re-search or page reload)
                 // Ideally reload the user data
-                setSelectedUser(prev => prev ? { ...prev, loyalty_points: prev.loyalty_points + points } : null)
+                setSelectedUser(prev => prev ? { ...prev, loyalty_points: (prev.loyalty_points ?? 0) + points } : null)
 
                 setIsDialogOpen(false)
                 setPointsAmount(0)

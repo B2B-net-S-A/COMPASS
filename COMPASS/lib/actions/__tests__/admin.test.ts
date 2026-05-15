@@ -144,6 +144,9 @@ describe('createProjectFromSpec', () => {
         const row = currentClient._tables.projects[0]
         expect(row.title).toBe('React Senior')
         expect(row.required_skills).toEqual(['React'])
-        expect(Array.isArray(row.embedding)).toBe(true)
+        // embedding kolumna vector(1536) — typy Supabase generują jako string | null
+        // (pgvector deserializuje "[1,2,3]"). createProjectFromSpec robi JSON.stringify(number[]).
+        expect(typeof row.embedding).toBe('string')
+        expect(JSON.parse(row.embedding as string)).toEqual(expect.any(Array))
     })
 })

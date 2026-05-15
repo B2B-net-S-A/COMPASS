@@ -13,7 +13,7 @@ export interface AdminMember {
     id: string
     email: string
     full_name: string | null
-    created_at: string
+    created_at: string | null
     // Joined from profiles
     profile_id: string | null
     avatar_url: string | null
@@ -68,7 +68,8 @@ export async function getAdminMembers(): Promise<AdminMember[]> {
         return {
             id: item.id,
             email: item.email,
-            full_name: item.full_name || profile?.full_name || null,
+            // admin_access_list ma tylko email; full_name pobieramy z profiles przez join po emailu.
+            full_name: profile?.full_name || null,
             created_at: item.created_at,
             profile_id: profile?.id || null,
             avatar_url: profile?.avatar_url || null,

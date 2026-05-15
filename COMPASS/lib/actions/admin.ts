@@ -117,7 +117,9 @@ export async function createProjectFromSpec(data: any) {
             description: data.description,
             required_skills: data.required_skills,
             budget_range: data.budget_range,
-            embedding
+            // pgvector przyjmuje vector jako text w formacie "[1,2,3]" — typy Supabase
+            // generują kolumnę vector(1536) jako string | null, więc serializujemy ręcznie.
+            embedding: JSON.stringify(embedding),
         })
 
     if (error) throw new Error(error.message)

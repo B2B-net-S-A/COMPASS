@@ -170,6 +170,7 @@ export type Database = {
           embedding: string | null
           id: string
           is_active: boolean | null
+          metadata: Json | null
           source_id: string | null
           source_type: string | null
           tags: string[] | null
@@ -183,6 +184,7 @@ export type Database = {
           embedding?: string | null
           id?: string
           is_active?: boolean | null
+          metadata?: Json | null
           source_id?: string | null
           source_type?: string | null
           tags?: string[] | null
@@ -196,6 +198,7 @@ export type Database = {
           embedding?: string | null
           id?: string
           is_active?: boolean | null
+          metadata?: Json | null
           source_id?: string | null
           source_type?: string | null
           tags?: string[] | null
@@ -3156,6 +3159,18 @@ export type Database = {
       }
       award_first_publish_bonus: {
         Args: { p_course_id: string }
+        Returns: string
+      }
+      create_broadcast_conversation: {
+        Args: {
+          p_name: string
+          p_owner_id: string
+          p_participant_ids: string[]
+        }
+        Returns: string
+      }
+      create_direct_conversation: {
+        Args: { p_target_user_id: string; p_user_id: string }
         Returns: string
       }
       create_notification: {

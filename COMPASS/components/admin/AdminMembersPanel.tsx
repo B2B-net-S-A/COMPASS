@@ -232,7 +232,9 @@ export function AdminMembersPanel() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-sm text-muted-foreground">
-                                            {new Date(member.created_at).toLocaleDateString('pl-PL')}
+                                            {member.created_at
+                                                ? new Date(member.created_at).toLocaleDateString('pl-PL')
+                                                : '—'}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Button
