@@ -587,9 +587,9 @@ export async function listInvoicesForManagerReview(
     if (filters.periodMonth) query = query.eq('period_month', filters.periodMonth)
     if (filters.userId) query = query.eq('user_id', filters.userId)
 
-    // Manager scope — only invoices of users with manager_id = ctx.userId.
+    // Phase 20e: scope — każdy nie-admin widzi tylko swój zespół przez manager_id.
     // Admin sees all (no scope filter).
-    if (ctx.isManager && !ctx.isAdmin) {
+    if (!ctx.isAdmin) {
         const { data: teamIds } = await admin
             .from('profiles')
             .select('id')
@@ -869,8 +869,9 @@ export async function managerApproveInvoice(invoiceId: string, note?: string): P
         throw new Error('Można zaakceptować merytorycznie tylko fakturę w statusie "submitted".')
     }
 
-    // Manager team scope — verify target.manager_id = ctx.userId.
-    if (ctx.isManager && !ctx.isAdmin) {
+    // Phase 20e: team scope check — niezależnie od roli (admin pomija, każdy
+    // inny musi być przypisany jako manager_id target usera).
+    if (!ctx.isAdmin) {
         const { data: targetProfile } = await admin
             .from('profiles')
             .select('manager_id')
@@ -954,7 +955,8 @@ export async function managerRejectInvoice(invoiceId: string, reason: string): P
         throw new Error('Można odrzucić merytorycznie tylko fakturę w statusie "submitted".')
     }
 
-    if (ctx.isManager && !ctx.isAdmin) {
+    // Phase 20e: team scope check niezależnie od roli (admin pomija).
+    if (!ctx.isAdmin) {
         const { data: targetProfile } = await admin
             .from('profiles')
             .select('manager_id')

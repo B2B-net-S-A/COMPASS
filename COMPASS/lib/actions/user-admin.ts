@@ -546,8 +546,8 @@ export interface ManagerCandidate {
 }
 
 /**
- * Phase 20: list of users who can be assigned as a manager (role IN admin/manager).
- * Used by InviteUserDialog and admin user-edit pages.
+ * Phase 20 + 20e: list of users who can be assigned as a manager.
+ * admin/manager/finanse — wszyscy z "managerską odpowiedzialnością".
  */
 export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
     await requireSuperAdmin()
@@ -555,7 +555,7 @@ export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
     const { data, error } = await admin
         .from('profiles')
         .select('id, full_name, email, role')
-        .in('role', ['admin', 'manager'])
+        .in('role', ['admin', 'manager', 'finanse'])
         .order('full_name', { ascending: true })
     if (error) throw new Error(`Błąd listowania managerów: ${error.message}`)
     return ((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null; role: string }>)
@@ -583,7 +583,7 @@ export async function setUserManager(targetUserId: string, managerId: string | n
 
     const admin = createServiceClient()
 
-    // Validate managerId exists and has role IN (admin, manager).
+    // Phase 20e: Validate managerId exists and has role IN (admin, manager, finanse).
     if (managerId) {
         const { data: mgr, error: mgrErr } = await admin
             .from('profiles')
@@ -593,8 +593,8 @@ export async function setUserManager(targetUserId: string, managerId: string | n
         if (mgrErr || !mgr) {
             throw new Error('Wybrany manager nie istnieje.')
         }
-        if (mgr.role !== 'admin' && mgr.role !== 'manager') {
-            throw new Error('Manager musi mieć rolę Super Admin lub Manager.')
+        if (mgr.role !== 'admin' && mgr.role !== 'manager' && mgr.role !== 'finanse') {
+            throw new Error('Manager musi mieć rolę Super Admin, Manager lub Finanse.')
         }
     }
 

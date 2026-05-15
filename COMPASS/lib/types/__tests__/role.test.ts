@@ -89,13 +89,13 @@ describe('canReviewInvoices (Phase 19a — stage 2 finanse)', () => {
     })
 })
 
-describe('canManagerApproveInvoice (Phase 20 — stage 1 manager)', () => {
-    it('allows admin and manager', () => {
+describe('canManagerApproveInvoice (Phase 20 + 20e — stage 1)', () => {
+    it('allows admin, manager, and finanse (team manager via manager_id link)', () => {
         expect(canManagerApproveInvoice('admin')).toBe(true)
         expect(canManagerApproveInvoice('manager')).toBe(true)
+        expect(canManagerApproveInvoice('finanse')).toBe(true)
     })
-    it('denies non-manager roles', () => {
-        expect(canManagerApproveInvoice('finanse')).toBe(false)
+    it('denies other roles', () => {
         expect(canManagerApproveInvoice('internal')).toBe(false)
         expect(canManagerApproveInvoice('consultant')).toBe(false)
         expect(canManagerApproveInvoice('talent_community')).toBe(false)
@@ -116,13 +116,13 @@ describe('canAccessInternalZone (Phase 20: 5 HR-zone roles)', () => {
     })
 })
 
-describe('canApproveTimesheets (Phase 20)', () => {
-    it('allows admin and manager', () => {
+describe('canApproveTimesheets (Phase 20 + 20e)', () => {
+    it('allows admin, manager, and finanse (team manager via manager_id)', () => {
         expect(canApproveTimesheets('admin')).toBe(true)
         expect(canApproveTimesheets('manager')).toBe(true)
+        expect(canApproveTimesheets('finanse')).toBe(true)
     })
     it('denies other roles', () => {
-        expect(canApproveTimesheets('finanse')).toBe(false)
         expect(canApproveTimesheets('internal')).toBe(false)
         expect(canApproveTimesheets('talent_community')).toBe(false)
         expect(canApproveTimesheets('consultant')).toBe(false)
