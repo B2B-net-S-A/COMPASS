@@ -16,9 +16,13 @@ ALTER TABLE profiles
 CREATE INDEX IF NOT EXISTS idx_profiles_manager_email
     ON profiles(manager_email) WHERE manager_email IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_profiles_m365_sync_stale
+-- Partial WHERE z NOW() jest non-IMMUTABLE → Postgres odrzuca CREATE INDEX.
+-- Indeks pomaga głównie dla query "nigdy nie sync'ed" (najczęstsza ścieżka
+-- crona — nowi userzy). Stale (< NOW() - 7d) idzie przez seq scan, ale to
+-- 128 wierszy więc bez kosztu.
+CREATE INDEX IF NOT EXISTS idx_profiles_m365_sync_never
     ON profiles(m365_synced_at)
-    WHERE m365_synced_at IS NULL OR m365_synced_at < NOW() - INTERVAL '7 days';
+    WHERE m365_synced_at IS NULL;
 
 COMMENT ON COLUMN profiles.manager_email IS 'Email przełożonego pobrany z Microsoft Graph /users/{id}/manager';
 COMMENT ON COLUMN profiles.department IS 'Dział pobrany z Microsoft Graph /users/{id} (department)';
