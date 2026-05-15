@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/server'
 
 import { logLoginAttempt } from '@/lib/auth/security'
 import { logAudit } from '@/lib/actions/audit'
-import { verifyMFACode } from '@/lib/mfa'
 import { cookies } from 'next/headers'
 
 import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
@@ -77,12 +76,26 @@ function friendlySignupError(raw: string, err?: { code?: string }): string {
 
 const BYPASS_EMAIL = process.env.BYPASS_EMAIL?.toLowerCase() ?? ''
 
+// PR5a: pracownicy biura (@b2bnetwork.pl) muszą logować się przez Azure SSO,
+// nie email/password. Konsultanci B2B (inne domeny) zostają na email/password
+// bo nie mają licencji M365.
+const SSO_REQUIRED_DOMAIN = '@b2bnetwork.pl'
+
 export async function login(formData: FormData) {
     const email = (formData.get('email') as string)?.trim()?.toLowerCase()
     const password = formData.get('password') as string
 
     if (!email || !password) {
         return { error: 'Proszę podać email i hasło' }
+    }
+
+    // PR5a: Block password login for @b2bnetwork.pl users. Direct them to
+    // the Microsoft button. Bypass account (BYPASS_EMAIL, dev only) is
+    // exempt — it stays as a break-glass path.
+    if (email.endsWith(SSO_REQUIRED_DOMAIN) && email !== BYPASS_EMAIL) {
+        return {
+            error: 'Pracownicy biura logują się przez Microsoft 365. Kliknij "Zaloguj przez Microsoft" poniżej.',
+        }
     }
 
     // Bypass logowania — wyłączony w produkcji niezależnie od ALLOW_BYPASS_LOGIN
@@ -96,13 +109,6 @@ export async function login(formData: FormData) {
             sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24 * 7, // 7 dni
-        })
-        cookieStore.set('mfa_verified', 'true', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24,
         })
         redirect('/home')
     }
@@ -150,53 +156,13 @@ export async function login(formData: FormData) {
         })
     }
 
-    // 5b. Set MFA cookie for admin role
-    if (role === 'admin') {
-        cookies().set('mfa_verified', 'true', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24 // 24 hours
-        })
-    }
+    // PR5b: cookie-based MFA wycofane. Admin MFA jest enforce'owane przez
+    // Microsoft Entra Conditional Access (PR5a + Cfg) — żaden cookie nie
+    // jest tu już potrzebny.
 
     // Konsultant biurowy (role='internal') ląduje na /internal (HR Hub) — to jego landing,
     // bo nie ma dostępu do platform features (learning/league/incubator/news/support).
     redirect(role === 'internal' ? '/internal' : '/home')
-}
-
-export async function verifyMfaAction(userId: string, code: string) {
-    const result = await verifyMFACode(userId, code)
-    if (result.error) {
-        return { error: result.error }
-    }
-
-    // Set cookie to remember MFA verification for this session
-    // We use a simple cookie strictly for the middleware/layout check
-    cookies().set('mfa_verified', 'true', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 30 // 30 minutes session per spec
-    })
-
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    await logLoginAttempt(user?.email || 'unknown', true)
-    await logAudit(userId, 'LOGIN', { method: 'MFA' })
-
-    // Redirect based on role (we need to fetch role again or pass it)
-    // For safety, fetch again
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single()
-    const role = profile?.role
-
-    if (role === 'consultant') {
-        redirect('/home')
-    } else {
-        redirect('/home')
-    }
 }
 
 export async function signup(formData: FormData) {

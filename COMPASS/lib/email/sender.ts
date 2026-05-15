@@ -1,4 +1,10 @@
-import { logCompat } from '@/lib/logger'
+import * as Sentry from '@sentry/nextjs'
+import { logCompat, logger } from '@/lib/logger'
+import {
+    extractGraphErrorInfo,
+    getGraphClient,
+    isRetryableGraphStatus,
+} from '@/lib/graph/client'
 // Phase 17b PR-E — Email provider abstraction.
 //
 // Note: not marked 'server-only' because lib/email.ts imports this and is
@@ -32,6 +38,13 @@ export interface EmailMessage {
     html: string
     /** Optional override; otherwise uses MAIL_FROM env var. */
     from?: string
+    /**
+     * When true, Graph saves the sent message to the sender mailbox's Sent Items
+     * folder. Use for compliance-relevant templates (leave decision, timesheet
+     * decision, role change, broadcast). Default false to keep the shared mailbox
+     * clean from transactional reminders/alerts.
+     */
+    saveToSentItems?: boolean
 }
 
 export interface SendResult {
@@ -68,43 +81,19 @@ async function getResend(): Promise<Resend> {
     return _resend
 }
 
-interface GraphLike {
-    api: (path: string) => {
-        post: (body: unknown) => Promise<unknown>
-    }
+// ─── Retry helpers ───────────────────────────────────────────────────────────
+
+const MAX_GRAPH_ATTEMPTS = 3
+const BASE_BACKOFF_MS = 1000
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-let _graphClient: GraphLike | null = null
-async function getGraphClient(): Promise<GraphLike> {
-    if (_graphClient) return _graphClient
-    const tenantId = process.env.AZURE_TENANT_ID
-    const clientId = process.env.AZURE_CLIENT_ID
-    const clientSecret = process.env.AZURE_CLIENT_SECRET
-    if (!tenantId || !clientId || !clientSecret) {
-        throw new Error(
-            'Microsoft Graph: AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET wymagane.',
-        )
-    }
-    // Imports are dynamic so the bundle does not pull MS Graph SDK on Resend-only deploys.
-    const [{ Client }, { ClientSecretCredential }] = await Promise.all([
-        import('@microsoft/microsoft-graph-client'),
-        import('@azure/identity'),
-    ])
-    // @ts-expect-error -- isomorphic-fetch has no type declarations; only side-effect import for global fetch polyfill
-    await import('isomorphic-fetch')
-
-    const credential = new ClientSecretCredential(tenantId, clientId, clientSecret)
-    _graphClient = Client.init({
-        authProvider: async (done: (err: Error | null, token: string | null) => void) => {
-            try {
-                const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default')
-                done(null, tokenResponse?.token ?? null)
-            } catch (e) {
-                done(e as Error, null)
-            }
-        },
-    }) as unknown as GraphLike
-    return _graphClient
+/** Recipient domain only, for RODO-safe Sentry tagging. */
+function recipientDomain(addr: string): string {
+    const idx = addr.indexOf('@')
+    return idx === -1 ? 'unknown' : addr.slice(idx + 1).toLowerCase()
 }
 
 // ─── Provider implementations ────────────────────────────────────────────────
@@ -136,30 +125,70 @@ async function sendViaResend(msg: EmailMessage): Promise<SendResult> {
  * allowed. We default to MAIL_FROM env var which should match the policy.
  */
 async function sendViaGraph(msg: EmailMessage): Promise<SendResult> {
-    try {
-        const client = await getGraphClient()
-        // Graph requires a REAL mailbox in the tenant as sender. The hardcoded
-        // `from` in legacy templates (noreply@compass.b2bnetwork.pl, a Resend-only
-        // subdomain) is invalid here. Always use MAIL_FROM env var when set, falling
-        // back to msg.from only when MAIL_FROM is missing (Resend backwards compat).
-        const fromHeader = process.env.MAIL_FROM ?? msg.from ?? getDefaultFrom()
-        const fromAddress = fromHeader.replace(/^.*<([^>]+)>.*$/, '$1').trim() // strip "Name <addr>" → "addr"
-        await client
-            .api(`/users/${encodeURIComponent(fromAddress)}/sendMail`)
-            .post({
-                message: {
-                    subject: msg.subject,
-                    body: { contentType: 'HTML', content: msg.html },
-                    toRecipients: [{ emailAddress: { address: msg.to } }],
-                },
-                // Don't save to Sent Items — keeps shared mailbox clean for transactional traffic
-                saveToSentItems: false,
-            })
-        return { success: true }
-    } catch (err) {
-        const message = err instanceof Error ? err.message : 'unknown_graph_error'
-        return { success: false, error: message }
+    const client = await getGraphClient().catch((err) => {
+        // Graph client setup failed (credentials missing, network) — not retryable
+        return { _setupErr: err }
+    })
+    if ('_setupErr' in client) {
+        const err = (client as { _setupErr: unknown })._setupErr
+        return {
+            success: false,
+            error: err instanceof Error ? err.message : 'unknown_graph_setup_error',
+        }
     }
+
+    // Graph requires a REAL mailbox in the tenant as sender. The hardcoded
+    // `from` in legacy templates (noreply@compass.b2bnetwork.pl, a Resend-only
+    // subdomain) is invalid here. Always use MAIL_FROM env var when set, falling
+    // back to msg.from only when MAIL_FROM is missing (Resend backwards compat).
+    const fromHeader = process.env.MAIL_FROM ?? msg.from ?? getDefaultFrom()
+    const fromAddress = fromHeader.replace(/^.*<([^>]+)>.*$/, '$1').trim() // strip "Name <addr>" → "addr"
+    const payload = {
+        message: {
+            subject: msg.subject,
+            body: { contentType: 'HTML', content: msg.html },
+            toRecipients: [{ emailAddress: { address: msg.to } }],
+        },
+        // Compliance-relevant templates (leave/timesheet/role decision, broadcast)
+        // opt in via msg.saveToSentItems = true. Default false keeps the shared
+        // mailbox clean from reminders/alerts.
+        saveToSentItems: msg.saveToSentItems ?? false,
+    }
+
+    let lastErr: unknown = null
+    for (let attempt = 1; attempt <= MAX_GRAPH_ATTEMPTS; attempt++) {
+        try {
+            await client
+                .api(`/users/${encodeURIComponent(fromAddress)}/sendMail`)
+                .post(payload)
+            return { success: true }
+        } catch (err) {
+            lastErr = err
+            const { statusCode, retryAfterMs } = extractGraphErrorInfo(err)
+            const retryable = isRetryableGraphStatus(statusCode)
+            const moreAttempts = attempt < MAX_GRAPH_ATTEMPTS
+
+            if (!retryable || !moreAttempts) {
+                break
+            }
+
+            const backoff =
+                retryAfterMs ??
+                BASE_BACKOFF_MS * Math.pow(2, attempt - 1) // 1s, 2s, 4s
+            logger.warn({
+                event: 'email.graph.retry',
+                attempt,
+                statusCode,
+                backoffMs: backoff,
+                recipientDomain: recipientDomain(msg.to),
+            })
+            await sleep(backoff)
+        }
+    }
+
+    const message =
+        lastErr instanceof Error ? lastErr.message : 'unknown_graph_error'
+    return { success: false, error: message }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -179,6 +208,19 @@ export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
             to: msg.to,
             subject: msg.subject,
             error: result.error,
+        })
+        // RODO-safe Sentry capture: never include recipient address or message
+        // content (subject can leak PII like names). Tag with provider +
+        // recipient domain only so we can pivot in Sentry UI.
+        Sentry.captureMessage(`email_send_failed:${provider}`, {
+            level: 'error',
+            tags: {
+                provider,
+                recipient_domain: recipientDomain(msg.to),
+            },
+            extra: {
+                error: result.error,
+            },
         })
     }
     return result

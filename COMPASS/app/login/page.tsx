@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader } from '@/co
 import { AlertCircle, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
 import Link from 'next/link'
-import { login, signup, verifyMfaAction, signInWithMicrosoft } from './actions'
+import { login, signup, signInWithMicrosoft } from './actions'
 
 // ─── Loading Step Messages ──────────────────────────────────────────────────
 const LOADING_STEPS = [
@@ -26,6 +26,12 @@ export default function LoginPage() {
     // Show/Hide password
     const [showPassword, setShowPassword] = useState(false)
 
+    // PR5a: pracownicy biura (@b2bnetwork.pl) muszą logować się przez SSO.
+    // Track wpisany email żeby dynamicznie ukryć password field.
+    const [typedEmail, setTypedEmail] = useState('')
+    const requiresSso =
+        !isSignUp && typedEmail.toLowerCase().trim().endsWith('@b2bnetwork.pl')
+
     // Shake animation
     const [shaking, setShaking] = useState(false)
     const cardRef = useRef<HTMLDivElement>(null)
@@ -41,10 +47,6 @@ export default function LoginPage() {
     // Success overlay
     const [showSuccessOverlay, setShowSuccessOverlay] = useState(false)
 
-    // MFA State (setMfaUserId used when login returns mfa_required)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter kept for MFA flow
-    const [mfaUserId, setMfaUserId] = useState<string | null>(null)
-    const [mfaCode, setMfaCode] = useState('')
 
     // Detect desktop for opening links in new tab
     const [isDesktop, setIsDesktop] = useState(false)
@@ -151,23 +153,6 @@ export default function LoginPage() {
         setLoading(false)
     }
 
-    // ─── MFA Submit ─────────────────────────────────────────────────────
-    async function handleMfaSubmit() {
-        if (!mfaUserId || !mfaCode) return
-        setLoading(true)
-        setError(null)
-        startLoadingSteps()
-
-        const result = await verifyMfaAction(mfaUserId, mfaCode)
-        if (result?.error) {
-            stopLoadingSteps()
-            setError(result.error)
-            triggerShake()
-            setLoading(false)
-        }
-        // Redirect handled by server action if success
-    }
-
     return (
         <div className="flex min-h-screen items-center justify-center bg-background px-4 relative overflow-hidden">
             {/* 1. Animated gradient mesh background */}
@@ -223,8 +208,7 @@ export default function LoginPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {!mfaUserId ? (
-                        <form action={handleSubmit} className="space-y-4">
+                    <form action={handleSubmit} className="space-y-4">
                             {/* Email field */}
                             <div className="space-y-2">
                                 <Label htmlFor="email">Email</Label>
@@ -236,11 +220,19 @@ export default function LoginPage() {
                                     required
                                     disabled={loading}
                                     data-testid="login-email"
+                                    value={typedEmail}
+                                    onChange={(e) => setTypedEmail(e.target.value)}
                                     className="login-input-glow transition-all duration-200"
                                 />
                                 {isSignUp && (
                                     <p className="text-xs text-muted-foreground/80">
                                         Rejestracja dostępna tylko dla email z domeny <span className="font-mono text-foreground/90">@b2bnetwork.pl</span>.
+                                    </p>
+                                )}
+                                {requiresSso && (
+                                    <p className="text-xs text-primary/90 bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
+                                        Pracownicy biura logują się przez Microsoft 365.
+                                        Kliknij <strong>Zaloguj przez Microsoft 365</strong> poniżej.
                                     </p>
                                 )}
                             </div>
@@ -277,7 +269,10 @@ export default function LoginPage() {
                                 </div>
                             )}
 
-                            {/* Password field with show/hide toggle */}
+                            {/* Password field with show/hide toggle.
+                                PR5a: hidden when typed email is @b2bnetwork.pl
+                                (those users login via Microsoft SSO only). */}
+                            {!requiresSso && (
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <Label htmlFor="password">Hasło</Label>
@@ -316,6 +311,7 @@ export default function LoginPage() {
                                 </div>
                                 {isSignUp && <p className="text-xs text-muted-foreground">Min. 10 znaków, 1 duża litera, 1 cyfra.</p>}
                             </div>
+                            )}
 
                             {/* Error message with animation */}
                             {error && (
@@ -344,11 +340,13 @@ export default function LoginPage() {
                                 </div>
                             )}
 
-                            {/* Submit button */}
-                            <Button type="submit" className="w-full" disabled={loading} data-testid="login-submit">
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {isSignUp ? 'Zarejestruj się' : 'Zaloguj się'}
-                            </Button>
+                            {/* Submit button — hidden when SSO required */}
+                            {!requiresSso && (
+                                <Button type="submit" className="w-full" disabled={loading} data-testid="login-submit">
+                                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    {isSignUp ? 'Zarejestruj się' : 'Zaloguj się'}
+                                </Button>
+                            )}
 
                             {/* Loading status text */}
                             {loading && statusText && (
@@ -391,47 +389,6 @@ export default function LoginPage() {
                                 </>
                             )}
                         </form>
-                    ) : (
-                        /* ─── MFA Section ─────────────────────────────────── */
-                        <div className="space-y-4">
-                            <div className="text-center space-y-2">
-                                <div className="bg-primary/10 w-12 h-12 rounded-full flex items-center justify-center mx-auto text-primary">
-                                    <AlertCircle className="h-6 w-6" />
-                                </div>
-                                <h3 className="font-semibold text-lg">Weryfikacja dwuetapowa</h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Wysłaliśmy kod weryfikacyjny na Twój adres email. Wpisz go poniżej, aby kontynuować.
-                                </p>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="code">Kod weryfikacyjny</Label>
-                                <Input
-                                    id="code"
-                                    value={mfaCode}
-                                    onChange={(e) => setMfaCode(e.target.value)}
-                                    placeholder="123456"
-                                    className="text-center text-lg tracking-widest login-input-glow transition-all duration-200"
-                                    maxLength={6}
-                                    disabled={loading}
-                                />
-                            </div>
-                            {error && (
-                                <div className="login-msg-enter flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
-                                    <AlertCircle className="h-4 w-4 shrink-0" />
-                                    <span>{error}</span>
-                                </div>
-                            )}
-                            <Button onClick={handleMfaSubmit} className="w-full" disabled={loading || mfaCode.length < 6}>
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Potwierdź
-                            </Button>
-                            {loading && statusText && (
-                                <p className="text-center text-xs text-muted-foreground login-status-pulse">
-                                    {statusText}
-                                </p>
-                            )}
-                        </div>
-                    )}
                 </CardContent>
                 <CardFooter className="flex flex-col space-y-2 text-center text-xs text-muted-foreground">
                     {/* Self-signup disabled — nowe konta wyłącznie przez admin invite (/admin/settings/users). */}

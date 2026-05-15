@@ -71,10 +71,9 @@ export default async function ProtectedLayout({
 
         const role = (profile?.role as 'consultant' | 'admin' | 'internal' | 'finanse') || 'consultant'
 
-        if (role === 'admin') {
-            const mfaVerified = cookies().get('mfa_verified')?.value === 'true'
-            if (!mfaVerified) redirect('/login')
-        }
+        // PR5b: usunięto cookie-based MFA check dla admin (lib/mfa.ts).
+        // Microsoft Entra Conditional Access przejmuje wymuszanie MFA na
+        // poziomie Azure dla wszystkich @b2bnetwork.pl (PR5a + Cfg).
 
         // Internal employees inherit consultant feature flags (no admin elevation
         // for platform features; HR-zone access is gated by canAccessInternalZone).

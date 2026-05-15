@@ -1,6 +1,7 @@
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { sendTimesheetReminder, type TimesheetReminderPhase } from '@/lib/email'
+import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { withCronAuth } from '@/lib/api/with-auth'
 
 export const dynamic = 'force-dynamic'
@@ -95,6 +96,25 @@ export const GET = withCronAuth(async (request, { admin }) => {
         (e: { id: string; email: string | null; employment_type: string | null }) =>
             !!e.email && !submittedSet.has(e.id) && e.employment_type !== 'b2b',
     ) as Array<{ id: string; full_name: string | null; email: string }>
+
+    // PR3: batch Teams alert before sending individual emails (only when
+    // there are pending users — skip noise when everyone's already submitted).
+    if (targets.length > 0) {
+        const monthLabel = `${targetYear}-${String(targetMonth).padStart(2, '0')}`
+        const phaseColor =
+            phase === 'final' ? 'EF4444' : phase === 'wed-warning' ? 'F59E0B' : '3B82F6'
+        postToTeamsAlert({
+            title: `Timesheet reminder ${phase} — ${monthLabel}`,
+            text: `${targets.length} ${targets.length === 1 ? 'osoba nie złożyła' : 'osób nie złożyło'} jeszcze timesheetu za ${monthLabel}.`,
+            themeColor: phaseColor,
+            facts: [
+                { name: 'Faza', value: phase },
+                { name: 'Miesiąc', value: monthLabel },
+                { name: 'Zaległych', value: String(targets.length) },
+            ],
+            actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=timesheets`,
+        }).catch((e) => logCompat.error('[timesheet-reminder] teams alert failed:', e))
+    }
 
     let sent = 0
     let failed = 0

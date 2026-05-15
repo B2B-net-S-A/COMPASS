@@ -10,6 +10,8 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendLeaveCancelledByUser, sendLeaveDecision, sendLeaveRequestSubmitted } from '@/lib/email'
+import { createLeaveEvent, deleteLeaveEvent } from '@/lib/calendar/graph-events'
+import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { totalVacationDaysUsed, type LeaveSpan } from '@/lib/hr/leave-balance'
 import { workingDaysBetween, type PublicHolidayDate } from '@/lib/hr/working-days'
@@ -211,7 +213,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
 
     const { data: row, error: fetchErr } = await supabase
         .from('leave_requests')
-        .select('id, user_id, status, start_date, end_date, leave_type')
+        .select('id, user_id, status, start_date, end_date, leave_type, outlook_event_id')
         .eq('id', id)
         .single<{
             id: string
@@ -220,6 +222,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
             start_date: string
             end_date: string
             leave_type: LeaveType
+            outlook_event_id: string | null
         }>()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
     if (row.user_id !== ctx.userId) throw new Error('To nie jest Twój wniosek.')
@@ -255,6 +258,14 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
         await syncAttendanceFromLeave(id, row.user_id, 'remove').catch((e) =>
             logCompat.error('[cancelMyLeaveRequest] attendance cleanup failed:', e),
         )
+
+        // PR2: remove Outlook calendar event (best-effort, never blocks cancel).
+        if (row.outlook_event_id) {
+            deleteLeaveEvent({
+                userEmail: ctx.email,
+                eventId: row.outlook_event_id,
+            }).catch((e) => logCompat.error('[cancelMyLeaveRequest] calendar delete failed:', e))
+        }
 
         await logAudit(ctx.userId, 'LEAVE_CANCELLED', {
             leave_id: id,
@@ -447,6 +458,26 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
             row.end_date,
             decisionNote,
         ).catch((e) => logCompat.error('[approveLeaveRequest] notify failed:', e))
+
+        // PR2: Outlook calendar event. Soft fail — never blocks approve.
+        // Persist eventId for later delete (cancel/reject after approve).
+        createLeaveEvent({
+            userEmail: userInfo.email,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            leaveType: row.leave_type,
+            note: decisionNote,
+            transactionId: `leave-${id}`,
+        })
+            .then(async (r) => {
+                if (r.success && r.eventId) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ outlook_event_id: r.eventId })
+                        .eq('id', id)
+                }
+            })
+            .catch((e) => logCompat.error('[approveLeaveRequest] calendar push failed:', e))
     }
     // H3.3: Push notification (fire-and-forget)
     sendPushToUserId(row.user_id, {
@@ -455,6 +486,19 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
         url: '/internal?tab=leave',
         tag: `leave-${id}`,
     }).catch((e) => logCompat.error('[approveLeaveRequest] push failed:', e))
+
+    // PR3: Teams alert (#compass-alerts channel). Fire-and-forget.
+    postToTeamsAlert({
+        title: 'Urlop zatwierdzony',
+        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
+        themeColor: '22C55E',
+        facts: [
+            { name: 'Typ', value: row.leave_type },
+            { name: 'Decyzja', value: 'Zatwierdzony' },
+            ...(decisionNote ? [{ name: 'Komentarz', value: decisionNote }] : []),
+        ],
+        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
+    }).catch((e) => logCompat.error('[approveLeaveRequest] teams alert failed:', e))
 }
 
 export async function rejectLeaveRequest(id: string, decisionNote: string): Promise<void> {
@@ -466,9 +510,9 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
 
     const { data: row, error: fetchErr } = await admin
         .from('leave_requests')
-        .select('id, user_id, leave_type, start_date, end_date, status')
+        .select('id, user_id, leave_type, start_date, end_date, status, outlook_event_id')
         .eq('id', id)
-        .single<Pick<LeaveRequestRow, 'id' | 'user_id' | 'leave_type' | 'start_date' | 'end_date' | 'status'>>()
+        .single<Pick<LeaveRequestRow, 'id' | 'user_id' | 'leave_type' | 'start_date' | 'end_date' | 'status'> & { outlook_event_id: string | null }>()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'pending') {
         throw new Error(`Nie można odrzucić wniosku w statusie ${row.status}.`)
@@ -498,6 +542,16 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
             row.end_date,
             decisionNote,
         ).catch((e) => logCompat.error('[rejectLeaveRequest] notify failed:', e))
+
+        // PR2: cleanup Outlook event (defensive — rejects normally happen
+        // from 'pending' so event shouldn't exist, but if admin approved
+        // then changed mind and rejected via a different path, remove).
+        if (row.outlook_event_id) {
+            deleteLeaveEvent({
+                userEmail: userInfo.email,
+                eventId: row.outlook_event_id,
+            }).catch((e) => logCompat.error('[rejectLeaveRequest] calendar delete failed:', e))
+        }
     }
     // H3.3: Push (fire-and-forget)
     sendPushToUserId(row.user_id, {
@@ -506,6 +560,19 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
         url: '/internal?tab=leave',
         tag: `leave-${id}`,
     }).catch((e) => logCompat.error('[rejectLeaveRequest] push failed:', e))
+
+    // PR3: Teams alert
+    postToTeamsAlert({
+        title: 'Urlop odrzucony',
+        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
+        themeColor: 'F59E0B',
+        facts: [
+            { name: 'Typ', value: row.leave_type },
+            { name: 'Decyzja', value: 'Odrzucony' },
+            { name: 'Powód', value: decisionNote.slice(0, 200) },
+        ],
+        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
+    }).catch((e) => logCompat.error('[rejectLeaveRequest] teams alert failed:', e))
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────

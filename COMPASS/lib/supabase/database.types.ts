@@ -1419,6 +1419,7 @@ export type Database = {
           id: string
           leave_type: string
           note: string | null
+          outlook_event_id: string | null
           start_date: string
           status: string
           updated_at: string
@@ -1435,6 +1436,7 @@ export type Database = {
           id?: string
           leave_type: string
           note?: string | null
+          outlook_event_id?: string | null
           start_date: string
           status?: string
           updated_at?: string
@@ -1451,6 +1453,7 @@ export type Database = {
           id?: string
           leave_type?: string
           note?: string | null
+          outlook_event_id?: string | null
           start_date?: string
           status?: string
           updated_at?: string
@@ -1818,6 +1821,7 @@ export type Database = {
           current_status: string | null
           cv_url: string | null
           default_location: string | null
+          department: string | null
           desired_rate_max: number | null
           desired_rate_min: number | null
           education: Json | null
@@ -1832,6 +1836,7 @@ export type Database = {
           github_url: string | null
           id: string
           is_inbox_handler: boolean
+          job_title: string | null
           languages: string[] | null
           leaderboard_opt_out: boolean
           learning_streak_current: number
@@ -1842,9 +1847,12 @@ export type Database = {
           loyalty_joined_at: string | null
           loyalty_points: number | null
           loyalty_tier: Database["public"]["Enums"]["loyalty_tier_t"]
+          m365_synced_at: string | null
+          manager_email: string | null
           max_monthly_hours: number | null
           onboarding_completed: boolean
           onboarding_tour_done: boolean
+          phone: string | null
           portfolio_url: string | null
           preferred_language: string | null
           previous_clients: string[] | null
@@ -1869,6 +1877,7 @@ export type Database = {
           current_status?: string | null
           cv_url?: string | null
           default_location?: string | null
+          department?: string | null
           desired_rate_max?: number | null
           desired_rate_min?: number | null
           education?: Json | null
@@ -1883,6 +1892,7 @@ export type Database = {
           github_url?: string | null
           id: string
           is_inbox_handler?: boolean
+          job_title?: string | null
           languages?: string[] | null
           leaderboard_opt_out?: boolean
           learning_streak_current?: number
@@ -1893,9 +1903,12 @@ export type Database = {
           loyalty_joined_at?: string | null
           loyalty_points?: number | null
           loyalty_tier?: Database["public"]["Enums"]["loyalty_tier_t"]
+          m365_synced_at?: string | null
+          manager_email?: string | null
           max_monthly_hours?: number | null
           onboarding_completed?: boolean
           onboarding_tour_done?: boolean
+          phone?: string | null
           portfolio_url?: string | null
           preferred_language?: string | null
           previous_clients?: string[] | null
@@ -1920,6 +1933,7 @@ export type Database = {
           current_status?: string | null
           cv_url?: string | null
           default_location?: string | null
+          department?: string | null
           desired_rate_max?: number | null
           desired_rate_min?: number | null
           education?: Json | null
@@ -1934,6 +1948,7 @@ export type Database = {
           github_url?: string | null
           id?: string
           is_inbox_handler?: boolean
+          job_title?: string | null
           languages?: string[] | null
           leaderboard_opt_out?: boolean
           learning_streak_current?: number
@@ -1944,9 +1959,12 @@ export type Database = {
           loyalty_joined_at?: string | null
           loyalty_points?: number | null
           loyalty_tier?: Database["public"]["Enums"]["loyalty_tier_t"]
+          m365_synced_at?: string | null
+          manager_email?: string | null
           max_monthly_hours?: number | null
           onboarding_completed?: boolean
           onboarding_tour_done?: boolean
+          phone?: string | null
           portfolio_url?: string | null
           preferred_language?: string | null
           previous_clients?: string[] | null
