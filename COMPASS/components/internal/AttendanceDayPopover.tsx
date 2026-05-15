@@ -22,11 +22,9 @@ interface Props {
 const STATUS_OPTIONS: ReadonlyArray<{ value: AttendanceStatus; label: string }> = [
     { value: 'active', label: 'Pracuję' },
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'sick_leave', label: 'L4 / chorobowe' },
     { value: 'parental_leave', label: 'Opieka rodzicielska' },
     { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
     { value: 'business_trip', label: 'Delegacja' },
-    { value: 'training', label: 'Szkolenie / konferencja' },
     { value: 'other', label: 'Inne' },
 ]
 
