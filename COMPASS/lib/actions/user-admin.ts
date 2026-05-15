@@ -22,6 +22,10 @@ export interface UserAdminItem {
     has_logged_in: boolean
     is_banned: boolean
     is_super_admin: boolean
+    // Phase 20f
+    manager_id: string | null
+    manager_full_name: string | null
+    manager_email: string | null
 }
 
 export interface ListAllUsersInput {
@@ -93,8 +97,8 @@ export async function listAllUsers(input?: ListAllUsersInput): Promise<ListAllUs
         })
         if (error) throw new Error(`Błąd pobierania listy: ${error.message}`)
 
-        const profileMap = await fetchProfilesForUsers(list.users.map((u) => u.id))
-        const allItems = list.users.map((u) => mapUser(u, profileMap.get(u.id), superAdmins))
+        const { profiles: profileMap, managers } = await fetchProfilesForUsers(list.users.map((u) => u.id))
+        const allItems = list.users.map((u) => mapUser(u, profileMap.get(u.id), superAdmins, managers))
 
         const filtered = allItems.filter((it) => {
             return (
@@ -116,8 +120,8 @@ export async function listAllUsers(input?: ListAllUsersInput): Promise<ListAllUs
     })
     if (error) throw new Error(`Błąd pobierania listy: ${error.message}`)
 
-    const profileMap = await fetchProfilesForUsers(list.users.map((u) => u.id))
-    const items = list.users.map((u) => mapUser(u, profileMap.get(u.id), superAdmins))
+    const { profiles: profileMap, managers } = await fetchProfilesForUsers(list.users.map((u) => u.id))
+    const items = list.users.map((u) => mapUser(u, profileMap.get(u.id), superAdmins, managers))
 
     // SDK exposes total via list.total (fallback: nextPage / lastPage hint, otherwise 0).
     const total = (list as unknown as { total?: number }).total ?? items.length
@@ -129,33 +133,60 @@ interface ProfileRow {
     full_name: string | null
     role: string | null
     avatar_url: string | null
+    manager_id: string | null
 }
 
-async function fetchProfilesForUsers(userIds: string[]): Promise<Map<string, ProfileRow>> {
-    if (userIds.length === 0) return new Map()
+interface ManagerRow {
+    id: string
+    full_name: string | null
+    email: string | null
+}
+
+async function fetchProfilesForUsers(userIds: string[]): Promise<{
+    profiles: Map<string, ProfileRow>
+    managers: Map<string, ManagerRow>
+}> {
+    if (userIds.length === 0) return { profiles: new Map(), managers: new Map() }
     const admin = createServiceClient()
     const { data, error } = await admin
         .from('profiles')
-        .select('id, full_name, role, avatar_url')
+        .select('id, full_name, role, avatar_url, manager_id')
         .in('id', userIds)
     if (error) {
         logCompat.error('[user-admin] Failed to fetch profiles:', error)
-        return new Map()
+        return { profiles: new Map(), managers: new Map() }
     }
-    const map = new Map<string, ProfileRow>()
+    const profiles = new Map<string, ProfileRow>()
+    const managerIds = new Set<string>()
     for (const row of data ?? []) {
-        map.set(row.id, row as ProfileRow)
+        const pr = row as ProfileRow
+        profiles.set(pr.id, pr)
+        if (pr.manager_id) managerIds.add(pr.manager_id)
     }
-    return map
+
+    // Phase 20f: dociągnij dane managerów (full_name + email) jednym SELECT.
+    const managers = new Map<string, ManagerRow>()
+    if (managerIds.size > 0) {
+        const { data: mgrData } = await admin
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', Array.from(managerIds))
+        for (const m of (mgrData ?? []) as ManagerRow[]) {
+            managers.set(m.id, m)
+        }
+    }
+    return { profiles, managers }
 }
 
 function mapUser(
     u: { id: string; email?: string; created_at: string; last_sign_in_at?: string | null; banned_until?: string | null },
     profile: ProfileRow | undefined,
-    superAdmins: readonly string[]
+    superAdmins: readonly string[],
+    managers: Map<string, ManagerRow>
 ): UserAdminItem {
     const email = u.email ?? ''
     const isBanned = !!u.banned_until && new Date(u.banned_until).getTime() > Date.now()
+    const manager = profile?.manager_id ? managers.get(profile.manager_id) : undefined
     return {
         id: u.id,
         email,
@@ -167,6 +198,9 @@ function mapUser(
         has_logged_in: !!u.last_sign_in_at,
         is_banned: isBanned,
         is_super_admin: !!email && superAdmins.includes(email.toLowerCase()),
+        manager_id: profile?.manager_id ?? null,
+        manager_full_name: manager?.full_name ?? null,
+        manager_email: manager?.email ?? null,
     }
 }
 
