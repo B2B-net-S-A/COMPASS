@@ -127,7 +127,7 @@ export function MobileMenu({ role }: MobileMenuProps) {
                             )
                         })}
                     </nav>
-                    {(role === 'admin' || role === 'internal') && (
+                    {(role === 'admin' || role === 'internal' || role === 'finanse') && (
                         <div className="border-t pt-4 pb-2">
                             <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                                 {t('group_internal')}
@@ -150,23 +150,17 @@ export function MobileMenu({ role }: MobileMenuProps) {
                                     {t('nav_internal_admin_hub')}
                                 </Link>
                             )}
-                        </div>
-                    )}
-
-                    {/* Phase 19a — Finanse: dedicated link to invoice-review panel */}
-                    {role === 'finanse' && (
-                        <div className="border-t pt-4 pb-2">
-                            <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                                Finanse
-                            </p>
-                            <Link
-                                href="/internal/admin?tab=invoices"
-                                onClick={() => setMoreOpen(false)}
-                                className="mt-2 flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
-                            >
-                                <Users className="h-5 w-5" />
-                                Faktury do akceptacji
-                            </Link>
+                            {/* Phase 19a/d — Finanse: dedicated link to invoice-review panel. */}
+                            {role === 'finanse' && (
+                                <Link
+                                    href="/internal/admin?tab=invoices"
+                                    onClick={() => setMoreOpen(false)}
+                                    className="flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                                >
+                                    <Users className="h-5 w-5" />
+                                    Faktury do akceptacji
+                                </Link>
+                            )}
                         </div>
                     )}
 

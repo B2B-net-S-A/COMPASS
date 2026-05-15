@@ -141,7 +141,7 @@ afterEach(() => {
 })
 
 describe('submitInvoice', () => {
-    it('rejects non-internal roles', async () => {
+    it('rejects consultant role', async () => {
         authContextMock.role = 'consultant'
         await expect(
             submitInvoice(
@@ -154,6 +154,15 @@ describe('submitInvoice', () => {
                 makePdfFile(),
             ),
         ).rejects.toThrow(/pracownicy biurowi/i)
+    })
+
+    it('Phase 19d: accepts finanse role (b2b HR-parity with internal)', async () => {
+        authContextMock.role = 'finanse'
+        const row = await submitInvoice(
+            { invoice_number: 'FV/FIN/001', amount: 1234, period_year: 2026, period_month: 5 },
+            makePdfFile(),
+        )
+        expect(row.id).toBe('inv-1')
     })
 
     it('rejects non-PDF MIME', async () => {
@@ -220,22 +229,30 @@ describe('approveInvoice', () => {
         await expect(approveInvoice('inv-1')).rejects.toThrow(/Wymagane uprawnienia/)
     })
 
-    it('allows finanse role', async () => {
+    it('allows finanse role for OTHER user invoice', async () => {
         authContextMock.role = 'finanse'
-        // Returns void, just expect no throw
+        authContextMock.userId = 'user-finance-2'  // different from invoice owner 'user-1'
         await expect(approveInvoice('inv-1')).resolves.toBeUndefined()
     })
 
     it('allows admin role', async () => {
         authContextMock.role = 'admin'
         authContextMock.isAdmin = true
+        authContextMock.userId = 'admin-1'
         await expect(approveInvoice('inv-1')).resolves.toBeUndefined()
+    })
+
+    it('Phase 19d: blocks self-approval (finanse cannot approve own invoice)', async () => {
+        authContextMock.role = 'finanse'
+        authContextMock.userId = 'user-1'  // same as invoice owner
+        await expect(approveInvoice('inv-1')).rejects.toThrow(/własnej faktury/)
     })
 })
 
 describe('rejectInvoice', () => {
     beforeEach(() => {
         authContextMock.role = 'finanse'
+        authContextMock.userId = 'user-finance-2'  // different from invoice owner
     })
 
     it('requires a reason', async () => {
@@ -244,5 +261,10 @@ describe('rejectInvoice', () => {
 
     it('accepts a valid reason', async () => {
         await expect(rejectInvoice('inv-1', 'Kwota nie pasuje do godzin')).resolves.toBeUndefined()
+    })
+
+    it('Phase 19d: blocks self-reject (finanse cannot reject own invoice)', async () => {
+        authContextMock.userId = 'user-1'  // same as invoice owner
+        await expect(rejectInvoice('inv-1', 'cokolwiek')).rejects.toThrow(/własnej faktury/)
     })
 })

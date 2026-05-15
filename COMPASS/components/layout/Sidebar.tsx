@@ -137,7 +137,8 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    // Phase 19a: dedicated invoice-review group for Finanse role.
+    // Phase 19a/d: dedicated invoice-review group for Finanse role.
+    // Phase 19d: finanse has internal-parity, so they see the HR Hub like internal employees.
     const financeGroup: NavGroup = {
         heading: 'Finanse',
         links: [
@@ -147,7 +148,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
 
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
-        if (isAdmin || isInternal) out.push(internalGroup)
+        if (isAdmin || isInternal || isFinance) out.push(internalGroup)
         if (isAdmin) out.push(internalAdminGroup, adminGroup)
         if (isFinance) out.push(financeGroup)
         return out
