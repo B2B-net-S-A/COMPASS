@@ -1813,6 +1813,7 @@ export type Database = {
           ambassador_status: string | null
           annual_leave_days: number | null
           available_from: string | null
+          avatar_source: string | null
           avatar_url: string | null
           bio: string | null
           certifications: Json | null
@@ -1869,6 +1870,7 @@ export type Database = {
           ambassador_status?: string | null
           annual_leave_days?: number | null
           available_from?: string | null
+          avatar_source?: string | null
           avatar_url?: string | null
           bio?: string | null
           certifications?: Json | null
@@ -1925,6 +1927,7 @@ export type Database = {
           ambassador_status?: string | null
           annual_leave_days?: number | null
           available_from?: string | null
+          avatar_source?: string | null
           avatar_url?: string | null
           bio?: string | null
           certifications?: Json | null
