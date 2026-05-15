@@ -96,7 +96,6 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                                         <th className="text-left py-2 pr-2 font-medium">Rola</th>
                                         <th className="text-left py-2 pr-2 font-medium">Manager</th>
                                         <th className="text-left py-2 pr-2 font-medium">Lokalizacja</th>
-                                        <th className="text-left py-2 pr-2 font-medium">Umowa</th>
                                         <th className="text-left py-2 pr-2 font-medium">Od</th>
                                         <th className="text-right py-2 pl-2 font-medium">Akcje</th>
                                     </tr>
@@ -136,9 +135,6 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                                             </td>
                                             <td className="py-2 pr-2 text-xs">
                                                 {e.default_location === 'remote' ? 'Zdalnie' : 'Biuro'}
-                                            </td>
-                                            <td className="py-2 pr-2 text-xs">
-                                                {e.employment_type === 'b2b' ? 'B2B' : e.employment_type === 'uop' ? 'UoP' : '—'}
                                             </td>
                                             <td className="py-2 pr-2 text-xs">
                                                 {e.work_start_date ?? '—'}
