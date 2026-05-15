@@ -56,9 +56,10 @@ export default async function HomePage() {
     if (profile?.role === 'internal') {
         redirect('/internal')
     }
-    // Phase 19a: Finanse user landing → invoice review panel, never /home.
+    // Phase 19a/d: Finanse landing → /internal (HR Hub jak internal). Faktury
+    // do akceptacji dostępne via sidebar "Finanse → Faktury do akceptacji".
     if (profile?.role === 'finanse') {
-        redirect('/internal/admin?tab=invoices')
+        redirect('/internal')
     }
 
     const isAdmin = (profile?.role as string) === 'admin'

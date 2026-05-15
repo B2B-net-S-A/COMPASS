@@ -75,12 +75,13 @@ export async function middleware(request: NextRequest) {
 
         // Konsultant biurowy (role='internal') i Finanse NIE widzą platform features.
         // Inverse guard po /internal check (admin nadal przechodzi do /home/learning/etc).
+        // Phase 19d: finanse landing = /internal (HR Hub jak internal — wystawia własny
+        // timesheet i widzi swoje faktury). Link "Faktury do akceptacji" w sidebar
+        // prowadzi do /internal/admin?tab=invoices.
         if (role === 'internal' || role === 'finanse') {
             const platformPaths = ['/home', '/learning', '/league', '/incubator', '/news', '/support']
             if (platformPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
-                // Finanse landing → /internal/admin?tab=invoices, internal → /internal
-                const landing = role === 'finanse' ? '/internal/admin?tab=invoices' : '/internal'
-                return NextResponse.redirect(new URL(landing, request.url))
+                return NextResponse.redirect(new URL('/internal', request.url))
             }
         }
 

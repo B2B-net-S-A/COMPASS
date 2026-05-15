@@ -239,8 +239,9 @@ export async function submitInvoice(
     file: File,
 ): Promise<InvoiceRow> {
     const ctx = await requireInternalOrAdminAction()
-    if (ctx.role !== 'internal' && !ctx.isAdmin) {
-        throw new Error('Tylko pracownicy biurowi mogą wystawiać faktury.')
+    // Phase 19d: finanse (jak internal) to b2b pracownik biurowy — może wystawiać faktury.
+    if (ctx.role !== 'internal' && ctx.role !== 'finanse' && !ctx.isAdmin) {
+        throw new Error('Tylko pracownicy biurowi (internal/finanse) mogą wystawiać faktury.')
     }
     validateSubmitInput(input)
     validateInvoiceFile(file)
@@ -572,6 +573,11 @@ export async function approveInvoice(invoiceId: string): Promise<void> {
     if (inv.status !== 'submitted') {
         throw new Error('Można zaakceptować tylko fakturę w statusie "submitted".')
     }
+    // Phase 19d: self-approval guard. Finanse może wystawiać własne faktury, ale
+    // nie może ich sam zatwierdzać — must be approved by another reviewer.
+    if (inv.user_id === ctx.userId) {
+        throw new Error('Nie możesz zaakceptować własnej faktury — poproś drugiego reviewera (admin lub finanse).')
+    }
 
     // Compute file hash from current file (audit-grade).
     let fileHash: string | null = null
@@ -638,6 +644,10 @@ export async function rejectInvoice(invoiceId: string, reason: string): Promise<
         .eq('id', invoiceId)
         .single<InvoiceRow>()
     if (fetchErr || !inv) throw new Error('Faktura nie istnieje.')
+    // Phase 19d: self-reject guard (symmetric to approve).
+    if (inv.user_id === ctx.userId) {
+        throw new Error('Nie możesz odrzucić własnej faktury — poproś drugiego reviewera (admin lub finanse).')
+    }
     if (inv.status !== 'submitted') {
         throw new Error('Można odrzucić tylko fakturę w statusie "submitted".')
     }
