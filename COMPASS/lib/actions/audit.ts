@@ -87,6 +87,17 @@ export type AuditAction =
     | 'BONUS_CANCELLED'
     | 'BONUS_LINKED_TO_INVOICE'
     | 'BONUS_UNLINKED'
+    // Phase 24 — Timesheet UX (templates, role defaults, CSV export, preview, archive)
+    | 'TIMESHEET_COPIED_FROM_PREVIOUS'
+    | 'TIMESHEET_APPLIED_DEFAULT'
+    | 'TIMESHEET_TEMPLATE_CREATED'
+    | 'TIMESHEET_TEMPLATE_UPDATED'
+    | 'TIMESHEET_TEMPLATE_DELETED'
+    | 'TIMESHEET_TEMPLATE_APPLIED'
+    | 'TIMESHEET_EXPORTED_CSV'
+    | 'ROLE_DEFAULT_CREATED'
+    | 'ROLE_DEFAULT_UPDATED'
+    | 'ROLE_DEFAULT_DELETED'
 
 export async function logAudit(
     userId: string | null,

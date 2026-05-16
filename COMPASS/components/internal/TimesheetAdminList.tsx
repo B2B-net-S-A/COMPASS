@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Check, X, FileDown, Loader2, Unlock } from 'lucide-react'
+import { Check, X, FileDown, Loader2, Unlock, Eye, UserCog, FileSpreadsheet } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import {
@@ -18,6 +18,9 @@ import {
     unlockTimesheet,
     type TimesheetWithEntriesAndUser,
 } from '@/lib/actions/internal-timesheet'
+import { TimesheetPreviewDialog } from './TimesheetPreviewDialog'
+import { EmployeeProfileDialog } from './EmployeeProfileDialog'
+import { TimesheetCSVExportDialog } from './TimesheetCSVExportDialog'
 
 interface Props {
     year: number
@@ -38,6 +41,10 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
     const [busyId, setBusyId] = useState<string | null>(null)
     const [rejectTarget, setRejectTarget] = useState<TimesheetWithEntriesAndUser | null>(null)
     const [rejectReason, setRejectReason] = useState('')
+    const [previewTarget, setPreviewTarget] = useState<TimesheetWithEntriesAndUser | null>(null)
+    const [profileUserId, setProfileUserId] = useState<string | null>(null)
+    const [csvDialogOpen, setCsvDialogOpen] = useState(false)
+    const [csvForUser, setCsvForUser] = useState<{ id: string; label: string } | null>(null)
 
     function getInitials(name: string | null, email: string) {
         if (name) return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -136,6 +143,19 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                 Pobierz ZIP
                             </Button>
                         </a>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                setCsvForUser(null)
+                                setCsvDialogOpen(true)
+                            }}
+                            disabled={pending}
+                            title="Eksport CSV z zakresem miesięcy (do księgowości)"
+                        >
+                            <FileSpreadsheet className="h-4 w-4 mr-2" />
+                            CSV
+                        </Button>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -149,7 +169,16 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                 const status = STATUS_BADGE[t.status]
                                 const busy = busyId === t.id
                                 return (
-                                    <div key={t.id} className="border rounded-lg p-4 flex flex-wrap items-start gap-3 justify-between">
+                                    <div
+                                        key={t.id}
+                                        className="border rounded-lg p-4 flex flex-wrap items-start gap-3 justify-between hover:bg-muted/30 transition-colors cursor-pointer"
+                                        onClick={(ev) => {
+                                            // Avoid opening preview when user clicks on a button or link in actions.
+                                            const target = ev.target as HTMLElement
+                                            if (target.closest('button, a')) return
+                                            setPreviewTarget(t)
+                                        }}
+                                    >
                                         <div className="flex items-start gap-3 flex-1 min-w-0">
                                             <Avatar className="h-9 w-9">
                                                 <AvatarFallback className="text-xs">
@@ -177,6 +206,26 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => setPreviewTarget(t)}
+                                                disabled={pending}
+                                                title="Podgląd szczegółów (dni + opisy)"
+                                            >
+                                                <Eye className="h-3.5 w-3.5 mr-1" />
+                                                Szczegóły
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => setProfileUserId(t.user_id)}
+                                                disabled={pending}
+                                                title="Profil HR pracownika (12 miesięcy)"
+                                            >
+                                                <UserCog className="h-3.5 w-3.5 mr-1" />
+                                                Profil
+                                            </Button>
                                             {t.status === 'submitted' && (
                                                 <>
                                                     <Button
@@ -245,6 +294,43 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                     )}
                 </CardContent>
             </Card>
+
+            <TimesheetPreviewDialog
+                timesheet={previewTarget}
+                open={!!previewTarget}
+                onOpenChange={(o) => {
+                    if (!o) setPreviewTarget(null)
+                }}
+                onRequestReject={(t) => {
+                    setPreviewTarget(null)
+                    setRejectTarget(t)
+                    setRejectReason('')
+                }}
+            />
+
+            <EmployeeProfileDialog
+                userId={profileUserId}
+                open={!!profileUserId}
+                onOpenChange={(o) => {
+                    if (!o) setProfileUserId(null)
+                }}
+                onExportCSV={(uid, label) => {
+                    setProfileUserId(null)
+                    setCsvForUser({ id: uid, label })
+                    setCsvDialogOpen(true)
+                }}
+            />
+
+            <TimesheetCSVExportDialog
+                open={csvDialogOpen}
+                onOpenChange={(o) => {
+                    setCsvDialogOpen(o)
+                    if (!o) setCsvForUser(null)
+                }}
+                forUser={csvForUser}
+                defaultYear={year}
+                defaultMonth={month}
+            />
 
             <Dialog
                 open={!!rejectTarget}

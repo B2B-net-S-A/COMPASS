@@ -715,6 +715,285 @@ export async function unlockTimesheet(timesheetId: string): Promise<void> {
     await logAudit(ctx.userId, 'TIMESHEET_UNLOCKED', { timesheet_id: timesheetId })
 }
 
+// ─── Phase 24: copy descriptions from previous approved month ──────────────
+
+export interface CopyPreviousMonthResult {
+    source_year: number
+    source_month: number
+    inserted: number
+    skipped_existing: number
+    skipped_no_source: boolean
+}
+
+/**
+ * Phase 24a/b — copy description + project (NOT hours) from the most recent
+ * approved timesheet of the same user. Skips days that already have entries.
+ * Does NOT change attendance / quick-fill semantics — pure description fill.
+ *
+ * Use case: pracownik zaczyna nowy miesiąc, klika "Skopiuj z poprzedniego" —
+ * dni robocze są wypełnione 8h Wand'em, a opisy przychodzą z poprzedniego
+ * zaakceptowanego miesiąca (np. "Konsultacje SAP S/4HANA, projekt B2B").
+ */
+export async function copyPreviousMonthEntries(
+    timesheetId: string,
+): Promise<CopyPreviousMonthResult> {
+    const ctx = await requireInternalOrAdminAction()
+    const supabase = createClient()
+
+    const { data: header, error: hErr } = await supabase
+        .from('timesheets')
+        .select('id, user_id, year, month, status')
+        .eq('id', timesheetId)
+        .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'year' | 'month' | 'status'>>()
+    if (hErr || !header) throw new Error('Timesheet nie istnieje.')
+    if (header.user_id !== ctx.userId && !ctx.isAdmin) {
+        throw new Error('To nie jest Twój timesheet.')
+    }
+    if (header.status !== 'draft') {
+        throw new Error('Można kopiować opisy tylko do timesheetu w statusie "draft".')
+    }
+
+    // Find the most recent APPROVED timesheet for same user, before this month.
+    const { data: source } = await supabase
+        .from('timesheets')
+        .select('id, year, month')
+        .eq('user_id', header.user_id)
+        .eq('status', 'approved')
+        .or(
+            `year.lt.${header.year},and(year.eq.${header.year},month.lt.${header.month})`,
+        )
+        .order('year', { ascending: false })
+        .order('month', { ascending: false })
+        .limit(1)
+        .maybeSingle<{ id: string; year: number; month: number }>()
+
+    if (!source) {
+        return {
+            source_year: 0,
+            source_month: 0,
+            inserted: 0,
+            skipped_existing: 0,
+            skipped_no_source: true,
+        }
+    }
+
+    const [sourceEntriesRes, currentEntriesRes] = await Promise.all([
+        supabase
+            .from('timesheet_entries')
+            .select('work_date, project, description')
+            .eq('timesheet_id', source.id)
+            .order('work_date'),
+        supabase
+            .from('timesheet_entries')
+            .select('id, work_date')
+            .eq('timesheet_id', header.id),
+    ])
+
+    const sourceEntries = (sourceEntriesRes.data ?? []) as Array<{
+        work_date: string
+        project: string | null
+        description: string
+    }>
+    const currentByDay = new Map<number, { id: string; work_date: string }>()
+    for (const c of (currentEntriesRes.data ?? []) as Array<{ id: string; work_date: string }>) {
+        const dayOfMonth = Number(c.work_date.slice(8, 10))
+        currentByDay.set(dayOfMonth, c)
+    }
+
+    // Determine mapping: same day-of-month from source → current month.
+    // E.g. source 2026-04-15 → current 2026-05-15. Skip if current day already
+    // has an entry (preserve user's existing work).
+    const monthEndDate = new Date(header.year, header.month, 0).getDate()
+    const updates: Array<{ id: string; project: string | null; description: string }> = []
+    const inserts: Array<{
+        timesheet_id: string
+        work_date: string
+        hours: number
+        project: string | null
+        description: string
+    }> = []
+    let skippedExisting = 0
+
+    for (const src of sourceEntries) {
+        const dayOfMonth = Number(src.work_date.slice(8, 10))
+        if (dayOfMonth > monthEndDate) continue
+        const target = currentByDay.get(dayOfMonth)
+        if (target) {
+            // Only update description/project — never override existing description.
+            // Pattern: only fill if existing description is empty (impossible per
+            // NOT NULL constraint), so we always skip — user already has data.
+            skippedExisting++
+            continue
+        }
+        const iso = `${header.year}-${String(header.month).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`
+        inserts.push({
+            timesheet_id: header.id,
+            work_date: iso,
+            hours: 8,
+            project: src.project,
+            description: src.description,
+        })
+    }
+
+    if (inserts.length > 0) {
+        // Check attendance blockers (urlop/L4) — pomijamy te dni.
+        const blockedRes = await supabase
+            .from('attendance_records')
+            .select('date, status')
+            .eq('user_id', header.user_id)
+            .in('date', inserts.map((i) => i.work_date))
+        const blockedDates = new Set(
+            ((blockedRes.data ?? []) as Array<{ date: string; status: string }>)
+                .filter((a) => HOURS_BLOCKING_STATUSES.includes(a.status))
+                .map((a) => a.date),
+        )
+        const filtered = inserts.filter((i) => !blockedDates.has(i.work_date))
+
+        if (filtered.length > 0) {
+            const { error } = await supabase.from('timesheet_entries').insert(filtered)
+            if (error) throw new Error(`Błąd kopiowania wpisów: ${error.message}`)
+        }
+
+        await logAudit(ctx.userId, 'TIMESHEET_COPIED_FROM_PREVIOUS', {
+            timesheet_id: header.id,
+            source_year: source.year,
+            source_month: source.month,
+            inserted: filtered.length,
+        })
+
+        return {
+            source_year: source.year,
+            source_month: source.month,
+            inserted: filtered.length,
+            skipped_existing: skippedExisting,
+            skipped_no_source: false,
+        }
+    }
+
+    // Nothing inserted (all days blocked or already filled), still update updates if any
+    if (updates.length > 0) {
+        // Reserved for future when description-overwrite is desired.
+    }
+
+    return {
+        source_year: source.year,
+        source_month: source.month,
+        inserted: 0,
+        skipped_existing: skippedExisting,
+        skipped_no_source: false,
+    }
+}
+
+// ─── Phase 24: monthly history (last N months) ──────────────────────────────
+
+export interface TimesheetHistoryRow {
+    year: number
+    month: number
+    status: TimesheetStatus
+    total_hours: number
+    entry_count: number
+    approved_at: string | null
+    submitted_at: string | null
+    rejection_note: string | null
+}
+
+/**
+ * Phase 24c — return the last `monthsBack` months of timesheet history for the
+ * current user, even if a month has no timesheet yet (empty status='missing').
+ * Used by /internal/timesheet/archiwum page.
+ */
+export async function listMyTimesheetHistory(
+    monthsBack = 12,
+): Promise<TimesheetHistoryRow[]> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!Number.isInteger(monthsBack) || monthsBack < 1 || monthsBack > 60) {
+        throw new Error('monthsBack musi być w zakresie 1–60.')
+    }
+    return loadTimesheetHistoryFor(ctx.userId, monthsBack)
+}
+
+/**
+ * Internal helper — shared between user-facing listMyTimesheetHistory and
+ * admin-facing EmployeeProfileDialog. Reads from the user's own scope.
+ */
+export async function loadTimesheetHistoryFor(
+    userId: string,
+    monthsBack: number,
+): Promise<TimesheetHistoryRow[]> {
+    const supabase = createClient()
+    const now = new Date()
+    const startYear = now.getFullYear()
+    const startMonth = now.getMonth() + 1
+    const totalMonths = monthsBack
+
+    // Compute window: from (startYear, startMonth) back by totalMonths.
+    const window: Array<{ year: number; month: number }> = []
+    for (let i = 0; i < totalMonths; i++) {
+        let m = startMonth - i
+        let y = startYear
+        while (m <= 0) {
+            m += 12
+            y -= 1
+        }
+        window.push({ year: y, month: m })
+    }
+    const lastY = window[window.length - 1].year
+    const lastM = window[window.length - 1].month
+
+    const { data, error } = await supabase
+        .from('timesheets')
+        .select(`
+            year, month, status, submitted_at, approved_at, rejection_note,
+            timesheet_entries(hours)
+        `)
+        .eq('user_id', userId)
+        .or(
+            `and(year.eq.${startYear},month.lte.${startMonth}),and(year.lt.${startYear},year.gt.${lastY}),and(year.eq.${lastY},month.gte.${lastM})`,
+        )
+        .order('year', { ascending: false })
+        .order('month', { ascending: false })
+    if (error) throw new Error(`Błąd pobierania historii: ${error.message}`)
+
+    const map = new Map<string, TimesheetHistoryRow>()
+    for (const row of (data ?? []) as Array<{
+        year: number
+        month: number
+        status: TimesheetStatus
+        submitted_at: string | null
+        approved_at: string | null
+        rejection_note: string | null
+        timesheet_entries: Array<{ hours: number }>
+    }>) {
+        const key = `${row.year}-${row.month}`
+        const total = row.timesheet_entries.reduce((s, e) => s + Number(e.hours), 0)
+        map.set(key, {
+            year: row.year,
+            month: row.month,
+            status: row.status,
+            total_hours: total,
+            entry_count: row.timesheet_entries.length,
+            approved_at: row.approved_at,
+            submitted_at: row.submitted_at,
+            rejection_note: row.rejection_note,
+        })
+    }
+
+    return window.map(({ year, month }) => {
+        const row = map.get(`${year}-${month}`)
+        if (row) return row
+        return {
+            year,
+            month,
+            status: 'draft',
+            total_hours: 0,
+            entry_count: 0,
+            approved_at: null,
+            submitted_at: null,
+            rejection_note: null,
+        }
+    })
+}
+
 // ─── Admin: monthly listing ─────────────────────────────────────────────────
 
 export async function listAllTimesheetsForMonth(
