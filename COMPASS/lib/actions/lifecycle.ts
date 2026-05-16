@@ -16,6 +16,7 @@ import {
     sendOffboardingChecklistToManager,
     sendOnboardingWelcome,
 } from '@/lib/email'
+import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { roleLabelPl, type DbRole } from '@/lib/types/role'
 import type {
     CheckinDay,
@@ -409,6 +410,24 @@ export async function startOnboardingWithOptions(input: {
             progressId,
             roleLabelPl(contact.role),
         ).catch((e) => logCompat.error('sendOnboardingWelcome failed:', e))
+
+        // Push do pracownika (jeśli nie external — external nie ma auth.users)
+        sendPushToUserId(input.userId, {
+            title: 'Witamy w B2B Network!',
+            body: `Twój onboarding jest gotowy — masz checklist do wypełnienia.`,
+            url: `/internal/lifecycle/onboarding/${progressId}`,
+            tag: `onboarding-${progressId}`,
+        }).catch(() => undefined)
+
+        // Push do managera
+        if (contact.manager_id) {
+            sendPushToUserId(contact.manager_id, {
+                title: 'Team-member rozpoczyna onboarding',
+                body: `${contact.full_name ?? contact.email} dołącza do zespołu.`,
+                url: `/internal/lifecycle/onboarding/${progressId}`,
+                tag: `team-onboarding-${progressId}`,
+            }).catch(() => undefined)
+        }
     }
 
     await logAudit(ctx.userId, 'ONBOARDING_STARTED', {
@@ -911,7 +930,21 @@ export async function scheduleExitInterview(
                     userId,
                 ).catch((e) => logCompat.error('sendOffboardingChecklistToManager failed:', e))
             }
+
+            sendPushToUserId(employee.manager_id, {
+                title: 'Team-member rozpoczyna offboarding',
+                body: `${employee.full_name ?? employee.email} kończy współpracę ${terminationDate}.`,
+                url: `/internal/lifecycle/offboarding/${userId}`,
+                tag: `offboarding-${userId}`,
+            }).catch(() => undefined)
         }
+
+        sendPushToUserId(userId, {
+            title: 'Exit interview',
+            body: `Wypełnij ankietę przed odejściem (${terminationDate}).`,
+            url: `/internal/lifecycle/exit/wypelnij`,
+            tag: `exit-${interviewId}`,
+        }).catch(() => undefined)
     }
 
     await logAudit(ctx.userId, 'OFFBOARDING_STARTED', {
@@ -989,6 +1022,26 @@ export async function submitExitInterview(input: SubmitExitInterviewInput): Prom
     })
     if (input.isAnonymous) {
         await logAudit(ctx.userId, 'EXIT_INTERVIEW_ANONYMIZED', { interview_id: input.interviewId })
+    }
+
+    // Push TCM + admin (find all users with lifecycle access)
+    try {
+        const supabaseAdmin = createServiceClient()
+        const { data: tcmUsers } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .in('role', ['admin', 'talent_community'])
+            .eq('employment_status', 'active')
+        for (const u of ((tcmUsers ?? []) as Array<{ id: string }>)) {
+            sendPushToUserId(u.id, {
+                title: 'Nowy exit interview do review',
+                body: input.isAnonymous ? 'Wypełniony anonimowo.' : 'Pracownik wypełnił ankietę.',
+                url: `/internal/lifecycle/exit/${input.interviewId}`,
+                tag: `exit-review-${input.interviewId}`,
+            }).catch(() => undefined)
+        }
+    } catch (e: unknown) {
+        logCompat.error('Push to TCM failed:', e)
     }
 }
 
@@ -1288,4 +1341,600 @@ export async function getLifecycleAnalytics(): Promise<LifecycleAnalytics> {
         openTasksByResponsible: [],
         overdueTasks: overdueTasksRes.count ?? 0,
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 22f — Cancellation + restart + edit + notes + external + duplicate
+// ──────────────────────────────────────────────────────────────────────────
+
+export async function cancelOnboarding(progressId: string, reason: string | null): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: progress } = await supabase
+        .from('onboarding_progress')
+        .select('user_id, completed_at, cancelled_at')
+        .eq('id', progressId)
+        .single()
+    if (!progress) throw new Error('Onboarding nie znaleziony.')
+    if (progress.completed_at) throw new Error('Onboarding już zakończony — nie można anulować.')
+    if (progress.cancelled_at) throw new Error('Onboarding już anulowany.')
+
+    const now = new Date().toISOString()
+    const { error: updErr } = await supabase
+        .from('onboarding_progress')
+        .update({
+            cancelled_at: now,
+            cancelled_by: ctx.userId,
+            cancellation_reason: reason,
+        })
+        .eq('id', progressId)
+    if (updErr) throw new Error('Nie udało się anulować onboardingu.')
+
+    // Reset employment_status to 'active' so user is unblocked
+    await supabase
+        .from('profiles')
+        .update({ employment_status: 'active' })
+        .eq('id', progress.user_id)
+        .eq('employment_status', 'onboarding')
+
+    await supabase.from('lifecycle_events').insert({
+        user_id: progress.user_id,
+        event_type: 'onboarding_started', // re-use, with metadata.cancelled flag
+        metadata: { cancelled: true, progress_id: progressId, reason },
+        created_by: ctx.userId,
+    })
+
+    await logAudit(ctx.userId, 'ONBOARDING_CANCELLED', { progress_id: progressId, user_id: progress.user_id, reason })
+}
+
+export async function restartOnboarding(progressId: string, newTemplateId?: string | null): Promise<string> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: progress } = await supabase
+        .from('onboarding_progress')
+        .select('user_id, template_id, cancelled_at, completed_at')
+        .eq('id', progressId)
+        .single()
+    if (!progress) throw new Error('Onboarding nie znaleziony.')
+
+    // First mark current onboarding as cancelled (if still active)
+    if (!progress.cancelled_at && !progress.completed_at) {
+        await supabase
+            .from('onboarding_progress')
+            .update({
+                cancelled_at: new Date().toISOString(),
+                cancelled_by: ctx.userId,
+                cancellation_reason: 'restart',
+            })
+            .eq('id', progressId)
+    }
+
+    // Delete old progress entirely so UNIQUE user_id allows new one
+    const { error: delErr } = await supabase
+        .from('onboarding_progress')
+        .delete()
+        .eq('id', progressId)
+    if (delErr) throw new Error('Nie udało się usunąć poprzedniego onboardingu.')
+
+    // Start new onboarding
+    const { data, error } = await supabase.rpc('start_onboarding_for_user', {
+        p_user_id: progress.user_id,
+        p_template_id: newTemplateId ?? progress.template_id,
+        p_actor_id: ctx.userId,
+    })
+    if (error || !data) {
+        logCompat.error('restartOnboarding RPC error:', error)
+        throw new Error(error?.message ?? 'Nie udało się zrestartować onboardingu.')
+    }
+
+    await logAudit(ctx.userId, 'ONBOARDING_RESTARTED', {
+        old_progress_id: progressId,
+        new_progress_id: data,
+        user_id: progress.user_id,
+        new_template_id: newTemplateId ?? null,
+    })
+    return data as string
+}
+
+export async function cancelExitInterview(interviewId: string, reason: string | null): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: interview } = await supabase
+        .from('exit_interviews')
+        .select('user_id, status')
+        .eq('id', interviewId)
+        .single()
+    if (!interview) throw new Error('Exit interview nie znaleziony.')
+    if (interview.status !== 'scheduled') {
+        throw new Error('Można anulować tylko exit interview ze statusem "scheduled".')
+    }
+
+    const { error: updErr } = await supabase
+        .from('exit_interviews')
+        .update({
+            status: 'cancelled',
+            cancelled_by: ctx.userId,
+            cancellation_reason: reason,
+        })
+        .eq('id', interviewId)
+    if (updErr) {
+        logCompat.error('cancelExitInterview error:', updErr)
+        throw new Error(updErr.message || 'Nie udało się anulować exit interview.')
+    }
+
+    // Reset employment_status to 'active' so user is unblocked (trigger allows because no submitted interview)
+    if (interview.user_id) {
+        await supabase
+            .from('profiles')
+            .update({ employment_status: 'active', termination_date: null })
+            .eq('id', interview.user_id)
+            .eq('employment_status', 'offboarding')
+
+        // Also delete offboarding tasks since process is cancelled
+        await supabase.from('offboarding_tasks').delete().eq('user_id', interview.user_id).is('completed_at', null)
+    }
+
+    await logAudit(ctx.userId, 'EXIT_INTERVIEW_CANCELLED', { interview_id: interviewId, user_id: interview.user_id, reason })
+}
+
+export interface UpdateLifecycleProfileInput {
+    userId: string
+    hiredAt?: string | null
+    managerId?: string | null
+    role?: DbRole
+    externalNotes?: string | null
+}
+
+export async function updateLifecycleProfile(input: UpdateLifecycleProfileInput): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const patch: Record<string, unknown> = {}
+    if (input.hiredAt !== undefined) {
+        patch.hired_at = input.hiredAt
+        patch.work_start_date = input.hiredAt
+    }
+    if (input.managerId !== undefined) patch.manager_id = input.managerId
+    if (input.role !== undefined) patch.role = input.role
+    if (input.externalNotes !== undefined) patch.external_notes = input.externalNotes
+
+    if (Object.keys(patch).length === 0) return
+
+    const { error } = await supabase.from('profiles').update(patch).eq('id', input.userId)
+    if (error) {
+        logCompat.error('updateLifecycleProfile error:', error)
+        throw new Error(error.message || 'Nie udało się zaktualizować profilu.')
+    }
+
+    await logAudit(ctx.userId, 'LIFECYCLE_PROFILE_UPDATED', {
+        target_user_id: input.userId,
+        fields: Object.keys(patch),
+    })
+
+    // Special-case: manager_id change should be logged as MANAGER_ASSIGNED event in timeline
+    if (input.managerId !== undefined) {
+        await supabase.from('lifecycle_events').insert({
+            user_id: input.userId,
+            event_type: 'manager_changed',
+            metadata: { new_manager_id: input.managerId },
+            created_by: ctx.userId,
+        })
+    }
+    if (input.role !== undefined) {
+        await supabase.from('lifecycle_events').insert({
+            user_id: input.userId,
+            event_type: 'role_changed',
+            metadata: { new_role: input.role },
+            created_by: ctx.userId,
+        })
+    }
+}
+
+export interface CreateExternalEmployeeInput {
+    fullName: string
+    email: string
+    role: DbRole
+    hiredAt: string // ISO date
+    managerId?: string | null
+    buddyId?: string | null
+    externalNotes?: string | null
+    templateId?: string | null
+    autoStartOnboarding?: boolean
+}
+
+export async function createExternalEmployee(input: CreateExternalEmployeeInput): Promise<{ userId: string; progressId: string | null }> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    // Generate fresh UUID for the profile id (NOT auth.users.id)
+    const userId = crypto.randomUUID()
+
+    // Insert into profiles directly (no auth.users entry — service role can bypass FK if FK doesn't enforce auth.users)
+    // profiles.id is PK UUID, no FK to auth.users in current schema (handle_new_user trigger creates rows for auth users, but profiles can also be inserted directly via service role).
+    const { error: profErr } = await supabase
+        .from('profiles')
+        .insert({
+            id: userId,
+            email: input.email.trim().toLowerCase(),
+            full_name: input.fullName.trim(),
+            role: input.role,
+            is_external: true,
+            external_notes: input.externalNotes ?? null,
+            hired_at: input.hiredAt,
+            work_start_date: input.hiredAt,
+            manager_id: input.managerId ?? null,
+            buddy_id: input.buddyId ?? null,
+            employment_status: 'pending',
+            onboarding_completed: true, // skip /onboarding redirect since they can't login anyway
+        })
+    if (profErr) {
+        logCompat.error('createExternalEmployee profiles insert error:', profErr)
+        throw new Error(profErr.message || 'Nie udało się utworzyć external employee.')
+    }
+
+    // Log hired event in timeline
+    await supabase.from('lifecycle_events').insert({
+        user_id: userId,
+        event_type: 'hired',
+        metadata: { is_external: true, role: input.role, hired_at: input.hiredAt },
+        created_by: ctx.userId,
+    })
+
+    await logAudit(ctx.userId, 'EXTERNAL_EMPLOYEE_CREATED', {
+        user_id: userId,
+        email: input.email,
+        full_name: input.fullName,
+        role: input.role,
+    })
+
+    // Optionally auto-start onboarding
+    let progressId: string | null = null
+    if (input.autoStartOnboarding !== false) {
+        try {
+            const { data, error } = await supabase.rpc('start_onboarding_for_user', {
+                p_user_id: userId,
+                p_template_id: input.templateId ?? null,
+                p_actor_id: ctx.userId,
+            })
+            if (!error && data) {
+                progressId = data as string
+                await logAudit(ctx.userId, 'ONBOARDING_STARTED', {
+                    user_id: userId,
+                    progress_id: progressId,
+                    triggered_by: 'external_create',
+                })
+            }
+        } catch (e: unknown) {
+            logCompat.error('Auto-start external onboarding failed:', e)
+        }
+    }
+
+    return { userId, progressId }
+}
+
+// ─── Lifecycle notes ────────────────────────────────────────────────────────
+
+export interface LifecycleNote {
+    id: string
+    user_id: string
+    author_id: string | null
+    author_name: string | null
+    category: 'general' | 'onboarding' | 'exit' | 'flag'
+    content: string
+    is_private: boolean
+    created_at: string
+    updated_at: string
+}
+
+export async function listLifecycleNotes(userId: string): Promise<LifecycleNote[]> {
+    await requireInternalOrAdminAction()
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('lifecycle_notes')
+        .select('*, author:profiles!author_id(full_name)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+    if (error) {
+        logCompat.error('listLifecycleNotes error:', error)
+        return []
+    }
+    return (data ?? []).map((row: { id: string; user_id: string; author_id: string | null; author: { full_name: string | null } | null; category: 'general' | 'onboarding' | 'exit' | 'flag'; content: string; is_private: boolean; created_at: string; updated_at: string }) => ({
+        id: row.id,
+        user_id: row.user_id,
+        author_id: row.author_id,
+        author_name: row.author?.full_name ?? null,
+        category: row.category,
+        content: row.content,
+        is_private: row.is_private,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }))
+}
+
+export async function addLifecycleNote(input: {
+    userId: string
+    category: 'general' | 'onboarding' | 'exit' | 'flag'
+    content: string
+    isPrivate?: boolean
+}): Promise<string> {
+    const ctx = await requireLifecycleManagerAction()
+    if (!input.content.trim()) throw new Error('Notatka nie może być pusta.')
+
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('lifecycle_notes')
+        .insert({
+            user_id: input.userId,
+            author_id: ctx.userId,
+            category: input.category,
+            content: input.content.trim(),
+            is_private: input.isPrivate ?? true,
+        })
+        .select('id')
+        .single()
+    if (error || !data) {
+        logCompat.error('addLifecycleNote error:', error)
+        throw new Error(error?.message || 'Nie udało się dodać notatki.')
+    }
+
+    await logAudit(ctx.userId, 'LIFECYCLE_NOTE_ADDED', { user_id: input.userId, note_id: data.id, category: input.category })
+    return data.id as string
+}
+
+export async function deleteLifecycleNote(noteId: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createClient()
+    const { error } = await supabase.from('lifecycle_notes').delete().eq('id', noteId)
+    if (error) throw new Error('Nie udało się usunąć notatki.')
+    await logAudit(ctx.userId, 'LIFECYCLE_NOTE_DELETED', { note_id: noteId })
+}
+
+// ─── Template duplicate ─────────────────────────────────────────────────────
+
+export async function duplicateTemplate(templateId: string): Promise<string> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: source } = await supabase
+        .from('onboarding_templates')
+        .select('name, target_role, description')
+        .eq('id', templateId)
+        .single()
+    if (!source) throw new Error('Szablon źródłowy nie znaleziony.')
+
+    const { data: newTpl, error: tplErr } = await supabase
+        .from('onboarding_templates')
+        .insert({
+            name: `${source.name} (kopia)`,
+            target_role: source.target_role,
+            description: source.description,
+            is_default: false,
+            created_by: ctx.userId,
+        })
+        .select('id')
+        .single()
+    if (tplErr || !newTpl) throw new Error('Nie udało się utworzyć kopii szablonu.')
+
+    // Copy items
+    const { data: sourceItems } = await supabase
+        .from('onboarding_template_items')
+        .select('position, category, title, description, due_offset_days, requires_file, course_slug, responsible_role, is_required')
+        .eq('template_id', templateId)
+        .order('position', { ascending: true })
+
+    if (sourceItems && sourceItems.length > 0) {
+        const itemsToInsert = (sourceItems as Array<{
+            position: number; category: string; title: string; description: string | null;
+            due_offset_days: number; requires_file: boolean; course_slug: string | null;
+            responsible_role: string; is_required: boolean
+        }>).map((it) => ({
+            ...it,
+            template_id: newTpl.id,
+        }))
+        await supabase.from('onboarding_template_items').insert(itemsToInsert)
+    }
+
+    await logAudit(ctx.userId, 'TEMPLATE_DUPLICATED', { source_template_id: templateId, new_template_id: newTpl.id })
+    return newTpl.id as string
+}
+
+// ─── Audit log per pracownik ────────────────────────────────────────────────
+
+export interface AuditEntry {
+    id: string
+    action: string
+    details: Record<string, unknown> | null
+    created_at: string
+    actor_name: string | null
+}
+
+export async function listAuditLogForUser(userId: string, limit = 50): Promise<AuditEntry[]> {
+    await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    // Match by user_id (actor) AND details.target_user_id / user_id (subject)
+    const { data, error } = await supabase
+        .from('audit_logs')
+        .select('id, action, details, created_at, user_id, actor:profiles!user_id(full_name)')
+        .or(`user_id.eq.${userId},details->>target_user_id.eq.${userId},details->>user_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+    if (error) {
+        logCompat.error('listAuditLogForUser error:', error)
+        return []
+    }
+
+    return (data ?? []).map((row: { id: string; action: string; details: Record<string, unknown> | null; created_at: string; actor: { full_name: string | null } | null }) => ({
+        id: row.id,
+        action: row.action,
+        details: row.details,
+        created_at: row.created_at,
+        actor_name: row.actor?.full_name ?? null,
+    }))
+}
+
+// ─── Exit interview CSV export ──────────────────────────────────────────────
+
+export interface ExitInterviewCsvRow {
+    submitted_at: string
+    status: string
+    is_anonymous: string
+    role: string
+    tenure_months: string
+    exit_reason: string
+    nps_score: string
+    sat_team: string
+    sat_manager: string
+    sat_projects: string
+    would_recommend: string
+    what_worked: string
+    what_to_improve: string
+}
+
+export async function exportExitInterviewsCsv(): Promise<string> {
+    await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data, error } = await supabase
+        .from('exit_interviews')
+        .select(`
+            submitted_at, status, is_anonymous, role_snapshot, tenure_months,
+            exit_reason, nps_score,
+            satisfaction_team, satisfaction_manager, satisfaction_projects,
+            would_recommend, what_worked, what_to_improve
+        `)
+        .in('status', ['submitted', 'reviewed', 'archived'])
+        .order('submitted_at', { ascending: false })
+
+    if (error || !data) {
+        logCompat.error('exportExitInterviewsCsv error:', error)
+        throw new Error('Nie udało się pobrać danych do eksportu.')
+    }
+
+    const header = [
+        'submitted_at', 'status', 'is_anonymous', 'role',
+        'tenure_months', 'exit_reason', 'nps_score',
+        'sat_team', 'sat_manager', 'sat_projects',
+        'would_recommend', 'what_worked', 'what_to_improve',
+    ]
+
+    const escapeCsv = (v: unknown): string => {
+        if (v === null || v === undefined) return ''
+        const s = String(v)
+        if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+        return s
+    }
+
+    const rows = (data as Array<{
+        submitted_at: string | null; status: string; is_anonymous: boolean; role_snapshot: string;
+        tenure_months: number | null; exit_reason: string | null; nps_score: number | null;
+        satisfaction_team: number | null; satisfaction_manager: number | null; satisfaction_projects: number | null;
+        would_recommend: boolean | null; what_worked: string | null; what_to_improve: string | null
+    }>).map((r) => [
+        r.submitted_at ?? '',
+        r.status,
+        r.is_anonymous ? 'tak' : 'nie',
+        r.role_snapshot,
+        r.tenure_months ?? '',
+        r.exit_reason ?? '',
+        r.nps_score ?? '',
+        r.satisfaction_team ?? '',
+        r.satisfaction_manager ?? '',
+        r.satisfaction_projects ?? '',
+        r.would_recommend === null ? '' : (r.would_recommend ? 'tak' : 'nie'),
+        r.what_worked ?? '',
+        r.what_to_improve ?? '',
+    ].map(escapeCsv).join(','))
+
+    return [header.join(','), ...rows].join('\n')
+}
+
+// ─── Archive listings ──────────────────────────────────────────────────────
+
+export async function listCompletedOnboardings(limit = 100): Promise<Array<{
+    progress_id: string
+    user_id: string
+    full_name: string | null
+    email: string
+    role: DbRole
+    started_at: string
+    completed_at: string | null
+    cancelled_at: string | null
+    cancellation_reason: string | null
+    duration_days: number | null
+}>> {
+    await requireLifecycleManagerAction()
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('onboarding_progress')
+        .select(`
+            id, user_id, started_at, completed_at, cancelled_at, cancellation_reason,
+            user:profiles!user_id(full_name, email, role)
+        `)
+        .or('completed_at.not.is.null,cancelled_at.not.is.null')
+        .order('completed_at', { ascending: false, nullsFirst: false })
+        .limit(limit)
+    if (error || !data) {
+        logCompat.error('listCompletedOnboardings error:', error)
+        return []
+    }
+
+    return (data as Array<{
+        id: string; user_id: string; started_at: string; completed_at: string | null;
+        cancelled_at: string | null; cancellation_reason: string | null;
+        user: { full_name: string | null; email: string; role: DbRole } | null
+    }>).map((row) => {
+        const endTs = row.completed_at ?? row.cancelled_at
+        const durationDays = endTs
+            ? Math.round((new Date(endTs).getTime() - new Date(row.started_at).getTime()) / (1000 * 60 * 60 * 24))
+            : null
+        return {
+            progress_id: row.id,
+            user_id: row.user_id,
+            full_name: row.user?.full_name ?? null,
+            email: row.user?.email ?? '',
+            role: (row.user?.role ?? 'consultant') as DbRole,
+            started_at: row.started_at,
+            completed_at: row.completed_at,
+            cancelled_at: row.cancelled_at,
+            cancellation_reason: row.cancellation_reason,
+            duration_days: durationDays,
+        }
+    })
+}
+
+export async function listExitedEmployees(limit = 100): Promise<Array<{
+    id: string
+    full_name: string | null
+    email: string
+    role: DbRole
+    hired_at: string | null
+    termination_date: string | null
+    tenure_months: number | null
+}>> {
+    await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role, hired_at, termination_date')
+        .eq('employment_status', 'exited')
+        .order('termination_date', { ascending: false, nullsFirst: false })
+        .limit(limit)
+    if (error || !data) return []
+
+    return (data as Array<{
+        id: string; full_name: string | null; email: string; role: DbRole;
+        hired_at: string | null; termination_date: string | null
+    }>).map((row) => {
+        const tenureMonths = (row.hired_at && row.termination_date)
+            ? Math.round(
+                (new Date(row.termination_date).getTime() - new Date(row.hired_at).getTime())
+                / (1000 * 60 * 60 * 24 * 30.4),
+            )
+            : null
+        return { ...row, tenure_months: tenureMonths }
+    })
 }

@@ -3,6 +3,9 @@ import Link from 'next/link'
 import { createLifecycleClient as createClient } from '@/lib/supabase/lifecycle-client'
 import { requireLifecycleManagerAction } from '@/lib/auth/internal-guard'
 import { ExitInterviewReviewPanel } from '../../components/ExitInterviewReviewPanel'
+import { CancelExitButton } from '../../components/CancelExitButton'
+import { LifecycleNotesPanel } from '../../components/LifecycleNotesPanel'
+import { AuditHistoryPanel } from '../../components/AuditHistoryPanel'
 import type { ExitInterview } from '@/lib/types/lifecycle'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +39,28 @@ export default async function ExitInterviewReviewPage({ params }: { params: { in
             </header>
 
             <ExitInterviewReviewPanel interview={i} />
+
+            {i.status === 'scheduled' && (
+                <section className="rounded-lg border border-dashed border-red-400/30 p-4">
+                    <h3 className="font-semibold text-sm mb-2 text-red-400">Strefa niebezpieczna</h3>
+                    <p className="text-xs text-muted-foreground mb-3">
+                        Anuluj jeśli pracownik jednak zostaje — przywróci status active i usunie offboarding tasks.
+                    </p>
+                    <CancelExitButton interviewId={i.id} />
+                </section>
+            )}
+
+            {i.user_id && (
+                <section>
+                    <LifecycleNotesPanel userId={i.user_id} defaultCategory="exit" />
+                </section>
+            )}
+
+            {i.user_id && (
+                <section>
+                    <AuditHistoryPanel userId={i.user_id} />
+                </section>
+            )}
         </div>
     )
 }
