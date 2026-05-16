@@ -267,6 +267,31 @@ export async function listEligiblePeriods(monthsBack = 12): Promise<EligiblePeri
     }))
 }
 
+// Client-callable wrapper. Next.js 14 + React 18 nie serializuje File jako
+// argumentu Server Action ("Only plain objects, and a few built-ins, can be
+// passed to Server Actions"). Klient pakuje wszystko do FormData; tu
+// rozpakowujemy i wołamy `submitInvoice` (które pozostaje dostępne dla testów
+// jednostkowych wywoływanych po stronie serwera).
+export async function submitInvoiceForm(formData: FormData): Promise<InvoiceRow> {
+    const file = formData.get('file')
+    if (!(file instanceof File)) {
+        throw new Error('Plik faktury jest wymagany.')
+    }
+    const rawAmount = formData.get('amount')
+    const rawYear = formData.get('period_year')
+    const rawMonth = formData.get('period_month')
+    const input: SubmitInvoiceInput = {
+        invoice_number: String(formData.get('invoice_number') ?? ''),
+        amount: rawAmount === null ? NaN : Number(rawAmount),
+        period_year: rawYear === null ? NaN : Number(rawYear),
+        period_month: rawMonth === null ? NaN : Number(rawMonth),
+        currency: (formData.get('currency') as string | null) ?? undefined,
+        due_date: ((formData.get('due_date') as string | null) || null),
+        notes: ((formData.get('notes') as string | null) || null),
+    }
+    return submitInvoice(input, file)
+}
+
 export async function submitInvoice(
     input: SubmitInvoiceInput,
     file: File,
@@ -377,6 +402,27 @@ export async function submitInvoice(
         .catch((e) => logCompat.error('[submitInvoice] manager notify failed:', e))
 
     return data
+}
+
+// Client-callable wrapper — patrz komentarz przy `submitInvoiceForm`.
+export async function updateRejectedInvoiceForm(formData: FormData): Promise<InvoiceRow> {
+    const invoiceId = String(formData.get('invoice_id') ?? '')
+    if (!invoiceId) throw new Error('Brak ID faktury.')
+    const fileEntry = formData.get('file')
+    const newFile =
+        fileEntry instanceof File && fileEntry.size > 0 ? fileEntry : undefined
+
+    const input: UpdateRejectedInvoiceInput = {}
+    const rawNumber = formData.get('invoice_number')
+    if (rawNumber !== null) input.invoice_number = String(rawNumber)
+    const rawAmount = formData.get('amount')
+    if (rawAmount !== null) input.amount = Number(rawAmount)
+    const rawDue = formData.get('due_date')
+    if (rawDue !== null) input.due_date = String(rawDue) || null
+    const rawNotes = formData.get('notes')
+    if (rawNotes !== null) input.notes = String(rawNotes) || null
+
+    return updateRejectedInvoice(invoiceId, input, newFile)
 }
 
 export async function updateRejectedInvoice(

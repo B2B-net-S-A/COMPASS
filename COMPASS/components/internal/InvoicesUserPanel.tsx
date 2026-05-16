@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import {
-    submitInvoice,
-    updateRejectedInvoice,
+    submitInvoiceForm,
+    updateRejectedInvoiceForm,
     getInvoiceFileSignedUrl,
     type EligiblePeriod,
     type InvoiceRow,
@@ -229,17 +229,15 @@ function SubmitInvoiceDialog({
         const amt = Number(amount.replace(',', '.'))
         startTransition(async () => {
             try {
-                const result = await submitInvoice(
-                    {
-                        invoice_number: invoiceNumber.trim(),
-                        amount: amt,
-                        due_date: dueDate || null,
-                        period_year: Number(yStr),
-                        period_month: Number(mStr),
-                        notes: notes.trim() || null,
-                    },
-                    file,
-                )
+                const fd = new FormData()
+                fd.set('invoice_number', invoiceNumber.trim())
+                fd.set('amount', String(amt))
+                fd.set('period_year', yStr)
+                fd.set('period_month', mStr)
+                if (dueDate) fd.set('due_date', dueDate)
+                if (notes.trim()) fd.set('notes', notes.trim())
+                fd.set('file', file)
+                const result = await submitInvoiceForm(fd)
                 toastSuccess(`Faktura ${result.invoice_number} wysłana do akceptacji.`)
                 onSubmitted(result)
             } catch (err: unknown) {
@@ -373,16 +371,14 @@ function ResubmitInvoiceDialog({
         const amt = Number(amount.replace(',', '.'))
         startTransition(async () => {
             try {
-                const result = await updateRejectedInvoice(
-                    invoice.id,
-                    {
-                        invoice_number: invoiceNumber.trim(),
-                        amount: amt,
-                        due_date: dueDate || null,
-                        notes: notes.trim() || null,
-                    },
-                    newFile ?? undefined,
-                )
+                const fd = new FormData()
+                fd.set('invoice_id', invoice.id)
+                fd.set('invoice_number', invoiceNumber.trim())
+                fd.set('amount', String(amt))
+                fd.set('due_date', dueDate || '')
+                fd.set('notes', notes.trim())
+                if (newFile) fd.set('file', newFile)
+                const result = await updateRejectedInvoiceForm(fd)
                 toastSuccess(`Faktura ${result.invoice_number} wysłana ponownie.`)
                 onResubmitted(result)
             } catch (err: unknown) {
