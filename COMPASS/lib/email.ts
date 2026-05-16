@@ -1175,3 +1175,93 @@ export async function sendOffboardingChecklistToManager(
         return { success: false }
     }
 }
+
+/**
+ * Phase 23 — Email do pracownika gdy manager doda mu nową premię.
+ * Pracownik powinien uwzględnić premię w fakturze (Phase 19/20 flow), potem
+ * zlinkować przez UI w /internal?tab=bonuses (status → paid).
+ */
+export async function sendBonusProposed(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    reason: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Nowa premia ${amount.toFixed(2)} ${currency} — uwzględnij w fakturze`
+    const accent = '#22c55e'
+    const reasonEscaped = reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} przyznał Ci premię: <strong>${amount.toFixed(2)} ${currency}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Powód:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Uwzględnij tę premię w fakturze za bieżący okres (jako osobna pozycja lub osobna faktura),
+            a następnie zlinkuj ją w panelu <strong>Moje premie</strong>:
+            <a href="https://compass.dynaminds.pl/internal?tab=bonuses" style="color: #93c5fd;">/internal?tab=bonuses</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Nowa premia', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-proposed error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-proposed email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 23 — Email do pracownika gdy manager (lub admin) anuluje pending premię.
+ */
+export async function sendBonusCancelled(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    cancellationReason: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Premia ${amount.toFixed(2)} ${currency} została anulowana`
+    const accent = '#f59e0b'
+    const reasonEscaped = cancellationReason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} anulował premię w wysokości <strong>${amount.toFixed(2)} ${currency}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Powód anulowania:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Jeśli masz pytania — skontaktuj się bezpośrednio z osobą, która anulowała premię.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Premia anulowana', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-cancelled error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-cancelled email failed:', err)
+        return { success: false }
+    }
+}

@@ -1,10 +1,11 @@
-import { CalendarCheck, Calendar, ClipboardList, Receipt, FileText } from 'lucide-react'
+import { CalendarCheck, Calendar, ClipboardList, Receipt, FileText, Gift } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AttendancePanel } from '@/components/internal/panels/AttendancePanel'
 import { CalendarPanel } from '@/components/internal/panels/CalendarPanel'
 import { LeavePanel } from '@/components/internal/panels/LeavePanel'
 import { TimesheetPanel } from '@/components/internal/panels/TimesheetPanel'
 import { InvoicesPanel } from '@/components/internal/panels/InvoicesPanel'
+import { MyBonusesPanel } from '@/components/internal/panels/MyBonusesPanel'
 // Smart Work Clock (Phase 17) UI disabled — to re-enable, restore Clock icon + ClockPanel import + tab + render below.
 // import { Clock } from 'lucide-react'
 // import { ClockPanel } from '@/components/internal/panels/ClockPanel'
@@ -17,6 +18,7 @@ const TABS: ReadonlyArray<HubTab> = [
     { id: 'leave', label: 'Urlopy', icon: ClipboardList },
     { id: 'timesheet', label: 'Timesheet', icon: Receipt },
     { id: 'invoices', label: 'Faktury', icon: FileText },
+    { id: 'bonuses', label: 'Premie', icon: Gift },
     // { id: 'clock', label: 'Zegar', icon: Clock },
 ]
 
@@ -64,6 +66,7 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
             {tab === 'leave' && <LeavePanel />}
             {tab === 'timesheet' && <TimesheetPanel year={year} month={month} />}
             {tab === 'invoices' && <InvoicesPanel />}
+            {tab === 'bonuses' && <MyBonusesPanel />}
             {/* {tab === 'clock' && <ClockPanel year={year} month={month} />} */}
         </div>
     )

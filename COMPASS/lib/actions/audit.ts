@@ -73,6 +73,11 @@ export type AuditAction =
     | 'EXIT_INTERVIEW_ANONYMIZED'
     | 'OFFBOARDING_TASK_COMPLETED'
     | 'EMPLOYEE_EXITED'
+    // Phase 23 — Premie (Bonuses)
+    | 'BONUS_PROPOSED'
+    | 'BONUS_CANCELLED'
+    | 'BONUS_LINKED_TO_INVOICE'
+    | 'BONUS_UNLINKED'
 
 export async function logAudit(
     userId: string | null,
