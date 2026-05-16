@@ -83,6 +83,12 @@ export function canManageInbox(role: string | null | undefined): boolean {
     return isAdminLike(role) || isTalentCommunity(role)
 }
 
+// Phase 22: TCM = owner of lifecycle module (onboarding + exit interview).
+// Same role set as inbox management — kept as separate alias for clarity.
+export function canManageLifecycle(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isTalentCommunity(role)
+}
+
 export function canEditNews(role: string | null | undefined): boolean {
     return isAdminLike(role) || isTalentCommunity(role)
 }

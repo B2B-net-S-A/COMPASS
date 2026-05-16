@@ -32,8 +32,12 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     const [managerCandidates, setManagerCandidates] = useState<ManagerCandidate[]>([])
     const [loadingManagers, setLoadingManagers] = useState(false)
     const [submitting, setSubmitting] = useState(false)
+    // Phase 22: auto-start onboarding flag (default ON for invitable roles with default template).
+    const [autoStartOnboarding, setAutoStartOnboarding] = useState<boolean>(true)
 
     const isHrZone = HR_ZONE_ROLES.includes(role)
+    // Default templates exist for: consultant, internal, manager. Others (finanse/talent_community) can opt-in manually.
+    const hasDefaultTemplate = role === 'consultant' || role === 'internal' || role === 'manager'
 
     // Lazy-load lista managerów przy pierwszym otwarciu (oszczędzanie request'ów).
     useEffect(() => {
@@ -54,6 +58,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         setEmploymentType('b2b')
         setWorkStartDate('')
         setManagerId('')
+        setAutoStartOnboarding(true)
         setSubmitting(false)
     }
 
@@ -75,6 +80,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                 employmentType: isHrZone ? employmentType : undefined,
                 workStartDate: isHrZone && workStartDate ? workStartDate : null,
                 managerId: isHrZone && managerId ? managerId : null,
+                // Phase 22: opt-out checkbox controls auto-start. Only honored if role has a default template.
+                autoStartOnboarding: hasDefaultTemplate ? autoStartOnboarding : false,
             })
             toastSuccess(`Wysłano zaproszenie na ${emailTrimmed}. User dostanie email z linkiem aktywacyjnym.`)
             reset()
@@ -140,6 +147,24 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                             <option value="talent_community">Talent Community Manager (zgłoszenia, news, compliance)</option>
                         </select>
                     </div>
+
+                    {hasDefaultTemplate && (
+                        <div className="space-y-1.5 rounded-md border border-input bg-muted/30 px-3 py-2">
+                            <label className="flex items-center gap-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={autoStartOnboarding}
+                                    onChange={(e) => setAutoStartOnboarding(e.target.checked)}
+                                    disabled={submitting}
+                                    className="h-4 w-4"
+                                />
+                                <span>Automatycznie uruchom onboarding po zaproszeniu</span>
+                            </label>
+                            <p className="text-xs text-muted-foreground pl-6">
+                                Tworzy checklist z domyślnego szablonu dla tej roli i wysyła powitalny email.
+                            </p>
+                        </div>
+                    )}
 
                     {isHrZone && (
                         <>

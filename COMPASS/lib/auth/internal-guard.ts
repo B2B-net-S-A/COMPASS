@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
     canAccessInternalZone,
     canManageInbox,
+    canManageLifecycle,
     canManagerApproveInvoice,
     canReviewInvoices,
     isAdminLike,
@@ -186,4 +187,34 @@ export async function requireInternalAdminAreaLayout(): Promise<InternalAuthCont
         redirect('/internal')
     }
     return ctx
+}
+
+/**
+ * Phase 22 — Lifecycle module guard (admin OR talent_community).
+ * Required for: template CRUD, scheduling onboarding/exit, reviewing exit interviews.
+ * Server-action variant: throws on unauthorized.
+ */
+export async function requireLifecycleManagerAction(): Promise<InternalAuthContext> {
+    const ctx = await loadAuthContext()
+    if (!ctx) throw new Error('Unauthorized')
+    if (!canManageLifecycle(ctx.role)) {
+        throw new Error('Wymagane uprawnienia: administrator lub Talent Community Manager.')
+    }
+    return buildCtx(ctx)
+}
+
+/**
+ * Phase 22 — Lifecycle module layout guard.
+ * Allowed: admin, talent_community, manager (read-only for team), or employee with active
+ * own onboarding/exit interview (page-level check in the layout).
+ */
+export async function requireLifecycleHubLayout(): Promise<InternalAuthContext> {
+    const ctx = await loadAuthContext()
+    if (!ctx) redirect('/login')
+    // Access logic delegated to layout — we just enforce auth + HR-zone here.
+    // Konsultant IT without active lifecycle redirects to /home.
+    if (!canAccessInternalZone(ctx.role) && !canManageLifecycle(ctx.role)) {
+        redirect('/home')
+    }
+    return buildCtx(ctx)
 }

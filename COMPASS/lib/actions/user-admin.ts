@@ -483,6 +483,9 @@ export interface InviteUserInput {
     workStartDate?: string | null
     // Phase 20: optional manager_id (UUID). Dla pracowników biurowych (internal/finanse/manager/talent_community).
     managerId?: string | null
+    // Phase 22: opt-out from auto-starting the onboarding checklist. Default true (start onboarding).
+    autoStartOnboarding?: boolean
+    onboardingTemplateId?: string | null
 }
 
 const INVITABLE_ROLES: InviteUserInput['role'][] = [
@@ -544,10 +547,16 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
     }
     if (input.workStartDate !== undefined) {
         updates.work_start_date = input.workStartDate
+        // Phase 22: mirror to hired_at (used by lifecycle module for due_date calc).
+        updates.hired_at = input.workStartDate
     }
     // Phase 20: manager_id — only for HR-zone roles (admin's choice).
     if (input.managerId !== undefined && HR_ZONE_FOR_INVITE.includes(input.role)) {
         updates.manager_id = input.managerId
+    }
+    // Phase 22: mark new HR-zone employees as 'pending' until they actually start onboarding.
+    if (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant') {
+        updates.employment_status = 'pending'
     }
 
     const { error: profileErr } = await admin
@@ -558,6 +567,38 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
         throw new Error(`Profile update fail: ${profileErr.message}`)
     }
 
+    // Phase 22 — auto-start onboarding (best-effort, never blocks invite).
+    const shouldAutoStart =
+        input.autoStartOnboarding !== false
+        && (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant')
+
+    let onboardingProgressId: string | null = null
+    if (shouldAutoStart) {
+        try {
+            // Phase 22 RPC not yet in generated types — cast admin to any.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const adminAny = admin as any
+            const { data: progressId, error: rpcErr } = await adminAny.rpc('start_onboarding_for_user', {
+                p_user_id: userId,
+                p_template_id: input.onboardingTemplateId ?? null,
+                p_actor_id: actor.id,
+            })
+            if (rpcErr) {
+                logCompat.error('Auto-start onboarding RPC error:', rpcErr)
+            } else if (progressId) {
+                onboardingProgressId = progressId as string
+                await logAudit(actor.id, 'ONBOARDING_STARTED', {
+                    user_id: userId,
+                    progress_id: onboardingProgressId,
+                    triggered_by: 'invite_user',
+                })
+            }
+        } catch (e: unknown) {
+            // Most likely: no default template found for role — log + continue.
+            logCompat.error('Auto-start onboarding threw:', e)
+        }
+    }
+
     await logAudit(actor.id, 'INVITE_USER', {
         target_user_id: userId,
         target_email: email,
@@ -565,6 +606,8 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
         employment_type: input.employmentType ?? null,
         work_start_date: input.workStartDate ?? null,
         manager_id: input.managerId ?? null,
+        onboarding_started: onboardingProgressId !== null,
+        onboarding_progress_id: onboardingProgressId,
     })
 
     return { userId }

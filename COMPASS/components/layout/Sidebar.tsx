@@ -21,6 +21,7 @@ import {
     Sparkles,
     CalendarCheck,
     Users,
+    ClipboardCheck,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -35,6 +36,8 @@ export interface SidebarBadgeCounts {
     adminPitches?: number
     adminInbox?: number
     consultantSupport?: number
+    // Phase 22 — lifecycle module: overdue tasks + own pending check-ins + exit interviews to review.
+    lifecyclePendingTasks?: number
 }
 
 interface SidebarProps {
@@ -201,6 +204,21 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
+    // Phase 22 — Lifecycle hub for TCM, admin, and managers (managers see team scope).
+    // Sidebar link is rendered also for HR-zone employees so they can reach their own onboarding/exit form.
+    const lifecycleGroup: NavGroup = {
+        heading: 'Lifecycle',
+        links: [
+            {
+                name: 'Onboarding & Exit',
+                href: '/internal/lifecycle',
+                icon: ClipboardCheck,
+                feature: null,
+                badgeCount: badges?.lifecyclePendingTasks,
+            },
+        ],
+    }
+
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
@@ -208,6 +226,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         if (isFinance) out.push(financeGroup)
         if (isManager) out.push(managerGroup)
         if (isTalentCommunity) out.push(tcmGroup)
+        if (isHrZone) out.push(lifecycleGroup)
         return out
     })()
 
