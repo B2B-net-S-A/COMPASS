@@ -7,6 +7,7 @@ import { OnboardingChecklist } from '../../components/OnboardingChecklist'
 import { OnboardingCheckinPanel } from '../../components/OnboardingCheckinPanel'
 import { LifecycleTimelinePanel } from '../../components/LifecycleTimelinePanel'
 import { CompleteOnboardingButton } from '../../components/CompleteOnboardingButton'
+import { BuddyCard } from '../../components/BuddyCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,10 +63,13 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
                     <div className="text-xs uppercase text-muted-foreground">Manager</div>
                     <div className="font-medium">{detail.manager?.full_name ?? '—'}</div>
                 </div>
-                <div className="rounded-lg border bg-card p-3">
-                    <div className="text-xs uppercase text-muted-foreground">Buddy</div>
-                    <div className="font-medium">{detail.buddy?.full_name ?? '— (nie przypisany)'}</div>
-                </div>
+                <BuddyCard
+                    employeeId={detail.employee.id}
+                    employeeName={detail.employee.full_name ?? detail.employee.email}
+                    buddyId={detail.buddy?.id ?? null}
+                    buddyName={detail.buddy?.full_name ?? null}
+                    canEdit={isLifecycleAdmin || isManagerOfEmployee}
+                />
                 <div className="rounded-lg border bg-card p-3">
                     <div className="text-xs uppercase text-muted-foreground">Szablon</div>
                     <div className="font-medium">{detail.template.name}</div>

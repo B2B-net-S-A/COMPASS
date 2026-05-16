@@ -245,6 +245,181 @@ export async function deleteTemplate(templateId: string): Promise<void> {
     await logAudit(ctx.userId, 'TEMPLATE_DELETED', { template_id: templateId, soft: (count ?? 0) > 0 })
 }
 
+// ─── Employee lookup actions (for dialogs) ──────────────────────────────────
+
+export interface EligibleEmployee {
+    id: string
+    email: string
+    full_name: string | null
+    role: DbRole
+    hired_at: string | null
+    work_start_date: string | null
+    employment_status: string
+    manager_id: string | null
+    has_active_onboarding: boolean
+    has_active_exit_interview: boolean
+}
+
+/**
+ * Phase 22.2 — list employees TCM can act on:
+ *   filter='onboarding' → users WITHOUT active onboarding_progress
+ *   filter='exit'       → users WITHOUT active exit_interview (status != archived)
+ *   filter='all'        → all HR-zone employees
+ */
+export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 'all' = 'all'): Promise<EligibleEmployee[]> {
+    await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, hired_at, work_start_date, employment_status, manager_id')
+        .in('role', ['consultant', 'internal', 'finanse', 'manager', 'talent_community'])
+        .neq('employment_status', 'exited')
+        .order('full_name', { ascending: true })
+    if (error || !profiles) {
+        logCompat.error('listEmployeesForLifecycle error:', error)
+        return []
+    }
+
+    const userIds = profiles.map((p: { id: string }) => p.id)
+
+    const [{ data: progressRows }, { data: exitRows }] = await Promise.all([
+        supabase.from('onboarding_progress').select('user_id, completed_at').in('user_id', userIds),
+        supabase.from('exit_interviews').select('user_id, status').in('user_id', userIds).neq('status', 'archived'),
+    ])
+
+    const activeOnboardingSet = new Set<string>(
+        (progressRows ?? []).filter((p: { completed_at: string | null }) => p.completed_at === null).map((p: { user_id: string }) => p.user_id),
+    )
+    const activeExitSet = new Set<string>((exitRows ?? []).map((e: { user_id: string }) => e.user_id))
+
+    const all: EligibleEmployee[] = profiles.map((p: {
+        id: string; email: string; full_name: string | null; role: DbRole;
+        hired_at: string | null; work_start_date: string | null;
+        employment_status: string; manager_id: string | null
+    }) => ({
+        id: p.id,
+        email: p.email,
+        full_name: p.full_name,
+        role: p.role,
+        hired_at: p.hired_at,
+        work_start_date: p.work_start_date,
+        employment_status: p.employment_status,
+        manager_id: p.manager_id,
+        has_active_onboarding: activeOnboardingSet.has(p.id),
+        has_active_exit_interview: activeExitSet.has(p.id),
+    }))
+
+    if (filter === 'onboarding') return all.filter((e) => !e.has_active_onboarding && e.employment_status !== 'offboarding')
+    if (filter === 'exit') return all.filter((e) => !e.has_active_exit_interview && e.employment_status !== 'exited')
+    return all
+}
+
+/**
+ * Phase 22.2 — list potential buddy candidates for a given user:
+ *   - any HR-zone employee EXCEPT the target user themselves
+ *   - excludes 'exited' and 'pending'
+ */
+export async function listBuddyCandidates(forUserId: string): Promise<Array<{ id: string; email: string; full_name: string | null; role: DbRole }>> {
+    await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role')
+        .in('role', ['consultant', 'internal', 'finanse', 'manager', 'talent_community', 'admin'])
+        .in('employment_status', ['active', 'onboarding'])
+        .neq('id', forUserId)
+        .order('full_name', { ascending: true })
+    if (error || !data) {
+        logCompat.error('listBuddyCandidates error:', error)
+        return []
+    }
+    return data as Array<{ id: string; email: string; full_name: string | null; role: DbRole }>
+}
+
+export interface TemplateChoice {
+    id: string
+    name: string
+    target_role: DbRole
+    is_default: boolean
+    items_count: number
+}
+
+export async function listTemplateChoices(): Promise<TemplateChoice[]> {
+    await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+    const { data, error } = await supabase
+        .from('onboarding_templates')
+        .select('id, name, target_role, is_default, onboarding_template_items(count)')
+        .eq('is_archived', false)
+        .order('target_role', { ascending: true })
+        .order('is_default', { ascending: false })
+    if (error || !data) {
+        logCompat.error('listTemplateChoices error:', error)
+        return []
+    }
+    return (data as Array<{
+        id: string; name: string; target_role: DbRole; is_default: boolean;
+        onboarding_template_items: Array<{ count: number }>
+    }>).map((row) => ({
+        id: row.id,
+        name: row.name,
+        target_role: row.target_role,
+        is_default: row.is_default,
+        items_count: row.onboarding_template_items[0]?.count ?? 0,
+    }))
+}
+
+/**
+ * Phase 22.2 — allow TCM/admin to override hired_at while bootstrapping onboarding.
+ * Calls profile UPDATE first, then start_onboarding_for_user().
+ */
+export async function startOnboardingWithOptions(input: {
+    userId: string
+    templateId?: string | null
+    hiredAt?: string | null // ISO date — if provided, updates profiles.hired_at first
+}): Promise<string> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    if (input.hiredAt) {
+        const { error: updErr } = await supabase
+            .from('profiles')
+            .update({ hired_at: input.hiredAt, work_start_date: input.hiredAt })
+            .eq('id', input.userId)
+        if (updErr) throw new Error(`Nie udało się ustawić hired_at: ${updErr.message}`)
+    }
+
+    const { data, error } = await supabase.rpc('start_onboarding_for_user', {
+        p_user_id: input.userId,
+        p_template_id: input.templateId ?? null,
+        p_actor_id: ctx.userId,
+    })
+    if (error || !data) {
+        logCompat.error('startOnboardingWithOptions RPC error:', error)
+        throw new Error(error?.message ?? 'Nie udało się rozpocząć onboardingu.')
+    }
+    const progressId = data as string
+
+    const contact = await fetchUserContact(input.userId)
+    if (contact) {
+        await sendOnboardingWelcome(
+            contact.email,
+            contact.full_name ?? contact.email,
+            progressId,
+            roleLabelPl(contact.role),
+        ).catch((e) => logCompat.error('sendOnboardingWelcome failed:', e))
+    }
+
+    await logAudit(ctx.userId, 'ONBOARDING_STARTED', {
+        user_id: input.userId,
+        progress_id: progressId,
+        template_id: input.templateId ?? null,
+        triggered_by: 'manual',
+    })
+    return progressId
+}
+
 // ─── Template item CRUD ─────────────────────────────────────────────────────
 
 export interface TemplateItemInput {

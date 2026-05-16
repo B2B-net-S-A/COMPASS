@@ -10,6 +10,7 @@ import { requireLifecycleHubLayout } from '@/lib/auth/internal-guard'
 import { createLifecycleClient as createClient } from '@/lib/supabase/lifecycle-client'
 import { ClipboardList, LogOut, AlertCircle, TrendingUp, FileText, BarChart3, UserPlus } from 'lucide-react'
 import { canManageLifecycle } from '@/lib/types/role'
+import { HubActionButtons } from './components/HubActionButtons'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,6 +72,15 @@ export default async function LifecycleHubPage() {
                     <FileText className="h-4 w-4" /> Szablony
                 </Link>
             </header>
+
+            <section className="rounded-lg border-2 border-dashed border-primary/30 bg-card p-4">
+                <h2 className="text-sm font-semibold mb-3">Szybkie akcje</h2>
+                <HubActionButtons />
+                <p className="text-xs text-muted-foreground mt-3">
+                    &quot;Nowy onboarding&quot; uruchamia proces dla istniejącego pracownika (wybierasz osobę + szablon + datę).
+                    &quot;Zaplanuj exit&quot; ustawia status = offboarding i wysyła ankietę.
+                </p>
+            </section>
 
             <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <KpiCard
