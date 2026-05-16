@@ -245,6 +245,99 @@ export async function deleteTemplate(templateId: string): Promise<void> {
     await logAudit(ctx.userId, 'TEMPLATE_DELETED', { template_id: templateId, soft: (count ?? 0) > 0 })
 }
 
+// ─── Template item CRUD ─────────────────────────────────────────────────────
+
+export interface TemplateItemInput {
+    category: 'docs' | 'access' | 'training' | 'meeting' | 'equipment' | 'other'
+    title: string
+    description?: string | null
+    due_offset_days: number
+    requires_file?: boolean
+    course_slug?: string | null
+    responsible_role: ResponsibleRole
+    is_required?: boolean
+}
+
+export async function addTemplateItem(templateId: string, input: TemplateItemInput): Promise<string> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createClient()
+
+    const { data: maxPos } = await supabase
+        .from('onboarding_template_items')
+        .select('position')
+        .eq('template_id', templateId)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    const nextPos = (maxPos?.position ?? -1) + 1
+
+    const { data, error } = await supabase
+        .from('onboarding_template_items')
+        .insert({
+            template_id: templateId,
+            position: nextPos,
+            category: input.category,
+            title: input.title,
+            description: input.description ?? null,
+            due_offset_days: input.due_offset_days,
+            requires_file: input.requires_file ?? false,
+            course_slug: input.course_slug ?? null,
+            responsible_role: input.responsible_role,
+            is_required: input.is_required ?? true,
+        })
+        .select('id')
+        .single()
+    if (error || !data) throw new Error('Nie udało się dodać items szablonu.')
+
+    await logAudit(ctx.userId, 'TEMPLATE_UPDATED', { template_id: templateId, action: 'item_added', item_id: data.id })
+    return data.id as string
+}
+
+export async function updateTemplateItem(itemId: string, updates: Partial<TemplateItemInput>): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createClient()
+
+    const patch: Record<string, unknown> = {}
+    if (updates.category !== undefined) patch.category = updates.category
+    if (updates.title !== undefined) patch.title = updates.title
+    if (updates.description !== undefined) patch.description = updates.description
+    if (updates.due_offset_days !== undefined) patch.due_offset_days = updates.due_offset_days
+    if (updates.requires_file !== undefined) patch.requires_file = updates.requires_file
+    if (updates.course_slug !== undefined) patch.course_slug = updates.course_slug
+    if (updates.responsible_role !== undefined) patch.responsible_role = updates.responsible_role
+    if (updates.is_required !== undefined) patch.is_required = updates.is_required
+
+    if (Object.keys(patch).length === 0) return
+
+    const { error } = await supabase.from('onboarding_template_items').update(patch).eq('id', itemId)
+    if (error) throw new Error('Nie udało się zaktualizować items.')
+
+    await logAudit(ctx.userId, 'TEMPLATE_UPDATED', { item_id: itemId, action: 'item_updated', fields: Object.keys(patch) })
+}
+
+export async function deleteTemplateItem(itemId: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createClient()
+    const { error } = await supabase.from('onboarding_template_items').delete().eq('id', itemId)
+    if (error) throw new Error('Nie udało się usunąć items.')
+    await logAudit(ctx.userId, 'TEMPLATE_UPDATED', { item_id: itemId, action: 'item_deleted' })
+}
+
+export async function reorderTemplateItems(templateId: string, orderedItemIds: string[]): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createClient()
+
+    // Update positions in batch — each item gets a new position based on array order.
+    const updates = orderedItemIds.map((id, idx) =>
+        supabase.from('onboarding_template_items').update({ position: idx }).eq('id', id).eq('template_id', templateId),
+    )
+    const results = await Promise.all(updates)
+    const failed = results.filter((r) => r.error)
+    if (failed.length > 0) throw new Error(`Nie udało się przestawić ${failed.length} items.`)
+
+    await logAudit(ctx.userId, 'TEMPLATE_UPDATED', { template_id: templateId, action: 'items_reordered', count: orderedItemIds.length })
+}
+
 // ─── Onboarding Workflow ───────────────────────────────────────────────────
 
 export async function startOnboarding(userId: string, templateId?: string | null): Promise<string> {

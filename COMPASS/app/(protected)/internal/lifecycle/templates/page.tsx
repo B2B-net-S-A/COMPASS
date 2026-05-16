@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { listTemplates } from '@/lib/actions/lifecycle'
 import { requireLifecycleManagerAction } from '@/lib/auth/internal-guard'
 import { roleLabelPl } from '@/lib/types/role'
-import { FileText, Star } from 'lucide-react'
+import { FileText, Plus, Star } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,9 +23,17 @@ export default async function TemplatesListPage() {
                         Każda rola ma jeden domyślny szablon używany przy automatycznym onboardingu.
                     </p>
                 </div>
-                <Link href="/internal/lifecycle" className="text-sm underline text-muted-foreground">
-                    ← Powrót do hub
-                </Link>
+                <div className="flex items-center gap-3">
+                    <Link
+                        href="/internal/lifecycle/templates/new"
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-sm font-medium"
+                    >
+                        <Plus className="h-4 w-4" /> Nowy szablon
+                    </Link>
+                    <Link href="/internal/lifecycle" className="text-sm underline text-muted-foreground">
+                        ← Powrót do hub
+                    </Link>
+                </div>
             </header>
 
             {templates.length === 0 ? (
