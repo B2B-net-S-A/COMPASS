@@ -9,6 +9,8 @@ import {
     canManageInbox,
     canManageLifecycle,
     canManagerApproveInvoice,
+    canProposeBonus,
+    canReadAllBonuses,
     canReviewInvoices,
     isAdminLike,
     isManager,
@@ -217,4 +219,28 @@ export async function requireLifecycleHubLayout(): Promise<InternalAuthContext> 
         redirect('/home')
     }
     return buildCtx(ctx)
+}
+
+/**
+ * Phase 23 — Bonus proposer guard.
+ * Allowed: admin (anyone), manager (own team only — team scope enforced in action body + RLS).
+ */
+export async function requireBonusProposerAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!canProposeBonus(ctx.role)) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    return ctx
+}
+
+/**
+ * Phase 23 — Bonus read-all guard (global report).
+ * Allowed: admin, finanse (read-only). Manager sees own team via RLS, not this guard.
+ */
+export async function requireBonusReadAllAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!canReadAllBonuses(ctx.role)) {
+        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+    }
+    return ctx
 }

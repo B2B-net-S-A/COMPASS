@@ -1,9 +1,10 @@
-import { ClipboardList, Receipt, Users, FileText } from 'lucide-react'
+import { ClipboardList, Receipt, Users, FileText, Gift } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AdminLeaveRequestsPanel } from '@/components/internal/panels/AdminLeaveRequestsPanel'
 import { AdminTimesheetsPanel } from '@/components/internal/panels/AdminTimesheetsPanel'
 import { AdminEmployeesPanel } from '@/components/internal/panels/AdminEmployeesPanel'
 import { AdminInvoicesPanel } from '@/components/internal/panels/AdminInvoicesPanel'
+import { AdminBonusesPanel } from '@/components/internal/panels/AdminBonusesPanel'
 import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,7 @@ const ALL_TABS: ReadonlyArray<HubTab> = [
     { id: 'leave-requests', label: 'Wnioski urlopowe', icon: ClipboardList },
     { id: 'timesheets', label: 'Timesheety', icon: Receipt },
     { id: 'invoices', label: 'Faktury', icon: FileText },
+    { id: 'bonuses', label: 'Premie', icon: Gift },
     { id: 'employees', label: 'Pracownicy', icon: Users },
 ]
 
@@ -33,14 +35,14 @@ function parseIntSafe(value: string | undefined): number | undefined {
 export default async function InternalAdminHubPage({ searchParams }: PageProps) {
     const ctx = await requireInternalAdminAreaLayout()
 
-    // Phase 20: tabs visible per role.
-    //   admin            → all 5 tabs
-    //   finanse          → invoices only
-    //   manager          → timesheets + invoices (zespół)
+    // Phase 20 + 22: tabs visible per role.
+    //   admin            → all tabs
+    //   finanse          → invoices + bonuses (raport read-only)
+    //   manager          → timesheets + invoices + bonuses (zespół)
     const visibleTabs = ALL_TABS.filter((t) => {
         if (ctx.isAdmin) return true
-        if (ctx.role === 'finanse') return t.id === 'invoices'
-        if (ctx.isManager) return t.id === 'timesheets' || t.id === 'invoices'
+        if (ctx.role === 'finanse') return t.id === 'invoices' || t.id === 'bonuses'
+        if (ctx.isManager) return t.id === 'timesheets' || t.id === 'invoices' || t.id === 'bonuses'
         return false
     })
 
@@ -51,7 +53,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             ? 'invoices'
             : ctx.isManager
                 ? 'timesheets'
-                : (visibleTabs[0]?.id ?? 'invoices')
+                : (visibleTabs[0]?.id ?? 'bonuses')
     const tab = validTabIds.includes(searchParams?.tab ?? '')
         ? (searchParams!.tab as string)
         : defaultTab
@@ -84,6 +86,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             {tab === 'leave-requests' && <AdminLeaveRequestsPanel />}
             {tab === 'timesheets' && <AdminTimesheetsPanel year={year} month={month} />}
             {tab === 'invoices' && <AdminInvoicesPanel scope={scope} />}
+            {tab === 'bonuses' && <AdminBonusesPanel />}
             {tab === 'employees' && <AdminEmployeesPanel />}
         </div>
     )

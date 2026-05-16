@@ -114,6 +114,18 @@ export function canSubmitOwnInvoice(role: string | null | undefined): boolean {
     )
 }
 
+// Phase 22 — kto może proponować premię? Admin (każdemu), manager (swojemu zespołowi).
+// Team scope (target.manager_id = ctx.userId) sprawdzane w action body + RLS.
+export function canProposeBonus(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isManager(role)
+}
+
+// Phase 22 — kto widzi globalny raport premii (read-only)? Admin + finanse.
+// Manager widzi tylko swój zespół (przez RLS). Recipient widzi swoje.
+export function canReadAllBonuses(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isFinance(role)
+}
+
 // UI labelki dla 6 ról Compass (post Phase 20):
 //   admin            → Super Admin (wszystko + własny HR)
 //   consultant       → Konsultant IT (platform: learning/league/incubator/news/support)
