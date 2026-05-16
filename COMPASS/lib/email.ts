@@ -911,3 +911,267 @@ export async function sendCorrectionDecision(
         return { success: false }
     }
 }
+
+// ─── Phase 22: Lifecycle module emails ────────────────────────────────────
+
+const COMPASS_APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'
+
+/**
+ * Phase 22 — Welcome email after onboarding bootstrap.
+ * Sent immediately after start_onboarding_for_user() creates progress + tasks.
+ */
+export async function sendOnboardingWelcome(
+    recipientEmail: string,
+    recipientName: string,
+    progressId: string,
+    roleLabel: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Witamy w B2B Network — Twój onboarding jest gotowy`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/onboarding/${progressId}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Witamy w zespole B2B Network jako <strong>${roleLabel}</strong>! Przygotowaliśmy dla Ciebie checklist onboardingu — zadania pomogą Ci sprawnie wystartować przez najbliższe 30 dni.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">Co dalej:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li>Otwórz swój checklist i zapoznaj się z zadaniami</li>
+            <li>Niektóre zadania wymagają wgrania dokumentów (kontrakt, NDA)</li>
+            <li>Inne to kursy w Akademii — kliknij linki w checkliście</li>
+            <li>Spotkasz się z managerem (intro meeting) i buddy</li>
+        </ul>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #22d3ee; color: #0a0a0a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Otwórz checklist onboardingu</a>
+        </p>
+        <p style="color: #6b7280; font-size: 12px;">Jeśli masz pytania, skontaktuj się z Talent Community Managerem lub swoim managerem.</p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Onboarding', heading: subject, bodyHtml, accent: '#22d3ee' }),
+        })
+        if (error) {
+            logCompat.error('Resend onboarding-welcome error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Onboarding-welcome email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Day 1 / 7 / 30 check-in mini-survey reminder.
+ */
+export async function sendOnboardingDayCheckin(
+    recipientEmail: string,
+    recipientName: string,
+    progressId: string,
+    day: 1 | 7 | 30,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Jak Ci się pracuje? Mini-ankieta po ${day} ${day === 1 ? 'dniu' : 'dniach'}`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/onboarding/${progressId}?checkin=${day}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Minął ${day === 1 ? 'pierwszy dzień' : day === 7 ? 'pierwszy tydzień' : 'pierwszy miesiąc'} pracy. Poświęć 30 sekund i powiedz, jak Ci się układa — Twoja opinia pomaga nam ulepszać onboarding.
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #3A8DFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij mini-ankietę</a>
+        </p>
+        <p style="color: #6b7280; font-size: 12px;">Skala 1-5 + opcjonalny komentarz. Bez konsekwencji.</p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: `Check-in dzień ${day}`, heading: subject, bodyHtml }),
+        })
+        if (error) {
+            logCompat.error(`Resend onboarding-checkin-${day} error:`, error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Onboarding-checkin email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Manager reminder for overdue onboarding tasks of their team members.
+ */
+export async function sendOnboardingReminderToManager(
+    managerEmail: string,
+    managerName: string,
+    employeeName: string,
+    overdueTasks: Array<{ title: string; dueDate: string }>,
+    progressId: string,
+): Promise<{ success: boolean }> {
+    if (overdueTasks.length === 0) return { success: true }
+    const subject = `[COMPASS HR] Przeterminowane zadania onboardingu — ${employeeName}`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/onboarding/${progressId}`
+    const itemsHtml = overdueTasks
+        .map((t) => `<li><strong>${t.title}</strong> (termin: ${t.dueDate})</li>`)
+        .join('')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${managerName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twój team-member <strong>${employeeName}</strong> ma przeterminowane zadania onboardingu — niektóre są na Twojej liście:
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">${itemsHtml}</ul>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #f59e0b; color: #0a0a0a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Otwórz onboarding</a>
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: managerEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Przypomnienie onboarding', heading: subject, bodyHtml, accent: '#f59e0b' }),
+        })
+        if (error) {
+            logCompat.error('Resend onboarding-reminder error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Onboarding-reminder email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Exit interview invitation (sent when offboarding starts).
+ */
+export async function sendExitInterviewInvitation(
+    recipientEmail: string,
+    recipientName: string,
+    scheduledFor: string,
+    interviewId: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Exit interview — zapraszamy do wypełnienia ankiety`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/exit/wypelnij`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Dziękujemy za czas spędzony w B2B Network. Przed Twoim odejściem chcielibyśmy poprosić o wypełnienie krótkiej ankiety exit interview — Twoja szczera opinia pomoże nam stać się lepszą firmą.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Sugerowany termin wypełnienia: <strong>${scheduledFor}</strong>
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Możesz wypełnić ankietę z imienia i nazwiska <strong>lub anonimowo</strong> (checkbox na końcu formularza).
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #3A8DFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij exit interview</a>
+        </p>
+        <p style="color: #6b7280; font-size: 11px;">Interview ID: ${interviewId}</p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Exit interview', heading: subject, bodyHtml }),
+        })
+        if (error) {
+            logCompat.error('Resend exit-invitation error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Exit-invitation email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Exit interview reminder (3 days before termination if still unsubmitted).
+ */
+export async function sendExitInterviewReminder(
+    recipientEmail: string,
+    recipientName: string,
+    terminationDate: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Przypomnienie: wypełnij exit interview`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/exit/wypelnij`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twoja data zakończenia współpracy: <strong>${terminationDate}</strong>. Nie wypełniłaś/eś jeszcze exit interview — to ostatnia szansa, by podzielić się opinią.
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #f59e0b; color: #0a0a0a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij teraz</a>
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Przypomnienie exit', heading: subject, bodyHtml, accent: '#f59e0b' }),
+        })
+        if (error) {
+            logCompat.error('Resend exit-reminder error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Exit-reminder email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Offboarding checklist notification to manager.
+ */
+export async function sendOffboardingChecklistToManager(
+    managerEmail: string,
+    managerName: string,
+    employeeName: string,
+    terminationDate: string,
+    userId: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS HR] Offboarding zespołu — ${employeeName}`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/offboarding/${userId}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${managerName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twój team-member <strong>${employeeName}</strong> wchodzi w proces offboardingu. Data zakończenia: <strong>${terminationDate}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">Twoje zadania na liście:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li>Zwrot sprzętu firmowego (laptop, monitor, akcesoria)</li>
+            <li>Knowledge transfer — koordynacja przekazywania projektów</li>
+            <li>Spotkanie pożegnalne z zespołem</li>
+        </ul>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #3A8DFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Otwórz checklist offboardingu</a>
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: managerEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Offboarding', heading: subject, bodyHtml }),
+        })
+        if (error) {
+            logCompat.error('Resend offboarding-checklist error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Offboarding-checklist email failed:', err)
+        return { success: false }
+    }
+}
