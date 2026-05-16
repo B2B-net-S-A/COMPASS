@@ -51,6 +51,24 @@ export async function listCategoryMaterials(categoryId: string): Promise<Support
     }
 }
 
+// Client-callable wrapper. Next.js 14 + React 18 nie serializuje File jako
+// argumentu Server Action ("Only plain objects, and a few built-ins, can be
+// passed to Server Actions"). Klient pakuje wszystko do FormData; tu
+// rozpakowujemy i wołamy `uploadCategoryMaterial`.
+export async function uploadCategoryMaterialForm(
+    formData: FormData,
+): Promise<SupportActionResult<CategoryMaterial>> {
+    const categoryId = String(formData.get('category_id') ?? '')
+    if (!categoryId) return { success: false, error: 'Brak ID kategorii.' }
+    const file = formData.get('file')
+    if (!(file instanceof File)) return { success: false, error: 'Plik jest wymagany.' }
+    const title = String(formData.get('title') ?? '')
+    const rawDescription = formData.get('description')
+    const description =
+        typeof rawDescription === 'string' && rawDescription.length > 0 ? rawDescription : undefined
+    return uploadCategoryMaterial(categoryId, file, title, description)
+}
+
 export async function uploadCategoryMaterial(
     categoryId: string,
     file: File,
@@ -146,6 +164,18 @@ export async function listArticleAttachments(articleId: string): Promise<Support
         const msg = error instanceof Error ? error.message : 'Błąd pobierania załączników'
         return { success: false, error: msg }
     }
+}
+
+// Client-callable wrapper — patrz komentarz przy `uploadCategoryMaterialForm`.
+export async function uploadArticleAttachmentForm(
+    formData: FormData,
+): Promise<SupportActionResult<ArticleAttachment>> {
+    const articleId = String(formData.get('article_id') ?? '')
+    if (!articleId) return { success: false, error: 'Brak ID artykułu.' }
+    const file = formData.get('file')
+    if (!(file instanceof File)) return { success: false, error: 'Plik jest wymagany.' }
+    const title = String(formData.get('title') ?? '')
+    return uploadArticleAttachment(articleId, file, title)
 }
 
 export async function uploadArticleAttachment(
