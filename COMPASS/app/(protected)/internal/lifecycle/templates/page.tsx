@@ -3,6 +3,7 @@ import { listTemplates } from '@/lib/actions/lifecycle'
 import { requireLifecycleManagerAction } from '@/lib/auth/internal-guard'
 import { roleLabelPl } from '@/lib/types/role'
 import { FileText, Plus, Star } from 'lucide-react'
+import { DuplicateTemplateButton } from '../components/DuplicateTemplateButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,30 +44,31 @@ export default async function TemplatesListPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {templates.map((t) => (
-                        <Link
-                            key={t.id}
-                            href={`/internal/lifecycle/templates/${t.id}`}
-                            className="rounded-lg border bg-card p-4 hover:bg-accent block"
-                        >
-                            <div className="flex items-start justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold">{t.name}</span>
-                                        {t.is_default && (
-                                            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                                        )}
+                        <div key={t.id} className="rounded-lg border bg-card p-4 hover:bg-accent block">
+                            <Link href={`/internal/lifecycle/templates/${t.id}`} className="block">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold">{t.name}</span>
+                                            {t.is_default && (
+                                                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-1">{roleLabelPl(t.target_role)}</div>
                                     </div>
-                                    <div className="text-xs text-muted-foreground mt-1">{roleLabelPl(t.target_role)}</div>
+                                    <div className="text-right">
+                                        <div className="text-2xl font-bold">{t.items_count}</div>
+                                        <div className="text-xs text-muted-foreground">items</div>
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <div className="text-2xl font-bold">{t.items_count}</div>
-                                    <div className="text-xs text-muted-foreground">items</div>
-                                </div>
+                                {t.description && (
+                                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{t.description}</p>
+                                )}
+                            </Link>
+                            <div className="flex justify-end mt-3 pt-3 border-t">
+                                <DuplicateTemplateButton templateId={t.id} />
                             </div>
-                            {t.description && (
-                                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{t.description}</p>
-                            )}
-                        </Link>
+                        </div>
                     ))}
                 </div>
             )}

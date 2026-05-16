@@ -8,7 +8,7 @@ import {
 } from '@/lib/actions/lifecycle'
 import { requireLifecycleHubLayout } from '@/lib/auth/internal-guard'
 import { createLifecycleClient as createClient } from '@/lib/supabase/lifecycle-client'
-import { ClipboardList, LogOut, AlertCircle, TrendingUp, FileText, BarChart3, UserPlus } from 'lucide-react'
+import { ClipboardList, LogOut, AlertCircle, TrendingUp, FileText, BarChart3, UserPlus, Users, Archive } from 'lucide-react'
 import { canManageLifecycle } from '@/lib/types/role'
 import { HubActionButtons } from './components/HubActionButtons'
 
@@ -65,12 +65,26 @@ export default async function LifecycleHubPage() {
                         Zarządzanie procesami wejścia i wyjścia pracowników. Ostatnie 90 dni: {analytics.period.from} → {analytics.period.to}
                     </p>
                 </div>
-                <Link
-                    href="/internal/lifecycle/templates"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-sm font-medium"
-                >
-                    <FileText className="h-4 w-4" /> Szablony
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                    <Link
+                        href="/internal/lifecycle/employees"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md border hover:bg-accent text-sm font-medium"
+                    >
+                        <Users className="h-4 w-4" /> Pracownicy
+                    </Link>
+                    <Link
+                        href="/internal/lifecycle/archive"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md border hover:bg-accent text-sm font-medium"
+                    >
+                        <Archive className="h-4 w-4" /> Archiwum
+                    </Link>
+                    <Link
+                        href="/internal/lifecycle/templates"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-sm font-medium"
+                    >
+                        <FileText className="h-4 w-4" /> Szablony
+                    </Link>
+                </div>
             </header>
 
             <section className="rounded-lg border-2 border-dashed border-primary/30 bg-card p-4">

@@ -73,6 +73,15 @@ export type AuditAction =
     | 'EXIT_INTERVIEW_ANONYMIZED'
     | 'OFFBOARDING_TASK_COMPLETED'
     | 'EMPLOYEE_EXITED'
+    // Phase 22f — Cancellation + notes + external + duplicates
+    | 'ONBOARDING_CANCELLED'
+    | 'ONBOARDING_RESTARTED'
+    | 'EXIT_INTERVIEW_CANCELLED'
+    | 'LIFECYCLE_PROFILE_UPDATED'
+    | 'EXTERNAL_EMPLOYEE_CREATED'
+    | 'LIFECYCLE_NOTE_ADDED'
+    | 'LIFECYCLE_NOTE_DELETED'
+    | 'TEMPLATE_DUPLICATED'
     // Phase 23 — Premie (Bonuses)
     | 'BONUS_PROPOSED'
     | 'BONUS_CANCELLED'

@@ -4,6 +4,7 @@ import { listExitInterviews } from '@/lib/actions/lifecycle'
 import { requireLifecycleHubLayout } from '@/lib/auth/internal-guard'
 import { canManageLifecycle } from '@/lib/types/role'
 import { LogOut } from 'lucide-react'
+import { ExportExitInterviewsButton } from '../components/ExportExitInterviewsButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,9 +28,12 @@ export default async function ExitInterviewQueuePage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{interviews.length} wypełnionych ankiet</p>
                 </div>
-                <Link href="/internal/lifecycle" className="text-sm underline text-muted-foreground">
-                    ← Powrót do hub
-                </Link>
+                <div className="flex items-center gap-3">
+                    <ExportExitInterviewsButton />
+                    <Link href="/internal/lifecycle" className="text-sm underline text-muted-foreground">
+                        ← Powrót do hub
+                    </Link>
+                </div>
             </header>
 
             {interviews.length === 0 ? (

@@ -8,6 +8,9 @@ import { OnboardingCheckinPanel } from '../../components/OnboardingCheckinPanel'
 import { LifecycleTimelinePanel } from '../../components/LifecycleTimelinePanel'
 import { CompleteOnboardingButton } from '../../components/CompleteOnboardingButton'
 import { BuddyCard } from '../../components/BuddyCard'
+import { CancelOnboardingButton } from '../../components/CancelOnboardingButton'
+import { LifecycleNotesPanel } from '../../components/LifecycleNotesPanel'
+import { AuditHistoryPanel } from '../../components/AuditHistoryPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,10 +111,33 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
                 </section>
             )}
 
+            {isLifecycleAdmin && !detail.progress.completed_at && (
+                <section className="rounded-lg border border-dashed border-red-400/30 p-4">
+                    <h3 className="font-semibold text-sm mb-2 text-red-400">Strefa niebezpieczna</h3>
+                    <p className="text-xs text-muted-foreground mb-3">
+                        Anuluj jeśli onboarding był pomyłką. Restart skasuje postęp i utworzy nowy onboarding z tym samym (lub innym) szablonem.
+                    </p>
+                    <CancelOnboardingButton progressId={detail.progress.id} />
+                </section>
+            )}
+
+            {isLifecycleAdmin && (
+                <section>
+                    <h2 className="text-lg font-semibold mb-3">Notatki TCM</h2>
+                    <LifecycleNotesPanel userId={detail.employee.id} defaultCategory="onboarding" />
+                </section>
+            )}
+
             {timeline.length > 0 && (
                 <section>
                     <h2 className="text-lg font-semibold mb-3">Timeline</h2>
                     <LifecycleTimelinePanel events={timeline} />
+                </section>
+            )}
+
+            {isLifecycleAdmin && (
+                <section>
+                    <AuditHistoryPanel userId={detail.employee.id} />
                 </section>
             )}
         </div>
