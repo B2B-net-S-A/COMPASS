@@ -330,6 +330,60 @@ export async function sendLeaveRequestSubmitted(
 }
 
 /**
+ * Phase 25 — notify substitute that they were assigned + leave got approved.
+ * Includes the leave dates, employee name/email, and a link to the calendar
+ * (so substitute knows from when to start covering).
+ */
+export async function sendSubstituteAssigned(
+    substituteEmail: string,
+    substituteName: string,
+    employeeName: string,
+    employeeEmail: string,
+    startDate: string,
+    endDate: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS HR] Jesteś zastępcą — ${employeeName} (${startDate} – ${endDate})`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć ${substituteName},</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            <strong>${employeeName}</strong> (${employeeEmail}) wybrał Cię jako zastępcę
+            podczas swojego urlopu.
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Outlook auto-reply pracownika kieruje pilne sprawy do Ciebie.
+            Wniosek został zaakceptowany, możesz spodziewać się pierwszych zapytań od jutra
+            (lub od daty rozpoczęcia urlopu).
+        </p>
+        <p style="color: #9ca3af; font-size: 12px; margin-top: 16px;">
+            Jeśli to pomyłka — skontaktuj się z ${employeeName} lub adminem.
+        </p>
+    `
+    const html = wrapHrEmail({ tag: 'Zastępstwo', heading: subject, bodyHtml })
+
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: substituteEmail,
+            subject,
+            html,
+            saveToSentItems: true,
+        })
+        if (error) {
+            logCompat.error('Resend substitute-assigned error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Substitute-assigned email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
  * H2.3: notify adminów że user anulował zatwierdzony future urlop.
  */
 export async function sendLeaveCancelledByUser(
