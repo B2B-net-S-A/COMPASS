@@ -317,6 +317,96 @@ Pełen TCM toolkit (13 features):
 4. Zalogować się jako pracownik, wypełnić task z plikiem → sprawdzić upload do `lifecycle-docs/onboarding/{user_id}/`.
 5. Zalogować się jako TCM, zmienić status pracownika na offboarding via `scheduleExitInterview(...)` → wypełnić anonimowo → sprawdzić w DB że `user_id IS NULL` ale snapshot zachowany + ankieta widoczna w queue dla TCM.
 
+## Phase 23 — Premie (PR #116, 2026-05-16)
+
+Manager proponuje premię dla pracownika → pracownik linkuje z własną fakturą → status=paid. State machine `pending → paid | cancelled`.
+
+Tabela `bonuses` + trigger `enforce_bonus_stage_transitions` + helper `can_propose_bonus_for(user)`. RLS: recipient + manager_of + finanse/admin (read). Audit log: `BONUS_PROPOSED/CANCELLED/LINKED_TO_INVOICE/UNLINKED`.
+
+## Phase 24 — Timesheet UX (PR #118, 2026-05-16)
+
+Pełen pakiet UX poprawek timesheet:
+
+**Migracja `phase24a_timesheet_templates_and_defaults`:**
+- `timesheet_user_templates` (per-user snippety opisów usług, RLS owner-only)
+- `timesheet_role_defaults` (admin-defined globalne prefill per rola/projekt)
+- `resolve_role_default(role, project)` RPC — priority: role+project > role > project > global
+
+**UI dla pracownika:**
+- `TimesheetEntryDialog`: dropdown "Wstaw snippet ▾" wstawia opis + projekt jednym klikiem
+- `TimesheetEditor`: przyciski "Skopiuj z poprzedniego miesiąca" (z ostatniego approved) + "Wypełnij defaultem" (globalny prefill admina)
+- `/internal/timesheet/archiwum` — 12 ostatnich miesięcy z statusami + Eksport CSV
+- `/internal/timesheet/snippets` — CRUD swoich snippetów
+
+**UI dla admina/managera:**
+- Klik wiersza w queue → `TimesheetPreviewDialog` z dniami + opisami + Approve/Reject z modala
+- Przycisk "Profil" → `EmployeeProfileDialog` z 3 tabami (Timesheety / Faktury / Urlopy za 12 mc)
+- Przycisk "CSV" w toolbar (range picker max 24 mc, UTF-8 z BOM dla Excela)
+- `/internal/admin/role-defaults` — admin CRUD globalnych defaultów
+
+**Audit log:** `TIMESHEET_COPIED_FROM_PREVIOUS`, `TIMESHEET_APPLIED_DEFAULT`, `TIMESHEET_TEMPLATE_*`, `TIMESHEET_EXPORTED_CSV`, `ROLE_DEFAULT_*`.
+
+## Phase 25 — Zastępca + Outlook Out of Office + Calendar (PR #120 + #122, 2026-05-18)
+
+Po approve urlopu system automatycznie ustawia OOF w Outlook pracownika + tworzy event "Urlop" w jego kalendarzu + wysyła email do zastępcy (jeśli wybrany).
+
+**Migracja `phase25a_leave_substitute_and_oof`:**
+- `leave_requests.substitute_id` (UUID FK profiles)
+- `leave_requests.oof_internal_message` + `oof_external_message` (custom PL+EN auto-reply, opcjonalny)
+- `leave_requests.graph_oof_set` + `graph_oof_set_at` (flag/timestamp gdy Graph potwierdzi)
+- `leave_requests.graph_sync_error` (last error from Graph — OOF lub Calendar)
+- 3 indexes: substitute, sync_error, active window
+
+**Backend:**
+- `lib/mailbox/graph-oof.ts` — `setOutOfOffice` / `disableOutOfOffice` / `buildDefaultOofMessages` (dwujęzyczny PL+EN default)
+- `lib/calendar/graph-events.ts` (już od PR2) — `createLeaveEvent` / `deleteLeaveEvent`
+- `approveLeaveRequest`: po success wywołuje OOF + Calendar + email do zastępcy, zapisuje flagi
+- `cancelMyLeaveRequest` (status=approved): auto-disable OOF + delete event
+- `retryLeaveGraphSync(id)` (admin only) — Phase 25d, ponawia sync gdy `graph_sync_error IS NOT NULL`
+
+**UI:**
+- `LeaveRequestForm`: dropdown "Zastępca" (z `listEligibleSubstitutes()` — HR-zone only, nie self, nie exited) + collapsible "Dostosuj tekst Out of Office" (2 textareas)
+- `MyLeaveList`: "Zastępca: [Name]" + status OOF badge (green/amber/grey) dla approved
+- `LeaveQueue` (admin pending): zastępca + badge "Custom Out of Office message"
+- `AdminLeaveSyncIssues`: card z approved leaves gdzie sync failed + przycisk "Ponów"
+- `ActiveLeavesBanner` (server component, w `/internal` u góry): aktywne urlopy w team scope (admin/TCM=all, manager=team, internal=own manager+colleagues+self), top 3 + count of remaining
+
+**Email:** `sendSubstituteAssigned` (lib/email.ts) — wrapHrEmail z `saveToSentItems=true`.
+
+**Audit log:** `LEAVE_SUBSTITUTE_ASSIGNED`, `LEAVE_OOF_SET`, `LEAVE_OOF_FAILED`, `LEAVE_OOF_DISABLED`.
+
+### KRYTYCZNE: Exchange Online RBAC for Applications (RAOP)
+
+Tenant `b2bnetwork.pl` ma aktywny mechanizm **RBAC for Applications** w Exchange Online (Microsoft, GA 2024). To NIE wystarczy żeby app miała permissions w Entra — wymagane jest też explicit role assignment w EXO. Bez tego Graph zwraca:
+```
+403 ErrorAccessDenied — [RAOP] : Blocked by tenant configured AppOnly AccessPolicy settings.
+```
+
+**Fix (zrobiony 2026-05-18, ServicePrincipal ObjectId `90ea31d8-c888-4e34-b146-9bd97f894515`):**
+```powershell
+Connect-ExchangeOnline -UserPrincipalName artur.twardowski@b2bnetwork.pl
+$sp = New-ServicePrincipal -AppId "17f9ff8c-ac4e-414d-890e-a823722b4c35" -ServiceId "90ea31d8-c888-4e34-b146-9bd97f894515" -DisplayName "Compass"
+New-ManagementRoleAssignment -App $sp.Identity -Role "Application Mail.Send"
+New-ManagementRoleAssignment -App $sp.Identity -Role "Application Calendars.ReadWrite"
+New-ManagementRoleAssignment -App $sp.Identity -Role "Application MailboxSettings.ReadWrite"
+```
+
+**GOTCHA:** `-ServiceId` musi być **Entra Service Principal ObjectId** (z `az ad sp list --filter "appId eq '...'" --query "[0].id"`), NIE Application ID. Niejasne w docs Microsoft.
+
+**Smoke test Graph (verify EXO RBAC działa):**
+```bash
+TOKEN=$(curl -s -X POST "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token" \
+  -d "client_id=$CLIENT_ID" -d "client_secret=$CLIENT_SECRET" \
+  -d "scope=https%3A%2F%2Fgraph.microsoft.com%2F.default" \
+  -d "grant_type=client_credentials" | jq -r .access_token)
+# Test PATCH mailboxSettings → expect 200
+curl -X PATCH "https://graph.microsoft.com/v1.0/users/artur.twardowski@b2bnetwork.pl/mailboxSettings" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"automaticRepliesSetting":{"status":"disabled"}}'
+```
+
+Jeśli zwraca 403 RAOP — uruchom skrypt PowerShell powyżej żeby przyznać role w EXO.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
