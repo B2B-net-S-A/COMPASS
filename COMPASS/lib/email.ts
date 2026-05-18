@@ -476,6 +476,66 @@ export async function sendLeaveDecision(
     }
 }
 
+// Phase 25b — Manager/admin wpisał urlop w imieniu pracownika.
+// `isPastLeave=true` → wstecznie wpisany urlop, OOF i wydarzenie Outlook
+// nie były ustawione (już po fakcie). `isPastLeave=false` → ongoing/future,
+// system ustawił OOF i Outlook event automatycznie.
+export async function sendLeaveCreatedOnBehalf(
+    recipientEmail: string,
+    recipientName: string,
+    actorName: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    note?: string | null,
+    isPastLeave: boolean = false,
+): Promise<{ success: boolean }> {
+    const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
+    const subject = `[COMPASS HR] ${actorName} wpisał za Ciebie urlop`
+    const accent = '#3b82f6'
+    const sideEffectsNote = isPastLeave
+        ? `<p style="color: #d1d5db; font-size: 14px;">
+              Urlop dotyczy okresu, który już minął — nie ustawiamy Out of Office ani powiadomień zastępcy.
+              Wpis trafia do Twojej historii i przelicza obecności w tych dniach.
+           </p>`
+        : `<p style="color: #d1d5db; font-size: 14px;">
+              System automatycznie ustawił Out of Office w Twoim Outlooku oraz utworzył wydarzenie w kalendarzu na czas urlopu.
+           </p>`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            <strong>${actorName}</strong> wpisał za Ciebie urlop w systemie COMPASS:
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Typ:</strong> ${typeLabel}</li>
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+            ${note ? `<li><strong>Notatka:</strong> ${note}</li>` : ''}
+        </ul>
+        ${sideEffectsNote}
+        <p style="color: #d1d5db; font-size: 14px;">
+            Jeśli to pomyłka — skontaktuj się z osobą, która wpisała urlop, lub z administratorem.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true, // audit trail: kto wpisał za kogo
+            html: wrapHrEmail({ tag: 'Urlop wpisany', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend leave-on-behalf error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Leave-on-behalf email failed:', err)
+        return { success: false }
+    }
+}
+
 export async function sendTimesheetSubmitted(
     recipientEmails: string[],
     requesterName: string,

@@ -11,6 +11,7 @@ import {
 import { logAudit } from '@/lib/actions/audit'
 import {
     sendLeaveCancelledByUser,
+    sendLeaveCreatedOnBehalf,
     sendLeaveDecision,
     sendLeaveRequestSubmitted,
     sendSubstituteAssigned,
@@ -427,6 +428,350 @@ export async function listEligibleSubstitutes(): Promise<EligibleSubstitute[]> {
     return ((data ?? []) as unknown as Array<EligibleSubstitute & { employment_status: string | null }>)
         .filter((p) => p.employment_status !== 'exited' && p.employment_status !== 'offboarding')
         .map(({ id, full_name, email, role }) => ({ id, full_name, email, role }))
+}
+
+// ─── Phase 25b: createLeaveOnBehalf (manager/admin wpisuje za pracownika) ────
+
+const ON_BEHALF_HR_ROLES = ['admin', 'internal', 'manager', 'finanse', 'talent_community'] as const
+
+export interface CreateLeaveOnBehalfInput {
+    targetUserId: string
+    startDate: string
+    endDate: string
+    leaveType: LeaveType
+    halfDay?: 'morning' | 'afternoon' | null
+    note?: string | null
+    substituteId?: string | null
+}
+
+/**
+ * Phase 25b: Manager (dla swojego zespołu) lub Admin (globalnie) wpisuje
+ * urlop w imieniu pracownika z auto-approve. Pracownik czasem zapomina
+ * wysłać wniosek — manager wie że jest na urlopie, rejestruje fakt.
+ *
+ * Side-effecty inteligentnie wg daty:
+ *  - ZAWSZE: attendance sync, audit log, email + push do pracownika, Teams alert.
+ *  - JEŚLI end_date >= today: + Outlook calendar event + OOF + email do zastępcy.
+ *  - JEŚLI end_date < today (urlop zakończony): pomijamy Outlook/OOF/substitute
+ *    bo nie ma sensu ustawiać auto-reply na okres który minął.
+ */
+export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Promise<{ id: string }> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    if (input.targetUserId === ctx.userId) {
+        throw new Error('Nie wpisuj urlopu sam sobie — użyj standardowego formularza wniosku.')
+    }
+
+    // Walidacje wspólne z createLeaveRequest.
+    validateDateString(input.startDate, 'start_date')
+    validateDateString(input.endDate, 'end_date')
+    validateLeaveType(input.leaveType)
+    if (input.endDate < input.startDate) {
+        throw new Error('Data końca musi być >= data początku.')
+    }
+    if (input.halfDay && input.startDate !== input.endDate) {
+        throw new Error('Half-day można zaznaczyć tylko gdy start_date == end_date.')
+    }
+    if (input.halfDay && !['morning', 'afternoon'].includes(input.halfDay)) {
+        throw new Error('half_day musi być "morning" lub "afternoon".')
+    }
+    if (input.leaveType === ('sick_leave' as LeaveType)) {
+        throw new Error('L4 musi wpisać pracownik z dołączonym zwolnieniem lekarskim.')
+    }
+
+    const admin = createServiceClient()
+
+    // Fetch target — potrzebujemy email + full_name do side-effects, role do
+    // wykluczenia konsultantów IT, manager_id do team-scope check, employment_status
+    // do wykluczenia exited/offboarding.
+    const { data: target, error: targetErr } = await admin
+        .from('profiles')
+        .select('id, role, manager_id, employment_status, email, full_name')
+        .eq('id', input.targetUserId)
+        .single<{
+            id: string
+            role: string
+            manager_id: string | null
+            employment_status: string | null
+            email: string | null
+            full_name: string | null
+        }>()
+    if (targetErr || !target) {
+        throw new Error('Pracownik nie istnieje.')
+    }
+    if (!target.email) {
+        throw new Error('Pracownik nie ma adresu email w systemie.')
+    }
+    if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(target.role)) {
+        throw new Error('Wybrany pracownik nie ma dostępu do strefy HR (konsultanci IT nie mają urlopów w COMPASS).')
+    }
+    if (target.employment_status === 'exited' || target.employment_status === 'offboarding') {
+        throw new Error('Pracownik jest w trakcie offboardingu lub już opuścił firmę.')
+    }
+
+    // Team-scope check dla managera (admin pomija). Pattern z approveTimesheet.
+    if (!ctx.isAdmin) {
+        if (target.manager_id !== ctx.userId) {
+            throw new Error('Możesz wpisać urlop tylko swojemu zespołowi.')
+        }
+    }
+
+    // Duplicate detection — czy istnieje już zatwierdzony urlop nakładający się
+    // na ten zakres? Wystarczy overlap: existing.end >= input.start AND existing.start <= input.end.
+    const { data: overlapping } = await admin
+        .from('leave_requests')
+        .select('id, start_date, end_date, leave_type')
+        .eq('user_id', input.targetUserId)
+        .eq('status', 'approved')
+        .gte('end_date', input.startDate)
+        .lte('start_date', input.endDate)
+    if (overlapping && overlapping.length > 0) {
+        const first = overlapping[0] as { start_date: string; end_date: string }
+        throw new Error(
+            `Pracownik ma już zatwierdzony urlop nakładający się na ten zakres (${first.start_date} – ${first.end_date}).`,
+        )
+    }
+
+    // Substitute walidacja (tylko gdy podano i urlop ongoing/future — past leave
+    // ignorujemy substituteId niżej przy side-effects).
+    if (input.substituteId) {
+        if (input.substituteId === input.targetUserId) {
+            throw new Error('Pracownik nie może być sam swoim zastępcą.')
+        }
+        const { data: sub } = await admin
+            .from('profiles')
+            .select('id, role')
+            .eq('id', input.substituteId)
+            .maybeSingle<{ id: string; role: string }>()
+        if (!sub) {
+            throw new Error('Wybrany zastępca nie istnieje.')
+        }
+        if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(sub.role)) {
+            throw new Error('Zastępca musi mieć dostęp do strefy HR.')
+        }
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const isOngoingOrFuture = input.endDate >= today
+    const actorName = ctx.email
+    const decisionNote = `Wpisany przez ${actorName}`
+
+    const { data: inserted, error: insertErr } = await admin
+        .from('leave_requests')
+        .insert({
+            user_id: input.targetUserId,
+            start_date: input.startDate,
+            end_date: input.endDate,
+            leave_type: input.leaveType,
+            half_day: input.halfDay ?? null,
+            note: input.note ?? null,
+            substitute_id: isOngoingOrFuture ? (input.substituteId ?? null) : null,
+            status: 'approved',
+            decided_by: ctx.userId,
+            decided_at: new Date().toISOString(),
+            decision_note: decisionNote,
+            created_by: ctx.userId,
+            created_on_behalf: true,
+        } as never)
+        .select('id')
+        .single<{ id: string }>()
+
+    if (insertErr || !inserted) {
+        throw new Error(`Błąd zapisu wniosku: ${insertErr?.message ?? 'unknown'}`)
+    }
+
+    // Audit ZAWSZE — kluczowe dla transparentności (kto wpisał za kogo).
+    await logAudit(ctx.userId, 'LEAVE_CREATED_ON_BEHALF', {
+        leave_id: inserted.id,
+        target_user_id: input.targetUserId,
+        leave_type: input.leaveType,
+        start_date: input.startDate,
+        end_date: input.endDate,
+        actor_role: ctx.role,
+        is_past_leave: !isOngoingOrFuture,
+    })
+
+    // Attendance sync ZAWSZE — krytyczne dla spójności (timesheet musi się zgadzać).
+    await syncAttendanceFromLeave(inserted.id, input.targetUserId, 'create').catch((e) =>
+        logCompat.error('[createLeaveOnBehalf] attendance sync failed:', e),
+    )
+
+    // Email do pracownika ZAWSZE — transparentność, audit + RODO.
+    const targetDisplayName = target.full_name ?? target.email
+    sendLeaveCreatedOnBehalf(
+        target.email,
+        targetDisplayName,
+        actorName,
+        input.leaveType,
+        input.startDate,
+        input.endDate,
+        input.note ?? null,
+        !isOngoingOrFuture,
+    ).catch((e) => logCompat.error('[createLeaveOnBehalf] email failed:', e))
+
+    // Push do pracownika ZAWSZE.
+    sendPushToUserId(input.targetUserId, {
+        title: isOngoingOrFuture
+            ? 'Wpisano za Ciebie urlop'
+            : 'Wpisano za Ciebie urlop (wstecznie)',
+        body: `${actorName}: ${input.startDate} – ${input.endDate}`,
+        url: '/internal?tab=leave',
+        tag: `leave-on-behalf-${inserted.id}`,
+    }).catch((e) => logCompat.error('[createLeaveOnBehalf] push failed:', e))
+
+    // Branch — tylko ongoing/future: Outlook event + OOF + email do zastępcy.
+    if (isOngoingOrFuture) {
+        // Outlook calendar event — soft fail (best-effort).
+        createLeaveEvent({
+            userEmail: target.email,
+            startDate: input.startDate,
+            endDate: input.endDate,
+            leaveType: input.leaveType,
+            note: decisionNote,
+            transactionId: `leave-${inserted.id}`,
+        })
+            .then(async (r) => {
+                if (r.success && r.eventId) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ outlook_event_id: r.eventId })
+                        .eq('id', inserted.id)
+                } else if (!r.success && !r.skipped) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ graph_sync_error: `calendar: ${r.error}` } as never)
+                        .eq('id', inserted.id)
+                }
+            })
+            .catch((e) => logCompat.error('[createLeaveOnBehalf] calendar push failed:', e))
+
+        // Outlook OOF + opcjonalny email do zastępcy.
+        let substituteName: string | null = null
+        let substituteEmail: string | null = null
+        if (input.substituteId) {
+            const { data: sub } = await admin
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', input.substituteId)
+                .maybeSingle<{ full_name: string | null; email: string }>()
+            if (sub) {
+                substituteName = sub.full_name ?? sub.email
+                substituteEmail = sub.email
+            }
+        }
+
+        const defaults = buildDefaultOofMessages({
+            employeeName: targetDisplayName,
+            endDate: input.endDate,
+            substituteName,
+            substituteEmail,
+        })
+
+        setOutOfOffice({
+            userEmail: target.email,
+            startDate: input.startDate,
+            endDate: input.endDate,
+            internalReply: defaults.internal,
+            externalReply: defaults.external,
+        })
+            .then(async (r) => {
+                if (r.success && !r.skipped) {
+                    await admin
+                        .from('leave_requests')
+                        .update({
+                            graph_oof_set: true,
+                            graph_oof_set_at: new Date().toISOString(),
+                        } as never)
+                        .eq('id', inserted.id)
+                    await logAudit(ctx.userId, 'LEAVE_OOF_SET', {
+                        leave_id: inserted.id,
+                        target_user_id: input.targetUserId,
+                        has_substitute: Boolean(input.substituteId),
+                        via: 'on_behalf',
+                    })
+                } else if (!r.success && !r.skipped) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ graph_sync_error: `oof: ${r.error}` } as never)
+                        .eq('id', inserted.id)
+                    await logAudit(ctx.userId, 'LEAVE_OOF_FAILED', {
+                        leave_id: inserted.id,
+                        target_user_id: input.targetUserId,
+                        error: r.error,
+                    })
+                }
+            })
+            .catch((e) => logCompat.error('[createLeaveOnBehalf] OOF set failed:', e))
+
+        if (substituteEmail) {
+            sendSubstituteAssigned(
+                substituteEmail,
+                substituteName ?? substituteEmail,
+                targetDisplayName,
+                target.email,
+                input.startDate,
+                input.endDate,
+            ).catch((e) => logCompat.error('[createLeaveOnBehalf] substitute notify failed:', e))
+        }
+    }
+
+    // Teams alert ZAWSZE — info dla zespołu (niebieski "informacyjny", nie zielony "approved").
+    postToTeamsAlert({
+        title: `Urlop wpisany przez ${actorName}`,
+        text: `${targetDisplayName} — urlop ${input.startDate} – ${input.endDate}${isOngoingOrFuture ? '' : ' (wstecznie)'}`,
+        themeColor: '3B82F6',
+        facts: [
+            { name: 'Typ', value: input.leaveType },
+            { name: 'Pracownik', value: targetDisplayName },
+            { name: 'Wpisał', value: actorName },
+            { name: 'Tryb', value: isOngoingOrFuture ? 'Zaplanowany' : 'Wsteczny' },
+            ...(input.note ? [{ name: 'Notatka', value: input.note.slice(0, 200) }] : []),
+        ],
+        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-on-behalf`,
+    }).catch((e) => logCompat.error('[createLeaveOnBehalf] teams alert failed:', e))
+
+    return { id: inserted.id }
+}
+
+// ─── Phase 25b: listTeamMembersForLeaveOnBehalf ─────────────────────────────
+
+export interface LeaveOnBehalfCandidate {
+    id: string
+    full_name: string | null
+    email: string
+    role: string
+    manager_id: string | null
+}
+
+/**
+ * Phase 25b. Lista pracowników, dla których current user może wpisać urlop:
+ *  - Admin: wszyscy aktywni HR-zone employees (oprócz siebie samego).
+ *  - Manager: tylko bezpośredni podwładni (profiles.manager_id = ctx.userId).
+ */
+export async function listTeamMembersForLeaveOnBehalf(): Promise<LeaveOnBehalfCandidate[]> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    const admin = createServiceClient()
+    let query = admin
+        .from('profiles')
+        .select('id, full_name, email, role, manager_id, employment_status')
+        .in('role', ['admin', 'internal', 'manager', 'finanse', 'talent_community'])
+        .neq('id', ctx.userId)
+        .order('full_name', { ascending: true })
+    if (!ctx.isAdmin) {
+        query = query.eq('manager_id', ctx.userId)
+    }
+    const { data, error } = await query
+    if (error) {
+        throw new Error(`Błąd pobierania pracowników: ${error.message}`)
+    }
+    return ((data ?? []) as unknown as Array<LeaveOnBehalfCandidate & { employment_status: string | null }>)
+        .filter((p) => p.employment_status !== 'exited' && p.employment_status !== 'offboarding')
+        .map(({ id, full_name, email, role, manager_id }) => ({ id, full_name, email, role, manager_id }))
 }
 
 // ─── listMyLeaveRequests ─────────────────────────────────────────────────────

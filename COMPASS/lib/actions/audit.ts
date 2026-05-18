@@ -103,6 +103,8 @@ export type AuditAction =
     | 'LEAVE_OOF_SET'
     | 'LEAVE_OOF_FAILED'
     | 'LEAVE_OOF_DISABLED'
+    // Phase 25b — Manager/admin wpisuje urlop w imieniu pracownika
+    | 'LEAVE_CREATED_ON_BEHALF'
 
 export async function logAudit(
     userId: string | null,

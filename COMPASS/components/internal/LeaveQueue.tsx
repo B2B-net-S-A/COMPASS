@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Check, X, Loader2, UserCheck, Mail } from 'lucide-react'
+import { Check, X, Loader2, UserCheck, Mail, UserPlus } from 'lucide-react'
+import Link from 'next/link'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -166,7 +167,15 @@ export function LeaveQueue({ requests }: Props) {
 
     return (
         <>
-            <Card>
+            <div className="flex justify-end">
+                <Button variant="outline" size="sm" asChild>
+                    <Link href="/internal/admin?tab=leave-on-behalf" className="inline-flex items-center gap-1.5">
+                        <UserPlus className="h-3.5 w-3.5" />
+                        Wpisz urlop za pracownika
+                    </Link>
+                </Button>
+            </div>
+            <Card className="mt-3">
                 <CardHeader className="flex-row items-center justify-between">
                     <CardTitle className="text-base">
                         Wnioski oczekujące ({requests.length})
