@@ -257,6 +257,8 @@ export interface EligibleEmployee {
     work_start_date: string | null
     employment_status: string
     manager_id: string | null
+    is_external: boolean
+    external_notes: string | null
     has_active_onboarding: boolean
     has_active_exit_interview: boolean
 }
@@ -273,7 +275,7 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
 
     const { data: profiles, error } = await supabase
         .from('profiles')
-        .select('id, email, full_name, role, hired_at, work_start_date, employment_status, manager_id')
+        .select('id, email, full_name, role, hired_at, work_start_date, employment_status, manager_id, is_external, external_notes')
         .in('role', ['consultant', 'internal', 'finanse', 'manager', 'talent_community'])
         .neq('employment_status', 'exited')
         .order('full_name', { ascending: true })
@@ -297,7 +299,8 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
     const all: EligibleEmployee[] = profiles.map((p: {
         id: string; email: string; full_name: string | null; role: DbRole;
         hired_at: string | null; work_start_date: string | null;
-        employment_status: string; manager_id: string | null
+        employment_status: string; manager_id: string | null;
+        is_external: boolean | null; external_notes: string | null
     }) => ({
         id: p.id,
         email: p.email,
@@ -307,6 +310,8 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
         work_start_date: p.work_start_date,
         employment_status: p.employment_status,
         manager_id: p.manager_id,
+        is_external: p.is_external === true,
+        external_notes: p.external_notes,
         has_active_onboarding: activeOnboardingSet.has(p.id),
         has_active_exit_interview: activeExitSet.has(p.id),
     }))

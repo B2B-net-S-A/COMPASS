@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ExternalLink, FileText, LogOut, MoreHorizontal, Search, Settings, UserPlus } from 'lucide-react'
+import { ExternalLink, FileText, LogOut, MessageSquare, MoreHorizontal, Search, Settings, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { roleLabelPl, type DbRole } from '@/lib/types/role'
 import type { EligibleEmployee } from '@/lib/actions/lifecycle'
@@ -11,6 +11,7 @@ import { StartOnboardingDialog } from './StartOnboardingDialog'
 import { ScheduleExitDialog } from './ScheduleExitDialog'
 import { EditLifecycleProfileDialog } from './EditLifecycleProfileDialog'
 import { ExternalEmployeeDialog } from './ExternalEmployeeDialog'
+import { EmployeeNotesDialog } from './EmployeeNotesDialog'
 
 const STATUS_LABEL: Record<string, string> = {
     pending: 'Czeka',
@@ -46,6 +47,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
     const [startOnboardingFor, setStartOnboardingFor] = useState<EligibleEmployee | null>(null)
     const [scheduleExitFor, setScheduleExitFor] = useState<EligibleEmployee | null>(null)
     const [editProfileFor, setEditProfileFor] = useState<EligibleEmployee | null>(null)
+    const [notesFor, setNotesFor] = useState<EligibleEmployee | null>(null)
 
     const filtered = useMemo(() => {
         return initialEmployees.filter((e) => {
@@ -143,7 +145,14 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                             {filtered.map((e) => (
                                 <tr key={e.id} className="border-t hover:bg-accent/40">
                                     <td className="p-3">
-                                        <div className="font-medium">{e.full_name ?? e.email}</div>
+                                        <div className="font-medium flex items-center gap-2">
+                                            {e.full_name ?? e.email}
+                                            {e.is_external && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase tracking-wide">
+                                                    external
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="text-xs text-muted-foreground">{e.email}</div>
                                     </td>
                                     <td className="p-3 text-muted-foreground">{roleLabelPl(e.role)}</td>
@@ -211,6 +220,14 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                                     <Settings className="h-4 w-4" />
                                                     Edytuj lifecycle profile
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setActiveMenu(null); setNotesFor(e) }}
+                                                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
+                                                >
+                                                    <MessageSquare className="h-4 w-4" />
+                                                    Notatki TCM
+                                                </button>
                                             </div>
                                         )}
                                     </td>
@@ -243,6 +260,13 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                     open={!!editProfileFor}
                     onOpenChange={(o) => { if (!o) { setEditProfileFor(null); router.refresh() } }}
                     employee={editProfileFor}
+                />
+            )}
+            {notesFor && (
+                <EmployeeNotesDialog
+                    open={!!notesFor}
+                    onOpenChange={(o) => { if (!o) { setNotesFor(null); router.refresh() } }}
+                    employee={notesFor}
                 />
             )}
         </div>

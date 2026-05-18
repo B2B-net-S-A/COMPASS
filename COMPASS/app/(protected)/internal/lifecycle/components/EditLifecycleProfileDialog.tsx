@@ -31,8 +31,11 @@ export function EditLifecycleProfileDialog({ open, onOpenChange, employee }: Pro
     const [hiredAt, setHiredAt] = useState(employee.hired_at ?? '')
     const [role, setRole] = useState<DbRole>(employee.role)
     const [managerId, setManagerId] = useState<string>(employee.manager_id ?? '')
+    const [externalNotes, setExternalNotes] = useState<string>('')
     const [managers, setManagers] = useState<Array<{ id: string; full_name: string | null; email: string }>>([])
     const [isPending, startTransition] = useTransition()
+
+    const isExternal = (employee as unknown as { is_external?: boolean }).is_external === true
 
     useEffect(() => {
         if (!open) return
@@ -50,6 +53,7 @@ export function EditLifecycleProfileDialog({ open, onOpenChange, employee }: Pro
                     hiredAt: hiredAt || null,
                     role,
                     managerId: managerId || null,
+                    externalNotes: isExternal ? (externalNotes || null) : undefined,
                 })
                 toastSuccess('Profil zaktualizowany.')
                 onOpenChange(false)
@@ -67,6 +71,11 @@ export function EditLifecycleProfileDialog({ open, onOpenChange, employee }: Pro
                     <DialogTitle>Edytuj lifecycle profile</DialogTitle>
                     <DialogDescription>
                         Pracownik: <strong>{employee.full_name ?? employee.email}</strong>
+                        {isExternal && (
+                            <span className="ml-2 inline-block px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs">
+                                external
+                            </span>
+                        )}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -114,6 +123,20 @@ export function EditLifecycleProfileDialog({ open, onOpenChange, employee }: Pro
                             ))}
                         </select>
                     </div>
+
+                    {isExternal && (
+                        <div className="space-y-1.5">
+                            <Label htmlFor="external-notes">Notatka external (dlaczego nie ma konta Compass)</Label>
+                            <textarea
+                                id="external-notes"
+                                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                rows={2}
+                                value={externalNotes}
+                                onChange={(e) => setExternalNotes(e.target.value)}
+                                placeholder="np. Zewnętrzny developer kontraktowy, kontakt: jan@firma.pl"
+                            />
+                        </div>
+                    )}
 
                     <DialogFooter className="gap-2">
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
