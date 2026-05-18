@@ -1,6 +1,7 @@
-import { ClipboardList, Receipt, Users, FileText, Gift } from 'lucide-react'
+import { ClipboardList, Receipt, Users, FileText, Gift, UserPlus } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AdminLeaveRequestsPanel } from '@/components/internal/panels/AdminLeaveRequestsPanel'
+import { LeaveOnBehalfPanel } from '@/components/internal/panels/LeaveOnBehalfPanel'
 import { AdminTimesheetsPanel } from '@/components/internal/panels/AdminTimesheetsPanel'
 import { AdminEmployeesPanel } from '@/components/internal/panels/AdminEmployeesPanel'
 import { AdminInvoicesPanel } from '@/components/internal/panels/AdminInvoicesPanel'
@@ -11,6 +12,7 @@ export const dynamic = 'force-dynamic'
 
 const ALL_TABS: ReadonlyArray<HubTab> = [
     { id: 'leave-requests', label: 'Wnioski urlopowe', icon: ClipboardList },
+    { id: 'leave-on-behalf', label: 'Wpisz urlop pracownika', icon: UserPlus },
     { id: 'timesheets', label: 'Timesheety', icon: Receipt },
     { id: 'invoices', label: 'Faktury', icon: FileText },
     { id: 'bonuses', label: 'Premie', icon: Gift },
@@ -35,14 +37,19 @@ function parseIntSafe(value: string | undefined): number | undefined {
 export default async function InternalAdminHubPage({ searchParams }: PageProps) {
     const ctx = await requireInternalAdminAreaLayout()
 
-    // Phase 20 + 22: tabs visible per role.
+    // Phase 20 + 22 + 25b: tabs visible per role.
     //   admin            → all tabs
     //   finanse          → invoices + bonuses (raport read-only)
-    //   manager          → timesheets + invoices + bonuses (zespół)
+    //   manager          → timesheets + invoices + bonuses + leave-on-behalf (zespół)
     const visibleTabs = ALL_TABS.filter((t) => {
         if (ctx.isAdmin) return true
         if (ctx.role === 'finanse') return t.id === 'invoices' || t.id === 'bonuses'
-        if (ctx.isManager) return t.id === 'timesheets' || t.id === 'invoices' || t.id === 'bonuses'
+        if (ctx.isManager) {
+            return t.id === 'timesheets'
+                || t.id === 'invoices'
+                || t.id === 'bonuses'
+                || t.id === 'leave-on-behalf'
+        }
         return false
     })
 
@@ -84,6 +91,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             <HubTabs basePath="/internal/admin" tabs={visibleTabs} active={tab} />
 
             {tab === 'leave-requests' && <AdminLeaveRequestsPanel />}
+            {tab === 'leave-on-behalf' && <LeaveOnBehalfPanel />}
             {tab === 'timesheets' && <AdminTimesheetsPanel year={year} month={month} />}
             {tab === 'invoices' && <AdminInvoicesPanel scope={scope} />}
             {tab === 'bonuses' && <AdminBonusesPanel />}
