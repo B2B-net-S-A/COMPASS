@@ -1,5 +1,6 @@
 import { CalendarCheck, Calendar, ClipboardList, Receipt, FileText, Gift } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
+import { ActiveLeavesBanner } from '@/components/internal/ActiveLeavesBanner'
 import { AttendancePanel } from '@/components/internal/panels/AttendancePanel'
 import { CalendarPanel } from '@/components/internal/panels/CalendarPanel'
 import { LeavePanel } from '@/components/internal/panels/LeavePanel'
@@ -56,6 +57,9 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
                     Twoja obecność, urlopy, timesheety i widok zespołu — w jednym miejscu.
                 </p>
             </header>
+
+            {/* Phase 25d — show active leaves with substitutes (scope: own team / manager) */}
+            <ActiveLeavesBanner />
 
             <HubTabs basePath="/internal" tabs={TABS} active={tab} />
 
