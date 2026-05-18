@@ -98,6 +98,11 @@ export type AuditAction =
     | 'ROLE_DEFAULT_CREATED'
     | 'ROLE_DEFAULT_UPDATED'
     | 'ROLE_DEFAULT_DELETED'
+    // Phase 25 — Leave substitute + Outlook OOF integration
+    | 'LEAVE_SUBSTITUTE_ASSIGNED'
+    | 'LEAVE_OOF_SET'
+    | 'LEAVE_OOF_FAILED'
+    | 'LEAVE_OOF_DISABLED'
 
 export async function logAudit(
     userId: string | null,

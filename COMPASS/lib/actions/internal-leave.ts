@@ -9,8 +9,18 @@ import {
     requireInternalOrAdminAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
-import { sendLeaveCancelledByUser, sendLeaveDecision, sendLeaveRequestSubmitted } from '@/lib/email'
+import {
+    sendLeaveCancelledByUser,
+    sendLeaveDecision,
+    sendLeaveRequestSubmitted,
+    sendSubstituteAssigned,
+} from '@/lib/email'
 import { createLeaveEvent, deleteLeaveEvent } from '@/lib/calendar/graph-events'
+import {
+    buildDefaultOofMessages,
+    disableOutOfOffice,
+    setOutOfOffice,
+} from '@/lib/mailbox/graph-oof'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { totalVacationDaysUsed, type LeaveSpan } from '@/lib/hr/leave-balance'
@@ -41,6 +51,13 @@ export interface LeaveRequestRow {
     decided_at: string | null
     decision_note: string | null
     created_at: string
+    // Phase 25a — substitute + Outlook OOF
+    substitute_id?: string | null
+    oof_internal_message?: string | null
+    oof_external_message?: string | null
+    graph_oof_set?: boolean
+    graph_oof_set_at?: string | null
+    graph_sync_error?: string | null
 }
 
 export interface PendingLeaveRow extends LeaveRequestRow {
@@ -56,6 +73,10 @@ export interface CreateLeaveInput {
     halfDay?: 'morning' | 'afternoon' | null
     note?: string | null
     documentationUrl?: string | null
+    // Phase 25a — optional substitute + custom OOF messages
+    substituteId?: string | null
+    oofInternalMessage?: string | null
+    oofExternalMessage?: string | null
 }
 
 /**
@@ -145,6 +166,28 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
     }
 
     const supabase = createClient()
+
+    // Phase 25a: validate substitute (must be a real HR-zone employee in tenant,
+    // not the requester himself). Optional — sick_leave / single-day urlopy
+    // mogą iść bez.
+    if (input.substituteId) {
+        if (input.substituteId === ctx.userId) {
+            throw new Error('Nie możesz wybrać siebie jako zastępcy.')
+        }
+        const adminClient = createServiceClient()
+        const { data: sub } = await adminClient
+            .from('profiles')
+            .select('id, role')
+            .eq('id', input.substituteId)
+            .maybeSingle<{ id: string; role: string }>()
+        if (!sub) {
+            throw new Error('Wybrany zastępca nie istnieje.')
+        }
+        if (!['admin', 'internal', 'manager', 'finanse', 'talent_community'].includes(sub.role)) {
+            throw new Error('Zastępca musi mieć dostęp do strefy HR (internal/manager/admin/finanse/TCM).')
+        }
+    }
+
     const { data: inserted, error } = await supabase
         .from('leave_requests')
         .insert({
@@ -155,12 +198,22 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
             half_day: input.halfDay ?? null,
             note: input.note ?? null,
             documentation_url: input.documentationUrl ?? null,
+            substitute_id: input.substituteId ?? null,
+            oof_internal_message: input.oofInternalMessage?.trim() || null,
+            oof_external_message: input.oofExternalMessage?.trim() || null,
         })
         .select('id, status')
         .single<{ id: string; status: LeaveStatus }>()
 
     if (error || !inserted) {
         throw new Error(`Błąd zapisu wniosku: ${error?.message ?? 'unknown'}`)
+    }
+
+    if (input.substituteId) {
+        await logAudit(ctx.userId, 'LEAVE_SUBSTITUTE_ASSIGNED', {
+            leave_id: inserted.id,
+            substitute_id: input.substituteId,
+        })
     }
 
     const autoApproved = inserted.status === 'approved'
@@ -213,7 +266,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
 
     const { data: row, error: fetchErr } = await supabase
         .from('leave_requests')
-        .select('id, user_id, status, start_date, end_date, leave_type, outlook_event_id')
+        .select('id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set')
         .eq('id', id)
         .single<{
             id: string
@@ -223,6 +276,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
             end_date: string
             leave_type: LeaveType
             outlook_event_id: string | null
+            graph_oof_set: boolean | null
         }>()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
     if (row.user_id !== ctx.userId) throw new Error('To nie jest Twój wniosek.')
@@ -267,6 +321,24 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
             }).catch((e) => logCompat.error('[cancelMyLeaveRequest] calendar delete failed:', e))
         }
 
+        // Phase 25: revert Outlook OOF if it was set on approve.
+        if (row.graph_oof_set) {
+            disableOutOfOffice({ userEmail: ctx.email })
+                .then(async (r) => {
+                    if (r.success && !r.skipped) {
+                        await supabase
+                            .from('leave_requests')
+                            .update({ graph_oof_set: false } as never)
+                            .eq('id', id)
+                        await logAudit(ctx.userId, 'LEAVE_OOF_DISABLED', {
+                            leave_id: id,
+                            reason: 'self_cancel',
+                        })
+                    }
+                })
+                .catch((e) => logCompat.error('[cancelMyLeaveRequest] OOF disable failed:', e))
+        }
+
         await logAudit(ctx.userId, 'LEAVE_CANCELLED', {
             leave_id: id,
             was_approved: true,
@@ -301,6 +373,34 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
     }
 
     throw new Error(`Nie można anulować wniosku w statusie "${row.status}".`)
+}
+
+// ─── Phase 25: list HR-zone users eligible to be a substitute ───────────────
+
+export interface EligibleSubstitute {
+    id: string
+    full_name: string | null
+    email: string
+    role: string
+}
+
+/**
+ * Returns active HR-zone employees (excluding self + konsultant IT) that the
+ * user can pick as their substitute when going on leave.
+ */
+export async function listEligibleSubstitutes(): Promise<EligibleSubstitute[]> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+    const { data, error } = await admin
+        .from('profiles')
+        .select('id, full_name, email, role, employment_status')
+        .in('role', ['admin', 'internal', 'manager', 'finanse', 'talent_community'])
+        .neq('id', ctx.userId)
+        .order('full_name', { ascending: true })
+    if (error) throw new Error(`Błąd pobierania pracowników: ${error.message}`)
+    return ((data ?? []) as unknown as Array<EligibleSubstitute & { employment_status: string | null }>)
+        .filter((p) => p.employment_status !== 'exited' && p.employment_status !== 'offboarding')
+        .map(({ id, full_name, email, role }) => ({ id, full_name, email, role }))
 }
 
 // ─── listMyLeaveRequests ─────────────────────────────────────────────────────
@@ -421,9 +521,22 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
 
     const { data: row, error: fetchErr } = await admin
         .from('leave_requests')
-        .select('id, user_id, leave_type, start_date, end_date, status')
+        .select('id, user_id, leave_type, start_date, end_date, status, substitute_id, oof_internal_message, oof_external_message')
         .eq('id', id)
-        .single<Pick<LeaveRequestRow, 'id' | 'user_id' | 'leave_type' | 'start_date' | 'end_date' | 'status'>>()
+        .single<
+            Pick<
+                LeaveRequestRow,
+                | 'id'
+                | 'user_id'
+                | 'leave_type'
+                | 'start_date'
+                | 'end_date'
+                | 'status'
+                | 'substitute_id'
+                | 'oof_internal_message'
+                | 'oof_external_message'
+            >
+        >()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'pending') {
         throw new Error(`Nie można zaakceptować wniosku w statusie ${row.status}.`)
@@ -436,7 +549,8 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
             decided_by: ctx.userId,
             decided_at: new Date().toISOString(),
             decision_note: decisionNote ?? null,
-        })
+            graph_sync_error: null, // clear stale error from previous attempts (Phase 25a column, types stale)
+        } as never)
         .eq('id', id)
     if (error) throw new Error(`Błąd akceptacji: ${error.message}`)
 
@@ -475,9 +589,91 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                         .from('leave_requests')
                         .update({ outlook_event_id: r.eventId })
                         .eq('id', id)
+                } else if (!r.success && !r.skipped) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ graph_sync_error: `calendar: ${r.error}` } as never)
+                        .eq('id', id)
                 }
             })
             .catch((e) => logCompat.error('[approveLeaveRequest] calendar push failed:', e))
+
+        // Phase 25 — Outlook Out-of-Office auto-reply (skip for half-day single-day urlopy,
+        // ale ustawiamy nawet bez substitute — fallback "kontakt z managerem").
+        // Sick leave (L4) ma auto-approve flow; OOF też ustawiamy bo to opisany urlop.
+        const shouldSetOof = row.start_date !== row.end_date || !row.start_date.includes('XXX')
+        if (shouldSetOof) {
+            // Resolve substitute info if assigned.
+            let substituteName: string | null = null
+            let substituteEmail: string | null = null
+            if (row.substitute_id) {
+                const { data: sub } = await admin
+                    .from('profiles')
+                    .select('full_name, email')
+                    .eq('id', row.substitute_id)
+                    .maybeSingle<{ full_name: string | null; email: string }>()
+                if (sub) {
+                    substituteName = sub.full_name ?? sub.email
+                    substituteEmail = sub.email
+                }
+            }
+
+            const defaults = buildDefaultOofMessages({
+                employeeName: userInfo.full_name ?? userInfo.email,
+                endDate: row.end_date,
+                substituteName,
+                substituteEmail,
+            })
+
+            setOutOfOffice({
+                userEmail: userInfo.email,
+                startDate: row.start_date,
+                endDate: row.end_date,
+                internalReply: row.oof_internal_message?.trim() || defaults.internal,
+                externalReply: row.oof_external_message?.trim() || defaults.external,
+            })
+                .then(async (r) => {
+                    if (r.success && !r.skipped) {
+                        await admin
+                            .from('leave_requests')
+                            .update({
+                                graph_oof_set: true,
+                                graph_oof_set_at: new Date().toISOString(),
+                            } as never)
+                            .eq('id', id)
+                        await logAudit(ctx.userId, 'LEAVE_OOF_SET', {
+                            leave_id: id,
+                            target_user_id: row.user_id,
+                            has_substitute: Boolean(row.substitute_id),
+                        })
+                    } else if (!r.success && !r.skipped) {
+                        await admin
+                            .from('leave_requests')
+                            .update({
+                                graph_sync_error: `oof: ${r.error}`,
+                            } as never)
+                            .eq('id', id)
+                        await logAudit(ctx.userId, 'LEAVE_OOF_FAILED', {
+                            leave_id: id,
+                            target_user_id: row.user_id,
+                            error: r.error,
+                        })
+                    }
+                })
+                .catch((e) => logCompat.error('[approveLeaveRequest] OOF set failed:', e))
+
+            // Email do zastępcy (fire-and-forget).
+            if (substituteEmail) {
+                sendSubstituteAssigned(
+                    substituteEmail,
+                    substituteName ?? substituteEmail,
+                    userInfo.full_name ?? userInfo.email,
+                    userInfo.email,
+                    row.start_date,
+                    row.end_date,
+                ).catch((e) => logCompat.error('[approveLeaveRequest] substitute notify failed:', e))
+            }
+        }
     }
     // H3.3: Push notification (fire-and-forget)
     sendPushToUserId(row.user_id, {
