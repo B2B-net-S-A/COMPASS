@@ -12,6 +12,7 @@ import { listTickets } from '@/lib/actions/support-tickets'
 import { listAllPitchesAdmin } from '@/lib/actions/incubator'
 import { getUnreadGuardianMessages } from '@/lib/actions/communicator'
 import { getLifecycleSidebarCount } from '@/lib/actions/lifecycle'
+import { getActiveLeavesCount } from '@/lib/actions/internal-leave'
 import type { PermissionRole, PermissionsMap } from '@/lib/types/permissions'
 import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
 import nextDynamic from 'next/dynamic'
@@ -100,7 +101,15 @@ export default async function ProtectedLayout({
         const isInboxHandler = isAdminLike || profile?.is_inbox_handler === true
         // Phase 22: lifecycle count for HR-zone roles only (consultant IT has no lifecycle module).
         const isHrZoneUser = isAdminLike || ['internal', 'finanse', 'manager', 'talent_community'].includes(role)
-        const [newsRes, adminTicketsRes, adminPitchesRes, consultantSupport, adminInbox, lifecycleCount] = await Promise.all([
+        const [
+            newsRes,
+            adminTicketsRes,
+            adminPitchesRes,
+            consultantSupport,
+            adminInbox,
+            lifecycleCount,
+            activeLeaves,
+        ] = await Promise.all([
             getUnreadNewsCount(),
             isAdminLike ? listTickets({ scope: 'all', status: 'open', limit: 1 }) : Promise.resolve({ success: false as const, error: 'skip' }),
             isAdminLike ? listAllPitchesAdmin('submitted') : Promise.resolve({ success: false as const, error: 'skip' }),
@@ -109,6 +118,10 @@ export default async function ProtectedLayout({
             isHrZoneUser
                 ? getLifecycleSidebarCount().catch(() => ({ total: 0 } as { total: number }))
                 : Promise.resolve({ total: 0 } as { total: number }),
+            // Phase 25e — active leaves badge dla sidebar (HR-zone only).
+            isHrZoneUser
+                ? getActiveLeavesCount().catch(() => ({ count: 0, selfOnLeave: false }))
+                : Promise.resolve({ count: 0, selfOnLeave: false }),
         ])
         const sidebarBadges: SidebarBadgeCounts = {
             news: newsRes.success ? newsRes.data : 0,
@@ -117,6 +130,8 @@ export default async function ProtectedLayout({
             adminInbox,
             consultantSupport,
             lifecyclePendingTasks: lifecycleCount.total,
+            activeLeaves: activeLeaves.count,
+            selfOnLeave: activeLeaves.selfOnLeave,
         }
 
         return (

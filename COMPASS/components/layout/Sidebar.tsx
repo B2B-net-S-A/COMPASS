@@ -22,6 +22,7 @@ import {
     CalendarCheck,
     Users,
     ClipboardCheck,
+    Plane,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -38,6 +39,10 @@ export interface SidebarBadgeCounts {
     consultantSupport?: number
     // Phase 22 — lifecycle module: overdue tasks + own pending check-ins + exit interviews to review.
     lifecyclePendingTasks?: number
+    // Phase 25e — currently active leaves in user's scope (team / colleagues).
+    activeLeaves?: number
+    // Phase 25e — self is currently on leave (visual cue on /internal link).
+    selfOnLeave?: boolean
 }
 
 interface SidebarProps {
@@ -162,10 +167,22 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
 
     // Phase 12: collapsed to single-link hubs (sub-pages live behind ?tab=).
     // exactMatch on /internal so it doesn't stay highlighted while user is on /internal/admin.
+    // Phase 25e:
+    //   - badge shows count of currently-active leaves in user's scope (team / colleagues / manager)
+    //   - icon swaps to Plane when self is on leave (visual cue)
     const internalGroup: NavGroup = {
         heading: t('group_internal'),
         links: [
-            { name: t('nav_internal_hub'), href: '/internal', icon: CalendarCheck, feature: null, exactMatch: true },
+            {
+                name: badges?.selfOnLeave
+                    ? `${t('nav_internal_hub')} (jesteś na urlopie)`
+                    : t('nav_internal_hub'),
+                href: '/internal',
+                icon: badges?.selfOnLeave ? Plane : CalendarCheck,
+                feature: null,
+                exactMatch: true,
+                badgeCount: badges?.activeLeaves,
+            },
         ],
     }
 

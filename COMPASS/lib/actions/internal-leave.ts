@@ -1339,6 +1339,70 @@ export async function listActiveLeaves(): Promise<ActiveLeaveRow[]> {
     }))
 }
 
+// ─── Phase 25e: lightweight count for sidebar badge ────────────────────────
+
+/**
+ * Lightweight version of listActiveLeaves — returns only count + flag whether
+ * caller themselves is currently on leave. Used by sidebar badge on /internal
+ * link (avoids fetching full join + substitute data when only number needed).
+ */
+export async function getActiveLeavesCount(): Promise<{ count: number; selfOnLeave: boolean }> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+    const today = new Date().toISOString().slice(0, 10)
+
+    // Build scope identically to listActiveLeaves for consistency.
+    let scopeUserIds: string[] | null = null
+    if (!ctx.isAdmin && !ctx.isTalentCommunity) {
+        const { data: selfProfile } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', ctx.userId)
+            .single<{ manager_id: string | null }>()
+
+        const ids = new Set<string>([ctx.userId])
+        if (selfProfile?.manager_id) ids.add(selfProfile.manager_id)
+
+        if (ctx.isManager) {
+            const { data: team } = await admin
+                .from('profiles')
+                .select('id')
+                .eq('manager_id', ctx.userId)
+            for (const t of (team ?? []) as Array<{ id: string }>) ids.add(t.id)
+        }
+
+        if (selfProfile?.manager_id) {
+            const { data: peers } = await admin
+                .from('profiles')
+                .select('id')
+                .eq('manager_id', selfProfile.manager_id)
+            for (const p of (peers ?? []) as Array<{ id: string }>) ids.add(p.id)
+        }
+
+        scopeUserIds = Array.from(ids)
+    }
+
+    let query = admin
+        .from('leave_requests')
+        .select('user_id', { count: 'exact' })
+        .eq('status', 'approved')
+        .lte('start_date', today)
+        .gte('end_date', today)
+
+    if (scopeUserIds && scopeUserIds.length > 0) {
+        query = query.in('user_id', scopeUserIds)
+    }
+
+    const { data, count, error } = await query
+    if (error) return { count: 0, selfOnLeave: false }
+
+    const selfOnLeave = ((data ?? []) as Array<{ user_id: string }>).some(
+        (r) => r.user_id === ctx.userId,
+    )
+
+    return { count: count ?? 0, selfOnLeave }
+}
+
 // ─── Phase 25d: leaves with Graph sync issues (admin queue) ────────────────
 
 export async function listLeavesWithSyncIssues(): Promise<PendingLeaveRow[]> {
