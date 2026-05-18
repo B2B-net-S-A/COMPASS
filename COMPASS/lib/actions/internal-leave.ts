@@ -64,6 +64,32 @@ export interface PendingLeaveRow extends LeaveRequestRow {
     user_full_name: string | null
     user_email: string
     user_avatar_url: string | null
+    // Phase 25d — substitute info for display in admin queue
+    substitute_full_name?: string | null
+    substitute_email?: string | null
+}
+
+// Phase 25d — active leaves with substitute info for global banner
+export interface ActiveLeaveRow {
+    id: string
+    user_id: string
+    user_full_name: string | null
+    user_email: string
+    user_avatar_url: string | null
+    start_date: string
+    end_date: string
+    leave_type: LeaveType
+    substitute_id: string | null
+    substitute_full_name: string | null
+    substitute_email: string | null
+    graph_oof_set: boolean
+    graph_sync_error: string | null
+}
+
+// Phase 25d — my leave with substitute name resolved (used in MyLeaveList)
+export interface MyLeaveRow extends LeaveRequestRow {
+    substitute_full_name?: string | null
+    substitute_email?: string | null
 }
 
 export interface CreateLeaveInput {
@@ -405,7 +431,7 @@ export async function listEligibleSubstitutes(): Promise<EligibleSubstitute[]> {
 
 // ─── listMyLeaveRequests ─────────────────────────────────────────────────────
 
-export async function listMyLeaveRequests(year?: number): Promise<LeaveRequestRow[]> {
+export async function listMyLeaveRequests(year?: number): Promise<MyLeaveRow[]> {
     const ctx = await requireInternalOrAdminAction()
     const supabase = createClient()
 
@@ -415,13 +441,23 @@ export async function listMyLeaveRequests(year?: number): Promise<LeaveRequestRo
 
     const { data, error } = await supabase
         .from('leave_requests')
-        .select('*')
+        .select(`
+            *,
+            substitute:profiles!leave_requests_substitute_id_fkey(full_name, email)
+        `)
         .eq('user_id', ctx.userId)
         .gte('start_date', yearStart)
         .lte('start_date', yearEnd)
         .order('start_date', { ascending: false })
     if (error) throw new Error(`Błąd pobierania wniosków: ${error.message}`)
-    return (data ?? []) as LeaveRequestRow[]
+
+    return ((data ?? []) as unknown as Array<
+        LeaveRequestRow & { substitute: { full_name: string | null; email: string } | null }
+    >).map((row) => ({
+        ...row,
+        substitute_full_name: row.substitute?.full_name ?? null,
+        substitute_email: row.substitute?.email ?? null,
+    }))
 }
 
 // ─── getMyLeaveBalance ───────────────────────────────────────────────────────
@@ -486,7 +522,10 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
         .select(`
             id, user_id, start_date, end_date, leave_type, half_day, note,
             documentation_url, status, decided_by, decided_at, decision_note, created_at,
-            profiles:profiles!leave_requests_user_id_fkey(full_name, email, avatar_url)
+            substitute_id, oof_internal_message, oof_external_message,
+            graph_oof_set, graph_oof_set_at, graph_sync_error,
+            profiles:profiles!leave_requests_user_id_fkey(full_name, email, avatar_url),
+            substitute:profiles!leave_requests_substitute_id_fkey(full_name, email)
         `)
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
@@ -507,9 +546,17 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
         decided_at: row.decided_at,
         decision_note: row.decision_note,
         created_at: row.created_at,
+        substitute_id: row.substitute_id,
+        oof_internal_message: row.oof_internal_message,
+        oof_external_message: row.oof_external_message,
+        graph_oof_set: row.graph_oof_set,
+        graph_oof_set_at: row.graph_oof_set_at,
+        graph_sync_error: row.graph_sync_error,
         user_full_name: row.profiles?.full_name ?? null,
         user_email: row.profiles?.email ?? '',
         user_avatar_url: row.profiles?.avatar_url ?? null,
+        substitute_full_name: row.substitute?.full_name ?? null,
+        substitute_email: row.substitute?.email ?? null,
     }))
 }
 
@@ -855,5 +902,277 @@ async function syncAttendanceFromLeave(
             .lte('date', leave.end_date)
             .in('status', ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'training', 'other'])
         if (error) logCompat.error('[syncAttendanceFromLeave] delete error:', error)
+    }
+}
+
+// ─── Phase 25d: active leaves (with substitute) for global banner ───────────
+
+/**
+ * Returns currently-active approved leaves (start_date <= today <= end_date)
+ * within scope:
+ *  - admin / talent_community: all
+ *  - manager: own team (profiles.manager_id = ctx.userId)
+ *  - finanse / internal / consultant: own colleagues + own manager
+ *
+ * Used by ActiveLeavesBanner on /internal to inform users who's away and
+ * who's substituting.
+ */
+export async function listActiveLeaves(): Promise<ActiveLeaveRow[]> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+    const today = new Date().toISOString().slice(0, 10)
+
+    // Determine scope: which user_ids to include in the banner.
+    let scopeUserIds: string[] | null = null
+    if (!ctx.isAdmin && !ctx.isTalentCommunity) {
+        // Build relevant set: own manager + colleagues in same manager's team + self.
+        const { data: selfProfile } = await admin
+            .from('profiles')
+            .select('manager_id, role')
+            .eq('id', ctx.userId)
+            .single<{ manager_id: string | null; role: string }>()
+
+        const ids = new Set<string>([ctx.userId])
+        if (selfProfile?.manager_id) ids.add(selfProfile.manager_id)
+
+        // Manager → all direct reports
+        if (ctx.isManager) {
+            const { data: team } = await admin
+                .from('profiles')
+                .select('id')
+                .eq('manager_id', ctx.userId)
+            for (const t of (team ?? []) as Array<{ id: string }>) ids.add(t.id)
+        }
+
+        // Colleagues with same manager
+        if (selfProfile?.manager_id) {
+            const { data: peers } = await admin
+                .from('profiles')
+                .select('id')
+                .eq('manager_id', selfProfile.manager_id)
+            for (const p of (peers ?? []) as Array<{ id: string }>) ids.add(p.id)
+        }
+
+        scopeUserIds = Array.from(ids)
+    }
+
+    let query = admin
+        .from('leave_requests')
+        .select(`
+            id, user_id, start_date, end_date, leave_type,
+            substitute_id, graph_oof_set, graph_sync_error,
+            profiles:profiles!leave_requests_user_id_fkey(full_name, email, avatar_url),
+            substitute:profiles!leave_requests_substitute_id_fkey(full_name, email)
+        `)
+        .eq('status', 'approved')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .order('start_date', { ascending: true })
+        .limit(20)
+
+    if (scopeUserIds && scopeUserIds.length > 0) {
+        query = query.in('user_id', scopeUserIds)
+    }
+
+    const { data, error } = await query
+    if (error) throw new Error(`Błąd pobierania aktywnych urlopów: ${error.message}`)
+
+    return (data ?? []).map((row: any) => ({
+        id: row.id,
+        user_id: row.user_id,
+        user_full_name: row.profiles?.full_name ?? null,
+        user_email: row.profiles?.email ?? '',
+        user_avatar_url: row.profiles?.avatar_url ?? null,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        leave_type: row.leave_type,
+        substitute_id: row.substitute_id,
+        substitute_full_name: row.substitute?.full_name ?? null,
+        substitute_email: row.substitute?.email ?? null,
+        graph_oof_set: Boolean(row.graph_oof_set),
+        graph_sync_error: row.graph_sync_error ?? null,
+    }))
+}
+
+// ─── Phase 25d: leaves with Graph sync issues (admin queue) ────────────────
+
+export async function listLeavesWithSyncIssues(): Promise<PendingLeaveRow[]> {
+    await requireAdminAction()
+    const admin = createServiceClient()
+    const today = new Date().toISOString().slice(0, 10)
+
+    const { data, error } = await admin
+        .from('leave_requests')
+        .select(`
+            id, user_id, start_date, end_date, leave_type, half_day, note,
+            documentation_url, status, decided_by, decided_at, decision_note, created_at,
+            substitute_id, oof_internal_message, oof_external_message,
+            graph_oof_set, graph_oof_set_at, graph_sync_error, outlook_event_id,
+            profiles:profiles!leave_requests_user_id_fkey(full_name, email, avatar_url),
+            substitute:profiles!leave_requests_substitute_id_fkey(full_name, email)
+        `)
+        .eq('status', 'approved')
+        .gte('end_date', today)
+        .not('graph_sync_error', 'is', null)
+        .order('start_date', { ascending: true })
+        .limit(50)
+
+    if (error) throw new Error(`Błąd: ${error.message}`)
+    return (data ?? []).map((row: any) => ({
+        id: row.id,
+        user_id: row.user_id,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        leave_type: row.leave_type,
+        half_day: row.half_day,
+        note: row.note,
+        documentation_url: row.documentation_url,
+        status: row.status,
+        decided_by: row.decided_by,
+        decided_at: row.decided_at,
+        decision_note: row.decision_note,
+        created_at: row.created_at,
+        substitute_id: row.substitute_id,
+        oof_internal_message: row.oof_internal_message,
+        oof_external_message: row.oof_external_message,
+        graph_oof_set: row.graph_oof_set,
+        graph_oof_set_at: row.graph_oof_set_at,
+        graph_sync_error: row.graph_sync_error,
+        user_full_name: row.profiles?.full_name ?? null,
+        user_email: row.profiles?.email ?? '',
+        user_avatar_url: row.profiles?.avatar_url ?? null,
+        substitute_full_name: row.substitute?.full_name ?? null,
+        substitute_email: row.substitute?.email ?? null,
+    }))
+}
+
+// ─── Phase 25d: retry Graph sync for a leave (admin only) ───────────────────
+
+export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; calendar: boolean; error?: string }> {
+    const ctx = await requireAdminAction()
+    const admin = createServiceClient()
+
+    const { data: row, error: fetchErr } = await admin
+        .from('leave_requests')
+        .select(`
+            id, user_id, start_date, end_date, leave_type, status,
+            substitute_id, oof_internal_message, oof_external_message,
+            outlook_event_id
+        `)
+        .eq('id', id)
+        .single<{
+            id: string
+            user_id: string
+            start_date: string
+            end_date: string
+            leave_type: LeaveType
+            status: LeaveStatus
+            substitute_id: string | null
+            oof_internal_message: string | null
+            oof_external_message: string | null
+            outlook_event_id: string | null
+        }>()
+    if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
+    if (row.status !== 'approved') {
+        throw new Error('Retry działa tylko dla zaakceptowanych wniosków.')
+    }
+
+    const userInfo = await fetchUserContact(row.user_id)
+    if (!userInfo) throw new Error('Pracownik bez emaila — nie można wywołać Graph.')
+
+    // Resolve substitute (for default OOF text).
+    let substituteName: string | null = null
+    let substituteEmail: string | null = null
+    if (row.substitute_id) {
+        const { data: sub } = await admin
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', row.substitute_id)
+            .maybeSingle<{ full_name: string | null; email: string }>()
+        if (sub) {
+            substituteName = sub.full_name ?? sub.email
+            substituteEmail = sub.email
+        }
+    }
+
+    const defaults = buildDefaultOofMessages({
+        employeeName: userInfo.full_name ?? userInfo.email,
+        endDate: row.end_date,
+        substituteName,
+        substituteEmail,
+    })
+
+    let oofOk = false
+    let calOk = false
+    const errors: string[] = []
+
+    const oofRes = await setOutOfOffice({
+        userEmail: userInfo.email,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        internalReply: row.oof_internal_message?.trim() || defaults.internal,
+        externalReply: row.oof_external_message?.trim() || defaults.external,
+    })
+    if (oofRes.success) {
+        oofOk = true
+        await admin
+            .from('leave_requests')
+            .update({
+                graph_oof_set: true,
+                graph_oof_set_at: new Date().toISOString(),
+            } as never)
+            .eq('id', id)
+    } else if (oofRes.error) {
+        errors.push(`oof: ${oofRes.error}`)
+    }
+
+    if (!row.outlook_event_id) {
+        const calRes = await createLeaveEvent({
+            userEmail: userInfo.email,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            leaveType: row.leave_type,
+            note: null,
+            transactionId: `leave-retry-${id}-${Date.now()}`,
+        })
+        if (calRes.success) {
+            calOk = true
+            if (calRes.eventId) {
+                await admin
+                    .from('leave_requests')
+                    .update({ outlook_event_id: calRes.eventId } as never)
+                    .eq('id', id)
+            }
+        } else if (calRes.error) {
+            errors.push(`calendar: ${calRes.error}`)
+        }
+    } else {
+        calOk = true // already has event
+    }
+
+    if (errors.length > 0) {
+        await admin
+            .from('leave_requests')
+            .update({ graph_sync_error: errors.join('; ') } as never)
+            .eq('id', id)
+    } else {
+        await admin
+            .from('leave_requests')
+            .update({ graph_sync_error: null } as never)
+            .eq('id', id)
+    }
+
+    await logAudit(ctx.userId, oofOk && calOk ? 'LEAVE_OOF_SET' : 'LEAVE_OOF_FAILED', {
+        leave_id: id,
+        retry: true,
+        oof_ok: oofOk,
+        calendar_ok: calOk,
+        errors: errors.length > 0 ? errors.join('; ') : undefined,
+    })
+
+    return {
+        oof: oofOk,
+        calendar: calOk,
+        error: errors.length > 0 ? errors.join('; ') : undefined,
     }
 }
