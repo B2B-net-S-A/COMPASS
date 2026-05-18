@@ -375,6 +375,46 @@ Po approve urlopu system automatycznie ustawia OOF w Outlook pracownika + tworzy
 
 **Audit log:** `LEAVE_SUBSTITUTE_ASSIGNED`, `LEAVE_OOF_SET`, `LEAVE_OOF_FAILED`, `LEAVE_OOF_DISABLED`.
 
+## Phase 25b — Manager/Admin wpisuje urlop w imieniu pracownika (PR #124, 2026-05-18)
+
+Pracownik czasem zapomina wysłać wniosek urlopowy. Manager (dla swojego zespołu via `profiles.manager_id`) lub admin (globalnie) może wpisać urlop post-factum z auto-approve. Pracownik dostaje email + push z informacją kto wpisał.
+
+**Migracja `phase25b_leave_on_behalf`:**
+- `leave_requests.created_by` UUID NOT NULL (backfilled z `user_id` dla istniejących self-service wpisów)
+- `leave_requests.created_on_behalf` BOOLEAN DEFAULT FALSE
+- Indeks `idx_leave_created_by WHERE created_by <> user_id` — szybkie wyszukiwanie wpisów on-behalf
+- RLS `leave_insert_self_or_on_behalf` — 3 ścieżki: self / admin on-behalf / manager on-behalf
+- RLS `leave_update_owner_pending_admin_or_manager` — manager może później skorygować swój wpis
+- RLS `leave_select_manager_team_all_statuses` — manager widzi wszystkie statusy zespołu (do tej pory tylko approved)
+
+**Backend (`lib/actions/internal-leave.ts`):**
+- `createLeaveOnBehalf({targetUserId, startDate, endDate, leaveType, halfDay?, note?, substituteId?})` — guard dual (admin OR `target.manager_id === ctx.userId`), duplicate detection, walidacja substitute, INSERT z `status='approved'`, `decided_by=ctx.userId`, `created_on_behalf=true`
+- `listTeamMembersForLeaveOnBehalf()` — admin: wszyscy HR-zone aktywni; manager: tylko `manager_id=ctx.userId`. Wykluczeni: konsultanci IT (no urlopów), exited/offboarding, self
+
+**Side-effecty inteligentnie wg `end_date >= today`:**
+- ZAWSZE: `syncAttendanceFromLeave`, `logAudit('LEAVE_CREATED_ON_BEHALF')`, email + push do pracownika, Teams alert (niebieski "info" `#3B82F6`, nie zielony "approved")
+- ONGOING/FUTURE: + `createLeaveEvent` (Outlook calendar) + `setOutOfOffice` (Outlook OOF z auto-generated PL+EN message) + `sendSubstituteAssigned` (jeśli wybrany zastępca)
+- PAST: pomijamy Outlook/OOF/substitute — nie ma sensu auto-reply na okres który minął
+
+**Walidacje (server-side):**
+- `targetUserId === ctx.userId` → throw (sobie nie wpisuj, użyj normal form)
+- `leaveType === 'sick_leave'` → throw (L4 musi wpisać pracownik z dokumentem)
+- Target poza HR-zone (`consultant`) → throw
+- Target `exited` / `offboarding` → throw
+- Manager + `target.manager_id !== ctx.userId` → throw "Możesz wpisać urlop tylko swojemu zespołowi"
+- Overlap z istniejącym approved leave → throw z datami konfliktującego wpisu
+
+**UI:**
+- Nowa zakładka `/internal/admin?tab=leave-on-behalf` widoczna dla admin + manager (visibleTabs w `admin/page.tsx` rozszerzone)
+- `LeaveOnBehalfPanel` (server) → pre-fetch candidates, renderuje `CreateLeaveOnBehalfForm`
+- `CreateLeaveOnBehalfForm` (client): select pracownika, typ urlopu (bez sick_leave), daty, half-day, note, substitute (pokazany tylko gdy `endDate >= today`)
+- Live bannery: past leave (amber, "Outlook OOF i email zastępcy NIE zostaną wysłane") / ongoing-future (blue, "Out of Office zostanie ustawiony")
+- `LeaveQueue` (admin pending list): button-skrót "Wpisz urlop za pracownika" linkujący do `tab=leave-on-behalf`
+
+**Email:** `sendLeaveCreatedOnBehalf(recipient, name, actor, type, start, end, note?, isPastLeave?)` w `lib/email.ts` — accent niebieski `#3b82f6`, treść różna dla past vs future, `saveToSentItems=true`.
+
+**Audit log:** `LEAVE_CREATED_ON_BEHALF` z payload `{leave_id, target_user_id, leave_type, start_date, end_date, actor_role, is_past_leave}`.
+
 ### KRYTYCZNE: Exchange Online RBAC for Applications (RAOP)
 
 Tenant `b2bnetwork.pl` ma aktywny mechanizm **RBAC for Applications** w Exchange Online (Microsoft, GA 2024). To NIE wystarczy żeby app miała permissions w Entra — wymagane jest też explicit role assignment w EXO. Bez tego Graph zwraca:
