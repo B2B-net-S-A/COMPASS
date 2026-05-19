@@ -645,6 +645,40 @@ Każdy `post` jest mapowany na syntetyczny `GraphMessage` (zachowany shape z Pha
 
 **Filters caveat:** Groups Conversations API NIE zwraca `internetMessageHeaders` na postach. Sender-based filters (mailer-daemon, postmaster, noreply localparts; sentry/github/m365/azure noise domains) działają, ale Auto-Submitted/Precedence/X-Auto-Response-Suppress checki są no-op. W praktyce M365 Group nie dostaje typowych NDR/OOF email-side, więc to akceptowalne.
 
+## Phase 26d — Pivot na shared mailbox (RAOP cache nie odświeża się dla GroupMailbox) (2026-05-19)
+
+**Problem:** Phase 26c działa technicznie ale Microsoft RAOP cache po `Add-DistributionGroupMember Administracja → CompassMailSenders` nie odświeża się w >60 min nawet po `Remove-ApplicationAccessPolicy` całkowitej removal i `EnforceExoAppRbacPermissions=False` na poziomie tenant. `Test-ApplicationAccessPolicy` zwraca `Granted` natychmiast, ale Graph wciąż 403 [RAOP].
+
+**Rozwiązanie:** Utworzono shared mailbox `compass-tickets@b2bnetwork.pl` z transport rule kopiującym każdy mail z `administracja@` (BCC). Shared mailbox to klasyczny User mailbox — Graph `/users/{upn}/messages` działa natychmiast, bez RAOP issues. Code branchuje na `mailbox_kind` w `inbox_sync_state`.
+
+**Ops zrobione 2026-05-19:**
+```powershell
+# 1. Shared mailbox
+New-Mailbox -Shared -Name "Compass Tickets" -DisplayName "Compass Tickets" -PrimarySmtpAddress compass-tickets@b2bnetwork.pl
+# ExchangeObjectId: 42865e35-78c9-4c23-a4f7-434b80ce4199
+
+# 2. Transport rule: każdy mail na administracja@ → BCC compass-tickets@
+New-TransportRule -Name "Mirror Administracja to Compass Inbox" -SentTo "administracja@b2bnetwork.pl" -BlindCopyTo "compass-tickets@b2bnetwork.pl" -Mode Enforce
+
+# 3. Defense-in-depth — member of Group i DL
+Add-UnifiedGroupLinks -Identity "Administracja@b2bnetsa.onmicrosoft.com" -LinkType Members -Links compass-tickets@b2bnetwork.pl
+Add-DistributionGroupMember -Identity CompassMailSenders -Member compass-tickets@b2bnetwork.pl
+```
+
+Test Graph `/users/compass-tickets@b2bnetwork.pl/messages` → **HTTP 200** od ręki (zero opóźnienia, brak RAOP block).
+
+**Zmiany kodu:**
+- `lib/mailbox/graph-mail-read.ts` — dodano `kind: 'user' | 'group'` w `ListNewMessagesInput` i `ListAttachmentsInput`. User mode: `/users/{upn}/messages`. Group mode: `/groups/{id}/threads/posts` (Phase 26c logika zachowana).
+- `lib/inbox/ingest.ts` — czyta `mailbox_kind` z `inbox_sync_state`, przekazuje do helpera, propaguje do attachments fetch.
+- Migracja `phase26d_pivot_to_shared_mailbox`: UPDATE row z `administracja@b2bnetwork.pl` → `compass-tickets@b2bnetwork.pl`, `mailbox_kind='user'`, `group_id=NULL`, reset stats, `last_synced_at=NOW()`.
+
+**Skutki dla użytkownika:**
+- **Bez zmian dla nadawców** — wszyscy nadal piszą na `administracja@b2bnetwork.pl`.
+- **Bez zmian dla Outlook Groups UI** — pracownicy nadal widzą wątki w Outlook Groups (transport rule BCC kopiuje, nie redirectuje).
+- **Compass widzi każdy nowy mail** — przez Mail.Read na shared mailbox. Tickety pojawiają się w `/admin/inbox`.
+
+**Filters zachowują headers:** User mailbox API zwraca `internetMessageHeaders` (Auto-Submitted/Precedence/X-Auto-Response-Suppress), więc NDR/OOF detection wraca do pełnej skuteczności (Phase 26c caveat odpada dla `compass-tickets@`).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
