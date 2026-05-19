@@ -15,6 +15,7 @@ import { requireInvoicesEnabled } from '@/lib/feature-flags'
 import type {
     BonusRow,
     BonusStatus,
+    BonusCategory,
     BonusWithUsers,
     ProposeBonusInput,
     AssignBonusInput,
@@ -31,6 +32,10 @@ import {
     BONUS_REASON_MAX_LENGTH,
     BONUS_PERIOD_MAX_MONTHS_BACK,
     BONUS_MONTHS_PL,
+    BONUS_ATTACHMENT_MAX_BYTES,
+    BONUS_ATTACHMENT_ALLOWED_MIME,
+    BONUS_CUSTOM_MEMO_MAX_LENGTH,
+    recruiterTierForMargin,
 } from '@/lib/types/bonus'
 
 // ─── Validation ─────────────────────────────────────────────────────────────
@@ -93,10 +98,108 @@ function validateAssignInput(input: AssignBonusInput): void {
     validateReason(input.reason)
     validateCurrency(input.currency)
     validatePeriod(input.period_year, input.period_month)
+    validateCategoryFields(input)
+}
+
+/** Phase 27b — per-category field validation. */
+function validateCategoryFields(input: AssignBonusInput): void {
+    switch (input.category) {
+        case 'sales': {
+            const client = (input.sales_client_name ?? '').trim()
+            const desc = (input.sales_service_description ?? '').trim()
+            if (client.length < 2) {
+                throw new Error('Klient: minimum 2 znaki.')
+            }
+            if (desc.length < 3) {
+                throw new Error('Opis usługi: minimum 3 znaki.')
+            }
+            break
+        }
+        case 'delivery_lead': {
+            if (!input.delivery_consultant_id) {
+                throw new Error('Konsultant jest wymagany dla premii Delivery Lead.')
+            }
+            if (input.delivery_consultant_id === input.recipient_user_id) {
+                throw new Error('Manager nie może wpisać premii Delivery Lead na własną osobę jako konsultanta.')
+            }
+            if (!Number.isFinite(input.delivery_margin_amount) || input.delivery_margin_amount <= 0) {
+                throw new Error('Marża miesięczna musi być > 0.')
+            }
+            if (input.delivery_margin_percent !== undefined) {
+                if (
+                    !Number.isFinite(input.delivery_margin_percent) ||
+                    input.delivery_margin_percent < 0 ||
+                    input.delivery_margin_percent > 100
+                ) {
+                    throw new Error('Procent premii musi być w zakresie 0-100.')
+                }
+            }
+            break
+        }
+        case 'recruiter': {
+            if (
+                !Number.isFinite(input.recruiter_margin_per_hour) ||
+                input.recruiter_margin_per_hour < 0
+            ) {
+                throw new Error('Marża rekrutera (PLN/h) musi być >= 0.')
+            }
+            const candidate = (input.recruiter_candidate_name ?? '').trim()
+            if (candidate.length < 3) {
+                throw new Error('Imię i nazwisko kandydata: minimum 3 znaki.')
+            }
+            break
+        }
+        case 'custom': {
+            const memo = (input.custom_email_memo ?? '').trim()
+            if (memo.length < 1) {
+                // DB CHECK requires custom_email_memo OR attachment_path; attachment is uploaded
+                // in a second step after insert, so memo must be present on initial insert.
+                throw new Error('Memo opisujące premię niestandardową jest wymagane (możesz też dodać załącznik po zapisaniu).')
+            }
+            if (memo.length > BONUS_CUSTOM_MEMO_MAX_LENGTH) {
+                throw new Error(`Memo za długie (max ${BONUS_CUSTOM_MEMO_MAX_LENGTH} znaków).`)
+            }
+            break
+        }
+        default: {
+            // Exhaustive check.
+            const _exhaustive: never = input
+            throw new Error(`Nieznana kategoria premii: ${(_exhaustive as { category: string }).category}`)
+        }
+    }
 }
 
 function periodLabelPl(year: number, month: number): string {
     return `${BONUS_MONTHS_PL[month - 1]} ${year}`
+}
+
+/** Phase 27b — extract per-category columns from input for INSERT. */
+function buildCategoryInsertPayload(input: AssignBonusInput): Record<string, unknown> {
+    switch (input.category) {
+        case 'sales':
+            return {
+                sales_client_name: input.sales_client_name.trim(),
+                sales_service_description: input.sales_service_description.trim(),
+            }
+        case 'delivery_lead':
+            return {
+                delivery_consultant_id: input.delivery_consultant_id,
+                delivery_margin_amount: input.delivery_margin_amount,
+                delivery_margin_percent: input.delivery_margin_percent ?? 10.0,
+            }
+        case 'recruiter': {
+            const tier = recruiterTierForMargin(input.recruiter_margin_per_hour)
+            return {
+                recruiter_margin_per_hour: input.recruiter_margin_per_hour,
+                recruiter_candidate_name: input.recruiter_candidate_name.trim(),
+                recruiter_calculated_tier: tier?.tier ?? null,
+            }
+        }
+        case 'custom':
+            return {
+                custom_email_memo: input.custom_email_memo?.trim() || null,
+            }
+    }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -586,6 +689,10 @@ export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
 
     const supabase = createClient()
     const reason = (input.reason ?? '').trim()
+
+    // Phase 27b — build per-category insert payload.
+    const categoryPayload = buildCategoryInsertPayload(input)
+
     const { data: inserted, error } = await supabase
         .from('bonuses')
         .insert({
@@ -598,6 +705,8 @@ export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
             status: 'assigned',
             period_year: input.period_year,
             period_month: input.period_month,
+            category: input.category,
+            ...categoryPayload,
         })
         .select('*')
         .single<BonusRow>()
@@ -620,6 +729,7 @@ export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
         reason: inserted.reason,
         period_year: inserted.period_year,
         period_month: inserted.period_month,
+        category: inserted.category,
     })
 
     const recipient = await fetchRecipientContact(input.recipient_user_id)
@@ -833,6 +943,8 @@ async function enrichBonusesWithUsers(rows: BonusRow[]): Promise<BonusWithUsers[
         userIds.add(r.recipient_user_id)
         userIds.add(r.proposed_by)
         if (r.linked_invoice_id) invoiceIds.add(r.linked_invoice_id)
+        // Phase 27b — delivery_lead consultant
+        if (r.delivery_consultant_id) userIds.add(r.delivery_consultant_id)
     }
 
     const [profilesRes, invoicesRes] = await Promise.all([
@@ -869,6 +981,9 @@ async function enrichBonusesWithUsers(rows: BonusRow[]): Promise<BonusWithUsers[
         proposer_full_name: profileMap.get(r.proposed_by)?.full_name ?? null,
         proposer_email: profileMap.get(r.proposed_by)?.email ?? null,
         linked_invoice_number: r.linked_invoice_id ? (invoiceMap.get(r.linked_invoice_id) ?? null) : null,
+        delivery_consultant_full_name: r.delivery_consultant_id
+            ? profileMap.get(r.delivery_consultant_id)?.full_name ?? null
+            : null,
     }))
 }
 
@@ -934,4 +1049,252 @@ export async function listMyInvoicesForBonusLinking(): Promise<
         period_month: number
         status: string
     }>).map((i) => ({ ...i, amount: Number(i.amount) }))
+}
+
+// ─── Phase 27b — Delivery consultant dropdown candidates ──────────────────
+
+export interface DeliveryConsultantCandidate {
+    user_id: string
+    full_name: string | null
+    email: string
+    role: string
+}
+
+/**
+ * Phase 27b — list candidates for the Delivery Lead bonus consultant dropdown.
+ * Includes consultants (IT + internal). Excludes self and exited employees.
+ */
+export async function listConsultantsForDelivery(): Promise<DeliveryConsultantCandidate[]> {
+    const ctx = await requireBonusProposerAction()
+    const admin = createServiceClient()
+    const { data, error } = await admin
+        .from('profiles')
+        .select('id, full_name, email, role, employment_status')
+        .in('role', ['consultant', 'internal', 'manager'])
+        .neq('id', ctx.userId)
+        .order('full_name')
+    if (error) throw new Error(`Błąd pobierania konsultantów: ${error.message}`)
+    // Phase 27b — cast via unknown; database.types.ts may lag behind profile schema.
+    return ((data ?? []) as unknown as Array<{
+        id: string
+        full_name: string | null
+        email: string
+        role: string
+        employment_status: string | null
+    }>)
+        .filter((p) => p.employment_status !== 'exited')
+        .map((p) => ({
+            user_id: p.id,
+            full_name: p.full_name,
+            email: p.email,
+            role: p.role,
+        }))
+}
+
+// ─── Phase 27b — Attachment lifecycle (upload, signed URL, remove) ────────
+
+const BONUS_ATTACHMENTS_BUCKET = 'bonus-attachments'
+const SIGNED_URL_TTL_SECONDS = 60
+
+function sanitizeFilename(name: string): string {
+    return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
+}
+
+/**
+ * Phase 27b — upload attachment for an existing bonus.
+ * Guard: proposer or admin only. Storage RLS also enforces this.
+ * Flow: 1) assignBonus inserts bonus → 2) UI uploads attachment via this action.
+ */
+export async function uploadBonusAttachment(
+    bonusId: string,
+    file: File,
+): Promise<{ path: string; filename: string; size: number; mime: string }> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!bonusId) throw new Error('Brak id premii.')
+    if (!file || !(file instanceof File)) throw new Error('Brak pliku.')
+
+    // Validate file
+    if (file.size === 0) throw new Error('Plik jest pusty.')
+    if (file.size > BONUS_ATTACHMENT_MAX_BYTES) {
+        throw new Error(`Plik za duży (max ${BONUS_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB).`)
+    }
+    const mime = file.type || 'application/octet-stream'
+    if (!BONUS_ATTACHMENT_ALLOWED_MIME.includes(mime as (typeof BONUS_ATTACHMENT_ALLOWED_MIME)[number])) {
+        throw new Error(
+            `Niedozwolony typ pliku (${mime}). Dozwolone: PDF, JPG, PNG, WEBP.`,
+        )
+    }
+
+    const admin = createServiceClient()
+
+    // Verify bonus exists + user is proposer or admin.
+    const { data: bonus, error: fetchErr } = await admin
+        .from('bonuses')
+        .select('id, proposed_by, attachment_path')
+        .eq('id', bonusId)
+        .single<{ id: string; proposed_by: string; attachment_path: string | null }>()
+    if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
+    if (bonus.proposed_by !== ctx.userId && !ctx.isAdmin) {
+        throw new Error('Tylko proposer lub administrator może dodać załącznik.')
+    }
+
+    const timestamp = Date.now()
+    const safeName = sanitizeFilename(file.name)
+    const path = `${bonusId}/${timestamp}_${safeName}`
+
+    // Upload via admin client (bypass RLS — server already verified ownership).
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const { error: uploadErr } = await admin.storage
+        .from(BONUS_ATTACHMENTS_BUCKET)
+        .upload(path, buffer, {
+            contentType: mime,
+            upsert: false,
+        })
+    if (uploadErr) throw new Error(`Błąd uploadu: ${uploadErr.message}`)
+
+    // Update bonus row with attachment metadata.
+    // Phase 27b — cast through unknown until database.types.ts is regenerated.
+    const { error: updateErr } = await admin
+        .from('bonuses')
+        .update({
+            attachment_path: path,
+            attachment_filename: file.name,
+            attachment_size_bytes: file.size,
+            attachment_mime: mime,
+        } as unknown as never)
+        .eq('id', bonusId)
+    if (updateErr) {
+        // Best-effort cleanup if metadata update fails.
+        await admin.storage.from(BONUS_ATTACHMENTS_BUCKET).remove([path]).catch(() => undefined)
+        throw new Error(`Błąd zapisu metadanych: ${updateErr.message}`)
+    }
+
+    // Remove previous attachment file if it existed (replace flow).
+    if (bonus.attachment_path && bonus.attachment_path !== path) {
+        admin.storage
+            .from(BONUS_ATTACHMENTS_BUCKET)
+            .remove([bonus.attachment_path])
+            .catch((e) => logCompat.error('[uploadBonusAttachment] cleanup previous failed:', e))
+    }
+
+    await logAudit(ctx.userId, 'BONUS_ATTACHMENT_UPLOADED', {
+        bonus_id: bonusId,
+        filename: file.name,
+        size_bytes: file.size,
+        mime,
+    })
+
+    return {
+        path,
+        filename: file.name,
+        size: file.size,
+        mime,
+    }
+}
+
+/**
+ * Phase 27b — generate signed URL for downloading a bonus attachment.
+ * Guard: recipient, proposer, manager_of(recipient), finanse, admin (mirrors RLS).
+ * TTL 60s — short-lived URLs prevent leaked-link reuse.
+ */
+export async function getBonusAttachmentSignedUrl(bonusId: string): Promise<string> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!bonusId) throw new Error('Brak id premii.')
+
+    const admin = createServiceClient()
+    const { data: bonus, error: fetchErr } = await admin
+        .from('bonuses')
+        .select('id, recipient_user_id, proposed_by, attachment_path')
+        .eq('id', bonusId)
+        .single<{
+            id: string
+            recipient_user_id: string
+            proposed_by: string
+            attachment_path: string | null
+        }>()
+    if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
+    if (!bonus.attachment_path) throw new Error('Ta premia nie ma załącznika.')
+
+    // Authorization: recipient, proposer, admin/finanse, or manager_of(recipient).
+    const isRecipient = bonus.recipient_user_id === ctx.userId
+    const isProposer = bonus.proposed_by === ctx.userId
+    const isFinance = ctx.role === 'finanse'
+    let isManagerOfRecipient = false
+    if (ctx.isManager && !isRecipient && !isProposer && !ctx.isAdmin && !isFinance) {
+        const { data: target } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', bonus.recipient_user_id)
+            .single<{ manager_id: string | null }>()
+        isManagerOfRecipient = target?.manager_id === ctx.userId
+    }
+
+    if (!isRecipient && !isProposer && !ctx.isAdmin && !isFinance && !isManagerOfRecipient) {
+        throw new Error('Brak uprawnień do pobrania załącznika.')
+    }
+
+    const { data: signed, error: signErr } = await admin.storage
+        .from(BONUS_ATTACHMENTS_BUCKET)
+        .createSignedUrl(bonus.attachment_path, SIGNED_URL_TTL_SECONDS)
+    if (signErr || !signed?.signedUrl) {
+        throw new Error(`Błąd generowania linka: ${signErr?.message ?? 'unknown'}`)
+    }
+    return signed.signedUrl
+}
+
+/**
+ * Phase 27b — admin removes attachment from a bonus (keeps bonus row, drops file + metadata).
+ */
+export async function removeBonusAttachment(bonusId: string): Promise<void> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin) throw new Error('Tylko administrator może usunąć załącznik.')
+    if (!bonusId) throw new Error('Brak id premii.')
+
+    const admin = createServiceClient()
+    const { data: bonus, error: fetchErr } = await admin
+        .from('bonuses')
+        .select('id, attachment_path, attachment_filename, category, custom_email_memo')
+        .eq('id', bonusId)
+        .single<{
+            id: string
+            attachment_path: string | null
+            attachment_filename: string | null
+            category: BonusCategory
+            custom_email_memo: string | null
+        }>()
+    if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
+    if (!bonus.attachment_path) throw new Error('Ta premia nie ma załącznika.')
+
+    // For 'custom' category — DB CHECK requires memo OR attachment. If memo is empty,
+    // we'd violate constraint by removing. Block here with friendly message.
+    if (bonus.category === 'custom' && !bonus.custom_email_memo) {
+        throw new Error(
+            'Premia niestandardowa wymaga memo lub załącznika. Dodaj memo zanim usuniesz załącznik.',
+        )
+    }
+
+    const { error: removeStorageErr } = await admin.storage
+        .from(BONUS_ATTACHMENTS_BUCKET)
+        .remove([bonus.attachment_path])
+    if (removeStorageErr) {
+        logCompat.error('[removeBonusAttachment] storage remove failed:', removeStorageErr)
+        // Continue anyway — clear metadata even if file was already missing.
+    }
+
+    // Phase 27b — cast through unknown until database.types.ts is regenerated.
+    const { error: updateErr } = await admin
+        .from('bonuses')
+        .update({
+            attachment_path: null,
+            attachment_filename: null,
+            attachment_size_bytes: null,
+            attachment_mime: null,
+        } as unknown as never)
+        .eq('id', bonusId)
+    if (updateErr) throw new Error(`Błąd czyszczenia metadanych: ${updateErr.message}`)
+
+    await logAudit(ctx.userId, 'BONUS_ATTACHMENT_REMOVED', {
+        bonus_id: bonusId,
+        filename: bonus.attachment_filename,
+    })
 }

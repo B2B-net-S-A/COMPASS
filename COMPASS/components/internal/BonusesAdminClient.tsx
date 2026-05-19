@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { Plus, CheckCircle2, XCircle, Download, Pencil, Ban } from 'lucide-react'
+import { Plus, CheckCircle2, XCircle, Download, Pencil, Ban, Paperclip, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
     Dialog,
@@ -14,14 +14,15 @@ import {
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { cancelBonus } from '@/lib/actions/internal-bonus'
+import { cancelBonus, getBonusAttachmentSignedUrl } from '@/lib/actions/internal-bonus'
 import { AssignBonusForm } from './AssignBonusForm'
 import type {
+    BonusCategory,
     BonusStatus,
     BonusWithUsers,
     EligibleEmployeeForBonus,
 } from '@/lib/types/bonus'
-import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
+import { BONUS_MONTHS_PL, BONUS_CATEGORIES_PL } from '@/lib/types/bonus'
 
 type ViewerMode = 'admin' | 'manager' | 'finanse'
 
@@ -82,6 +83,76 @@ function formatDate(iso: string): string {
 function periodLabel(year: number | null, month: number | null): string {
     if (!year || !month) return '—'
     return `${BONUS_MONTHS_PL[month - 1]} ${year}`
+}
+
+function categoryBadge(category: BonusCategory) {
+    const label = BONUS_CATEGORIES_PL[category]
+    const className =
+        category === 'sales'
+            ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+            : category === 'delivery_lead'
+              ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+              : category === 'recruiter'
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                : 'bg-gray-500/15 text-gray-300 border-gray-500/30'
+    return (
+        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>{label}</span>
+    )
+}
+
+function AttachmentButton({ bonus }: { bonus: BonusWithUsers }) {
+    const [loading, setLoading] = useState(false)
+    if (!bonus.attachment_path) return null
+    async function open() {
+        setLoading(true)
+        try {
+            const url = await getBonusAttachmentSignedUrl(bonus.id)
+            window.open(url, '_blank', 'noopener,noreferrer')
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Błąd pobierania załącznika')
+        } finally {
+            setLoading(false)
+        }
+    }
+    return (
+        <button
+            type="button"
+            onClick={open}
+            disabled={loading}
+            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+        >
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
+            {bonus.attachment_filename ?? 'Załącznik'}
+        </button>
+    )
+}
+
+function categoryInlineDetails(bonus: BonusWithUsers): string | null {
+    switch (bonus.category) {
+        case 'sales':
+            return bonus.sales_client_name ? `Klient: ${bonus.sales_client_name}` : null
+        case 'delivery_lead': {
+            const parts: string[] = []
+            if (bonus.delivery_consultant_full_name) parts.push(`Konsultant: ${bonus.delivery_consultant_full_name}`)
+            if (bonus.delivery_margin_amount != null) {
+                parts.push(`Marża: ${Number(bonus.delivery_margin_amount).toFixed(2)} PLN`)
+            }
+            return parts.length > 0 ? parts.join(' · ') : null
+        }
+        case 'recruiter': {
+            const parts: string[] = []
+            if (bonus.recruiter_candidate_name) parts.push(`Kandydat: ${bonus.recruiter_candidate_name}`)
+            if (bonus.recruiter_margin_per_hour != null) {
+                parts.push(`Marża: ${Number(bonus.recruiter_margin_per_hour).toFixed(2)} PLN/h`)
+            }
+            if (bonus.recruiter_calculated_tier) {
+                parts.push(`próg ${bonus.recruiter_calculated_tier}`)
+            }
+            return parts.length > 0 ? parts.join(' · ') : null
+        }
+        case 'custom':
+            return null
+    }
 }
 
 function exportToCsv(bonuses: BonusWithUsers[]): void {
@@ -261,6 +332,7 @@ export function BonusesAdminClient({
                                                 {b.recipient_email}
                                             </span>
                                             {statusBadge(b.status)}
+                                            {categoryBadge(b.category)}
                                             <span className="text-xs px-2 py-0.5 rounded bg-white/5 text-muted-foreground">
                                                 {periodLabel(b.period_year, b.period_month)}
                                             </span>
@@ -271,6 +343,17 @@ export function BonusesAdminClient({
                                             </span>
                                             <span className="text-muted-foreground"> — {b.reason}</span>
                                         </div>
+                                        {(() => {
+                                            const cat = categoryInlineDetails(b)
+                                            return cat ? (
+                                                <div className="mt-1 text-xs text-muted-foreground">{cat}</div>
+                                            ) : null
+                                        })()}
+                                        {b.attachment_path && (
+                                            <div className="mt-1.5">
+                                                <AttachmentButton bonus={b} />
+                                            </div>
+                                        )}
                                         <div className="mt-1 text-xs text-muted-foreground space-x-3">
                                             <span>Manager: {b.proposer_full_name ?? '—'}</span>
                                             <span>Utworzono: {formatDate(b.created_at)}</span>

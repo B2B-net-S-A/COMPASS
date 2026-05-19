@@ -120,6 +120,9 @@ export type AuditAction =
     // Phase 27a — Timesheet 8h hard block + admin overtime override
     | 'TIMESHEET_OVERTIME_OVERRIDE'
     | 'TIMESHEET_OVERTIME_OVERRIDE_CLEARED'
+    // Phase 27b — Bonus categories + attachments
+    | 'BONUS_ATTACHMENT_UPLOADED'
+    | 'BONUS_ATTACHMENT_REMOVED'
 
 export async function logAudit(
     userId: string | null,

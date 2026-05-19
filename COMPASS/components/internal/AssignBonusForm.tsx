@@ -1,17 +1,32 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+// Phase 23 — initial bonus assign/edit form.
+// Phase 26 — uproszczony workflow (assigned), edit limited to amount/reason/notes.
+// Phase 27b — 4 kategorie: sales / delivery_lead / recruiter / custom + opcjonalny attachment
+//             (PDF/img max 10MB) uploadowany w drugim kroku po INSERT.
+
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2, Gift } from 'lucide-react'
+import { Loader2, Gift, Paperclip, X, Briefcase, TrendingUp, UserPlus, Sparkles } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { assignBonus, updateBonus } from '@/lib/actions/internal-bonus'
-import type { EligibleEmployeeForBonus } from '@/lib/types/bonus'
+import {
+    assignBonus,
+    updateBonus,
+    uploadBonusAttachment,
+    listConsultantsForDelivery,
+    type DeliveryConsultantCandidate,
+} from '@/lib/actions/internal-bonus'
+import type {
+    AssignBonusInput,
+    BonusCategory,
+    EligibleEmployeeForBonus,
+} from '@/lib/types/bonus'
 import {
     BONUS_MIN_AMOUNT,
     BONUS_MAX_AMOUNT,
@@ -19,6 +34,11 @@ import {
     BONUS_REASON_MAX_LENGTH,
     BONUS_PERIOD_MAX_MONTHS_BACK,
     BONUS_MONTHS_PL,
+    BONUS_CATEGORIES_PL,
+    BONUS_ATTACHMENT_MAX_BYTES,
+    BONUS_ATTACHMENT_ALLOWED_MIME,
+    BONUS_CUSTOM_MEMO_MAX_LENGTH,
+    recruiterTierForMargin,
 } from '@/lib/types/bonus'
 
 export type BonusFormMode = 'assign' | 'edit'
@@ -66,6 +86,13 @@ function buildPeriodOptions(): PeriodOption[] {
     return options.reverse()
 }
 
+const CATEGORY_ICON: Record<BonusCategory, React.ComponentType<{ className?: string }>> = {
+    sales: Briefcase,
+    delivery_lead: TrendingUp,
+    recruiter: UserPlus,
+    custom: Sparkles,
+}
+
 export function AssignBonusForm({
     mode = 'assign',
     candidates,
@@ -85,6 +112,9 @@ export function AssignBonusForm({
         return `${now.getFullYear()}-${now.getMonth() + 1}`
     }, [prefilled])
 
+    const isEdit = mode === 'edit'
+
+    // Core state
     const [recipientId, setRecipientId] = useState<string>(
         prefilledRecipientId ?? prefilled?.id ?? '',
     )
@@ -96,7 +126,25 @@ export function AssignBonusForm({
     const [reason, setReason] = useState<string>(prefilled?.reason ?? '')
     const [notes, setNotes] = useState<string>(prefilled?.notes ?? '')
 
-    const isEdit = mode === 'edit'
+    // Phase 27b — category state (only for assign mode)
+    const [category, setCategory] = useState<BonusCategory>('custom')
+    // Sales
+    const [salesClientName, setSalesClientName] = useState<string>('')
+    const [salesServiceDescription, setSalesServiceDescription] = useState<string>('')
+    // Delivery
+    const [deliveryConsultantId, setDeliveryConsultantId] = useState<string>('')
+    const [deliveryMarginAmount, setDeliveryMarginAmount] = useState<string>('')
+    const [deliveryMarginPercent, setDeliveryMarginPercent] = useState<string>('10.00')
+    const [consultants, setConsultants] = useState<DeliveryConsultantCandidate[]>([])
+    const [consultantsLoaded, setConsultantsLoaded] = useState<boolean>(false)
+    // Recruiter
+    const [recruiterMargin, setRecruiterMargin] = useState<string>('')
+    const [recruiterCandidate, setRecruiterCandidate] = useState<string>('')
+    // Custom
+    const [customMemo, setCustomMemo] = useState<string>('')
+    // Attachment (any category)
+    const [attachment, setAttachment] = useState<File | null>(null)
+
     const recipientLocked = isEdit || !!prefilledRecipientId
     const periodLocked = isEdit
 
@@ -106,6 +154,56 @@ export function AssignBonusForm({
         return match?.full_name ?? match?.email ?? null
     }, [candidates, recipientId, prefilled])
 
+    // Phase 27b — lazy-load consultants when Delivery Lead category selected
+    useEffect(() => {
+        if (isEdit) return
+        if (category !== 'delivery_lead') return
+        if (consultantsLoaded) return
+        let cancelled = false
+        listConsultantsForDelivery()
+            .then((data) => {
+                if (!cancelled) {
+                    setConsultants(data)
+                    setConsultantsLoaded(true)
+                }
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    toast.error(err instanceof Error ? err.message : 'Błąd ładowania konsultantów')
+                    setConsultantsLoaded(true)
+                }
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [category, consultantsLoaded, isEdit])
+
+    // Phase 27b — auto-calc Delivery amount when margin or percent changes
+    useEffect(() => {
+        if (isEdit) return
+        if (category !== 'delivery_lead') return
+        const m = Number(deliveryMarginAmount)
+        const p = Number(deliveryMarginPercent)
+        if (Number.isFinite(m) && m > 0 && Number.isFinite(p) && p >= 0) {
+            const calc = Math.round(m * p) / 100
+            setAmount(calc.toFixed(2))
+        }
+    }, [deliveryMarginAmount, deliveryMarginPercent, category, isEdit])
+
+    // Phase 27b — auto-calc Recruiter amount from margin tier
+    const recruiterTier = useMemo(() => {
+        const m = Number(recruiterMargin)
+        return Number.isFinite(m) ? recruiterTierForMargin(m) : null
+    }, [recruiterMargin])
+
+    useEffect(() => {
+        if (isEdit) return
+        if (category !== 'recruiter') return
+        if (recruiterTier) {
+            setAmount(recruiterTier.bonus.toFixed(2))
+        }
+    }, [recruiterTier, category, isEdit])
+
     function resetForm() {
         if (isEdit) return
         if (!prefilledRecipientId) setRecipientId('')
@@ -114,41 +212,165 @@ export function AssignBonusForm({
         setCurrency('PLN')
         setReason('')
         setNotes('')
+        setCategory('custom')
+        setSalesClientName('')
+        setSalesServiceDescription('')
+        setDeliveryConsultantId('')
+        setDeliveryMarginAmount('')
+        setDeliveryMarginPercent('10.00')
+        setRecruiterMargin('')
+        setRecruiterCandidate('')
+        setCustomMemo('')
+        setAttachment(null)
+    }
+
+    function validateAttachmentFile(file: File): string | null {
+        if (file.size === 0) return 'Plik jest pusty.'
+        if (file.size > BONUS_ATTACHMENT_MAX_BYTES) {
+            return `Plik za duży (max ${BONUS_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB).`
+        }
+        const mime = file.type || 'application/octet-stream'
+        if (!BONUS_ATTACHMENT_ALLOWED_MIME.includes(mime as (typeof BONUS_ATTACHMENT_ALLOWED_MIME)[number])) {
+            return `Niedozwolony typ pliku (${mime}). Dozwolone: PDF, JPG, PNG, WEBP.`
+        }
+        return null
+    }
+
+    function handleAttachmentChange(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0]
+        if (!file) {
+            setAttachment(null)
+            return
+        }
+        const err = validateAttachmentFile(file)
+        if (err) {
+            toast.error(err)
+            e.target.value = ''
+            return
+        }
+        setAttachment(file)
+    }
+
+    function buildAssignInput(): AssignBonusInput | { error: string } {
+        if (!recipientId) return { error: 'Wybierz pracownika.' }
+        const amountNum = Number(amount)
+        if (!Number.isFinite(amountNum) || amountNum < BONUS_MIN_AMOUNT) {
+            return { error: `Kwota musi być >= ${BONUS_MIN_AMOUNT}.` }
+        }
+        if (amountNum > BONUS_MAX_AMOUNT) {
+            return { error: `Kwota za duża (max ${BONUS_MAX_AMOUNT}).` }
+        }
+        const reasonTrimmed = reason.trim()
+        if (reasonTrimmed.length < BONUS_REASON_MIN_LENGTH) {
+            return { error: `Uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.` }
+        }
+        if (reasonTrimmed.length > BONUS_REASON_MAX_LENGTH) {
+            return { error: `Uzasadnienie max ${BONUS_REASON_MAX_LENGTH} znaków.` }
+        }
+        const [periodYearStr, periodMonthStr] = periodKey.split('-')
+        const periodYear = Number(periodYearStr)
+        const periodMonth = Number(periodMonthStr)
+
+        const base = {
+            recipient_user_id: recipientId,
+            period_year: periodYear,
+            period_month: periodMonth,
+            amount: amountNum,
+            currency,
+            reason: reasonTrimmed,
+            notes: notes.trim() || null,
+        }
+
+        switch (category) {
+            case 'sales': {
+                const client = salesClientName.trim()
+                const desc = salesServiceDescription.trim()
+                if (client.length < 2) return { error: 'Klient: minimum 2 znaki.' }
+                if (desc.length < 3) return { error: 'Opis usługi: minimum 3 znaki.' }
+                return {
+                    category: 'sales',
+                    ...base,
+                    sales_client_name: client,
+                    sales_service_description: desc,
+                }
+            }
+            case 'delivery_lead': {
+                if (!deliveryConsultantId) {
+                    return { error: 'Wybierz konsultanta.' }
+                }
+                if (deliveryConsultantId === recipientId) {
+                    return { error: 'Manager nie może wpisać delivery na własną osobę jako konsultanta.' }
+                }
+                const m = Number(deliveryMarginAmount)
+                if (!Number.isFinite(m) || m <= 0) {
+                    return { error: 'Marża miesięczna musi być > 0.' }
+                }
+                const p = Number(deliveryMarginPercent)
+                if (!Number.isFinite(p) || p < 0 || p > 100) {
+                    return { error: 'Procent premii musi być w zakresie 0-100.' }
+                }
+                return {
+                    category: 'delivery_lead',
+                    ...base,
+                    delivery_consultant_id: deliveryConsultantId,
+                    delivery_margin_amount: m,
+                    delivery_margin_percent: p,
+                }
+            }
+            case 'recruiter': {
+                const m = Number(recruiterMargin)
+                if (!Number.isFinite(m) || m < 0) {
+                    return { error: 'Marża rekrutera (PLN/h) musi być >= 0.' }
+                }
+                const candidate = recruiterCandidate.trim()
+                if (candidate.length < 3) {
+                    return { error: 'Imię i nazwisko kandydata: minimum 3 znaki.' }
+                }
+                return {
+                    category: 'recruiter',
+                    ...base,
+                    recruiter_margin_per_hour: m,
+                    recruiter_candidate_name: candidate,
+                }
+            }
+            case 'custom': {
+                const memo = customMemo.trim()
+                if (memo.length < 1) {
+                    return { error: 'Memo opisujące premię niestandardową jest wymagane.' }
+                }
+                if (memo.length > BONUS_CUSTOM_MEMO_MAX_LENGTH) {
+                    return { error: `Memo za długie (max ${BONUS_CUSTOM_MEMO_MAX_LENGTH} znaków).` }
+                }
+                return {
+                    category: 'custom',
+                    ...base,
+                    custom_email_memo: memo,
+                }
+            }
+        }
     }
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
 
-        if (!recipientId && !isEdit) {
-            toast.error('Wybierz pracownika.')
-            return
-        }
-        const amountNum = Number(amount)
-        if (!Number.isFinite(amountNum) || amountNum < BONUS_MIN_AMOUNT) {
-            toast.error(`Kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
-            return
-        }
-        if (amountNum > BONUS_MAX_AMOUNT) {
-            toast.error(`Kwota za duża (max ${BONUS_MAX_AMOUNT}).`)
-            return
-        }
-        const reasonTrimmed = reason.trim()
-        if (reasonTrimmed.length < BONUS_REASON_MIN_LENGTH) {
-            toast.error(`Uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.`)
-            return
-        }
-        if (reasonTrimmed.length > BONUS_REASON_MAX_LENGTH) {
-            toast.error(`Uzasadnienie max ${BONUS_REASON_MAX_LENGTH} znaków.`)
-            return
-        }
-
-        const [periodYearStr, periodMonthStr] = periodKey.split('-')
-        const periodYear = Number(periodYearStr)
-        const periodMonth = Number(periodMonthStr)
-
-        startTransition(async () => {
-            try {
-                if (isEdit && prefilled) {
+        if (isEdit && prefilled) {
+            // Edit path: amount/reason/notes only (kategoria + period immutable per DB trigger).
+            const amountNum = Number(amount)
+            if (!Number.isFinite(amountNum) || amountNum < BONUS_MIN_AMOUNT) {
+                toast.error(`Kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
+                return
+            }
+            if (amountNum > BONUS_MAX_AMOUNT) {
+                toast.error(`Kwota za duża (max ${BONUS_MAX_AMOUNT}).`)
+                return
+            }
+            const reasonTrimmed = reason.trim()
+            if (reasonTrimmed.length < BONUS_REASON_MIN_LENGTH) {
+                toast.error(`Uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.`)
+                return
+            }
+            startTransition(async () => {
+                try {
                     await updateBonus({
                         id: prefilled.id,
                         amount: amountNum,
@@ -156,34 +378,269 @@ export function AssignBonusForm({
                         notes: notes.trim() || null,
                     })
                     toastSuccess('Premia zaktualizowana.')
-                } else {
-                    await assignBonus({
-                        recipient_user_id: recipientId,
-                        period_year: periodYear,
-                        period_month: periodMonth,
-                        amount: amountNum,
-                        currency,
-                        reason: reasonTrimmed,
-                        notes: notes.trim() || null,
-                    })
-                    toastSuccess(
-                        recipientName
-                            ? `Premia przypisana: ${recipientName}.`
-                            : 'Premia przypisana.',
-                    )
-                    resetForm()
+                    router.refresh()
+                    onSuccess?.()
+                } catch (err) {
+                    toast.error(err instanceof Error ? err.message : 'Nieznany błąd.')
                 }
+            })
+            return
+        }
+
+        // Assign path: discriminated union + optional attachment upload.
+        const built = buildAssignInput()
+        if ('error' in built) {
+            toast.error(built.error)
+            return
+        }
+
+        startTransition(async () => {
+            try {
+                const inserted = await assignBonus(built)
+                if (attachment) {
+                    try {
+                        await uploadBonusAttachment(inserted.id, attachment)
+                    } catch (uploadErr) {
+                        toast.error(
+                            `Premia zapisana, ale upload załącznika nie powiódł się: ${
+                                uploadErr instanceof Error ? uploadErr.message : 'błąd'
+                            }`,
+                        )
+                    }
+                }
+                toastSuccess(
+                    recipientName
+                        ? `Premia ${BONUS_CATEGORIES_PL[built.category]} przypisana: ${recipientName}.`
+                        : `Premia ${BONUS_CATEGORIES_PL[built.category]} przypisana.`,
+                )
+                resetForm()
                 router.refresh()
                 onSuccess?.()
             } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Nieznany błąd.'
-                toast.error(msg)
+                toast.error(err instanceof Error ? err.message : 'Nieznany błąd.')
             }
         })
     }
 
     const title = isEdit ? 'Edytuj premię' : 'Przypisz premię'
     const submitLabel = isEdit ? 'Zapisz zmiany' : 'Przypisz premię'
+
+    const categoryPicker = !isEdit && (
+        <div>
+            <Label>Kategoria premii</Label>
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(Object.keys(BONUS_CATEGORIES_PL) as BonusCategory[]).map((cat) => {
+                    const Icon = CATEGORY_ICON[cat]
+                    const active = category === cat
+                    return (
+                        <button
+                            key={cat}
+                            type="button"
+                            disabled={pending}
+                            onClick={() => setCategory(cat)}
+                            className={`rounded-md border px-3 py-3 text-xs font-medium flex flex-col items-center gap-1 transition-colors ${
+                                active
+                                    ? 'border-primary bg-primary/10 text-primary'
+                                    : 'border-border bg-background hover:bg-muted/30'
+                            }`}
+                        >
+                            <Icon className="h-4 w-4" />
+                            {BONUS_CATEGORIES_PL[cat]}
+                        </button>
+                    )
+                })}
+            </div>
+        </div>
+    )
+
+    const salesFields = !isEdit && category === 'sales' && (
+        <>
+            <div>
+                <Label htmlFor="sales-client">Klient</Label>
+                <Input
+                    id="sales-client"
+                    value={salesClientName}
+                    onChange={(e) => setSalesClientName(e.target.value)}
+                    disabled={pending}
+                    required
+                    placeholder="np. Bank XYZ"
+                />
+            </div>
+            <div>
+                <Label htmlFor="sales-service">Opis usługi</Label>
+                <Textarea
+                    id="sales-service"
+                    value={salesServiceDescription}
+                    onChange={(e) => setSalesServiceDescription(e.target.value)}
+                    disabled={pending}
+                    required
+                    rows={2}
+                    placeholder="np. Wdrożenie modułu RODO + szkolenie wewnętrzne."
+                />
+            </div>
+        </>
+    )
+
+    const deliveryFields = !isEdit && category === 'delivery_lead' && (
+        <>
+            <div>
+                <Label htmlFor="delivery-consultant">Konsultant</Label>
+                <select
+                    id="delivery-consultant"
+                    value={deliveryConsultantId}
+                    onChange={(e) => setDeliveryConsultantId(e.target.value)}
+                    className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    disabled={pending || !consultantsLoaded}
+                    required
+                >
+                    <option value="">
+                        {consultantsLoaded ? '— wybierz konsultanta —' : 'Ładowanie…'}
+                    </option>
+                    {consultants.map((c) => (
+                        <option key={c.user_id} value={c.user_id}>
+                            {c.full_name ?? c.email} ({c.role})
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label htmlFor="delivery-margin">Marża miesięczna [PLN]</Label>
+                    <Input
+                        id="delivery-margin"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={deliveryMarginAmount}
+                        onChange={(e) => setDeliveryMarginAmount(e.target.value)}
+                        disabled={pending}
+                        required
+                        placeholder="np. 8400.00"
+                    />
+                </div>
+                <div>
+                    <Label htmlFor="delivery-percent">Procent premii [%]</Label>
+                    <Input
+                        id="delivery-percent"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={deliveryMarginPercent}
+                        onChange={(e) => setDeliveryMarginPercent(e.target.value)}
+                        disabled={pending}
+                        required
+                    />
+                </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+                Kwota auto-liczona: {deliveryMarginAmount && deliveryMarginPercent
+                    ? `${Number(deliveryMarginAmount).toFixed(2)} × ${Number(deliveryMarginPercent).toFixed(2)}% = ${(Math.round(Number(deliveryMarginAmount) * Number(deliveryMarginPercent)) / 100).toFixed(2)} PLN`
+                    : '—'}
+                . Możesz nadpisać w polu Kwota poniżej.
+            </p>
+        </>
+    )
+
+    const recruiterFields = !isEdit && category === 'recruiter' && (
+        <>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label htmlFor="recruiter-margin">Marża [PLN/h]</Label>
+                    <Input
+                        id="recruiter-margin"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={recruiterMargin}
+                        onChange={(e) => setRecruiterMargin(e.target.value)}
+                        disabled={pending}
+                        required
+                        placeholder="np. 45.00"
+                    />
+                </div>
+                <div>
+                    <Label>Próg / proponowana premia</Label>
+                    <div className="mt-1 text-sm rounded-md border bg-muted/30 px-3 py-2 min-h-[40px] flex items-center">
+                        {recruiterTier ? (
+                            <span>
+                                Próg {recruiterTier.label} →{' '}
+                                <strong>{recruiterTier.bonus.toLocaleString('pl-PL')} PLN</strong>
+                            </span>
+                        ) : (
+                            <span className="text-muted-foreground text-xs">Podaj marżę</span>
+                        )}
+                    </div>
+                </div>
+            </div>
+            <div>
+                <Label htmlFor="recruiter-candidate">Imię i nazwisko kandydata</Label>
+                <Input
+                    id="recruiter-candidate"
+                    value={recruiterCandidate}
+                    onChange={(e) => setRecruiterCandidate(e.target.value)}
+                    disabled={pending}
+                    required
+                    placeholder="np. Jan Kowalski"
+                />
+            </div>
+        </>
+    )
+
+    const customFields = !isEdit && category === 'custom' && (
+        <div>
+            <Label htmlFor="custom-memo">Memo / podkładka</Label>
+            <Textarea
+                id="custom-memo"
+                value={customMemo}
+                onChange={(e) => setCustomMemo(e.target.value)}
+                disabled={pending}
+                required
+                rows={3}
+                placeholder="Wyjaśnij za co i dlaczego ta premia. Możesz też dodać załącznik poniżej."
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+                {customMemo.trim().length}/{BONUS_CUSTOM_MEMO_MAX_LENGTH} znaków
+            </p>
+        </div>
+    )
+
+    const attachmentField = !isEdit && (
+        <div>
+            <Label htmlFor="bonus-attachment">Załącznik (opcjonalny, PDF / JPG / PNG / WEBP, max 10 MB)</Label>
+            <div className="mt-1 flex items-center gap-2">
+                <Input
+                    id="bonus-attachment"
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                    onChange={handleAttachmentChange}
+                    disabled={pending}
+                    className="flex-1"
+                />
+                {attachment && (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                            setAttachment(null)
+                            const input = document.getElementById('bonus-attachment') as HTMLInputElement | null
+                            if (input) input.value = ''
+                        }}
+                        disabled={pending}
+                    >
+                        <X className="h-3.5 w-3.5" />
+                    </Button>
+                )}
+            </div>
+            {attachment && (
+                <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
+                    <Paperclip className="h-3 w-3" />
+                    {attachment.name} ({(attachment.size / 1024).toFixed(1)} KB)
+                </p>
+            )}
+        </div>
+    )
 
     const formBody = (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -214,6 +671,12 @@ export function AssignBonusForm({
                     </select>
                 )}
             </div>
+
+            {categoryPicker}
+            {salesFields}
+            {deliveryFields}
+            {recruiterFields}
+            {customFields}
 
             <div>
                 <Label htmlFor="bonus-period">Miesiąc premii</Label>
@@ -298,6 +761,8 @@ export function AssignBonusForm({
                     placeholder="Widoczna dla managera i admina."
                 />
             </div>
+
+            {attachmentField}
 
             <div className="flex items-center justify-end gap-2 pt-2">
                 {onCancel && (

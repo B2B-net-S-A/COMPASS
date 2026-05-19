@@ -1,8 +1,11 @@
 'use client'
 
-import { CheckCircle2, XCircle } from 'lucide-react'
-import type { BonusStatus, BonusWithUsers } from '@/lib/types/bonus'
-import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
+import { useState } from 'react'
+import { CheckCircle2, XCircle, Paperclip, Loader2 } from 'lucide-react'
+import type { BonusCategory, BonusStatus, BonusWithUsers } from '@/lib/types/bonus'
+import { BONUS_MONTHS_PL, BONUS_CATEGORIES_PL } from '@/lib/types/bonus'
+import { getBonusAttachmentSignedUrl } from '@/lib/actions/internal-bonus'
+import { toast } from '@/lib/toast'
 
 interface Props {
     initialBonuses: BonusWithUsers[]
@@ -106,6 +109,100 @@ function EmptyHint({ text }: { text: string }) {
     )
 }
 
+function categoryBadge(category: BonusCategory) {
+    const label = BONUS_CATEGORIES_PL[category]
+    const className =
+        category === 'sales'
+            ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+            : category === 'delivery_lead'
+              ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+              : category === 'recruiter'
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                : 'bg-gray-500/15 text-gray-300 border-gray-500/30'
+    return (
+        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>{label}</span>
+    )
+}
+
+function BonusCategoryDetails({ bonus }: { bonus: BonusWithUsers }) {
+    switch (bonus.category) {
+        case 'sales':
+            return (
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                    {bonus.sales_client_name && <div>Klient: {bonus.sales_client_name}</div>}
+                    {bonus.sales_service_description && (
+                        <div>Usługa: {bonus.sales_service_description}</div>
+                    )}
+                </div>
+            )
+        case 'delivery_lead':
+            return (
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                    {bonus.delivery_consultant_full_name && (
+                        <div>Konsultant: {bonus.delivery_consultant_full_name}</div>
+                    )}
+                    {bonus.delivery_margin_amount != null && (
+                        <div>
+                            Marża: {Number(bonus.delivery_margin_amount).toFixed(2)} PLN
+                            {bonus.delivery_margin_percent != null && (
+                                <> · {Number(bonus.delivery_margin_percent).toFixed(2)}%</>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )
+        case 'recruiter':
+            return (
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                    {bonus.recruiter_candidate_name && (
+                        <div>Kandydat: {bonus.recruiter_candidate_name}</div>
+                    )}
+                    {bonus.recruiter_margin_per_hour != null && (
+                        <div>
+                            Marża: {Number(bonus.recruiter_margin_per_hour).toFixed(2)} PLN/h
+                            {bonus.recruiter_calculated_tier && (
+                                <> · próg {bonus.recruiter_calculated_tier}</>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )
+        case 'custom':
+            return bonus.custom_email_memo ? (
+                <div className="text-xs text-muted-foreground italic whitespace-pre-wrap">
+                    {bonus.custom_email_memo}
+                </div>
+            ) : null
+    }
+}
+
+function AttachmentLink({ bonus }: { bonus: BonusWithUsers }) {
+    const [loading, setLoading] = useState(false)
+    if (!bonus.attachment_path) return null
+    async function openAttachment() {
+        setLoading(true)
+        try {
+            const url = await getBonusAttachmentSignedUrl(bonus.id)
+            window.open(url, '_blank', 'noopener,noreferrer')
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Błąd pobierania załącznika')
+        } finally {
+            setLoading(false)
+        }
+    }
+    return (
+        <button
+            type="button"
+            onClick={openAttachment}
+            disabled={loading}
+            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+        >
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
+            {bonus.attachment_filename ?? 'Załącznik'}
+        </button>
+    )
+}
+
 function BonusRow({ bonus }: { bonus: BonusWithUsers }) {
     return (
         <div className="rounded-lg border border-white/10 bg-white/5 p-3">
@@ -116,11 +213,20 @@ function BonusRow({ bonus }: { bonus: BonusWithUsers }) {
                             {formatAmount(Number(bonus.amount), bonus.currency)}
                         </span>
                         {statusBadge(bonus.status)}
+                        {categoryBadge(bonus.category)}
                         <span className="text-xs px-2 py-0.5 rounded bg-white/5 text-muted-foreground">
                             {periodLabel(bonus.period_year, bonus.period_month)}
                         </span>
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">{bonus.reason}</div>
+                    <div className="mt-1.5">
+                        <BonusCategoryDetails bonus={bonus} />
+                    </div>
+                    {bonus.attachment_path && (
+                        <div className="mt-2">
+                            <AttachmentLink bonus={bonus} />
+                        </div>
+                    )}
                     <div className="mt-1 text-xs text-muted-foreground space-x-3">
                         <span>Przypisana przez: {bonus.proposer_full_name ?? '—'}</span>
                         <span>Otrzymano: {formatDate(bonus.created_at)}</span>
