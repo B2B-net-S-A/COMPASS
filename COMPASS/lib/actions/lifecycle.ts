@@ -1758,17 +1758,49 @@ export async function createExternalEmployee(input: CreateExternalEmployeeInput)
     const ctx = await requireLifecycleManagerAction()
     const supabase = createServiceClient()
 
-    // Generate fresh UUID for the profile id (NOT auth.users.id)
-    const userId = crypto.randomUUID()
+    // Schema fact (verified 2026-05-19 in prod):
+    //   profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
+    // So a profile cannot exist without a matching auth.users row. To create an
+    // external employee (someone who never logs in — vendor, contractor, "procedure
+    // account"), we still need an auth.users row. We use admin.createUser with a
+    // random password and email_confirm=true (no confirmation email sent). The
+    // handle_new_user trigger then inserts a minimal profile row, which we update
+    // below with HR fields (role, is_external, manager_id, etc.).
+    //
+    // External users can't actually log in because:
+    //   1. The app is gated to @b2bnetwork.pl SSO (single tenant), so a third-party
+    //      email cannot complete Azure OAuth even if they tried.
+    //   2. The random password is never shared (only known to whoever has prod DB
+    //      logs at the moment of creation).
+    const email = input.email.trim().toLowerCase()
+    const fullName = input.fullName.trim()
+    const randomPassword = `ext-${crypto.randomUUID()}-${crypto.randomUUID()}`
 
-    // Insert into profiles directly (no auth.users entry — service role can bypass FK if FK doesn't enforce auth.users)
-    // profiles.id is PK UUID, no FK to auth.users in current schema (handle_new_user trigger creates rows for auth users, but profiles can also be inserted directly via service role).
+    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+        email,
+        password: randomPassword,
+        email_confirm: true,
+        user_metadata: { full_name: fullName, is_external: true },
+    })
+    if (createErr) {
+        const msg = createErr.message?.toLowerCase() ?? ''
+        if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
+            throw new Error('Konto z tym adresem email już istnieje (możliwe że ten pracownik już jest w systemie).')
+        }
+        logCompat.error('createExternalEmployee auth.createUser error:', createErr)
+        throw new Error(`Nie udało się utworzyć konta external: ${createErr.message}`)
+    }
+    const userId = created?.user?.id
+    if (!userId) {
+        throw new Error('Supabase nie zwróciło ID użytkownika po createUser.')
+    }
+
+    // handle_new_user trigger has already inserted a minimal profile row
+    // (id, email, full_name from user_metadata, avatar_url). Update with HR fields.
     const { error: profErr } = await supabase
         .from('profiles')
-        .insert({
-            id: userId,
-            email: input.email.trim().toLowerCase(),
-            full_name: input.fullName.trim(),
+        .update({
+            full_name: fullName,
             role: input.role,
             is_external: true,
             external_notes: input.externalNotes ?? null,
@@ -1779,9 +1811,14 @@ export async function createExternalEmployee(input: CreateExternalEmployeeInput)
             employment_status: 'pending',
             onboarding_completed: true, // skip /onboarding redirect since they can't login anyway
         })
+        .eq('id', userId)
     if (profErr) {
-        logCompat.error('createExternalEmployee profiles insert error:', profErr)
-        throw new Error(profErr.message || 'Nie udało się utworzyć external employee.')
+        logCompat.error('createExternalEmployee profile update error:', profErr)
+        // Roll back: delete the auth user we just created so the dialog can be retried cleanly.
+        await supabase.auth.admin.deleteUser(userId).catch((e: unknown) =>
+            logCompat.error('createExternalEmployee rollback deleteUser failed:', e),
+        )
+        throw new Error(profErr.message || 'Nie udało się ustawić danych external employee.')
     }
 
     // Log hired event in timeline
