@@ -1,7 +1,7 @@
 'use client'
 
 // Phase 24c — HR profile dialog for admin/manager/finanse. Shows last 12 months
-// of timesheets, invoices, and leaves of a selected employee in 3 tabs.
+// of timesheets, invoices, leaves, and bonuses (Phase 26) of a selected employee.
 
 import { useEffect, useState } from 'react'
 import {
@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, FileSpreadsheet, AlertCircle } from 'lucide-react'
+import { Loader2, FileSpreadsheet, AlertCircle, Gift } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -23,6 +23,10 @@ import {
     getEmployeeProfile,
     type EmployeeHRSnapshot,
 } from '@/lib/actions/internal-employee-profile'
+import { isInvoicesEnabled } from '@/lib/feature-flags'
+import { AssignBonusForm } from './AssignBonusForm'
+import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
+import type { EligibleEmployeeForBonus } from '@/lib/types/bonus'
 
 interface Props {
     userId: string | null
@@ -85,9 +89,48 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
     other: 'Inne',
 }
 
+const BONUS_STATUS: Record<string, { label: string; className: string }> = {
+    assigned: {
+        label: 'Przypisana',
+        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+    },
+    paid: {
+        label: 'Wypłacona (legacy)',
+        className: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+    },
+    pending: {
+        label: 'Oczekuje (legacy)',
+        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+    },
+    cancelled: {
+        label: 'Anulowana',
+        className: 'bg-red-500/15 text-red-300 border-red-500/30',
+    },
+}
+
+function bonusPeriodLabel(year: number | null, month: number | null): string {
+    if (!year || !month) return '—'
+    return `${BONUS_MONTHS_PL[month - 1]} ${year}`
+}
+
 export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV }: Props) {
     const [snapshot, setSnapshot] = useState<EmployeeHRSnapshot | null>(null)
     const [loading, setLoading] = useState(false)
+    const [assignOpen, setAssignOpen] = useState(false)
+
+    const invoicesUiOn = isInvoicesEnabled()
+
+    const reload = () => {
+        if (!userId) return
+        setLoading(true)
+        getEmployeeProfile(userId, 12)
+            .then((data) => setSnapshot(data))
+            .catch((err: unknown) => {
+                toast.error(err instanceof Error ? err.message : 'Błąd pobierania profilu')
+                onOpenChange(false)
+            })
+            .finally(() => setLoading(false))
+    }
 
     useEffect(() => {
         if (!open || !userId) {
@@ -114,7 +157,17 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
         }
     }, [open, userId, onOpenChange])
 
+    const lockedRecipient: EligibleEmployeeForBonus | null = snapshot
+        ? {
+              user_id: snapshot.profile.user_id,
+              full_name: snapshot.profile.full_name,
+              email: snapshot.profile.email,
+              role: snapshot.profile.role,
+          }
+        : null
+
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
                 <DialogHeader>
@@ -151,16 +204,38 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
                 ) : (
-                    <Tabs defaultValue="timesheets" className="flex-1 flex flex-col min-h-0">
-                        <TabsList className="grid grid-cols-3">
+                    <>
+                        {/* Top-level actions (Phase 26 — Assign bonus button for manager/admin). */}
+                        {snapshot.viewer_can_assign_bonus && (
+                            <div className="flex justify-end gap-2 -mt-1 mb-2">
+                                <Button
+                                    size="sm"
+                                    onClick={() => setAssignOpen(true)}
+                                >
+                                    <Gift className="h-3.5 w-3.5 mr-1.5" />
+                                    Przypisz premię
+                                </Button>
+                            </div>
+                        )}
+                        <Tabs defaultValue="timesheets" className="flex-1 flex flex-col min-h-0">
+                        <TabsList
+                            className={
+                                invoicesUiOn ? 'grid grid-cols-4' : 'grid grid-cols-3'
+                            }
+                        >
                             <TabsTrigger value="timesheets">
                                 Timesheety ({snapshot.timesheets.filter((t) => t.entry_count > 0).length})
                             </TabsTrigger>
-                            <TabsTrigger value="invoices">
-                                Faktury ({snapshot.invoices.length})
-                            </TabsTrigger>
+                            {invoicesUiOn && (
+                                <TabsTrigger value="invoices">
+                                    Faktury ({snapshot.invoices.length})
+                                </TabsTrigger>
+                            )}
                             <TabsTrigger value="leaves">
                                 Urlopy ({snapshot.leaves.length})
+                            </TabsTrigger>
+                            <TabsTrigger value="bonuses">
+                                Premie ({snapshot.bonuses.length})
                             </TabsTrigger>
                         </TabsList>
 
@@ -242,6 +317,7 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                             </div>
                         </TabsContent>
 
+                        {invoicesUiOn && (
                         <TabsContent value="invoices" className="flex-1 min-h-0 mt-3">
                             <ScrollArea className="h-[60vh]">
                                 {snapshot.invoices.length === 0 ? (
@@ -324,6 +400,7 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                 )}
                             </ScrollArea>
                         </TabsContent>
+                        )}
 
                         <TabsContent value="leaves" className="flex-1 min-h-0 mt-3">
                             <ScrollArea className="h-[60vh]">
@@ -394,9 +471,93 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                 )}
                             </ScrollArea>
                         </TabsContent>
+
+                        {/* Phase 26 — Bonuses tab (read-only). */}
+                        <TabsContent value="bonuses" className="flex-1 min-h-0 mt-3">
+                            <ScrollArea className="h-[60vh]">
+                                {snapshot.bonuses.length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">
+                                        Brak premii w ciągu 12 miesięcy.
+                                    </p>
+                                ) : (
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b text-xs text-muted-foreground sticky top-0 bg-background">
+                                                <th className="text-left py-2 pr-2 font-medium">Miesiąc</th>
+                                                <th className="text-right py-2 pr-2 font-medium">Kwota</th>
+                                                <th className="text-left py-2 pr-2 font-medium">Status</th>
+                                                <th className="text-left py-2 pr-2 font-medium">Uzasadnienie</th>
+                                                <th className="text-left py-2 pr-2 font-medium">Manager</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {snapshot.bonuses.map((b) => {
+                                                const status = BONUS_STATUS[b.status]
+                                                return (
+                                                    <tr key={b.id} className="border-b border-border/40">
+                                                        <td className="py-2 pr-2 whitespace-nowrap text-xs">
+                                                            {bonusPeriodLabel(b.period_year, b.period_month)}
+                                                        </td>
+                                                        <td className="py-2 pr-2 text-right font-mono text-xs tabular-nums">
+                                                            {b.amount.toFixed(2)} {b.currency}
+                                                        </td>
+                                                        <td className="py-2 pr-2">
+                                                            <Badge
+                                                                variant="outline"
+                                                                className={status?.className}
+                                                            >
+                                                                {status?.label ?? b.status}
+                                                            </Badge>
+                                                        </td>
+                                                        <td className="py-2 pr-2 text-xs max-w-[280px]">
+                                                            {b.reason}
+                                                            {b.cancellation_reason && (
+                                                                <p className="text-[10px] text-red-300 mt-0.5">
+                                                                    Anul.: {b.cancellation_reason.slice(0, 60)}
+                                                                </p>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2 pr-2 text-xs">
+                                                            {b.proposer_full_name ?? '—'}
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </ScrollArea>
+                        </TabsContent>
                     </Tabs>
+                    </>
                 )}
             </DialogContent>
         </Dialog>
+
+        {/* Phase 26 — Assign Bonus dialog (sibling, separate portal). */}
+        {assignOpen && lockedRecipient && (
+            <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Przypisz premię</DialogTitle>
+                        <DialogDescription>
+                            {lockedRecipient.full_name ?? lockedRecipient.email}. Pracownik dostanie email + push.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <AssignBonusForm
+                        mode="assign"
+                        candidates={[lockedRecipient]}
+                        prefilledRecipientId={lockedRecipient.user_id}
+                        compact
+                        onSuccess={() => {
+                            setAssignOpen(false)
+                            reload()
+                        }}
+                        onCancel={() => setAssignOpen(false)}
+                    />
+                </DialogContent>
+            </Dialog>
+        )}
+        </>
     )
 }

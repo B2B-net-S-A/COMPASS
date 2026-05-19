@@ -9,13 +9,17 @@ import {
     requireBonusReadAllAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
-import { sendBonusProposed, sendBonusCancelled } from '@/lib/email'
+import { sendBonusProposed, sendBonusCancelled, sendBonusAssigned, sendBonusUpdated } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { requireInvoicesEnabled } from '@/lib/feature-flags'
 import type {
     BonusRow,
     BonusStatus,
     BonusWithUsers,
     ProposeBonusInput,
+    AssignBonusInput,
+    UpdateBonusInput,
+    EligibleEmployeeForBonus,
     CancelBonusInput,
     LinkBonusInput,
     BonusListFilter,
@@ -25,28 +29,74 @@ import {
     BONUS_MAX_AMOUNT,
     BONUS_REASON_MIN_LENGTH,
     BONUS_REASON_MAX_LENGTH,
+    BONUS_PERIOD_MAX_MONTHS_BACK,
+    BONUS_MONTHS_PL,
 } from '@/lib/types/bonus'
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 
-function validateProposeInput(input: ProposeBonusInput): void {
-    if (!input.recipient_user_id) throw new Error('Pracownik jest wymagany.')
-    if (!Number.isFinite(input.amount) || input.amount < BONUS_MIN_AMOUNT) {
+function validateAmount(amount: number): void {
+    if (!Number.isFinite(amount) || amount < BONUS_MIN_AMOUNT) {
         throw new Error(`Kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
     }
-    if (input.amount > BONUS_MAX_AMOUNT) {
+    if (amount > BONUS_MAX_AMOUNT) {
         throw new Error(`Kwota za duża (max ${BONUS_MAX_AMOUNT}).`)
     }
-    const reason = (input.reason ?? '').trim()
-    if (reason.length < BONUS_REASON_MIN_LENGTH) {
-        throw new Error(`Powód musi mieć co najmniej ${BONUS_REASON_MIN_LENGTH} znaki.`)
+}
+
+function validateReason(reason: string): string {
+    const trimmed = (reason ?? '').trim()
+    if (trimmed.length < BONUS_REASON_MIN_LENGTH) {
+        throw new Error(`Uzasadnienie musi mieć co najmniej ${BONUS_REASON_MIN_LENGTH} znaki.`)
     }
-    if (reason.length > BONUS_REASON_MAX_LENGTH) {
-        throw new Error(`Powód za długi (max ${BONUS_REASON_MAX_LENGTH} znaków).`)
+    if (trimmed.length > BONUS_REASON_MAX_LENGTH) {
+        throw new Error(`Uzasadnienie za długie (max ${BONUS_REASON_MAX_LENGTH} znaków).`)
     }
-    if (input.currency && !/^[A-Z]{3}$/.test(input.currency)) {
+    return trimmed
+}
+
+function validateCurrency(currency?: string): void {
+    if (currency && !/^[A-Z]{3}$/.test(currency)) {
         throw new Error('Waluta musi być w formacie ISO (np. PLN, EUR).')
     }
+}
+
+function validateProposeInput(input: ProposeBonusInput): void {
+    if (!input.recipient_user_id) throw new Error('Pracownik jest wymagany.')
+    validateAmount(input.amount)
+    validateReason(input.reason)
+    validateCurrency(input.currency)
+}
+
+/** Phase 26 — period must be within past 12 months + current month (inclusive). */
+function validatePeriod(year: number, month: number): void {
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+        throw new Error('Niepoprawny rok.')
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+        throw new Error('Niepoprawny miesiąc (1-12).')
+    }
+    const now = new Date()
+    const target = new Date(year, month - 1, 1)
+    const min = new Date(now.getFullYear(), now.getMonth() - BONUS_PERIOD_MAX_MONTHS_BACK, 1)
+    const max = new Date(now.getFullYear(), now.getMonth(), 1)
+    if (target < min || target > max) {
+        throw new Error(
+            `Okres musi mieścić się w ostatnich ${BONUS_PERIOD_MAX_MONTHS_BACK} miesiącach + bieżący.`,
+        )
+    }
+}
+
+function validateAssignInput(input: AssignBonusInput): void {
+    if (!input.recipient_user_id) throw new Error('Pracownik jest wymagany.')
+    validateAmount(input.amount)
+    validateReason(input.reason)
+    validateCurrency(input.currency)
+    validatePeriod(input.period_year, input.period_month)
+}
+
+function periodLabelPl(year: number, month: number): string {
+    return `${BONUS_MONTHS_PL[month - 1]} ${year}`
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -80,6 +130,8 @@ function truncate(text: string, max: number): string {
     return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
+type NotifyKind = 'proposed' | 'cancelled' | 'assigned' | 'updated'
+
 // Fire all 3 notification channels in parallel. One failure doesn't block others.
 async function notifyRecipient(args: {
     recipientId: string
@@ -90,18 +142,63 @@ async function notifyRecipient(args: {
     amount: number
     currency: string
     reason: string
-    kind: 'proposed' | 'cancelled'
+    kind: NotifyKind
     cancellationReason?: string
+    periodYear?: number
+    periodMonth?: number
+    changesSummary?: string
 }): Promise<void> {
     const supabase = createServiceClient()
 
-    const isProposed = args.kind === 'proposed'
-    const titlePl = isProposed ? 'Masz nową premię' : 'Premia została anulowana'
-    const titleEn = isProposed ? 'New bonus assigned' : 'Bonus cancelled'
-    const reasonBody = isProposed ? args.reason : (args.cancellationReason ?? '')
-    const bodyPl = `${args.amount.toFixed(2)} ${args.currency} — ${truncate(reasonBody, 120)}`
+    const periodLabel = args.periodYear && args.periodMonth
+        ? periodLabelPl(args.periodYear, args.periodMonth)
+        : null
+
+    let titlePl: string
+    let titleEn: string
+    let bodyPl: string
+    let notificationType: 'bonus_proposed' | 'bonus_cancelled' | 'bonus_assigned' | 'bonus_updated'
+
+    switch (args.kind) {
+        case 'assigned':
+            titlePl = periodLabel
+                ? `Otrzymałeś premię za ${periodLabel}`
+                : 'Otrzymałeś premię'
+            titleEn = periodLabel
+                ? `You received a bonus for ${periodLabel}`
+                : 'You received a bonus'
+            bodyPl = `${args.amount.toFixed(2)} ${args.currency} — ${truncate(args.reason, 120)}`
+            notificationType = 'bonus_assigned'
+            break
+        case 'updated':
+            titlePl = periodLabel
+                ? `Zaktualizowano premię za ${periodLabel}`
+                : 'Zaktualizowano premię'
+            titleEn = periodLabel
+                ? `Bonus updated for ${periodLabel}`
+                : 'Bonus updated'
+            bodyPl = `${args.amount.toFixed(2)} ${args.currency} — ${truncate(args.changesSummary ?? args.reason, 120)}`
+            notificationType = 'bonus_updated'
+            break
+        case 'cancelled':
+            titlePl = periodLabel
+                ? `Anulowano premię za ${periodLabel}`
+                : 'Premia została anulowana'
+            titleEn = periodLabel
+                ? `Bonus cancelled for ${periodLabel}`
+                : 'Bonus cancelled'
+            bodyPl = `${args.amount.toFixed(2)} ${args.currency} — ${truncate(args.cancellationReason ?? '', 120)}`
+            notificationType = 'bonus_cancelled'
+            break
+        case 'proposed':
+        default:
+            titlePl = 'Masz nową premię'
+            titleEn = 'New bonus assigned'
+            bodyPl = `${args.amount.toFixed(2)} ${args.currency} — ${truncate(args.reason, 120)}`
+            notificationType = 'bonus_proposed'
+            break
+    }
     const bodyEn = bodyPl
-    const notificationType = isProposed ? 'bonus_proposed' : 'bonus_cancelled'
 
     // 1. In-app notification (Supabase notifications table via RPC).
     const inAppPromise = supabase.rpc('create_notification', {
@@ -116,23 +213,55 @@ async function notifyRecipient(args: {
     })
 
     // 2. Email (Microsoft Graph fallback Resend).
-    const emailPromise = isProposed
-        ? sendBonusProposed(
-              args.recipientEmail,
-              args.recipientName,
-              args.proposerName,
-              args.amount,
-              args.currency,
-              args.reason,
-          )
-        : sendBonusCancelled(
-              args.recipientEmail,
-              args.recipientName,
-              args.proposerName,
-              args.amount,
-              args.currency,
-              args.cancellationReason ?? 'Brak podanego powodu.',
-          )
+    let emailPromise: Promise<{ success: boolean }>
+    switch (args.kind) {
+        case 'assigned':
+            emailPromise = sendBonusAssigned(
+                args.recipientEmail,
+                args.recipientName,
+                args.proposerName,
+                args.amount,
+                args.currency,
+                args.periodYear ?? new Date().getFullYear(),
+                args.periodMonth ?? new Date().getMonth() + 1,
+                args.reason,
+            )
+            break
+        case 'updated':
+            emailPromise = sendBonusUpdated(
+                args.recipientEmail,
+                args.recipientName,
+                args.proposerName,
+                args.amount,
+                args.currency,
+                args.periodYear ?? new Date().getFullYear(),
+                args.periodMonth ?? new Date().getMonth() + 1,
+                args.reason,
+                args.changesSummary,
+            )
+            break
+        case 'cancelled':
+            emailPromise = sendBonusCancelled(
+                args.recipientEmail,
+                args.recipientName,
+                args.proposerName,
+                args.amount,
+                args.currency,
+                args.cancellationReason ?? 'Brak podanego powodu.',
+            )
+            break
+        case 'proposed':
+        default:
+            emailPromise = sendBonusProposed(
+                args.recipientEmail,
+                args.recipientName,
+                args.proposerName,
+                args.amount,
+                args.currency,
+                args.reason,
+            )
+            break
+    }
 
     // 3. Web push (best-effort, recipient must have subscription).
     const pushPromise = sendPushToUserId(args.recipientId, {
@@ -180,7 +309,9 @@ export async function listMyBonuses(filter?: { status?: BonusStatus }): Promise<
     return enrichBonusesWithUsers((data ?? []) as BonusRow[])
 }
 
+/** @deprecated Phase 26 — invoice link path disabled. Gated by INVOICES_ENABLED. */
 export async function linkBonusToInvoice(input: LinkBonusInput): Promise<BonusRow> {
+    requireInvoicesEnabled()
     const ctx = await requireInternalOrAdminAction()
     if (!input.id || !input.invoice_id) {
         throw new Error('Brak id premii lub id faktury.')
@@ -249,7 +380,9 @@ export async function linkBonusToInvoice(input: LinkBonusInput): Promise<BonusRo
     return updated
 }
 
+/** @deprecated Phase 26 — invoice link path disabled. Gated by INVOICES_ENABLED. */
 export async function unlinkBonus(id: string): Promise<BonusRow> {
+    requireInvoicesEnabled()
     const ctx = await requireInternalOrAdminAction()
     const supabase = createClient()
 
@@ -289,7 +422,9 @@ export async function unlinkBonus(id: string): Promise<BonusRow> {
 
 // ─── Proposer-side (manager/admin) ──────────────────────────────────────────
 
+/** @deprecated Phase 26 — use assignBonus. proposeBonus inserts status='pending' which trigger rejects after migration. Gated by INVOICES_ENABLED. */
 export async function proposeBonus(input: ProposeBonusInput): Promise<BonusRow> {
+    requireInvoicesEnabled()
     const ctx = await requireBonusProposerAction()
     validateProposeInput(input)
     if (input.recipient_user_id === ctx.userId) {
@@ -367,12 +502,14 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
         .single<BonusRow>()
     if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
 
-    // Authorization: proposer (manager) or admin can cancel; only when pending.
-    if (bonus.status !== 'pending') {
-        throw new Error(`Można anulować tylko premie w statusie "pending" (jest: "${bonus.status}").`)
+    // Authorization: proposer (manager) or admin can cancel; status must be assigned or pending (legacy).
+    if (bonus.status !== 'assigned' && bonus.status !== 'pending') {
+        throw new Error(
+            `Można anulować tylko premie w statusie "assigned" lub "pending" (jest: "${bonus.status}").`,
+        )
     }
     if (bonus.proposed_by !== ctx.userId && !ctx.isAdmin) {
-        throw new Error('Możesz anulować tylko premie, które sam zaproponowałeś.')
+        throw new Error('Możesz anulować tylko premie, które sam przypisałeś.')
     }
 
     const { data: updated, error: updErr } = await supabase
@@ -393,6 +530,8 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
         amount: Number(updated.amount),
         currency: updated.currency,
         cancellation_reason: cancellationReason,
+        period_year: updated.period_year,
+        period_month: updated.period_month,
     })
 
     // Notify recipient.
@@ -410,10 +549,234 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
             reason: updated.reason,
             kind: 'cancelled',
             cancellationReason,
+            periodYear: updated.period_year ?? undefined,
+            periodMonth: updated.period_month ?? undefined,
         })
     }
 
     return updated
+}
+
+// ─── Phase 26 — assignBonus (primary new path) ──────────────────────────────
+
+/**
+ * Phase 26 — manager przypisuje premię z auto-akceptem (status='assigned', terminal).
+ *
+ * Manager scope: tylko bezpośredni podwładni (profiles.manager_id = ctx.userId).
+ * Admin: anyone.
+ *
+ * Period: past 12 months + current. Walidowane server-side.
+ * Duplicate: UNIQUE (recipient_user_id, period_year, period_month) WHERE status='assigned' — DB enforce.
+ */
+export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
+    const ctx = await requireBonusProposerAction()
+    validateAssignInput(input)
+    if (input.recipient_user_id === ctx.userId) {
+        throw new Error('Nie możesz przypisać premii samemu sobie.')
+    }
+
+    // Team scope check (manager only).
+    if (!ctx.isAdmin) {
+        const recipient = await fetchRecipientContact(input.recipient_user_id)
+        if (!recipient) throw new Error('Odbiorca premii nie znaleziony.')
+        if (recipient.manager_id !== ctx.userId) {
+            throw new Error('Możesz przypisać premię tylko swoim bezpośrednim podwładnym.')
+        }
+    }
+
+    const supabase = createClient()
+    const reason = (input.reason ?? '').trim()
+    const { data: inserted, error } = await supabase
+        .from('bonuses')
+        .insert({
+            recipient_user_id: input.recipient_user_id,
+            proposed_by: ctx.userId,
+            amount: input.amount,
+            currency: input.currency ?? 'PLN',
+            reason,
+            notes: input.notes ?? null,
+            status: 'assigned',
+            period_year: input.period_year,
+            period_month: input.period_month,
+        })
+        .select('*')
+        .single<BonusRow>()
+
+    if (error || !inserted) {
+        // Friendly UNIQUE violation message.
+        if (error?.code === '23505') {
+            throw new Error(
+                `Premia za ${periodLabelPl(input.period_year, input.period_month)} została już przypisana temu pracownikowi.`,
+            )
+        }
+        throw new Error(`Błąd przypisania premii: ${error?.message}`)
+    }
+
+    await logAudit(ctx.userId, 'BONUS_ASSIGNED', {
+        bonus_id: inserted.id,
+        recipient_user_id: inserted.recipient_user_id,
+        amount: Number(inserted.amount),
+        currency: inserted.currency,
+        reason: inserted.reason,
+        period_year: inserted.period_year,
+        period_month: inserted.period_month,
+    })
+
+    const recipient = await fetchRecipientContact(input.recipient_user_id)
+    if (recipient?.email) {
+        const proposerName = await fetchUserDisplayName(ctx.userId, ctx.email)
+        await notifyRecipient({
+            recipientId: input.recipient_user_id,
+            recipientEmail: recipient.email,
+            recipientName: recipient.full_name ?? 'Pracownik',
+            proposerName,
+            bonusId: inserted.id,
+            amount: Number(inserted.amount),
+            currency: inserted.currency,
+            reason: inserted.reason,
+            kind: 'assigned',
+            periodYear: inserted.period_year ?? undefined,
+            periodMonth: inserted.period_month ?? undefined,
+        })
+    }
+
+    return inserted
+}
+
+/**
+ * Phase 26 — edit existing assigned bonus (amount/reason/notes).
+ * Period + recipient są immutable (DB trigger guard).
+ */
+export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
+    const ctx = await requireBonusProposerAction()
+    if (!input.id) throw new Error('Brak id premii.')
+
+    const hasAmount = input.amount !== undefined
+    const hasReason = input.reason !== undefined
+    const hasNotes = input.notes !== undefined
+    if (!hasAmount && !hasReason && !hasNotes) {
+        throw new Error('Brak zmian do zapisania.')
+    }
+
+    if (hasAmount) validateAmount(input.amount as number)
+    const trimmedReason = hasReason ? validateReason(input.reason as string) : undefined
+
+    const supabase = createClient()
+    const { data: bonus, error: fetchErr } = await supabase
+        .from('bonuses')
+        .select('*')
+        .eq('id', input.id)
+        .single<BonusRow>()
+    if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
+    if (bonus.status !== 'assigned') {
+        throw new Error(
+            `Można edytować tylko premie w statusie "assigned" (jest: "${bonus.status}").`,
+        )
+    }
+    if (bonus.proposed_by !== ctx.userId && !ctx.isAdmin) {
+        throw new Error('Możesz edytować tylko premie, które sam przypisałeś.')
+    }
+
+    const patch: Partial<BonusRow> = {}
+    if (hasAmount) patch.amount = input.amount as number
+    if (hasReason) patch.reason = trimmedReason as string
+    if (hasNotes) patch.notes = input.notes ?? null
+
+    const { data: updated, error: updErr } = await supabase
+        .from('bonuses')
+        .update(patch)
+        .eq('id', input.id)
+        .select('*')
+        .single<BonusRow>()
+    if (updErr || !updated) throw new Error(`Błąd edycji premii: ${updErr?.message}`)
+
+    // Build changes summary for audit + notification.
+    const changes: Record<string, [unknown, unknown]> = {}
+    if (hasAmount && Number(bonus.amount) !== Number(updated.amount)) {
+        changes.amount = [Number(bonus.amount), Number(updated.amount)]
+    }
+    if (hasReason && bonus.reason !== updated.reason) {
+        changes.reason = [bonus.reason, updated.reason]
+    }
+    if (hasNotes && (bonus.notes ?? null) !== (updated.notes ?? null)) {
+        changes.notes = [bonus.notes, updated.notes]
+    }
+
+    await logAudit(ctx.userId, 'BONUS_UPDATED', {
+        bonus_id: updated.id,
+        recipient_user_id: updated.recipient_user_id,
+        period_year: updated.period_year,
+        period_month: updated.period_month,
+        changes,
+    })
+
+    const recipient = await fetchRecipientContact(updated.recipient_user_id)
+    if (recipient?.email) {
+        const proposerName = await fetchUserDisplayName(ctx.userId, ctx.email)
+        const changesSummaryParts: string[] = []
+        if (changes.amount) {
+            changesSummaryParts.push(
+                `kwota: ${(changes.amount[0] as number).toFixed(2)} → ${(changes.amount[1] as number).toFixed(2)} ${updated.currency}`,
+            )
+        }
+        if (changes.reason) changesSummaryParts.push('zmieniono uzasadnienie')
+        const changesSummary = changesSummaryParts.join('; ') || 'edytowano'
+
+        await notifyRecipient({
+            recipientId: updated.recipient_user_id,
+            recipientEmail: recipient.email,
+            recipientName: recipient.full_name ?? 'Pracownik',
+            proposerName,
+            bonusId: updated.id,
+            amount: Number(updated.amount),
+            currency: updated.currency,
+            reason: updated.reason,
+            kind: 'updated',
+            periodYear: updated.period_year ?? undefined,
+            periodMonth: updated.period_month ?? undefined,
+            changesSummary,
+        })
+    }
+
+    return updated
+}
+
+/** Phase 26 — list employees the current user can assign bonuses to. */
+export async function listEligibleEmployeesForBonus(): Promise<EligibleEmployeeForBonus[]> {
+    const ctx = await requireBonusProposerAction()
+    const admin = createServiceClient()
+
+    let q = admin
+        .from('profiles')
+        .select('id, full_name, email, role, employment_status')
+        .neq('id', ctx.userId)
+        .neq('employment_status', 'exited')
+        .order('full_name', { ascending: true })
+
+    if (!ctx.isAdmin) {
+        q = q.eq('manager_id', ctx.userId)
+    }
+
+    const { data, error } = await q
+    if (error) throw new Error(`Błąd pobierania pracowników: ${error.message}`)
+
+    // cast through unknown because db.types.ts is stale wrt Phase 22 columns (employment_status)
+    return ((data ?? []) as unknown as Array<{
+        id: string
+        full_name: string | null
+        email: string | null
+        role: string
+        employment_status: string | null
+    }>)
+        .filter((p): p is { id: string; full_name: string | null; email: string; role: string; employment_status: string | null } =>
+            !!p.email && p.role !== 'consultant',
+        )
+        .map((p) => ({
+            user_id: p.id,
+            full_name: p.full_name,
+            email: p.email,
+            role: p.role,
+        }))
 }
 
 // ─── Manager / admin / finanse views ────────────────────────────────────────

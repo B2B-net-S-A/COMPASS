@@ -174,6 +174,8 @@ export type Database = {
           linked_invoice_id: string | null
           notes: string | null
           paid_at: string | null
+          period_month: number | null
+          period_year: number | null
           proposed_by: string
           reason: string
           recipient_user_id: string
@@ -191,6 +193,8 @@ export type Database = {
           linked_invoice_id?: string | null
           notes?: string | null
           paid_at?: string | null
+          period_month?: number | null
+          period_year?: number | null
           proposed_by: string
           reason: string
           recipient_user_id: string
@@ -208,6 +212,8 @@ export type Database = {
           linked_invoice_id?: string | null
           notes?: string | null
           paid_at?: string | null
+          period_month?: number | null
+          period_year?: number | null
           proposed_by?: string
           reason?: string
           recipient_user_id?: string
