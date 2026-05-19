@@ -51,7 +51,18 @@ export interface TimesheetEntryRow {
     source: TimesheetEntrySource
     tracked_hours: number | null
     correction_required: boolean
+    // Phase 27a — overtime override (admin-only flow)
+    is_overtime_override: boolean
+    override_reason: string | null
+    override_by: string | null
+    override_at: string | null
 }
+
+// Phase 27a — hard caps. Standard work day = 8h, admin override ceiling = 16h.
+const STANDARD_DAILY_HOURS_MAX = 8
+const OVERTIME_OVERRIDE_HOURS_MAX = 16
+const OVERTIME_REASON_MIN_LENGTH = 5
+const OVERTIME_REASON_MAX_LENGTH = 1000
 
 export interface TimesheetWithEntries extends TimesheetHeader {
     entries: TimesheetEntryRow[]
@@ -189,8 +200,10 @@ export async function addEntry(input: AddEntryInput): Promise<TimesheetEntryRow>
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
         throw new Error('work_date musi być w formacie YYYY-MM-DD.')
     }
-    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > 24) {
-        throw new Error('Liczba godzin musi być w zakresie (0, 24].')
+    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
+        throw new Error(
+            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.`,
+        )
     }
     if (!input.description?.trim()) {
         throw new Error('Opis jest wymagany.')
@@ -265,8 +278,10 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<QuickF
     const supabase = createClient()
 
     const hours = input.hoursPerDay ?? 8
-    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
-        throw new Error('hoursPerDay musi być w zakresie (0, 24].')
+    if (!Number.isFinite(hours) || hours <= 0 || hours > STANDARD_DAILY_HOURS_MAX) {
+        throw new Error(
+            `hoursPerDay musi być w zakresie (0, ${STANDARD_DAILY_HOURS_MAX}]. Dla nadgodzin użyj admin override.`,
+        )
     }
     const description = (input.description ?? '').trim() || DEFAULT_QUICK_FILL_DESCRIPTION
     const project = input.project?.trim() || null
@@ -415,8 +430,10 @@ export async function updateEntry(input: UpdateEntryInput): Promise<void> {
         updates.work_date = input.workDate
     }
     if (input.hours !== undefined) {
-        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > 24) {
-            throw new Error('Liczba godzin musi być w zakresie (0, 24].')
+        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
+            throw new Error(
+                `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.`,
+            )
         }
         updates.hours = input.hours
     }
@@ -1055,7 +1072,9 @@ export async function listAllTimesheetsForMonth(
             pdf_hash: h.pdf_hash,
             created_at: h.created_at,
             updated_at: h.updated_at,
-            entries: (entries ?? []) as TimesheetEntryRow[],
+            // Phase 27a — cast through `unknown` because Supabase-generated types
+            // don't yet know about override_* columns (regenerated after migration apply).
+            entries: ((entries ?? []) as unknown) as TimesheetEntryRow[],
             user_full_name: h.profiles?.full_name ?? null,
             user_email: h.profiles?.email ?? '',
         })
@@ -1092,4 +1111,132 @@ async function fetchUserContact(userId: string): Promise<{ email: string; full_n
         .single<{ email: string | null; full_name: string | null }>()
     if (!data?.email) return null
     return { email: data.email, full_name: data.full_name }
+}
+
+// ─── Phase 27a — Admin overtime override ────────────────────────────────────
+
+export interface AdminOverrideTimesheetEntryInput {
+    entryId: string
+    hours: number
+    reason: string
+}
+
+/**
+ * Phase 27a — Admin-only: enter hours > 8 for a day with audit trail.
+ *
+ * Standard timesheet flow blocks anything > 8h/dzień. When an employee actually
+ * worked more (e.g. weekend deployment, emergency rollout), admin uses this
+ * action to record the real number. Trigger `enforce_overtime_override_admin_only`
+ * in the database verifies `override_by` has role='admin' (defense-in-depth).
+ *
+ * Updates entry to hours (0 < h ≤ 16), sets is_overtime_override=TRUE,
+ * override_reason/by/at. Notifies the owner via push.
+ */
+export async function adminOverrideTimesheetEntry(
+    input: AdminOverrideTimesheetEntryInput,
+): Promise<void> {
+    const ctx = await requireAdminAction()
+    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > OVERTIME_OVERRIDE_HOURS_MAX) {
+        throw new Error(`Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`)
+    }
+    const reason = input.reason.trim()
+    if (reason.length < OVERTIME_REASON_MIN_LENGTH) {
+        throw new Error(`Uzasadnienie musi mieć co najmniej ${OVERTIME_REASON_MIN_LENGTH} znaki.`)
+    }
+    if (reason.length > OVERTIME_REASON_MAX_LENGTH) {
+        throw new Error(`Uzasadnienie za długie (max ${OVERTIME_REASON_MAX_LENGTH} znaków).`)
+    }
+
+    const admin = createServiceClient()
+
+    // Fetch entry + parent timesheet owner for audit + push notification.
+    const { data: entry, error: fetchErr } = await admin
+        .from('timesheet_entries')
+        .select('id, timesheet_id, work_date, hours, timesheets!inner(user_id, year, month)')
+        .eq('id', input.entryId)
+        .single<{
+            id: string
+            timesheet_id: string
+            work_date: string
+            hours: number
+            timesheets: { user_id: string; year: number; month: number }
+        }>()
+    if (fetchErr || !entry) throw new Error('Wpis nie istnieje.')
+
+    const { error } = await admin
+        .from('timesheet_entries')
+        .update({
+            hours: input.hours,
+            is_overtime_override: true,
+            override_reason: reason,
+            override_by: ctx.userId,
+            override_at: new Date().toISOString(),
+        })
+        .eq('id', input.entryId)
+    if (error) throw new Error(`Błąd zapisania nadgodzin: ${error.message}`)
+
+    await logAudit(ctx.userId, 'TIMESHEET_OVERTIME_OVERRIDE', {
+        entry_id: input.entryId,
+        target_user_id: entry.timesheets.user_id,
+        work_date: entry.work_date,
+        previous_hours: Number(entry.hours),
+        new_hours: input.hours,
+        reason,
+    })
+
+    // Push notification to employee (fire-and-forget).
+    const monthLabel = `${entry.timesheets.year}-${String(entry.timesheets.month).padStart(2, '0')}`
+    sendPushToUserId(entry.timesheets.user_id, {
+        title: 'Nadgodziny wpisane przez administratora',
+        body: `${entry.work_date}: ${input.hours}h (${reason.slice(0, 80)})`,
+        url: `/internal?tab=timesheet&year=${entry.timesheets.year}&month=${entry.timesheets.month}`,
+        tag: `timesheet-overtime-${entry.id}`,
+    }).catch((e) => logCompat.error('[adminOverrideTimesheetEntry] push failed:', e))
+}
+
+/**
+ * Phase 27a — Admin-only: clear overtime override on an entry.
+ *
+ * Sets hours back to 8 (standard cap), clears all override_* fields. Use when
+ * the override was applied in error or the employee resubmitted correct hours.
+ */
+export async function clearOvertimeOverride(entryId: string): Promise<void> {
+    const ctx = await requireAdminAction()
+    const admin = createServiceClient()
+
+    const { data: entry, error: fetchErr } = await admin
+        .from('timesheet_entries')
+        .select('id, work_date, hours, is_overtime_override, timesheet_id, timesheets!inner(user_id)')
+        .eq('id', entryId)
+        .single<{
+            id: string
+            work_date: string
+            hours: number
+            is_overtime_override: boolean
+            timesheet_id: string
+            timesheets: { user_id: string }
+        }>()
+    if (fetchErr || !entry) throw new Error('Wpis nie istnieje.')
+    if (!entry.is_overtime_override) {
+        throw new Error('Ten wpis nie ma aktywnego override — nic do cofnięcia.')
+    }
+
+    const { error } = await admin
+        .from('timesheet_entries')
+        .update({
+            hours: STANDARD_DAILY_HOURS_MAX,
+            is_overtime_override: false,
+            override_reason: null,
+            override_by: null,
+            override_at: null,
+        })
+        .eq('id', entryId)
+    if (error) throw new Error(`Błąd cofnięcia override: ${error.message}`)
+
+    await logAudit(ctx.userId, 'TIMESHEET_OVERTIME_OVERRIDE_CLEARED', {
+        entry_id: entryId,
+        target_user_id: entry.timesheets.user_id,
+        work_date: entry.work_date,
+        previous_hours: Number(entry.hours),
+    })
 }
