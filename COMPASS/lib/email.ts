@@ -1379,3 +1379,117 @@ export async function sendBonusCancelled(
         return { success: false }
     }
 }
+
+const BONUS_MONTH_NAMES_PL = [
+    'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
+    'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień',
+] as const
+
+function formatBonusPeriodPl(year: number, month: number): string {
+    const idx = Math.max(0, Math.min(11, month - 1))
+    return `${BONUS_MONTH_NAMES_PL[idx]} ${year}`
+}
+
+/**
+ * Phase 26 — Email do pracownika gdy manager przypisuje mu premię z auto-akceptem.
+ * Bonus jest od razu w stanie terminalnym 'assigned' — bez wymogu linkowania z fakturą.
+ */
+export async function sendBonusAssigned(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    periodYear: number,
+    periodMonth: number,
+    reason: string,
+): Promise<{ success: boolean }> {
+    const periodLabel = formatBonusPeriodPl(periodYear, periodMonth)
+    const subject = `[COMPASS] Premia ${amount.toFixed(2)} ${currency} za ${periodLabel}`
+    const accent = '#22c55e'
+    const reasonEscaped = reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} przyznał Ci premię w wysokości <strong>${amount.toFixed(2)} ${currency}</strong>
+            za okres <strong>${periodLabel}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Uzasadnienie:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Premia jest już zatwierdzona. Pełną listę swoich premii zobaczysz w panelu:
+            <a href="https://compass.dynaminds.pl/internal?tab=bonuses" style="color: #93c5fd;">Moje premie</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Nowa premia', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-assigned error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-assigned email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 26 — Email do pracownika gdy manager edytuje przypisaną premię
+ * (zmiana kwoty lub uzasadnienia).
+ */
+export async function sendBonusUpdated(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    periodYear: number,
+    periodMonth: number,
+    reason: string,
+    changesSummary?: string,
+): Promise<{ success: boolean }> {
+    const periodLabel = formatBonusPeriodPl(periodYear, periodMonth)
+    const subject = `[COMPASS] Zaktualizowano premię za ${periodLabel}`
+    const accent = '#3b82f6'
+    const reasonEscaped = reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const changesEscaped = (changesSummary ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const changesBlock = changesEscaped
+        ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Zmiany:</strong> ${changesEscaped}</p>`
+        : ''
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} zaktualizował premię za <strong>${periodLabel}</strong>.
+            Aktualna kwota: <strong>${amount.toFixed(2)} ${currency}</strong>.
+        </p>
+        ${changesBlock}
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Uzasadnienie:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zobacz w panelu:
+            <a href="https://compass.dynaminds.pl/internal?tab=bonuses" style="color: #93c5fd;">Moje premie</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Premia zaktualizowana', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-updated error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-updated email failed:', err)
+        return { success: false }
+    }
+}

@@ -34,6 +34,9 @@ export interface EmployeeHRSnapshot {
     timesheets: TimesheetHistoryRow[]
     invoices: InvoiceHistoryRow[]
     leaves: LeaveHistoryRow[]
+    bonuses: BonusHistoryRow[]
+    /** Phase 26: viewer (admin or this user's manager) can assign new bonuses for this employee. */
+    viewer_can_assign_bonus: boolean
 }
 
 export interface InvoiceHistoryRow {
@@ -58,6 +61,21 @@ export interface LeaveHistoryRow {
     status: string
     decided_at: string | null
     decision_note: string | null
+}
+
+/** Phase 26 — bonus row in employee profile snapshot. */
+export interface BonusHistoryRow {
+    id: string
+    amount: number
+    currency: string
+    reason: string
+    status: 'assigned' | 'pending' | 'paid' | 'cancelled'
+    period_year: number | null
+    period_month: number | null
+    created_at: string
+    cancelled_at: string | null
+    cancellation_reason: string | null
+    proposer_full_name: string | null
 }
 
 async function assertCanViewEmployee(userId: string): Promise<void> {
@@ -122,7 +140,12 @@ export async function getEmployeeProfile(
     const cutoffYear = new Date().getFullYear()
     const earliestYear = cutoffYear - Math.ceil(monthsBack / 12)
 
-    const [invoicesRes, leavesRes] = await Promise.all([
+    const ctx = await requireInternalOrAdminAction()
+    const viewer_can_assign_bonus =
+        ctx.userId !== userId &&
+        (ctx.isAdmin || (ctx.isManager && profileRow.manager_id === ctx.userId))
+
+    const [invoicesRes, leavesRes, bonusesRes] = await Promise.all([
         admin
             .from('invoices')
             .select(
@@ -138,13 +161,51 @@ export async function getEmployeeProfile(
             .eq('user_id', userId)
             .gte('start_date', `${earliestYear}-01-01`)
             .order('start_date', { ascending: false }),
+        admin
+            .from('bonuses')
+            .select(`
+                id, amount, currency, reason, status, period_year, period_month,
+                created_at, cancelled_at, cancellation_reason,
+                proposer:profiles!bonuses_proposed_by_fkey(full_name)
+            `)
+            .eq('recipient_user_id', userId)
+            .gte('created_at', `${earliestYear}-01-01`)
+            .order('created_at', { ascending: false }),
     ])
+
+    const bonuses: BonusHistoryRow[] = ((bonusesRes.data ?? []) as Array<{
+        id: string
+        amount: number | string
+        currency: string
+        reason: string
+        status: 'assigned' | 'pending' | 'paid' | 'cancelled'
+        period_year: number | null
+        period_month: number | null
+        created_at: string
+        cancelled_at: string | null
+        cancellation_reason: string | null
+        proposer: { full_name: string | null } | null
+    }>).map((b) => ({
+        id: b.id,
+        amount: Number(b.amount),
+        currency: b.currency,
+        reason: b.reason,
+        status: b.status,
+        period_year: b.period_year,
+        period_month: b.period_month,
+        created_at: b.created_at,
+        cancelled_at: b.cancelled_at,
+        cancellation_reason: b.cancellation_reason,
+        proposer_full_name: b.proposer?.full_name ?? null,
+    }))
 
     return {
         profile,
         timesheets,
         invoices: (invoicesRes.data ?? []) as InvoiceHistoryRow[],
         leaves: (leavesRes.data ?? []) as LeaveHistoryRow[],
+        bonuses,
+        viewer_can_assign_bonus,
     }
 }
 

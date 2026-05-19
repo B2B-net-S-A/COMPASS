@@ -1,37 +1,45 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { Plus, AlertCircle, CheckCircle2, XCircle, FileText, Download } from 'lucide-react'
+import { useMemo, useState, useTransition } from 'react'
+import { Plus, CheckCircle2, XCircle, Download, Pencil, Ban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { proposeBonus, cancelBonus } from '@/lib/actions/internal-bonus'
-import type { BonusStatus, BonusWithUsers, ProposeBonusInput } from '@/lib/types/bonus'
+import { cancelBonus } from '@/lib/actions/internal-bonus'
+import { AssignBonusForm } from './AssignBonusForm'
+import type {
+    BonusStatus,
+    BonusWithUsers,
+    EligibleEmployeeForBonus,
+} from '@/lib/types/bonus'
+import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
 
 type ViewerMode = 'admin' | 'manager' | 'finanse'
 
-interface Recipient {
-    id: string
-    full_name: string | null
-    email: string
-    role: string
-}
-
 interface Props {
     initialBonuses: BonusWithUsers[]
-    recipients: Recipient[]
+    candidates: EligibleEmployeeForBonus[]
     viewerMode: ViewerMode
     currentUserId: string
 }
 
+type FilterStatus = BonusStatus | 'all' | 'active'
+
 function statusBadge(status: BonusStatus) {
-    if (status === 'paid') {
+    if (status === 'assigned') {
         return (
             <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Wypłacona
+                Przypisana
             </span>
         )
     }
@@ -43,10 +51,18 @@ function statusBadge(status: BonusStatus) {
             </span>
         )
     }
+    // Legacy statuses (pending/paid) — should not appear in new flow, but render defensively.
+    if (status === 'paid') {
+        return (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-400">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Wypłacona (legacy)
+            </span>
+        )
+    }
     return (
         <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-500">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Oczekuje
+            Oczekuje (legacy)
         </span>
     )
 }
@@ -56,12 +72,34 @@ function formatAmount(amount: number, currency: string): string {
 }
 
 function formatDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('pl-PL', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    return new Date(iso).toLocaleDateString('pl-PL', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    })
+}
+
+function periodLabel(year: number | null, month: number | null): string {
+    if (!year || !month) return '—'
+    return `${BONUS_MONTHS_PL[month - 1]} ${year}`
 }
 
 function exportToCsv(bonuses: BonusWithUsers[]): void {
     const rows = [
-        ['ID', 'Pracownik', 'Email', 'Manager', 'Kwota', 'Waluta', 'Status', 'Powód', 'Faktura', 'Utworzono', 'Wypłacono', 'Anulowano', 'Powód anulowania'],
+        [
+            'ID',
+            'Pracownik',
+            'Email',
+            'Manager',
+            'Kwota',
+            'Waluta',
+            'Status',
+            'Miesiąc',
+            'Uzasadnienie',
+            'Utworzono',
+            'Anulowano',
+            'Powód anulowania',
+        ],
         ...bonuses.map((b) => [
             b.id,
             b.recipient_full_name ?? '',
@@ -70,10 +108,9 @@ function exportToCsv(bonuses: BonusWithUsers[]): void {
             String(Number(b.amount).toFixed(2)),
             b.currency,
             b.status,
+            periodLabel(b.period_year, b.period_month),
             b.reason.replace(/"/g, '""'),
-            b.linked_invoice_number ?? '',
             b.created_at,
-            b.paid_at ?? '',
             b.cancelled_at ?? '',
             b.cancellation_reason?.replace(/"/g, '""') ?? '',
         ]),
@@ -88,38 +125,48 @@ function exportToCsv(bonuses: BonusWithUsers[]): void {
     URL.revokeObjectURL(url)
 }
 
-export function BonusesAdminClient({ initialBonuses, recipients, viewerMode, currentUserId }: Props) {
+export function BonusesAdminClient({
+    initialBonuses,
+    candidates,
+    viewerMode,
+    currentUserId,
+}: Props) {
     const [bonuses, setBonuses] = useState<BonusWithUsers[]>(initialBonuses)
-    const [filterStatus, setFilterStatus] = useState<BonusStatus | 'all'>(
-        viewerMode === 'finanse' ? 'all' : 'pending',
-    )
-    const [proposeOpen, setProposeOpen] = useState(false)
+    const [filterStatus, setFilterStatus] = useState<FilterStatus>('active')
+    const [assignOpen, setAssignOpen] = useState(false)
+    const [editTarget, setEditTarget] = useState<BonusWithUsers | null>(null)
     const [cancelTarget, setCancelTarget] = useState<BonusWithUsers | null>(null)
 
-    const canPropose = viewerMode === 'admin' || viewerMode === 'manager'
+    const canAssign = viewerMode === 'admin' || viewerMode === 'manager'
     const canCancelAny = viewerMode === 'admin'
 
-    const filtered = filterStatus === 'all' ? bonuses : bonuses.filter((b) => b.status === filterStatus)
+    const filtered = useMemo(() => {
+        if (filterStatus === 'all') return bonuses
+        if (filterStatus === 'active') {
+            return bonuses.filter((b) => b.status === 'assigned')
+        }
+        return bonuses.filter((b) => b.status === filterStatus)
+    }, [bonuses, filterStatus])
 
-    const totalPaid = bonuses
-        .filter((b) => b.status === 'paid')
+    const totalAssigned = bonuses
+        .filter((b) => b.status === 'assigned')
         .reduce((sum, b) => sum + Number(b.amount), 0)
-    const totalPending = bonuses
-        .filter((b) => b.status === 'pending')
+    const totalCancelled = bonuses
+        .filter((b) => b.status === 'cancelled')
         .reduce((sum, b) => sum + Number(b.amount), 0)
 
-    function onProposed(newBonus: BonusWithUsers) {
-        setBonuses((prev) => [newBonus, ...prev])
-        setProposeOpen(false)
+    function handleEdited(updated: BonusWithUsers) {
+        setBonuses((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)))
+        setEditTarget(null)
     }
 
-    function onCancelled(bonusId: string, reason: string) {
+    function handleCancelled(bonusId: string, reason: string) {
         setBonuses((prev) =>
             prev.map((b) =>
                 b.id === bonusId
                     ? {
                           ...b,
-                          status: 'cancelled',
+                          status: 'cancelled' as BonusStatus,
                           cancelled_at: new Date().toISOString(),
                           cancelled_by: currentUserId,
                           cancellation_reason: reason,
@@ -135,12 +182,16 @@ export function BonusesAdminClient({ initialBonuses, recipients, viewerMode, cur
             {/* Summary stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <div className="text-xs text-muted-foreground">Wypłacone (suma)</div>
-                    <div className="text-2xl font-bold text-green-400">{totalPaid.toFixed(2)} PLN</div>
+                    <div className="text-xs text-muted-foreground">Przypisane (suma)</div>
+                    <div className="text-2xl font-bold text-green-400">
+                        {totalAssigned.toFixed(2)} PLN
+                    </div>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <div className="text-xs text-muted-foreground">Oczekujące (suma)</div>
-                    <div className="text-2xl font-bold text-yellow-400">{totalPending.toFixed(2)} PLN</div>
+                    <div className="text-xs text-muted-foreground">Anulowane (suma)</div>
+                    <div className="text-2xl font-bold text-red-400">
+                        {totalCancelled.toFixed(2)} PLN
+                    </div>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                     <div className="text-xs text-muted-foreground">Liczba premii</div>
@@ -151,7 +202,7 @@ export function BonusesAdminClient({ initialBonuses, recipients, viewerMode, cur
             {/* Filters + actions */}
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex gap-1">
-                    {(['pending', 'paid', 'cancelled', 'all'] as const).map((s) => (
+                    {(['active', 'cancelled', 'all'] as const).map((s) => (
                         <button
                             key={s}
                             onClick={() => setFilterStatus(s)}
@@ -161,8 +212,7 @@ export function BonusesAdminClient({ initialBonuses, recipients, viewerMode, cur
                                     : 'bg-white/5 text-muted-foreground hover:bg-white/10'
                             }`}
                         >
-                            {s === 'pending' && 'Oczekujące'}
-                            {s === 'paid' && 'Wypłacone'}
+                            {s === 'active' && 'Aktywne'}
                             {s === 'cancelled' && 'Anulowane'}
                             {s === 'all' && 'Wszystkie'}
                         </button>
@@ -173,10 +223,10 @@ export function BonusesAdminClient({ initialBonuses, recipients, viewerMode, cur
                         <Download className="h-3.5 w-3.5 mr-1.5" />
                         CSV
                     </Button>
-                    {canPropose && recipients.length > 0 && (
-                        <Button size="sm" onClick={() => setProposeOpen(true)}>
+                    {canAssign && candidates.length > 0 && (
+                        <Button size="sm" onClick={() => setAssignOpen(true)}>
                             <Plus className="h-3.5 w-3.5 mr-1.5" />
-                            Dodaj premię
+                            Przypisz premię
                         </Button>
                     )}
                 </div>
@@ -189,209 +239,139 @@ export function BonusesAdminClient({ initialBonuses, recipients, viewerMode, cur
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {filtered.map((b) => (
-                        <div key={b.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-medium">{b.recipient_full_name ?? b.recipient_email}</span>
-                                        <span className="text-xs text-muted-foreground">{b.recipient_email}</span>
-                                        {statusBadge(b.status)}
-                                    </div>
-                                    <div className="mt-1 text-sm">
-                                        <span className="font-semibold text-white">{formatAmount(Number(b.amount), b.currency)}</span>
-                                        <span className="text-muted-foreground"> — {b.reason}</span>
-                                    </div>
-                                    <div className="mt-1 text-xs text-muted-foreground space-x-3">
-                                        <span>Manager: {b.proposer_full_name ?? '—'}</span>
-                                        <span>Utworzono: {formatDate(b.created_at)}</span>
-                                        {b.linked_invoice_number && (
-                                            <span>
-                                                <FileText className="inline h-3 w-3 mr-1" />
-                                                {b.linked_invoice_number}
+                    {filtered.map((b) => {
+                        const canEditRow =
+                            b.status === 'assigned' &&
+                            (b.proposed_by === currentUserId || canCancelAny)
+                        const canCancelRow =
+                            (b.status === 'assigned' || b.status === 'pending') &&
+                            (b.proposed_by === currentUserId || canCancelAny)
+                        return (
+                            <div
+                                key={b.id}
+                                className="rounded-lg border border-white/10 bg-white/5 p-3"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-medium">
+                                                {b.recipient_full_name ?? b.recipient_email}
                                             </span>
+                                            <span className="text-xs text-muted-foreground">
+                                                {b.recipient_email}
+                                            </span>
+                                            {statusBadge(b.status)}
+                                            <span className="text-xs px-2 py-0.5 rounded bg-white/5 text-muted-foreground">
+                                                {periodLabel(b.period_year, b.period_month)}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-sm">
+                                            <span className="font-semibold text-white">
+                                                {formatAmount(Number(b.amount), b.currency)}
+                                            </span>
+                                            <span className="text-muted-foreground"> — {b.reason}</span>
+                                        </div>
+                                        <div className="mt-1 text-xs text-muted-foreground space-x-3">
+                                            <span>Manager: {b.proposer_full_name ?? '—'}</span>
+                                            <span>Utworzono: {formatDate(b.created_at)}</span>
+                                            {b.cancellation_reason && (
+                                                <span className="text-red-400">
+                                                    Anul.: {b.cancellation_reason}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1.5 shrink-0">
+                                        {canEditRow && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setEditTarget(b)}
+                                            >
+                                                <Pencil className="h-3 w-3 mr-1" />
+                                                Edytuj
+                                            </Button>
                                         )}
-                                        {b.cancellation_reason && (
-                                            <span className="text-red-400">Anul.: {b.cancellation_reason}</span>
+                                        {canCancelRow && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCancelTarget(b)}
+                                            >
+                                                <Ban className="h-3 w-3 mr-1" />
+                                                Anuluj
+                                            </Button>
                                         )}
                                     </div>
                                 </div>
-                                {b.status === 'pending' && (canCancelAny || b.proposed_by === currentUserId) && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setCancelTarget(b)}
-                                    >
-                                        Anuluj
-                                    </Button>
-                                )}
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             )}
 
-            {proposeOpen && (
-                <ProposeBonusDialog
-                    open={proposeOpen}
-                    onOpenChange={setProposeOpen}
-                    recipients={recipients}
-                    onProposed={onProposed}
-                />
+            {/* Assign dialog */}
+            <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Przypisz premię</DialogTitle>
+                        <DialogDescription>
+                            Pracownik dostanie email + powiadomienie w aplikacji. Bonus jest od razu zatwierdzony.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <AssignBonusForm
+                        mode="assign"
+                        candidates={candidates}
+                        compact
+                        onSuccess={() => setAssignOpen(false)}
+                        onCancel={() => setAssignOpen(false)}
+                    />
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit dialog */}
+            {editTarget && (
+                <Dialog open onOpenChange={(open) => !open && setEditTarget(null)}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Edytuj premię</DialogTitle>
+                            <DialogDescription>
+                                Pracownik dostanie powiadomienie o zmianach. Okres i odbiorca są niezmienne.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <AssignBonusForm
+                            mode="edit"
+                            candidates={candidates}
+                            compact
+                            prefilled={{
+                                id: editTarget.id,
+                                amount: Number(editTarget.amount),
+                                currency: editTarget.currency,
+                                reason: editTarget.reason,
+                                notes: editTarget.notes,
+                                period_year: editTarget.period_year ?? new Date().getFullYear(),
+                                period_month:
+                                    editTarget.period_month ?? new Date().getMonth() + 1,
+                                recipient_full_name: editTarget.recipient_full_name,
+                            }}
+                            onSuccess={() => {
+                                // Optimistic: caller refresh on success; we close & rely on router.refresh.
+                                handleEdited(editTarget)
+                            }}
+                            onCancel={() => setEditTarget(null)}
+                        />
+                    </DialogContent>
+                </Dialog>
             )}
 
             {cancelTarget && (
                 <CancelBonusDialog
                     bonus={cancelTarget}
                     onOpenChange={(open) => !open && setCancelTarget(null)}
-                    onCancelled={onCancelled}
+                    onCancelled={handleCancelled}
                 />
             )}
         </div>
-    )
-}
-
-// ─── Propose dialog ─────────────────────────────────────────────────────────
-
-interface ProposeDialogProps {
-    open: boolean
-    onOpenChange: (open: boolean) => void
-    recipients: Recipient[]
-    onProposed: (bonus: BonusWithUsers) => void
-}
-
-function ProposeBonusDialog({ open, onOpenChange, recipients, onProposed }: ProposeDialogProps) {
-    const [recipientId, setRecipientId] = useState('')
-    const [amount, setAmount] = useState('')
-    const [currency, setCurrency] = useState('PLN')
-    const [reason, setReason] = useState('')
-    const [notes, setNotes] = useState('')
-    const [pending, startTransition] = useTransition()
-
-    function handleSubmit(e: React.FormEvent) {
-        e.preventDefault()
-        const amountNum = Number(amount)
-        if (!recipientId) return toast.error('Wybierz pracownika.')
-        if (!Number.isFinite(amountNum) || amountNum <= 0) return toast.error('Kwota musi być dodatnia.')
-        if (reason.trim().length < 3) return toast.error('Powód min. 3 znaki.')
-
-        startTransition(async () => {
-            try {
-                const input: ProposeBonusInput = {
-                    recipient_user_id: recipientId,
-                    amount: amountNum,
-                    currency,
-                    reason: reason.trim(),
-                    notes: notes.trim() || null,
-                }
-                const result = await proposeBonus(input)
-                // Enrich locally with recipient name.
-                const recipient = recipients.find((r) => r.id === recipientId)
-                onProposed({
-                    ...result,
-                    amount: Number(result.amount),
-                    recipient_full_name: recipient?.full_name ?? null,
-                    recipient_email: recipient?.email ?? '',
-                    proposer_full_name: null,
-                    proposer_email: null,
-                    linked_invoice_number: null,
-                })
-                toastSuccess('Premia dodana — pracownik dostał notyfikację.')
-            } catch (err: any) {
-                toast.error(err.message ?? 'Nie udało się dodać premii.')
-            }
-        })
-    }
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Dodaj premię</DialogTitle>
-                    <DialogDescription>
-                        Pracownik dostanie notyfikację (in-app, email, push) i uwzględni premię w fakturze.
-                    </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-3">
-                    <div className="space-y-1.5">
-                        <Label htmlFor="bonus-recipient">Pracownik</Label>
-                        <select
-                            id="bonus-recipient"
-                            value={recipientId}
-                            onChange={(e) => setRecipientId(e.target.value)}
-                            className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
-                            required
-                        >
-                            <option value="">— wybierz —</option>
-                            {recipients.map((r) => (
-                                <option key={r.id} value={r.id}>
-                                    {r.full_name ?? r.email} ({r.email})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-2 space-y-1.5">
-                            <Label htmlFor="bonus-amount">Kwota</Label>
-                            <input
-                                id="bonus-amount"
-                                type="number"
-                                step="0.01"
-                                min="1"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
-                                required
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="bonus-currency">Waluta</Label>
-                            <select
-                                id="bonus-currency"
-                                value={currency}
-                                onChange={(e) => setCurrency(e.target.value)}
-                                className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
-                            >
-                                <option value="PLN">PLN</option>
-                                <option value="EUR">EUR</option>
-                                <option value="USD">USD</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="bonus-reason">Powód (widoczny dla pracownika)</Label>
-                        <textarea
-                            id="bonus-reason"
-                            value={reason}
-                            onChange={(e) => setReason(e.target.value)}
-                            placeholder="np. premia rekrutacyjna kandydat Jan Kowalski tier Mid (§3 regulaminu)"
-                            rows={3}
-                            maxLength={1000}
-                            className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
-                            required
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="bonus-notes">Notatki wewnętrzne (opcjonalne, niewidoczne dla pracownika)</Label>
-                        <textarea
-                            id="bonus-notes"
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            rows={2}
-                            className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-                            Anuluj
-                        </Button>
-                        <Button type="submit" disabled={pending}>
-                            {pending ? 'Wysyłanie...' : 'Dodaj premię'}
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
     )
 }
 
@@ -409,15 +389,19 @@ function CancelBonusDialog({ bonus, onOpenChange, onCancelled }: CancelDialogPro
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
-        if (reason.trim().length < 3) return toast.error('Powód min. 3 znaki.')
+        if (reason.trim().length < 3) {
+            toast.error('Powód min. 3 znaki.')
+            return
+        }
 
         startTransition(async () => {
             try {
                 await cancelBonus({ id: bonus.id, cancellation_reason: reason.trim() })
                 onCancelled(bonus.id, reason.trim())
                 toastSuccess('Premia anulowana — pracownik dostał notyfikację.')
-            } catch (err: any) {
-                toast.error(err.message ?? 'Nie udało się anulować.')
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : 'Nie udało się anulować.'
+                toast.error(msg)
             }
         })
     }
@@ -429,7 +413,8 @@ function CancelBonusDialog({ bonus, onOpenChange, onCancelled }: CancelDialogPro
                     <DialogTitle>Anuluj premię</DialogTitle>
                     <DialogDescription>
                         {bonus.recipient_full_name ?? bonus.recipient_email} —{' '}
-                        {formatAmount(Number(bonus.amount), bonus.currency)}
+                        {formatAmount(Number(bonus.amount), bonus.currency)} (
+                        {periodLabel(bonus.period_year, bonus.period_month)})
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-3">
@@ -439,7 +424,7 @@ function CancelBonusDialog({ bonus, onOpenChange, onCancelled }: CancelDialogPro
                             id="cancel-reason"
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
-                            placeholder="np. kandydat odszedł przed probacją"
+                            placeholder="np. omyłkowo przypisana"
                             rows={3}
                             maxLength={500}
                             className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
@@ -447,7 +432,12 @@ function CancelBonusDialog({ bonus, onOpenChange, onCancelled }: CancelDialogPro
                         />
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => onOpenChange(false)}
+                            disabled={pending}
+                        >
                             Wstecz
                         </Button>
                         <Button type="submit" variant="destructive" disabled={pending}>

@@ -1,11 +1,11 @@
-// Phase 23 — Premie review panel.
-//   admin    → sees ALL bonuses, can add for anyone, cancel any pending.
-//   manager  → sees own team only, can add for own reports, cancel own proposed pending.
-//   finanse  → sees ALL bonuses, read-only report (no add/cancel buttons).
+// Phase 23 + 26 — Premie review panel.
+//   admin    → sees ALL bonuses, can assign for anyone, cancel any active.
+//   manager  → sees own team only, can assign for own reports, cancel own assigned.
+//   finanse  → sees ALL bonuses, read-only report (no assign/cancel buttons).
 import {
     listAllBonusesForFinance,
     listTeamBonuses,
-    listProposableRecipients,
+    listEligibleEmployeesForBonus,
 } from '@/lib/actions/internal-bonus'
 import { BonusesAdminClient } from '@/components/internal/BonusesAdminClient'
 import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
@@ -13,15 +13,15 @@ import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
 export async function AdminBonusesPanel() {
     const ctx = await requireInternalAdminAreaLayout()
 
-    // Manager/admin can propose; finanse cannot.
-    const canPropose = ctx.isAdmin || ctx.isManager
+    // Manager/admin can assign; finanse cannot.
+    const canAssign = ctx.isAdmin || ctx.isManager
 
-    // Data + recipients fetched in parallel.
-    const [bonuses, recipients] = await Promise.all([
+    // Data + candidates fetched in parallel.
+    const [bonuses, candidates] = await Promise.all([
         ctx.role === 'finanse' && !ctx.isAdmin
             ? listAllBonusesForFinance()
             : listTeamBonuses(),
-        canPropose ? listProposableRecipients() : Promise.resolve([]),
+        canAssign ? listEligibleEmployeesForBonus() : Promise.resolve([]),
     ])
 
     const viewerMode: 'admin' | 'manager' | 'finanse' =
@@ -30,7 +30,7 @@ export async function AdminBonusesPanel() {
     return (
         <BonusesAdminClient
             initialBonuses={bonuses}
-            recipients={recipients}
+            candidates={candidates}
             viewerMode={viewerMode}
             currentUserId={ctx.userId}
         />

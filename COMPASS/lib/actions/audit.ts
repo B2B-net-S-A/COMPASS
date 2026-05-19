@@ -87,6 +87,9 @@ export type AuditAction =
     | 'BONUS_CANCELLED'
     | 'BONUS_LINKED_TO_INVOICE'
     | 'BONUS_UNLINKED'
+    // Phase 26 — Bonus assigned workflow (auto-approved, no invoice link)
+    | 'BONUS_ASSIGNED'
+    | 'BONUS_UPDATED'
     // Phase 24 — Timesheet UX (templates, role defaults, CSV export, preview, archive)
     | 'TIMESHEET_COPIED_FROM_PREVIOUS'
     | 'TIMESHEET_APPLIED_DEFAULT'

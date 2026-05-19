@@ -28,6 +28,7 @@ import {
 import { Logo } from '@/components/common/Logo'
 import { useTheme } from '@/lib/contexts/ThemeContext'
 import { isFeatureComingSoon, type PermissionFeature, type PermissionValue } from '@/lib/types/permissions'
+import { isInvoicesEnabled } from '@/lib/feature-flags'
 
 // Phase 7 (2026-05-04): Sidebar badge counts fetched server-side in
 // app/(protected)/layout.tsx and passed through. Display badge if count > 0.
@@ -194,20 +195,25 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     }
 
     // Phase 19a/d: dedicated invoice-review group for Finanse role.
-    // Phase 19d: finanse has internal-parity, so they see the HR Hub like internal employees.
+    // Phase 26: invoice UI gated behind NEXT_PUBLIC_INVOICES_ENABLED. When off, finanse group is empty.
+    const invoicesUiOn = isInvoicesEnabled()
     const financeGroup: NavGroup = {
         heading: 'Finanse',
-        links: [
-            { name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null },
-        ],
+        links: invoicesUiOn
+            ? [
+                  { name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null },
+              ]
+            : [],
     }
 
-    // Phase 20: Manager group — team timesheet/invoice approvals.
+    // Phase 20 + 26: Manager group — team timesheet (always) + invoice approvals (only when invoices UI enabled).
     const managerGroup: NavGroup = {
         heading: 'Mój zespół',
         links: [
             { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets&scope=team', icon: Users, feature: null },
-            { name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null },
+            ...(invoicesUiOn
+                ? [{ name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null }]
+                : []),
         ],
     }
 
@@ -240,7 +246,8 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
         if (isAdmin) out.push(internalAdminGroup, adminGroup)
-        if (isFinance) out.push(financeGroup)
+        // Phase 26: only push financeGroup if it has at least one link (invoices flag may hide all).
+        if (isFinance && financeGroup.links.length > 0) out.push(financeGroup)
         if (isManager) out.push(managerGroup)
         if (isTalentCommunity) out.push(tcmGroup)
         if (isHrZone) out.push(lifecycleGroup)
