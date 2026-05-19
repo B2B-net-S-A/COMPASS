@@ -23,6 +23,8 @@ import {
     Users,
     ClipboardCheck,
     Plane,
+    Coins,
+    Wallet,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -184,6 +186,13 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                 exactMatch: true,
                 badgeCount: badges?.activeLeaves,
             },
+            // Phase 27c — Payroll widoczne dla HR-zone (każdy widzi własne; manager/finanse/admin widzą więcej).
+            {
+                name: 'Payroll',
+                href: '/internal/payroll',
+                icon: Wallet,
+                feature: null,
+            },
         ],
     }
 
@@ -196,14 +205,16 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
 
     // Phase 19a/d: dedicated invoice-review group for Finanse role.
     // Phase 26: invoice UI gated behind NEXT_PUBLIC_INVOICES_ENABLED. When off, finanse group is empty.
+    // Phase 27c: dodaj link "Stawki" dla finanse+admin (zawsze, niezależne od invoices flag).
     const invoicesUiOn = isInvoicesEnabled()
     const financeGroup: NavGroup = {
         heading: 'Finanse',
-        links: invoicesUiOn
-            ? [
-                  { name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null },
-              ]
-            : [],
+        links: [
+            ...(invoicesUiOn
+                ? [{ name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null as PermissionFeature | null }]
+                : []),
+            { name: 'Stawki pracowników', href: '/internal/admin/rates', icon: Coins, feature: null },
+        ],
     }
 
     // Phase 20 + 26: Manager group — team timesheet (always) + invoice approvals (only when invoices UI enabled).

@@ -1493,3 +1493,112 @@ export async function sendBonusUpdated(
         return { success: false }
     }
 }
+
+// ─── Phase 27c — User rate change notifications ───────────────────────────
+
+/**
+ * Phase 27c — Email do pracownika gdy finanse/admin zmieni jego stawkę godzinową.
+ * Wysłane jednorazowo per INSERT do user_rates. Pracownik widzi nową stawkę + datę
+ * wejścia w życie (zawsze 1. dnia przyszłego miesiąca lub później).
+ */
+export async function sendRateChanged(args: {
+    recipientEmail: string
+    recipientName: string
+    oldRate: number | null
+    newRate: number
+    currency: string
+    effectiveFrom: string // YYYY-MM-DD
+    setByName: string
+    reason?: string | null
+}): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Zmiana stawki godzinowej — od ${args.effectiveFrom}`
+    const accent = '#22c55e'
+    const reasonEscaped = (args.reason ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const reasonBlock = reasonEscaped
+        ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Notatka:</strong> ${reasonEscaped}</p>`
+        : ''
+    const oldRateLine = args.oldRate != null
+        ? `<p style="color: #9ca3af; font-size: 13px;">Poprzednia stawka: ${args.oldRate.toFixed(2)} ${args.currency}/h</p>`
+        : '<p style="color: #9ca3af; font-size: 13px;">To Twoja pierwsza zarejestrowana stawka.</p>'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${args.recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${args.setByName} ustawił Twoją stawkę godzinową na <strong>${args.newRate.toFixed(2)} ${args.currency}/h</strong>,
+            obowiązującą od <strong>${args.effectiveFrom}</strong>.
+        </p>
+        ${oldRateLine}
+        ${reasonBlock}
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zobacz swoje rozliczenie miesięczne (godziny × stawka + premie):
+            <a href="https://compass.dynaminds.pl/internal/payroll" style="color: #93c5fd;">Payroll</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: args.recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Stawka', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend rate-changed (employee) error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Rate-changed (employee) email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 27c — Broadcast do finanse + admin gdy ktoś ustawi stawkę pracownikowi.
+ * Pomaga finanse synchronizować payroll mimo że zmianę zrobił admin (lub odwrotnie).
+ */
+export async function sendRateChangedToFinance(args: {
+    recipientEmail: string
+    targetName: string
+    targetEmail: string
+    oldRate: number | null
+    newRate: number
+    currency: string
+    effectiveFrom: string
+    setByName: string
+}): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Zmiana stawki: ${args.targetName} → ${args.newRate.toFixed(2)} ${args.currency}/h`
+    const accent = '#3b82f6'
+    const oldRateLine = args.oldRate != null
+        ? `<p style="color: #d1d5db; font-size: 13px;">Poprzednia stawka: <strong>${args.oldRate.toFixed(2)} ${args.currency}/h</strong></p>`
+        : '<p style="color: #d1d5db; font-size: 13px;">Pierwsza zarejestrowana stawka tego pracownika.</p>'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${args.setByName} ustawił stawkę dla <strong>${args.targetName}</strong> (${args.targetEmail}).
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Nowa stawka: <strong>${args.newRate.toFixed(2)} ${args.currency}/h</strong> od <strong>${args.effectiveFrom}</strong>.
+        </p>
+        ${oldRateLine}
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zobacz rozliczenie pracownika:
+            <a href="https://compass.dynaminds.pl/internal/admin/rates" style="color: #93c5fd;">Stawki</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            to: args.recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Stawka — payroll', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend rate-changed (finance) error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Rate-changed (finance) email failed:', err)
+        return { success: false }
+    }
+}

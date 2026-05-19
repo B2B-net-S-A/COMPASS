@@ -244,3 +244,15 @@ export async function requireBonusReadAllAction(): Promise<InternalAuthContext> 
     }
     return ctx
 }
+
+/**
+ * Phase 27c — Finanse or admin guard.
+ * Required for: setUserRate, listAllActiveRates, payroll CSV export.
+ */
+export async function requireFinanseOrAdminAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && ctx.role !== 'finanse') {
+        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+    }
+    return ctx
+}

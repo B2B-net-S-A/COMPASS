@@ -123,6 +123,9 @@ export type AuditAction =
     // Phase 27b — Bonus categories + attachments
     | 'BONUS_ATTACHMENT_UPLOADED'
     | 'BONUS_ATTACHMENT_REMOVED'
+    // Phase 27c — User rates + payroll
+    | 'USER_RATE_CHANGED'
+    | 'PAYROLL_EXPORTED_CSV'
 
 export async function logAudit(
     userId: string | null,
