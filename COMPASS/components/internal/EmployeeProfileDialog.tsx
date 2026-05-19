@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, FileSpreadsheet, AlertCircle, Gift, Clock } from 'lucide-react'
+import { Loader2, FileSpreadsheet, AlertCircle, Gift, Clock, Wallet } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -23,10 +23,12 @@ import {
     getEmployeeProfile,
     type EmployeeHRSnapshot,
 } from '@/lib/actions/internal-employee-profile'
+import { getPayrollSummaryForUser } from '@/lib/actions/internal-payroll'
+import type { PayrollSummary } from '@/lib/types/rates'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 import { AssignBonusForm } from './AssignBonusForm'
 import { OvertimeOverrideDialog } from './OvertimeOverrideDialog'
-import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
+import { BONUS_MONTHS_PL, BONUS_CATEGORIES_PL } from '@/lib/types/bonus'
 import type { EligibleEmployeeForBonus } from '@/lib/types/bonus'
 
 interface Props {
@@ -120,6 +122,12 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
     const [assignOpen, setAssignOpen] = useState(false)
     // Phase 27a — overtime override dialog state
     const [overtimeTarget, setOvertimeTarget] = useState<{ year: number; month: number } | null>(null)
+    // Phase 27c — payroll tab state (lazy loaded)
+    const now = new Date()
+    const [payrollYear, setPayrollYear] = useState<number>(now.getFullYear())
+    const [payrollMonth, setPayrollMonth] = useState<number>(now.getMonth() + 1)
+    const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null)
+    const [payrollLoading, setPayrollLoading] = useState<boolean>(false)
 
     const invoicesUiOn = isInvoicesEnabled()
 
@@ -220,10 +228,23 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                 </Button>
                             </div>
                         )}
-                        <Tabs defaultValue="timesheets" className="flex-1 flex flex-col min-h-0">
+                        <Tabs
+                            defaultValue="timesheets"
+                            className="flex-1 flex flex-col min-h-0"
+                            onValueChange={(value) => {
+                                // Phase 27c — lazy load payroll when tab activates.
+                                if (value === 'payroll' && !payrollLoading && (!payrollSummary || payrollSummary.year !== payrollYear || payrollSummary.month !== payrollMonth)) {
+                                    setPayrollLoading(true)
+                                    getPayrollSummaryForUser(snapshot.profile.user_id, payrollYear, payrollMonth)
+                                        .then((s) => setPayrollSummary(s))
+                                        .catch((err) => toast.error(err instanceof Error ? err.message : 'Błąd payroll'))
+                                        .finally(() => setPayrollLoading(false))
+                                }
+                            }}
+                        >
                         <TabsList
                             className={
-                                invoicesUiOn ? 'grid grid-cols-4' : 'grid grid-cols-3'
+                                invoicesUiOn ? 'grid grid-cols-5' : 'grid grid-cols-4'
                             }
                         >
                             <TabsTrigger value="timesheets">
@@ -239,6 +260,9 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                             </TabsTrigger>
                             <TabsTrigger value="bonuses">
                                 Premie ({snapshot.bonuses.length})
+                            </TabsTrigger>
+                            <TabsTrigger value="payroll">
+                                Payroll
                             </TabsTrigger>
                         </TabsList>
 
@@ -495,6 +519,111 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                         </tbody>
                                     </table>
                                 )}
+                            </ScrollArea>
+                        </TabsContent>
+
+                        {/* Phase 27c — Payroll tab (lazy load on activate). */}
+                        <TabsContent value="payroll" className="flex-1 min-h-0 mt-3">
+                            <ScrollArea className="h-[60vh]">
+                                <div className="space-y-3">
+                                    {/* Period picker */}
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs font-medium">Miesiąc:</label>
+                                        <select
+                                            value={`${payrollYear}-${payrollMonth}`}
+                                            onChange={(e) => {
+                                                const [y, m] = e.target.value.split('-').map(Number)
+                                                setPayrollYear(y)
+                                                setPayrollMonth(m)
+                                                setPayrollSummary(null)
+                                                setPayrollLoading(true)
+                                                getPayrollSummaryForUser(snapshot.profile.user_id, y, m)
+                                                    .then((s) => setPayrollSummary(s))
+                                                    .catch((err) => toast.error(err instanceof Error ? err.message : 'Błąd payroll'))
+                                                    .finally(() => setPayrollLoading(false))
+                                            }}
+                                            className="rounded-md border bg-background px-2 py-1 text-xs"
+                                        >
+                                            {Array.from({ length: 12 }).map((_, i) => {
+                                                const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+                                                const y = d.getFullYear()
+                                                const m = d.getMonth() + 1
+                                                return (
+                                                    <option key={`${y}-${m}`} value={`${y}-${m}`}>
+                                                        {BONUS_MONTHS_PL[m - 1]} {y}
+                                                    </option>
+                                                )
+                                            })}
+                                        </select>
+                                    </div>
+
+                                    {payrollLoading ? (
+                                        <div className="py-8 flex items-center justify-center">
+                                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                                        </div>
+                                    ) : !payrollSummary ? (
+                                        <p className="text-sm text-muted-foreground text-center py-6">
+                                            Wybierz miesiąc, aby załadować rozliczenie.
+                                        </p>
+                                    ) : (
+                                        <>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="rounded-md border border-white/10 bg-white/5 p-2">
+                                                    <div className="text-[10px] text-muted-foreground">Godziny</div>
+                                                    <div className="text-lg font-bold">{payrollSummary.hours_total.toFixed(2)} h</div>
+                                                </div>
+                                                <div className="rounded-md border border-white/10 bg-white/5 p-2">
+                                                    <div className="text-[10px] text-muted-foreground">Stawka</div>
+                                                    <div className="text-lg font-bold">
+                                                        {payrollSummary.rate != null
+                                                            ? `${payrollSummary.rate.toFixed(2)} ${payrollSummary.rate_currency}/h`
+                                                            : '—'}
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-md border border-white/10 bg-white/5 p-2">
+                                                    <div className="text-[10px] text-muted-foreground">Podstawowa</div>
+                                                    <div className="text-lg font-bold">
+                                                        {payrollSummary.base_amount != null
+                                                            ? `${payrollSummary.base_amount.toFixed(2)} ${payrollSummary.rate_currency}`
+                                                            : '—'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {payrollSummary.bonuses.length > 0 && (
+                                                <table className="w-full text-xs">
+                                                    <thead className="border-b border-border/40 text-muted-foreground">
+                                                        <tr>
+                                                            <th className="text-left py-1.5 font-medium">Kategoria</th>
+                                                            <th className="text-right py-1.5 font-medium">Kwota</th>
+                                                            <th className="text-left py-1.5 font-medium">Powód</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {payrollSummary.bonuses.map((b) => (
+                                                            <tr key={b.id} className="border-b border-border/20">
+                                                                <td className="py-1.5">{BONUS_CATEGORIES_PL[b.category]}</td>
+                                                                <td className="py-1.5 text-right font-mono tabular-nums">
+                                                                    {b.amount.toFixed(2)} {b.currency}
+                                                                </td>
+                                                                <td className="py-1.5 text-muted-foreground">{b.reason}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            )}
+                                            <div className="rounded-md border border-white/10 bg-white/5 p-3 flex items-center justify-between">
+                                                <span className="text-xs text-muted-foreground">Suma całkowita</span>
+                                                <span className="text-xl font-bold">
+                                                    {payrollSummary.grand_total != null
+                                                        ? `${payrollSummary.grand_total.toFixed(2)} ${payrollSummary.rate_currency}`
+                                                        : (
+                                                              <span className="text-amber-400 text-sm">mieszane waluty</span>
+                                                          )}
+                                                </span>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </ScrollArea>
                         </TabsContent>
 
