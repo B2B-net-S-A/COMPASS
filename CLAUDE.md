@@ -490,6 +490,57 @@ curl -X PATCH "https://graph.microsoft.com/v1.0/users/artur.twardowski@b2bnetwor
 
 Jeśli zwraca 403 RAOP — uruchom skrypt PowerShell powyżej żeby przyznać role w EXO.
 
+## Phase 26 — Bonusy z auto-akceptem managera + ukrycie faktur (PR #128 + #130, 2026-05-19)
+
+Uproszczenie workflow premii — manager (lub admin) przypisuje pracownikowi premię z uzasadnieniem za konkretny miesiąc; bonus jest od razu w stanie terminalnym `assigned` (auto-approved, bez wymogu linkowania z fakturą). Pracownik dostaje email (Graph Send-As, accent zielony) + push in-app. Manager może później edytować (kwota, uzasadnienie, notatka) lub anulować — każda zmiana propaguje notyfikacje.
+
+Równocześnie wyłączono cały flow faktur (Phase 19/20c) z UI za pomocą feature flag — tabela `invoices` zostaje w DB, server actions rzucają błąd gdy flaga off. Phase 27 może reaktywować po przeprojektowaniu.
+
+**Migracja `phase26a_bonus_assigned_workflow`:**
+- `bonuses`: rozszerzony CHECK status o `'assigned'`; nowe kolumny `period_year SMALLINT`, `period_month SMALLINT`.
+- Partial UNIQUE `(recipient_user_id, period_year, period_month) WHERE status='assigned' AND period_year IS NOT NULL` — jedna przypisana premia per pracownik per miesiąc.
+- Trigger `enforce_bonus_stage_transitions` zaktualizowany:
+  - INSERT: tylko `status='assigned'` + wymagane `period_year`/`period_month` + brak `linked_invoice_id`.
+  - UPDATE: `assigned → cancelled` OK; `assigned → assigned` (edit amount/reason/notes); zablokowana zmiana `recipient_user_id` lub period.
+  - Legacy transitions (`pending → paid`, `pending → cancelled`, `paid → pending`) zostają dla wstecznej kompatybilności.
+- RLS `bonuses_update_cancel_by_proposer` przyjmuje `status IN ('pending','assigned')`.
+- `notifications` type CHECK rozszerzony o `'bonus_assigned'`, `'bonus_updated'`.
+
+**Feature flag faktur:**
+- `NEXT_PUBLIC_INVOICES_ENABLED` (client/build-time, embedded w bundle) — filtruje taby `invoices` w `/internal` + `/internal/admin` + sidebar `financeGroup`/`managerGroup` invoice links + `EmployeeProfileDialog` tab "Faktury".
+- `INVOICES_ENABLED` (server-only runtime) — `requireInvoicesEnabled()` guard na `submitInvoice/approveInvoice/rejectInvoice/managerApproveInvoice/managerRejectInvoice/linkBonusToInvoice/unlinkBonus/proposeBonus`.
+- Defaults: oba `false` (invoices off). Żeby reaktywować — ustawić oba na `'true'` w Coolify env vault + rebuild.
+
+**Server actions (lib/actions/internal-bonus.ts):**
+- `assignBonus(input)` — guard `requireBonusProposerAction`; manager scope (`profiles.manager_id = ctx.userId`); period validation (past 12 + current); UNIQUE friendly error; INSERT z `status='assigned'`; email + push + audit.
+- `updateBonus(input)` — guard proposer/admin; tylko `amount`/`reason`/`notes` (period+recipient immutable trigger-side); push z `changes` summary.
+- `cancelBonus(input)` — przyjmuje teraz `assigned` lub `pending`.
+- `listEligibleEmployeesForBonus()` — manager: zespół; admin: wszyscy HR-zone aktywni; wykluczeni consultant + exited.
+- Legacy `proposeBonus/linkBonusToInvoice/unlinkBonus` — `@deprecated`, gated przez `requireInvoicesEnabled()`.
+
+**UI:**
+- `/internal/admin?tab=bonuses` (admin + manager) — lista zespołu z filtrami `assigned/cancelled/all`, button "Przypisz premię" + per-row "Edytuj"/"Anuluj". Kolumna miesiąc z PL nazwą.
+- `/internal?tab=bonuses` (pracownik) — read-only lista własnych premii z kwotą, miesiącem, uzasadnieniem, kto przypisał.
+- `EmployeeProfileDialog` (Phase 24): 4. tab "Premie" (read-only ostatnie 12 mies.) + top-level button "Przypisz premię" dla managera/admina pracownika (otwiera AssignBonusForm w nested dialogu z zablokowanym recipientem).
+- Komponent `AssignBonusForm` (shared, mode `'assign' | 'edit'`, period selector past 12 + current).
+
+**Audit log akcje:** `BONUS_ASSIGNED`, `BONUS_UPDATED` (Phase 26) + istniejące `BONUS_PROPOSED/CANCELLED/LINKED_TO_INVOICE/UNLINKED` (Phase 23 legacy).
+
+**Notyfikacje:**
+- In-app DB (notifications table): typy `bonus_assigned`, `bonus_updated`.
+- Email: `sendBonusAssigned` (zielony accent, period PL) + `sendBonusUpdated` (niebieski accent + `changesSummary`) via Graph Send-As, `saveToSentItems=true`.
+- Web push (best-effort): `sendPushToUserId` z `url: '/internal?tab=bonuses'`.
+- Wszystkie 3 kanały w `Promise.allSettled` — channel failure nie blokuje pozostałych.
+
+**Bug fixy po deploy (2026-05-19):**
+- **PR #130:** `getEmployeeProfile` używał PostgREST embed `proposer:profiles!bonuses_proposed_by_fkey(full_name)` dla bonusów, ale `bonuses` ma 3 FK do `profiles` (proposed_by, recipient_user_id, cancelled_by) → wieloznaczność. Naprawione przez rozdzielenie na dwa zapytania (bonusy → potem `profiles WHERE id IN (...)`).
+- **PR #133:** Realna przyczyna crashu — embed managera `manager:profiles!profiles_manager_id_fkey(full_name)` zwracał PGRST200 "Could not find a relationship... using hint 'profiles_manager_id_fkey'". Self-FK na profiles (manager_id → profiles.id) nie rozpoznawany przez PostgREST schema cache mimo że constraint istnieje; `NOTIFY pgrst, 'reload schema'` nie pomogło. Fix: split na dwa zapytania (profile bez embed → potem `profiles WHERE id = manager_id`). Reguła: **unikaj embed-by-FK-hint na self-referencing tabelach w Compass**; preferuj split queries.
+
+**Ops po deploy:**
+1. Migracja zaaplikowana via Supabase MCP (prod miał 0 bonusów + 0 faktur, więc zero ryzyka).
+2. Coolify env vars ustawione przez API: `NEXT_PUBLIC_INVOICES_ENABLED=false` (buildtime+runtime), `INVOICES_ENABLED=false` (runtime).
+3. Brak rebuild required — defaults bez env vars i tak resolve do `false`. Env vars set jawnie dla widoczności w panelu.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
