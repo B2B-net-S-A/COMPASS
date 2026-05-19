@@ -1774,7 +1774,10 @@ export async function createExternalEmployee(input: CreateExternalEmployeeInput)
     //      logs at the moment of creation).
     const email = input.email.trim().toLowerCase()
     const fullName = input.fullName.trim()
-    const randomPassword = `ext-${crypto.randomUUID()}-${crypto.randomUUID()}`
+    // bcrypt (used by gotrue) caps the password at 72 bytes — keep the random
+    // password well below that. One UUID (36 chars) is far more entropy than
+    // anyone will ever brute-force.
+    const randomPassword = crypto.randomUUID()
 
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
         email,
