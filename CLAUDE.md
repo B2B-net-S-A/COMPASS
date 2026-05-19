@@ -375,6 +375,49 @@ Po approve urlopu system automatycznie ustawia OOF w Outlook pracownika + tworzy
 
 **Audit log:** `LEAVE_SUBSTITUTE_ASSIGNED`, `LEAVE_OOF_SET`, `LEAVE_OOF_FAILED`, `LEAVE_OOF_DISABLED`.
 
+## Phase 25c — Lifecycle emails są opt-in (2026-05-19)
+
+Welcome onboarding email + exit interview invitation + offboarding checklist do managera **nie wysyłają się automatycznie** przy starcie onboardingu / exit interview. TCM/admin decyduje w momencie startu (checkbox w dialogu, default OFF) lub po fakcie (przycisk "Wyślij teraz" na karcie szczegółów). Powód: external pracownicy są tworzeni z prywatnym emailem podanym przez TCM (vendor, kontraktor, "konto procedurowe") — automatyczne emaile spamują skrzynki które nigdy nie miały dostać powiadomień systemowych.
+
+**Push notifications (in-app) bez zmian** — zostają domyślnie, bo nie spamują skrzynki pocztowej. Push do external user i tak są no-op (brak `auth.users`), push do managera to przydatna notyfikacja w aplikacji.
+
+**Migracja `phase25c_lifecycle_email_tracking`** (6 kolumn — kto/kiedy wysłał):
+- `onboarding_progress.welcome_email_sent_at`, `welcome_email_sent_by`
+- `exit_interviews.invitation_sent_at`, `invitation_sent_by`
+- `exit_interviews.manager_checklist_sent_at`, `manager_checklist_sent_by`
+
+**Server actions (4 zmodyfikowane + 3 nowe):**
+- `startOnboardingWithOptions({sendWelcomeEmail?: boolean})` — default `false`
+- `createExternalEmployee({sendWelcomeEmail?: boolean})` — default `false`, ignorowane gdy `autoStartOnboarding=false`
+- `scheduleExitInterview(userId, terminationDate, scheduledFor, options?: {sendEmployeeEmail?, sendManagerEmail?})` — oba default `false`
+- `archiveEmployee(userId, terminationDate, options?: {sendEmployeeEmail?, sendManagerEmail?})` — wrapper w `user-admin.ts`, defaults `false`
+- NEW `sendOnboardingWelcomeEmailNow(progressId)` — TCM/admin manual trigger
+- NEW `sendExitInvitationNow(interviewId)` — TCM/admin manual trigger
+- NEW `sendOffboardingChecklistNow(interviewId)` — TCM/admin manual trigger
+- `startOnboarding(userId, templateId)` (legacy) — usunięto automatyczne wysyłanie emaila; callerzy powinni używać `*WithOptions`
+
+**UI dialogi (checkboxy, default OFF):**
+- `StartOnboardingDialog.tsx` — 1 checkbox "Wyślij email powitalny"
+- `ExternalEmployeeDialog.tsx` — 1 checkbox (visible gdy `autoStartOnboarding=true`)
+- `ScheduleExitDialog.tsx` — 2 checkboxy (pracownik + manager)
+- `AdminEmployeesPanelClient.tsx` → `ArchiveEmployeeDialog` — 2 checkboxy
+
+**UI detail pages:**
+- Onboarding detail (`/internal/lifecycle/onboarding/[progressId]`) — komponent `WelcomeEmailCard` (visible dla lifecycle admin gdy onboarding niezakończony), pokazuje status "Wysłany {date} przez {name}" lub button "Wyślij email powitalny teraz". Re-send wymaga potwierdzenia (audytowane).
+- Exit detail (`/internal/lifecycle/exit/[interviewId]`) — komponent `ExitEmailsCard` (visible gdy `status=scheduled` i `user_id` not null), 2 sekcje: zaproszenie do pracownika + checklist do managera, każda z buttonem + status.
+
+**Audit log (3 nowe actions):**
+- `ONBOARDING_WELCOME_EMAIL_SENT` (z `trigger: 'start_dialog' | 'external_create_dialog' | 'manual_send_now'`)
+- `EXIT_INVITATION_EMAIL_SENT`
+- `OFFBOARDING_CHECKLIST_EMAIL_SENT`
+
+Plus rozszerzono istniejące `ONBOARDING_STARTED` i `EXIT_INTERVIEW_SCHEDULED` metadata o `welcome_email_opt_in` / `employee_email_opt_in` / `manager_email_opt_in` (boolean) — można post-hoc zobaczyć z audit log czy email poszedł od razu, później, czy w ogóle.
+
+**Ops po deploy:**
+1. Migracja aplikowana już przez MCP (2026-05-19).
+2. Brak nowych cron jobów ani env vars.
+3. Smoke test: TCM tworzy external pracownika z `autoStart=ON` i `sendWelcomeEmail=OFF` → sprawdź audit log: `EXTERNAL_EMPLOYEE_CREATED`, `ONBOARDING_STARTED (welcome_email_opt_in=false)`, BRAK `ONBOARDING_WELCOME_EMAIL_SENT`. Otwiera onboarding detail → klika "Wyślij email powitalny teraz" → sprawdź `onboarding_progress.welcome_email_sent_at != NULL`, audit log `ONBOARDING_WELCOME_EMAIL_SENT (trigger=manual_send_now)`.
+
 ## Phase 25b — Manager/Admin wpisuje urlop w imieniu pracownika (PR #124, 2026-05-18)
 
 Pracownik czasem zapomina wysłać wniosek urlopowy. Manager (dla swojego zespołu via `profiles.manager_id`) lub admin (globalnie) może wpisać urlop post-factum z auto-approve. Pracownik dostaje email + push z informacją kto wpisał.

@@ -709,6 +709,7 @@ export async function setUserManager(targetUserId: string, managerId: string | n
 export async function archiveEmployee(
     targetUserId: string,
     terminationDate?: string,
+    options?: { sendEmployeeEmail?: boolean; sendManagerEmail?: boolean },
 ): Promise<{ interviewId: string }> {
     const { user: actor } = await requireSuperAdmin()
     const target = await fetchTargetUser(targetUserId)
@@ -725,7 +726,12 @@ export async function archiveEmployee(
     // out of the user-admin module graph at load time, so existing test mocks
     // for user-admin don't need to also stub the lifecycle module surface.
     const { scheduleExitInterview } = await import('@/lib/actions/lifecycle')
-    const interviewId = await scheduleExitInterview(targetUserId, date)
+    // Phase 25c: emails are opt-in; defaults preserved as `false` when caller
+    // doesn't specify options (silent archive — TCM can send manually later).
+    const interviewId = await scheduleExitInterview(targetUserId, date, null, {
+        sendEmployeeEmail: options?.sendEmployeeEmail === true,
+        sendManagerEmail: options?.sendManagerEmail === true,
+    })
     return { interviewId }
 }
 

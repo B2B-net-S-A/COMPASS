@@ -29,6 +29,8 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
     const [selectedUserId, setSelectedUserId] = useState<string>('')
     const [terminationDate, setTerminationDate] = useState<string>('')
     const [scheduledFor, setScheduledFor] = useState<string>('')
+    const [sendEmployeeEmail, setSendEmployeeEmail] = useState(false)
+    const [sendManagerEmail, setSendManagerEmail] = useState(false)
     const [isPending, startTransition] = useTransition()
 
     useEffect(() => {
@@ -62,6 +64,8 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
         setSelectedUserId('')
         setTerminationDate('')
         setScheduledFor('')
+        setSendEmployeeEmail(false)
+        setSendManagerEmail(false)
     }
 
     function handleSubmit(e: React.FormEvent) {
@@ -80,8 +84,16 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                     selectedUserId,
                     terminationDate,
                     scheduledFor || null,
+                    { sendEmployeeEmail, sendManagerEmail },
                 )
-                toastSuccess(`Exit interview zaplanowany dla ${selectedEmployee?.full_name ?? selectedEmployee?.email}.`)
+                const sentParts: string[] = []
+                if (sendEmployeeEmail) sentParts.push('zaproszenie do pracownika')
+                if (sendManagerEmail) sentParts.push('checklist do managera')
+                toastSuccess(
+                    sentParts.length > 0
+                        ? `Exit interview zaplanowany dla ${selectedEmployee?.full_name ?? selectedEmployee?.email}. Wysłano: ${sentParts.join(' + ')}.`
+                        : `Exit interview zaplanowany dla ${selectedEmployee?.full_name ?? selectedEmployee?.email} (bez emaili — możesz je wysłać później z karty exit).`,
+                )
                 reset()
                 onOpenChange(false)
                 router.push(`/internal/lifecycle/exit/${interviewId}`)
@@ -100,7 +112,7 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                         Zaplanuj exit interview
                     </DialogTitle>
                     <DialogDescription>
-                        Status pracownika zmieni się na <strong>offboarding</strong>, pracownik dostanie email z linkiem do ankiety, manager dostanie checklist offboardingu (zwrot sprzętu, knowledge transfer, etc.).
+                        Status pracownika zmieni się na <strong>offboarding</strong> i utworzy się 5 default offboarding tasków. <strong>Emaile NIE są wysyłane automatycznie</strong> — zaznacz checkboxy poniżej, jeśli chcesz wysłać zaproszenie do ankiety pracownikowi i/lub checklist managerowi.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -180,13 +192,49 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                                 </p>
                             </div>
 
+                            <div className="space-y-2 rounded border border-input bg-background p-3">
+                                <div className="text-sm font-medium">Powiadomienia email (opcjonalne)</div>
+                                <label className="flex items-start gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={sendEmployeeEmail}
+                                        onChange={(e) => setSendEmployeeEmail(e.target.checked)}
+                                        className="mt-0.5 h-4 w-4 rounded border-input"
+                                    />
+                                    <span className="text-sm">
+                                        Wyślij zaproszenie do ankiety do <strong>{selectedEmployee.full_name ?? selectedEmployee.email}</strong>
+                                        <span className="block text-xs text-muted-foreground">
+                                            Email z linkiem do exit interview. Domyślnie wyłączone — wybierz, gdy pracownik wie o offboardingu.
+                                        </span>
+                                    </span>
+                                </label>
+                                <label className="flex items-start gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={sendManagerEmail}
+                                        onChange={(e) => setSendManagerEmail(e.target.checked)}
+                                        className="mt-0.5 h-4 w-4 rounded border-input"
+                                    />
+                                    <span className="text-sm">
+                                        Wyślij checklist offboardingu managerowi
+                                        <span className="block text-xs text-muted-foreground">
+                                            Email z listą tasków (zwrot sprzętu, knowledge transfer, etc.) do managera pracownika. Domyślnie wyłączone.
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+
                             <div className="rounded border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-muted-foreground">
                                 Po kliknięciu &quot;Zaplanuj&quot;:
                                 <ul className="list-disc list-inside mt-1 space-y-0.5">
                                     <li>Status pracownika: <strong>active → offboarding</strong></li>
-                                    <li>Email z linkiem do ankiety do <strong>{selectedEmployee.full_name ?? selectedEmployee.email}</strong></li>
-                                    <li>Email z offboarding checklist do managera (jeśli istnieje)</li>
                                     <li>5 default offboarding tasks (cofnięcie dostępów, zwrot sprzętu, knowledge transfer, finalne rozliczenie, archiwizacja)</li>
+                                    <li>
+                                        Emaile: {(sendEmployeeEmail || sendManagerEmail)
+                                            ? <strong>{[sendEmployeeEmail ? 'pracownik' : null, sendManagerEmail ? 'manager' : null].filter(Boolean).join(' + ')}</strong>
+                                            : <em>żaden (możesz wysłać później z karty exit)</em>}
+                                    </li>
+                                    <li>Push notyfikacje in-app: zostaną wysłane (manager + pracownik)</li>
                                 </ul>
                             </div>
                         </>

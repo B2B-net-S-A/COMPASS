@@ -105,6 +105,10 @@ export type AuditAction =
     | 'LEAVE_OOF_DISABLED'
     // Phase 25b — Manager/admin wpisuje urlop w imieniu pracownika
     | 'LEAVE_CREATED_ON_BEHALF'
+    // Phase 25c — Lifecycle emails są opt-in (welcome / exit invitation / manager checklist)
+    | 'ONBOARDING_WELCOME_EMAIL_SENT'
+    | 'EXIT_INVITATION_EMAIL_SENT'
+    | 'OFFBOARDING_CHECKLIST_EMAIL_SENT'
 
 export async function logAudit(
     userId: string | null,
