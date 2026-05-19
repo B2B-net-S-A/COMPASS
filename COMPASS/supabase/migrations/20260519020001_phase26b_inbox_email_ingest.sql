@@ -105,6 +105,9 @@ VALUES ('administracja@b2bnetwork.pl', NOW(), NULL)
 ON CONFLICT (mailbox) DO NOTHING;
 
 -- ─── 5. notifications.type — add inbox_email_reopened ───────────────────────
+-- NOTE: must include ALL types added by earlier migrations (Phase 23 bonus_*,
+-- Phase 26a bonus_assigned/updated) — DROP + CREATE wipes the entire list, so
+-- we re-state the full set.
 
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
@@ -117,6 +120,11 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
         'news_published',
         'incubator_pitch_status_changed', 'incubator_application_received', 'incubator_application_status_changed',
         'inbox_ticket_assigned', 'inbox_sla_breach',
+        -- Phase 23
+        'bonus_proposed', 'bonus_cancelled', 'bonus_linked',
+        -- Phase 26 (a)
+        'bonus_assigned', 'bonus_updated',
+        -- Phase 26b
         'inbox_email_reopened', 'inbox_email_arrived'
     ));
 
