@@ -41,7 +41,10 @@ import {
 import { classifyMessage, type SkipReason } from './filters'
 
 // Public so cron route can announce the mailbox in its response body.
-export const PRIMARY_INBOX_MAILBOX = 'administracja@b2bnetwork.pl'
+// Phase 26d — pivot to shared mailbox (RAOP cache wouldn't refresh for the
+// M365 Group). Real ingress is now compass-tickets@b2bnetwork.pl, fed by an
+// EXO transport rule BCC-ing every administracja@ message.
+export const PRIMARY_INBOX_MAILBOX = 'compass-tickets@b2bnetwork.pl'
 
 export interface IngestStats {
     mailbox: string
