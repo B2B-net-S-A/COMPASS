@@ -153,11 +153,13 @@ describe('assignBonus (Phase 26)', () => {
     it('inserts a bonus with status=assigned and current period', async () => {
         const now = new Date()
         const result = await assignBonus({
+            category: 'custom',
             recipient_user_id: 'recipient-1',
             period_year: now.getFullYear(),
             period_month: now.getMonth() + 1,
             amount: 500,
             reason: 'Test bonus za bieżący miesiąc',
+            custom_email_memo: 'Memo dla testu',
         })
         expect(supabaseState.insertedRow).toMatchObject({
             recipient_user_id: 'recipient-1',
@@ -173,11 +175,13 @@ describe('assignBonus (Phase 26)', () => {
     it('rejects self-assignment', async () => {
         await expect(
             assignBonus({
+                category: 'custom',
                 recipient_user_id: 'manager-1',
                 period_year: 2026,
                 period_month: 5,
                 amount: 100,
                 reason: 'self assign attempt',
+                custom_email_memo: 'memo',
             }),
         ).rejects.toThrow(/sobie/i)
     })
@@ -185,11 +189,13 @@ describe('assignBonus (Phase 26)', () => {
     it('rejects amount below minimum', async () => {
         await expect(
             assignBonus({
+                category: 'custom',
                 recipient_user_id: 'recipient-1',
                 period_year: 2026,
                 period_month: 5,
                 amount: 0,
                 reason: 'invalid amount',
+                custom_email_memo: 'memo',
             }),
         ).rejects.toThrow(/Kwota/)
     })
@@ -197,11 +203,13 @@ describe('assignBonus (Phase 26)', () => {
     it('rejects too short reason', async () => {
         await expect(
             assignBonus({
+                category: 'custom',
                 recipient_user_id: 'recipient-1',
                 period_year: 2026,
                 period_month: 5,
                 amount: 500,
                 reason: 'no',
+                custom_email_memo: 'memo',
             }),
         ).rejects.toThrow(/Uzasadnienie/)
     })
@@ -211,11 +219,13 @@ describe('assignBonus (Phase 26)', () => {
         const farPastYear = now.getFullYear() - 2
         await expect(
             assignBonus({
+                category: 'custom',
                 recipient_user_id: 'recipient-1',
                 period_year: farPastYear,
                 period_month: 1,
                 amount: 500,
                 reason: 'too far back',
+                custom_email_memo: 'memo',
             }),
         ).rejects.toThrow(/12 miesi/i)
     })
@@ -225,11 +235,13 @@ describe('assignBonus (Phase 26)', () => {
         const futureYear = now.getFullYear() + 1
         await expect(
             assignBonus({
+                category: 'custom',
                 recipient_user_id: 'recipient-1',
                 period_year: futureYear,
                 period_month: 12,
                 amount: 500,
                 reason: 'future period',
+                custom_email_memo: 'memo',
             }),
         ).rejects.toThrow(/12 miesi/i)
     })
@@ -239,11 +251,13 @@ describe('assignBonus (Phase 26)', () => {
         const now = new Date()
         await expect(
             assignBonus({
+                category: 'custom',
                 recipient_user_id: 'recipient-1',
                 period_year: now.getFullYear(),
                 period_month: now.getMonth() + 1,
                 amount: 500,
                 reason: 'cross-team assignment',
+                custom_email_memo: 'memo',
             }),
         ).rejects.toThrow(/podw/i)
     })
@@ -255,11 +269,13 @@ describe('assignBonus (Phase 26)', () => {
         supabaseState.recipientProfile.manager_id = 'different-manager'
         const now = new Date()
         const result = await assignBonus({
+            category: 'custom',
             recipient_user_id: 'recipient-1',
             period_year: now.getFullYear(),
             period_month: now.getMonth() + 1,
             amount: 500,
             reason: 'admin assign cross-team',
+            custom_email_memo: 'memo',
         })
         expect(result).toBeTruthy()
         expect(supabaseState.insertedRow).toMatchObject({ status: 'assigned' })
@@ -270,11 +286,13 @@ describe('assignBonus (Phase 26)', () => {
         const now = new Date()
         await expect(
             assignBonus({
+                category: 'custom',
                 recipient_user_id: 'recipient-1',
                 period_year: now.getFullYear(),
                 period_month: now.getMonth() + 1,
                 amount: 500,
                 reason: 'duplicate test',
+                custom_email_memo: 'memo',
             }),
         ).rejects.toThrow(/została już przypisana/i)
     })
