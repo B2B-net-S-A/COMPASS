@@ -112,6 +112,11 @@ export type AuditAction =
     | 'ONBOARDING_WELCOME_EMAIL_SENT'
     | 'EXIT_INVITATION_EMAIL_SENT'
     | 'OFFBOARDING_CHECKLIST_EMAIL_SENT'
+    // Phase 26b — Inbox email ingest from administracja@b2bnetwork.pl
+    | 'INBOX_EMAIL_INGESTED'
+    | 'INBOX_EMAIL_THREAD_APPENDED'
+    | 'INBOX_EMAIL_REOPENED'
+    | 'INBOX_EMAIL_SKIPPED'
 
 export async function logAudit(
     userId: string | null,

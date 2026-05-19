@@ -136,12 +136,19 @@ export interface SupportInboxMeta {
     ticket_id: string
     source: InboxSource
     external_message_id: string | null
+    /** Phase 26b — Graph conversationId used to thread replies into one ticket. */
+    external_conversation_id?: string | null
     consultant_id: string | null
     priority_level: InboxPriorityLevel
     due_date: string
     email_from: string | null
     email_subject: string | null
     email_received_at: string | null
+    /** Phase 26b — full email body if ingested via Graph. */
+    email_body_html?: string | null
+    email_body_text?: string | null
+    /** Phase 26b — set when ingest classified the message as noise (NDR/OOF/internal). */
+    email_skip_reason?: string | null
     created_at: string
 }
 
