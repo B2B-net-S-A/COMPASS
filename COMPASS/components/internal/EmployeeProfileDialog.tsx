@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, FileSpreadsheet, AlertCircle, Gift } from 'lucide-react'
+import { Loader2, FileSpreadsheet, AlertCircle, Gift, Clock } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -25,6 +25,7 @@ import {
 } from '@/lib/actions/internal-employee-profile'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 import { AssignBonusForm } from './AssignBonusForm'
+import { OvertimeOverrideDialog } from './OvertimeOverrideDialog'
 import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
 import type { EligibleEmployeeForBonus } from '@/lib/types/bonus'
 
@@ -117,6 +118,8 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
     const [snapshot, setSnapshot] = useState<EmployeeHRSnapshot | null>(null)
     const [loading, setLoading] = useState(false)
     const [assignOpen, setAssignOpen] = useState(false)
+    // Phase 27a — overtime override dialog state
+    const [overtimeTarget, setOvertimeTarget] = useState<{ year: number; month: number } | null>(null)
 
     const invoicesUiOn = isInvoicesEnabled()
 
@@ -249,6 +252,9 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                             <th className="text-right py-2 pr-2 font-medium">Wpisów</th>
                                             <th className="text-right py-2 pr-2 font-medium">Suma h</th>
                                             <th className="text-left py-2 pr-2 font-medium">Akceptacja</th>
+                                            {snapshot.viewer_is_admin && (
+                                                <th className="text-right py-2 pr-2 font-medium">Akcje</th>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -293,6 +299,26 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                                             <span className="text-muted-foreground">—</span>
                                                         )}
                                                     </td>
+                                                    {snapshot.viewer_is_admin && (
+                                                        <td className="py-2 pr-2 text-right">
+                                                            {t.entry_count > 0 && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-7 px-2 text-[11px]"
+                                                                    onClick={() =>
+                                                                        setOvertimeTarget({
+                                                                            year: t.year,
+                                                                            month: t.month,
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    <Clock className="h-3 w-3 mr-1" />
+                                                                    Nadgodziny
+                                                                </Button>
+                                                            )}
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             )
                                         })}
@@ -557,6 +583,19 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                     />
                 </DialogContent>
             </Dialog>
+        )}
+
+        {/* Phase 27a — Overtime override dialog (admin only). */}
+        {overtimeTarget && snapshot && (
+            <OvertimeOverrideDialog
+                open={!!overtimeTarget}
+                onOpenChange={(o) => !o && setOvertimeTarget(null)}
+                userId={snapshot.profile.user_id}
+                employeeName={snapshot.profile.full_name ?? snapshot.profile.email}
+                year={overtimeTarget.year}
+                month={overtimeTarget.month}
+                onSuccess={() => reload()}
+            />
         )}
         </>
     )

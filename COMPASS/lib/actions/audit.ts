@@ -117,6 +117,9 @@ export type AuditAction =
     | 'INBOX_EMAIL_THREAD_APPENDED'
     | 'INBOX_EMAIL_REOPENED'
     | 'INBOX_EMAIL_SKIPPED'
+    // Phase 27a — Timesheet 8h hard block + admin overtime override
+    | 'TIMESHEET_OVERTIME_OVERRIDE'
+    | 'TIMESHEET_OVERTIME_OVERRIDE_CLEARED'
 
 export async function logAudit(
     userId: string | null,

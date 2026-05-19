@@ -37,6 +37,8 @@ export interface EmployeeHRSnapshot {
     bonuses: BonusHistoryRow[]
     /** Phase 26: viewer (admin or this user's manager) can assign new bonuses for this employee. */
     viewer_can_assign_bonus: boolean
+    /** Phase 27a: viewer is admin and can enter overtime overrides on this employee's timesheet. */
+    viewer_is_admin: boolean
 }
 
 export interface InvoiceHistoryRow {
@@ -227,6 +229,7 @@ export async function getEmployeeProfile(
         leaves: (leavesRes.data ?? []) as LeaveHistoryRow[],
         bonuses,
         viewer_can_assign_bonus,
+        viewer_is_admin: ctx.isAdmin,
     }
 }
 
@@ -392,4 +395,102 @@ export async function exportEmployeeTimesheetsCSV(
 export async function exportMyTimesheetsCSV(range: CSVExportRange): Promise<CSVExportResult> {
     const ctx = await requireInternalOrAdminAction()
     return exportEmployeeTimesheetsCSV(ctx.userId, range)
+}
+
+// ─── Phase 27a — Per-month entries for admin overtime override dialog ──────
+
+export interface EmployeeMonthEntryRow {
+    id: string
+    timesheet_id: string
+    work_date: string
+    hours: number
+    project: string | null
+    description: string
+    is_overtime_override: boolean
+    override_reason: string | null
+    override_by: string | null
+    override_at: string | null
+    override_by_name: string | null
+}
+
+/**
+ * Phase 27a — fetch all entries for a user/year/month, with override metadata.
+ * Used by OvertimeOverrideDialog so the admin can pick which day to override.
+ * Access scope identical to getEmployeeProfile (admin/finanse/manager-of-target).
+ */
+export async function getEmployeeMonthEntries(
+    userId: string,
+    year: number,
+    month: number,
+): Promise<EmployeeMonthEntryRow[]> {
+    await assertCanViewEmployee(userId)
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+        throw new Error('Nieprawidłowy rok.')
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+        throw new Error('Miesiąc musi być w zakresie 1–12.')
+    }
+
+    const admin = createServiceClient()
+    const { data: header } = await admin
+        .from('timesheets')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('year', year)
+        .eq('month', month)
+        .maybeSingle<{ id: string }>()
+
+    if (!header) return []
+
+    const { data: entries, error } = await admin
+        .from('timesheet_entries')
+        .select(
+            'id, timesheet_id, work_date, hours, project, description, is_overtime_override, override_reason, override_by, override_at',
+        )
+        .eq('timesheet_id', header.id)
+        .order('work_date')
+    if (error) throw new Error(`Błąd pobierania wpisów: ${error.message}`)
+
+    // Phase 27a — cast through `unknown` because Supabase-generated database.types.ts
+    // does not yet know about the new override columns (regenerated after migration).
+    const rows = ((entries ?? []) as unknown) as Array<{
+        id: string
+        timesheet_id: string
+        work_date: string
+        hours: number | string
+        project: string | null
+        description: string
+        is_overtime_override: boolean
+        override_reason: string | null
+        override_by: string | null
+        override_at: string | null
+    }>
+
+    const overrideByIds = Array.from(
+        new Set(rows.map((r) => r.override_by).filter((id): id is string => !!id)),
+    )
+    const nameMap = new Map<string, string | null>()
+    if (overrideByIds.length > 0) {
+        const { data: profiles } = await admin
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', overrideByIds)
+        for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) {
+            nameMap.set(p.id, p.full_name)
+        }
+    }
+
+    return rows.map((r) => ({
+        id: r.id,
+        timesheet_id: r.timesheet_id,
+        work_date: r.work_date,
+        hours: Number(r.hours),
+        project: r.project,
+        description: r.description,
+        is_overtime_override: r.is_overtime_override,
+        override_reason: r.override_reason,
+        override_by: r.override_by,
+        override_at: r.override_at,
+        override_by_name: r.override_by ? nameMap.get(r.override_by) ?? null : null,
+    }))
 }

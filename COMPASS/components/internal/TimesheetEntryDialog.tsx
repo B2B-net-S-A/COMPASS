@@ -76,8 +76,10 @@ export function TimesheetEntryDialog({
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         const h = Number(hours)
-        if (!Number.isFinite(h) || h <= 0 || h > 24) {
-            alert('Liczba godzin musi być w zakresie (0, 24].')
+        if (!Number.isFinite(h) || h <= 0 || h > 8) {
+            alert(
+                'Maksymalnie 8h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.',
+            )
             return
         }
         if (!description.trim()) {
@@ -136,13 +138,13 @@ export function TimesheetEntryDialog({
                             )}
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="entry_hours" className="text-sm">Godziny</Label>
+                            <Label htmlFor="entry_hours" className="text-sm">Godziny <span className="text-xs text-muted-foreground">(max 8)</span></Label>
                             <Input
                                 id="entry_hours"
                                 type="number"
                                 step="0.25"
                                 min="0.25"
-                                max="24"
+                                max="8"
                                 inputMode="decimal"
                                 pattern="[0-9]*\.?[0-9]*"
                                 value={hours}
@@ -150,6 +152,9 @@ export function TimesheetEntryDialog({
                                 required
                                 className="min-h-[44px] text-base"
                             />
+                            <p className="text-[10px] text-muted-foreground">
+                                Nadgodziny wpisuje administrator z poziomu profilu pracownika.
+                            </p>
                         </div>
                     </div>
 
