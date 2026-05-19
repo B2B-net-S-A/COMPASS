@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { Inbox } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Inbox } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/server'
 import { KanbanBoard } from '@/components/inbox/KanbanBoard'
@@ -26,7 +26,7 @@ export default async function AdminInboxPage() {
     const isAuthorized = profile?.role === 'admin' || profile?.is_inbox_handler === true
     if (!isAuthorized) redirect('/home')
 
-    const [ticketsRes, handlersRes, categoriesRes] = await Promise.all([
+    const [ticketsRes, handlersRes, categoriesRes, syncRes] = await Promise.all([
         listInboxTickets(),
         listInboxHandlers(),
         supabase
@@ -34,7 +34,24 @@ export default async function AdminInboxPage() {
             .select('id, slug, name_pl')
             .in('slug', INBOX_CATEGORY_SLUGS as unknown as string[])
             .order('sort_order', { ascending: true }),
+        // Phase 26b — sync state for the primary admin mailbox.
+        supabase
+            .from('inbox_sync_state')
+            .select('mailbox, last_synced_at, last_run_at, last_error, last_scanned, last_created, last_appended, last_skipped')
+            .eq('mailbox', 'administracja@b2bnetwork.pl')
+            .maybeSingle(),
     ])
+
+    const sync = syncRes.data as null | {
+        mailbox: string
+        last_synced_at: string
+        last_run_at: string | null
+        last_error: string | null
+        last_scanned: number
+        last_created: number
+        last_appended: number
+        last_skipped: number
+    }
 
     const categories = (categoriesRes.data ?? []) as Array<{ id: string; slug: string; name_pl: string }>
     const handlers = handlersRes.success ? handlersRes.data : []
@@ -66,6 +83,43 @@ export default async function AdminInboxPage() {
             {!ticketsRes.success && (
                 <Card className="bg-red-500/5 border-red-500/20">
                     <CardContent className="p-4 text-sm text-red-400">{ticketsRes.error}</CardContent>
+                </Card>
+            )}
+
+            {sync && (
+                <Card
+                    className={
+                        sync.last_error
+                            ? 'bg-amber-500/5 border-amber-500/30'
+                            : 'bg-emerald-500/5 border-emerald-500/20'
+                    }
+                >
+                    <CardContent className="p-3 text-xs flex items-start gap-2 flex-wrap">
+                        {sync.last_error ? (
+                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        ) : (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1 space-y-0.5">
+                            <div className="font-medium">
+                                Auto-import z <code className="text-[11px]">{sync.mailbox}</code>
+                                {' · '}ostatni sync:{' '}
+                                {sync.last_run_at
+                                    ? new Date(sync.last_run_at).toLocaleString('pl-PL')
+                                    : 'jeszcze nie uruchomiony'}
+                            </div>
+                            <div className="text-muted-foreground">
+                                Cursor: {new Date(sync.last_synced_at).toLocaleString('pl-PL')}
+                                {' · '}skanowane: {sync.last_scanned}
+                                {' · '}nowe: {sync.last_created}
+                                {' · '}dopięte: {sync.last_appended}
+                                {' · '}pominięte: {sync.last_skipped}
+                            </div>
+                            {sync.last_error && (
+                                <div className="text-amber-300">Błąd: {sync.last_error}</div>
+                            )}
+                        </div>
+                    </CardContent>
                 </Card>
             )}
 

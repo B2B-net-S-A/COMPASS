@@ -541,6 +541,80 @@ Równocześnie wyłączono cały flow faktur (Phase 19/20c) z UI za pomocą feat
 2. Coolify env vars ustawione przez API: `NEXT_PUBLIC_INVOICES_ENABLED=false` (buildtime+runtime), `INVOICES_ENABLED=false` (runtime).
 3. Brak rebuild required — defaults bez env vars i tak resolve do `false`. Env vars set jawnie dla widoczności w panelu.
 
+## Phase 26b — Inbox email ingest z administracja@b2bnetwork.pl (2026-05-19)
+
+Automatyczne wciąganie maili przychodzących na shared mailbox `administracja@b2bnetwork.pl` do Kanban Inbox (`/admin/inbox`) jako tickety. Workflow rzeczywiście używany przez handlery (Błażej, Paulina, TCM, admin).
+
+**Scope MVP (świadomie wąski):**
+- Tylko `administracja@b2bnetwork.pl` (pierwsza skrzynka — można rozszerzyć kolejnymi rzędami w `inbox_sync_state`)
+- Bez backfill — startujemy od momentu deployu (seed: `last_synced_at=NOW()`)
+- Bez AI klasyfikacji — wszystko ląduje w kategorii **`inbox_administracja`** (P3 default), handler ręcznie zmienia kategorię/priorytet po review
+- Treść + załączniki zapisywane w DB / Storage (pełen widok bez otwierania Outlook)
+- Reply matchowany przez Graph `conversationId` → append comment do istniejącego ticketu + auto-reopen jeśli był resolved/closed
+- Filtry szumu: NDR/bounce (mailer-daemon, postmaster, noreply), Out-of-Office (Auto-Submitted/X-Auto-Response-Suppress/Precedence headers), internal noise (sentry/github/coolify/m365/azure/supabase/vercel/cloudflare domains). **NIE filtrujemy** maili od pracowników b2bnetwork.pl.
+
+**Migracja `phase26b_inbox_email_ingest`:**
+- `support_inbox_meta` += `external_conversation_id`, `email_body_html`, `email_body_text`, `email_headers JSONB`, `email_skip_reason`
+- Nowa tabela `inbox_sync_state` (singleton per mailbox): `last_synced_at`, `last_run_at`, `last_error`, statystyki `last_scanned/created/appended/skipped`
+- Storage bucket `inbox-attachments` (private), folder `{ticket_id}/`, RLS: SELECT dla handlerów, DELETE dla admin (writes tylko service-role)
+- `notifications.type` += `inbox_email_reopened`, `inbox_email_arrived`
+- Seed: row dla `administracja@b2bnetwork.pl` z `last_synced_at=NOW()`
+
+**Architektura:**
+```
+Coolify cron (*/5 min) → /api/cron/inbox-ingest (Bearer $CRON_SECRET)
+  ↓ withCronAuth (service-role admin client)
+  ↓ ingestMailbox(admin, 'administracja@b2bnetwork.pl')
+  ├─ Read cursor: SELECT last_synced_at FROM inbox_sync_state WHERE mailbox=...
+  ├─ Graph: GET /users/{mailbox}/messages?$filter=receivedDateTime gt {cursor} (+select+orderby+top=50)
+  ├─ Per message: classifyMessage() → skip lub keep
+  │    ├─ MATCH external_message_id → already ingested, advance cursor
+  │    ├─ MATCH external_conversation_id → append comment + reopen if closed
+  │    └─ NEW → INSERT support_tickets + support_inbox_meta + upload załączników
+  └─ UPDATE inbox_sync_state z nowym cursor + stats + last_error
+```
+
+**Pliki:**
+- `lib/mailbox/graph-mail-read.ts` — Graph helper (`listNewMessages`, `listAttachments`) z retry/backoff i Sentry capture
+- `lib/inbox/filters.ts` — pure functions (`classifyMessage`, `isNonDeliveryReport`, `isAutoReply`, `isInternalNoise`)
+- `lib/inbox/ingest.ts` — `ingestMailbox()` orchestrator
+- `app/api/cron/inbox-ingest/route.ts` — endpoint z `withCronAuth` i `maxDuration: 240s`
+- UI: `components/inbox/KanbanCard.tsx` (badge "✉ email"), `app/(protected)/admin/inbox/[id]/page.tsx` (sanitized HTML body + lista załączników z signed URLs), `app/(protected)/admin/inbox/page.tsx` (banner sync status)
+
+**Audit log actions:** `INBOX_EMAIL_INGESTED`, `INBOX_EMAIL_THREAD_APPENDED`, `INBOX_EMAIL_REOPENED`, `INBOX_EMAIL_SKIPPED` (z reason details).
+
+**Coolify cron job (do dodania po deploy):**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `inbox-ingest` | `*/5 * * * *` (co 5 min) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/inbox-ingest"` |
+
+**Ops post-merge (KRYTYCZNE — bez tego ingest zwraca 403 RAOP):**
+
+1. **Entra app permission**: dodać `Mail.Read` (Application) do app `Compass` (`17f9ff8c-ac4e-414d-890e-a823722b4c35`) + admin consent
+2. **Exchange Online RBAC** (analogicznie do Phase 25 OOF — bez tego Graph blokuje):
+   ```powershell
+   Connect-ExchangeOnline -UserPrincipalName artur.twardowski@b2bnetwork.pl
+   $sp = Get-ServicePrincipal -Identity "Compass"
+   New-ManagementRoleAssignment -App $sp.Identity -Role "Application Mail.Read"
+   ```
+3. **Defense-in-depth** — scope app tylko do `administracja@b2bnetwork.pl` (bez tego app może czytać każdą skrzynkę w tenant):
+   ```powershell
+   New-ApplicationAccessPolicy -AppId "17f9ff8c-ac4e-414d-890e-a823722b4c35" `
+     -PolicyScopeGroupId "administracja@b2bnetwork.pl" `
+     -AccessRight RestrictAccess `
+     -Description "Compass inbox ingest — only administracja@"
+   ```
+4. **Coolify schedule** — dodać cron `inbox-ingest` wg tabeli powyżej.
+5. **Verify** — po pierwszym tick:
+   ```bash
+   curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/inbox-ingest" | jq
+   # expect: {ok:true, mailbox:"administracja@b2bnetwork.pl", scanned, created, ...}
+   ```
+   I w UI `/admin/inbox` zielony banner "Auto-import z administracja@b2bnetwork.pl · ostatni sync: ..."
+
+**Opcjonalny env var** `INBOX_INGEST_USER_ID` — UUID profilu używanego jako `user_id` w `support_tickets` (bo NOT NULL). Bez niego cron wybiera pierwszego admina/handler chronologicznie. Override przydatny gdy chcesz "system bot" profile.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
