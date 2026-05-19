@@ -242,15 +242,25 @@ interface ArchiveProps {
 function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchiveProps) {
     const today = new Date().toISOString().slice(0, 10)
     const [terminationDate, setTerminationDate] = useState<string>(today)
+    const [sendEmployeeEmail, setSendEmployeeEmail] = useState(false)
+    const [sendManagerEmail, setSendManagerEmail] = useState(false)
     const [isPending, startTransition] = useTransition()
 
     function handleConfirm() {
         if (!employee) return
         startTransition(async () => {
             try {
-                await archiveEmployee(employee.id, terminationDate)
+                await archiveEmployee(employee.id, terminationDate, {
+                    sendEmployeeEmail,
+                    sendManagerEmail,
+                })
+                const sentParts: string[] = []
+                if (sendEmployeeEmail) sentParts.push('zaproszenie do pracownika')
+                if (sendManagerEmail) sentParts.push('checklist do managera')
                 toastSuccess(
-                    `Uruchomiono offboarding dla ${employee.full_name ?? employee.email}. Zaproszenie do exit interview wysłane.`,
+                    sentParts.length > 0
+                        ? `Uruchomiono offboarding dla ${employee.full_name ?? employee.email}. Wysłano: ${sentParts.join(' + ')}.`
+                        : `Uruchomiono offboarding dla ${employee.full_name ?? employee.email} (bez emaili — możesz je wysłać później z karty exit).`,
                 )
                 onArchived()
             } catch (err: unknown) {
@@ -279,8 +289,8 @@ function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchivePr
                                     <code className="text-[10px]">offboarding</code>
                                 </li>
                                 <li>5 default offboarding tasks (access, equipment, knowledge transfer…)</li>
-                                <li>Exit interview zaplanowany — zaproszenie e-mailem do pracownika</li>
-                                <li>Checklist dla managera (jeśli przypisany)</li>
+                                <li>Exit interview zaplanowany (status <code className="text-[10px]">scheduled</code>)</li>
+                                <li>Emaile: tylko gdy zaznaczysz checkboxy poniżej (domyślnie wyciszone)</li>
                             </ul>
                             <p className="text-xs text-muted-foreground">
                                 Konto <strong>nie znika</strong> z listy. Kolejka: <code>/internal/lifecycle</code>.
@@ -290,19 +300,52 @@ function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchivePr
                     </AlertDialogDescription>
                 </AlertDialogHeader>
 
-                <div className="space-y-1.5">
-                    <Label htmlFor="archive-termination-date">Data zakończenia</Label>
-                    <Input
-                        id="archive-termination-date"
-                        type="date"
-                        value={terminationDate}
-                        min={today}
-                        onChange={(e) => setTerminationDate(e.target.value)}
-                        disabled={isPending}
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                        Domyślnie dziś. Wpływa na due dates offboarding tasks + termin exit interview.
-                    </p>
+                <div className="space-y-3">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="archive-termination-date">Data zakończenia</Label>
+                        <Input
+                            id="archive-termination-date"
+                            type="date"
+                            value={terminationDate}
+                            min={today}
+                            onChange={(e) => setTerminationDate(e.target.value)}
+                            disabled={isPending}
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                            Domyślnie dziś. Wpływa na due dates offboarding tasks + termin exit interview.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2 rounded border border-input bg-muted/20 p-3">
+                        <div className="text-xs font-medium">Powiadomienia email (opcjonalne)</div>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={sendEmployeeEmail}
+                                onChange={(e) => setSendEmployeeEmail(e.target.checked)}
+                                disabled={isPending}
+                                className="mt-0.5 h-4 w-4 rounded border-input"
+                            />
+                            <span className="text-xs">
+                                Wyślij zaproszenie do exit interview do pracownika
+                            </span>
+                        </label>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={sendManagerEmail}
+                                onChange={(e) => setSendManagerEmail(e.target.checked)}
+                                disabled={isPending}
+                                className="mt-0.5 h-4 w-4 rounded border-input"
+                            />
+                            <span className="text-xs">
+                                Wyślij checklist offboardingu managerowi
+                            </span>
+                        </label>
+                        <p className="text-[11px] text-muted-foreground">
+                            Domyślnie wyłączone. Emaile możesz wysłać później z karty exit interview.
+                        </p>
+                    </div>
                 </div>
 
                 <AlertDialogFooter>

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { getOnboardingDetail, getLifecycleTimeline } from '@/lib/actions/lifecycle'
 import { requireLifecycleHubLayout } from '@/lib/auth/internal-guard'
 import { canManageLifecycle, roleLabelPl } from '@/lib/types/role'
+import { createLifecycleAdminClient } from '@/lib/supabase/lifecycle-client'
 import { OnboardingChecklist } from '../../components/OnboardingChecklist'
 import { OnboardingCheckinPanel } from '../../components/OnboardingCheckinPanel'
 import { LifecycleTimelinePanel } from '../../components/LifecycleTimelinePanel'
@@ -11,6 +12,7 @@ import { BuddyCard } from '../../components/BuddyCard'
 import { CancelOnboardingButton } from '../../components/CancelOnboardingButton'
 import { LifecycleNotesPanel } from '../../components/LifecycleNotesPanel'
 import { AuditHistoryPanel } from '../../components/AuditHistoryPanel'
+import { WelcomeEmailCard } from '../../components/WelcomeEmailCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +38,17 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
     const requiredTasks = detail.tasks.filter((t) => t.is_required).length
     const requiredCompleted = detail.tasks.filter((t) => t.is_required && t.completed_at !== null).length
     const progressPct = detail.tasks.length === 0 ? 0 : Math.round((completedTasks / detail.tasks.length) * 100)
+
+    // Phase 25c: resolve `welcome_email_sent_by` UUID → full_name for the email card.
+    let welcomeEmailSentByName: string | null = null
+    if (detail.progress.welcome_email_sent_by) {
+        const { data: actor } = await createLifecycleAdminClient()
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', detail.progress.welcome_email_sent_by)
+            .maybeSingle()
+        welcomeEmailSentByName = actor?.full_name ?? actor?.email ?? null
+    }
 
     return (
         <div className="container mx-auto p-6 space-y-6 max-w-5xl">
@@ -78,6 +91,16 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
                     <div className="font-medium">{detail.template.name}</div>
                 </div>
             </section>
+
+            {isLifecycleAdmin && !detail.progress.completed_at && (
+                <WelcomeEmailCard
+                    progressId={detail.progress.id}
+                    employeeName={detail.employee.full_name ?? detail.employee.email}
+                    employeeEmail={detail.employee.email}
+                    sentAt={detail.progress.welcome_email_sent_at}
+                    sentByName={welcomeEmailSentByName}
+                />
+            )}
 
             <section>
                 <h2 className="text-lg font-semibold mb-3">Checklist</h2>

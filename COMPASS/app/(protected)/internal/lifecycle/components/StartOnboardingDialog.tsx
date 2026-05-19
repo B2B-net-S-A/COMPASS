@@ -32,6 +32,7 @@ export function StartOnboardingDialog({ open, onOpenChange }: Props) {
     const [selectedUserId, setSelectedUserId] = useState<string>('')
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
     const [hiredAt, setHiredAt] = useState<string>('')
+    const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false)
     const [isPending, startTransition] = useTransition()
 
     useEffect(() => {
@@ -77,6 +78,7 @@ export function StartOnboardingDialog({ open, onOpenChange }: Props) {
         setSelectedUserId('')
         setSelectedTemplateId('')
         setHiredAt('')
+        setSendWelcomeEmail(false)
     }
 
     function handleSubmit(e: React.FormEvent) {
@@ -95,8 +97,13 @@ export function StartOnboardingDialog({ open, onOpenChange }: Props) {
                     userId: selectedUserId,
                     templateId: selectedTemplateId,
                     hiredAt: hiredAt || null,
+                    sendWelcomeEmail,
                 })
-                toastSuccess(`Onboarding uruchomiony dla ${selectedEmployee?.full_name ?? selectedEmployee?.email}.`)
+                toastSuccess(
+                    sendWelcomeEmail
+                        ? `Onboarding uruchomiony dla ${selectedEmployee?.full_name ?? selectedEmployee?.email}. Email powitalny wysłany.`
+                        : `Onboarding uruchomiony dla ${selectedEmployee?.full_name ?? selectedEmployee?.email} (bez emaila — możesz wysłać go później z karty onboardingu).`,
+                )
                 reset()
                 onOpenChange(false)
                 router.push(`/internal/lifecycle/onboarding/${progressId}`)
@@ -202,12 +209,30 @@ export function StartOnboardingDialog({ open, onOpenChange }: Props) {
                                 </select>
                             </div>
 
+                            <label className="flex items-start gap-2 rounded border border-input bg-background p-3 cursor-pointer hover:bg-accent/50">
+                                <input
+                                    type="checkbox"
+                                    checked={sendWelcomeEmail}
+                                    onChange={(e) => setSendWelcomeEmail(e.target.checked)}
+                                    className="mt-0.5 h-4 w-4 rounded border-input"
+                                />
+                                <div className="space-y-0.5">
+                                    <div className="text-sm font-medium">Wyślij email powitalny do pracownika</div>
+                                    <div className="text-xs text-muted-foreground">
+                                        Domyślnie wyłączone — wybierz, jeśli adres email należy do nowego pracownika i chcesz, by dostał link do checklist&apos;a. Email możesz też wysłać później z karty onboardingu.
+                                    </div>
+                                </div>
+                            </label>
+
                             <div className="rounded border border-cyan-400/30 bg-cyan-400/5 p-3 text-xs text-muted-foreground">
                                 Po kliknięciu &quot;Uruchom&quot;:
                                 <ul className="list-disc list-inside mt-1 space-y-0.5">
                                     <li>Status pracownika zmieni się na <strong>onboarding</strong></li>
-                                    <li>Zostanie wysłany email powitalny z linkiem do checklist'a</li>
                                     <li>Tasks utworzą się automatycznie z due_date wyliczonym z hired_at</li>
+                                    <li>
+                                        Email powitalny: {sendWelcomeEmail ? <strong>zostanie wysłany teraz</strong> : <em>NIE zostanie wysłany (możesz wysłać później)</em>}
+                                    </li>
+                                    <li>Push notyfikacje in-app: zostaną wysłane (manager + pracownik jeśli ma konto)</li>
                                 </ul>
                             </div>
                         </>

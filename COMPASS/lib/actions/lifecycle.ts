@@ -384,6 +384,12 @@ export async function startOnboardingWithOptions(input: {
     userId: string
     templateId?: string | null
     hiredAt?: string | null // ISO date — if provided, updates profiles.hired_at first
+    /**
+     * Phase 25c: explicit opt-in to send the welcome email. Default `false` —
+     * TCM/admin must check the box in the dialog (or use "Send now" later) to
+     * avoid spamming external mailboxes set up purely for procedure tracking.
+     */
+    sendWelcomeEmail?: boolean
 }): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
     const supabase = createServiceClient()
@@ -409,14 +415,29 @@ export async function startOnboardingWithOptions(input: {
 
     const contact = await fetchUserContact(input.userId)
     if (contact) {
-        await sendOnboardingWelcome(
-            contact.email,
-            contact.full_name ?? contact.email,
-            progressId,
-            roleLabelPl(contact.role),
-        ).catch((e) => logCompat.error('sendOnboardingWelcome failed:', e))
+        if (input.sendWelcomeEmail === true) {
+            await sendOnboardingWelcome(
+                contact.email,
+                contact.full_name ?? contact.email,
+                progressId,
+                roleLabelPl(contact.role),
+            )
+                .then(async () => {
+                    await supabase
+                        .from('onboarding_progress')
+                        .update({ welcome_email_sent_at: new Date().toISOString(), welcome_email_sent_by: ctx.userId })
+                        .eq('id', progressId)
+                    await logAudit(ctx.userId, 'ONBOARDING_WELCOME_EMAIL_SENT', {
+                        progress_id: progressId,
+                        user_id: input.userId,
+                        trigger: 'start_dialog',
+                    })
+                })
+                .catch((e) => logCompat.error('sendOnboardingWelcome failed:', e))
+        }
 
-        // Push do pracownika (jeśli nie external — external nie ma auth.users)
+        // Push do pracownika (jeśli nie external — external nie ma auth.users).
+        // Phase 25c: push pozostają — to in-app, nie spamują skrzynki.
         sendPushToUserId(input.userId, {
             title: 'Witamy w B2B Network!',
             body: `Twój onboarding jest gotowy — masz checklist do wypełnienia.`,
@@ -424,7 +445,6 @@ export async function startOnboardingWithOptions(input: {
             tag: `onboarding-${progressId}`,
         }).catch(() => undefined)
 
-        // Push do managera
         if (contact.manager_id) {
             sendPushToUserId(contact.manager_id, {
                 title: 'Team-member rozpoczyna onboarding',
@@ -440,6 +460,7 @@ export async function startOnboardingWithOptions(input: {
         progress_id: progressId,
         template_id: input.templateId ?? null,
         triggered_by: 'manual',
+        welcome_email_opt_in: input.sendWelcomeEmail === true,
     })
     return progressId
 }
@@ -540,6 +561,10 @@ export async function reorderTemplateItems(templateId: string, orderedItemIds: s
 // ─── Onboarding Workflow ───────────────────────────────────────────────────
 
 export async function startOnboarding(userId: string, templateId?: string | null): Promise<string> {
+    // Phase 25c: legacy entrypoint — welcome email is no longer sent here
+    // automatically. Callers that want the email should use
+    // `startOnboardingWithOptions({ sendWelcomeEmail: true })` or call
+    // `sendOnboardingWelcomeEmailNow(progressId)` after start.
     const ctx = await requireLifecycleManagerAction()
     const supabase = createServiceClient() // bypass RLS — function is SECURITY DEFINER but we want admin context anyway
 
@@ -554,18 +579,7 @@ export async function startOnboarding(userId: string, templateId?: string | null
     }
     const progressId = data as string
 
-    // Send welcome email (best-effort, don't fail action)
-    const contact = await fetchUserContact(userId)
-    if (contact) {
-        await sendOnboardingWelcome(
-            contact.email,
-            contact.full_name ?? contact.email,
-            progressId,
-            roleLabelPl(contact.role),
-        ).catch((e) => logCompat.error('sendOnboardingWelcome failed:', e))
-    }
-
-    await logAudit(ctx.userId, 'ONBOARDING_STARTED', { user_id: userId, progress_id: progressId, template_id: templateId ?? null })
+    await logAudit(ctx.userId, 'ONBOARDING_STARTED', { user_id: userId, progress_id: progressId, template_id: templateId ?? null, welcome_email_opt_in: false })
     return progressId
 }
 
@@ -892,12 +906,64 @@ export async function completeOnboarding(progressId: string): Promise<void> {
     await logAudit(ctx.userId, 'ONBOARDING_COMPLETED', { progress_id: progressId, user_id: progress.user_id })
 }
 
+/**
+ * Phase 25c: TCM/admin manually triggers the welcome onboarding email after
+ * the fact (e.g. external pracownik who was created silently, or onboarding
+ * already running without email yet). Idempotent in the sense that it can be
+ * called repeatedly — each call overwrites `welcome_email_sent_at/by` and
+ * appends an audit log entry, so a re-send is auditable.
+ */
+export async function sendOnboardingWelcomeEmailNow(progressId: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: progress, error: progErr } = await supabase
+        .from('onboarding_progress')
+        .select('id, user_id, completed_at')
+        .eq('id', progressId)
+        .single()
+    if (progErr || !progress) throw new Error('Onboarding nie znaleziony.')
+    if (progress.completed_at) throw new Error('Onboarding już zakończony — email niepotrzebny.')
+
+    const contact = await fetchUserContact(progress.user_id)
+    if (!contact) throw new Error('Nie znaleziono danych pracownika.')
+
+    await sendOnboardingWelcome(
+        contact.email,
+        contact.full_name ?? contact.email,
+        progressId,
+        roleLabelPl(contact.role),
+    )
+
+    await supabase
+        .from('onboarding_progress')
+        .update({ welcome_email_sent_at: new Date().toISOString(), welcome_email_sent_by: ctx.userId })
+        .eq('id', progressId)
+
+    await logAudit(ctx.userId, 'ONBOARDING_WELCOME_EMAIL_SENT', {
+        progress_id: progressId,
+        user_id: progress.user_id,
+        trigger: 'manual_send_now',
+    })
+}
+
 // ─── Exit Interview Workflow ───────────────────────────────────────────────
+
+/**
+ * Phase 25c: explicit opt-in for outgoing exit-interview emails. Both default
+ * to `false`. Push notifications (in-app) are unaffected — they always go out
+ * because they don't spam external mailboxes.
+ */
+export interface ScheduleExitInterviewOptions {
+    sendEmployeeEmail?: boolean
+    sendManagerEmail?: boolean
+}
 
 export async function scheduleExitInterview(
     userId: string,
     terminationDate: string,
     scheduledFor?: string | null,
+    options?: ScheduleExitInterviewOptions,
 ): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
     const supabase = createServiceClient()
@@ -914,26 +980,59 @@ export async function scheduleExitInterview(
     }
     const interviewId = data as string
 
+    const sendEmployeeEmail = options?.sendEmployeeEmail === true
+    const sendManagerEmail = options?.sendManagerEmail === true
+
     const employee = await fetchUserContact(userId)
     if (employee) {
         const scheduledForLabel = scheduledFor ?? terminationDate
-        await sendExitInterviewInvitation(
-            employee.email,
-            employee.full_name ?? employee.email,
-            scheduledForLabel,
-            interviewId,
-        ).catch((e) => logCompat.error('sendExitInterviewInvitation failed:', e))
+
+        if (sendEmployeeEmail) {
+            await sendExitInterviewInvitation(
+                employee.email,
+                employee.full_name ?? employee.email,
+                scheduledForLabel,
+                interviewId,
+            )
+                .then(async () => {
+                    await supabase
+                        .from('exit_interviews')
+                        .update({ invitation_sent_at: new Date().toISOString(), invitation_sent_by: ctx.userId })
+                        .eq('id', interviewId)
+                    await logAudit(ctx.userId, 'EXIT_INVITATION_EMAIL_SENT', {
+                        interview_id: interviewId,
+                        user_id: userId,
+                        trigger: 'schedule_dialog',
+                    })
+                })
+                .catch((e) => logCompat.error('sendExitInterviewInvitation failed:', e))
+        }
 
         if (employee.manager_id) {
-            const manager = await fetchManagerContact(employee.manager_id)
-            if (manager) {
-                await sendOffboardingChecklistToManager(
-                    manager.email,
-                    manager.full_name ?? manager.email,
-                    employee.full_name ?? employee.email,
-                    terminationDate,
-                    userId,
-                ).catch((e) => logCompat.error('sendOffboardingChecklistToManager failed:', e))
+            if (sendManagerEmail) {
+                const manager = await fetchManagerContact(employee.manager_id)
+                if (manager) {
+                    await sendOffboardingChecklistToManager(
+                        manager.email,
+                        manager.full_name ?? manager.email,
+                        employee.full_name ?? employee.email,
+                        terminationDate,
+                        userId,
+                    )
+                        .then(async () => {
+                            await supabase
+                                .from('exit_interviews')
+                                .update({ manager_checklist_sent_at: new Date().toISOString(), manager_checklist_sent_by: ctx.userId })
+                                .eq('id', interviewId)
+                            await logAudit(ctx.userId, 'OFFBOARDING_CHECKLIST_EMAIL_SENT', {
+                                interview_id: interviewId,
+                                user_id: userId,
+                                manager_id: employee.manager_id,
+                                trigger: 'schedule_dialog',
+                            })
+                        })
+                        .catch((e) => logCompat.error('sendOffboardingChecklistToManager failed:', e))
+                }
             }
 
             sendPushToUserId(employee.manager_id, {
@@ -961,6 +1060,8 @@ export async function scheduleExitInterview(
         user_id: userId,
         interview_id: interviewId,
         scheduled_for: scheduledFor ?? terminationDate,
+        employee_email_opt_in: sendEmployeeEmail,
+        manager_email_opt_in: sendManagerEmail,
     })
     return interviewId
 }
@@ -1140,6 +1241,101 @@ export async function markEmployeeExited(userId: string): Promise<void> {
     })
 
     await logAudit(ctx.userId, 'EMPLOYEE_EXITED', { user_id: userId, open_required_tasks: openTasks ?? 0 })
+}
+
+/**
+ * Phase 25c: TCM/admin manually sends the exit interview invitation to the
+ * employee after the fact. Updates `invitation_sent_at/by` and audits.
+ */
+export async function sendExitInvitationNow(interviewId: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: interview, error: ivErr } = await supabase
+        .from('exit_interviews')
+        .select('id, user_id, status, scheduled_for')
+        .eq('id', interviewId)
+        .single()
+    if (ivErr || !interview) throw new Error('Exit interview nie znaleziony.')
+    if (interview.status !== 'scheduled') {
+        throw new Error('Email zaproszenia można wysłać tylko gdy ankieta ma status "scheduled".')
+    }
+    if (!interview.user_id) throw new Error('Ankieta zanonimizowana — nie można wysłać zaproszenia.')
+
+    const contact = await fetchUserContact(interview.user_id)
+    if (!contact) throw new Error('Nie znaleziono danych pracownika.')
+
+    const scheduledForLabel = interview.scheduled_for ?? new Date().toISOString().slice(0, 10)
+
+    await sendExitInterviewInvitation(
+        contact.email,
+        contact.full_name ?? contact.email,
+        scheduledForLabel,
+        interviewId,
+    )
+
+    await supabase
+        .from('exit_interviews')
+        .update({ invitation_sent_at: new Date().toISOString(), invitation_sent_by: ctx.userId })
+        .eq('id', interviewId)
+
+    await logAudit(ctx.userId, 'EXIT_INVITATION_EMAIL_SENT', {
+        interview_id: interviewId,
+        user_id: interview.user_id,
+        trigger: 'manual_send_now',
+    })
+}
+
+/**
+ * Phase 25c: TCM/admin manually sends the offboarding checklist email to the
+ * manager of an exiting employee. Updates `manager_checklist_sent_at/by`.
+ */
+export async function sendOffboardingChecklistNow(interviewId: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createServiceClient()
+
+    const { data: interview, error: ivErr } = await supabase
+        .from('exit_interviews')
+        .select('id, user_id, status')
+        .eq('id', interviewId)
+        .single()
+    if (ivErr || !interview) throw new Error('Exit interview nie znaleziony.')
+    if (!interview.user_id) throw new Error('Ankieta zanonimizowana — nie można wysłać do managera.')
+
+    const employee = await fetchUserContact(interview.user_id)
+    if (!employee) throw new Error('Nie znaleziono danych pracownika.')
+    if (!employee.manager_id) throw new Error('Pracownik nie ma przypisanego managera.')
+
+    const manager = await fetchManagerContact(employee.manager_id)
+    if (!manager) throw new Error('Nie znaleziono managera.')
+
+    // Read termination_date from profiles (RPC start_offboarding_for_user set it).
+    const { data: prof } = await supabase
+        .from('profiles')
+        .select('termination_date')
+        .eq('id', interview.user_id)
+        .single()
+    const terminationDate = prof?.termination_date ?? new Date().toISOString().slice(0, 10)
+
+    await sendOffboardingChecklistToManager(
+        manager.email,
+        manager.full_name ?? manager.email,
+        employee.full_name ?? employee.email,
+        terminationDate,
+        interview.user_id,
+    )
+
+    await supabase
+        .from('exit_interviews')
+        .update({ manager_checklist_sent_at: new Date().toISOString(), manager_checklist_sent_by: ctx.userId })
+        .eq('id', interviewId)
+
+    await logAudit(ctx.userId, 'OFFBOARDING_CHECKLIST_EMAIL_SENT', {
+        interview_id: interviewId,
+        user_id: interview.user_id,
+        manager_id: employee.manager_id,
+        trigger: 'manual_send_now',
+    })
 }
 
 // ─── Offboarding queries ───────────────────────────────────────────────────
@@ -1548,6 +1744,14 @@ export interface CreateExternalEmployeeInput {
     externalNotes?: string | null
     templateId?: string | null
     autoStartOnboarding?: boolean
+    /**
+     * Phase 25c: explicit opt-in to send the welcome email after onboarding
+     * starts. Only relevant when `autoStartOnboarding !== false`. Default `false`
+     * — TCM must check the box in the dialog. Prevents accidental emails to
+     * external mailboxes (vendors, contractors, ex-employees) that exist only
+     * for procedure tracking.
+     */
+    sendWelcomeEmail?: boolean
 }
 
 export async function createExternalEmployee(input: CreateExternalEmployeeInput): Promise<{ userId: string; progressId: string | null }> {
@@ -1610,7 +1814,30 @@ export async function createExternalEmployee(input: CreateExternalEmployeeInput)
                     user_id: userId,
                     progress_id: progressId,
                     triggered_by: 'external_create',
+                    welcome_email_opt_in: input.sendWelcomeEmail === true,
                 })
+
+                // Phase 25c: welcome email only when TCM explicitly opted in.
+                if (input.sendWelcomeEmail === true) {
+                    await sendOnboardingWelcome(
+                        input.email.trim().toLowerCase(),
+                        input.fullName.trim(),
+                        progressId,
+                        roleLabelPl(input.role),
+                    )
+                        .then(async () => {
+                            await supabase
+                                .from('onboarding_progress')
+                                .update({ welcome_email_sent_at: new Date().toISOString(), welcome_email_sent_by: ctx.userId })
+                                .eq('id', progressId!)
+                            await logAudit(ctx.userId, 'ONBOARDING_WELCOME_EMAIL_SENT', {
+                                progress_id: progressId,
+                                user_id: userId,
+                                trigger: 'external_create_dialog',
+                            })
+                        })
+                        .catch((e) => logCompat.error('sendOnboardingWelcome (external) failed:', e))
+                }
             }
         } catch (e: unknown) {
             logCompat.error('Auto-start external onboarding failed:', e)

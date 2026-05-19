@@ -36,6 +36,7 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
     const [externalNotes, setExternalNotes] = useState('')
     const [templateId, setTemplateId] = useState('')
     const [autoStart, setAutoStart] = useState(true)
+    const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false)
     const [managers, setManagers] = useState<Array<{ id: string; full_name: string | null; email: string; role: DbRole }>>([])
     const [buddies, setBuddies] = useState<Array<{ id: string; full_name: string | null; email: string; role: DbRole }>>([])
     const [templates, setTemplates] = useState<TemplateChoice[]>([])
@@ -73,6 +74,7 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
         setExternalNotes('')
         setTemplateId('')
         setAutoStart(true)
+        setSendWelcomeEmail(false)
     }
 
     function handleSubmit(e: React.FormEvent) {
@@ -92,8 +94,13 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
                     externalNotes: externalNotes.trim() || null,
                     templateId: templateId || null,
                     autoStartOnboarding: autoStart,
+                    sendWelcomeEmail: autoStart && sendWelcomeEmail,
                 })
-                toastSuccess(`External pracownik utworzony: ${fullName}.`)
+                toastSuccess(
+                    autoStart && sendWelcomeEmail
+                        ? `External pracownik utworzony: ${fullName}. Email powitalny wysłany.`
+                        : `External pracownik utworzony: ${fullName}${autoStart ? ' (bez emaila — możesz wysłać go później z karty onboardingu)' : ''}.`,
+                )
                 reset()
                 onOpenChange(false)
                 if (result.progressId) {
@@ -230,30 +237,46 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
                             <span>Uruchom onboarding od razu</span>
                         </label>
                         {autoStart && (
-                            <div className="pl-6 space-y-1.5">
-                                <Label htmlFor="ext-template" className="text-xs">Szablon onboardingu</Label>
-                                <select
-                                    id="ext-template"
-                                    className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
-                                    value={templateId}
-                                    onChange={(e) => setTemplateId(e.target.value)}
-                                >
-                                    <option value="">Auto (default dla roli)</option>
-                                    {templates.map((t) => (
-                                        <option key={t.id} value={t.id}>
-                                            {t.name} ({t.items_count} items)
-                                            {t.is_default ? ' ★' : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className="pl-6 space-y-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="ext-template" className="text-xs">Szablon onboardingu</Label>
+                                    <select
+                                        id="ext-template"
+                                        className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+                                        value={templateId}
+                                        onChange={(e) => setTemplateId(e.target.value)}
+                                    >
+                                        <option value="">Auto (default dla roli)</option>
+                                        {templates.map((t) => (
+                                            <option key={t.id} value={t.id}>
+                                                {t.name} ({t.items_count} items)
+                                                {t.is_default ? ' ★' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={sendWelcomeEmail}
+                                        onChange={(e) => setSendWelcomeEmail(e.target.checked)}
+                                        className="mt-0.5 h-4 w-4 rounded border-input"
+                                    />
+                                    <span>
+                                        Wyślij email powitalny na podany adres
+                                        <span className="block text-xs text-muted-foreground mt-0.5">
+                                            Domyślnie wyłączone — dla external pracownika, którego email jest tylko kontaktem (nie ma konta Compass), domyślnie nie wysyłamy nic. Wybierz tylko gdy chcesz, by osoba dostała powiadomienie. Email możesz też wysłać później z karty onboardingu.
+                                        </span>
+                                    </span>
+                                </label>
                             </div>
                         )}
                     </div>
 
                     <div className="rounded border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-muted-foreground">
                         <strong>Uwaga:</strong> external pracownik nie loguje się do Compass.
-                        Nie dostanie push-notifikacji ani nie zobaczy swojej checklist'a.
-                        TCM oznacza taski w jego imieniu. Email-powiadomienia są wysyłane na podany adres.
+                        Nie dostanie push-notifikacji ani nie zobaczy swojej checklist&apos;a.
+                        TCM oznacza taski w jego imieniu. <strong>Emaile NIE są wysyłane automatycznie</strong> — tylko gdy zaznaczysz checkbox powyżej lub klikniesz &quot;Wyślij email&quot; na karcie onboardingu.
                     </div>
 
                     <DialogFooter className="gap-2">

@@ -56,6 +56,9 @@ export interface OnboardingProgress {
     checkin_day30_at: string | null
     checkin_day30_score: number | null
     checkin_day30_note: string | null
+    // Phase 25c: welcome email opt-in tracking
+    welcome_email_sent_at: string | null
+    welcome_email_sent_by: string | null
     created_at: string
     updated_at: string
 }
@@ -143,6 +146,11 @@ export interface ExitInterview {
     reviewed_by: string | null
     reviewed_at: string | null
     reviewer_note: string | null
+    // Phase 25c: email opt-in tracking
+    invitation_sent_at: string | null
+    invitation_sent_by: string | null
+    manager_checklist_sent_at: string | null
+    manager_checklist_sent_by: string | null
     created_at: string
     updated_at: string
 }
