@@ -105,12 +105,11 @@ export async function getEmployeeProfile(
 
     const admin = createServiceClient()
 
+    // Phase 26: pobierz profil + manager osobnymi zapytaniami (PostgREST self-FK embed
+    // `manager:profiles!profiles_manager_id_fkey` zwracał PGRST200 — schema cache nie znajdował hint).
     const { data: profileRow, error: pErr } = await admin
         .from('profiles')
-        .select(`
-            id, full_name, email, role, manager_id, employment_status, hired_at,
-            manager:profiles!profiles_manager_id_fkey(full_name)
-        `)
+        .select('id, full_name, email, role, manager_id, employment_status, hired_at')
         .eq('id', userId)
         .single<{
             id: string
@@ -120,9 +119,18 @@ export async function getEmployeeProfile(
             manager_id: string | null
             employment_status: string | null
             hired_at: string | null
-            manager: { full_name: string | null } | null
         }>()
     if (pErr || !profileRow) throw new Error('Pracownik nie istnieje.')
+
+    let managerFullName: string | null = null
+    if (profileRow.manager_id) {
+        const { data: managerRow } = await admin
+            .from('profiles')
+            .select('full_name')
+            .eq('id', profileRow.manager_id)
+            .single<{ full_name: string | null }>()
+        managerFullName = managerRow?.full_name ?? null
+    }
 
     const profile: EmployeeProfileSummary = {
         user_id: profileRow.id,
@@ -130,7 +138,7 @@ export async function getEmployeeProfile(
         email: profileRow.email,
         role: profileRow.role,
         manager_id: profileRow.manager_id,
-        manager_full_name: profileRow.manager?.full_name ?? null,
+        manager_full_name: managerFullName,
         employment_status: profileRow.employment_status,
         hired_at: profileRow.hired_at,
     }
