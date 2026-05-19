@@ -269,9 +269,9 @@ async function notifyRecipient(args: {
         body: bodyPl,
         url: '/internal?tab=bonuses',
         tag: `bonus-${args.kind}-${args.bonusId}`,
-    } as any).catch((err) => {
+    }).catch((err) => {
         logCompat.error('Bonus push notification failed:', err)
-        return { success: false }
+        return { sent: 0, failed: 1 }
     })
 
     const results = await Promise.allSettled([inAppPromise, emailPromise, pushPromise])
