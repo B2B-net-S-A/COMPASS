@@ -37,6 +37,7 @@ import {
     listNewMessages,
     type GraphInternetHeader,
     type GraphMessage,
+    type MailboxKind,
 } from '@/lib/mailbox/graph-mail-read'
 import { classifyMessage, type SkipReason } from './filters'
 
@@ -197,12 +198,13 @@ async function uploadAttachments(
     admin: SupabaseClient,
     ticketId: string,
     mailbox: string,
+    kind: MailboxKind,
     messageId: string,
     hasAttachments: boolean,
 ): Promise<{ uploaded: UploadedAttachment[]; errors: string[] }> {
     if (!hasAttachments) return { uploaded: [], errors: [] }
 
-    const res = await listAttachments({ mailbox, messageId })
+    const res = await listAttachments({ mailbox, kind, messageId })
     if (!res.success) {
         return { uploaded: [], errors: [`attachments_list_failed: ${res.error}`] }
     }
@@ -245,6 +247,7 @@ async function uploadAttachments(
 interface ProcessContext {
     admin: SupabaseClient
     mailbox: string
+    mailboxKind: MailboxKind
     inboxBotUserId: string
     administrationCategoryId: string
 }
@@ -299,7 +302,7 @@ async function processNewTicket(
         return { ok: false, error: metaErr.message }
     }
 
-    const att = await uploadAttachments(ctx.admin, ticketId, ctx.mailbox, msg.id, msg.hasAttachments)
+    const att = await uploadAttachments(ctx.admin, ticketId, ctx.mailbox, ctx.mailboxKind, msg.id, msg.hasAttachments)
 
     await writeAudit(ctx.admin, 'INBOX_EMAIL_INGESTED', {
         ticket_id: ticketId,
@@ -357,6 +360,7 @@ async function processAppendComment(
         ctx.admin,
         match.ticketId,
         ctx.mailbox,
+        ctx.mailboxKind,
         msg.id,
         msg.hasAttachments,
     )
@@ -506,15 +510,18 @@ export async function ingestMailbox(
         return stats
     }
 
+    const mailboxKind: MailboxKind = row.mailbox_kind === 'group' ? 'group' : 'user'
+
     const ctx: ProcessContext = {
         admin,
         mailbox,
+        mailboxKind,
         inboxBotUserId,
         administrationCategoryId,
     }
 
     // 3. Graph fetch
-    const fetched = await listNewMessages({ mailbox, since })
+    const fetched = await listNewMessages({ mailbox, kind: mailboxKind, since })
     if (!fetched.success) {
         stats.errors.push(`graph_list_failed: ${fetched.error}`)
         stats.durationMs = Date.now() - start

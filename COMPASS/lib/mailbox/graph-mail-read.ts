@@ -1,25 +1,26 @@
-// Phase 26b/26c — Read Microsoft 365 Group conversations for inbox ingest.
+// Phase 26b/26c/26d — Read mailbox messages for inbox ingest.
 //
-// administracja@b2bnetwork.pl turned out to be a Microsoft 365 Group
-// (Unified Group / GroupMailbox), NOT a user/shared mailbox. Mail.Read User API
-// does not work on group mailboxes; we must use the Groups Conversations API
-// instead:
+// Supports TWO modes via mailbox_kind:
 //
-//   GET /groups/{groupId}/threads?$filter=lastDeliveredDateTime gt {cursor}
-//   GET /groups/{groupId}/threads/{threadId}/posts
-//   GET /groups/{groupId}/threads/{threadId}/posts/{postId}/attachments
+//   - 'user'  → /users/{upn}/messages   (standard user/shared mailbox)
+//   - 'group' → /groups/{id}/threads/posts (Microsoft 365 Group / GroupMailbox)
 //
-// Requires:
-//   - Entra app permission `Group.Read.All` (Application) + admin consent
-//   - Exchange Online RBAC: `Application Mail.Read` (RAOP gate; Groups use
-//     EXO mailbox semantics under the hood)
-//   - ApplicationAccessPolicy (CompassMailSenders DL): the target group must
-//     be a member, otherwise RAOP returns 403 even with the role granted
+// Phase 26b targeted administracja@b2bnetwork.pl but it turned out to be a
+// M365 Group; Phase 26c rewrote helper on Groups Conversations API. Phase 26d
+// added user-mode branch back because Microsoft RAOP cache for
+// ApplicationAccessPolicy changes on Group mailboxes refused to refresh in
+// reasonable time — we pivoted to a shared mailbox (compass-tickets@b2bnetwork.pl)
+// fed via an EXO transport rule that BCCs every administracja@ message.
 //
-// Each post within a thread is mapped to a synthetic "message" so that the
-// downstream ingest pipeline (lib/inbox/ingest.ts) can stay unchanged. The
-// thread id is reused as `conversationId` — replies in the same thread match
-// the same ticket and append as a comment.
+// Requirements per mode:
+//   - 'user':  Entra `Mail.Read` (Application) + admin consent; EXO RBAC
+//              `Application Mail.Read` role assignment on the SP.
+//   - 'group': Entra `Group.Read.All` (Application) + admin consent; same EXO
+//              role; group target must be a member of CompassMailSenders DL
+//              (or no ApplicationAccessPolicy at all for the app).
+//
+// Both paths produce the same `GraphMessage` shape so the downstream ingest
+// pipeline (lib/inbox/ingest.ts) doesn't branch.
 
 import * as Sentry from '@sentry/nextjs'
 import {
@@ -187,25 +188,40 @@ export async function resolveGroupId(mailbox: string): Promise<string | null> {
 
 // ─── listNewMessages ────────────────────────────────────────────────────────
 
+export type MailboxKind = 'user' | 'group'
+
 const THREAD_SELECT = 'id,topic,hasAttachments,lastDeliveredDateTime'
 const POST_SELECT = 'id,createdDateTime,receivedDateTime,hasAttachments,body,from,sender'
+const USER_MESSAGE_SELECT = [
+    'id',
+    'internetMessageId',
+    'conversationId',
+    'subject',
+    'bodyPreview',
+    'body',
+    'from',
+    'receivedDateTime',
+    'hasAttachments',
+    'isRead',
+    'internetMessageHeaders',
+].join(',')
+const DEFAULT_USER_BATCH = 50
 
 export interface ListNewMessagesInput {
-    /** SMTP/UPN-style identifier — resolved to a group id internally. */
+    /** SMTP/UPN-style identifier — group id resolved internally for group kind. */
     mailbox: string
-    /** Lower bound on post createdDateTime. Inclusive — dedup happens via post id. */
+    /** 'user' for /users/{upn}/messages, 'group' for /groups/{id}/threads/posts. Default 'group' for backward compat. */
+    kind?: MailboxKind
+    /** Lower bound on receivedDateTime/createdDateTime. Inclusive — dedup happens via message id. */
     since: Date
-    /** Soft cap on threads we scan per tick. Default 25 keeps each tick well under maxDuration. */
+    /** Soft cap on items per tick. */
     topThreads?: number
 }
 
 /**
- * Pull every post created since `since` across active threads in the group.
- *
- * Pagination: we cap at one page of threads (default 25) and one page of posts
- * per thread (default 50). Cron tick is every 5 minutes — at ~50 emails/day
- * volume on administracja@ this leaves enormous headroom. Heavier traffic
- * would accumulate backlog; the next tick clears it.
+ * Pull every message/post created since `since`. Branches on mailbox kind:
+ * user mailbox uses /users/{upn}/messages with $filter on receivedDateTime;
+ * group mailbox traverses /groups/{id}/threads then their posts.
  */
 export async function listNewMessages(
     input: ListNewMessagesInput,
@@ -215,13 +231,7 @@ export async function listNewMessages(
         return { success: true, messages: [], skipped: true }
     }
 
-    const groupId = await resolveGroupId(input.mailbox)
-    if (!groupId) {
-        return {
-            success: false,
-            error: `group_not_found: ${input.mailbox} (set INBOX_PRIMARY_GROUP_ID env var if Group.Read.All not granted yet)`,
-        }
-    }
+    const kind: MailboxKind = input.kind ?? 'group'
 
     let client
     try {
@@ -230,6 +240,48 @@ export async function listNewMessages(
         return {
             success: false,
             error: err instanceof Error ? err.message : 'graph_client_setup_failed',
+        }
+    }
+
+    if (kind === 'user') {
+        return listNewMessagesForUser(client, input)
+    }
+    return listNewMessagesForGroup(client, input)
+}
+
+async function listNewMessagesForUser(
+    client: { api: (path: string) => { get: () => Promise<unknown> } },
+    input: ListNewMessagesInput,
+): Promise<ListMessagesResult> {
+    const sinceIso = input.since.toISOString()
+    const top = input.topThreads ?? DEFAULT_USER_BATCH
+    const filter = `receivedDateTime gt ${sinceIso}`
+    const path =
+        `/users/${encodeURIComponent(input.mailbox)}/messages` +
+        `?$filter=${encodeURIComponent(filter)}` +
+        `&$select=${USER_MESSAGE_SELECT}` +
+        `&$orderby=receivedDateTime asc` +
+        `&$top=${top}`
+
+    const res = await fetchWithRetry<GraphListResponse<GraphMessage>>(
+        client,
+        path,
+        input.mailbox,
+        'list_user_messages',
+    )
+    if (!res.ok) return { success: false, error: res.error }
+    return { success: true, messages: res.data.value ?? [] }
+}
+
+async function listNewMessagesForGroup(
+    client: { api: (path: string) => { get: () => Promise<unknown> } },
+    input: ListNewMessagesInput,
+): Promise<ListMessagesResult> {
+    const groupId = await resolveGroupId(input.mailbox)
+    if (!groupId) {
+        return {
+            success: false,
+            error: `group_not_found: ${input.mailbox} (set INBOX_PRIMARY_GROUP_ID env var if Group.Read.All not granted yet)`,
         }
     }
 
@@ -251,7 +303,6 @@ export async function listNewMessages(
     for (const thread of threadList) {
         const postsRes = await fetchPostsForThread(client, groupId, thread, input.mailbox, sinceIso)
         if (!postsRes.ok) {
-            // Best-effort: one failing thread shouldn't sink the whole tick.
             logger.warn({
                 event: 'inbox.graph.thread_posts_failed',
                 threadId: thread.id,
@@ -264,7 +315,6 @@ export async function listNewMessages(
         }
     }
 
-    // Caller expects ascending order so the cursor advances monotonically.
     messages.sort(
         (a, b) => new Date(a.receivedDateTime).getTime() - new Date(b.receivedDateTime).getTime(),
     )
@@ -335,21 +385,42 @@ function previewFromBody(body: GraphPost['body']): string | null {
 const ATTACHMENT_SELECT = 'id,name,contentType,size,contentBytes'
 
 export interface ListAttachmentsInput {
-    /** Mailbox UPN/SMTP, resolved to group id internally. */
+    /** Mailbox UPN/SMTP, resolved to group id internally for group kind. */
     mailbox: string
-    /** Synthetic id from mapPostToMessage — format `${threadId}/${postId}`. */
+    /** For user kind: native Graph message id. For group kind: synthetic `${threadId}/${postId}`. */
     messageId: string
+    /** Mode selector; default 'group' for backward compat. */
+    kind?: MailboxKind
 }
 
 /**
- * Fetch all file-attachments for a post. Synthetic message id encodes both
- * thread and post; we split to build the Graph URL.
+ * Fetch all file-attachments. For user mailbox: /users/{upn}/messages/{id}/attachments.
+ * For group: synthetic message id encodes both thread and post; we split to
+ * build /groups/{id}/threads/{tid}/posts/{pid}/attachments.
  */
 export async function listAttachments(
     input: ListAttachmentsInput,
 ): Promise<ListAttachmentsResult> {
     if (!credsConfigured()) {
         return { success: true, attachments: [] }
+    }
+
+    let client
+    try {
+        client = await getGraphClient()
+    } catch (err) {
+        return {
+            success: false,
+            error: err instanceof Error ? err.message : 'graph_client_setup_failed',
+        }
+    }
+
+    const kind: MailboxKind = input.kind ?? 'group'
+    if (kind === 'user') {
+        const path =
+            `/users/${encodeURIComponent(input.mailbox)}/messages/${encodeURIComponent(input.messageId)}/attachments` +
+            `?$select=${ATTACHMENT_SELECT}`
+        return fetchAndFilterAttachments(client, path, input.mailbox)
     }
 
     const slash = input.messageId.indexOf('/')
@@ -364,24 +435,21 @@ export async function listAttachments(
         return { success: false, error: `group_not_found: ${input.mailbox}` }
     }
 
-    let client
-    try {
-        client = await getGraphClient()
-    } catch (err) {
-        return {
-            success: false,
-            error: err instanceof Error ? err.message : 'graph_client_setup_failed',
-        }
-    }
-
     const path =
         `/groups/${encodeURIComponent(groupId)}/threads/${encodeURIComponent(threadId)}/posts/${encodeURIComponent(postId)}/attachments` +
         `?$select=${ATTACHMENT_SELECT}`
+    return fetchAndFilterAttachments(client, path, input.mailbox)
+}
 
+async function fetchAndFilterAttachments(
+    client: { api: (path: string) => { get: () => Promise<unknown> } },
+    path: string,
+    mailbox: string,
+): Promise<ListAttachmentsResult> {
     const res = await fetchWithRetry<GraphListResponse<GraphAttachment & { '@odata.type'?: string }>>(
         client,
         path,
-        input.mailbox,
+        mailbox,
         'list_attachments',
     )
     if (!res.ok) return { success: false, error: res.error }
