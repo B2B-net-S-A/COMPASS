@@ -1,15 +1,22 @@
-// Phase 26b — Email ingest pipeline for inbox kanban.
+// Phase 26b/26c — Email ingest pipeline for inbox kanban.
 //
 // Called from /api/cron/inbox-ingest. Service-role context (RLS bypassed) —
 // must do its own authorisation by virtue of running only behind withCronAuth.
 //
+// Phase 26c: administracja@b2bnetwork.pl turned out to be a Microsoft 365 Group
+// (GroupMailbox). The Graph helper now reads /groups/{id}/threads/posts. Each
+// `post` is mapped to a synthetic GraphMessage (with `conversationId = thread.id`),
+// so this pipeline stays identical: dedupe on internetMessageId, match by
+// conversationId, append-or-create.
+//
 // Flow per mailbox tick:
 //   1. Load inbox_sync_state cursor (last_synced_at)
-//   2. Call Graph: listNewMessages(mailbox, since=cursor)
-//   3. For each message, in order:
+//   2. Call Graph: listNewMessages(mailbox, since=cursor) — resolves group id
+//      under the hood and pulls threads+posts created after cursor
+//   3. For each post-as-message, in order:
 //        a. classifyMessage → if skip, log + write meta with email_skip_reason
-//        b. dedupe by internetMessageId (UNIQUE on support_inbox_meta.external_message_id)
-//        c. find existing ticket by external_conversation_id
+//        b. dedupe by internetMessageId (synthetic `${threadId}/${postId}`)
+//        c. find existing ticket by external_conversation_id (= thread.id)
 //             - HIT: append comment + reopen if resolved/closed
 //             - MISS: create new ticket
 //        d. download + upload attachments to inbox-attachments/{ticket_id}/
@@ -452,7 +459,7 @@ export async function ingestMailbox(
     // 1. Cursor
     const { data: cursorRow } = await admin
         .from('inbox_sync_state')
-        .select('last_synced_at')
+        .select('last_synced_at, mailbox_kind, group_id')
         .eq('mailbox', mailbox)
         .maybeSingle()
 
@@ -466,7 +473,19 @@ export async function ingestMailbox(
         stats.durationMs = Date.now() - start
         return stats
     }
-    const since = new Date((cursorRow as { last_synced_at: string }).last_synced_at)
+    const row = cursorRow as {
+        last_synced_at: string
+        mailbox_kind?: string | null
+        group_id?: string | null
+    }
+    const since = new Date(row.last_synced_at)
+
+    // Phase 26c — when the mailbox is a M365 Group, surface the group id to the
+    // helper via env override (acts as a per-tick hint, falls back to live
+    // Graph lookup if missing).
+    if (row.mailbox_kind === 'group' && row.group_id) {
+        process.env.INBOX_PRIMARY_GROUP_ID = row.group_id
+    }
 
     // 2. Bot user + category (required for INSERTs)
     const [inboxBotUserId, categoryMap] = await Promise.all([

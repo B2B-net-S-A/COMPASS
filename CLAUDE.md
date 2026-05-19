@@ -615,6 +615,36 @@ Coolify cron (*/5 min) → /api/cron/inbox-ingest (Bearer $CRON_SECRET)
 
 **Opcjonalny env var** `INBOX_INGEST_USER_ID` — UUID profilu używanego jako `user_id` w `support_tickets` (bo NOT NULL). Bez niego cron wybiera pierwszego admina/handler chronologicznie. Override przydatny gdy chcesz "system bot" profile.
 
+## Phase 26c — Inbox ingest dla Microsoft 365 Group (2026-05-19)
+
+**Discovery podczas ops setupu Phase 26b:** `administracja@b2bnetwork.pl` to **Microsoft 365 Group** (`Unified` GroupType, primary SMTP `Administracja@b2bnetsa.onmicrosoft.com`, alias `administracja@b2bnetwork.pl`), NIE shared mailbox / user mailbox. Mail.Read User API zwraca `ErrorInvalidUser 404` dla GroupMailbox.
+
+**Architektura przebudowana:** helper `lib/mailbox/graph-mail-read.ts` używa teraz Groups Conversations API:
+- `GET /groups/{groupId}/threads?$filter=lastDeliveredDateTime gt {cursor}`
+- `GET /groups/{groupId}/threads/{threadId}/posts`
+- `GET /groups/{groupId}/threads/{threadId}/posts/{postId}/attachments`
+
+Każdy `post` jest mapowany na syntetyczny `GraphMessage` (zachowany shape z Phase 26b), gdzie `conversationId = thread.id`. Dzięki temu pipeline `lib/inbox/ingest.ts` zostaje bez zmian: dedupe po `internetMessageId` (= `${threadId}/${postId}`), match po `conversationId`, append-or-create.
+
+**Migracja `phase26c_inbox_group_id`:**
+- `inbox_sync_state` += `mailbox_kind` (`'user'|'group'`, default `'user'`), `group_id TEXT NULL`
+- Backfill row dla `administracja@b2bnetwork.pl`: `mailbox_kind='group'`, `group_id='c5630e8f-7aee-498e-9561-0c4a376ffa79'`
+
+**Permission stack (zaktualizowany):**
+
+| Layer | What | Status |
+|---|---|---|
+| Entra (Application permissions) | `Mail.Read` ❌ **niewystarczająca** dla GroupMailbox | dodane w Phase 26b ops — zostaje (nie szkodzi) |
+| Entra (Application permissions) | `Group.Read.All` ✅ wymagana dla `/groups/.../threads` | dodana 2026-05-19 + admin consent (via `az ad app permission add` + `az rest POST appRoleAssignments`) |
+| Exchange Online RBAC | `Application Mail.Read` ✅ wymagana — RAOP traktuje Group mailbox jak mailbox | dodana 2026-05-19 (`New-ManagementRoleAssignment -App $sp -Role "Application Mail.Read"`) |
+| ApplicationAccessPolicy | Tenant ma `CompassMailSenders` (RestrictAccess) — Compass może czytać tylko skrzynki w tej grupie | `Administracja@b2bnetsa.onmicrosoft.com` dodana jako member 2026-05-19 (`Add-DistributionGroupMember -Identity CompassMailSenders -Member Administracja@b2bnetsa.onmicrosoft.com`) |
+
+**Gotcha — propagacja AAP:** po `Add-DistributionGroupMember` Microsoft cache RAOP może trzymać stary stan **15-60 minut**. `Test-ApplicationAccessPolicy -AppId ... -Identity administracja@...` zwraca `AccessCheckResult: Granted` natychmiast, ale Graph wciąż 403 RAOP. Cierpliwość. Po propagacji ingest działa.
+
+**Opcjonalny env var** `INBOX_PRIMARY_GROUP_ID` — Graph object id grupy. Helper preferuje tę wartość jeśli ustawiona (skip live `$filter=mail eq ...` lookup). DB column `inbox_sync_state.group_id` jest source of truth — ingest ustawia env per-tick.
+
+**Filters caveat:** Groups Conversations API NIE zwraca `internetMessageHeaders` na postach. Sender-based filters (mailer-daemon, postmaster, noreply localparts; sentry/github/m365/azure noise domains) działają, ale Auto-Submitted/Precedence/X-Auto-Response-Suppress checki są no-op. W praktyce M365 Group nie dostaje typowych NDR/OOF email-side, więc to akceptowalne.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

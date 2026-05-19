@@ -1,6 +1,6 @@
-// Phase 26b — Noise filters for inbox email ingest.
+// Phase 26b/26c — Noise filters for inbox email ingest.
 //
-// Skrzynka administracja@b2bnetwork.pl dostaje też:
+// Skrzynka administracja@b2bnetwork.pl (Microsoft 365 Group) dostaje też:
 //   - Auto-reply Out-of-Office od odbiorców naszych emaili
 //   - Bounce/NDR (non-delivery reports) z mailer-daemon / postmaster
 //   - Wewnętrzne notyfikacje: GitHub PR notifications, Sentry alerts,
@@ -9,6 +9,13 @@
 // User decided in Phase 26b scope: filter ALL three categories, but do NOT
 // filter messages from b2bnetwork.pl employees (they may legitimately send
 // requests to administracja@ from their work account).
+//
+// IMPORTANT: Microsoft 365 Group conversation posts do NOT expose
+// internetMessageHeaders — header-based heuristics (Auto-Submitted, Precedence,
+// X-Auto-Response-Suppress) silently return false. Sender-based fallbacks
+// (mailer-daemon / postmaster / noreply localparts, known noise domains)
+// continue to work and catch the majority of cases. Edge: a custom-text OOF
+// from an external client could slip through; handler can close such tickets.
 //
 // Functions return SkipReason for ingest audit log; null means "keep".
 
