@@ -161,20 +161,22 @@ export async function getEmployeeProfile(
             .eq('user_id', userId)
             .gte('start_date', `${earliestYear}-01-01`)
             .order('start_date', { ascending: false }),
+        // Phase 26 — bonuses for past months. Proposer name joined separately to avoid PostgREST
+        // multi-FK ambiguity (bonuses has 3 FKs to profiles: proposed_by, recipient_user_id, cancelled_by).
         admin
             .from('bonuses')
-            .select(`
-                id, amount, currency, reason, status, period_year, period_month,
-                created_at, cancelled_at, cancellation_reason,
-                proposer:profiles!bonuses_proposed_by_fkey(full_name)
-            `)
+            .select(
+                'id, proposed_by, amount, currency, reason, status, period_year, period_month, created_at, cancelled_at, cancellation_reason',
+            )
             .eq('recipient_user_id', userId)
             .gte('created_at', `${earliestYear}-01-01`)
             .order('created_at', { ascending: false }),
     ])
 
-    const bonuses: BonusHistoryRow[] = ((bonusesRes.data ?? []) as Array<{
+    // Resolve proposer names in a single follow-up query.
+    const bonusRows = ((bonusesRes.data ?? []) as unknown as Array<{
         id: string
+        proposed_by: string
         amount: number | string
         currency: string
         reason: string
@@ -184,8 +186,19 @@ export async function getEmployeeProfile(
         created_at: string
         cancelled_at: string | null
         cancellation_reason: string | null
-        proposer: { full_name: string | null } | null
-    }>).map((b) => ({
+    }>)
+    const proposerIds = Array.from(new Set(bonusRows.map((b) => b.proposed_by)))
+    const proposerNameMap = new Map<string, string | null>()
+    if (proposerIds.length > 0) {
+        const { data: proposers } = await admin
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', proposerIds)
+        for (const p of (proposers ?? []) as Array<{ id: string; full_name: string | null }>) {
+            proposerNameMap.set(p.id, p.full_name)
+        }
+    }
+    const bonuses: BonusHistoryRow[] = bonusRows.map((b) => ({
         id: b.id,
         amount: Number(b.amount),
         currency: b.currency,
@@ -196,7 +209,7 @@ export async function getEmployeeProfile(
         created_at: b.created_at,
         cancelled_at: b.cancelled_at,
         cancellation_reason: b.cancellation_reason,
-        proposer_full_name: b.proposer?.full_name ?? null,
+        proposer_full_name: proposerNameMap.get(b.proposed_by) ?? null,
     }))
 
     return {
