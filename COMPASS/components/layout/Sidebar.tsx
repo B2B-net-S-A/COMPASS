@@ -214,7 +214,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
             ...(invoicesUiOn
                 ? [{ name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null as PermissionFeature | null }]
                 : []),
-            { name: 'Stawki pracowników', href: '/internal/admin/rates', icon: Coins, feature: null },
+            { name: 'Stawki i umowy', href: '/internal/admin/rates', icon: Coins, feature: null },
             // Phase 27d — clients list management (admin + finanse).
             { name: 'Klienci', href: '/internal/admin/clients', icon: Briefcase, feature: null },
         ],

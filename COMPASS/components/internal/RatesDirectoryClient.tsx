@@ -1,19 +1,13 @@
 'use client'
 
-// Phase 27c — Finance/Admin rates directory client.
+// Phase 27c/27h — Finance/Admin "Stawki i Umowy" directory client.
 
-import { useMemo, useState } from 'react'
-import { Loader2, Pencil, History } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Pencil, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog'
 import type { UserRateDirectoryRow } from '@/lib/types/rates'
-import { ChangeRateDialog } from './ChangeRateDialog'
+import { EMPLOYMENT_TYPE_LABELS_PL } from '@/lib/types/rates'
+import { ManageRateDialog } from './ManageRateDialog'
 import { RateHistoryDialog } from './RateHistoryDialog'
 
 interface Props {
@@ -36,6 +30,11 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
     const [filterRole, setFilterRole] = useState<string>('all')
     const [search, setSearch] = useState<string>('')
 
+    // Re-sync when the server component refreshes (router.refresh after a mutation).
+    useEffect(() => {
+        setDirectory(initialDirectory)
+    }, [initialDirectory])
+
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase()
         return directory.filter((r) => {
@@ -50,34 +49,23 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
 
     const withRate = filtered.filter((r) => r.current_rate != null).length
     const withoutRate = filtered.length - withRate
-
-    function handleRateSet(targetUserId: string, newRate: number, currency: string, effectiveFrom: string) {
-        setDirectory((prev) =>
-            prev.map((r) =>
-                r.user_id === targetUserId
-                    ? {
-                          ...r,
-                          current_rate: newRate,
-                          current_currency: currency as UserRateDirectoryRow['current_currency'],
-                          current_effective_from: effectiveFrom,
-                      }
-                    : r,
-            ),
-        )
-        setEditTarget(null)
-    }
+    const progressiveCount = filtered.filter((r) => r.is_progressive).length
 
     return (
         <div className="space-y-4">
             {/* Stats + filters */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-muted-foreground">Pracownicy z stawką</div>
+                    <div className="text-xs text-muted-foreground">Pracownicy ze stawką</div>
                     <div className="text-xl font-bold">{withRate}</div>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                     <div className="text-xs text-muted-foreground">Bez stawki</div>
                     <div className="text-xl font-bold text-amber-400">{withoutRate}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="text-xs text-muted-foreground">Progresywne</div>
+                    <div className="text-xl font-bold">{progressiveCount}</div>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-3">
                     <div className="text-xs text-muted-foreground">Razem</div>
@@ -114,9 +102,10 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                         <tr>
                             <th className="text-left p-2 font-medium">Pracownik</th>
                             <th className="text-left p-2 font-medium">Rola</th>
-                            <th className="text-left p-2 font-medium">Manager</th>
+                            <th className="text-left p-2 font-medium">Typ umowy</th>
                             <th className="text-right p-2 font-medium">Aktualna stawka</th>
                             <th className="text-left p-2 font-medium">Od kiedy</th>
+                            <th className="text-left p-2 font-medium">Tryb</th>
                             <th className="text-right p-2 font-medium">Akcje</th>
                         </tr>
                     </thead>
@@ -128,8 +117,12 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                                     <div className="text-xs text-muted-foreground">{r.email}</div>
                                 </td>
                                 <td className="p-2 text-xs">{ROLE_LABEL_PL[r.role] ?? r.role}</td>
-                                <td className="p-2 text-xs text-muted-foreground">
-                                    {r.manager_full_name ?? '—'}
+                                <td className="p-2 text-xs">
+                                    {r.employment_type ? (
+                                        EMPLOYMENT_TYPE_LABELS_PL[r.employment_type]
+                                    ) : (
+                                        <span className="text-muted-foreground">—</span>
+                                    )}
                                 </td>
                                 <td className="p-2 text-right font-mono tabular-nums">
                                     {r.current_rate != null ? (
@@ -138,8 +131,22 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                                         <span className="text-amber-400 text-xs">brak</span>
                                     )}
                                 </td>
+                                <td className="p-2 text-xs">{r.current_effective_from ?? '—'}</td>
                                 <td className="p-2 text-xs">
-                                    {r.current_effective_from ?? '—'}
+                                    {r.is_progressive ? (
+                                        <div>
+                                            <span className="inline-block rounded bg-sky-500/15 text-sky-300 px-1.5 py-0.5 text-[11px] font-medium">
+                                                Progresywna
+                                            </span>
+                                            {r.next_scheduled_from && r.next_scheduled_rate != null && (
+                                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono tabular-nums">
+                                                    → {r.next_scheduled_rate.toFixed(2)} od {r.next_scheduled_from}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span className="text-muted-foreground">Stała</span>
+                                    )}
                                 </td>
                                 <td className="p-2 text-right">
                                     <div className="flex justify-end gap-1.5">
@@ -150,7 +157,7 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                                             onClick={() => setEditTarget(r)}
                                         >
                                             <Pencil className="h-3 w-3 mr-1" />
-                                            Zmień
+                                            Zarządzaj
                                         </Button>
                                         <Button
                                             size="sm"
@@ -167,7 +174,7 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                         ))}
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={6} className="text-center py-6 text-sm text-muted-foreground">
+                                <td colSpan={7} className="text-center py-6 text-sm text-muted-foreground">
                                     Brak pracowników spełniających kryteria.
                                 </td>
                             </tr>
@@ -177,10 +184,10 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
             </div>
 
             {editTarget && (
-                <ChangeRateDialog
+                <ManageRateDialog
                     target={editTarget}
+                    employees={directory}
                     onOpenChange={(open) => !open && setEditTarget(null)}
-                    onSuccess={handleRateSet}
                 />
             )}
             {historyTarget && (

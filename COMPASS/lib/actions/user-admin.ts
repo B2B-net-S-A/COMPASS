@@ -400,13 +400,13 @@ export async function setUserRole(targetUserId: string, newRole: DbRole): Promis
 
 export interface EmployeeProfileInput {
     default_location?: 'onsite' | 'remote'
-    employment_type?: 'uop' | 'b2b'
+    employment_type?: 'uop' | 'b2b' | 'zlecenie'
     work_start_date?: string | null
 }
 
 export interface EmployeeProfileFields {
     default_location: 'onsite' | 'remote' | null
-    employment_type: 'uop' | 'b2b' | null
+    employment_type: 'uop' | 'b2b' | 'zlecenie' | null
     work_start_date: string | null
 }
 
@@ -423,8 +423,8 @@ export async function setEmployeeProfile(targetUserId: string, fields: EmployeeP
         updates.default_location = fields.default_location
     }
     if (fields.employment_type !== undefined) {
-        if (!['uop', 'b2b'].includes(fields.employment_type)) {
-            throw new Error('employment_type musi być "uop" lub "b2b".')
+        if (!['uop', 'b2b', 'zlecenie'].includes(fields.employment_type)) {
+            throw new Error('employment_type musi być "uop", "b2b" lub "zlecenie".')
         }
         updates.employment_type = fields.employment_type
     }
@@ -479,7 +479,7 @@ export interface InviteUserInput {
     fullName?: string
     // Phase 20: 5 invite'owalnych ról (admin promote'uje się przez admin_access_list).
     role: 'consultant' | 'internal' | 'finanse' | 'manager' | 'talent_community'
-    employmentType?: 'uop' | 'b2b'
+    employmentType?: 'uop' | 'b2b' | 'zlecenie'
     workStartDate?: string | null
     // Phase 20: optional manager_id (UUID). Dla pracowników biurowych (internal/finanse/manager/talent_community).
     managerId?: string | null

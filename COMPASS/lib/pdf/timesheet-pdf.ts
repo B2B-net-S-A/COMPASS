@@ -23,7 +23,7 @@ export interface TimesheetForPdf {
 export interface ProfileForPdf {
     full_name: string | null
     email: string
-    employment_type: 'uop' | 'b2b' | null
+    employment_type: 'uop' | 'b2b' | 'zlecenie' | null
     work_start_date: string | null
 }
 
@@ -120,7 +120,14 @@ export async function generateTimesheetPdf(args: GenerateTimesheetPdfArgs): Prom
     const meta: Array<[string, string]> = [
         ['Pracownik', tr(args.profile.full_name ?? '') || tr(args.profile.email)],
         ['Email', tr(args.profile.email)],
-        ['Typ umowy', args.profile.employment_type === 'b2b' ? 'B2B' : 'UoP (umowa o prace)'],
+        [
+            'Typ umowy',
+            args.profile.employment_type === 'b2b'
+                ? 'B2B'
+                : args.profile.employment_type === 'zlecenie'
+                  ? 'Umowa zlecenie'
+                  : 'UoP (umowa o prace)',
+        ],
     ]
     if (args.profile.work_start_date) {
         meta.push(['Data rozpoczecia', args.profile.work_start_date])
