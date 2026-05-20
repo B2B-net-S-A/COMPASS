@@ -59,6 +59,10 @@ export interface OnboardingProgress {
     // Phase 25c: welcome email opt-in tracking
     welcome_email_sent_at: string | null
     welcome_email_sent_by: string | null
+    // Phase 22.3 (migration 22f): cancellation
+    cancelled_at: string | null
+    cancelled_by: string | null
+    cancellation_reason: string | null
     created_at: string
     updated_at: string
 }
