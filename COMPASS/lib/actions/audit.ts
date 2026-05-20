@@ -137,6 +137,10 @@ export type AuditAction =
     | 'CLIENT_CREATED'
     | 'CLIENT_UPDATED'
     | 'CLIENT_DELETED'
+    // Phase 27h — Contract type + rate progression
+    | 'EMPLOYMENT_TYPE_CHANGED'
+    | 'USER_RATE_PROGRESSION_SET'
+    | 'USER_RATE_PROGRESSION_COPIED'
 
 export async function logAudit(
     userId: string | null,
