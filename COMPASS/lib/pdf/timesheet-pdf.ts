@@ -74,8 +74,8 @@ export async function generateTimesheetPdf(args: GenerateTimesheetPdfArgs): Prom
     pdfDoc.setTitle(
         tr(`Karta pracy ${args.profile.full_name ?? args.profile.email} ${args.timesheet.year}-${String(args.timesheet.month).padStart(2, '0')}`),
     )
-    pdfDoc.setAuthor('ComPass')
-    pdfDoc.setProducer('ComPass HR Internal')
+    pdfDoc.setAuthor('COMPASS')
+    pdfDoc.setProducer('COMPASS HR Internal')
     pdfDoc.setCreationDate(new Date())
 
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica)

@@ -18,7 +18,7 @@ self.addEventListener('push', (event) => {
     try {
         payload = event.data.json()
     } catch {
-        payload = { title: 'ComPass', body: event.data.text() }
+        payload = { title: 'COMPASS', body: event.data.text() }
     }
 
     const options = {
@@ -31,7 +31,7 @@ self.addEventListener('push', (event) => {
         requireInteraction: false,
     }
 
-    event.waitUntil(self.registration.showNotification(payload.title ?? 'ComPass', options))
+    event.waitUntil(self.registration.showNotification(payload.title ?? 'COMPASS', options))
 })
 
 self.addEventListener('notificationclick', (event) => {

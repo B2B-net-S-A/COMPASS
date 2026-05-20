@@ -1,6 +1,6 @@
-# ComPass Animation System
+# COMPASS Animation System
 
-System mikro-animacji dla ComPass. Pure CSS, zero JS runtime, GPU-accelerated.
+System mikro-animacji dla COMPASS. Pure CSS, zero JS runtime, GPU-accelerated.
 
 ---
 

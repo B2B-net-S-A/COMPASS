@@ -25,7 +25,7 @@ export const FALLBACK_DOCS: Record<string, FallbackDoc> = {
         title: 'Centrum pomocy',
         version: '1.0',
         content_html: `<h1>Centrum pomocy</h1>
-<p>Witaj w centrum pomocy platformy ComPass. Poniżej znajdziesz odpowiedzi na najczęstsze pytania.</p>
+<p>Witaj w centrum pomocy platformy COMPASS. Poniżej znajdziesz odpowiedzi na najczęstsze pytania.</p>
 <h2>Pierwsze kroki</h2>
 <ol>
 <li>Zarejestruj się używając firmowego adresu @b2bnetwork.pl.</li>
@@ -40,7 +40,7 @@ export const FALLBACK_DOCS: Record<string, FallbackDoc> = {
 <li><strong>Stawki / dostępność</strong> — uzupełnij w sekcji „Stawki", aby Centrala mogła Cię dopasować do odpowiednich projektów.</li>
 </ul>
 <h2>Dopasowanie do projektów</h2>
-<p>System ComPass używa silnika Qualrix M9 (vector similarity + AI scoring Claude). Każde dopasowanie ma:</p>
+<p>System COMPASS używa silnika Qualrix M9 (vector similarity + AI scoring Claude). Każde dopasowanie ma:</p>
 <ul>
 <li><strong>Combined Score</strong> 0–100</li>
 <li><strong>Quality Band</strong> EXCELLENT / GOOD / ACCEPTABLE / WEAK / POOR</li>
@@ -60,7 +60,7 @@ export const FALLBACK_DOCS: Record<string, FallbackDoc> = {
         title: 'Informacja o przetwarzaniu danych przez AI',
         version: '1.0',
         content_html: `<h1>Informacja o przetwarzaniu danych przez AI</h1>
-<p>Platforma ComPass wykorzystuje narzędzia sztucznej inteligencji (AI) do dopasowywania konsultantów do projektów oraz wsparcia administracyjnego.</p>
+<p>Platforma COMPASS wykorzystuje narzędzia sztucznej inteligencji (AI) do dopasowywania konsultantów do projektów oraz wsparcia administracyjnego.</p>
 <h2>Wykorzystywane modele</h2>
 <ul>
 <li><strong>Anthropic Claude</strong> (API) — analiza CV, ocena dopasowania, asystent administracyjny</li>
@@ -93,7 +93,7 @@ export const FALLBACK_DOCS: Record<string, FallbackDoc> = {
     'security': {
         title: 'Polityka bezpieczeństwa',
         version: '1.0',
-        content_html: `<h1>Polityka bezpieczeństwa ComPass</h1>
+        content_html: `<h1>Polityka bezpieczeństwa COMPASS</h1>
 <h2>Szyfrowanie</h2>
 <ul>
 <li>Wszystkie połączenia: TLS 1.3</li>
@@ -126,7 +126,7 @@ export const FALLBACK_DOCS: Record<string, FallbackDoc> = {
 <li>Stawki ustalane indywidualnie per projekt (PLN/h lub PLN/dzień, netto)</li>
 <li>Rozliczenie miesięczne na podstawie faktury VAT przesłanej przez Konsultanta</li>
 <li>Termin płatności: 14 dni od daty wystawienia faktury</li>
-<li>Faktury przesyłane przez Platformę ComPass (zakładka Dokumenty → Faktury)</li>
+<li>Faktury przesyłane przez Platformę COMPASS (zakładka Dokumenty → Faktury)</li>
 </ul>
 <h2>Poufność (NDA)</h2>
 <p>Konsultant zobowiązuje się do zachowania poufności w stosunku do treści projektów, danych Klienta i wewnętrznych procesów B2B Network. Naruszenie NDA podlega karze umownej zgodnie z umową współpracy.</p>
@@ -140,7 +140,7 @@ export const FALLBACK_DOCS: Record<string, FallbackDoc> = {
         title: 'Podpis elektroniczny',
         version: '1.0',
         content_html: `<h1>Polityka podpisu elektronicznego</h1>
-<p>Platforma ComPass umożliwia elektroniczne podpisywanie dokumentów (umowy, aneksy, NDA) zgodnie z eIDAS i Kodeksem cywilnym RP.</p>
+<p>Platforma COMPASS umożliwia elektroniczne podpisywanie dokumentów (umowy, aneksy, NDA) zgodnie z eIDAS i Kodeksem cywilnym RP.</p>
 <h2>Forma podpisu</h2>
 <p>Stosujemy <strong>podpis elektroniczny zwykły</strong> — kliknięcie przycisku „Podpisz dokument" rejestrowane wraz z:</p>
 <ul>
