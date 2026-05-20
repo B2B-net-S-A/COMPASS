@@ -261,7 +261,9 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         if (isHrZone) out.push(internalGroup)
         if (isAdmin) out.push(internalAdminGroup, adminGroup)
         // Phase 26: only push financeGroup if it has at least one link (invoices flag may hide all).
-        if (isFinance && financeGroup.links.length > 0) out.push(financeGroup)
+        // Phase 27h: show "Finanse" group (Stawki i umowy + Klienci) to admin too, not just finanse —
+        // these pages are admin+finanse by design, but admin previously got no nav link to them.
+        if ((isAdmin || isFinance) && financeGroup.links.length > 0) out.push(financeGroup)
         if (isManager) out.push(managerGroup)
         if (isTalentCommunity) out.push(tcmGroup)
         if (isHrZone) out.push(lifecycleGroup)
