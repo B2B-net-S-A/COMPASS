@@ -141,6 +141,9 @@ export type AuditAction =
     | 'EMPLOYMENT_TYPE_CHANGED'
     | 'USER_RATE_PROGRESSION_SET'
     | 'USER_RATE_PROGRESSION_COPIED'
+    // Phase 27i — Contract documents (umowa + aneksy)
+    | 'CONTRACT_DOCUMENT_UPLOADED'
+    | 'CONTRACT_DOCUMENT_DELETED'
 
 export async function logAudit(
     userId: string | null,

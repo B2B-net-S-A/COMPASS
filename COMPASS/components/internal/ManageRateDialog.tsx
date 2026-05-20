@@ -35,6 +35,7 @@ import type {
 import { EMPLOYMENT_TYPE_LABELS_PL } from '@/lib/types/rates'
 import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
 import { RateProgressionGrid } from './RateProgressionGrid'
+import { ContractDocumentsSection } from './ContractDocumentsSection'
 
 interface Props {
     target: UserRateDirectoryRow
@@ -411,6 +412,17 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
                                 )}
                             </div>
                         )}
+                    </section>
+
+                    <div className="border-t border-border/40" />
+
+                    {/* ─── Section 4: Contract documents (umowa + aneksy) ─── */}
+                    <section className="space-y-2">
+                        <h3 className="text-sm font-semibold">Umowy i załączniki</h3>
+                        <p className="text-[11px] text-muted-foreground">
+                            Wiele plików per pracownik (umowa, aneksy) — każdy z opisem i datą podpisania.
+                        </p>
+                        <ContractDocumentsSection userId={target.user_id} />
                     </section>
                 </div>
             </DialogContent>

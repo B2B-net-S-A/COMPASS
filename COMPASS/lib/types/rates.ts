@@ -139,3 +139,38 @@ export interface PayrollSummary {
 }
 
 export const PAYROLL_MAX_RANGE_MONTHS = 24
+
+// ─── Phase 27i — contract documents (umowa + aneksy, per employee) ─────────
+
+export type ContractDocType = 'umowa' | 'aneks' | 'inne'
+
+export const CONTRACT_DOC_TYPE_LABELS_PL: Record<ContractDocType, string> = {
+    umowa: 'Umowa',
+    aneks: 'Aneks',
+    inne: 'Inne',
+}
+
+/** Allowed MIME types for contract uploads (PDF, common scans, Word). */
+export const CONTRACT_DOC_ALLOWED_MIME = [
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+] as const
+
+export const CONTRACT_DOC_MAX_BYTES = 10 * 1024 * 1024 // 10 MB
+
+export interface ContractDocument {
+    id: string
+    user_id: string
+    doc_type: ContractDocType
+    description: string | null
+    /** YYYY-MM-DD, signing date. */
+    signed_date: string | null
+    file_name: string
+    file_size_bytes: number | null
+    file_mime: string | null
+    uploaded_by: string
+    created_at: string
+}
