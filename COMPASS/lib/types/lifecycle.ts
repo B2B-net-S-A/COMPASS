@@ -59,6 +59,10 @@ export interface OnboardingProgress {
     // Phase 25c: welcome email opt-in tracking
     welcome_email_sent_at: string | null
     welcome_email_sent_by: string | null
+    // Phase 22.3 (migration 22f): cancellation
+    cancelled_at: string | null
+    cancelled_by: string | null
+    cancellation_reason: string | null
     created_at: string
     updated_at: string
 }
@@ -241,21 +245,6 @@ export interface ScheduleExitInterviewInput {
     userId: string
     terminationDate: string // ISO date
     scheduledFor?: string | null
-}
-
-export interface SubmitExitInterviewInput {
-    interviewId: string
-    isAnonymous: boolean
-    exitReason: ExitReason
-    exitReasonDetail?: string | null
-    npsScore: number // 0..10
-    satisfactionTeam?: number | null
-    satisfactionManager?: number | null
-    satisfactionProjects?: number | null
-    wouldRecommend?: boolean | null
-    whatWorked?: string | null
-    whatToImprove?: string | null
-    knowledgeTransferNotes?: string | null
 }
 
 export interface CompleteOnboardingTaskInput {

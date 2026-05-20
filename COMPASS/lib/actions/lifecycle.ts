@@ -17,6 +17,7 @@ import {
     sendOnboardingWelcome,
 } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { computeDueDate } from '@/lib/utils/sla'
 import { roleLabelPl, type DbRole } from '@/lib/types/role'
 import type {
     CheckinDay,
@@ -31,7 +32,6 @@ import type {
     OnboardingTemplate,
     OnboardingTemplateItem,
     ResponsibleRole,
-    SubmitExitInterviewInput,
 } from '@/lib/types/lifecycle'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -987,6 +987,75 @@ export async function scheduleExitInterview(
     if (employee) {
         const scheduledForLabel = scheduledFor ?? terminationDate
 
+        // Replaces the consultant exit-interview survey: file a tracking ticket
+        // into the Inbox (Moduł Obsługi Zgłoszeń) auto-assigned to the actor.
+        // Best-effort — the offboarding RPC already committed, so a ticket
+        // failure must not roll back the offboarding.
+        try {
+            const { data: category } = await supabase
+                .from('support_categories')
+                .select('id')
+                .eq('slug', 'inbox_offboarding')
+                .single()
+            if (!category) {
+                logCompat.error('scheduleExitInterview: inbox_offboarding category missing')
+            } else {
+                const employeeName = employee.full_name ?? employee.email
+                const subject = `${employeeName} Offboarding`
+                const bodyLines = [
+                    `**Offboarding pracownika: ${employeeName}**`,
+                    '',
+                    `- **Rola:** ${roleLabelPl(employee.role)}`,
+                    `- **Data zakończenia współpracy:** ${terminationDate}`,
+                ]
+                if (scheduledFor) bodyLines.push(`- **Sugerowana data realizacji:** ${scheduledFor}`)
+                bodyLines.push(
+                    '',
+                    'Zadania offboardingu (cofnięcie dostępów, zwrot sprzętu, knowledge transfer, finalne rozliczenie, archiwizacja) są w karcie pracownika:',
+                    `[Otwórz checklist offboardingu](/internal/lifecycle/offboarding/${userId})`,
+                    '',
+                    '_Ticket utworzony automatycznie przy rozpoczęciu offboardingu._',
+                )
+                const { data: ticket, error: ticketErr } = await supabase
+                    .from('support_tickets')
+                    .insert({
+                        user_id: ctx.userId,
+                        assignee_id: ctx.userId,
+                        category_id: category.id,
+                        subject,
+                        body_md: bodyLines.join('\n'),
+                        priority: 'normal',
+                        status: 'in_progress',
+                    })
+                    .select('id')
+                    .single()
+                if (ticketErr || !ticket) {
+                    logCompat.error('scheduleExitInterview: offboarding ticket insert failed:', ticketErr)
+                } else {
+                    const { error: metaErr } = await supabase.from('support_inbox_meta').insert({
+                        ticket_id: ticket.id,
+                        source: 'manual_paste',
+                        consultant_id: userId,
+                        priority_level: 'P3',
+                        due_date: computeDueDate('P3', new Date()).toISOString(),
+                        email_subject: subject,
+                    })
+                    if (metaErr) {
+                        await supabase.from('support_tickets').delete().eq('id', ticket.id)
+                        logCompat.error('scheduleExitInterview: offboarding meta insert failed:', metaErr)
+                    } else {
+                        await logAudit(ctx.userId, 'OFFBOARDING_TICKET_CREATED', {
+                            ticket_id: ticket.id,
+                            user_id: userId,
+                            interview_id: interviewId,
+                        })
+                    }
+                }
+            }
+        } catch (e) {
+            logCompat.error('scheduleExitInterview: offboarding ticket creation threw:', e)
+        }
+
         if (sendEmployeeEmail) {
             await sendExitInterviewInvitation(
                 employee.email,
@@ -1042,13 +1111,6 @@ export async function scheduleExitInterview(
                 tag: `offboarding-${userId}`,
             }).catch(() => undefined)
         }
-
-        sendPushToUserId(userId, {
-            title: 'Exit interview',
-            body: `Wypełnij ankietę przed odejściem (${terminationDate}).`,
-            url: `/internal/lifecycle/exit/wypelnij`,
-            tag: `exit-${interviewId}`,
-        }).catch(() => undefined)
     }
 
     await logAudit(ctx.userId, 'OFFBOARDING_STARTED', {
@@ -1082,73 +1144,6 @@ export async function getMyExitInterview(): Promise<ExitInterview | null> {
         return null
     }
     return (data as ExitInterview) ?? null
-}
-
-export async function submitExitInterview(input: SubmitExitInterviewInput): Promise<void> {
-    const ctx = await requireInternalOrAdminAction()
-    const supabase = createClient()
-
-    // Pre-check: ensure interview belongs to current user (RLS would also block)
-    const { data: existing } = await supabase
-        .from('exit_interviews')
-        .select('id, user_id, status')
-        .eq('id', input.interviewId)
-        .single()
-    if (!existing || existing.user_id !== ctx.userId || existing.status !== 'scheduled') {
-        throw new Error('Nie można wypełnić tej ankiety.')
-    }
-
-    const { error } = await supabase
-        .from('exit_interviews')
-        .update({
-            is_anonymous: input.isAnonymous,
-            exit_reason: input.exitReason,
-            exit_reason_detail: input.exitReasonDetail ?? null,
-            nps_score: input.npsScore,
-            satisfaction_team: input.satisfactionTeam ?? null,
-            satisfaction_manager: input.satisfactionManager ?? null,
-            satisfaction_projects: input.satisfactionProjects ?? null,
-            would_recommend: input.wouldRecommend ?? null,
-            what_worked: input.whatWorked ?? null,
-            what_to_improve: input.whatToImprove ?? null,
-            knowledge_transfer_notes: input.knowledgeTransferNotes ?? null,
-            status: 'submitted',
-            submitted_at: new Date().toISOString(),
-        })
-        .eq('id', input.interviewId)
-    if (error) {
-        logCompat.error('submitExitInterview error:', error)
-        throw new Error(error.message || 'Nie udało się wysłać ankiety.')
-    }
-
-    // Audit — note: ctx.userId is the actor; user_id in interview may now be NULL after anonymization
-    await logAudit(ctx.userId, 'EXIT_INTERVIEW_SUBMITTED', {
-        interview_id: input.interviewId,
-        is_anonymous: input.isAnonymous,
-    })
-    if (input.isAnonymous) {
-        await logAudit(ctx.userId, 'EXIT_INTERVIEW_ANONYMIZED', { interview_id: input.interviewId })
-    }
-
-    // Push TCM + admin (find all users with lifecycle access)
-    try {
-        const supabaseAdmin = createServiceClient()
-        const { data: tcmUsers } = await supabaseAdmin
-            .from('profiles')
-            .select('id')
-            .in('role', ['admin', 'talent_community'])
-            .eq('employment_status', 'active')
-        for (const u of ((tcmUsers ?? []) as Array<{ id: string }>)) {
-            sendPushToUserId(u.id, {
-                title: 'Nowy exit interview do review',
-                body: input.isAnonymous ? 'Wypełniony anonimowo.' : 'Pracownik wypełnił ankietę.',
-                url: `/internal/lifecycle/exit/${input.interviewId}`,
-                tag: `exit-review-${input.interviewId}`,
-            }).catch(() => undefined)
-        }
-    } catch (e: unknown) {
-        logCompat.error('Push to TCM failed:', e)
-    }
 }
 
 export async function listExitInterviews(filters?: {

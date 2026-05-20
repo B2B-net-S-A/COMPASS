@@ -76,23 +76,23 @@ export async function sendEquipmentRequestEmail(
     recipientEmail: string,
     data: EquipmentRequestEmailData
 ) {
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Nowe zgłoszenie sprzętowe do rozpatrzenia:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</li>
+            <li><strong>Typ:</strong> ${data.itemName}</li>
+            <li><strong>Kategoria:</strong> ${data.category}</li>
+            <li><strong>ID zgłoszenia:</strong> ${data.requestId}</li>
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px; margin-bottom: 8px;"><strong>Szczegóły:</strong></p>
+        <div style="color: #d1d5db; font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: #0f1320; border: 1px solid #232a3b; border-radius: 8px; padding: 14px;">${data.details}</div>
+    `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: `[SPRZĘT] Nowe zgłoszenie od ${data.userName}`,
-            html: `
-                <h2>Nowe zgłoszenie sprzętowe</h2>
-                <p><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</p>
-                <p><strong>Typ:</strong> ${data.itemName}</p>
-                <p><strong>Kategoria:</strong> ${data.category}</p>
-                <p><strong>ID zgłoszenia:</strong> ${data.requestId}</p>
-                <hr />
-                <h3>Szczegóły:</h3>
-                <pre>${data.details}</pre>
-                <hr />
-                <p><em>Wiadomość wygenerowana automatycznie przez system ComPass</em></p>
-            `,
+            html: wrapHrEmail({ tag: 'Zgłoszenie sprzętowe', heading: `Nowe zgłoszenie od ${data.userName}`, bodyHtml, accent: '#3b82f6' }),
         })
 
         if (error) {
@@ -117,20 +117,21 @@ export async function sendBenefitDeclarationEmail(
 ) {
     const benefitTypeLabel = data.benefitType === 'medical' ? 'Pakiet Medyczny (PZU)' : 'Pakiet Sportowy (FitProfit)'
 
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Nowa deklaracja benefitowa do rozpatrzenia:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</li>
+            <li><strong>Typ benefitu:</strong> ${benefitTypeLabel}</li>
+            <li><strong>Wybrany wariant:</strong> ${data.variantName}</li>
+            <li><strong>ID deklaracji:</strong> ${data.declarationId}</li>
+        </ul>
+    `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: `[BENEFITY] Nowa deklaracja od ${data.userName}`,
-            html: `
-                <h2>Nowa deklaracja benefitowa</h2>
-                <p><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</p>
-                <p><strong>Typ benefitu:</strong> ${benefitTypeLabel}</p>
-                <p><strong>Wybrany wariant:</strong> ${data.variantName}</p>
-                <p><strong>ID deklaracji:</strong> ${data.declarationId}</p>
-                <hr />
-                <p><em>Wiadomość wygenerowana automatycznie przez system ComPass</em></p>
-            `,
+            html: wrapHrEmail({ tag: 'Deklaracja benefitu', heading: `Nowa deklaracja od ${data.userName}`, bodyHtml, accent: '#3b82f6' }),
         })
 
         if (error) {
@@ -164,36 +165,22 @@ export async function sendRoleChangeEmail(
         : `Twoja rola w Centrali została odebrana`
 
     const body = isAdded
-        ? `Zostałeś dodany do Centrali B2B.net jako <strong>${roleLabel}</strong>.<br/><br/>Aby aktywować nowe uprawnienia, <strong>wyloguj się i zaloguj ponownie</strong> do aplikacji ComPass.`
+        ? `Zostałeś dodany do Centrali B2B.net jako <strong>${roleLabel}</strong>.<br/><br/>Aby aktywować nowe uprawnienia, <strong>wyloguj się i zaloguj ponownie</strong> do aplikacji COMPASS.`
         : `Twoja rola w Centrali została odebrana. Po ponownym zalogowaniu powrócisz do roli Konsultanta.<br/><br/>Jeśli uważasz, że to błąd, skontaktuj się z administratorem systemu.`
 
-    const accentColor = isAdded ? '#3A8DFF' : '#f59e0b'
+    const accentColor = isAdded ? '#22d3ee' : '#f59e0b'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">${body}</p>
+    `
 
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: role change audit trail
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
-                    <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass</h1>
-                    </div>
-                    <div style="padding: 32px;">
-                        <div style="background: rgba(58, 141, 255, 0.08); border: 1px solid ${accentColor}33; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-                            <p style="color: ${accentColor}; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: bold;">Zmiana roli</p>
-                            <h2 style="color: #ffffff; font-size: 18px; margin: 0;">${heading}</h2>
-                        </div>
-                        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">Cześć <strong>${recipientName}</strong>,</p>
-                        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">${body}</p>
-                        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;" />
-                        <p style="color: #6b7280; font-size: 11px; margin-top: 16px;">
-                            Wiadomość wygenerowana automatycznie przez system ComPass.
-                        </p>
-                    </div>
-                </div>
-            `,
+            html: wrapHrEmail({ tag: 'Zmiana roli', heading, bodyHtml, accent: accentColor }),
         })
 
         if (error) {
@@ -219,29 +206,19 @@ export async function sendBroadcastEmail(
 ) {
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: `[COMPASS] ${title}`,
             saveToSentItems: true, // compliance: broadcast/announcement audit trail
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
-                    <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass</h1>
-                    </div>
-                    <div style="padding: 32px;">
-                        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-                            <p style="color: #fbbf24; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: bold;">Ogłoszenie</p>
-                            <h2 style="color: #ffffff; font-size: 18px; margin: 0;">${title}</h2>
-                        </div>
-                        <div style="color: #d1d5db; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${content}</div>
-                        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;" />
-                        <p style="color: #6b7280; font-size: 12px; margin: 0;">Nadawca: <strong>${senderName}</strong></p>
-                        <p style="color: #6b7280; font-size: 11px; margin-top: 16px;">
-                            Wiadomość wygenerowana automatycznie przez system ComPass.
-                        </p>
-                    </div>
-                </div>
-            `,
+            html: wrapHrEmail({
+                tag: 'Ogłoszenie',
+                heading: title,
+                accent: '#fbbf24',
+                bodyHtml: `
+                    <div style="color: #d1d5db; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${content}</div>
+                    <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">Nadawca: <strong>${senderName}</strong></p>
+                `,
+            }),
         })
 
         if (error) {
@@ -267,26 +244,76 @@ export const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
     other: 'Inne',
 }
 
+/**
+ * Central email chrome shared by every COMPASS notification.
+ *
+ * Table-based + inline styles so it renders consistently in Outlook (the
+ * primary client — mail ships via Microsoft Graph to b2bnetwork.pl mailboxes),
+ * Apple Mail, Gmail and mobile. Gradients / rounded corners are progressive
+ * enhancement layered on top of solid `bgcolor` fallbacks, so Outlook still
+ * looks clean. The theme is dark on purpose — every caller's `bodyHtml` uses
+ * light text colours (#d1d5db), so the background must stay dark.
+ *
+ * `heading` is usually the raw email subject, which carries a noisy
+ * "[COMPASS …]" prefix that duplicates the eyebrow `tag`; we strip that prefix
+ * so the card title reads cleanly.
+ */
 export function wrapHrEmail(opts: { tag: string; heading: string; bodyHtml: string; accent?: string }): string {
-    const accent = opts.accent ?? '#3A8DFF'
-    return `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass</h1>
-            </div>
-            <div style="padding: 32px;">
-                <div style="background: rgba(58, 141, 255, 0.08); border: 1px solid ${accent}33; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-                    <p style="color: ${accent}; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: bold;">${opts.tag}</p>
-                    <h2 style="color: #ffffff; font-size: 18px; margin: 0;">${opts.heading}</h2>
-                </div>
-                ${opts.bodyHtml}
-                <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;" />
-                <p style="color: #6b7280; font-size: 11px; margin-top: 16px;">
-                    Wiadomość wygenerowana automatycznie przez system ComPass.
-                </p>
-            </div>
-        </div>
-    `
+    const accent = opts.accent ?? '#22d3ee'
+    const heading = opts.heading.replace(/^\s*\[[^\]]*]\s*/, '').trim() || opts.heading
+    const preheader = heading.replace(/<[^>]*>/g, '')
+    const font = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
+    return `<!doctype html>
+<html lang="pl" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark light" />
+<meta name="supported-color-schemes" content="dark light" />
+<title>COMPASS</title>
+<style>
+  body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
+  a { color: #38bdf8; }
+  .cp-body ul { margin: 16px 0; padding-left: 20px; }
+  .cp-body li { margin: 5px 0; }
+  .cp-body p { margin: 14px 0; }
+  @media only screen and (max-width: 620px) {
+    .cp-shell { width: 100% !important; }
+    .cp-pad { padding-left: 22px !important; padding-right: 22px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#0b0d13;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${preheader}</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#0b0d13;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" class="cp-shell" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background-color:#151a26;border-radius:16px;overflow:hidden;border:1px solid #232a3b;">
+        <tr><td style="height:4px;line-height:4px;font-size:0;background-color:${accent};">&nbsp;</td></tr>
+        <tr>
+          <td class="cp-pad" style="background-color:#0e2a3f;background-image:linear-gradient(135deg,#0e4d6e 0%,#141a2c 100%);padding:22px 32px;">
+            <img src="https://compass.dynaminds.pl/email-logo.png" height="40" alt="COMPASS" style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;font-family:${font};font-size:22px;font-weight:900;letter-spacing:3px;color:#ffffff;" />
+          </td>
+        </tr>
+        <tr>
+          <td class="cp-body cp-pad" style="padding:30px 32px 8px 32px;font-family:${font};color:#d1d5db;font-size:14px;line-height:1.6;">
+            <p style="margin:0 0 10px 0;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${accent};">${opts.tag}</p>
+            <h1 style="margin:0 0 4px 0;font-size:21px;line-height:1.35;font-weight:700;color:#ffffff;">${heading}</h1>
+            ${opts.bodyHtml}
+          </td>
+        </tr>
+        <tr>
+          <td class="cp-pad" style="padding:20px 32px 28px 32px;border-top:1px solid #232a3b;font-family:${font};">
+            <p style="margin:0 0 4px 0;font-size:12px;color:#9ca3af;"><span style="color:#22d3ee;font-weight:700;">COMPASS</span></p>
+            <p style="margin:0;font-size:11px;color:#6b7280;line-height:1.5;">Wiadomość wygenerowana automatycznie — prosimy nie odpowiadać na ten adres.</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`
 }
 
 export async function sendLeaveRequestSubmitted(
@@ -315,7 +342,7 @@ export async function sendLeaveRequestSubmitted(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -366,7 +393,7 @@ export async function sendSubstituteAssigned(
 
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: substituteEmail,
             subject,
             html,
@@ -418,7 +445,7 @@ export async function sendLeaveCancelledByUser(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -459,7 +486,7 @@ export async function sendLeaveDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: leave approve/reject audit trail
@@ -519,7 +546,7 @@ export async function sendLeaveCreatedOnBehalf(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // audit trail: kto wpisał za kogo
@@ -554,7 +581,7 @@ export async function sendTimesheetSubmitted(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -592,7 +619,7 @@ export async function sendTimesheetDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: timesheet approve/reject audit trail
@@ -632,7 +659,7 @@ export async function sendInvoiceSubmitted(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -672,7 +699,7 @@ export async function sendInvoiceDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({ tag: 'Decyzja faktura', heading: subject, bodyHtml, accent }),
@@ -726,7 +753,7 @@ export async function sendCourseInactivityReminder(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass Akademia <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS Akademia <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({
@@ -842,7 +869,7 @@ export async function sendTimesheetReminder(
     const tpl = buildReminderTemplate(phase, monthLabel, recipientName)
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: tpl.subject,
             html: wrapHrEmail({
@@ -909,7 +936,7 @@ export async function sendClockDailySummary(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({
@@ -964,7 +991,7 @@ export async function sendClockAutoStopped(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({ tag: 'Auto-zamknięcie sesji', heading: subject, bodyHtml, accent: '#f59e0b' }),
@@ -1009,7 +1036,7 @@ export async function sendCorrectionDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: correction approve/reject audit trail
@@ -1061,7 +1088,7 @@ export async function sendOnboardingWelcome(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true,
@@ -1101,7 +1128,7 @@ export async function sendOnboardingDayCheckin(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({ tag: `Check-in dzień ${day}`, heading: subject, bodyHtml }),
@@ -1145,7 +1172,7 @@ export async function sendOnboardingReminderToManager(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: managerEmail,
             subject,
             html: wrapHrEmail({ tag: 'Przypomnienie onboarding', heading: subject, bodyHtml, accent: '#f59e0b' }),
@@ -1190,7 +1217,7 @@ export async function sendExitInterviewInvitation(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true,
@@ -1228,7 +1255,7 @@ export async function sendExitInterviewReminder(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({ tag: 'Przypomnienie exit', heading: subject, bodyHtml, accent: '#f59e0b' }),
@@ -1273,7 +1300,7 @@ export async function sendOffboardingChecklistToManager(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: managerEmail,
             subject,
             saveToSentItems: true,
@@ -1320,7 +1347,7 @@ export async function sendBonusProposed(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true,
@@ -1363,7 +1390,7 @@ export async function sendBonusCancelled(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true,
@@ -1422,7 +1449,7 @@ export async function sendBonusAssigned(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true,
@@ -1477,7 +1504,7 @@ export async function sendBonusUpdated(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true,
@@ -1535,7 +1562,7 @@ export async function sendRateChanged(args: {
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: args.recipientEmail,
             subject,
             saveToSentItems: true,
@@ -1586,7 +1613,7 @@ export async function sendRateChangedToFinance(args: {
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: args.recipientEmail,
             subject,
             saveToSentItems: true,

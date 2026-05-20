@@ -28,6 +28,10 @@ export type AuditAction =
     | 'TIMESHEET_APPROVED'
     | 'TIMESHEET_REJECTED'
     | 'TIMESHEET_UNLOCKED'
+    // Phase 27f — approver (admin/manager) in-place entry edits
+    | 'TIMESHEET_ENTRY_ADDED_BY_APPROVER'
+    | 'TIMESHEET_ENTRY_EDITED_BY_APPROVER'
+    | 'TIMESHEET_ENTRY_DELETED_BY_APPROVER'
     // H2.8 — tamper-evidence dla PDF approved timesheet
     | 'TIMESHEET_HASH_MISMATCH'
     // Phase 17 — Smart Work Clock
@@ -67,6 +71,7 @@ export type AuditAction =
     | 'BUDDY_ASSIGNED'
     | 'BUDDY_UNASSIGNED'
     | 'OFFBOARDING_STARTED'
+    | 'OFFBOARDING_TICKET_CREATED'
     | 'EXIT_INTERVIEW_SCHEDULED'
     | 'EXIT_INTERVIEW_SUBMITTED'
     | 'EXIT_INTERVIEW_REVIEWED'
