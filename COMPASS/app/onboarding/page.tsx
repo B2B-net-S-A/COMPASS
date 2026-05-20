@@ -98,7 +98,7 @@ export default function OnboardingPage() {
                         )}
                     </div>
                     <CardTitle className="text-2xl">
-                        {step === 'upload' && 'Witaj w ComPass!'}
+                        {step === 'upload' && 'Witaj w COMPASS!'}
                         {step === 'bio' && 'Uzupełnij profil'}
                         {step === 'done' && 'Gotowe!'}
                     </CardTitle>
@@ -187,7 +187,7 @@ export default function OnboardingPage() {
 
                             <Button onClick={handleFinish} disabled={loading || !gdprConsent} className="w-full">
                                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Zakończ i przejdź do ComPass
+                                Zakończ i przejdź do COMPASS
                             </Button>
                         </div>
                     )}

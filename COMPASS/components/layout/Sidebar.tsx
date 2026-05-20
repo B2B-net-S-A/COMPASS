@@ -330,7 +330,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                 })}
             </nav>
             <div className="p-4 border-t border-border text-xs text-center text-muted-foreground/50">
-                ComPass by {brandName}
+                COMPASS by {brandName}
             </div>
         </div>
     )

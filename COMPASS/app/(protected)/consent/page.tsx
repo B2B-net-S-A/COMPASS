@@ -64,7 +64,7 @@ export default function ConsentPage() {
             <h1 className="text-xl font-bold">Akceptacja regulaminów</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Aby kontynuować korzystanie z platformy ComPass, prosimy o zapoznanie się z poniższymi dokumentami i wyrażenie wymaganych zgód.
+            Aby kontynuować korzystanie z platformy COMPASS, prosimy o zapoznanie się z poniższymi dokumentami i wyrażenie wymaganych zgód.
           </p>
         </CardHeader>
         <CardContent className="space-y-6">

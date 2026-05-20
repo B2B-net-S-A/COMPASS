@@ -60,8 +60,8 @@ export function computeCertificateHash(
 export async function generateCertificatePdf(args: GenerateCertificatePdfArgs): Promise<Uint8Array> {
     const pdfDoc = await PDFDocument.create()
     pdfDoc.setTitle(tr(`Certyfikat ukończenia: ${args.courseTitle}`))
-    pdfDoc.setAuthor('ComPass Akademia')
-    pdfDoc.setProducer('ComPass Akademia LMS')
+    pdfDoc.setAuthor('COMPASS Akademia')
+    pdfDoc.setProducer('COMPASS Akademia LMS')
     pdfDoc.setCreationDate(new Date())
 
     const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT])
@@ -200,7 +200,7 @@ export async function generateCertificatePdf(args: GenerateCertificatePdfArgs): 
     })
 
     // Stopka — issuer + hash
-    const issuerText = 'B2B.net SA - ComPass Akademia'
+    const issuerText = 'B2B.net SA - COMPASS Akademia'
     const issuerSize = 11
     const issuerWidth = helveticaBold.widthOfTextAtSize(issuerText, issuerSize)
     page.drawText(issuerText, {

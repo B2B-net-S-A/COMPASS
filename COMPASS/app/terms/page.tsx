@@ -3,7 +3,7 @@ import { getLegalDocument } from '@/lib/actions/compliance'
 import { sanitizeHtml } from '@/lib/html/sanitize'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Regulamin | ComPass' }
+export const metadata = { title: 'Regulamin | COMPASS' }
 
 export default async function TermsPage() {
   const doc = await getLegalDocument('terms')
@@ -35,7 +35,7 @@ export default async function TermsPage() {
         <>
           <h1 className="text-2xl font-bold mb-4">Terms of Service / Regulamin</h1>
           <p className="text-muted-foreground mb-6">
-            Strona w przygotowaniu. Regulamin korzystania z usługi ComPass zostanie udostępniony wkrótce.
+            Strona w przygotowaniu. Regulamin korzystania z usługi COMPASS zostanie udostępniony wkrótce.
           </p>
         </>
       )}

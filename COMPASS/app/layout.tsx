@@ -16,7 +16,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "ComPass",
+  title: "COMPASS",
   description: "Consultant Management Platform & Success System",
   manifest: "/manifest.webmanifest",
   icons: {
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "ComPass",
+    title: "COMPASS",
     statusBarStyle: "black-translucent",
   },
   formatDetection: {

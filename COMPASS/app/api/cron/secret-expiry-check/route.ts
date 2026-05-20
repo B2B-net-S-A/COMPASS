@@ -148,7 +148,7 @@ function renderExpiryEmail(opts: {
     return `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
             <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass — Azure secret expiry alert</h1>
+                <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">COMPASS — Azure secret expiry alert</h1>
             </div>
             <div style="padding: 32px;">
                 <div style="background: ${sevColor}22; border: 1px solid ${sevColor}; border-radius: 8px; padding: 16px; margin-bottom: 24px;">

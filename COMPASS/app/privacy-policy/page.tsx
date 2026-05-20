@@ -3,7 +3,7 @@ import { getLegalDocument } from '@/lib/actions/compliance'
 import { sanitizeHtml } from '@/lib/html/sanitize'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Polityka prywatności | ComPass' }
+export const metadata = { title: 'Polityka prywatności | COMPASS' }
 
 export default async function PrivacyPolicyPage() {
   const doc = await getLegalDocument('privacy-policy')

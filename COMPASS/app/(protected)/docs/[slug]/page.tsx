@@ -12,7 +12,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Props) {
   const doc = await getLegalDocument(params.slug)
-  return { title: doc ? `${doc.title} | ComPass` : 'Dokument | ComPass' }
+  return { title: doc ? `${doc.title} | COMPASS` : 'Dokument | COMPASS' }
 }
 
 export default async function LegalDocPage({ params }: Props) {

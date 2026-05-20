@@ -136,9 +136,9 @@ export async function GET(request: NextRequest) {
     const ics = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//ComPass//HR Internal Calendar//PL',
+        'PRODID:-//COMPASS//HR Internal Calendar//PL',
         'CALSCALE:GREGORIAN',
-        `X-WR-CALNAME:ComPass — ${userLabel}`,
+        `X-WR-CALNAME:COMPASS — ${userLabel}`,
         'X-WR-TIMEZONE:Europe/Warsaw',
         ...events,
         'END:VCALENDAR',

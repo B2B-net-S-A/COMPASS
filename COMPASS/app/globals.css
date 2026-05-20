@@ -385,7 +385,7 @@
   animation: check-scale-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* ===== LOGIN PAGE — ComPass Alive ===== */
+/* ===== LOGIN PAGE — COMPASS Alive ===== */
 
 /* 1. Animated gradient mesh background */
 @keyframes login-mesh-drift {

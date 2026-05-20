@@ -128,7 +128,7 @@ To uruchomi: tworzenie tabel (idempotent) + seed 10 dokumentów + RLS policies. 
 
 ### Repro
 1. Otwórz `https://compass.dynaminds.pl/terms`
-2. Widzisz: **"Terms of Service / Regulamin — Strona w przygotowaniu. Regulamin korzystania z usługi ComPass zostanie udostępniony wkrótce."**
+2. Widzisz: **"Terms of Service / Regulamin — Strona w przygotowaniu. Regulamin korzystania z usługi COMPASS zostanie udostępniony wkrótce."**
 
 ### Konsekwencja
 Identyczna jak #003 — Regulamin musi istnieć żeby użytkownik mógł go skutecznie zaakceptować w signup. Bez niego cała umowa B2B między B2B Network a konsultantem jest zwarcie nieprzejrzysta.
@@ -203,7 +203,7 @@ OTWARTY, niski priorytet. Zostawić do listy enhancement.
 ### Repro
 1. Zaloguj się (admin lub konsultant z niezaakceptowanym consent)
 2. Pokazuje się modal "Akceptacja regulaminów" z 4 checkboxami:
-   - Akceptuję Regulamin platformy ComPass + link "Przeczytaj dokument" → `/terms` (PUSTE — bug #004)
+   - Akceptuję Regulamin platformy COMPASS + link "Przeczytaj dokument" → `/terms` (PUSTE — bug #004)
    - Zapoznałem/am się z Polityką prywatności + link "Przeczytaj dokument" → `/privacy-policy` (PUSTE — bug #003)
    - Wyrażam zgodę na przetwarzanie danych osobowych zgodnie z RODO (no doc link)
    - Akceptuję korzystanie z narzędzi AI w systemie + link "Przeczytaj dokument" → `/docs/ai-notice` (prawdopodobnie też PUSTE — to potwierdzić)
