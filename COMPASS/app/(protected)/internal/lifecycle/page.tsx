@@ -92,7 +92,7 @@ export default async function LifecycleHubPage() {
                 <HubActionButtons />
                 <p className="text-xs text-muted-foreground mt-3">
                     &quot;Nowy onboarding&quot; uruchamia proces dla istniejącego pracownika (wybierasz osobę + szablon + datę).
-                    &quot;Zaplanuj exit&quot; ustawia status = offboarding i wysyła ankietę.
+                    &quot;Zaplanuj exit&quot; ustawia status = offboarding i tworzy ticket offboardingowy w Module Obsługi Zgłoszeń.
                 </p>
             </section>
 
