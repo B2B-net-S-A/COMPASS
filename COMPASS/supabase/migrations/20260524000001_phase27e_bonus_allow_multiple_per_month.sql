@@ -1,0 +1,21 @@
+-- ============================================================
+-- Phase 27e — allow multiple assigned bonuses per employee per month
+-- Date: 2026-05-20
+--
+-- Depends on:
+--   - 20260519000001_phase26a_bonus_assigned_workflow.sql (created the UNIQUE index)
+--   - 20260521000001_phase27b_bonus_categories.sql (sales/delivery/recruiter/custom)
+--   - 20260523000001_phase27d_bonus_client_and_delivery_candidate.sql
+--
+-- Why:
+--   Phase 26 added a partial UNIQUE index `bonuses_one_per_recipient_period`
+--   (one assigned bonus per recipient per (year, month)) when a bonus was a single
+--   discretionary monthly award. Phase 27 turned bonuses into per-event awards:
+--   the recruiter/sales/delivery categories are tied to a placement / deal / candidate,
+--   so a recruiter who places two candidates in the same month must receive two bonuses.
+--   The per-month uniqueness now blocks a legitimate workflow (it surfaced as a generic
+--   "Server Components render" error in prod because Next.js redacts the thrown
+--   23505 message), so we drop it. No replacement uniqueness — duplicates are intended.
+-- ============================================================
+
+DROP INDEX IF EXISTS bonuses_one_per_recipient_period;
