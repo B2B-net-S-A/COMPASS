@@ -32,6 +32,8 @@ export type AuditAction =
     | 'TIMESHEET_ENTRY_ADDED_BY_APPROVER'
     | 'TIMESHEET_ENTRY_EDITED_BY_APPROVER'
     | 'TIMESHEET_ENTRY_DELETED_BY_APPROVER'
+    // Phase 27g — approver creates a team member's timesheet to fill on-behalf
+    | 'TIMESHEET_CREATED_BY_APPROVER'
     // H2.8 — tamper-evidence dla PDF approved timesheet
     | 'TIMESHEET_HASH_MISMATCH'
     // Phase 17 — Smart Work Clock
