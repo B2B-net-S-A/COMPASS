@@ -126,6 +126,10 @@ export type AuditAction =
     // Phase 27c — User rates + payroll
     | 'USER_RATE_CHANGED'
     | 'PAYROLL_EXPORTED_CSV'
+    // Phase 27d — Clients (bonus dropdown)
+    | 'CLIENT_CREATED'
+    | 'CLIENT_UPDATED'
+    | 'CLIENT_DELETED'
 
 export async function logAudit(
     userId: string | null,

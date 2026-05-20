@@ -19,9 +19,8 @@ import {
     assignBonus,
     updateBonus,
     uploadBonusAttachment,
-    listConsultantsForDelivery,
-    type DeliveryConsultantCandidate,
 } from '@/lib/actions/internal-bonus'
+import { listActiveClients, type ClientRow } from '@/lib/actions/internal-clients'
 import type {
     AssignBonusInput,
     BonusCategory,
@@ -128,15 +127,17 @@ export function AssignBonusForm({
 
     // Phase 27b — category state (only for assign mode)
     const [category, setCategory] = useState<BonusCategory>('custom')
+    // Phase 27d — shared client (sales/delivery/recruiter) + clients list
+    const [clientName, setClientName] = useState<string>('')
+    const [clientIsOther, setClientIsOther] = useState<boolean>(false)
+    const [clients, setClients] = useState<ClientRow[]>([])
+    const [clientsLoaded, setClientsLoaded] = useState<boolean>(false)
     // Sales
-    const [salesClientName, setSalesClientName] = useState<string>('')
     const [salesServiceDescription, setSalesServiceDescription] = useState<string>('')
-    // Delivery
-    const [deliveryConsultantId, setDeliveryConsultantId] = useState<string>('')
+    // Delivery (Phase 27d: candidate free-text replaces consultant dropdown)
+    const [deliveryCandidate, setDeliveryCandidate] = useState<string>('')
     const [deliveryMarginAmount, setDeliveryMarginAmount] = useState<string>('')
     const [deliveryMarginPercent, setDeliveryMarginPercent] = useState<string>('10.00')
-    const [consultants, setConsultants] = useState<DeliveryConsultantCandidate[]>([])
-    const [consultantsLoaded, setConsultantsLoaded] = useState<boolean>(false)
     // Recruiter
     const [recruiterMargin, setRecruiterMargin] = useState<string>('')
     const [recruiterCandidate, setRecruiterCandidate] = useState<string>('')
@@ -154,29 +155,29 @@ export function AssignBonusForm({
         return match?.full_name ?? match?.email ?? null
     }, [candidates, recipientId, prefilled])
 
-    // Phase 27b — lazy-load consultants when Delivery Lead category selected
+    // Phase 27d — lazy-load active clients when a client-bearing category is selected
     useEffect(() => {
         if (isEdit) return
-        if (category !== 'delivery_lead') return
-        if (consultantsLoaded) return
+        if (category === 'custom') return
+        if (clientsLoaded) return
         let cancelled = false
-        listConsultantsForDelivery()
+        listActiveClients()
             .then((data) => {
                 if (!cancelled) {
-                    setConsultants(data)
-                    setConsultantsLoaded(true)
+                    setClients(data)
+                    setClientsLoaded(true)
                 }
             })
             .catch((err) => {
                 if (!cancelled) {
-                    toast.error(err instanceof Error ? err.message : 'Błąd ładowania konsultantów')
-                    setConsultantsLoaded(true)
+                    toast.error(err instanceof Error ? err.message : 'Błąd ładowania klientów')
+                    setClientsLoaded(true)
                 }
             })
         return () => {
             cancelled = true
         }
-    }, [category, consultantsLoaded, isEdit])
+    }, [category, clientsLoaded, isEdit])
 
     // Phase 27b — auto-calc Delivery amount when margin or percent changes
     useEffect(() => {
@@ -213,9 +214,10 @@ export function AssignBonusForm({
         setReason('')
         setNotes('')
         setCategory('custom')
-        setSalesClientName('')
+        setClientName('')
+        setClientIsOther(false)
         setSalesServiceDescription('')
-        setDeliveryConsultantId('')
+        setDeliveryCandidate('')
         setDeliveryMarginAmount('')
         setDeliveryMarginPercent('10.00')
         setRecruiterMargin('')
@@ -281,25 +283,25 @@ export function AssignBonusForm({
             notes: notes.trim() || null,
         }
 
+        const client = clientName.trim()
+
         switch (category) {
             case 'sales': {
-                const client = salesClientName.trim()
                 const desc = salesServiceDescription.trim()
-                if (client.length < 2) return { error: 'Klient: minimum 2 znaki.' }
+                if (client.length < 2) return { error: 'Wybierz lub wpisz klienta (min 2 znaki).' }
                 if (desc.length < 3) return { error: 'Opis usługi: minimum 3 znaki.' }
                 return {
                     category: 'sales',
                     ...base,
-                    sales_client_name: client,
+                    client_name: client,
                     sales_service_description: desc,
                 }
             }
             case 'delivery_lead': {
-                if (!deliveryConsultantId) {
-                    return { error: 'Wybierz konsultanta.' }
-                }
-                if (deliveryConsultantId === recipientId) {
-                    return { error: 'Manager nie może wpisać delivery na własną osobę jako konsultanta.' }
+                if (client.length < 2) return { error: 'Wybierz lub wpisz klienta (min 2 znaki).' }
+                const candidate = deliveryCandidate.trim()
+                if (candidate.length < 3) {
+                    return { error: 'Imię i nazwisko kandydata: minimum 3 znaki.' }
                 }
                 const m = Number(deliveryMarginAmount)
                 if (!Number.isFinite(m) || m <= 0) {
@@ -312,12 +314,14 @@ export function AssignBonusForm({
                 return {
                     category: 'delivery_lead',
                     ...base,
-                    delivery_consultant_id: deliveryConsultantId,
+                    client_name: client,
+                    delivery_candidate_name: candidate,
                     delivery_margin_amount: m,
                     delivery_margin_percent: p,
                 }
             }
             case 'recruiter': {
+                if (client.length < 2) return { error: 'Wybierz lub wpisz klienta (min 2 znaki).' }
                 const m = Number(recruiterMargin)
                 if (!Number.isFinite(m) || m < 0) {
                     return { error: 'Marża rekrutera (PLN/h) musi być >= 0.' }
@@ -329,6 +333,7 @@ export function AssignBonusForm({
                 return {
                     category: 'recruiter',
                     ...base,
+                    client_name: client,
                     recruiter_margin_per_hour: m,
                     recruiter_candidate_name: candidate,
                 }
@@ -453,19 +458,51 @@ export function AssignBonusForm({
         </div>
     )
 
-    const salesFields = !isEdit && category === 'sales' && (
-        <>
-            <div>
-                <Label htmlFor="sales-client">Klient</Label>
+    // Phase 27d — shared client dropdown (active clients + "Inny" → free text).
+    const clientSelectField = (
+        <div>
+            <Label htmlFor="bonus-client">Klient</Label>
+            <select
+                id="bonus-client"
+                value={clientIsOther ? '__other__' : clientName}
+                onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '__other__') {
+                        setClientIsOther(true)
+                        setClientName('')
+                    } else {
+                        setClientIsOther(false)
+                        setClientName(v)
+                    }
+                }}
+                disabled={pending || !clientsLoaded}
+                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                required={!clientIsOther}
+            >
+                <option value="">{clientsLoaded ? '— wybierz klienta —' : 'Ładowanie…'}</option>
+                {clients.map((c) => (
+                    <option key={c.id} value={c.name}>
+                        {c.name}
+                    </option>
+                ))}
+                <option value="__other__">Inny (wpisz ręcznie)…</option>
+            </select>
+            {clientIsOther && (
                 <Input
-                    id="sales-client"
-                    value={salesClientName}
-                    onChange={(e) => setSalesClientName(e.target.value)}
+                    className="mt-2"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
                     disabled={pending}
                     required
-                    placeholder="np. Bank XYZ"
+                    placeholder="Wpisz nazwę klienta"
                 />
-            </div>
+            )}
+        </div>
+    )
+
+    const salesFields = !isEdit && category === 'sales' && (
+        <>
+            {clientSelectField}
             <div>
                 <Label htmlFor="sales-service">Opis usługi</Label>
                 <Textarea
@@ -483,25 +520,17 @@ export function AssignBonusForm({
 
     const deliveryFields = !isEdit && category === 'delivery_lead' && (
         <>
+            {clientSelectField}
             <div>
-                <Label htmlFor="delivery-consultant">Konsultant</Label>
-                <select
-                    id="delivery-consultant"
-                    value={deliveryConsultantId}
-                    onChange={(e) => setDeliveryConsultantId(e.target.value)}
-                    className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    disabled={pending || !consultantsLoaded}
+                <Label htmlFor="delivery-candidate">Kandydat (imię i nazwisko)</Label>
+                <Input
+                    id="delivery-candidate"
+                    value={deliveryCandidate}
+                    onChange={(e) => setDeliveryCandidate(e.target.value)}
+                    disabled={pending}
                     required
-                >
-                    <option value="">
-                        {consultantsLoaded ? '— wybierz konsultanta —' : 'Ładowanie…'}
-                    </option>
-                    {consultants.map((c) => (
-                        <option key={c.user_id} value={c.user_id}>
-                            {c.full_name ?? c.email} ({c.role})
-                        </option>
-                    ))}
-                </select>
+                    placeholder="np. Jan Kowalski"
+                />
             </div>
             <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -544,6 +573,7 @@ export function AssignBonusForm({
 
     const recruiterFields = !isEdit && category === 'recruiter' && (
         <>
+            {clientSelectField}
             <div className="grid grid-cols-2 gap-3">
                 <div>
                     <Label htmlFor="recruiter-margin">Marża [PLN/h]</Label>

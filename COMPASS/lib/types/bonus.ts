@@ -43,9 +43,12 @@ export interface BonusRow {
     updated_at: string
     // Phase 27b — category + per-category fields + attachment
     category: BonusCategory
-    sales_client_name: string | null
+    // Phase 27d — unified client_name (sales/delivery/recruiter) + delivery candidate (free text)
+    client_name: string | null
+    delivery_candidate_name: string | null
+    sales_client_name: string | null // legacy (Phase 27b) — superseded by client_name
     sales_service_description: string | null
-    delivery_consultant_id: string | null
+    delivery_consultant_id: string | null // legacy (Phase 27b) — superseded by delivery_candidate_name
     delivery_margin_amount: number | null
     delivery_margin_percent: number | null
     recruiter_margin_per_hour: number | null
@@ -64,11 +67,9 @@ export interface BonusWithUsers extends BonusRow {
     proposer_full_name: string | null
     proposer_email: string | null
     linked_invoice_number: string | null
-    /** Phase 27b — joined consultant name for delivery_lead category. */
-    delivery_consultant_full_name?: string | null
 }
 
-/** Phase 27b — Sales category input shape. */
+/** Phase 27b/d — Sales category input shape. */
 export interface AssignBonusInputSales {
     category: 'sales'
     recipient_user_id: string
@@ -78,11 +79,11 @@ export interface AssignBonusInputSales {
     currency?: string
     reason: string
     notes?: string | null
-    sales_client_name: string
+    client_name: string
     sales_service_description: string
 }
 
-/** Phase 27b — Delivery Lead category input shape. */
+/** Phase 27b/d — Delivery Lead category input shape. Candidate = free text (Phase 27d). */
 export interface AssignBonusInputDelivery {
     category: 'delivery_lead'
     recipient_user_id: string
@@ -92,12 +93,13 @@ export interface AssignBonusInputDelivery {
     currency?: string
     reason: string
     notes?: string | null
-    delivery_consultant_id: string
+    client_name: string
+    delivery_candidate_name: string
     delivery_margin_amount: number
     delivery_margin_percent?: number
 }
 
-/** Phase 27b — Recruiter category input shape. */
+/** Phase 27b/d — Recruiter category input shape. */
 export interface AssignBonusInputRecruiter {
     category: 'recruiter'
     recipient_user_id: string
@@ -107,6 +109,7 @@ export interface AssignBonusInputRecruiter {
     currency?: string
     reason: string
     notes?: string | null
+    client_name: string
     recruiter_margin_per_hour: number
     recruiter_candidate_name: string
 }

@@ -129,11 +129,16 @@ function AttachmentButton({ bonus }: { bonus: BonusWithUsers }) {
 
 function categoryInlineDetails(bonus: BonusWithUsers): string | null {
     switch (bonus.category) {
-        case 'sales':
-            return bonus.sales_client_name ? `Klient: ${bonus.sales_client_name}` : null
+        case 'sales': {
+            const parts: string[] = []
+            if (bonus.client_name) parts.push(`Klient: ${bonus.client_name}`)
+            if (bonus.sales_service_description) parts.push(`Usługa: ${bonus.sales_service_description}`)
+            return parts.length > 0 ? parts.join(' · ') : null
+        }
         case 'delivery_lead': {
             const parts: string[] = []
-            if (bonus.delivery_consultant_full_name) parts.push(`Konsultant: ${bonus.delivery_consultant_full_name}`)
+            if (bonus.client_name) parts.push(`Klient: ${bonus.client_name}`)
+            if (bonus.delivery_candidate_name) parts.push(`Kandydat: ${bonus.delivery_candidate_name}`)
             if (bonus.delivery_margin_amount != null) {
                 parts.push(`Marża: ${Number(bonus.delivery_margin_amount).toFixed(2)} PLN`)
             }
@@ -141,6 +146,7 @@ function categoryInlineDetails(bonus: BonusWithUsers): string | null {
         }
         case 'recruiter': {
             const parts: string[] = []
+            if (bonus.client_name) parts.push(`Klient: ${bonus.client_name}`)
             if (bonus.recruiter_candidate_name) parts.push(`Kandydat: ${bonus.recruiter_candidate_name}`)
             if (bonus.recruiter_margin_per_hour != null) {
                 parts.push(`Marża: ${Number(bonus.recruiter_margin_per_hour).toFixed(2)} PLN/h`)

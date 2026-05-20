@@ -101,26 +101,30 @@ function validateAssignInput(input: AssignBonusInput): void {
     validateCategoryFields(input)
 }
 
-/** Phase 27b — per-category field validation. */
+/** Phase 27d — validate client name (shared across sales/delivery/recruiter). */
+function validateClientName(name: string | undefined | null): void {
+    const client = (name ?? '').trim()
+    if (client.length < 2) {
+        throw new Error('Klient: minimum 2 znaki.')
+    }
+}
+
+/** Phase 27b/d — per-category field validation. */
 function validateCategoryFields(input: AssignBonusInput): void {
     switch (input.category) {
         case 'sales': {
-            const client = (input.sales_client_name ?? '').trim()
+            validateClientName(input.client_name)
             const desc = (input.sales_service_description ?? '').trim()
-            if (client.length < 2) {
-                throw new Error('Klient: minimum 2 znaki.')
-            }
             if (desc.length < 3) {
                 throw new Error('Opis usługi: minimum 3 znaki.')
             }
             break
         }
         case 'delivery_lead': {
-            if (!input.delivery_consultant_id) {
-                throw new Error('Konsultant jest wymagany dla premii Delivery Lead.')
-            }
-            if (input.delivery_consultant_id === input.recipient_user_id) {
-                throw new Error('Manager nie może wpisać premii Delivery Lead na własną osobę jako konsultanta.')
+            validateClientName(input.client_name)
+            const candidate = (input.delivery_candidate_name ?? '').trim()
+            if (candidate.length < 3) {
+                throw new Error('Imię i nazwisko kandydata: minimum 3 znaki.')
             }
             if (!Number.isFinite(input.delivery_margin_amount) || input.delivery_margin_amount <= 0) {
                 throw new Error('Marża miesięczna musi być > 0.')
@@ -137,6 +141,7 @@ function validateCategoryFields(input: AssignBonusInput): void {
             break
         }
         case 'recruiter': {
+            validateClientName(input.client_name)
             if (
                 !Number.isFinite(input.recruiter_margin_per_hour) ||
                 input.recruiter_margin_per_hour < 0
@@ -173,23 +178,25 @@ function periodLabelPl(year: number, month: number): string {
     return `${BONUS_MONTHS_PL[month - 1]} ${year}`
 }
 
-/** Phase 27b — extract per-category columns from input for INSERT. */
+/** Phase 27b/d — extract per-category columns from input for INSERT. */
 function buildCategoryInsertPayload(input: AssignBonusInput): Record<string, unknown> {
     switch (input.category) {
         case 'sales':
             return {
-                sales_client_name: input.sales_client_name.trim(),
+                client_name: input.client_name.trim(),
                 sales_service_description: input.sales_service_description.trim(),
             }
         case 'delivery_lead':
             return {
-                delivery_consultant_id: input.delivery_consultant_id,
+                client_name: input.client_name.trim(),
+                delivery_candidate_name: input.delivery_candidate_name.trim(),
                 delivery_margin_amount: input.delivery_margin_amount,
                 delivery_margin_percent: input.delivery_margin_percent ?? 10.0,
             }
         case 'recruiter': {
             const tier = recruiterTierForMargin(input.recruiter_margin_per_hour)
             return {
+                client_name: input.client_name.trim(),
                 recruiter_margin_per_hour: input.recruiter_margin_per_hour,
                 recruiter_candidate_name: input.recruiter_candidate_name.trim(),
                 recruiter_calculated_tier: tier?.tier ?? null,
@@ -943,8 +950,6 @@ async function enrichBonusesWithUsers(rows: BonusRow[]): Promise<BonusWithUsers[
         userIds.add(r.recipient_user_id)
         userIds.add(r.proposed_by)
         if (r.linked_invoice_id) invoiceIds.add(r.linked_invoice_id)
-        // Phase 27b — delivery_lead consultant
-        if (r.delivery_consultant_id) userIds.add(r.delivery_consultant_id)
     }
 
     const [profilesRes, invoicesRes] = await Promise.all([
@@ -981,9 +986,6 @@ async function enrichBonusesWithUsers(rows: BonusRow[]): Promise<BonusWithUsers[
         proposer_full_name: profileMap.get(r.proposed_by)?.full_name ?? null,
         proposer_email: profileMap.get(r.proposed_by)?.email ?? null,
         linked_invoice_number: r.linked_invoice_id ? (invoiceMap.get(r.linked_invoice_id) ?? null) : null,
-        delivery_consultant_full_name: r.delivery_consultant_id
-            ? profileMap.get(r.delivery_consultant_id)?.full_name ?? null
-            : null,
     }))
 }
 
@@ -1049,46 +1051,6 @@ export async function listMyInvoicesForBonusLinking(): Promise<
         period_month: number
         status: string
     }>).map((i) => ({ ...i, amount: Number(i.amount) }))
-}
-
-// ─── Phase 27b — Delivery consultant dropdown candidates ──────────────────
-
-export interface DeliveryConsultantCandidate {
-    user_id: string
-    full_name: string | null
-    email: string
-    role: string
-}
-
-/**
- * Phase 27b — list candidates for the Delivery Lead bonus consultant dropdown.
- * Includes consultants (IT + internal). Excludes self and exited employees.
- */
-export async function listConsultantsForDelivery(): Promise<DeliveryConsultantCandidate[]> {
-    const ctx = await requireBonusProposerAction()
-    const admin = createServiceClient()
-    const { data, error } = await admin
-        .from('profiles')
-        .select('id, full_name, email, role, employment_status')
-        .in('role', ['consultant', 'internal', 'manager'])
-        .neq('id', ctx.userId)
-        .order('full_name')
-    if (error) throw new Error(`Błąd pobierania konsultantów: ${error.message}`)
-    // Phase 27b — cast via unknown; database.types.ts may lag behind profile schema.
-    return ((data ?? []) as unknown as Array<{
-        id: string
-        full_name: string | null
-        email: string
-        role: string
-        employment_status: string | null
-    }>)
-        .filter((p) => p.employment_status !== 'exited')
-        .map((p) => ({
-            user_id: p.id,
-            full_name: p.full_name,
-            email: p.email,
-            role: p.role,
-        }))
 }
 
 // ─── Phase 27b — Attachment lifecycle (upload, signed URL, remove) ────────

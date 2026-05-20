@@ -129,7 +129,7 @@ function BonusCategoryDetails({ bonus }: { bonus: BonusWithUsers }) {
         case 'sales':
             return (
                 <div className="text-xs text-muted-foreground space-y-0.5">
-                    {bonus.sales_client_name && <div>Klient: {bonus.sales_client_name}</div>}
+                    {bonus.client_name && <div>Klient: {bonus.client_name}</div>}
                     {bonus.sales_service_description && (
                         <div>Usługa: {bonus.sales_service_description}</div>
                     )}
@@ -138,8 +138,9 @@ function BonusCategoryDetails({ bonus }: { bonus: BonusWithUsers }) {
         case 'delivery_lead':
             return (
                 <div className="text-xs text-muted-foreground space-y-0.5">
-                    {bonus.delivery_consultant_full_name && (
-                        <div>Konsultant: {bonus.delivery_consultant_full_name}</div>
+                    {bonus.client_name && <div>Klient: {bonus.client_name}</div>}
+                    {bonus.delivery_candidate_name && (
+                        <div>Kandydat: {bonus.delivery_candidate_name}</div>
                     )}
                     {bonus.delivery_margin_amount != null && (
                         <div>
@@ -154,6 +155,7 @@ function BonusCategoryDetails({ bonus }: { bonus: BonusWithUsers }) {
         case 'recruiter':
             return (
                 <div className="text-xs text-muted-foreground space-y-0.5">
+                    {bonus.client_name && <div>Klient: {bonus.client_name}</div>}
                     {bonus.recruiter_candidate_name && (
                         <div>Kandydat: {bonus.recruiter_candidate_name}</div>
                     )}
