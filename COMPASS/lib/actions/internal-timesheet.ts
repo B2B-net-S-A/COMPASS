@@ -16,7 +16,14 @@ import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
+import {
+    buildTimesheetRosterView,
+    type TimesheetRosterMember,
+} from '@/lib/hr/timesheet-roster'
 import { format } from 'date-fns'
+
+// Phase 27g — roles that keep a timesheet (HR zone). Consultants (IT) do not.
+const TIMESHEET_HR_ROLES = ['admin', 'internal', 'manager', 'finanse', 'talent_community'] as const
 
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 
@@ -1282,14 +1289,14 @@ export async function listAllTimesheetsForMonth(
     const headers = (data ?? []) as Array<TimesheetHeader & { profiles: { full_name: string | null; email: string } | null }>
 
     // Fetch entries per timesheet (sequential for simplicity; small N)
-    const result: TimesheetWithEntriesAndUser[] = []
+    const existing: TimesheetWithEntriesAndUser[] = []
     for (const h of headers) {
         const { data: entries } = await admin
             .from('timesheet_entries')
             .select('*')
             .eq('timesheet_id', h.id)
             .order('work_date')
-        result.push({
+        existing.push({
             id: h.id,
             user_id: h.user_id,
             year: h.year,
@@ -1309,7 +1316,114 @@ export async function listAllTimesheetsForMonth(
             user_email: h.profiles?.email ?? '',
         })
     }
-    return result
+
+    // Phase 27g — show every team member, even those with no timesheet yet, so
+    // the approver can fill one on their behalf. Placeholder rows (id='') are
+    // materialized into a real draft by ensureTeamTimesheet() when opened.
+    const roster = await fetchTimesheetRoster(admin, ctx)
+    return buildTimesheetRosterView(existing, roster, year, month)
+}
+
+/**
+ * Phase 27g — team members eligible for an on-behalf timesheet.
+ *  - Admin: all active HR-zone employees (except self).
+ *  - Manager: direct reports only (profiles.manager_id = ctx.userId).
+ * Consultants (IT) keep no timesheet and are excluded; so are exited/offboarding.
+ */
+async function fetchTimesheetRoster(
+    admin: ServiceClient,
+    ctx: InternalAuthContext,
+): Promise<TimesheetRosterMember[]> {
+    let query = admin
+        .from('profiles')
+        .select('id, full_name, email, role, manager_id, employment_status')
+        .in('role', TIMESHEET_HR_ROLES)
+        .neq('id', ctx.userId)
+    if (!ctx.isAdmin) {
+        query = query.eq('manager_id', ctx.userId)
+    }
+    const { data, error } = await query
+    if (error) throw new Error(`Błąd pobierania zespołu: ${error.message}`)
+    return ((data ?? []) as unknown as Array<TimesheetRosterMember & { employment_status: string | null }>)
+        .filter((p) => p.employment_status !== 'exited' && p.employment_status !== 'offboarding')
+        .map(({ id, full_name, email }) => ({ id, full_name, email }))
+}
+
+/**
+ * Phase 27g — get-or-create a team member's timesheet so the approver can fill
+ * it on their behalf. Used when opening a placeholder row from the HR queue.
+ * Re-checks team scope server-side (admin pomija). The created row is a normal
+ * empty draft — the employee's own auto-fill-from-clock still triggers later
+ * (it keys on auto_filled_at, which stays null here).
+ */
+export async function ensureTeamTimesheet(
+    targetUserId: string,
+    year: number,
+    month: number,
+): Promise<TimesheetWithEntriesAndUser> {
+    const ctx = await requireTimesheetApproverAction()
+    validateYear(year)
+    validateMonth(month)
+    const admin = createServiceClient()
+    await assertApproverTeamScope(admin, ctx, targetUserId)
+
+    const contact = await fetchUserContact(targetUserId)
+
+    let header: TimesheetHeader | null = null
+    const { data: existing } = await admin
+        .from('timesheets')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .eq('year', year)
+        .eq('month', month)
+        .maybeSingle<TimesheetHeader>()
+    header = existing
+
+    if (!header) {
+        const insertRes = await admin
+            .from('timesheets')
+            .insert({ user_id: targetUserId, year, month })
+            .select('*')
+            .single<TimesheetHeader>()
+        if (insertRes.error || !insertRes.data) {
+            // UNIQUE(user_id, year, month) race (employee opened their tab at the
+            // same time) — re-fetch the row the other writer created.
+            const refetch = await admin
+                .from('timesheets')
+                .select('*')
+                .eq('user_id', targetUserId)
+                .eq('year', year)
+                .eq('month', month)
+                .single<TimesheetHeader>()
+            if (refetch.error || !refetch.data) {
+                throw new Error(
+                    `Błąd tworzenia timesheetu: ${insertRes.error?.message ?? 'unknown'}`,
+                )
+            }
+            header = refetch.data
+        } else {
+            header = insertRes.data
+            await logAudit(ctx.userId, 'TIMESHEET_CREATED_BY_APPROVER', {
+                timesheet_id: header.id,
+                target_user_id: targetUserId,
+                year,
+                month,
+            })
+        }
+    }
+
+    const { data: entries } = await admin
+        .from('timesheet_entries')
+        .select('*')
+        .eq('timesheet_id', header.id)
+        .order('work_date')
+
+    return {
+        ...header,
+        entries: ((entries ?? []) as unknown) as TimesheetEntryRow[],
+        user_full_name: contact?.full_name ?? null,
+        user_email: contact?.email ?? '',
+    }
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
