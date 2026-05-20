@@ -31,8 +31,9 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
     const isOwner = detail.employee.id === ctx.userId
     const isLifecycleAdmin = canManageLifecycle(ctx.role)
     const isManagerOfEmployee = detail.employee.manager_id === ctx.userId
-    const canEditTasks = isLifecycleAdmin || isManagerOfEmployee || isOwner || detail.employee.buddy_id === ctx.userId
-    const canCompleteOnboarding = isLifecycleAdmin
+    const isCancelled = detail.progress.cancelled_at !== null
+    const canEditTasks = (isLifecycleAdmin || isManagerOfEmployee || isOwner || detail.employee.buddy_id === ctx.userId) && !isCancelled
+    const canCompleteOnboarding = isLifecycleAdmin && !isCancelled
 
     const completedTasks = detail.tasks.filter((t) => t.completed_at !== null).length
     const requiredTasks = detail.tasks.filter((t) => t.is_required).length
@@ -74,6 +75,23 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
                 </div>
             </header>
 
+            {isCancelled && (
+                <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-4">
+                    <p className="text-sm font-medium text-amber-300">
+                        Ten onboarding został anulowany{' '}
+                        {detail.progress.cancelled_at && new Date(detail.progress.cancelled_at).toLocaleDateString('pl-PL')}.
+                    </p>
+                    {detail.progress.cancellation_reason && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Powód: {detail.progress.cancellation_reason}
+                        </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Rekord jest tylko do wglądu — widoczny w archiwum jako anulowany.
+                    </p>
+                </div>
+            )}
+
             <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="rounded-lg border bg-card p-3">
                     <div className="text-xs uppercase text-muted-foreground">Manager</div>
@@ -92,7 +110,7 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
                 </div>
             </section>
 
-            {isLifecycleAdmin && !detail.progress.completed_at && (
+            {isLifecycleAdmin && !detail.progress.completed_at && !isCancelled && (
                 <WelcomeEmailCard
                     progressId={detail.progress.id}
                     employeeName={detail.employee.full_name ?? detail.employee.email}
@@ -134,7 +152,7 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
                 </section>
             )}
 
-            {isLifecycleAdmin && !detail.progress.completed_at && (
+            {isLifecycleAdmin && !detail.progress.completed_at && !isCancelled && (
                 <section className="rounded-lg border border-dashed border-red-400/30 p-4">
                     <h3 className="font-semibold text-sm mb-2 text-red-400">Strefa niebezpieczna</h3>
                     <p className="text-xs text-muted-foreground mb-3">
