@@ -228,7 +228,7 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                                 </div>
                                                 {placeholder ? (
                                                     <p className="text-xs text-muted-foreground mt-0.5">
-                                                        Brak timesheetu — kliknij „Szczegóły”, aby wypełnić za pracownika.
+                                                        Brak timesheetu — kliknij „Wypełnij”, aby uzupełnić za pracownika.
                                                     </p>
                                                 ) : (
                                                     <p className="text-xs text-muted-foreground mt-0.5">
