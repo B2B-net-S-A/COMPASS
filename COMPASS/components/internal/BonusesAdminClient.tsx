@@ -399,9 +399,13 @@ export function BonusesAdminClient({
                 </div>
             )}
 
-            {/* Assign dialog */}
+            {/* Assign dialog — outside-click/Escape are blocked so a misclick can't
+                discard a half-filled form; close via Anuluj or the X. */}
             <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-                <DialogContent>
+                <DialogContent
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => e.preventDefault()}
+                >
                     <DialogHeader>
                         <DialogTitle>Przypisz premię</DialogTitle>
                         <DialogDescription>
@@ -412,16 +416,20 @@ export function BonusesAdminClient({
                         mode="assign"
                         candidates={candidates}
                         compact
+                        persistDraft
                         onSuccess={() => setAssignOpen(false)}
                         onCancel={() => setAssignOpen(false)}
                     />
                 </DialogContent>
             </Dialog>
 
-            {/* Edit dialog */}
+            {/* Edit dialog — same accidental-close guard as the assign dialog. */}
             {editTarget && (
                 <Dialog open onOpenChange={(open) => !open && setEditTarget(null)}>
-                    <DialogContent>
+                    <DialogContent
+                        onInteractOutside={(e) => e.preventDefault()}
+                        onEscapeKeyDown={(e) => e.preventDefault()}
+                    >
                         <DialogHeader>
                             <DialogTitle>Edytuj premię</DialogTitle>
                             <DialogDescription>

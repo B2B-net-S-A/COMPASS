@@ -62,6 +62,8 @@ interface Props {
     onSuccess?: (updated?: BonusRow) => void
     onCancel?: () => void
     compact?: boolean
+    /** Persist unsent input to localStorage so an accidental close/reload doesn't wipe it (assign mode only). */
+    persistDraft?: boolean
 }
 
 interface PeriodOption {
@@ -93,6 +95,68 @@ const CATEGORY_ICON: Record<BonusCategory, React.ComponentType<{ className?: str
     custom: Sparkles,
 }
 
+// Phase 27e — persist unsent assign-form input so an accidental close (or reload)
+// doesn't wipe a half-filled form. Text fields only; the File attachment can't be
+// serialized and is intentionally not persisted.
+const BONUS_DRAFT_KEY = 'compass:bonus-assign-draft:v1'
+
+interface BonusDraft {
+    recipientId: string
+    periodKey: string
+    amount: string
+    currency: string
+    reason: string
+    notes: string
+    category: BonusCategory
+    clientName: string
+    clientIsOther: boolean
+    salesServiceDescription: string
+    deliveryCandidate: string
+    deliveryMarginAmount: string
+    deliveryMarginPercent: string
+    recruiterMargin: string
+    recruiterCandidate: string
+    customMemo: string
+}
+
+function readBonusDraft(): BonusDraft | null {
+    if (typeof window === 'undefined') return null
+    try {
+        const raw = window.localStorage.getItem(BONUS_DRAFT_KEY)
+        return raw ? (JSON.parse(raw) as BonusDraft) : null
+    } catch {
+        return null
+    }
+}
+
+function clearBonusDraft(): void {
+    if (typeof window === 'undefined') return
+    try {
+        window.localStorage.removeItem(BONUS_DRAFT_KEY)
+    } catch {
+        // best-effort
+    }
+}
+
+// Whether a draft holds anything worth restoring (used to decide save-vs-remove
+// and whether to surface the "restored" banner). Defaults like currency=PLN are ignored.
+function bonusDraftHasContent(d: BonusDraft | null): boolean {
+    if (!d) return false
+    return Boolean(
+        d.recipientId ||
+            d.amount ||
+            d.reason?.trim() ||
+            d.notes?.trim() ||
+            d.clientName ||
+            d.salesServiceDescription ||
+            d.deliveryCandidate ||
+            d.deliveryMarginAmount ||
+            d.recruiterMargin ||
+            d.recruiterCandidate ||
+            d.customMemo,
+    )
+}
+
 export function AssignBonusForm({
     mode = 'assign',
     candidates,
@@ -101,6 +165,7 @@ export function AssignBonusForm({
     onSuccess,
     onCancel,
     compact = false,
+    persistDraft = false,
 }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
@@ -113,38 +178,59 @@ export function AssignBonusForm({
     }, [prefilled])
 
     const isEdit = mode === 'edit'
+    const draftEnabled = persistDraft && !isEdit
 
-    // Core state
+    // Read any persisted draft exactly once on mount (assign mode only).
+    const [initialDraft] = useState<BonusDraft | null>(() =>
+        draftEnabled ? readBonusDraft() : null,
+    )
+    const [draftRestored, setDraftRestored] = useState<boolean>(() =>
+        bonusDraftHasContent(initialDraft),
+    )
+
+    // Core state — seeded from the persisted draft when present, else prefilled/defaults.
     const [recipientId, setRecipientId] = useState<string>(
-        prefilledRecipientId ?? prefilled?.id ?? '',
+        initialDraft?.recipientId ?? prefilledRecipientId ?? prefilled?.id ?? '',
     )
-    const [periodKey, setPeriodKey] = useState<string>(defaultPeriodKey)
+    const [periodKey, setPeriodKey] = useState<string>(initialDraft?.periodKey ?? defaultPeriodKey)
     const [amount, setAmount] = useState<string>(
-        prefilled ? String(prefilled.amount.toFixed(2)) : '',
+        initialDraft?.amount ?? (prefilled ? String(prefilled.amount.toFixed(2)) : ''),
     )
-    const [currency, setCurrency] = useState<string>(prefilled?.currency ?? 'PLN')
-    const [reason, setReason] = useState<string>(prefilled?.reason ?? '')
-    const [notes, setNotes] = useState<string>(prefilled?.notes ?? '')
+    const [currency, setCurrency] = useState<string>(
+        initialDraft?.currency ?? prefilled?.currency ?? 'PLN',
+    )
+    const [reason, setReason] = useState<string>(initialDraft?.reason ?? prefilled?.reason ?? '')
+    const [notes, setNotes] = useState<string>(initialDraft?.notes ?? prefilled?.notes ?? '')
 
     // Phase 27b — category state (only for assign mode)
-    const [category, setCategory] = useState<BonusCategory>('custom')
+    const [category, setCategory] = useState<BonusCategory>(initialDraft?.category ?? 'custom')
     // Phase 27d — shared client (sales/delivery/recruiter) + clients list
-    const [clientName, setClientName] = useState<string>('')
-    const [clientIsOther, setClientIsOther] = useState<boolean>(false)
+    const [clientName, setClientName] = useState<string>(initialDraft?.clientName ?? '')
+    const [clientIsOther, setClientIsOther] = useState<boolean>(initialDraft?.clientIsOther ?? false)
     const [clients, setClients] = useState<ClientRow[]>([])
     const [clientsLoaded, setClientsLoaded] = useState<boolean>(false)
     // Sales
-    const [salesServiceDescription, setSalesServiceDescription] = useState<string>('')
+    const [salesServiceDescription, setSalesServiceDescription] = useState<string>(
+        initialDraft?.salesServiceDescription ?? '',
+    )
     // Delivery (Phase 27d: candidate free-text replaces consultant dropdown)
-    const [deliveryCandidate, setDeliveryCandidate] = useState<string>('')
-    const [deliveryMarginAmount, setDeliveryMarginAmount] = useState<string>('')
-    const [deliveryMarginPercent, setDeliveryMarginPercent] = useState<string>('10.00')
+    const [deliveryCandidate, setDeliveryCandidate] = useState<string>(
+        initialDraft?.deliveryCandidate ?? '',
+    )
+    const [deliveryMarginAmount, setDeliveryMarginAmount] = useState<string>(
+        initialDraft?.deliveryMarginAmount ?? '',
+    )
+    const [deliveryMarginPercent, setDeliveryMarginPercent] = useState<string>(
+        initialDraft?.deliveryMarginPercent ?? '10.00',
+    )
     // Recruiter
-    const [recruiterMargin, setRecruiterMargin] = useState<string>('')
-    const [recruiterCandidate, setRecruiterCandidate] = useState<string>('')
+    const [recruiterMargin, setRecruiterMargin] = useState<string>(initialDraft?.recruiterMargin ?? '')
+    const [recruiterCandidate, setRecruiterCandidate] = useState<string>(
+        initialDraft?.recruiterCandidate ?? '',
+    )
     // Custom
-    const [customMemo, setCustomMemo] = useState<string>('')
-    // Attachment (any category)
+    const [customMemo, setCustomMemo] = useState<string>(initialDraft?.customMemo ?? '')
+    // Attachment (any category) — not persisted (File can't be serialized).
     const [attachment, setAttachment] = useState<File | null>(null)
 
     const recipientLocked = isEdit || !!prefilledRecipientId
@@ -206,8 +292,60 @@ export function AssignBonusForm({
         }
     }, [recruiterTier, category, isEdit])
 
+    // Phase 27e — persist the draft on every change (assign mode only). When the form
+    // is pristine/empty we remove the key instead, so reset/submit leaves no stale draft.
+    useEffect(() => {
+        if (!draftEnabled) return
+        const draft: BonusDraft = {
+            recipientId,
+            periodKey,
+            amount,
+            currency,
+            reason,
+            notes,
+            category,
+            clientName,
+            clientIsOther,
+            salesServiceDescription,
+            deliveryCandidate,
+            deliveryMarginAmount,
+            deliveryMarginPercent,
+            recruiterMargin,
+            recruiterCandidate,
+            customMemo,
+        }
+        try {
+            if (bonusDraftHasContent(draft)) {
+                window.localStorage.setItem(BONUS_DRAFT_KEY, JSON.stringify(draft))
+            } else {
+                window.localStorage.removeItem(BONUS_DRAFT_KEY)
+            }
+        } catch {
+            // best-effort (quota / private mode)
+        }
+    }, [
+        draftEnabled,
+        recipientId,
+        periodKey,
+        amount,
+        currency,
+        reason,
+        notes,
+        category,
+        clientName,
+        clientIsOther,
+        salesServiceDescription,
+        deliveryCandidate,
+        deliveryMarginAmount,
+        deliveryMarginPercent,
+        recruiterMargin,
+        recruiterCandidate,
+        customMemo,
+    ])
+
     function resetForm() {
         if (isEdit) return
+        if (draftEnabled) clearBonusDraft()
         if (!prefilledRecipientId) setRecipientId('')
         setPeriodKey(defaultPeriodKey)
         setAmount('')
@@ -426,6 +564,13 @@ export function AssignBonusForm({
                 toast.error(err instanceof Error ? err.message : 'Nieznany błąd.')
             }
         })
+    }
+
+    // Explicit cancel = discard the draft. Other close paths (X button, reload)
+    // intentionally keep it so the form can be resumed on reopen.
+    function handleCancel() {
+        if (draftEnabled) clearBonusDraft()
+        onCancel?.()
     }
 
     const title = isEdit ? 'Edytuj premię' : 'Przypisz premię'
@@ -675,6 +820,21 @@ export function AssignBonusForm({
 
     const formBody = (
         <form onSubmit={handleSubmit} className="space-y-4">
+            {draftRestored && (
+                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                    <span>Przywrócono niewysłane dane z poprzedniej próby.</span>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            resetForm()
+                            setDraftRestored(false)
+                        }}
+                        className="font-medium underline hover:no-underline"
+                    >
+                        Wyczyść
+                    </button>
+                </div>
+            )}
             <div>
                 <Label htmlFor="bonus-recipient">Pracownik</Label>
                 {recipientLocked ? (
@@ -800,7 +960,7 @@ export function AssignBonusForm({
                     <Button
                         type="button"
                         variant="ghost"
-                        onClick={onCancel}
+                        onClick={handleCancel}
                         disabled={pending}
                     >
                         Anuluj
