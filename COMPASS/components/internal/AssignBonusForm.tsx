@@ -24,6 +24,7 @@ import { listActiveClients, type ClientRow } from '@/lib/actions/internal-client
 import type {
     AssignBonusInput,
     BonusCategory,
+    BonusRow,
     EligibleEmployeeForBonus,
 } from '@/lib/types/bonus'
 import {
@@ -58,7 +59,7 @@ interface Props {
     candidates: EligibleEmployeeForBonus[]
     prefilledRecipientId?: string
     prefilled?: PrefilledEdit
-    onSuccess?: () => void
+    onSuccess?: (updated?: BonusRow) => void
     onCancel?: () => void
     compact?: boolean
 }
@@ -376,7 +377,7 @@ export function AssignBonusForm({
             }
             startTransition(async () => {
                 try {
-                    await updateBonus({
+                    const updated = await updateBonus({
                         id: prefilled.id,
                         amount: amountNum,
                         reason: reasonTrimmed,
@@ -384,7 +385,7 @@ export function AssignBonusForm({
                     })
                     toastSuccess('Premia zaktualizowana.')
                     router.refresh()
-                    onSuccess?.()
+                    onSuccess?.(updated)
                 } catch (err) {
                     toast.error(err instanceof Error ? err.message : 'Nieznany błąd.')
                 }
