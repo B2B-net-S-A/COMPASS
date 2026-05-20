@@ -719,12 +719,6 @@ export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
         .single<BonusRow>()
 
     if (error || !inserted) {
-        // Friendly UNIQUE violation message.
-        if (error?.code === '23505') {
-            throw new Error(
-                `Premia za ${periodLabelPl(input.period_year, input.period_month)} została już przypisana temu pracownikowi.`,
-            )
-        }
         throw new Error(`Błąd przypisania premii: ${error?.message}`)
     }
 

@@ -281,7 +281,10 @@ describe('assignBonus (Phase 26)', () => {
         expect(supabaseState.insertedRow).toMatchObject({ status: 'assigned' })
     })
 
-    it('returns friendly error on UNIQUE violation', async () => {
+    // Phase 27e — the one-bonus-per-recipient-per-month UNIQUE index was dropped
+    // (recruiter/sales/delivery bonuses are per-placement, so multiples per month are valid).
+    // assignBonus no longer special-cases a duplicate-key error into a "już przypisana" message.
+    it('does not map a duplicate-key DB error to a per-month "already assigned" message', async () => {
         supabaseState.insertError = { code: '23505', message: 'duplicate key' }
         const now = new Date()
         await expect(
@@ -294,7 +297,7 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'duplicate test',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/została już przypisana/i)
+        ).rejects.toThrow(/Błąd przypisania premii/i)
     })
 })
 
