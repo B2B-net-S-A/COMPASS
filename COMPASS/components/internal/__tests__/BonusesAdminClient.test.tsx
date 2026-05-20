@@ -75,11 +75,16 @@ afterEach(() => {
 })
 
 describe('<BonusesAdminClient /> edit flow', () => {
-    // Regression: the success toast fired but the list kept showing the old amount
-    // because onSuccess merged the stale editTarget instead of the saved row.
-    it('reflects the saved amount in the list after editing', async () => {
+    // Regression: the success toast fired but the list kept showing the old values
+    // because onSuccess merged the stale editTarget instead of the saved row. Covers
+    // both the amount (Kwota) and the reason (Uzasadnienie) — same row-level merge.
+    it('reflects the saved amount and reason in the list after editing', async () => {
         const bonus = buildBonus()
-        mockUpdateBonus.mockResolvedValue({ ...bonus, amount: 1500 })
+        mockUpdateBonus.mockResolvedValue({
+            ...bonus,
+            amount: 1500,
+            reason: 'Nowe uzasadnienie premii',
+        })
 
         render(
             <BonusesAdminClient
@@ -91,11 +96,15 @@ describe('<BonusesAdminClient /> edit flow', () => {
         )
 
         expect(screen.getAllByText('1000.00 PLN').length).toBeGreaterThan(0)
+        expect(screen.getByText(/Zatrudnienie Michał Biegała/)).toBeInTheDocument()
 
         fireEvent.click(screen.getByRole('button', { name: /Edytuj/ }))
 
         const amountInput = await screen.findByLabelText('Kwota')
         fireEvent.change(amountInput, { target: { value: '1500' } })
+        fireEvent.change(screen.getByLabelText('Uzasadnienie'), {
+            target: { value: 'Nowe uzasadnienie premii' },
+        })
 
         const form = amountInput.closest('form')
         expect(form).not.toBeNull()
@@ -103,7 +112,11 @@ describe('<BonusesAdminClient /> edit flow', () => {
 
         await waitFor(() => {
             expect(mockUpdateBonus).toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'bonus-1', amount: 1500 }),
+                expect.objectContaining({
+                    id: 'bonus-1',
+                    amount: 1500,
+                    reason: 'Nowe uzasadnienie premii',
+                }),
             )
         })
 
@@ -111,5 +124,7 @@ describe('<BonusesAdminClient /> edit flow', () => {
             expect(screen.getAllByText('1500.00 PLN').length).toBeGreaterThan(0)
         })
         expect(screen.queryByText('1000.00 PLN')).toBeNull()
+        expect(screen.getByText(/Nowe uzasadnienie premii/)).toBeInTheDocument()
+        expect(screen.queryByText(/Zatrudnienie Michał Biegała/)).toBeNull()
     })
 })
