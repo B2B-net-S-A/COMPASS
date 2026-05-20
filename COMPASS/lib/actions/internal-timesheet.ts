@@ -8,6 +8,7 @@ import {
     requireAdminAction,
     requireInternalOrAdminAction,
     requireTimesheetApproverAction,
+    type InternalAuthContext,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
@@ -714,8 +715,20 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
 }
 
 export async function unlockTimesheet(timesheetId: string): Promise<void> {
-    const ctx = await requireAdminAction()
+    // Phase 27f: approver = admin OR manager-of-team (parytet z approve/reject),
+    // żeby manager mógł cofnąć zaakceptowany/odrzucony timesheet swojego zespołu
+    // do edycji bez angażowania admina.
+    const ctx = await requireTimesheetApproverAction()
     const admin = createServiceClient()
+
+    const { data: header, error: fetchErr } = await admin
+        .from('timesheets')
+        .select('id, user_id, status')
+        .eq('id', timesheetId)
+        .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'status'>>()
+    if (fetchErr || !header) throw new Error('Timesheet nie istnieje.')
+
+    await assertApproverTeamScope(admin, ctx, header.user_id)
 
     const { error } = await admin
         .from('timesheets')
@@ -729,7 +742,224 @@ export async function unlockTimesheet(timesheetId: string): Promise<void> {
         .eq('id', timesheetId)
     if (error) throw new Error(`Błąd odblokowania: ${error.message}`)
 
-    await logAudit(ctx.userId, 'TIMESHEET_UNLOCKED', { timesheet_id: timesheetId })
+    await logAudit(ctx.userId, 'TIMESHEET_UNLOCKED', {
+        timesheet_id: timesheetId,
+        target_user_id: header.user_id,
+    })
+}
+
+// ─── Phase 27f — Approver in-place entry editing (admin OR manager-of-team) ──
+//
+// Pozwala approverowi poprawić wpisy timesheetu pracownika bez czekania aż ten
+// złoży go do akceptacji (np. "Martyna wczoraj 4h, nie 5h"). Odpowiedniki
+// user-side addEntry/updateEntry/deleteEntry, ale:
+//   1. requireTimesheetApproverAction() + team-scope (admin pomija) — parytet z
+//      approveTimesheet/rejectTimesheet.
+//   2. service client — RLS na timesheet_entries dopuszcza tylko owner-on-draft
+//      lub admin, więc manager musi iść przez serwis z jawnym sprawdzeniem.
+//   3. edycja dozwolona w statusie 'draft' LUB 'submitted'. 'approved' niesie
+//      hash audytowy — najpierw odblokuj (unlockTimesheet).
+// Wpisy z nadgodzinami (is_overtime_override) są poza tym flow — zostają w
+// admin-only panelu nadgodzin (adminOverrideTimesheetEntry).
+
+const APPROVER_EDITABLE_STATUSES: TimesheetStatus[] = ['draft', 'submitted']
+
+type ServiceClient = ReturnType<typeof createServiceClient>
+
+/** Throws unless ctx is admin or the manager of `targetUserId`. */
+async function assertApproverTeamScope(
+    admin: ServiceClient,
+    ctx: InternalAuthContext,
+    targetUserId: string,
+): Promise<void> {
+    if (ctx.isAdmin) return
+    const { data: target } = await admin
+        .from('profiles')
+        .select('manager_id')
+        .eq('id', targetUserId)
+        .single<{ manager_id: string | null }>()
+    if (target?.manager_id !== ctx.userId) {
+        throw new Error('Możesz edytować timesheety tylko swojego zespołu.')
+    }
+}
+
+/** Loads the timesheet, enforces team scope + editable status. */
+async function loadApproverEditableTimesheet(
+    admin: ServiceClient,
+    ctx: InternalAuthContext,
+    timesheetId: string,
+): Promise<Pick<TimesheetHeader, 'id' | 'user_id' | 'year' | 'month' | 'status'>> {
+    const { data: header, error } = await admin
+        .from('timesheets')
+        .select('id, user_id, year, month, status')
+        .eq('id', timesheetId)
+        .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'year' | 'month' | 'status'>>()
+    if (error || !header) throw new Error('Timesheet nie istnieje.')
+
+    await assertApproverTeamScope(admin, ctx, header.user_id)
+
+    if (!APPROVER_EDITABLE_STATUSES.includes(header.status)) {
+        throw new Error(
+            'Można edytować tylko timesheet w statusie szkic lub oczekujący. Zaakceptowany najpierw odblokuj.',
+        )
+    }
+    return header
+}
+
+/** Soft constraint (parytet z user flow): blokuj wpis na dzień urlopu/L4. */
+async function assertApproverDateNotBlocked(
+    admin: ServiceClient,
+    userId: string,
+    workDate: string,
+): Promise<void> {
+    const { data } = await admin
+        .from('attendance_records')
+        .select('status')
+        .eq('user_id', userId)
+        .eq('date', workDate)
+        .maybeSingle<{ status: string }>()
+    if (data && HOURS_BLOCKING_STATUSES.includes(data.status)) {
+        throw new Error(
+            `Nie można logować godzin na ${workDate} — ten dzień ma status urlopowy/L4.`,
+        )
+    }
+}
+
+export async function approverAddEntry(input: AddEntryInput): Promise<TimesheetEntryRow> {
+    const ctx = await requireTimesheetApproverAction()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
+        throw new Error('work_date musi być w formacie YYYY-MM-DD.')
+    }
+    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
+        throw new Error(
+            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny wpisuje administrator z panelu nadgodzin.`,
+        )
+    }
+    if (!input.description?.trim()) throw new Error('Opis jest wymagany.')
+
+    const admin = createServiceClient()
+    const header = await loadApproverEditableTimesheet(admin, ctx, input.timesheetId)
+    await assertApproverDateNotBlocked(admin, header.user_id, input.workDate)
+
+    const { data, error } = await admin
+        .from('timesheet_entries')
+        .insert({
+            timesheet_id: header.id,
+            work_date: input.workDate,
+            hours: input.hours,
+            project: input.project?.trim() || null,
+            description: input.description.trim(),
+        })
+        .select('*')
+        .single<TimesheetEntryRow>()
+    if (error || !data) throw new Error(`Błąd dodania wpisu: ${error?.message ?? 'unknown'}`)
+
+    await logAudit(ctx.userId, 'TIMESHEET_ENTRY_ADDED_BY_APPROVER', {
+        timesheet_id: header.id,
+        target_user_id: header.user_id,
+        entry_id: data.id,
+        work_date: input.workDate,
+        hours: input.hours,
+    })
+    return data
+}
+
+export async function approverUpdateEntry(input: UpdateEntryInput): Promise<TimesheetEntryRow> {
+    const ctx = await requireTimesheetApproverAction()
+    const admin = createServiceClient()
+
+    const { data: entry, error: eErr } = await admin
+        .from('timesheet_entries')
+        .select('id, timesheet_id, is_overtime_override')
+        .eq('id', input.entryId)
+        .single<{ id: string; timesheet_id: string; is_overtime_override: boolean }>()
+    if (eErr || !entry) throw new Error('Wpis nie istnieje.')
+    if (entry.is_overtime_override) {
+        throw new Error('Ten wpis to nadgodziny — edytuj go w panelu nadgodzin (administrator).')
+    }
+    const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)
+
+    const updates: Record<string, unknown> = {}
+    if (input.workDate !== undefined) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
+            throw new Error('work_date musi być w formacie YYYY-MM-DD.')
+        }
+        updates.work_date = input.workDate
+    }
+    if (input.hours !== undefined) {
+        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
+            throw new Error(
+                `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny wpisuje administrator z panelu nadgodzin.`,
+            )
+        }
+        updates.hours = input.hours
+    }
+    if (input.project !== undefined) updates.project = input.project?.trim() || null
+    if (input.description !== undefined) {
+        if (!input.description.trim()) throw new Error('Opis nie może być pusty.')
+        updates.description = input.description.trim()
+    }
+    if (Object.keys(updates).length === 0) {
+        const { data: cur } = await admin
+            .from('timesheet_entries')
+            .select('*')
+            .eq('id', input.entryId)
+            .single<TimesheetEntryRow>()
+        if (!cur) throw new Error('Wpis nie istnieje.')
+        return cur
+    }
+    if (input.workDate !== undefined) {
+        await assertApproverDateNotBlocked(admin, header.user_id, input.workDate)
+    }
+
+    const { data, error } = await admin
+        .from('timesheet_entries')
+        .update(updates)
+        .eq('id', input.entryId)
+        .select('*')
+        .single<TimesheetEntryRow>()
+    if (error || !data) throw new Error(`Błąd aktualizacji wpisu: ${error?.message ?? 'unknown'}`)
+
+    await logAudit(ctx.userId, 'TIMESHEET_ENTRY_EDITED_BY_APPROVER', {
+        timesheet_id: header.id,
+        target_user_id: header.user_id,
+        entry_id: input.entryId,
+        changes: updates,
+    })
+    return data
+}
+
+export async function approverDeleteEntry(entryId: string): Promise<void> {
+    const ctx = await requireTimesheetApproverAction()
+    const admin = createServiceClient()
+
+    const { data: entry, error: eErr } = await admin
+        .from('timesheet_entries')
+        .select('id, timesheet_id, work_date, hours, is_overtime_override')
+        .eq('id', entryId)
+        .single<{
+            id: string
+            timesheet_id: string
+            work_date: string
+            hours: number
+            is_overtime_override: boolean
+        }>()
+    if (eErr || !entry) throw new Error('Wpis nie istnieje.')
+    if (entry.is_overtime_override) {
+        throw new Error('Ten wpis to nadgodziny — usuń go w panelu nadgodzin (administrator).')
+    }
+    const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)
+
+    const { error } = await admin.from('timesheet_entries').delete().eq('id', entryId)
+    if (error) throw new Error(`Błąd usunięcia wpisu: ${error.message}`)
+
+    await logAudit(ctx.userId, 'TIMESHEET_ENTRY_DELETED_BY_APPROVER', {
+        timesheet_id: header.id,
+        target_user_id: header.user_id,
+        entry_id: entryId,
+        work_date: entry.work_date,
+        hours: Number(entry.hours),
+    })
 }
 
 // ─── Phase 24: copy descriptions from previous approved month ──────────────
