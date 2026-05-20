@@ -29,7 +29,7 @@ import {
 import {
     deleteCategoryMaterial,
     listCategoryMaterials,
-    uploadCategoryMaterial,
+    uploadCategoryMaterialForm,
 } from '@/lib/actions/support-materials'
 import type { CategoryMaterial, SupportCategory } from '@/lib/types/support'
 
@@ -380,7 +380,12 @@ function MaterialsPanel({
         if (!title.trim()) { setError('Podaj tytuł materiału.'); return }
         setError(null)
         startTransition(async () => {
-            const res = await uploadCategoryMaterial(categoryId, file, title.trim(), description.trim() || undefined)
+            const fd = new FormData()
+            fd.set('category_id', categoryId)
+            fd.set('title', title.trim())
+            if (description.trim()) fd.set('description', description.trim())
+            fd.set('file', file)
+            const res = await uploadCategoryMaterialForm(fd)
             if (!res.success) { setError(res.error); return }
             update([...materials, res.data])
             setTitle('')

@@ -104,3 +104,9 @@ APK-COMPASS/supabase 2/
 # Logs
 # ============================================================
 *.log
+
+# ============================================================
+# Claude Code harness internals (per-worktree, never commit)
+# ============================================================
+.claude/scheduled_tasks.lock
+.claude/*.lock

@@ -1,13 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
+import Link from 'next/link'
 import type { TimesheetEntryRow } from '@/lib/actions/internal-timesheet'
+import {
+    listMyTemplates,
+    type TimesheetUserTemplate,
+} from '@/lib/actions/internal-timesheet-templates'
 
 interface Props {
     open: boolean
@@ -35,6 +40,31 @@ export function TimesheetEntryDialog({
     const [hours, setHours] = useState<string>(initial?.hours?.toString() ?? '8')
     const [project, setProject] = useState<string>(initial?.project ?? '')
     const [description, setDescription] = useState<string>(initial?.description ?? '')
+    const [templates, setTemplates] = useState<TimesheetUserTemplate[]>([])
+    const [templatesLoaded, setTemplatesLoaded] = useState(false)
+
+    useEffect(() => {
+        if (!open || templatesLoaded) return
+        let cancelled = false
+        listMyTemplates()
+            .then((data) => {
+                if (!cancelled) {
+                    setTemplates(data)
+                    setTemplatesLoaded(true)
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setTemplatesLoaded(true)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [open, templatesLoaded])
+
+    function applyTemplate(t: TimesheetUserTemplate) {
+        setDescription(t.description)
+        if (t.project) setProject(t.project)
+    }
 
     // H2.6: znajdź istniejące wpisy dla wybranego dnia (excluding bieżący przy edycji).
     const conflictingEntries = (existingEntries ?? []).filter(
@@ -46,8 +76,10 @@ export function TimesheetEntryDialog({
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         const h = Number(hours)
-        if (!Number.isFinite(h) || h <= 0 || h > 24) {
-            alert('Liczba godzin musi być w zakresie (0, 24].')
+        if (!Number.isFinite(h) || h <= 0 || h > 8) {
+            alert(
+                'Maksymalnie 8h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.',
+            )
             return
         }
         if (!description.trim()) {
@@ -106,13 +138,13 @@ export function TimesheetEntryDialog({
                             )}
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="entry_hours" className="text-sm">Godziny</Label>
+                            <Label htmlFor="entry_hours" className="text-sm">Godziny <span className="text-xs text-muted-foreground">(max 8)</span></Label>
                             <Input
                                 id="entry_hours"
                                 type="number"
                                 step="0.25"
                                 min="0.25"
-                                max="24"
+                                max="8"
                                 inputMode="decimal"
                                 pattern="[0-9]*\.?[0-9]*"
                                 value={hours}
@@ -120,6 +152,9 @@ export function TimesheetEntryDialog({
                                 required
                                 className="min-h-[44px] text-base"
                             />
+                            <p className="text-[10px] text-muted-foreground">
+                                Nadgodziny wpisuje administrator z poziomu profilu pracownika.
+                            </p>
                         </div>
                     </div>
 
@@ -136,7 +171,37 @@ export function TimesheetEntryDialog({
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label htmlFor="entry_desc" className="text-sm">Opis prac</Label>
+                        <div className="flex items-center justify-between gap-2">
+                            <Label htmlFor="entry_desc" className="text-sm">Opis prac</Label>
+                            {templates.length > 0 ? (
+                                <select
+                                    className="text-xs rounded-md border bg-background px-2 py-1"
+                                    value=""
+                                    onChange={(e) => {
+                                        const tpl = templates.find((t) => t.id === e.target.value)
+                                        if (tpl) applyTemplate(tpl)
+                                        e.target.value = ''
+                                    }}
+                                >
+                                    <option value="">Wstaw snippet ▾</option>
+                                    {templates.map((t) => (
+                                        <option key={t.id} value={t.id}>
+                                            {t.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                templatesLoaded && (
+                                    <Link
+                                        href="/internal/timesheet/snippets"
+                                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                                    >
+                                        <Sparkles className="h-3 w-3" />
+                                        Utwórz snippet
+                                    </Link>
+                                )
+                            )}
+                        </div>
                         <Textarea
                             id="entry_desc"
                             rows={3}
@@ -147,6 +212,13 @@ export function TimesheetEntryDialog({
                             required
                             className="text-base"
                         />
+                        {templates.length > 0 && (
+                            <p className="text-[10px] text-muted-foreground">
+                                <Link href="/internal/timesheet/snippets" className="hover:underline">
+                                    Zarządzaj snippetami
+                                </Link>
+                            </p>
+                        )}
                     </div>
 
                     <DialogFooter className="flex-col sm:flex-row gap-2">

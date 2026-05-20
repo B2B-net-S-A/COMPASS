@@ -335,17 +335,11 @@ function Legend() {
             <Badge variant="outline" className="bg-yellow-500/20 text-yellow-200 border-yellow-500/40">
                 Urlop
             </Badge>
-            <Badge variant="outline" className="bg-red-500/15 text-red-200 border-red-500/40">
-                L4
-            </Badge>
             <Badge
                 variant="outline"
                 className="bg-purple-500/15 text-purple-200 border-purple-500/40"
             >
                 Delegacja
-            </Badge>
-            <Badge variant="outline" className="bg-cyan-500/15 text-cyan-200 border-cyan-500/40">
-                Szkolenie
             </Badge>
             <Badge variant="outline" className="bg-muted text-muted-foreground">
                 Święto / weekend

@@ -1,23 +1,27 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2, Paperclip } from 'lucide-react'
+import { Loader2, Paperclip, UserCheck, Mail } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { createLeaveRequest, uploadLeaveProof, type LeaveType } from '@/lib/actions/internal-leave'
+import {
+    createLeaveRequest,
+    listEligibleSubstitutes,
+    uploadLeaveProof,
+    type EligibleSubstitute,
+    type LeaveType,
+} from '@/lib/actions/internal-leave'
 
 const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'sick_leave', label: 'L4 / chorobowe (auto-akceptacja)', needsDocs: true },
     { value: 'parental_leave', label: 'Opieka rodzicielska' },
     { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
-    { value: 'training', label: 'Szkolenie / konferencja' },
     { value: 'other', label: 'Inne' },
 ]
 
@@ -32,6 +36,26 @@ export function LeaveRequestForm() {
     const [docUrl, setDocUrl] = useState<string>('')
     const [docFile, setDocFile] = useState<File | null>(null)
     const [uploadingDoc, setUploadingDoc] = useState(false)
+    // Phase 25 — substitute + OOF
+    const [substituteId, setSubstituteId] = useState<string>('')
+    const [oofInternal, setOofInternal] = useState<string>('')
+    const [oofExternal, setOofExternal] = useState<string>('')
+    const [showOofAdvanced, setShowOofAdvanced] = useState(false)
+    const [substitutes, setSubstitutes] = useState<EligibleSubstitute[]>([])
+
+    useEffect(() => {
+        let cancelled = false
+        listEligibleSubstitutes()
+            .then((data) => {
+                if (!cancelled) setSubstitutes(data)
+            })
+            .catch(() => {
+                // brak listy substytów nie blokuje formularza
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [])
 
     const showHalfDay = startDate && endDate && startDate === endDate
     const showDocsField = leaveType === 'sick_leave'
@@ -70,11 +94,14 @@ export function LeaveRequestForm() {
                     halfDay: showHalfDay && halfDay ? halfDay : null,
                     note: note || null,
                     documentationUrl: finalDocUrl,
+                    substituteId: substituteId || null,
+                    oofInternalMessage: oofInternal.trim() || null,
+                    oofExternalMessage: oofExternal.trim() || null,
                 })
                 toastSuccess(
                     res.autoApproved
                         ? 'Wniosek L4 zaakceptowany automatycznie. Pamiętaj o dosłaniu zwolnienia w ciągu 7 dni.'
-                        : 'Wniosek złożony. Czeka na akceptację admina.',
+                        : 'Wniosek złożony. Czeka na akceptację admina. Po akceptacji ustawimy Out of Office w Outlook.',
                 )
                 setStartDate('')
                 setEndDate('')
@@ -82,6 +109,10 @@ export function LeaveRequestForm() {
                 setDocUrl('')
                 setDocFile(null)
                 setHalfDay('')
+                setSubstituteId('')
+                setOofInternal('')
+                setOofExternal('')
+                setShowOofAdvanced(false)
                 router.refresh()
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Nieznany błąd')
@@ -187,6 +218,31 @@ export function LeaveRequestForm() {
                     )}
 
                     <div className="space-y-1.5">
+                        <Label htmlFor="substitute" className="flex items-center gap-1.5">
+                            <UserCheck className="w-3.5 h-3.5" />
+                            Zastępca (opcjonalnie)
+                        </Label>
+                        <select
+                            id="substitute"
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                            value={substituteId}
+                            onChange={(e) => setSubstituteId(e.target.value)}
+                        >
+                            <option value="">— bez zastępcy —</option>
+                            {substitutes.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.full_name ?? s.email} ({s.email})
+                                </option>
+                            ))}
+                        </select>
+                        {substituteId && (
+                            <p className="text-[11px] text-muted-foreground">
+                                Zastępca dostanie email z informacją + zostanie wpisany w auto-reply Outlook.
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="space-y-1.5">
                         <Label htmlFor="note">Notatka (opcjonalna)</Label>
                         <Textarea
                             id="note"
@@ -196,6 +252,51 @@ export function LeaveRequestForm() {
                             value={note}
                             onChange={(e) => setNote(e.target.value)}
                         />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setShowOofAdvanced((v) => !v)}
+                            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
+                        >
+                            <Mail className="w-3.5 h-3.5" />
+                            {showOofAdvanced ? '− Ukryj tekst Out of Office' : '+ Dostosuj tekst Out of Office (opcjonalne)'}
+                        </button>
+                        {showOofAdvanced && (
+                            <div className="space-y-3 pl-4 border-l border-border/30">
+                                <div className="space-y-1">
+                                    <Label htmlFor="oof_internal" className="text-xs">
+                                        Auto-reply dla nadawców z b2bnetwork.pl
+                                    </Label>
+                                    <Textarea
+                                        id="oof_internal"
+                                        rows={3}
+                                        maxLength={2000}
+                                        placeholder="Domyślnie: 'Jestem nieobecny do DD-MM. W pilnych sprawach prosimy o kontakt z [zastępca].'"
+                                        value={oofInternal}
+                                        onChange={(e) => setOofInternal(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="oof_external" className="text-xs">
+                                        Auto-reply dla zewnętrznych nadawców
+                                    </Label>
+                                    <Textarea
+                                        id="oof_external"
+                                        rows={3}
+                                        maxLength={2000}
+                                        placeholder="Jak wyżej — zostaw puste, aby użyć tej samej treści."
+                                        value={oofExternal}
+                                        onChange={(e) => setOofExternal(e.target.value)}
+                                    />
+                                </div>
+                                <p className="text-[11px] text-muted-foreground">
+                                    Jeśli zostawisz puste, system wygeneruje dwujęzyczny PL+EN tekst z datą
+                                    powrotu i (jeśli wybrany) emailem zastępcy.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <Button type="submit" disabled={pending || uploadingDoc} className="w-full sm:w-auto min-h-[44px]">

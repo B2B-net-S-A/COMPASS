@@ -483,6 +483,9 @@ export interface InviteUserInput {
     workStartDate?: string | null
     // Phase 20: optional manager_id (UUID). Dla pracowników biurowych (internal/finanse/manager/talent_community).
     managerId?: string | null
+    // Phase 22: opt-out from auto-starting the onboarding checklist. Default true (start onboarding).
+    autoStartOnboarding?: boolean
+    onboardingTemplateId?: string | null
 }
 
 const INVITABLE_ROLES: InviteUserInput['role'][] = [
@@ -544,10 +547,16 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
     }
     if (input.workStartDate !== undefined) {
         updates.work_start_date = input.workStartDate
+        // Phase 22: mirror to hired_at (used by lifecycle module for due_date calc).
+        updates.hired_at = input.workStartDate
     }
     // Phase 20: manager_id — only for HR-zone roles (admin's choice).
     if (input.managerId !== undefined && HR_ZONE_FOR_INVITE.includes(input.role)) {
         updates.manager_id = input.managerId
+    }
+    // Phase 22: mark new HR-zone employees as 'pending' until they actually start onboarding.
+    if (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant') {
+        updates.employment_status = 'pending'
     }
 
     const { error: profileErr } = await admin
@@ -558,6 +567,38 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
         throw new Error(`Profile update fail: ${profileErr.message}`)
     }
 
+    // Phase 22 — auto-start onboarding (best-effort, never blocks invite).
+    const shouldAutoStart =
+        input.autoStartOnboarding !== false
+        && (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant')
+
+    let onboardingProgressId: string | null = null
+    if (shouldAutoStart) {
+        try {
+            // Phase 22 RPC not yet in generated types — cast admin to any.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const adminAny = admin as any
+            const { data: progressId, error: rpcErr } = await adminAny.rpc('start_onboarding_for_user', {
+                p_user_id: userId,
+                p_template_id: input.onboardingTemplateId ?? null,
+                p_actor_id: actor.id,
+            })
+            if (rpcErr) {
+                logCompat.error('Auto-start onboarding RPC error:', rpcErr)
+            } else if (progressId) {
+                onboardingProgressId = progressId as string
+                await logAudit(actor.id, 'ONBOARDING_STARTED', {
+                    user_id: userId,
+                    progress_id: onboardingProgressId,
+                    triggered_by: 'invite_user',
+                })
+            }
+        } catch (e: unknown) {
+            // Most likely: no default template found for role — log + continue.
+            logCompat.error('Auto-start onboarding threw:', e)
+        }
+    }
+
     await logAudit(actor.id, 'INVITE_USER', {
         target_user_id: userId,
         target_email: email,
@@ -565,6 +606,8 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
         employment_type: input.employmentType ?? null,
         work_start_date: input.workStartDate ?? null,
         manager_id: input.managerId ?? null,
+        onboarding_started: onboardingProgressId !== null,
+        onboarding_progress_id: onboardingProgressId,
     })
 
     return { userId }
@@ -643,4 +686,114 @@ export async function setUserManager(targetUserId: string, managerId: string | n
         target_email: target.email ?? null,
         manager_id: managerId,
     })
+}
+
+// ─── Phase 22 follow-up — Archive (offboarding) + Hard delete ───────────────
+
+/**
+ * Archive employee = start full offboarding workflow (Phase 22):
+ *   - sets `employment_status='offboarding'`
+ *   - creates exit_interviews row (status=scheduled)
+ *   - creates 5 default offboarding tasks (access_revoke, equipment_return, …)
+ *   - sends exit-interview invitation email to employee
+ *   - sends offboarding checklist email to manager (if assigned)
+ *   - emits audit OFFBOARDING_STARTED + EXIT_INTERVIEW_SCHEDULED
+ *
+ * Termination date defaults to today (yyyy-mm-dd) if omitted. The actual exit
+ * (`employment_status='exited'`) happens later when all required offboarding
+ * tasks are done and TCM/admin clicks "Mark as exited" in /internal/lifecycle.
+ *
+ * Thin wrapper on `lifecycle.scheduleExitInterview` so the HR Employees panel
+ * has a single semantic entry point.
+ */
+export async function archiveEmployee(
+    targetUserId: string,
+    terminationDate?: string,
+    options?: { sendEmployeeEmail?: boolean; sendManagerEmail?: boolean },
+): Promise<{ interviewId: string }> {
+    const { user: actor } = await requireSuperAdmin()
+    const target = await fetchTargetUser(targetUserId)
+    ensureCanModify(actor.id, target)
+
+    // Validate termination date (yyyy-mm-dd); default = today (UTC).
+    const today = new Date().toISOString().slice(0, 10)
+    const date = terminationDate?.trim() || today
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new Error('Data zakończenia musi być w formacie YYYY-MM-DD.')
+    }
+
+    // Lazy import: keeps `lifecycle.ts` (and its email/internal-guard imports)
+    // out of the user-admin module graph at load time, so existing test mocks
+    // for user-admin don't need to also stub the lifecycle module surface.
+    const { scheduleExitInterview } = await import('@/lib/actions/lifecycle')
+    // Phase 25c: emails are opt-in; defaults preserved as `false` when caller
+    // doesn't specify options (silent archive — TCM can send manually later).
+    const interviewId = await scheduleExitInterview(targetUserId, date, null, {
+        sendEmployeeEmail: options?.sendEmployeeEmail === true,
+        sendManagerEmail: options?.sendManagerEmail === true,
+    })
+    return { interviewId }
+}
+
+/**
+ * Hard delete user account.
+ *
+ * WARNING: destructive. Cascades through Supabase Auth `auth.users` FK to
+ * `profiles.id`, which then cascades to most child tables (timesheets,
+ * invoices, documents, lifecycle artefacts, etc. — depending on per-table
+ * `ON DELETE CASCADE` vs `SET NULL` vs `RESTRICT`). Some tables (e.g.
+ * `incubator_submissions.submitter_id`) have `ON DELETE RESTRICT` and will
+ * block deletion — in that case the operation fails and nothing is removed.
+ *
+ * Requires Super Admin. Refuses self-delete and deletion of other Super
+ * Admins. Caller must pass `confirmEmail` matching target's email (UI types
+ * it into a confirm box).
+ *
+ * For RODO-compliant audit retention, prefer `archiveEmployee` (Phase 22
+ * offboarding flow). Use this only when the account was created in error or
+ * the user has no production data tied to them.
+ */
+export async function deleteUserAccount(
+    targetUserId: string,
+    confirmEmail: string,
+): Promise<void> {
+    const { user: actor } = await requireSuperAdmin()
+    const target = await fetchTargetUser(targetUserId)
+    ensureCanModify(actor.id, target)
+
+    const trimmed = confirmEmail.trim().toLowerCase()
+    const targetEmail = (target.email ?? '').trim().toLowerCase()
+    if (!targetEmail || trimmed !== targetEmail) {
+        throw new Error('Potwierdzenie nie pasuje do emaila użytkownika.')
+    }
+
+    // Snapshot for audit BEFORE delete (after delete row is gone).
+    const admin = createServiceClient()
+    const { data: profileSnapshot } = await admin
+        .from('profiles')
+        .select('full_name, role, employment_status, manager_id')
+        .eq('id', target.id)
+        .maybeSingle<{
+            full_name: string | null
+            role: string | null
+            employment_status: string | null
+            manager_id: string | null
+        }>()
+
+    // Audit FIRST — if delete succeeds but audit fails we still want the trail;
+    // if audit fails we'd rather abort than silently lose the record.
+    await logAudit(actor.id, 'DELETE_USER', {
+        target_user_id: target.id,
+        target_email: target.email ?? null,
+        target_full_name: profileSnapshot?.full_name ?? null,
+        target_role: profileSnapshot?.role ?? null,
+        target_employment_status: profileSnapshot?.employment_status ?? null,
+        target_manager_id: profileSnapshot?.manager_id ?? null,
+    })
+
+    const { error } = await admin.auth.admin.deleteUser(target.id)
+    if (error) {
+        logCompat.error('[deleteUserAccount] deleteUser error:', error)
+        throw new Error(`Błąd usuwania konta: ${error.message}`)
+    }
 }

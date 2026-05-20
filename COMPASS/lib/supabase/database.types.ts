@@ -162,6 +162,95 @@ export type Database = {
         }
         Relationships: []
       }
+      bonuses: {
+        Row: {
+          amount: number
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          currency: string
+          id: string
+          linked_invoice_id: string | null
+          notes: string | null
+          paid_at: string | null
+          period_month: number | null
+          period_year: number | null
+          proposed_by: string
+          reason: string
+          recipient_user_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          linked_invoice_id?: string | null
+          notes?: string | null
+          paid_at?: string | null
+          period_month?: number | null
+          period_year?: number | null
+          proposed_by: string
+          reason: string
+          recipient_user_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          linked_invoice_id?: string | null
+          notes?: string | null
+          paid_at?: string | null
+          period_month?: number | null
+          period_year?: number | null
+          proposed_by?: string
+          reason?: string
+          recipient_user_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bonuses_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bonuses_linked_invoice_id_fkey"
+            columns: ["linked_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bonuses_proposed_by_fkey"
+            columns: ["proposed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bonuses_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       compass_assist_knowledge: {
         Row: {
           category: string | null

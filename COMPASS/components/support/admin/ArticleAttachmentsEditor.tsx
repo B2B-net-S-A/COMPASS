@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
     deleteArticleAttachment,
-    uploadArticleAttachment,
+    uploadArticleAttachmentForm,
 } from '@/lib/actions/support-materials'
 import type { ArticleAttachment } from '@/lib/types/support'
 
@@ -28,7 +28,11 @@ export function ArticleAttachmentsEditor({ articleId, initialAttachments, canEdi
         if (!title.trim()) { setError('Podaj tytuł załącznika.'); return }
         setError(null)
         startTransition(async () => {
-            const res = await uploadArticleAttachment(articleId, file, title.trim())
+            const fd = new FormData()
+            fd.set('article_id', articleId)
+            fd.set('title', title.trim())
+            fd.set('file', file)
+            const res = await uploadArticleAttachmentForm(fd)
             if (!res.success) { setError(res.error); return }
             setAttachments((prev) => [...prev, res.data])
             setTitle('')

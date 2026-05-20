@@ -76,23 +76,23 @@ export async function sendEquipmentRequestEmail(
     recipientEmail: string,
     data: EquipmentRequestEmailData
 ) {
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Nowe zgłoszenie sprzętowe do rozpatrzenia:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</li>
+            <li><strong>Typ:</strong> ${data.itemName}</li>
+            <li><strong>Kategoria:</strong> ${data.category}</li>
+            <li><strong>ID zgłoszenia:</strong> ${data.requestId}</li>
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px; margin-bottom: 8px;"><strong>Szczegóły:</strong></p>
+        <div style="color: #d1d5db; font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: #0f1320; border: 1px solid #232a3b; border-radius: 8px; padding: 14px;">${data.details}</div>
+    `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: `[SPRZĘT] Nowe zgłoszenie od ${data.userName}`,
-            html: `
-                <h2>Nowe zgłoszenie sprzętowe</h2>
-                <p><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</p>
-                <p><strong>Typ:</strong> ${data.itemName}</p>
-                <p><strong>Kategoria:</strong> ${data.category}</p>
-                <p><strong>ID zgłoszenia:</strong> ${data.requestId}</p>
-                <hr />
-                <h3>Szczegóły:</h3>
-                <pre>${data.details}</pre>
-                <hr />
-                <p><em>Wiadomość wygenerowana automatycznie przez system ComPass</em></p>
-            `,
+            html: wrapHrEmail({ tag: 'Zgłoszenie sprzętowe', heading: `Nowe zgłoszenie od ${data.userName}`, bodyHtml, accent: '#3b82f6' }),
         })
 
         if (error) {
@@ -117,20 +117,21 @@ export async function sendBenefitDeclarationEmail(
 ) {
     const benefitTypeLabel = data.benefitType === 'medical' ? 'Pakiet Medyczny (PZU)' : 'Pakiet Sportowy (FitProfit)'
 
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Nowa deklaracja benefitowa do rozpatrzenia:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</li>
+            <li><strong>Typ benefitu:</strong> ${benefitTypeLabel}</li>
+            <li><strong>Wybrany wariant:</strong> ${data.variantName}</li>
+            <li><strong>ID deklaracji:</strong> ${data.declarationId}</li>
+        </ul>
+    `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: `[BENEFITY] Nowa deklaracja od ${data.userName}`,
-            html: `
-                <h2>Nowa deklaracja benefitowa</h2>
-                <p><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</p>
-                <p><strong>Typ benefitu:</strong> ${benefitTypeLabel}</p>
-                <p><strong>Wybrany wariant:</strong> ${data.variantName}</p>
-                <p><strong>ID deklaracji:</strong> ${data.declarationId}</p>
-                <hr />
-                <p><em>Wiadomość wygenerowana automatycznie przez system ComPass</em></p>
-            `,
+            html: wrapHrEmail({ tag: 'Deklaracja benefitu', heading: `Nowa deklaracja od ${data.userName}`, bodyHtml, accent: '#3b82f6' }),
         })
 
         if (error) {
@@ -164,36 +165,22 @@ export async function sendRoleChangeEmail(
         : `Twoja rola w Centrali została odebrana`
 
     const body = isAdded
-        ? `Zostałeś dodany do Centrali B2B.net jako <strong>${roleLabel}</strong>.<br/><br/>Aby aktywować nowe uprawnienia, <strong>wyloguj się i zaloguj ponownie</strong> do aplikacji ComPass.`
+        ? `Zostałeś dodany do Centrali B2B.net jako <strong>${roleLabel}</strong>.<br/><br/>Aby aktywować nowe uprawnienia, <strong>wyloguj się i zaloguj ponownie</strong> do aplikacji COMPASS.`
         : `Twoja rola w Centrali została odebrana. Po ponownym zalogowaniu powrócisz do roli Konsultanta.<br/><br/>Jeśli uważasz, że to błąd, skontaktuj się z administratorem systemu.`
 
-    const accentColor = isAdded ? '#3A8DFF' : '#f59e0b'
+    const accentColor = isAdded ? '#22d3ee' : '#f59e0b'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">${body}</p>
+    `
 
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: role change audit trail
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
-                    <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass</h1>
-                    </div>
-                    <div style="padding: 32px;">
-                        <div style="background: rgba(58, 141, 255, 0.08); border: 1px solid ${accentColor}33; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-                            <p style="color: ${accentColor}; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: bold;">Zmiana roli</p>
-                            <h2 style="color: #ffffff; font-size: 18px; margin: 0;">${heading}</h2>
-                        </div>
-                        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">Cześć <strong>${recipientName}</strong>,</p>
-                        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">${body}</p>
-                        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;" />
-                        <p style="color: #6b7280; font-size: 11px; margin-top: 16px;">
-                            Wiadomość wygenerowana automatycznie przez system ComPass.
-                        </p>
-                    </div>
-                </div>
-            `,
+            html: wrapHrEmail({ tag: 'Zmiana roli', heading, bodyHtml, accent: accentColor }),
         })
 
         if (error) {
@@ -219,29 +206,19 @@ export async function sendBroadcastEmail(
 ) {
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: `[COMPASS] ${title}`,
             saveToSentItems: true, // compliance: broadcast/announcement audit trail
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
-                    <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass</h1>
-                    </div>
-                    <div style="padding: 32px;">
-                        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-                            <p style="color: #fbbf24; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: bold;">Ogłoszenie</p>
-                            <h2 style="color: #ffffff; font-size: 18px; margin: 0;">${title}</h2>
-                        </div>
-                        <div style="color: #d1d5db; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${content}</div>
-                        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;" />
-                        <p style="color: #6b7280; font-size: 12px; margin: 0;">Nadawca: <strong>${senderName}</strong></p>
-                        <p style="color: #6b7280; font-size: 11px; margin-top: 16px;">
-                            Wiadomość wygenerowana automatycznie przez system ComPass.
-                        </p>
-                    </div>
-                </div>
-            `,
+            html: wrapHrEmail({
+                tag: 'Ogłoszenie',
+                heading: title,
+                accent: '#fbbf24',
+                bodyHtml: `
+                    <div style="color: #d1d5db; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${content}</div>
+                    <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">Nadawca: <strong>${senderName}</strong></p>
+                `,
+            }),
         })
 
         if (error) {
@@ -267,26 +244,76 @@ export const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
     other: 'Inne',
 }
 
+/**
+ * Central email chrome shared by every COMPASS notification.
+ *
+ * Table-based + inline styles so it renders consistently in Outlook (the
+ * primary client — mail ships via Microsoft Graph to b2bnetwork.pl mailboxes),
+ * Apple Mail, Gmail and mobile. Gradients / rounded corners are progressive
+ * enhancement layered on top of solid `bgcolor` fallbacks, so Outlook still
+ * looks clean. The theme is dark on purpose — every caller's `bodyHtml` uses
+ * light text colours (#d1d5db), so the background must stay dark.
+ *
+ * `heading` is usually the raw email subject, which carries a noisy
+ * "[COMPASS …]" prefix that duplicates the eyebrow `tag`; we strip that prefix
+ * so the card title reads cleanly.
+ */
 export function wrapHrEmail(opts: { tag: string; heading: string; bodyHtml: string; accent?: string }): string {
-    const accent = opts.accent ?? '#3A8DFF'
-    return `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #0e4d6e, #1a1a2e); padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <h1 style="color: #22d3ee; font-size: 20px; margin: 0;">ComPass</h1>
-            </div>
-            <div style="padding: 32px;">
-                <div style="background: rgba(58, 141, 255, 0.08); border: 1px solid ${accent}33; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-                    <p style="color: ${accent}; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px 0; font-weight: bold;">${opts.tag}</p>
-                    <h2 style="color: #ffffff; font-size: 18px; margin: 0;">${opts.heading}</h2>
-                </div>
-                ${opts.bodyHtml}
-                <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 24px 0;" />
-                <p style="color: #6b7280; font-size: 11px; margin-top: 16px;">
-                    Wiadomość wygenerowana automatycznie przez system ComPass.
-                </p>
-            </div>
-        </div>
-    `
+    const accent = opts.accent ?? '#22d3ee'
+    const heading = opts.heading.replace(/^\s*\[[^\]]*]\s*/, '').trim() || opts.heading
+    const preheader = heading.replace(/<[^>]*>/g, '')
+    const font = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
+    return `<!doctype html>
+<html lang="pl" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark light" />
+<meta name="supported-color-schemes" content="dark light" />
+<title>COMPASS</title>
+<style>
+  body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
+  a { color: #38bdf8; }
+  .cp-body ul { margin: 16px 0; padding-left: 20px; }
+  .cp-body li { margin: 5px 0; }
+  .cp-body p { margin: 14px 0; }
+  @media only screen and (max-width: 620px) {
+    .cp-shell { width: 100% !important; }
+    .cp-pad { padding-left: 22px !important; padding-right: 22px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#0b0d13;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${preheader}</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#0b0d13;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" class="cp-shell" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background-color:#151a26;border-radius:16px;overflow:hidden;border:1px solid #232a3b;">
+        <tr><td style="height:4px;line-height:4px;font-size:0;background-color:${accent};">&nbsp;</td></tr>
+        <tr>
+          <td class="cp-pad" style="background-color:#0e2a3f;background-image:linear-gradient(135deg,#0e4d6e 0%,#141a2c 100%);padding:22px 32px;">
+            <img src="https://compass.dynaminds.pl/email-logo.png" height="40" alt="COMPASS" style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;font-family:${font};font-size:22px;font-weight:900;letter-spacing:3px;color:#ffffff;" />
+          </td>
+        </tr>
+        <tr>
+          <td class="cp-body cp-pad" style="padding:30px 32px 8px 32px;font-family:${font};color:#d1d5db;font-size:14px;line-height:1.6;">
+            <p style="margin:0 0 10px 0;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${accent};">${opts.tag}</p>
+            <h1 style="margin:0 0 4px 0;font-size:21px;line-height:1.35;font-weight:700;color:#ffffff;">${heading}</h1>
+            ${opts.bodyHtml}
+          </td>
+        </tr>
+        <tr>
+          <td class="cp-pad" style="padding:20px 32px 28px 32px;border-top:1px solid #232a3b;font-family:${font};">
+            <p style="margin:0 0 4px 0;font-size:12px;color:#9ca3af;"><span style="color:#22d3ee;font-weight:700;">COMPASS</span></p>
+            <p style="margin:0;font-size:11px;color:#6b7280;line-height:1.5;">Wiadomość wygenerowana automatycznie — prosimy nie odpowiadać na ten adres.</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`
 }
 
 export async function sendLeaveRequestSubmitted(
@@ -315,7 +342,7 @@ export async function sendLeaveRequestSubmitted(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -325,6 +352,60 @@ export async function sendLeaveRequestSubmitted(
         return { success: true }
     } catch (err) {
         logCompat.error('Leave-submitted email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 25 — notify substitute that they were assigned + leave got approved.
+ * Includes the leave dates, employee name/email, and a link to the calendar
+ * (so substitute knows from when to start covering).
+ */
+export async function sendSubstituteAssigned(
+    substituteEmail: string,
+    substituteName: string,
+    employeeName: string,
+    employeeEmail: string,
+    startDate: string,
+    endDate: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS HR] Jesteś zastępcą — ${employeeName} (${startDate} – ${endDate})`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć ${substituteName},</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            <strong>${employeeName}</strong> (${employeeEmail}) wybrał Cię jako zastępcę
+            podczas swojego urlopu.
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Outlook auto-reply pracownika kieruje pilne sprawy do Ciebie.
+            Wniosek został zaakceptowany, możesz spodziewać się pierwszych zapytań od jutra
+            (lub od daty rozpoczęcia urlopu).
+        </p>
+        <p style="color: #9ca3af; font-size: 12px; margin-top: 16px;">
+            Jeśli to pomyłka — skontaktuj się z ${employeeName} lub adminem.
+        </p>
+    `
+    const html = wrapHrEmail({ tag: 'Zastępstwo', heading: subject, bodyHtml })
+
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: substituteEmail,
+            subject,
+            html,
+            saveToSentItems: true,
+        })
+        if (error) {
+            logCompat.error('Resend substitute-assigned error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Substitute-assigned email failed:', err)
         return { success: false }
     }
 }
@@ -364,7 +445,7 @@ export async function sendLeaveCancelledByUser(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -405,7 +486,7 @@ export async function sendLeaveDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: leave approve/reject audit trail
@@ -418,6 +499,66 @@ export async function sendLeaveDecision(
         return { success: true }
     } catch (err) {
         logCompat.error('Leave-decision email failed:', err)
+        return { success: false }
+    }
+}
+
+// Phase 25b — Manager/admin wpisał urlop w imieniu pracownika.
+// `isPastLeave=true` → wstecznie wpisany urlop, OOF i wydarzenie Outlook
+// nie były ustawione (już po fakcie). `isPastLeave=false` → ongoing/future,
+// system ustawił OOF i Outlook event automatycznie.
+export async function sendLeaveCreatedOnBehalf(
+    recipientEmail: string,
+    recipientName: string,
+    actorName: string,
+    leaveType: string,
+    startDate: string,
+    endDate: string,
+    note?: string | null,
+    isPastLeave: boolean = false,
+): Promise<{ success: boolean }> {
+    const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
+    const subject = `[COMPASS HR] ${actorName} wpisał za Ciebie urlop`
+    const accent = '#3b82f6'
+    const sideEffectsNote = isPastLeave
+        ? `<p style="color: #d1d5db; font-size: 14px;">
+              Urlop dotyczy okresu, który już minął — nie ustawiamy Out of Office ani powiadomień zastępcy.
+              Wpis trafia do Twojej historii i przelicza obecności w tych dniach.
+           </p>`
+        : `<p style="color: #d1d5db; font-size: 14px;">
+              System automatycznie ustawił Out of Office w Twoim Outlooku oraz utworzył wydarzenie w kalendarzu na czas urlopu.
+           </p>`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            <strong>${actorName}</strong> wpisał za Ciebie urlop w systemie COMPASS:
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Typ:</strong> ${typeLabel}</li>
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+            ${note ? `<li><strong>Notatka:</strong> ${note}</li>` : ''}
+        </ul>
+        ${sideEffectsNote}
+        <p style="color: #d1d5db; font-size: 14px;">
+            Jeśli to pomyłka — skontaktuj się z osobą, która wpisała urlop, lub z administratorem.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true, // audit trail: kto wpisał za kogo
+            html: wrapHrEmail({ tag: 'Urlop wpisany', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend leave-on-behalf error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Leave-on-behalf email failed:', err)
         return { success: false }
     }
 }
@@ -440,7 +581,7 @@ export async function sendTimesheetSubmitted(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -478,7 +619,7 @@ export async function sendTimesheetDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: timesheet approve/reject audit trail
@@ -518,7 +659,7 @@ export async function sendInvoiceSubmitted(
     try {
         for (const to of recipientEmails) {
             const { error } = await getResend().emails.send({
-                from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
                 to,
                 subject,
                 html,
@@ -558,7 +699,7 @@ export async function sendInvoiceDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({ tag: 'Decyzja faktura', heading: subject, bodyHtml, accent }),
@@ -612,7 +753,7 @@ export async function sendCourseInactivityReminder(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass Akademia <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS Akademia <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({
@@ -728,7 +869,7 @@ export async function sendTimesheetReminder(
     const tpl = buildReminderTemplate(phase, monthLabel, recipientName)
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject: tpl.subject,
             html: wrapHrEmail({
@@ -795,7 +936,7 @@ export async function sendClockDailySummary(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({
@@ -850,7 +991,7 @@ export async function sendClockAutoStopped(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             html: wrapHrEmail({ tag: 'Auto-zamknięcie sesji', heading: subject, bodyHtml, accent: '#f59e0b' }),
@@ -895,7 +1036,7 @@ export async function sendCorrectionDecision(
     `
     try {
         const { error } = await getResend().emails.send({
-            from: 'ComPass System <noreply@compass.b2bnetwork.pl>',
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
             subject,
             saveToSentItems: true, // compliance: correction approve/reject audit trail
@@ -908,6 +1049,583 @@ export async function sendCorrectionDecision(
         return { success: true }
     } catch (err) {
         logCompat.error('Correction-decision email failed:', err)
+        return { success: false }
+    }
+}
+
+// ─── Phase 22: Lifecycle module emails ────────────────────────────────────
+
+const COMPASS_APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'
+
+/**
+ * Phase 22 — Welcome email after onboarding bootstrap.
+ * Sent immediately after start_onboarding_for_user() creates progress + tasks.
+ */
+export async function sendOnboardingWelcome(
+    recipientEmail: string,
+    recipientName: string,
+    progressId: string,
+    roleLabel: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Witamy w B2B Network — Twój onboarding jest gotowy`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/onboarding/${progressId}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Witamy w zespole B2B Network jako <strong>${roleLabel}</strong>! Przygotowaliśmy dla Ciebie checklist onboardingu — zadania pomogą Ci sprawnie wystartować przez najbliższe 30 dni.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">Co dalej:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li>Otwórz swój checklist i zapoznaj się z zadaniami</li>
+            <li>Niektóre zadania wymagają wgrania dokumentów (kontrakt, NDA)</li>
+            <li>Inne to kursy w Akademii — kliknij linki w checkliście</li>
+            <li>Spotkasz się z managerem (intro meeting) i buddy</li>
+        </ul>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #22d3ee; color: #0a0a0a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Otwórz checklist onboardingu</a>
+        </p>
+        <p style="color: #6b7280; font-size: 12px;">Jeśli masz pytania, skontaktuj się z Talent Community Managerem lub swoim managerem.</p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Onboarding', heading: subject, bodyHtml, accent: '#22d3ee' }),
+        })
+        if (error) {
+            logCompat.error('Resend onboarding-welcome error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Onboarding-welcome email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Day 1 / 7 / 30 check-in mini-survey reminder.
+ */
+export async function sendOnboardingDayCheckin(
+    recipientEmail: string,
+    recipientName: string,
+    progressId: string,
+    day: 1 | 7 | 30,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Jak Ci się pracuje? Mini-ankieta po ${day} ${day === 1 ? 'dniu' : 'dniach'}`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/onboarding/${progressId}?checkin=${day}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Minął ${day === 1 ? 'pierwszy dzień' : day === 7 ? 'pierwszy tydzień' : 'pierwszy miesiąc'} pracy. Poświęć 30 sekund i powiedz, jak Ci się układa — Twoja opinia pomaga nam ulepszać onboarding.
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #3A8DFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij mini-ankietę</a>
+        </p>
+        <p style="color: #6b7280; font-size: 12px;">Skala 1-5 + opcjonalny komentarz. Bez konsekwencji.</p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: `Check-in dzień ${day}`, heading: subject, bodyHtml }),
+        })
+        if (error) {
+            logCompat.error(`Resend onboarding-checkin-${day} error:`, error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Onboarding-checkin email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Manager reminder for overdue onboarding tasks of their team members.
+ */
+export async function sendOnboardingReminderToManager(
+    managerEmail: string,
+    managerName: string,
+    employeeName: string,
+    overdueTasks: Array<{ title: string; dueDate: string }>,
+    progressId: string,
+): Promise<{ success: boolean }> {
+    if (overdueTasks.length === 0) return { success: true }
+    const subject = `[COMPASS HR] Przeterminowane zadania onboardingu — ${employeeName}`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/onboarding/${progressId}`
+    const itemsHtml = overdueTasks
+        .map((t) => `<li><strong>${t.title}</strong> (termin: ${t.dueDate})</li>`)
+        .join('')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${managerName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twój team-member <strong>${employeeName}</strong> ma przeterminowane zadania onboardingu — niektóre są na Twojej liście:
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">${itemsHtml}</ul>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #f59e0b; color: #0a0a0a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Otwórz onboarding</a>
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: managerEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Przypomnienie onboarding', heading: subject, bodyHtml, accent: '#f59e0b' }),
+        })
+        if (error) {
+            logCompat.error('Resend onboarding-reminder error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Onboarding-reminder email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Exit interview invitation (sent when offboarding starts).
+ */
+export async function sendExitInterviewInvitation(
+    recipientEmail: string,
+    recipientName: string,
+    scheduledFor: string,
+    interviewId: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Exit interview — zapraszamy do wypełnienia ankiety`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/exit/wypelnij`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Dziękujemy za czas spędzony w B2B Network. Przed Twoim odejściem chcielibyśmy poprosić o wypełnienie krótkiej ankiety exit interview — Twoja szczera opinia pomoże nam stać się lepszą firmą.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Sugerowany termin wypełnienia: <strong>${scheduledFor}</strong>
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Możesz wypełnić ankietę z imienia i nazwiska <strong>lub anonimowo</strong> (checkbox na końcu formularza).
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #3A8DFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij exit interview</a>
+        </p>
+        <p style="color: #6b7280; font-size: 11px;">Interview ID: ${interviewId}</p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Exit interview', heading: subject, bodyHtml }),
+        })
+        if (error) {
+            logCompat.error('Resend exit-invitation error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Exit-invitation email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Exit interview reminder (3 days before termination if still unsubmitted).
+ */
+export async function sendExitInterviewReminder(
+    recipientEmail: string,
+    recipientName: string,
+    terminationDate: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Przypomnienie: wypełnij exit interview`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/exit/wypelnij`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twoja data zakończenia współpracy: <strong>${terminationDate}</strong>. Nie wypełniłaś/eś jeszcze exit interview — to ostatnia szansa, by podzielić się opinią.
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #f59e0b; color: #0a0a0a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij teraz</a>
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html: wrapHrEmail({ tag: 'Przypomnienie exit', heading: subject, bodyHtml, accent: '#f59e0b' }),
+        })
+        if (error) {
+            logCompat.error('Resend exit-reminder error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Exit-reminder email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 22 — Offboarding checklist notification to manager.
+ */
+export async function sendOffboardingChecklistToManager(
+    managerEmail: string,
+    managerName: string,
+    employeeName: string,
+    terminationDate: string,
+    userId: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS HR] Offboarding zespołu — ${employeeName}`
+    const link = `${COMPASS_APP_URL}/internal/lifecycle/offboarding/${userId}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${managerName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twój team-member <strong>${employeeName}</strong> wchodzi w proces offboardingu. Data zakończenia: <strong>${terminationDate}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">Twoje zadania na liście:</p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li>Zwrot sprzętu firmowego (laptop, monitor, akcesoria)</li>
+            <li>Knowledge transfer — koordynacja przekazywania projektów</li>
+            <li>Spotkanie pożegnalne z zespołem</li>
+        </ul>
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="${link}" style="background: #3A8DFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Otwórz checklist offboardingu</a>
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: managerEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Offboarding', heading: subject, bodyHtml }),
+        })
+        if (error) {
+            logCompat.error('Resend offboarding-checklist error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Offboarding-checklist email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 23 — Email do pracownika gdy manager doda mu nową premię.
+ * Pracownik powinien uwzględnić premię w fakturze (Phase 19/20 flow), potem
+ * zlinkować przez UI w /internal?tab=bonuses (status → paid).
+ */
+export async function sendBonusProposed(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    reason: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Nowa premia ${amount.toFixed(2)} ${currency} — uwzględnij w fakturze`
+    const accent = '#22c55e'
+    const reasonEscaped = reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} przyznał Ci premię: <strong>${amount.toFixed(2)} ${currency}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Powód:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Uwzględnij tę premię w fakturze za bieżący okres (jako osobna pozycja lub osobna faktura),
+            a następnie zlinkuj ją w panelu <strong>Moje premie</strong>:
+            <a href="https://compass.dynaminds.pl/internal?tab=bonuses" style="color: #93c5fd;">/internal?tab=bonuses</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Nowa premia', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-proposed error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-proposed email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 23 — Email do pracownika gdy manager (lub admin) anuluje pending premię.
+ */
+export async function sendBonusCancelled(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    cancellationReason: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Premia ${amount.toFixed(2)} ${currency} została anulowana`
+    const accent = '#f59e0b'
+    const reasonEscaped = cancellationReason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} anulował premię w wysokości <strong>${amount.toFixed(2)} ${currency}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Powód anulowania:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Jeśli masz pytania — skontaktuj się bezpośrednio z osobą, która anulowała premię.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Premia anulowana', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-cancelled error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-cancelled email failed:', err)
+        return { success: false }
+    }
+}
+
+const BONUS_MONTH_NAMES_PL = [
+    'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
+    'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień',
+] as const
+
+function formatBonusPeriodPl(year: number, month: number): string {
+    const idx = Math.max(0, Math.min(11, month - 1))
+    return `${BONUS_MONTH_NAMES_PL[idx]} ${year}`
+}
+
+/**
+ * Phase 26 — Email do pracownika gdy manager przypisuje mu premię z auto-akceptem.
+ * Bonus jest od razu w stanie terminalnym 'assigned' — bez wymogu linkowania z fakturą.
+ */
+export async function sendBonusAssigned(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    periodYear: number,
+    periodMonth: number,
+    reason: string,
+): Promise<{ success: boolean }> {
+    const periodLabel = formatBonusPeriodPl(periodYear, periodMonth)
+    const subject = `[COMPASS] Premia ${amount.toFixed(2)} ${currency} za ${periodLabel}`
+    const accent = '#22c55e'
+    const reasonEscaped = reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} przyznał Ci premię w wysokości <strong>${amount.toFixed(2)} ${currency}</strong>
+            za okres <strong>${periodLabel}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Uzasadnienie:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Premia jest już zatwierdzona. Pełną listę swoich premii zobaczysz w panelu:
+            <a href="https://compass.dynaminds.pl/internal?tab=bonuses" style="color: #93c5fd;">Moje premie</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Nowa premia', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-assigned error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-assigned email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 26 — Email do pracownika gdy manager edytuje przypisaną premię
+ * (zmiana kwoty lub uzasadnienia).
+ */
+export async function sendBonusUpdated(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    periodYear: number,
+    periodMonth: number,
+    reason: string,
+    changesSummary?: string,
+): Promise<{ success: boolean }> {
+    const periodLabel = formatBonusPeriodPl(periodYear, periodMonth)
+    const subject = `[COMPASS] Zaktualizowano premię za ${periodLabel}`
+    const accent = '#3b82f6'
+    const reasonEscaped = reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const changesEscaped = (changesSummary ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const changesBlock = changesEscaped
+        ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Zmiany:</strong> ${changesEscaped}</p>`
+        : ''
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} zaktualizował premię za <strong>${periodLabel}</strong>.
+            Aktualna kwota: <strong>${amount.toFixed(2)} ${currency}</strong>.
+        </p>
+        ${changesBlock}
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Uzasadnienie:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zobacz w panelu:
+            <a href="https://compass.dynaminds.pl/internal?tab=bonuses" style="color: #93c5fd;">Moje premie</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Premia zaktualizowana', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend bonus-updated error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Bonus-updated email failed:', err)
+        return { success: false }
+    }
+}
+
+// ─── Phase 27c — User rate change notifications ───────────────────────────
+
+/**
+ * Phase 27c — Email do pracownika gdy finanse/admin zmieni jego stawkę godzinową.
+ * Wysłane jednorazowo per INSERT do user_rates. Pracownik widzi nową stawkę + datę
+ * wejścia w życie (zawsze 1. dnia przyszłego miesiąca lub później).
+ */
+export async function sendRateChanged(args: {
+    recipientEmail: string
+    recipientName: string
+    oldRate: number | null
+    newRate: number
+    currency: string
+    effectiveFrom: string // YYYY-MM-DD
+    setByName: string
+    reason?: string | null
+}): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Zmiana stawki godzinowej — od ${args.effectiveFrom}`
+    const accent = '#22c55e'
+    const reasonEscaped = (args.reason ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const reasonBlock = reasonEscaped
+        ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Notatka:</strong> ${reasonEscaped}</p>`
+        : ''
+    const oldRateLine = args.oldRate != null
+        ? `<p style="color: #9ca3af; font-size: 13px;">Poprzednia stawka: ${args.oldRate.toFixed(2)} ${args.currency}/h</p>`
+        : '<p style="color: #9ca3af; font-size: 13px;">To Twoja pierwsza zarejestrowana stawka.</p>'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${args.recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${args.setByName} ustawił Twoją stawkę godzinową na <strong>${args.newRate.toFixed(2)} ${args.currency}/h</strong>,
+            obowiązującą od <strong>${args.effectiveFrom}</strong>.
+        </p>
+        ${oldRateLine}
+        ${reasonBlock}
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zobacz swoje rozliczenie miesięczne (godziny × stawka + premie):
+            <a href="https://compass.dynaminds.pl/internal/payroll" style="color: #93c5fd;">Payroll</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: args.recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Stawka', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend rate-changed (employee) error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Rate-changed (employee) email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 27c — Broadcast do finanse + admin gdy ktoś ustawi stawkę pracownikowi.
+ * Pomaga finanse synchronizować payroll mimo że zmianę zrobił admin (lub odwrotnie).
+ */
+export async function sendRateChangedToFinance(args: {
+    recipientEmail: string
+    targetName: string
+    targetEmail: string
+    oldRate: number | null
+    newRate: number
+    currency: string
+    effectiveFrom: string
+    setByName: string
+}): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Zmiana stawki: ${args.targetName} → ${args.newRate.toFixed(2)} ${args.currency}/h`
+    const accent = '#3b82f6'
+    const oldRateLine = args.oldRate != null
+        ? `<p style="color: #d1d5db; font-size: 13px;">Poprzednia stawka: <strong>${args.oldRate.toFixed(2)} ${args.currency}/h</strong></p>`
+        : '<p style="color: #d1d5db; font-size: 13px;">Pierwsza zarejestrowana stawka tego pracownika.</p>'
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${args.setByName} ustawił stawkę dla <strong>${args.targetName}</strong> (${args.targetEmail}).
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Nowa stawka: <strong>${args.newRate.toFixed(2)} ${args.currency}/h</strong> od <strong>${args.effectiveFrom}</strong>.
+        </p>
+        ${oldRateLine}
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zobacz rozliczenie pracownika:
+            <a href="https://compass.dynaminds.pl/internal/admin/rates" style="color: #93c5fd;">Stawki</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: args.recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Stawka — payroll', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend rate-changed (finance) error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Rate-changed (finance) email failed:', err)
         return { success: false }
     }
 }

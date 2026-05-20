@@ -1,24 +1,33 @@
-import { CalendarCheck, Calendar, ClipboardList, Receipt, FileText } from 'lucide-react'
+import { CalendarCheck, Calendar, ClipboardList, Receipt, FileText, Gift } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
+import { ActiveLeavesBanner } from '@/components/internal/ActiveLeavesBanner'
 import { AttendancePanel } from '@/components/internal/panels/AttendancePanel'
 import { CalendarPanel } from '@/components/internal/panels/CalendarPanel'
 import { LeavePanel } from '@/components/internal/panels/LeavePanel'
 import { TimesheetPanel } from '@/components/internal/panels/TimesheetPanel'
 import { InvoicesPanel } from '@/components/internal/panels/InvoicesPanel'
+import { MyBonusesPanel } from '@/components/internal/panels/MyBonusesPanel'
+import { isInvoicesEnabled } from '@/lib/feature-flags'
 // Smart Work Clock (Phase 17) UI disabled — to re-enable, restore Clock icon + ClockPanel import + tab + render below.
 // import { Clock } from 'lucide-react'
 // import { ClockPanel } from '@/components/internal/panels/ClockPanel'
 
 export const dynamic = 'force-dynamic'
 
-const TABS: ReadonlyArray<HubTab> = [
+// Phase 26: 'invoices' tab is feature-flagged. When NEXT_PUBLIC_INVOICES_ENABLED!=='true', it's filtered out.
+const ALL_TABS: ReadonlyArray<HubTab> = [
     { id: 'attendance', label: 'Obecność', icon: CalendarCheck },
     { id: 'calendar', label: 'Kalendarz', icon: Calendar },
     { id: 'leave', label: 'Urlopy', icon: ClipboardList },
     { id: 'timesheet', label: 'Timesheet', icon: Receipt },
     { id: 'invoices', label: 'Faktury', icon: FileText },
+    { id: 'bonuses', label: 'Premie', icon: Gift },
     // { id: 'clock', label: 'Zegar', icon: Clock },
 ]
+
+const TABS: ReadonlyArray<HubTab> = ALL_TABS.filter(
+    (t) => t.id !== 'invoices' || isInvoicesEnabled(),
+)
 
 const VALID_TAB_IDS = TABS.map((t) => t.id)
 
@@ -55,6 +64,9 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
                 </p>
             </header>
 
+            {/* Phase 25d — show active leaves with substitutes (scope: own team / manager) */}
+            <ActiveLeavesBanner />
+
             <HubTabs basePath="/internal" tabs={TABS} active={tab} />
 
             {tab === 'attendance' && <AttendancePanel year={year} month={month} />}
@@ -63,7 +75,8 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
             )}
             {tab === 'leave' && <LeavePanel />}
             {tab === 'timesheet' && <TimesheetPanel year={year} month={month} />}
-            {tab === 'invoices' && <InvoicesPanel />}
+            {tab === 'invoices' && isInvoicesEnabled() && <InvoicesPanel />}
+            {tab === 'bonuses' && <MyBonusesPanel />}
             {/* {tab === 'clock' && <ClockPanel year={year} month={month} />} */}
         </div>
     )

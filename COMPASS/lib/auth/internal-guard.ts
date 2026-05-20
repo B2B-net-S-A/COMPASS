@@ -7,7 +7,10 @@ import { createClient } from '@/lib/supabase/server'
 import {
     canAccessInternalZone,
     canManageInbox,
+    canManageLifecycle,
     canManagerApproveInvoice,
+    canProposeBonus,
+    canReadAllBonuses,
     canReviewInvoices,
     isAdminLike,
     isManager,
@@ -184,6 +187,72 @@ export async function requireInternalAdminAreaLayout(): Promise<InternalAuthCont
     const ctx = await requireInternalOrAdminLayout()
     if (!ctx.isAdmin && ctx.role !== 'finanse' && !ctx.isManager) {
         redirect('/internal')
+    }
+    return ctx
+}
+
+/**
+ * Phase 22 — Lifecycle module guard (admin OR talent_community).
+ * Required for: template CRUD, scheduling onboarding/exit, reviewing exit interviews.
+ * Server-action variant: throws on unauthorized.
+ */
+export async function requireLifecycleManagerAction(): Promise<InternalAuthContext> {
+    const ctx = await loadAuthContext()
+    if (!ctx) throw new Error('Unauthorized')
+    if (!canManageLifecycle(ctx.role)) {
+        throw new Error('Wymagane uprawnienia: administrator lub Talent Community Manager.')
+    }
+    return buildCtx(ctx)
+}
+
+/**
+ * Phase 22 — Lifecycle module layout guard.
+ * Allowed: admin, talent_community, manager (read-only for team), or employee with active
+ * own onboarding/exit interview (page-level check in the layout).
+ */
+export async function requireLifecycleHubLayout(): Promise<InternalAuthContext> {
+    const ctx = await loadAuthContext()
+    if (!ctx) redirect('/login')
+    // Access logic delegated to layout — we just enforce auth + HR-zone here.
+    // Konsultant IT without active lifecycle redirects to /home.
+    if (!canAccessInternalZone(ctx.role) && !canManageLifecycle(ctx.role)) {
+        redirect('/home')
+    }
+    return buildCtx(ctx)
+}
+
+/**
+ * Phase 23 — Bonus proposer guard.
+ * Allowed: admin (anyone), manager (own team only — team scope enforced in action body + RLS).
+ */
+export async function requireBonusProposerAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!canProposeBonus(ctx.role)) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    return ctx
+}
+
+/**
+ * Phase 23 — Bonus read-all guard (global report).
+ * Allowed: admin, finanse (read-only). Manager sees own team via RLS, not this guard.
+ */
+export async function requireBonusReadAllAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!canReadAllBonuses(ctx.role)) {
+        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+    }
+    return ctx
+}
+
+/**
+ * Phase 27c — Finanse or admin guard.
+ * Required for: setUserRate, listAllActiveRates, payroll CSV export.
+ */
+export async function requireFinanseOrAdminAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && ctx.role !== 'finanse') {
+        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
     }
     return ctx
 }

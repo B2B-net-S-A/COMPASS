@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Pencil, Plus, Trash2, Loader2, Send, FileDown, ChevronLeft, ChevronRight, Wand2, Clock, AlertTriangle } from 'lucide-react'
+import { Pencil, Plus, Trash2, Loader2, Send, FileDown, ChevronLeft, ChevronRight, Wand2, Clock, AlertTriangle, Copy, FileText, Archive } from 'lucide-react'
+import Link from 'next/link'
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -13,6 +14,7 @@ import { toastSuccess } from '@/lib/toast-success'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 import {
     addEntry,
+    copyPreviousMonthEntries,
     deleteEntry,
     quickFillMonth,
     submitTimesheet,
@@ -20,6 +22,7 @@ import {
     type TimesheetEntryRow,
     type TimesheetWithEntries,
 } from '@/lib/actions/internal-timesheet'
+import { applyDefaultsToTimesheet } from '@/lib/actions/internal-timesheet-role-defaults'
 import {
     clearAutoFilledTimesheet,
     suggestTimesheetEntriesFromClock,
@@ -176,6 +179,64 @@ export function TimesheetEditor({ timesheet }: Props) {
         })
     }
 
+    async function handleCopyPrevious() {
+        const ok = await confirm({
+            title: 'Skopiować opisy z poprzedniego miesiąca?',
+            description: `${format(ref, 'LLLL yyyy', { locale: pl })}: skopiuje opisy + projekt z ostatniego zaakceptowanego miesiąca dla każdego dnia roboczego (8h/dzień). Dni z istniejącymi wpisami zostają nietknięte. Pomija weekendy, święta i Twoje urlopy.`,
+            confirmLabel: 'Skopiuj',
+        })
+        if (!ok) return
+        startTransition(async () => {
+            try {
+                const res = await copyPreviousMonthEntries(timesheet.id)
+                if (res.skipped_no_source) {
+                    toast.warning(
+                        'Brak poprzedniego zaakceptowanego miesiąca — nie ma czego skopiować.',
+                    )
+                } else if (res.inserted === 0) {
+                    toast.warning(
+                        `Wszystkie dni miały już wpisy lub były zablokowane (${res.skipped_existing} pominięte).`,
+                    )
+                } else {
+                    toastSuccess(
+                        `Skopiowano ${res.inserted} dni z ${res.source_year}-${String(res.source_month).padStart(2, '0')}.`,
+                    )
+                }
+                router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            }
+        })
+    }
+
+    async function handleApplyDefault() {
+        const ok = await confirm({
+            title: 'Wypełnić domyślnym opisem?',
+            description: `${format(ref, 'LLLL yyyy', { locale: pl })}: wypełni 8h × dzień roboczy z domyślnym opisem usług dla Twojej roli (np. "Konsultacje SAP"). Pomija weekendy, święta, urlopy oraz dni z istniejącymi wpisami.`,
+            confirmLabel: 'Wypełnij',
+        })
+        if (!ok) return
+        startTransition(async () => {
+            try {
+                const res = await applyDefaultsToTimesheet(timesheet.id, null)
+                if (!res.used_default_label) {
+                    toast.warning(
+                        'Brak skonfigurowanego defaultu dla Twojej roli. Poproś admina o ustawienie domyślnego opisu.',
+                    )
+                } else if (res.inserted === 0) {
+                    toast.warning(
+                        `Wszystkie dni miały już wpisy lub były zablokowane (${res.skipped_existing} pominięte, ${res.skipped_leave} urlop).`,
+                    )
+                } else {
+                    toastSuccess(`Wypełniono ${res.inserted} dni szablonem "${res.used_default_label}".`)
+                }
+                router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            }
+        })
+    }
+
     async function handleQuickFill() {
         const hasEntries = timesheet.entries.length > 0
         const ok = await confirm({
@@ -280,6 +341,12 @@ export function TimesheetEditor({ timesheet }: Props) {
                         </a>
                     )}
                     {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    <Link href="/internal/timesheet/archiwum">
+                        <Button variant="outline" size="sm" title="Archiwum 12 ostatnich miesięcy">
+                            <Archive className="h-4 w-4 mr-1" />
+                            Archiwum
+                        </Button>
+                    </Link>
                     <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)} disabled={pending}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -513,6 +580,26 @@ export function TimesheetEditor({ timesheet }: Props) {
                         >
                             <Clock className="h-4 w-4 mr-2" />
                             Wypełnij z trackingu
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handleCopyPrevious}
+                            disabled={pending}
+                            title="Skopiuje opisy + projekt z ostatniego zaakceptowanego miesiąca (8h/dzień). Dni z istniejącymi wpisami zostają nietknięte."
+                            className="min-h-[44px] w-full sm:w-auto"
+                        >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Skopiuj z poprzedniego miesiąca
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handleApplyDefault}
+                            disabled={pending}
+                            title="Wypełni dni robocze domyślnym opisem usług ustalonym przez admina dla Twojej roli."
+                            className="min-h-[44px] w-full sm:w-auto"
+                        >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Wypełnij defaultem
                         </Button>
                         <Button
                             variant="default"

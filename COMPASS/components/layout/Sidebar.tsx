@@ -21,11 +21,17 @@ import {
     Sparkles,
     CalendarCheck,
     Users,
+    ClipboardCheck,
+    Plane,
+    Coins,
+    Wallet,
+    Briefcase,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
 import { useTheme } from '@/lib/contexts/ThemeContext'
 import { isFeatureComingSoon, type PermissionFeature, type PermissionValue } from '@/lib/types/permissions'
+import { isInvoicesEnabled } from '@/lib/feature-flags'
 
 // Phase 7 (2026-05-04): Sidebar badge counts fetched server-side in
 // app/(protected)/layout.tsx and passed through. Display badge if count > 0.
@@ -35,6 +41,12 @@ export interface SidebarBadgeCounts {
     adminPitches?: number
     adminInbox?: number
     consultantSupport?: number
+    // Phase 22 — lifecycle module: overdue tasks + own pending check-ins + exit interviews to review.
+    lifecyclePendingTasks?: number
+    // Phase 25e — currently active leaves in user's scope (team / colleagues).
+    activeLeaves?: number
+    // Phase 25e — self is currently on leave (visual cue on /internal link).
+    selfOnLeave?: boolean
 }
 
 interface SidebarProps {
@@ -159,10 +171,29 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
 
     // Phase 12: collapsed to single-link hubs (sub-pages live behind ?tab=).
     // exactMatch on /internal so it doesn't stay highlighted while user is on /internal/admin.
+    // Phase 25e:
+    //   - badge shows count of currently-active leaves in user's scope (team / colleagues / manager)
+    //   - icon swaps to Plane when self is on leave (visual cue)
     const internalGroup: NavGroup = {
         heading: t('group_internal'),
         links: [
-            { name: t('nav_internal_hub'), href: '/internal', icon: CalendarCheck, feature: null, exactMatch: true },
+            {
+                name: badges?.selfOnLeave
+                    ? `${t('nav_internal_hub')} (jesteś na urlopie)`
+                    : t('nav_internal_hub'),
+                href: '/internal',
+                icon: badges?.selfOnLeave ? Plane : CalendarCheck,
+                feature: null,
+                exactMatch: true,
+                badgeCount: badges?.activeLeaves,
+            },
+            // Phase 27c — Payroll widoczne dla HR-zone (każdy widzi własne; manager/finanse/admin widzą więcej).
+            {
+                name: 'Payroll',
+                href: '/internal/payroll',
+                icon: Wallet,
+                feature: null,
+            },
         ],
     }
 
@@ -174,20 +205,29 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     }
 
     // Phase 19a/d: dedicated invoice-review group for Finanse role.
-    // Phase 19d: finanse has internal-parity, so they see the HR Hub like internal employees.
+    // Phase 26: invoice UI gated behind NEXT_PUBLIC_INVOICES_ENABLED. When off, finanse group is empty.
+    // Phase 27c: dodaj link "Stawki" dla finanse+admin (zawsze, niezależne od invoices flag).
+    const invoicesUiOn = isInvoicesEnabled()
     const financeGroup: NavGroup = {
         heading: 'Finanse',
         links: [
-            { name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null },
+            ...(invoicesUiOn
+                ? [{ name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null as PermissionFeature | null }]
+                : []),
+            { name: 'Stawki pracowników', href: '/internal/admin/rates', icon: Coins, feature: null },
+            // Phase 27d — clients list management (admin + finanse).
+            { name: 'Klienci', href: '/internal/admin/clients', icon: Briefcase, feature: null },
         ],
     }
 
-    // Phase 20: Manager group — team timesheet/invoice approvals.
+    // Phase 20 + 26: Manager group — team timesheet (always) + invoice approvals (only when invoices UI enabled).
     const managerGroup: NavGroup = {
         heading: 'Mój zespół',
         links: [
             { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets&scope=team', icon: Users, feature: null },
-            { name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null },
+            ...(invoicesUiOn
+                ? [{ name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null }]
+                : []),
         ],
     }
 
@@ -201,13 +241,30 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
+    // Phase 22 — Lifecycle hub for TCM, admin, and managers (managers see team scope).
+    // Sidebar link is rendered also for HR-zone employees so they can reach their own onboarding/exit form.
+    const lifecycleGroup: NavGroup = {
+        heading: 'Lifecycle',
+        links: [
+            {
+                name: 'Onboarding & Exit',
+                href: '/internal/lifecycle',
+                icon: ClipboardCheck,
+                feature: null,
+                badgeCount: badges?.lifecyclePendingTasks,
+            },
+        ],
+    }
+
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
         if (isAdmin) out.push(internalAdminGroup, adminGroup)
-        if (isFinance) out.push(financeGroup)
+        // Phase 26: only push financeGroup if it has at least one link (invoices flag may hide all).
+        if (isFinance && financeGroup.links.length > 0) out.push(financeGroup)
         if (isManager) out.push(managerGroup)
         if (isTalentCommunity) out.push(tcmGroup)
+        if (isHrZone) out.push(lifecycleGroup)
         return out
     })()
 

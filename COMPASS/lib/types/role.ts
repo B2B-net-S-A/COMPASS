@@ -83,6 +83,12 @@ export function canManageInbox(role: string | null | undefined): boolean {
     return isAdminLike(role) || isTalentCommunity(role)
 }
 
+// Phase 22: TCM = owner of lifecycle module (onboarding + exit interview).
+// Same role set as inbox management — kept as separate alias for clarity.
+export function canManageLifecycle(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isTalentCommunity(role)
+}
+
 export function canEditNews(role: string | null | undefined): boolean {
     return isAdminLike(role) || isTalentCommunity(role)
 }
@@ -106,6 +112,18 @@ export function canSubmitOwnInvoice(role: string | null | undefined): boolean {
         isManager(role) ||
         isTalentCommunity(role)
     )
+}
+
+// Phase 22 — kto może proponować premię? Admin (każdemu), manager (swojemu zespołowi).
+// Team scope (target.manager_id = ctx.userId) sprawdzane w action body + RLS.
+export function canProposeBonus(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isManager(role)
+}
+
+// Phase 22 — kto widzi globalny raport premii (read-only)? Admin + finanse.
+// Manager widzi tylko swój zespół (przez RLS). Recipient widzi swoje.
+export function canReadAllBonuses(role: string | null | undefined): boolean {
+    return isAdminLike(role) || isFinance(role)
 }
 
 // UI labelki dla 6 ról Compass (post Phase 20):

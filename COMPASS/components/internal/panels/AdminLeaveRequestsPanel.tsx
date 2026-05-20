@@ -1,8 +1,15 @@
-import { listPendingLeaveRequests } from '@/lib/actions/internal-leave'
+import {
+    listLeavesWithSyncIssues,
+    listPendingLeaveRequests,
+} from '@/lib/actions/internal-leave'
 import { LeaveQueue } from '@/components/internal/LeaveQueue'
+import { AdminLeaveSyncIssues } from '@/components/internal/AdminLeaveSyncIssues'
 
 export async function AdminLeaveRequestsPanel() {
-    const requests = await listPendingLeaveRequests()
+    const [requests, syncIssues] = await Promise.all([
+        listPendingLeaveRequests(),
+        listLeavesWithSyncIssues().catch(() => []),
+    ])
 
     return (
         <section className="space-y-4">
@@ -13,6 +20,7 @@ export async function AdminLeaveRequestsPanel() {
                     się w tej liście.
                 </p>
             </div>
+            <AdminLeaveSyncIssues requests={syncIssues} />
             <LeaveQueue requests={requests} />
         </section>
     )

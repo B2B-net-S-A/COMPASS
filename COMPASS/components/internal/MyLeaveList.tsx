@@ -5,16 +5,16 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2 } from 'lucide-react'
+import { Loader2, UserCheck, MailCheck, AlertTriangle } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { cancelMyLeaveRequest, type LeaveRequestRow } from '@/lib/actions/internal-leave'
+import { cancelMyLeaveRequest, type MyLeaveRow } from '@/lib/actions/internal-leave'
 
 interface Props {
-    requests: LeaveRequestRow[]
+    requests: MyLeaveRow[]
 }
 
 const LEAVE_TYPE_LABEL: Record<string, string> = {
@@ -43,7 +43,7 @@ export function MyLeaveList({ requests }: Props) {
         return format(parseISO(d), 'd LLL yyyy', { locale: pl })
     }
 
-    async function handleCancel(req: LeaveRequestRow) {
+    async function handleCancel(req: MyLeaveRow) {
         const ok = await confirm({
             title: 'Anulować wniosek',
             description: `Anulować wniosek ${LEAVE_TYPE_LABEL[req.leave_type]} (${fmt(req.start_date)} – ${fmt(req.end_date)})?`,
@@ -109,6 +109,45 @@ export function MyLeaveList({ requests }: Props) {
                                         {req.decision_note && (
                                             <p className="text-xs mt-1 text-muted-foreground">
                                                 Komentarz admina: {req.decision_note}
+                                            </p>
+                                        )}
+                                        {/* Phase 25d — substitute info */}
+                                        {req.substitute_full_name && (
+                                            <p className="text-xs mt-1 text-muted-foreground inline-flex items-center gap-1">
+                                                <UserCheck className="h-3 w-3" />
+                                                Zastępca:{' '}
+                                                <span className="font-medium text-foreground">
+                                                    {req.substitute_full_name}
+                                                </span>
+                                                {req.substitute_email && (
+                                                    <span className="text-muted-foreground">
+                                                        ({req.substitute_email})
+                                                    </span>
+                                                )}
+                                            </p>
+                                        )}
+                                        {/* Phase 25d — Graph OOF status */}
+                                        {req.status === 'approved' && (
+                                            <p className="text-xs mt-1 inline-flex items-center gap-1">
+                                                {req.graph_oof_set ? (
+                                                    <>
+                                                        <MailCheck className="h-3 w-3 text-green-400" />
+                                                        <span className="text-green-300">
+                                                            Out of Office ustawione w Outlook
+                                                        </span>
+                                                    </>
+                                                ) : req.graph_sync_error ? (
+                                                    <>
+                                                        <AlertTriangle className="h-3 w-3 text-amber-400" />
+                                                        <span className="text-amber-300">
+                                                            Synchronizacja Outlook nie powiodła się — admin może ponowić
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-muted-foreground">
+                                                        Out of Office: nie ustawione
+                                                    </span>
+                                                )}
                                             </p>
                                         )}
                                     </div>

@@ -67,7 +67,7 @@ function resolveProvider(): MailProvider {
 }
 
 function getDefaultFrom(): string {
-    return process.env.MAIL_FROM ?? 'ComPass System <noreply@compass.b2bnetwork.pl>'
+    return process.env.MAIL_FROM ?? 'COMPASS System <noreply@compass.b2bnetwork.pl>'
 }
 
 // ─── Lazy singletons ─────────────────────────────────────────────────────────

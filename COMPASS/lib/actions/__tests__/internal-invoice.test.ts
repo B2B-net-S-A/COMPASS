@@ -30,6 +30,14 @@ vi.mock('@/lib/actions/push-subscriptions', () => ({
     sendPushToUserId: vi.fn(async () => ({ success: true })),
 }))
 
+// Phase 26: invoice server actions are gated by requireInvoicesEnabled().
+// Tests assume invoices are ENABLED — make the guard a no-op.
+vi.mock('@/lib/feature-flags', () => ({
+    requireInvoicesEnabled: vi.fn(() => {}),
+    isInvoicesEnabled: vi.fn(() => true),
+    isInvoicesEnabledServer: vi.fn(() => true),
+}))
+
 // Supabase mocks — minimal stub returning canned data.
 const supabaseState = vi.hoisted(() => ({
     approvedTimesheet: true as boolean,

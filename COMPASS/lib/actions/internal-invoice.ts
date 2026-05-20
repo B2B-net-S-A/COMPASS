@@ -12,6 +12,7 @@ import {
 import { logAudit } from '@/lib/actions/audit'
 import { sendInvoiceDecision, sendInvoiceSubmitted } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { requireInvoicesEnabled } from '@/lib/feature-flags'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -267,10 +268,37 @@ export async function listEligiblePeriods(monthsBack = 12): Promise<EligiblePeri
     }))
 }
 
+// Client-callable wrapper. Next.js 14 + React 18 nie serializuje File jako
+// argumentu Server Action ("Only plain objects, and a few built-ins, can be
+// passed to Server Actions"). Klient pakuje wszystko do FormData; tu
+// rozpakowujemy i wołamy `submitInvoice` (które pozostaje dostępne dla testów
+// jednostkowych wywoływanych po stronie serwera).
+export async function submitInvoiceForm(formData: FormData): Promise<InvoiceRow> {
+    requireInvoicesEnabled()
+    const file = formData.get('file')
+    if (!(file instanceof File)) {
+        throw new Error('Plik faktury jest wymagany.')
+    }
+    const rawAmount = formData.get('amount')
+    const rawYear = formData.get('period_year')
+    const rawMonth = formData.get('period_month')
+    const input: SubmitInvoiceInput = {
+        invoice_number: String(formData.get('invoice_number') ?? ''),
+        amount: rawAmount === null ? NaN : Number(rawAmount),
+        period_year: rawYear === null ? NaN : Number(rawYear),
+        period_month: rawMonth === null ? NaN : Number(rawMonth),
+        currency: (formData.get('currency') as string | null) ?? undefined,
+        due_date: ((formData.get('due_date') as string | null) || null),
+        notes: ((formData.get('notes') as string | null) || null),
+    }
+    return submitInvoice(input, file)
+}
+
 export async function submitInvoice(
     input: SubmitInvoiceInput,
     file: File,
 ): Promise<InvoiceRow> {
+    requireInvoicesEnabled()
     const ctx = await requireInternalOrAdminAction()
     // Phase 19d + 20: HR-zone pracownicy biurowi (internal/finanse/manager/talent_community) mogą wystawiać faktury.
     const HR_SUBMITTING_ROLES = ['internal', 'finanse', 'manager', 'talent_community']
@@ -379,11 +407,34 @@ export async function submitInvoice(
     return data
 }
 
+// Client-callable wrapper — patrz komentarz przy `submitInvoiceForm`.
+export async function updateRejectedInvoiceForm(formData: FormData): Promise<InvoiceRow> {
+    requireInvoicesEnabled()
+    const invoiceId = String(formData.get('invoice_id') ?? '')
+    if (!invoiceId) throw new Error('Brak ID faktury.')
+    const fileEntry = formData.get('file')
+    const newFile =
+        fileEntry instanceof File && fileEntry.size > 0 ? fileEntry : undefined
+
+    const input: UpdateRejectedInvoiceInput = {}
+    const rawNumber = formData.get('invoice_number')
+    if (rawNumber !== null) input.invoice_number = String(rawNumber)
+    const rawAmount = formData.get('amount')
+    if (rawAmount !== null) input.amount = Number(rawAmount)
+    const rawDue = formData.get('due_date')
+    if (rawDue !== null) input.due_date = String(rawDue) || null
+    const rawNotes = formData.get('notes')
+    if (rawNotes !== null) input.notes = String(rawNotes) || null
+
+    return updateRejectedInvoice(invoiceId, input, newFile)
+}
+
 export async function updateRejectedInvoice(
     invoiceId: string,
     input: UpdateRejectedInvoiceInput,
     newFile?: File,
 ): Promise<InvoiceRow> {
+    requireInvoicesEnabled()
     const ctx = await requireInternalOrAdminAction()
     const supabase = createClient()
 
@@ -691,6 +742,7 @@ export async function getTimesheetForInvoiceReview(
 }
 
 export async function approveInvoice(invoiceId: string): Promise<void> {
+    requireInvoicesEnabled()
     // Phase 20c: stage 2 (finanse final approval). Requires:
     //   — user has no manager → status='submitted' (skip stage 1)
     //   — user has manager   → status='manager_approved' (stage 1 done)
@@ -780,6 +832,7 @@ export async function approveInvoice(invoiceId: string): Promise<void> {
 }
 
 export async function rejectInvoice(invoiceId: string, reason: string): Promise<void> {
+    requireInvoicesEnabled()
     // Phase 20c: stage 2 (finanse) reject. Allowed from 'submitted' (no manager) or 'manager_approved'.
     const ctx = await requireInvoiceReviewerAction()
     if (!reason?.trim()) throw new Error('Powód odrzucenia jest wymagany.')
@@ -850,6 +903,7 @@ export async function rejectInvoice(invoiceId: string, reason: string): Promise<
  * Optional `note` is shown to Finanse as additional context.
  */
 export async function managerApproveInvoice(invoiceId: string, note?: string): Promise<void> {
+    requireInvoicesEnabled()
     const ctx = await requireManagerInvoiceApproverAction()
     const admin = createServiceClient()
 
@@ -936,6 +990,7 @@ export async function managerApproveInvoice(invoiceId: string, note?: string): P
  * Worker can re-submit after fixing.
  */
 export async function managerRejectInvoice(invoiceId: string, reason: string): Promise<void> {
+    requireInvoicesEnabled()
     const ctx = await requireManagerInvoiceApproverAction()
     if (!reason?.trim()) throw new Error('Powód odrzucenia jest wymagany.')
     const admin = createServiceClient()

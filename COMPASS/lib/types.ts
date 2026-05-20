@@ -92,6 +92,10 @@ export type NotificationType =
     | 'system_announcement'
     | 'payment_received'
     | 'role_change'
+    // Phase 22 — Premie
+    | 'bonus_proposed'
+    | 'bonus_cancelled'
+    | 'bonus_linked'
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent'
 

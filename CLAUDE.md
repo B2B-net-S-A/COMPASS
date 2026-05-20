@@ -210,6 +210,475 @@ DB trigger blokuje invalid transitions (np. `submitted → approved` gdy user ma
 
 Nowe akcje: `INVOICE_MANAGER_APPROVED`, `INVOICE_MANAGER_REJECTED`, `MANAGER_ASSIGNED`.
 
+## Phase 22 — Onboarding & Exit Interview (TCM module, 2026-05-17)
+
+Pełny lifecycle pracownika prowadzony przez Talent Community Managera (rola dodana w Phase 20):
+
+**Profile lifecycle:** `employment_status` enum w `profiles` — `pending` → `onboarding` → `active` → `offboarding` → `exited`. Plus `hired_at`, `termination_date`, `buddy_id`.
+
+**Onboarding workflow:**
+1. Admin invites user via `InviteUserDialog` z checkboxem "Automatycznie uruchom onboarding" (default ON dla consultant/internal/manager — role z domyślnym szablonem).
+2. `inviteUser()` w `user-admin.ts` woła `start_onboarding_for_user()` RPC → kopiuje template_items → tasks z `due_date = hired_at + due_offset_days`, ustawia `employment_status='onboarding'`, wysyła welcome email.
+3. Pracownik wypełnia checklist (employee tasks), manager swoje (manager tasks), buddy/TCM/admin pozostałe.
+4. Check-iny dzień 1/7/30 — mini-ankieta 1-5 + komentarz, wysyłana via cron `lifecycle-checkins`.
+5. TCM/admin zamyka onboarding gdy wszystkie required tasks done → `employment_status='active'`.
+
+**Exit Interview workflow:**
+1. TCM/admin schedules exit (`scheduleExitInterview(userId, terminationDate)`).
+2. `start_offboarding_for_user()` ustawia `employment_status='offboarding'`, tworzy `exit_interviews` (status=scheduled) + 5 default offboarding tasks (access_revoke, equipment_return, knowledge_transfer, final_settlement, docs_archive), wysyła zaproszenie pracownikowi + checklist managerowi.
+3. Pracownik wypełnia ankietę: powód (8 enum), NPS 0-10, 4 skale satysfakcji 1-5, swobodna wypowiedź, knowledge transfer. Checkbox "Wyślij anonimowo" → trigger DB zeruje `user_id` ale zachowuje snapshot fields (role, manager, tenure_months).
+4. TCM widzi w kolejce `/internal/lifecycle/exit`, robi review + dodaje notatkę → status=reviewed.
+5. Po wszystkich required offboarding tasks → admin/TCM klika "Mark as exited" → `employment_status='exited'`.
+
+**Hub:** `/internal/lifecycle` (osobny route w sidebarze "Lifecycle"):
+- TCM/admin: dashboard (4 KPI + queue + analytics)
+- Manager: queue zespołu (read-only przez RLS team scope)
+- Pracownik z aktywnym onboardingiem: redirect do `/onboarding/[progressId]`
+- Pracownik w offboarding: redirect do `/exit/wypelnij`
+
+**Migracje:** `20260517000001..._phase22a..e.sql` (5 plików w `COMPASS/supabase/migrations/`).
+
+**Storage:** bucket `lifecycle-docs` (private) z folder-scoped RLS — `onboarding/{user_id}/` i `exit/{user_id}/`.
+
+**Helpery RLS:** `has_lifecycle_access()` (admin+TCM), `is_buddy_of(user)`. Templates SELECT dla HR-zone; WRITE TCM/admin only. Onboarding tasks: owner edytuje swoje (responsible='employee'), manager swoje (responsible='manager'), buddy swoje, TCM/admin wszystkie. Exit interviews z `is_anonymous=TRUE` po submit mają user_id=NULL — manager_of widzi tylko nie-anonimowe.
+
+**Coolify cron jobs (do dodania po deploy):**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `lifecycle-checkins` | `0 9 * * *` (9:00 UTC daily) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/lifecycle-checkins"` |
+| `lifecycle-reminders` | `0 10 * * *` (10:00 UTC daily) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/lifecycle-reminders"` |
+
+`lifecycle-checkins` skanuje progress z hired_at = T-1/T-7/T-30 i wysyła mini-ankietę email jeśli `checkin_dayN_at IS NULL`.
+`lifecycle-reminders` wysyła managerom przypomnienia o overdue manager/buddy tasks + pracownikom o exit interview 3 dni przed termination_date.
+
+**Audit log akcje:** `ONBOARDING_STARTED/TASK_COMPLETED/TASK_ADDED/CHECKIN_SUBMITTED/COMPLETED/CANCELLED/RESTARTED`, `TEMPLATE_CREATED/UPDATED/DELETED/DEFAULT_CHANGED/DUPLICATED`, `BUDDY_ASSIGNED/UNASSIGNED`, `OFFBOARDING_STARTED`, `EXIT_INTERVIEW_SCHEDULED/SUBMITTED/REVIEWED/ANONYMIZED/CANCELLED`, `OFFBOARDING_TASK_COMPLETED`, `EMPLOYEE_EXITED`, `LIFECYCLE_PROFILE_UPDATED`, `EXTERNAL_EMPLOYEE_CREATED`, `LIFECYCLE_NOTE_ADDED/DELETED`.
+
+### Phase 22.1 — Template editor UI (PR #114, 2026-05-16)
+
+TCM/admin może teraz w UI tworzyć/edytować szablony bez SQL:
+- `/internal/lifecycle/templates/new` — wizard nowego szablonu (NewTemplateForm)
+- `/internal/lifecycle/templates/[id]` — inline edit metadata, add/edit/delete items, reorder przez strzałki up/down, soft/hard delete template
+- Server actions: `addTemplateItem`, `updateTemplateItem`, `deleteTemplateItem`, `reorderTemplateItems`
+
+### Phase 22.2 — Interactive dialogs (PR #115, 2026-05-16)
+
+Klikalne narzędzia codziennego użytku TCM/admin — bez SQL:
+- **"Nowy onboarding"** (hub button) → `StartOnboardingDialog`: search pracowników → wybierz template + hired_at override → auto-start
+- **"Zaplanuj exit interview"** (hub button) → `ScheduleExitDialog`: search → termination_date + scheduled_for → trigger offboarding + emaile
+- **BuddyCard / BuddyAssignmentDialog** na onboarding detail — klikalna karta Buddy, search + przypisz/odpisz
+- Server actions: `listEmployeesForLifecycle(filter)`, `listBuddyCandidates(forUserId)`, `listTemplateChoices()`, `startOnboardingWithOptions({userId, templateId?, hiredAt?})`
+
+### Phase 22.3 — All employees view + archive + cancel/restart + external (PR #117 + 22.4, 2026-05-16..18)
+
+Pełen TCM toolkit (13 features):
+
+**Migracja 22f:**
+- `profiles.is_external BOOLEAN` + `external_notes TEXT` — pracownicy bez konta auth.users (nie logują się)
+- `onboarding_progress.cancelled_at/_by/_reason` — anuluj onboarding (terminalny stan obok completed_at)
+- `exit_interviews`: nowy status `'cancelled'` + `cancelled_at/_by/_reason` — anuluj scheduled exit
+- `lifecycle_notes` table (RLS: TCM/admin full; owner/manager non-private only) — private TCM notes per pracownik z 4 kategoriami (general/onboarding/exit/flag)
+- Update `enforce_exit_interview_transitions` — pozwala scheduled → cancelled
+- Update `block_employment_reversal_after_exit` — ignoruje cancelled (pozwala offboarding → active gdy interview cancelled)
+
+**Frontend (nowe routes):**
+- `/internal/lifecycle/employees` — directory wszystkich HR-zone pracowników z filtrami (status × rola × search) + per-row kebab menu (Start onboarding / Schedule exit / Edit profile / Notatki TCM) + **"Dodaj external pracownika"** button + visual badge `external` w wierszu
+- `/internal/lifecycle/archive` — completed/cancelled onboardingi + exited employees z tenure (mies.)
+
+**Frontend (rozszerzone):**
+- Hub: linki **Pracownicy** + **Archiwum** + **Szablony** w headerze
+- Onboarding detail: `CancelOnboardingButton` (Anuluj + Restart dialogs) w "Strefie niebezpiecznej", `LifecycleNotesPanel`, `AuditHistoryPanel`
+- Exit detail (status=scheduled): `CancelExitButton` (przywraca status active, czyści offboarding tasks), notes, audit history
+- Exit queue: `ExportExitInterviewsButton` (CSV z UTF-8 BOM)
+- Templates list: `DuplicateTemplateButton` na każdej karcie
+
+**External onboarding flow:**
+1. `/internal/lifecycle/employees` → "Dodaj external pracownika"
+2. `ExternalEmployeeDialog`: imię + email (dowolna domena) + rola + hire date + opcjonalnie manager/buddy/template
+3. Tworzy `profiles` row z `is_external=TRUE`, `onboarding_completed=TRUE` (skip /onboarding redirect bo nie loguje się), UUID generowany lokalnie (NIE w `auth.users`)
+4. Opcja "Uruchom onboarding od razu" — auto-start z default template per rola
+5. TCM oznacza taski w imieniu external pracownika; emaile wysyłane na podany adres
+6. Edycja: `EditLifecycleProfileDialog` z dedicated polem `external_notes` (kontekst)
+
+**Push notifications wired w `lifecycle.ts`:**
+- `startOnboardingWithOptions` → push do employee ("Witamy w B2B Network!") + push do managera ("Team-member rozpoczyna onboarding")
+- `scheduleExitInterview` → push do employee ("Exit interview") + push do managera ("Team-member rozpoczyna offboarding")
+- `submitExitInterview` → push do wszystkich TCM/admin ("Nowy exit interview do review") — także po anonimizacji (bez user info)
+
+**Server actions (12 nowych w Phase 22.3):**
+`cancelOnboarding`, `restartOnboarding`, `cancelExitInterview`, `updateLifecycleProfile`, `createExternalEmployee`, `listLifecycleNotes`, `addLifecycleNote`, `deleteLifecycleNote`, `duplicateTemplate`, `listAuditLogForUser`, `exportExitInterviewsCsv`, `listCompletedOnboardings`, `listExitedEmployees`.
+
+**Domyślne szablony seedowane przez migrację 22e:** 3 default templates — `consultant` (10 items), `internal` (11 items), `manager` (11 items). Edytowalne przez TCM w UI (read-only w pierwszej wersji — pełne CRUD planowane w follow-upie).
+
+**Ops po deploy:**
+1. Aplikuj 5 migracji przez `supabase db push` (lub MCP).
+2. Dodaj 2 cron joby w panelu Coolify (patrz tabela wyżej).
+3. Stres test: jako admin zaprosić nowego `consultant` z `manager_id` → sprawdzić że `profiles.employment_status='onboarding'`, `onboarding_progress` utworzony, welcome email wysłany.
+4. Zalogować się jako pracownik, wypełnić task z plikiem → sprawdzić upload do `lifecycle-docs/onboarding/{user_id}/`.
+5. Zalogować się jako TCM, zmienić status pracownika na offboarding via `scheduleExitInterview(...)` → wypełnić anonimowo → sprawdzić w DB że `user_id IS NULL` ale snapshot zachowany + ankieta widoczna w queue dla TCM.
+
+## Phase 23 — Premie (PR #116, 2026-05-16)
+
+Manager proponuje premię dla pracownika → pracownik linkuje z własną fakturą → status=paid. State machine `pending → paid | cancelled`.
+
+Tabela `bonuses` + trigger `enforce_bonus_stage_transitions` + helper `can_propose_bonus_for(user)`. RLS: recipient + manager_of + finanse/admin (read). Audit log: `BONUS_PROPOSED/CANCELLED/LINKED_TO_INVOICE/UNLINKED`.
+
+## Phase 24 — Timesheet UX (PR #118, 2026-05-16)
+
+Pełen pakiet UX poprawek timesheet:
+
+**Migracja `phase24a_timesheet_templates_and_defaults`:**
+- `timesheet_user_templates` (per-user snippety opisów usług, RLS owner-only)
+- `timesheet_role_defaults` (admin-defined globalne prefill per rola/projekt)
+- `resolve_role_default(role, project)` RPC — priority: role+project > role > project > global
+
+**UI dla pracownika:**
+- `TimesheetEntryDialog`: dropdown "Wstaw snippet ▾" wstawia opis + projekt jednym klikiem
+- `TimesheetEditor`: przyciski "Skopiuj z poprzedniego miesiąca" (z ostatniego approved) + "Wypełnij defaultem" (globalny prefill admina)
+- `/internal/timesheet/archiwum` — 12 ostatnich miesięcy z statusami + Eksport CSV
+- `/internal/timesheet/snippets` — CRUD swoich snippetów
+
+**UI dla admina/managera:**
+- Klik wiersza w queue → `TimesheetPreviewDialog` z dniami + opisami + Approve/Reject z modala
+- Przycisk "Profil" → `EmployeeProfileDialog` z 3 tabami (Timesheety / Faktury / Urlopy za 12 mc)
+- Przycisk "CSV" w toolbar (range picker max 24 mc, UTF-8 z BOM dla Excela)
+- `/internal/admin/role-defaults` — admin CRUD globalnych defaultów
+
+**Audit log:** `TIMESHEET_COPIED_FROM_PREVIOUS`, `TIMESHEET_APPLIED_DEFAULT`, `TIMESHEET_TEMPLATE_*`, `TIMESHEET_EXPORTED_CSV`, `ROLE_DEFAULT_*`.
+
+## Phase 25 — Zastępca + Outlook Out of Office + Calendar (PR #120 + #122, 2026-05-18)
+
+Po approve urlopu system automatycznie ustawia OOF w Outlook pracownika + tworzy event "Urlop" w jego kalendarzu + wysyła email do zastępcy (jeśli wybrany).
+
+**Migracja `phase25a_leave_substitute_and_oof`:**
+- `leave_requests.substitute_id` (UUID FK profiles)
+- `leave_requests.oof_internal_message` + `oof_external_message` (custom PL+EN auto-reply, opcjonalny)
+- `leave_requests.graph_oof_set` + `graph_oof_set_at` (flag/timestamp gdy Graph potwierdzi)
+- `leave_requests.graph_sync_error` (last error from Graph — OOF lub Calendar)
+- 3 indexes: substitute, sync_error, active window
+
+**Backend:**
+- `lib/mailbox/graph-oof.ts` — `setOutOfOffice` / `disableOutOfOffice` / `buildDefaultOofMessages` (dwujęzyczny PL+EN default)
+- `lib/calendar/graph-events.ts` (już od PR2) — `createLeaveEvent` / `deleteLeaveEvent`
+- `approveLeaveRequest`: po success wywołuje OOF + Calendar + email do zastępcy, zapisuje flagi
+- `cancelMyLeaveRequest` (status=approved): auto-disable OOF + delete event
+- `retryLeaveGraphSync(id)` (admin only) — Phase 25d, ponawia sync gdy `graph_sync_error IS NOT NULL`
+
+**UI:**
+- `LeaveRequestForm`: dropdown "Zastępca" (z `listEligibleSubstitutes()` — HR-zone only, nie self, nie exited) + collapsible "Dostosuj tekst Out of Office" (2 textareas)
+- `MyLeaveList`: "Zastępca: [Name]" + status OOF badge (green/amber/grey) dla approved
+- `LeaveQueue` (admin pending): zastępca + badge "Custom Out of Office message"
+- `AdminLeaveSyncIssues`: card z approved leaves gdzie sync failed + przycisk "Ponów"
+- `ActiveLeavesBanner` (server component, w `/internal` u góry): aktywne urlopy w team scope (admin/TCM=all, manager=team, internal=own manager+colleagues+self), top 3 + count of remaining
+
+**Email:** `sendSubstituteAssigned` (lib/email.ts) — wrapHrEmail z `saveToSentItems=true`.
+
+**Audit log:** `LEAVE_SUBSTITUTE_ASSIGNED`, `LEAVE_OOF_SET`, `LEAVE_OOF_FAILED`, `LEAVE_OOF_DISABLED`.
+
+## Phase 25c — Lifecycle emails są opt-in (2026-05-19)
+
+Welcome onboarding email + exit interview invitation + offboarding checklist do managera **nie wysyłają się automatycznie** przy starcie onboardingu / exit interview. TCM/admin decyduje w momencie startu (checkbox w dialogu, default OFF) lub po fakcie (przycisk "Wyślij teraz" na karcie szczegółów). Powód: external pracownicy są tworzeni z prywatnym emailem podanym przez TCM (vendor, kontraktor, "konto procedurowe") — automatyczne emaile spamują skrzynki które nigdy nie miały dostać powiadomień systemowych.
+
+**Push notifications (in-app) bez zmian** — zostają domyślnie, bo nie spamują skrzynki pocztowej. Push do external user i tak są no-op (brak `auth.users`), push do managera to przydatna notyfikacja w aplikacji.
+
+**Migracja `phase25c_lifecycle_email_tracking`** (6 kolumn — kto/kiedy wysłał):
+- `onboarding_progress.welcome_email_sent_at`, `welcome_email_sent_by`
+- `exit_interviews.invitation_sent_at`, `invitation_sent_by`
+- `exit_interviews.manager_checklist_sent_at`, `manager_checklist_sent_by`
+
+**Server actions (4 zmodyfikowane + 3 nowe):**
+- `startOnboardingWithOptions({sendWelcomeEmail?: boolean})` — default `false`
+- `createExternalEmployee({sendWelcomeEmail?: boolean})` — default `false`, ignorowane gdy `autoStartOnboarding=false`
+- `scheduleExitInterview(userId, terminationDate, scheduledFor, options?: {sendEmployeeEmail?, sendManagerEmail?})` — oba default `false`
+- `archiveEmployee(userId, terminationDate, options?: {sendEmployeeEmail?, sendManagerEmail?})` — wrapper w `user-admin.ts`, defaults `false`
+- NEW `sendOnboardingWelcomeEmailNow(progressId)` — TCM/admin manual trigger
+- NEW `sendExitInvitationNow(interviewId)` — TCM/admin manual trigger
+- NEW `sendOffboardingChecklistNow(interviewId)` — TCM/admin manual trigger
+- `startOnboarding(userId, templateId)` (legacy) — usunięto automatyczne wysyłanie emaila; callerzy powinni używać `*WithOptions`
+
+**UI dialogi (checkboxy, default OFF):**
+- `StartOnboardingDialog.tsx` — 1 checkbox "Wyślij email powitalny"
+- `ExternalEmployeeDialog.tsx` — 1 checkbox (visible gdy `autoStartOnboarding=true`)
+- `ScheduleExitDialog.tsx` — 2 checkboxy (pracownik + manager)
+- `AdminEmployeesPanelClient.tsx` → `ArchiveEmployeeDialog` — 2 checkboxy
+
+**UI detail pages:**
+- Onboarding detail (`/internal/lifecycle/onboarding/[progressId]`) — komponent `WelcomeEmailCard` (visible dla lifecycle admin gdy onboarding niezakończony), pokazuje status "Wysłany {date} przez {name}" lub button "Wyślij email powitalny teraz". Re-send wymaga potwierdzenia (audytowane).
+- Exit detail (`/internal/lifecycle/exit/[interviewId]`) — komponent `ExitEmailsCard` (visible gdy `status=scheduled` i `user_id` not null), 2 sekcje: zaproszenie do pracownika + checklist do managera, każda z buttonem + status.
+
+**Audit log (3 nowe actions):**
+- `ONBOARDING_WELCOME_EMAIL_SENT` (z `trigger: 'start_dialog' | 'external_create_dialog' | 'manual_send_now'`)
+- `EXIT_INVITATION_EMAIL_SENT`
+- `OFFBOARDING_CHECKLIST_EMAIL_SENT`
+
+Plus rozszerzono istniejące `ONBOARDING_STARTED` i `EXIT_INTERVIEW_SCHEDULED` metadata o `welcome_email_opt_in` / `employee_email_opt_in` / `manager_email_opt_in` (boolean) — można post-hoc zobaczyć z audit log czy email poszedł od razu, później, czy w ogóle.
+
+**Ops po deploy:**
+1. Migracja aplikowana już przez MCP (2026-05-19).
+2. Brak nowych cron jobów ani env vars.
+3. Smoke test: TCM tworzy external pracownika z `autoStart=ON` i `sendWelcomeEmail=OFF` → sprawdź audit log: `EXTERNAL_EMPLOYEE_CREATED`, `ONBOARDING_STARTED (welcome_email_opt_in=false)`, BRAK `ONBOARDING_WELCOME_EMAIL_SENT`. Otwiera onboarding detail → klika "Wyślij email powitalny teraz" → sprawdź `onboarding_progress.welcome_email_sent_at != NULL`, audit log `ONBOARDING_WELCOME_EMAIL_SENT (trigger=manual_send_now)`.
+
+## Phase 25b — Manager/Admin wpisuje urlop w imieniu pracownika (PR #124, 2026-05-18)
+
+Pracownik czasem zapomina wysłać wniosek urlopowy. Manager (dla swojego zespołu via `profiles.manager_id`) lub admin (globalnie) może wpisać urlop post-factum z auto-approve. Pracownik dostaje email + push z informacją kto wpisał.
+
+**Migracja `phase25b_leave_on_behalf`:**
+- `leave_requests.created_by` UUID NOT NULL (backfilled z `user_id` dla istniejących self-service wpisów)
+- `leave_requests.created_on_behalf` BOOLEAN DEFAULT FALSE
+- Indeks `idx_leave_created_by WHERE created_by <> user_id` — szybkie wyszukiwanie wpisów on-behalf
+- RLS `leave_insert_self_or_on_behalf` — 3 ścieżki: self / admin on-behalf / manager on-behalf
+- RLS `leave_update_owner_pending_admin_or_manager` — manager może później skorygować swój wpis
+- RLS `leave_select_manager_team_all_statuses` — manager widzi wszystkie statusy zespołu (do tej pory tylko approved)
+
+**Backend (`lib/actions/internal-leave.ts`):**
+- `createLeaveOnBehalf({targetUserId, startDate, endDate, leaveType, halfDay?, note?, substituteId?})` — guard dual (admin OR `target.manager_id === ctx.userId`), duplicate detection, walidacja substitute, INSERT z `status='approved'`, `decided_by=ctx.userId`, `created_on_behalf=true`
+- `listTeamMembersForLeaveOnBehalf()` — admin: wszyscy HR-zone aktywni; manager: tylko `manager_id=ctx.userId`. Wykluczeni: konsultanci IT (no urlopów), exited/offboarding, self
+
+**Side-effecty inteligentnie wg `end_date >= today`:**
+- ZAWSZE: `syncAttendanceFromLeave`, `logAudit('LEAVE_CREATED_ON_BEHALF')`, email + push do pracownika, Teams alert (niebieski "info" `#3B82F6`, nie zielony "approved")
+- ONGOING/FUTURE: + `createLeaveEvent` (Outlook calendar) + `setOutOfOffice` (Outlook OOF z auto-generated PL+EN message) + `sendSubstituteAssigned` (jeśli wybrany zastępca)
+- PAST: pomijamy Outlook/OOF/substitute — nie ma sensu auto-reply na okres który minął
+
+**Walidacje (server-side):**
+- `targetUserId === ctx.userId` → throw (sobie nie wpisuj, użyj normal form)
+- `leaveType === 'sick_leave'` → throw (L4 musi wpisać pracownik z dokumentem)
+- Target poza HR-zone (`consultant`) → throw
+- Target `exited` / `offboarding` → throw
+- Manager + `target.manager_id !== ctx.userId` → throw "Możesz wpisać urlop tylko swojemu zespołowi"
+- Overlap z istniejącym approved leave → throw z datami konfliktującego wpisu
+
+**UI:**
+- Nowa zakładka `/internal/admin?tab=leave-on-behalf` widoczna dla admin + manager (visibleTabs w `admin/page.tsx` rozszerzone)
+- `LeaveOnBehalfPanel` (server) → pre-fetch candidates, renderuje `CreateLeaveOnBehalfForm`
+- `CreateLeaveOnBehalfForm` (client): select pracownika, typ urlopu (bez sick_leave), daty, half-day, note, substitute (pokazany tylko gdy `endDate >= today`)
+- Live bannery: past leave (amber, "Outlook OOF i email zastępcy NIE zostaną wysłane") / ongoing-future (blue, "Out of Office zostanie ustawiony")
+- `LeaveQueue` (admin pending list): button-skrót "Wpisz urlop za pracownika" linkujący do `tab=leave-on-behalf`
+
+**Email:** `sendLeaveCreatedOnBehalf(recipient, name, actor, type, start, end, note?, isPastLeave?)` w `lib/email.ts` — accent niebieski `#3b82f6`, treść różna dla past vs future, `saveToSentItems=true`.
+
+**Audit log:** `LEAVE_CREATED_ON_BEHALF` z payload `{leave_id, target_user_id, leave_type, start_date, end_date, actor_role, is_past_leave}`.
+
+### KRYTYCZNE: Exchange Online RBAC for Applications (RAOP)
+
+Tenant `b2bnetwork.pl` ma aktywny mechanizm **RBAC for Applications** w Exchange Online (Microsoft, GA 2024). To NIE wystarczy żeby app miała permissions w Entra — wymagane jest też explicit role assignment w EXO. Bez tego Graph zwraca:
+```
+403 ErrorAccessDenied — [RAOP] : Blocked by tenant configured AppOnly AccessPolicy settings.
+```
+
+**Fix (zrobiony 2026-05-18, ServicePrincipal ObjectId `90ea31d8-c888-4e34-b146-9bd97f894515`):**
+```powershell
+Connect-ExchangeOnline -UserPrincipalName artur.twardowski@b2bnetwork.pl
+$sp = New-ServicePrincipal -AppId "17f9ff8c-ac4e-414d-890e-a823722b4c35" -ServiceId "90ea31d8-c888-4e34-b146-9bd97f894515" -DisplayName "Compass"
+New-ManagementRoleAssignment -App $sp.Identity -Role "Application Mail.Send"
+New-ManagementRoleAssignment -App $sp.Identity -Role "Application Calendars.ReadWrite"
+New-ManagementRoleAssignment -App $sp.Identity -Role "Application MailboxSettings.ReadWrite"
+```
+
+**GOTCHA:** `-ServiceId` musi być **Entra Service Principal ObjectId** (z `az ad sp list --filter "appId eq '...'" --query "[0].id"`), NIE Application ID. Niejasne w docs Microsoft.
+
+**Smoke test Graph (verify EXO RBAC działa):**
+```bash
+TOKEN=$(curl -s -X POST "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token" \
+  -d "client_id=$CLIENT_ID" -d "client_secret=$CLIENT_SECRET" \
+  -d "scope=https%3A%2F%2Fgraph.microsoft.com%2F.default" \
+  -d "grant_type=client_credentials" | jq -r .access_token)
+# Test PATCH mailboxSettings → expect 200
+curl -X PATCH "https://graph.microsoft.com/v1.0/users/artur.twardowski@b2bnetwork.pl/mailboxSettings" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"automaticRepliesSetting":{"status":"disabled"}}'
+```
+
+Jeśli zwraca 403 RAOP — uruchom skrypt PowerShell powyżej żeby przyznać role w EXO.
+
+## Phase 26 — Bonusy z auto-akceptem managera + ukrycie faktur (PR #128 + #130, 2026-05-19)
+
+Uproszczenie workflow premii — manager (lub admin) przypisuje pracownikowi premię z uzasadnieniem za konkretny miesiąc; bonus jest od razu w stanie terminalnym `assigned` (auto-approved, bez wymogu linkowania z fakturą). Pracownik dostaje email (Graph Send-As, accent zielony) + push in-app. Manager może później edytować (kwota, uzasadnienie, notatka) lub anulować — każda zmiana propaguje notyfikacje.
+
+Równocześnie wyłączono cały flow faktur (Phase 19/20c) z UI za pomocą feature flag — tabela `invoices` zostaje w DB, server actions rzucają błąd gdy flaga off. Phase 27 może reaktywować po przeprojektowaniu.
+
+**Migracja `phase26a_bonus_assigned_workflow`:**
+- `bonuses`: rozszerzony CHECK status o `'assigned'`; nowe kolumny `period_year SMALLINT`, `period_month SMALLINT`.
+- Partial UNIQUE `(recipient_user_id, period_year, period_month) WHERE status='assigned' AND period_year IS NOT NULL` — jedna przypisana premia per pracownik per miesiąc.
+- Trigger `enforce_bonus_stage_transitions` zaktualizowany:
+  - INSERT: tylko `status='assigned'` + wymagane `period_year`/`period_month` + brak `linked_invoice_id`.
+  - UPDATE: `assigned → cancelled` OK; `assigned → assigned` (edit amount/reason/notes); zablokowana zmiana `recipient_user_id` lub period.
+  - Legacy transitions (`pending → paid`, `pending → cancelled`, `paid → pending`) zostają dla wstecznej kompatybilności.
+- RLS `bonuses_update_cancel_by_proposer` przyjmuje `status IN ('pending','assigned')`.
+- `notifications` type CHECK rozszerzony o `'bonus_assigned'`, `'bonus_updated'`.
+
+**Feature flag faktur:**
+- `NEXT_PUBLIC_INVOICES_ENABLED` (client/build-time, embedded w bundle) — filtruje taby `invoices` w `/internal` + `/internal/admin` + sidebar `financeGroup`/`managerGroup` invoice links + `EmployeeProfileDialog` tab "Faktury".
+- `INVOICES_ENABLED` (server-only runtime) — `requireInvoicesEnabled()` guard na `submitInvoice/approveInvoice/rejectInvoice/managerApproveInvoice/managerRejectInvoice/linkBonusToInvoice/unlinkBonus/proposeBonus`.
+- Defaults: oba `false` (invoices off). Żeby reaktywować — ustawić oba na `'true'` w Coolify env vault + rebuild.
+
+**Server actions (lib/actions/internal-bonus.ts):**
+- `assignBonus(input)` — guard `requireBonusProposerAction`; manager scope (`profiles.manager_id = ctx.userId`); period validation (past 12 + current); UNIQUE friendly error; INSERT z `status='assigned'`; email + push + audit.
+- `updateBonus(input)` — guard proposer/admin; tylko `amount`/`reason`/`notes` (period+recipient immutable trigger-side); push z `changes` summary.
+- `cancelBonus(input)` — przyjmuje teraz `assigned` lub `pending`.
+- `listEligibleEmployeesForBonus()` — manager: zespół; admin: wszyscy HR-zone aktywni; wykluczeni consultant + exited.
+- Legacy `proposeBonus/linkBonusToInvoice/unlinkBonus` — `@deprecated`, gated przez `requireInvoicesEnabled()`.
+
+**UI:**
+- `/internal/admin?tab=bonuses` (admin + manager) — lista zespołu z filtrami `assigned/cancelled/all`, button "Przypisz premię" + per-row "Edytuj"/"Anuluj". Kolumna miesiąc z PL nazwą.
+- `/internal?tab=bonuses` (pracownik) — read-only lista własnych premii z kwotą, miesiącem, uzasadnieniem, kto przypisał.
+- `EmployeeProfileDialog` (Phase 24): 4. tab "Premie" (read-only ostatnie 12 mies.) + top-level button "Przypisz premię" dla managera/admina pracownika (otwiera AssignBonusForm w nested dialogu z zablokowanym recipientem).
+- Komponent `AssignBonusForm` (shared, mode `'assign' | 'edit'`, period selector past 12 + current).
+
+**Audit log akcje:** `BONUS_ASSIGNED`, `BONUS_UPDATED` (Phase 26) + istniejące `BONUS_PROPOSED/CANCELLED/LINKED_TO_INVOICE/UNLINKED` (Phase 23 legacy).
+
+**Notyfikacje:**
+- In-app DB (notifications table): typy `bonus_assigned`, `bonus_updated`.
+- Email: `sendBonusAssigned` (zielony accent, period PL) + `sendBonusUpdated` (niebieski accent + `changesSummary`) via Graph Send-As, `saveToSentItems=true`.
+- Web push (best-effort): `sendPushToUserId` z `url: '/internal?tab=bonuses'`.
+- Wszystkie 3 kanały w `Promise.allSettled` — channel failure nie blokuje pozostałych.
+
+**Bug fixy po deploy (2026-05-19):**
+- **PR #130:** `getEmployeeProfile` używał PostgREST embed `proposer:profiles!bonuses_proposed_by_fkey(full_name)` dla bonusów, ale `bonuses` ma 3 FK do `profiles` (proposed_by, recipient_user_id, cancelled_by) → wieloznaczność. Naprawione przez rozdzielenie na dwa zapytania (bonusy → potem `profiles WHERE id IN (...)`).
+- **PR #133:** Realna przyczyna crashu — embed managera `manager:profiles!profiles_manager_id_fkey(full_name)` zwracał PGRST200 "Could not find a relationship... using hint 'profiles_manager_id_fkey'". Self-FK na profiles (manager_id → profiles.id) nie rozpoznawany przez PostgREST schema cache mimo że constraint istnieje; `NOTIFY pgrst, 'reload schema'` nie pomogło. Fix: split na dwa zapytania (profile bez embed → potem `profiles WHERE id = manager_id`). Reguła: **unikaj embed-by-FK-hint na self-referencing tabelach w Compass**; preferuj split queries.
+
+**Ops po deploy:**
+1. Migracja zaaplikowana via Supabase MCP (prod miał 0 bonusów + 0 faktur, więc zero ryzyka).
+2. Coolify env vars ustawione przez API: `NEXT_PUBLIC_INVOICES_ENABLED=false` (buildtime+runtime), `INVOICES_ENABLED=false` (runtime).
+3. Brak rebuild required — defaults bez env vars i tak resolve do `false`. Env vars set jawnie dla widoczności w panelu.
+
+## Phase 26b — Inbox email ingest z administracja@b2bnetwork.pl (2026-05-19)
+
+Automatyczne wciąganie maili przychodzących na shared mailbox `administracja@b2bnetwork.pl` do Kanban Inbox (`/admin/inbox`) jako tickety. Workflow rzeczywiście używany przez handlery (Błażej, Paulina, TCM, admin).
+
+**Scope MVP (świadomie wąski):**
+- Tylko `administracja@b2bnetwork.pl` (pierwsza skrzynka — można rozszerzyć kolejnymi rzędami w `inbox_sync_state`)
+- Bez backfill — startujemy od momentu deployu (seed: `last_synced_at=NOW()`)
+- Bez AI klasyfikacji — wszystko ląduje w kategorii **`inbox_administracja`** (P3 default), handler ręcznie zmienia kategorię/priorytet po review
+- Treść + załączniki zapisywane w DB / Storage (pełen widok bez otwierania Outlook)
+- Reply matchowany przez Graph `conversationId` → append comment do istniejącego ticketu + auto-reopen jeśli był resolved/closed
+- Filtry szumu: NDR/bounce (mailer-daemon, postmaster, noreply), Out-of-Office (Auto-Submitted/X-Auto-Response-Suppress/Precedence headers), internal noise (sentry/github/coolify/m365/azure/supabase/vercel/cloudflare domains). **NIE filtrujemy** maili od pracowników b2bnetwork.pl.
+
+**Migracja `phase26b_inbox_email_ingest`:**
+- `support_inbox_meta` += `external_conversation_id`, `email_body_html`, `email_body_text`, `email_headers JSONB`, `email_skip_reason`
+- Nowa tabela `inbox_sync_state` (singleton per mailbox): `last_synced_at`, `last_run_at`, `last_error`, statystyki `last_scanned/created/appended/skipped`
+- Storage bucket `inbox-attachments` (private), folder `{ticket_id}/`, RLS: SELECT dla handlerów, DELETE dla admin (writes tylko service-role)
+- `notifications.type` += `inbox_email_reopened`, `inbox_email_arrived`
+- Seed: row dla `administracja@b2bnetwork.pl` z `last_synced_at=NOW()`
+
+**Architektura:**
+```
+Coolify cron (*/5 min) → /api/cron/inbox-ingest (Bearer $CRON_SECRET)
+  ↓ withCronAuth (service-role admin client)
+  ↓ ingestMailbox(admin, 'administracja@b2bnetwork.pl')
+  ├─ Read cursor: SELECT last_synced_at FROM inbox_sync_state WHERE mailbox=...
+  ├─ Graph: GET /users/{mailbox}/messages?$filter=receivedDateTime gt {cursor} (+select+orderby+top=50)
+  ├─ Per message: classifyMessage() → skip lub keep
+  │    ├─ MATCH external_message_id → already ingested, advance cursor
+  │    ├─ MATCH external_conversation_id → append comment + reopen if closed
+  │    └─ NEW → INSERT support_tickets + support_inbox_meta + upload załączników
+  └─ UPDATE inbox_sync_state z nowym cursor + stats + last_error
+```
+
+**Pliki:**
+- `lib/mailbox/graph-mail-read.ts` — Graph helper (`listNewMessages`, `listAttachments`) z retry/backoff i Sentry capture
+- `lib/inbox/filters.ts` — pure functions (`classifyMessage`, `isNonDeliveryReport`, `isAutoReply`, `isInternalNoise`)
+- `lib/inbox/ingest.ts` — `ingestMailbox()` orchestrator
+- `app/api/cron/inbox-ingest/route.ts` — endpoint z `withCronAuth` i `maxDuration: 240s`
+- UI: `components/inbox/KanbanCard.tsx` (badge "✉ email"), `app/(protected)/admin/inbox/[id]/page.tsx` (sanitized HTML body + lista załączników z signed URLs), `app/(protected)/admin/inbox/page.tsx` (banner sync status)
+
+**Audit log actions:** `INBOX_EMAIL_INGESTED`, `INBOX_EMAIL_THREAD_APPENDED`, `INBOX_EMAIL_REOPENED`, `INBOX_EMAIL_SKIPPED` (z reason details).
+
+**Coolify cron job (do dodania po deploy):**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `inbox-ingest` | `*/5 * * * *` (co 5 min) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/inbox-ingest"` |
+
+**Ops post-merge (KRYTYCZNE — bez tego ingest zwraca 403 RAOP):**
+
+1. **Entra app permission**: dodać `Mail.Read` (Application) do app `Compass` (`17f9ff8c-ac4e-414d-890e-a823722b4c35`) + admin consent
+2. **Exchange Online RBAC** (analogicznie do Phase 25 OOF — bez tego Graph blokuje):
+   ```powershell
+   Connect-ExchangeOnline -UserPrincipalName artur.twardowski@b2bnetwork.pl
+   $sp = Get-ServicePrincipal -Identity "Compass"
+   New-ManagementRoleAssignment -App $sp.Identity -Role "Application Mail.Read"
+   ```
+3. **Defense-in-depth** — scope app tylko do `administracja@b2bnetwork.pl` (bez tego app może czytać każdą skrzynkę w tenant):
+   ```powershell
+   New-ApplicationAccessPolicy -AppId "17f9ff8c-ac4e-414d-890e-a823722b4c35" `
+     -PolicyScopeGroupId "administracja@b2bnetwork.pl" `
+     -AccessRight RestrictAccess `
+     -Description "Compass inbox ingest — only administracja@"
+   ```
+4. **Coolify schedule** — dodać cron `inbox-ingest` wg tabeli powyżej.
+5. **Verify** — po pierwszym tick:
+   ```bash
+   curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/inbox-ingest" | jq
+   # expect: {ok:true, mailbox:"administracja@b2bnetwork.pl", scanned, created, ...}
+   ```
+   I w UI `/admin/inbox` zielony banner "Auto-import z administracja@b2bnetwork.pl · ostatni sync: ..."
+
+**Opcjonalny env var** `INBOX_INGEST_USER_ID` — UUID profilu używanego jako `user_id` w `support_tickets` (bo NOT NULL). Bez niego cron wybiera pierwszego admina/handler chronologicznie. Override przydatny gdy chcesz "system bot" profile.
+
+## Phase 26c — Inbox ingest dla Microsoft 365 Group (2026-05-19)
+
+**Discovery podczas ops setupu Phase 26b:** `administracja@b2bnetwork.pl` to **Microsoft 365 Group** (`Unified` GroupType, primary SMTP `Administracja@b2bnetsa.onmicrosoft.com`, alias `administracja@b2bnetwork.pl`), NIE shared mailbox / user mailbox. Mail.Read User API zwraca `ErrorInvalidUser 404` dla GroupMailbox.
+
+**Architektura przebudowana:** helper `lib/mailbox/graph-mail-read.ts` używa teraz Groups Conversations API:
+- `GET /groups/{groupId}/threads?$filter=lastDeliveredDateTime gt {cursor}`
+- `GET /groups/{groupId}/threads/{threadId}/posts`
+- `GET /groups/{groupId}/threads/{threadId}/posts/{postId}/attachments`
+
+Każdy `post` jest mapowany na syntetyczny `GraphMessage` (zachowany shape z Phase 26b), gdzie `conversationId = thread.id`. Dzięki temu pipeline `lib/inbox/ingest.ts` zostaje bez zmian: dedupe po `internetMessageId` (= `${threadId}/${postId}`), match po `conversationId`, append-or-create.
+
+**Migracja `phase26c_inbox_group_id`:**
+- `inbox_sync_state` += `mailbox_kind` (`'user'|'group'`, default `'user'`), `group_id TEXT NULL`
+- Backfill row dla `administracja@b2bnetwork.pl`: `mailbox_kind='group'`, `group_id='c5630e8f-7aee-498e-9561-0c4a376ffa79'`
+
+**Permission stack (zaktualizowany):**
+
+| Layer | What | Status |
+|---|---|---|
+| Entra (Application permissions) | `Mail.Read` ❌ **niewystarczająca** dla GroupMailbox | dodane w Phase 26b ops — zostaje (nie szkodzi) |
+| Entra (Application permissions) | `Group.Read.All` ✅ wymagana dla `/groups/.../threads` | dodana 2026-05-19 + admin consent (via `az ad app permission add` + `az rest POST appRoleAssignments`) |
+| Exchange Online RBAC | `Application Mail.Read` ✅ wymagana — RAOP traktuje Group mailbox jak mailbox | dodana 2026-05-19 (`New-ManagementRoleAssignment -App $sp -Role "Application Mail.Read"`) |
+| ApplicationAccessPolicy | Tenant ma `CompassMailSenders` (RestrictAccess) — Compass może czytać tylko skrzynki w tej grupie | `Administracja@b2bnetsa.onmicrosoft.com` dodana jako member 2026-05-19 (`Add-DistributionGroupMember -Identity CompassMailSenders -Member Administracja@b2bnetsa.onmicrosoft.com`) |
+
+**Gotcha — propagacja AAP:** po `Add-DistributionGroupMember` Microsoft cache RAOP może trzymać stary stan **15-60 minut**. `Test-ApplicationAccessPolicy -AppId ... -Identity administracja@...` zwraca `AccessCheckResult: Granted` natychmiast, ale Graph wciąż 403 RAOP. Cierpliwość. Po propagacji ingest działa.
+
+**Opcjonalny env var** `INBOX_PRIMARY_GROUP_ID` — Graph object id grupy. Helper preferuje tę wartość jeśli ustawiona (skip live `$filter=mail eq ...` lookup). DB column `inbox_sync_state.group_id` jest source of truth — ingest ustawia env per-tick.
+
+**Filters caveat:** Groups Conversations API NIE zwraca `internetMessageHeaders` na postach. Sender-based filters (mailer-daemon, postmaster, noreply localparts; sentry/github/m365/azure noise domains) działają, ale Auto-Submitted/Precedence/X-Auto-Response-Suppress checki są no-op. W praktyce M365 Group nie dostaje typowych NDR/OOF email-side, więc to akceptowalne.
+
+## Phase 26d — Pivot na shared mailbox (RAOP cache nie odświeża się dla GroupMailbox) (2026-05-19)
+
+**Problem:** Phase 26c działa technicznie ale Microsoft RAOP cache po `Add-DistributionGroupMember Administracja → CompassMailSenders` nie odświeża się w >60 min nawet po `Remove-ApplicationAccessPolicy` całkowitej removal i `EnforceExoAppRbacPermissions=False` na poziomie tenant. `Test-ApplicationAccessPolicy` zwraca `Granted` natychmiast, ale Graph wciąż 403 [RAOP].
+
+**Rozwiązanie:** Utworzono shared mailbox `compass-tickets@b2bnetwork.pl` z transport rule kopiującym każdy mail z `administracja@` (BCC). Shared mailbox to klasyczny User mailbox — Graph `/users/{upn}/messages` działa natychmiast, bez RAOP issues. Code branchuje na `mailbox_kind` w `inbox_sync_state`.
+
+**Ops zrobione 2026-05-19:**
+```powershell
+# 1. Shared mailbox
+New-Mailbox -Shared -Name "Compass Tickets" -DisplayName "Compass Tickets" -PrimarySmtpAddress compass-tickets@b2bnetwork.pl
+# ExchangeObjectId: 42865e35-78c9-4c23-a4f7-434b80ce4199
+
+# 2. Transport rule: każdy mail na administracja@ → BCC compass-tickets@
+New-TransportRule -Name "Mirror Administracja to Compass Inbox" -SentTo "administracja@b2bnetwork.pl" -BlindCopyTo "compass-tickets@b2bnetwork.pl" -Mode Enforce
+
+# 3. Defense-in-depth — member of Group i DL
+Add-UnifiedGroupLinks -Identity "Administracja@b2bnetsa.onmicrosoft.com" -LinkType Members -Links compass-tickets@b2bnetwork.pl
+Add-DistributionGroupMember -Identity CompassMailSenders -Member compass-tickets@b2bnetwork.pl
+```
+
+Test Graph `/users/compass-tickets@b2bnetwork.pl/messages` → **HTTP 200** od ręki (zero opóźnienia, brak RAOP block).
+
+**Zmiany kodu:**
+- `lib/mailbox/graph-mail-read.ts` — dodano `kind: 'user' | 'group'` w `ListNewMessagesInput` i `ListAttachmentsInput`. User mode: `/users/{upn}/messages`. Group mode: `/groups/{id}/threads/posts` (Phase 26c logika zachowana).
+- `lib/inbox/ingest.ts` — czyta `mailbox_kind` z `inbox_sync_state`, przekazuje do helpera, propaguje do attachments fetch.
+- Migracja `phase26d_pivot_to_shared_mailbox`: UPDATE row z `administracja@b2bnetwork.pl` → `compass-tickets@b2bnetwork.pl`, `mailbox_kind='user'`, `group_id=NULL`, reset stats, `last_synced_at=NOW()`.
+
+**Skutki dla użytkownika:**
+- **Bez zmian dla nadawców** — wszyscy nadal piszą na `administracja@b2bnetwork.pl`.
+- **Bez zmian dla Outlook Groups UI** — pracownicy nadal widzą wątki w Outlook Groups (transport rule BCC kopiuje, nie redirectuje).
+- **Compass widzi każdy nowy mail** — przez Mail.Read na shared mailbox. Tickety pojawiają się w `/admin/inbox`.
+
+**Filters zachowują headers:** User mailbox API zwraca `internetMessageHeaders` (Auto-Submitted/Precedence/X-Auto-Response-Suppress), więc NDR/OOF detection wraca do pełnej skuteczności (Phase 26c caveat odpada dla `compass-tickets@`).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
