@@ -29,7 +29,6 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
     const [selectedUserId, setSelectedUserId] = useState<string>('')
     const [terminationDate, setTerminationDate] = useState<string>('')
     const [scheduledFor, setScheduledFor] = useState<string>('')
-    const [sendEmployeeEmail, setSendEmployeeEmail] = useState(false)
     const [sendManagerEmail, setSendManagerEmail] = useState(false)
     const [isPending, startTransition] = useTransition()
 
@@ -64,7 +63,6 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
         setSelectedUserId('')
         setTerminationDate('')
         setScheduledFor('')
-        setSendEmployeeEmail(false)
         setSendManagerEmail(false)
     }
 
@@ -84,15 +82,13 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                     selectedUserId,
                     terminationDate,
                     scheduledFor || null,
-                    { sendEmployeeEmail, sendManagerEmail },
+                    { sendEmployeeEmail: false, sendManagerEmail },
                 )
-                const sentParts: string[] = []
-                if (sendEmployeeEmail) sentParts.push('zaproszenie do pracownika')
-                if (sendManagerEmail) sentParts.push('checklist do managera')
+                const who = selectedEmployee?.full_name ?? selectedEmployee?.email
                 toastSuccess(
-                    sentParts.length > 0
-                        ? `Exit interview zaplanowany dla ${selectedEmployee?.full_name ?? selectedEmployee?.email}. Wysłano: ${sentParts.join(' + ')}.`
-                        : `Exit interview zaplanowany dla ${selectedEmployee?.full_name ?? selectedEmployee?.email} (bez emaili — możesz je wysłać później z karty exit).`,
+                    sendManagerEmail
+                        ? `Offboarding zaplanowany dla ${who}. Utworzono ticket w Module Obsługi Zgłoszeń + wysłano checklist do managera.`
+                        : `Offboarding zaplanowany dla ${who}. Utworzono ticket "${who} Offboarding" w Module Obsługi Zgłoszeń.`,
                 )
                 reset()
                 onOpenChange(false)
@@ -109,10 +105,10 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <LogOut className="h-5 w-5 text-amber-400" />
-                        Zaplanuj exit interview
+                        Zaplanuj offboarding
                     </DialogTitle>
                     <DialogDescription>
-                        Status pracownika zmieni się na <strong>offboarding</strong> i utworzy się 5 default offboarding tasków. <strong>Emaile NIE są wysyłane automatycznie</strong> — zaznacz checkboxy poniżej, jeśli chcesz wysłać zaproszenie do ankiety pracownikowi i/lub checklist managerowi.
+                        Status pracownika zmieni się na <strong>offboarding</strong>, utworzy się 5 default offboarding tasków oraz <strong>ticket &quot;[Imię i Nazwisko] Offboarding&quot;</strong> w Module Obsługi Zgłoszeń (przypisany do Ciebie). Pracownik <strong>nie wypełnia żadnej ankiety</strong>. Email do managera nie jest wysyłany automatycznie — zaznacz poniżej, jeśli chcesz wysłać mu checklist.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -180,7 +176,7 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                             </div>
 
                             <div className="space-y-1.5">
-                                <Label htmlFor="scheduled-for">Sugerowana data wypełnienia ankiety</Label>
+                                <Label htmlFor="scheduled-for">Sugerowana data realizacji offboardingu</Label>
                                 <Input
                                     id="scheduled-for"
                                     type="date"
@@ -188,26 +184,12 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                                     onChange={(e) => setScheduledFor(e.target.value)}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Domyślnie 3 dni przed datą zakończenia. Pracownik dostanie reminder 3 dni przed terminem jeśli nie wypełni.
+                                    Domyślnie 3 dni przed datą zakończenia. Trafia do treści ticketu offboardingowego jako sugerowany termin.
                                 </p>
                             </div>
 
                             <div className="space-y-2 rounded border border-input bg-background p-3">
                                 <div className="text-sm font-medium">Powiadomienia email (opcjonalne)</div>
-                                <label className="flex items-start gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={sendEmployeeEmail}
-                                        onChange={(e) => setSendEmployeeEmail(e.target.checked)}
-                                        className="mt-0.5 h-4 w-4 rounded border-input"
-                                    />
-                                    <span className="text-sm">
-                                        Wyślij zaproszenie do ankiety do <strong>{selectedEmployee.full_name ?? selectedEmployee.email}</strong>
-                                        <span className="block text-xs text-muted-foreground">
-                                            Email z linkiem do exit interview. Domyślnie wyłączone — wybierz, gdy pracownik wie o offboardingu.
-                                        </span>
-                                    </span>
-                                </label>
                                 <label className="flex items-start gap-2 cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -228,13 +210,14 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                                 Po kliknięciu &quot;Zaplanuj&quot;:
                                 <ul className="list-disc list-inside mt-1 space-y-0.5">
                                     <li>Status pracownika: <strong>active → offboarding</strong></li>
+                                    <li>Ticket <strong>&quot;{selectedEmployee.full_name ?? selectedEmployee.email} Offboarding&quot;</strong> w Module Obsługi Zgłoszeń (przypisany do Ciebie)</li>
                                     <li>5 default offboarding tasks (cofnięcie dostępów, zwrot sprzętu, knowledge transfer, finalne rozliczenie, archiwizacja)</li>
                                     <li>
-                                        Emaile: {(sendEmployeeEmail || sendManagerEmail)
-                                            ? <strong>{[sendEmployeeEmail ? 'pracownik' : null, sendManagerEmail ? 'manager' : null].filter(Boolean).join(' + ')}</strong>
-                                            : <em>żaden (możesz wysłać później z karty exit)</em>}
+                                        Email do managera: {sendManagerEmail
+                                            ? <strong>tak</strong>
+                                            : <em>nie (możesz wysłać później z karty exit)</em>}
                                     </li>
-                                    <li>Push notyfikacje in-app: zostaną wysłane (manager + pracownik)</li>
+                                    <li>Push notyfikacja in-app do managera (pracownik nie dostaje ankiety)</li>
                                 </ul>
                             </div>
                         </>
@@ -246,7 +229,7 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                         </Button>
                         <Button type="submit" disabled={isPending || !selectedUserId || !terminationDate}>
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogOut className="h-4 w-4 mr-2" />}
-                            Zaplanuj exit
+                            Zaplanuj offboarding
                         </Button>
                     </DialogFooter>
                 </form>

@@ -247,21 +247,6 @@ export interface ScheduleExitInterviewInput {
     scheduledFor?: string | null
 }
 
-export interface SubmitExitInterviewInput {
-    interviewId: string
-    isAnonymous: boolean
-    exitReason: ExitReason
-    exitReasonDetail?: string | null
-    npsScore: number // 0..10
-    satisfactionTeam?: number | null
-    satisfactionManager?: number | null
-    satisfactionProjects?: number | null
-    wouldRecommend?: boolean | null
-    whatWorked?: string | null
-    whatToImprove?: string | null
-    knowledgeTransferNotes?: string | null
-}
-
 export interface CompleteOnboardingTaskInput {
     taskId: string
     notes?: string | null
