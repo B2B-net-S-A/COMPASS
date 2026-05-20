@@ -443,9 +443,12 @@ export function BonusesAdminClient({
                                     editTarget.period_month ?? new Date().getMonth() + 1,
                                 recipient_full_name: editTarget.recipient_full_name,
                             }}
-                            onSuccess={() => {
-                                // Optimistic: caller refresh on success; we close & rely on router.refresh.
-                                handleEdited(editTarget)
+                            onSuccess={(updated) => {
+                                // Merge the freshly-saved row over the existing one so the list
+                                // reflects the new amount/reason/notes. Falling back to editTarget
+                                // (stale) would mask the persisted change. Enriched display fields
+                                // (names/email) come from editTarget; updated is the canonical row.
+                                handleEdited(updated ? { ...editTarget, ...updated } : editTarget)
                             }}
                             onCancel={() => setEditTarget(null)}
                         />
