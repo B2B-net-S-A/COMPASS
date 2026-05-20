@@ -1,8 +1,8 @@
 'use client'
 
-// Phase 27h — "Stawki i Umowy" per-employee dialog.
-// One place to: (1) set contract type (UoP/Zlecenie/B2B), (2) set a fixed rate or a
-// forward progression (24-month grid), (3) copy a progression from another employee.
+// Phase 27i — "Zarządzaj stawką" dialog: hourly rate only.
+// Fixed rate or a forward progression (24-month grid), plus copy-progression-from-another.
+// Contract type + documents live in ManageContractDialog ("Zarządzaj umową").
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -20,22 +20,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import {
-    setUserContractType,
     setRateProgression,
     previewCopyProgression,
     copyRateProgression,
 } from '@/lib/actions/internal-rates'
 import type {
-    EmploymentType,
     RateCurrency,
     UserRateDirectoryRow,
     CopyProgressionResult,
     SkippedCopyReason,
 } from '@/lib/types/rates'
-import { EMPLOYMENT_TYPE_LABELS_PL } from '@/lib/types/rates'
 import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
 import { RateProgressionGrid } from './RateProgressionGrid'
-import { ContractDocumentsSection } from './ContractDocumentsSection'
 
 interface Props {
     target: UserRateDirectoryRow
@@ -72,10 +68,6 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
     const monthOptions = useMemo(() => buildFutureMonthOptions(12), [])
     const name = target.full_name ?? target.email
 
-    // Contract type
-    const [contractType, setContractType] = useState<EmploymentType>(target.employment_type ?? 'b2b')
-    const [savingType, setSavingType] = useState(false)
-
     // Rate mode
     const [mode, setMode] = useState<'fixed' | 'progressive'>(target.is_progressive ? 'progressive' : 'fixed')
 
@@ -94,19 +86,6 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
 
     function refreshDirectory() {
         router.refresh()
-    }
-
-    async function handleSaveContractType() {
-        setSavingType(true)
-        try {
-            await setUserContractType(target.user_id, contractType)
-            toast.success(`Typ umowy: ${EMPLOYMENT_TYPE_LABELS_PL[contractType]}.`)
-            refreshDirectory()
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Błąd zmiany typu umowy.')
-        } finally {
-            setSavingType(false)
-        }
     }
 
     async function handleSaveFixed(e: React.FormEvent) {
@@ -184,49 +163,12 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
         <Dialog open onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Stawki i umowa — {name}</DialogTitle>
+                    <DialogTitle>Zarządzaj stawką — {name}</DialogTitle>
                     <DialogDescription className="text-xs">{target.email}</DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-6">
-                    {/* ─── Section 1: Contract type ───────────────────────── */}
-                    <section className="space-y-2">
-                        <h3 className="text-sm font-semibold">Typ umowy</h3>
-                        <div className="flex items-end gap-2">
-                            <div className="flex-1">
-                                <Label htmlFor="contract-type" className="sr-only">
-                                    Typ umowy
-                                </Label>
-                                <select
-                                    id="contract-type"
-                                    value={contractType}
-                                    onChange={(e) => setContractType(e.target.value as EmploymentType)}
-                                    disabled={savingType}
-                                    className="block w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                >
-                                    <option value="uop">{EMPLOYMENT_TYPE_LABELS_PL.uop} (umowa o pracę)</option>
-                                    <option value="zlecenie">{EMPLOYMENT_TYPE_LABELS_PL.zlecenie} (umowa zlecenie)</option>
-                                    <option value="b2b">{EMPLOYMENT_TYPE_LABELS_PL.b2b} (faktura)</option>
-                                </select>
-                            </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={handleSaveContractType}
-                                disabled={savingType || contractType === (target.employment_type ?? 'b2b')}
-                            >
-                                {savingType && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                                Zapisz typ
-                            </Button>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">
-                            UoP i Zlecenie rozliczają się przez payroll (godziny × stawka). B2B rozlicza się fakturami.
-                        </p>
-                    </section>
-
-                    <div className="border-t border-border/40" />
-
-                    {/* ─── Section 2: Rate (fixed / progressive) ──────────── */}
+                    {/* ─── Stawka (fixed / progressive) ───────────────────── */}
                     <section className="space-y-3">
                         <h3 className="text-sm font-semibold">Stawka godzinowa</h3>
                         <div className="flex gap-2">
@@ -331,7 +273,7 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
 
                     <div className="border-t border-border/40" />
 
-                    {/* ─── Section 3: Copy progression ────────────────────── */}
+                    {/* ─── Copy progression ───────────────────────────────── */}
                     <section className="space-y-2">
                         <h3 className="text-sm font-semibold">Skopiuj progresję od pracownika</h3>
                         <div className="flex items-end gap-2">
@@ -412,17 +354,6 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
                                 )}
                             </div>
                         )}
-                    </section>
-
-                    <div className="border-t border-border/40" />
-
-                    {/* ─── Section 4: Contract documents (umowa + aneksy) ─── */}
-                    <section className="space-y-2">
-                        <h3 className="text-sm font-semibold">Umowy i załączniki</h3>
-                        <p className="text-[11px] text-muted-foreground">
-                            Wiele plików per pracownik (umowa, aneksy) — każdy z opisem i datą podpisania.
-                        </p>
-                        <ContractDocumentsSection userId={target.user_id} />
                     </section>
                 </div>
             </DialogContent>
