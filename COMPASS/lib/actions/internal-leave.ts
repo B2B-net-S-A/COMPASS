@@ -228,6 +228,8 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
             substitute_id: input.substituteId ?? null,
             oof_internal_message: input.oofInternalMessage?.trim() || null,
             oof_external_message: input.oofExternalMessage?.trim() || null,
+            created_by: ctx.userId,
+            created_on_behalf: false,
         })
         .select('id, status')
         .single<{ id: string; status: LeaveStatus }>()
