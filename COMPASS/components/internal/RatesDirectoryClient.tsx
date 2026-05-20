@@ -3,11 +3,12 @@
 // Phase 27c/27h — Finance/Admin "Stawki i Umowy" directory client.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, History } from 'lucide-react'
+import { Coins, FileText, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { UserRateDirectoryRow } from '@/lib/types/rates'
 import { EMPLOYMENT_TYPE_LABELS_PL } from '@/lib/types/rates'
 import { ManageRateDialog } from './ManageRateDialog'
+import { ManageContractDialog } from './ManageContractDialog'
 import { RateHistoryDialog } from './RateHistoryDialog'
 
 interface Props {
@@ -25,7 +26,8 @@ const ROLE_LABEL_PL: Record<string, string> = {
 
 export function RatesDirectoryClient({ initialDirectory }: Props) {
     const [directory, setDirectory] = useState<UserRateDirectoryRow[]>(initialDirectory)
-    const [editTarget, setEditTarget] = useState<UserRateDirectoryRow | null>(null)
+    const [rateTarget, setRateTarget] = useState<UserRateDirectoryRow | null>(null)
+    const [contractTarget, setContractTarget] = useState<UserRateDirectoryRow | null>(null)
     const [historyTarget, setHistoryTarget] = useState<UserRateDirectoryRow | null>(null)
     const [filterRole, setFilterRole] = useState<string>('all')
     const [search, setSearch] = useState<string>('')
@@ -154,10 +156,19 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                                             size="sm"
                                             variant="outline"
                                             className="h-7 px-2 text-xs"
-                                            onClick={() => setEditTarget(r)}
+                                            onClick={() => setRateTarget(r)}
                                         >
-                                            <Pencil className="h-3 w-3 mr-1" />
-                                            Zarządzaj
+                                            <Coins className="h-3 w-3 mr-1" />
+                                            Stawka
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={() => setContractTarget(r)}
+                                        >
+                                            <FileText className="h-3 w-3 mr-1" />
+                                            Umowa
                                         </Button>
                                         <Button
                                             size="sm"
@@ -183,11 +194,17 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                 </table>
             </div>
 
-            {editTarget && (
+            {rateTarget && (
                 <ManageRateDialog
-                    target={editTarget}
+                    target={rateTarget}
                     employees={directory}
-                    onOpenChange={(open) => !open && setEditTarget(null)}
+                    onOpenChange={(open) => !open && setRateTarget(null)}
+                />
+            )}
+            {contractTarget && (
+                <ManageContractDialog
+                    target={contractTarget}
+                    onOpenChange={(open) => !open && setContractTarget(null)}
                 />
             )}
             {historyTarget && (
