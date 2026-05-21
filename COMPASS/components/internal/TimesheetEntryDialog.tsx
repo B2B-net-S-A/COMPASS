@@ -23,6 +23,8 @@ interface Props {
     saving: boolean
     /** H2.6: istniejące wpisy (do duplicate-warning gdy user dodaje na zajęty dzień). */
     existingEntries?: ReadonlyArray<Pick<TimesheetEntryRow, 'id' | 'work_date' | 'hours' | 'project'>>
+    /** Phase 27j (Issue 4): dni (yyyy-MM-dd) z urlopem/L4 — logowanie godzin zablokowane. */
+    blockedLeaveDates?: ReadonlyArray<string>
     onSubmit: (values: { workDate: string; hours: number; project: string | null; description: string }) => void
 }
 
@@ -34,6 +36,7 @@ export function TimesheetEntryDialog({
     maxDate,
     saving,
     existingEntries,
+    blockedLeaveDates,
     onSubmit,
 }: Props) {
     const [workDate, setWorkDate] = useState<string>(initial?.work_date ?? minDate)
@@ -72,9 +75,19 @@ export function TimesheetEntryDialog({
     )
     const hasConflict = conflictingEntries.length > 0
     const conflictingTotalHours = conflictingEntries.reduce((sum, e) => sum + e.hours, 0)
+    // Phase 27j (Issue 4): a leave/L4 day blocks hour logging server-side, but
+    // that thrown error is masked in production ("Server Components render").
+    // Detect it client-side to show a clear message instead.
+    const isLeaveDay = (blockedLeaveDates ?? []).includes(workDate)
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
+        if (isLeaveDay) {
+            alert(
+                'W tym dniu pracownik ma urlop lub L4 — nie można logować godzin. Anuluj urlop albo wybierz inny dzień.',
+            )
+            return
+        }
         const h = Number(hours)
         if (!Number.isFinite(h) || h <= 0 || h > 8) {
             alert(
@@ -134,6 +147,11 @@ export function TimesheetEntryDialog({
                                 <p className="text-[11px] text-amber-400 mt-1">
                                     ⚠ Ten dzień ma już {conflictingEntries.length}{' '}
                                     {conflictingEntries.length === 1 ? 'wpis' : 'wpisy'} ({conflictingTotalHours}h)
+                                </p>
+                            )}
+                            {isLeaveDay && (
+                                <p className="text-[11px] text-amber-400 mt-1">
+                                    ⚠ W tym dniu jest urlop / L4 — nie można logować godzin. Anuluj urlop albo wybierz inny dzień.
                                 </p>
                             )}
                         </div>
@@ -231,7 +249,7 @@ export function TimesheetEntryDialog({
                         >
                             Anuluj
                         </Button>
-                        <Button type="submit" disabled={saving} className="w-full sm:w-auto min-h-[44px]">
+                        <Button type="submit" disabled={saving || isLeaveDay} className="w-full sm:w-auto min-h-[44px]">
                             {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                             Zapisz
                         </Button>

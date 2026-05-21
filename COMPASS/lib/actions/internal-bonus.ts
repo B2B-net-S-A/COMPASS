@@ -619,10 +619,24 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
         )
     }
     if (bonus.proposed_by !== ctx.userId && !ctx.isAdmin) {
-        throw new Error('Możesz anulować tylko premie, które sam przypisałeś.')
+        // A manager can also cancel a bonus assigned to their direct report
+        // (e.g. one an admin assigned), but never their own received bonus.
+        const recipientForAuth = await fetchRecipientContact(bonus.recipient_user_id)
+        const managesRecipient =
+            bonus.recipient_user_id !== ctx.userId &&
+            recipientForAuth?.manager_id === ctx.userId
+        if (!managesRecipient) {
+            throw new Error(
+                'Możesz anulować tylko premie swoich podwładnych lub te, które sam przypisałeś.',
+            )
+        }
     }
 
-    const { data: updated, error: updErr } = await supabase
+    // Service-client write: a recipient's manager who is not the proposer is
+    // blocked by the bonuses UPDATE RLS (proposer/admin only) but is authorized
+    // above. The DB stage-transition trigger still enforces a valid transition.
+    const admin = createServiceClient()
+    const { data: updated, error: updErr } = await admin
         .from('bonuses')
         .update({
             status: 'cancelled',
@@ -785,7 +799,17 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
         )
     }
     if (bonus.proposed_by !== ctx.userId && !ctx.isAdmin) {
-        throw new Error('Możesz edytować tylko premie, które sam przypisałeś.')
+        // A manager can also edit a bonus assigned to their direct report
+        // (e.g. one an admin assigned), but never their own received bonus.
+        const recipientForAuth = await fetchRecipientContact(bonus.recipient_user_id)
+        const managesRecipient =
+            bonus.recipient_user_id !== ctx.userId &&
+            recipientForAuth?.manager_id === ctx.userId
+        if (!managesRecipient) {
+            throw new Error(
+                'Możesz edytować tylko premie swoich podwładnych lub te, które sam przypisałeś.',
+            )
+        }
     }
 
     const patch: Partial<BonusRow> = {}
@@ -793,7 +817,11 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
     if (hasReason) patch.reason = trimmedReason as string
     if (hasNotes) patch.notes = input.notes ?? null
 
-    const { data: updated, error: updErr } = await supabase
+    // Service-client write: a recipient's manager who is not the proposer is
+    // blocked by the bonuses UPDATE RLS (proposer/admin only) but is authorized
+    // above. The DB stage-transition trigger still enforces a valid transition.
+    const admin = createServiceClient()
+    const { data: updated, error: updErr } = await admin
         .from('bonuses')
         .update(patch)
         .eq('id', input.id)

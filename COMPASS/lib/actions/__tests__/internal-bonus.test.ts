@@ -329,7 +329,9 @@ describe('updateBonus (Phase 26)', () => {
         })
     })
 
-    it('rejects edit by non-proposer non-admin', async () => {
+    it('rejects edit by non-proposer who does not manage the recipient', async () => {
+        // Actor is neither the proposer, an admin, nor the recipient's manager.
+        supabaseState.recipientProfile.manager_id = 'someone-else'
         supabaseState.bonusRow = {
             id: 'bonus-1',
             recipient_user_id: 'recipient-1',
@@ -349,7 +351,34 @@ describe('updateBonus (Phase 26)', () => {
             created_at: '2026-05-19T00:00:00Z',
             updated_at: '2026-05-19T00:00:00Z',
         }
-        await expect(updateBonus({ id: 'bonus-1', amount: 700 })).rejects.toThrow(/sam przypisa/i)
+        await expect(updateBonus({ id: 'bonus-1', amount: 700 })).rejects.toThrow(/podw|sam przypisa/i)
+    })
+
+    it('allows the recipient manager to edit a bonus proposed by someone else', async () => {
+        // Phase 27j (Dominik): a bonus an admin assigned to the manager's report
+        // can be edited by that manager even though they are not the proposer.
+        supabaseState.recipientProfile.manager_id = 'manager-1'
+        supabaseState.bonusRow = {
+            id: 'bonus-1',
+            recipient_user_id: 'recipient-1',
+            proposed_by: 'different-manager',
+            amount: 500,
+            currency: 'PLN',
+            reason: 'Original',
+            status: 'assigned',
+            period_year: 2026,
+            period_month: 5,
+            notes: null,
+            cancelled_at: null,
+            cancelled_by: null,
+            cancellation_reason: null,
+            linked_invoice_id: null,
+            paid_at: null,
+            created_at: '2026-05-19T00:00:00Z',
+            updated_at: '2026-05-19T00:00:00Z',
+        }
+        await updateBonus({ id: 'bonus-1', amount: 800 })
+        expect(supabaseState.bonusRow).toMatchObject({ amount: 800 })
     })
 
     it('rejects empty patch', async () => {
@@ -380,6 +409,59 @@ describe('cancelBonus (Phase 26 — accepts assigned status)', () => {
         }
         await cancelBonus({ id: 'bonus-1', cancellation_reason: 'test cancel reason' })
         expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
+    })
+
+    it('allows the recipient manager to cancel a bonus proposed by someone else', async () => {
+        // Phase 27j (Dominik): the manager can cancel a bonus an admin assigned to
+        // their report even though they did not propose it.
+        supabaseState.recipientProfile.manager_id = 'manager-1'
+        supabaseState.bonusRow = {
+            id: 'bonus-1',
+            recipient_user_id: 'recipient-1',
+            proposed_by: 'different-manager',
+            amount: 500,
+            currency: 'PLN',
+            reason: 'Original',
+            status: 'assigned',
+            period_year: 2026,
+            period_month: 5,
+            notes: null,
+            cancelled_at: null,
+            cancelled_by: null,
+            cancellation_reason: null,
+            linked_invoice_id: null,
+            paid_at: null,
+            created_at: '2026-05-19T00:00:00Z',
+            updated_at: '2026-05-19T00:00:00Z',
+        }
+        await cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager correction' })
+        expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
+    })
+
+    it('rejects cancel by non-proposer who does not manage the recipient', async () => {
+        supabaseState.recipientProfile.manager_id = 'someone-else'
+        supabaseState.bonusRow = {
+            id: 'bonus-1',
+            recipient_user_id: 'recipient-1',
+            proposed_by: 'different-manager',
+            amount: 500,
+            currency: 'PLN',
+            reason: 'Original',
+            status: 'assigned',
+            period_year: 2026,
+            period_month: 5,
+            notes: null,
+            cancelled_at: null,
+            cancelled_by: null,
+            cancellation_reason: null,
+            linked_invoice_id: null,
+            paid_at: null,
+            created_at: '2026-05-19T00:00:00Z',
+            updated_at: '2026-05-19T00:00:00Z',
+        }
+        await expect(
+            cancelBonus({ id: 'bonus-1', cancellation_reason: 'no rights here' }),
+        ).rejects.toThrow(/podw|sam przypisa/i)
     })
 })
 

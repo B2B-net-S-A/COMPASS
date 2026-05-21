@@ -329,6 +329,25 @@
     @apply bg-background text-foreground;
     transition: background-color 0.3s ease, color 0.2s ease;
   }
+
+  /* Native form controls (date picker indicator, <select> popups, scrollbars)
+     follow the active theme. Dark is the default; .light themes opt back to
+     light. Without this the WebKit calendar icon renders dark-on-dark and is
+     practically invisible on our dark backgrounds (Dominik report, Issue 1). */
+  :root {
+    color-scheme: dark;
+  }
+  .light {
+    color-scheme: light;
+  }
+
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  input[type='month']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.9;
+  }
 }
 
 /* ===== MICRO-ANIMATIONS SYSTEM ===== */
