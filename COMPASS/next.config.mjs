@@ -3,6 +3,12 @@ import { withSentryConfig } from '@sentry/nextjs'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
+    // Type-check + lint są bramkowane w CI ("Typecheck + Lint + Test + Build").
+    // Pomijamy je w `next build`, bo faza "Linting and checking validity of types"
+    // jest pamięciożerna i OOM-uje na build-hoście (Hetzner CAX21 ARM, 0 swap),
+    // przez co `docker compose build` wywala się exit 255 mimo udanej kompilacji.
+    eslint: { ignoreDuringBuilds: true },
+    typescript: { ignoreBuildErrors: true },
     images: {
         remotePatterns: [
             {
