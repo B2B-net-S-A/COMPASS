@@ -14,6 +14,204 @@ export type Database = {
   }
   public: {
     Tables: {
+      placement_person_aliases: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          profile_id: string
+          raw_name_norm: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          profile_id: string
+          raw_name_norm: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          profile_id?: string
+          raw_name_norm?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placement_person_aliases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_person_aliases_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      placements: {
+        Row: {
+          bonus_eligible_date: string
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          client_name: string
+          consultant_name: string
+          cost_rate: number
+          created_at: string
+          delivery_lead_id: string
+          delivery_lead_raw: string
+          dl_bonus_amount: number
+          dl_bonus_id: string | null
+          hours_confirmed_at: string | null
+          hours_confirmed_by: string | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          margin_per_hour: number
+          monthly_margin: number
+          position: string | null
+          recruiter_bonus_amount: number
+          recruiter_bonus_id: string | null
+          recruiter_id: string
+          recruiter_raw: string
+          recruiter_tier: number
+          revenue_rate: number
+          signing_date: string | null
+          start_date: string
+          status: string
+          tcm_ticket_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          bonus_eligible_date: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          client_name: string
+          consultant_name: string
+          cost_rate: number
+          created_at?: string
+          delivery_lead_id: string
+          delivery_lead_raw: string
+          dl_bonus_amount: number
+          dl_bonus_id?: string | null
+          hours_confirmed_at?: string | null
+          hours_confirmed_by?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          margin_per_hour: number
+          monthly_margin: number
+          position?: string | null
+          recruiter_bonus_amount: number
+          recruiter_bonus_id?: string | null
+          recruiter_id: string
+          recruiter_raw: string
+          recruiter_tier: number
+          revenue_rate: number
+          signing_date?: string | null
+          start_date: string
+          status?: string
+          tcm_ticket_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bonus_eligible_date?: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          client_name?: string
+          consultant_name?: string
+          cost_rate?: number
+          created_at?: string
+          delivery_lead_id?: string
+          delivery_lead_raw?: string
+          dl_bonus_amount?: number
+          dl_bonus_id?: string | null
+          hours_confirmed_at?: string | null
+          hours_confirmed_by?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          margin_per_hour?: number
+          monthly_margin?: number
+          position?: string | null
+          recruiter_bonus_amount?: number
+          recruiter_bonus_id?: string | null
+          recruiter_id?: string
+          recruiter_raw?: string
+          recruiter_tier?: number
+          revenue_rate?: number
+          signing_date?: string | null
+          start_date?: string
+          status?: string
+          tcm_ticket_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placements_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_delivery_lead_id_fkey"
+            columns: ["delivery_lead_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_dl_bonus_id_fkey"
+            columns: ["dl_bonus_id"]
+            isOneToOne: false
+            referencedRelation: "bonuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_hours_confirmed_by_fkey"
+            columns: ["hours_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_recruiter_bonus_id_fkey"
+            columns: ["recruiter_bonus_id"]
+            isOneToOne: false
+            referencedRelation: "bonuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_recruiter_id_fkey"
+            columns: ["recruiter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_tcm_ticket_id_fkey"
+            columns: ["tcm_ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_access_list: {
         Row: {
           added_by: string | null

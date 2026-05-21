@@ -183,6 +183,7 @@ export const INBOX_CATEGORY_SLUGS = [
     'inbox_wypowiedzenie',
     'inbox_administracja',
     'inbox_offboarding',
+    'inbox_onboarding',
     'inbox_inne',
 ] as const
 
