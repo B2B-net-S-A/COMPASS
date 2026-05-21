@@ -24,17 +24,32 @@ import {
 } from '@/lib/mailbox/graph-oof'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
-import { totalVacationDaysUsed, type LeaveSpan } from '@/lib/hr/leave-balance'
+import {
+    totalVacationDaysUsed,
+    workingDaysInLeave,
+    computeRemaining,
+    VACATION_POOL_TYPES,
+    type LeaveSpan,
+} from '@/lib/hr/leave-balance'
 import { workingDaysBetween, type PublicHolidayDate } from '@/lib/hr/working-days'
 import { endOfMonth, format, parseISO } from 'date-fns'
 
 export type LeaveType =
-    | 'vacation'
-    | 'sick_leave'
-    | 'parental_leave'
-    | 'unpaid_leave'
-    | 'training'
-    | 'other'
+    | 'vacation' // Urlop wypoczynkowy
+    | 'on_demand' // Urlop na żądanie (część puli wypoczynkowej)
+    | 'occasional' // Urlop okolicznościowy
+    | 'childcare' // Opieka nad dzieckiem (art. 188 KP)
+    | 'care_leave' // Urlop opiekuńczy
+    | 'force_majeure' // Siła wyższa
+    | 'sick_leave' // L4 / chorobowe
+    | 'maternity' // Urlop macierzyński
+    | 'paternity' // Urlop ojcowski
+    | 'parental_leave' // Urlop rodzicielski
+    | 'childrearing' // Urlop wychowawczy
+    | 'unpaid_leave' // Urlop bezpłatny
+    | 'blood_donation' // Krwiodawstwo
+    | 'training' // Urlop szkoleniowy
+    | 'other' // Inne
 
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
@@ -114,12 +129,21 @@ export interface CreateLeaveInput {
  */
 export interface MyLeaveBalance {
     year: number
-    /** Dni vacation już wykorzystane (zatwierdzone, start_date ≤ today). */
+    /** Dni z puli wypoczynkowej (vacation + na żądanie) wykorzystane (zatwierdzone, start_date ≤ today). */
     used_days: number
-    /** Dni vacation zatwierdzone na przyszłość (start_date > today). */
+    /** Dni zatwierdzone na przyszłość (start_date > today). */
     pending_approved_future_days: number
-    /** Dni vacation z wniosków oczekujących na akceptację. */
+    /** Dni z wniosków oczekujących na akceptację. */
     pending_request_days: number
+    // Phase 27k — limit/saldo. has_limit=false → B2B/zlecenie (bez limitu).
+    employment_type: string | null
+    has_limit: boolean
+    /** Roczny wymiar urlopu (np. 20/26). null gdy brak limitu. */
+    entitlement_days: number | null
+    /** Urlop zaległy z poprzedniego roku (dodawany do wymiaru). */
+    carried_over_days: number
+    /** entitlement + carried − used − approved_future. null gdy brak limitu. */
+    remaining_days: number | null
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -130,9 +154,15 @@ function validateDateString(value: string, label: string): void {
     }
 }
 
+// Phase 27k — self-service selectable leave types (full Kodeks pracy set).
+const SELF_SERVICE_LEAVE_TYPES: LeaveType[] = [
+    'vacation', 'on_demand', 'occasional', 'childcare', 'care_leave', 'force_majeure',
+    'sick_leave', 'maternity', 'paternity', 'parental_leave', 'childrearing',
+    'unpaid_leave', 'blood_donation', 'training', 'other',
+]
+
 function validateLeaveType(value: string): asserts value is LeaveType {
-    const allowed: LeaveType[] = ['vacation', 'parental_leave', 'unpaid_leave', 'other']
-    if (!(allowed as string[]).includes(value)) {
+    if (!(SELF_SERVICE_LEAVE_TYPES as string[]).includes(value)) {
         throw new Error(`Nieprawidłowy typ urlopu: ${value}`)
     }
 }
@@ -193,6 +223,59 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
     }
 
     const supabase = createClient()
+
+    // Phase 27k — vacation-pool limit for UoP employees (B2B/zlecenie = bez limitu).
+    if ((VACATION_POOL_TYPES as readonly string[]).includes(input.leaveType)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: profRow } = await (supabase.from('profiles') as any)
+            .select('employment_type, leave_entitlement_days, leave_carried_over_days')
+            .eq('id', ctx.userId)
+            .maybeSingle()
+        const p = (profRow ?? null) as {
+            employment_type: string | null
+            leave_entitlement_days: number | null
+            leave_carried_over_days: number | string | null
+        } | null
+        if (p?.employment_type === 'uop' && p.leave_entitlement_days != null) {
+            const startYear = input.startDate.slice(0, 4)
+            const endYear = input.endDate.slice(0, 4)
+            const [existingRes, holRes] = await Promise.all([
+                supabase
+                    .from('leave_requests')
+                    .select('start_date, end_date, half_day, leave_type')
+                    .eq('user_id', ctx.userId)
+                    .in('status', ['approved', 'pending'])
+                    .in('leave_type', [...VACATION_POOL_TYPES])
+                    .gte('start_date', `${startYear}-01-01`)
+                    .lte('start_date', `${startYear}-12-31`),
+                supabase
+                    .from('public_holidays')
+                    .select('date, name_pl')
+                    .gte('date', `${startYear}-01-01`)
+                    .lte('date', `${endYear}-12-31`),
+            ])
+            const holidays = (holRes.data ?? []) as PublicHolidayDate[]
+            const alreadyBooked = totalVacationDaysUsed((existingRes.data ?? []) as LeaveSpan[], holidays)
+            const requested = workingDaysInLeave(
+                {
+                    start_date: input.startDate,
+                    end_date: input.endDate,
+                    half_day: input.halfDay ?? null,
+                    leave_type: input.leaveType,
+                },
+                holidays,
+            )
+            const limit = Number(p.leave_entitlement_days) + Number(p.leave_carried_over_days ?? 0)
+            const remainingBefore = limit - alreadyBooked
+            if (requested > remainingBefore + 1e-9) {
+                throw new Error(
+                    `Przekroczono limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
+                        + `(wymiar ${p.leave_entitlement_days} + zaległe ${Number(p.leave_carried_over_days ?? 0)}), `
+                        + `a ten wniosek to ${requested} dni roboczych.`,
+                )
+            }
+        }
+    }
 
     // Phase 25a: validate substitute (must be a real HR-zone employee in tenant,
     // not the requester himself). Optional — sick_leave / single-day urlopy
@@ -1146,23 +1229,30 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
     const yearStart = `${year}-01-01`
     const yearEnd = `${year}-12-31`
 
-    const [leavesRes, pendingRes, holidaysRes] = await Promise.all([
-        // Zatwierdzone urlopy wypoczynkowe (cały rok, do liczenia used + future)
+    const pool = [...VACATION_POOL_TYPES]
+    const [profileRes, leavesRes, pendingRes, holidaysRes] = await Promise.all([
+        // Phase 27k — profil: typ umowy + wymiar urlopu (kolumny jeszcze nie w database.types).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase.from('profiles') as any)
+            .select('employment_type, leave_entitlement_days, leave_carried_over_days')
+            .eq('id', ctx.userId)
+            .maybeSingle(),
+        // Zatwierdzone urlopy z puli wypoczynkowej (vacation + na żądanie)
         supabase
             .from('leave_requests')
             .select('start_date, end_date, half_day, leave_type')
             .eq('user_id', ctx.userId)
             .eq('status', 'approved')
-            .eq('leave_type', 'vacation')
+            .in('leave_type', pool)
             .gte('start_date', yearStart)
             .lte('start_date', yearEnd),
-        // Pending wnioski wypoczynkowe (jeszcze nie zatwierdzone)
+        // Pending wnioski z puli wypoczynkowej (jeszcze nie zatwierdzone)
         supabase
             .from('leave_requests')
             .select('start_date, end_date, half_day, leave_type')
             .eq('user_id', ctx.userId)
             .eq('status', 'pending')
-            .eq('leave_type', 'vacation')
+            .in('leave_type', pool)
             .gte('start_date', yearStart)
             .lte('start_date', yearEnd),
         supabase
@@ -1172,18 +1262,36 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
             .lte('date', yearEnd),
     ])
 
+    const prof = (profileRes.data ?? null) as {
+        employment_type: string | null
+        leave_entitlement_days: number | null
+        leave_carried_over_days: number | string | null
+    } | null
     const allApproved = (leavesRes.data ?? []) as LeaveSpan[]
     const pending = (pendingRes.data ?? []) as LeaveSpan[]
     const holidays = (holidaysRes.data ?? []) as PublicHolidayDate[]
 
     const past = allApproved.filter((s) => s.start_date <= today)
     const future = allApproved.filter((s) => s.start_date > today)
+    const usedDays = totalVacationDaysUsed(past, holidays)
+    const futureDays = totalVacationDaysUsed(future, holidays)
+    const pendingDays = totalVacationDaysUsed(pending, holidays)
+
+    const entitlement = prof?.leave_entitlement_days ?? null
+    const carried = Number(prof?.leave_carried_over_days ?? 0)
+    const hasLimit = prof?.employment_type === 'uop' && entitlement != null
+    const remaining = hasLimit ? computeRemaining(entitlement as number, carried, usedDays, futureDays) : null
 
     return {
         year,
-        used_days: totalVacationDaysUsed(past, holidays),
-        pending_approved_future_days: totalVacationDaysUsed(future, holidays),
-        pending_request_days: totalVacationDaysUsed(pending, holidays),
+        used_days: usedDays,
+        pending_approved_future_days: futureDays,
+        pending_request_days: pendingDays,
+        employment_type: prof?.employment_type ?? null,
+        has_limit: hasLimit,
+        entitlement_days: entitlement,
+        carried_over_days: carried,
+        remaining_days: remaining,
     }
 }
 

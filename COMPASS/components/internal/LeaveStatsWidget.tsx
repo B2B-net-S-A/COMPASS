@@ -27,20 +27,43 @@ export function LeaveStatsWidget({ balance }: Props) {
                         </div>
                         <div>
                             <h3 className="text-sm font-medium text-muted-foreground">
-                                Urlopy wypoczynkowe ({balance.year})
+                                Urlop wypoczynkowy ({balance.year})
                             </h3>
-                            <p className="text-2xl font-bold mt-1">
-                                {balance.used_days}
-                                <span className="text-sm text-muted-foreground font-normal ml-2">
-                                    dni wykorzystane
-                                </span>
-                            </p>
+                            {balance.has_limit ? (
+                                <p
+                                    className={`text-2xl font-bold mt-1 ${
+                                        (balance.remaining_days ?? 0) < 0 ? 'text-red-400' : ''
+                                    }`}
+                                >
+                                    {balance.remaining_days}
+                                    <span className="text-sm text-muted-foreground font-normal ml-2">
+                                        dni pozostało
+                                    </span>
+                                </p>
+                            ) : (
+                                <p className="text-2xl font-bold mt-1">
+                                    {balance.used_days}
+                                    <span className="text-sm text-muted-foreground font-normal ml-2">
+                                        dni wykorzystane
+                                    </span>
+                                </p>
+                            )}
                         </div>
                     </div>
-                    <div className="text-right text-xs text-muted-foreground inline-flex items-center gap-1.5">
-                        <InfinityIcon className="w-3.5 h-3.5" />
-                        <span>B2B — bez limitu</span>
-                    </div>
+                    {balance.has_limit ? (
+                        <div className="text-right text-xs text-muted-foreground">
+                            <div>
+                                Wymiar: {balance.entitlement_days}
+                                {balance.carried_over_days > 0 ? ` + ${balance.carried_over_days} zaległe` : ''} dni
+                            </div>
+                            <div className="mt-0.5">Wykorzystane: {balance.used_days} dni</div>
+                        </div>
+                    ) : (
+                        <div className="text-right text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                            <InfinityIcon className="w-3.5 h-3.5" />
+                            <span>Bez limitu</span>
+                        </div>
+                    )}
                 </div>
 
                 {(balance.pending_approved_future_days > 0 || balance.pending_request_days > 0) && (
