@@ -32,6 +32,8 @@ export type AuditAction =
     | 'TIMESHEET_ENTRY_ADDED_BY_APPROVER'
     | 'TIMESHEET_ENTRY_EDITED_BY_APPROVER'
     | 'TIMESHEET_ENTRY_DELETED_BY_APPROVER'
+    // Phase 27g — approver creates a team member's timesheet to fill on-behalf
+    | 'TIMESHEET_CREATED_BY_APPROVER'
     // H2.8 — tamper-evidence dla PDF approved timesheet
     | 'TIMESHEET_HASH_MISMATCH'
     // Phase 17 — Smart Work Clock
@@ -138,6 +140,13 @@ export type AuditAction =
     | 'CLIENT_CREATED'
     | 'CLIENT_UPDATED'
     | 'CLIENT_DELETED'
+    // Phase 27h — Contract type + rate progression
+    | 'EMPLOYMENT_TYPE_CHANGED'
+    | 'USER_RATE_PROGRESSION_SET'
+    | 'USER_RATE_PROGRESSION_COPIED'
+    // Phase 27i — Contract documents (umowa + aneksy)
+    | 'CONTRACT_DOCUMENT_UPLOADED'
+    | 'CONTRACT_DOCUMENT_DELETED'
 
 export async function logAudit(
     userId: string | null,

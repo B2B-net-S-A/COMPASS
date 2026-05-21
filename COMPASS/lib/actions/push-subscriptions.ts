@@ -144,7 +144,7 @@ export async function sendTestPush(): Promise<{
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
         const result = await sendPushToUserId(user.id, {
-            title: 'ComPass — test',
+            title: 'COMPASS — test',
             body: 'Push notifications działają! 🎉',
             url: '/',
             tag: 'test',

@@ -1,4 +1,4 @@
-# Raport audytu ComPass (historyczny — Render)
+# Raport audytu COMPASS (historyczny — Render)
 
 Data raportu: na podstawie audytu automatycznego (przeglądarka + konsola).
 

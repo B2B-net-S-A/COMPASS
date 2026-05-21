@@ -1,5 +1,5 @@
 /**
- * Compliance constants for the ComPass platform.
+ * Compliance constants for the COMPASS platform.
  * Update CURRENT_TERMS_VERSION when any legal document changes — this forces re-acceptance.
  */
 
@@ -27,7 +27,7 @@ export const ADMIN_DOCS = ['access-management', 'incident-response', 'data-reten
 /** Labels for consent checkboxes (Polish) */
 export const CONSENT_LABELS: Record<ConsentCheckboxKey, { text: string; docSlug?: string }> = {
   terms: {
-    text: 'Akceptuję Regulamin platformy ComPass',
+    text: 'Akceptuję Regulamin platformy COMPASS',
     docSlug: 'terms',
   },
   privacy: {

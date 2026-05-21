@@ -16,8 +16,10 @@ import {
     approveTimesheet,
     rejectTimesheet,
     unlockTimesheet,
+    ensureTeamTimesheet,
     type TimesheetWithEntriesAndUser,
 } from '@/lib/actions/internal-timesheet'
+import { isTimesheetPlaceholder } from '@/lib/hr/timesheet-roster'
 import { TimesheetPreviewDialog } from './TimesheetPreviewDialog'
 import { EmployeeProfileDialog } from './EmployeeProfileDialog'
 import { TimesheetCSVExportDialog } from './TimesheetCSVExportDialog'
@@ -105,6 +107,26 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
         })
     }
 
+    function openPreview(t: TimesheetWithEntriesAndUser) {
+        if (!isTimesheetPlaceholder(t)) {
+            setPreviewTarget(t)
+            return
+        }
+        // Phase 27g — no timesheet yet: create an empty draft on the employee's
+        // account, then open the editor so the approver can fill it on-behalf.
+        setBusyId(t.user_id)
+        startTransition(async () => {
+            try {
+                const real = await ensureTeamTimesheet(t.user_id, year, month)
+                setPreviewTarget(real)
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            } finally {
+                setBusyId(null)
+            }
+        })
+    }
+
     function navigateMonth(delta: number) {
         let newY = year
         let newM = month + delta
@@ -167,16 +189,17 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                         <div className="space-y-3">
                             {timesheets.map((t) => {
                                 const status = STATUS_BADGE[t.status]
-                                const busy = busyId === t.id
+                                const placeholder = isTimesheetPlaceholder(t)
+                                const busy = busyId === t.id || busyId === t.user_id
                                 return (
                                     <div
-                                        key={t.id}
+                                        key={t.id || t.user_id}
                                         className="border rounded-lg p-4 flex flex-wrap items-start gap-3 justify-between hover:bg-muted/30 transition-colors cursor-pointer"
                                         onClick={(ev) => {
                                             // Avoid opening preview when user clicks on a button or link in actions.
                                             const target = ev.target as HTMLElement
                                             if (target.closest('button, a')) return
-                                            setPreviewTarget(t)
+                                            openPreview(t)
                                         }}
                                     >
                                         <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -190,14 +213,29 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                                     <span className="font-medium text-sm">
                                                         {t.user_full_name ?? t.user_email}
                                                     </span>
-                                                    <Badge variant="outline" className={status?.className}>
-                                                        {status?.label ?? t.status}
-                                                    </Badge>
+                                                    {placeholder ? (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="bg-blue-500/10 text-blue-300 border-blue-500/30"
+                                                        >
+                                                            Nierozpoczęty
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className={status?.className}>
+                                                            {status?.label ?? t.status}
+                                                        </Badge>
+                                                    )}
                                                 </div>
-                                                <p className="text-xs text-muted-foreground mt-0.5">
-                                                    {t.entries.length} wpisów, suma:{' '}
-                                                    <strong>{totalHours(t).toFixed(2)} h</strong>
-                                                </p>
+                                                {placeholder ? (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        Brak timesheetu — kliknij „Wypełnij”, aby uzupełnić za pracownika.
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        {t.entries.length} wpisów, suma:{' '}
+                                                        <strong>{totalHours(t).toFixed(2)} h</strong>
+                                                    </p>
+                                                )}
                                                 {t.rejection_note && (
                                                     <p className="text-xs italic mt-1 text-muted-foreground">
                                                         Powód odrzucenia: {t.rejection_note}
@@ -209,12 +247,16 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
-                                                onClick={() => setPreviewTarget(t)}
+                                                onClick={() => openPreview(t)}
                                                 disabled={pending}
-                                                title="Podgląd szczegółów (dni + opisy)"
+                                                title={placeholder ? 'Wypełnij timesheet za pracownika' : 'Podgląd szczegółów (dni + opisy)'}
                                             >
-                                                <Eye className="h-3.5 w-3.5 mr-1" />
-                                                Szczegóły
+                                                {busy && placeholder ? (
+                                                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                                                ) : (
+                                                    <Eye className="h-3.5 w-3.5 mr-1" />
+                                                )}
+                                                {placeholder ? 'Wypełnij' : 'Szczegóły'}
                                             </Button>
                                             <Button
                                                 size="sm"

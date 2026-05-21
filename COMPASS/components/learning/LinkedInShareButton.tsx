@@ -19,7 +19,7 @@ interface LinkedInShareButtonProps {
  */
 export function LinkedInShareButton({ courseTitle, courseId }: LinkedInShareButtonProps) {
     const [copied, setCopied] = useState(false)
-    const summaryText = `Właśnie ukończyłem szkolenie "${courseTitle}" w ComPass Akademia 🎓 #ContinuousLearning #B2BNet`
+    const summaryText = `Właśnie ukończyłem szkolenie "${courseTitle}" w COMPASS Akademia 🎓 #ContinuousLearning #B2BNet`
 
     // Public-ish landing URL (TODO Phase A2: publiczna strona certyfikatu /cert/[hash])
     const shareUrl = typeof window !== 'undefined'

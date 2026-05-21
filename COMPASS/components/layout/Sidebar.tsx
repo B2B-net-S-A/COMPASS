@@ -23,9 +23,7 @@ import {
     Users,
     ClipboardCheck,
     Plane,
-    Coins,
     Wallet,
-    Briefcase,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -204,21 +202,11 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    // Phase 19a/d: dedicated invoice-review group for Finanse role.
-    // Phase 26: invoice UI gated behind NEXT_PUBLIC_INVOICES_ENABLED. When off, finanse group is empty.
-    // Phase 27c: dodaj link "Stawki" dla finanse+admin (zawsze, niezależne od invoices flag).
+    // Phase 27i: the dedicated "Finanse" sidebar group was removed. Faktury, Premie,
+    // Stawki i Umowy and Klienci all live as tabs inside the Administracja HR hub now;
+    // finanse reaches them via the internalAdminGroup link (see groups assembly below).
+    // invoicesUiOn is still used by managerGroup.
     const invoicesUiOn = isInvoicesEnabled()
-    const financeGroup: NavGroup = {
-        heading: 'Finanse',
-        links: [
-            ...(invoicesUiOn
-                ? [{ name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null as PermissionFeature | null }]
-                : []),
-            { name: 'Stawki pracowników', href: '/internal/admin/rates', icon: Coins, feature: null },
-            // Phase 27d — clients list management (admin + finanse).
-            { name: 'Klienci', href: '/internal/admin/clients', icon: Briefcase, feature: null },
-        ],
-    }
 
     // Phase 20 + 26: Manager group — team timesheet (always) + invoice approvals (only when invoices UI enabled).
     const managerGroup: NavGroup = {
@@ -260,8 +248,9 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
         if (isAdmin) out.push(internalAdminGroup, adminGroup)
-        // Phase 26: only push financeGroup if it has at least one link (invoices flag may hide all).
-        if (isFinance && financeGroup.links.length > 0) out.push(financeGroup)
+        // Phase 27i: finanse reaches the Administracja HR hub (invoices/bonuses/rates/clients tabs)
+        // via this link — the dedicated "Finanse" group was removed.
+        else if (isFinance) out.push(internalAdminGroup)
         if (isManager) out.push(managerGroup)
         if (isTalentCommunity) out.push(tcmGroup)
         if (isHrZone) out.push(lifecycleGroup)
@@ -330,7 +319,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                 })}
             </nav>
             <div className="p-4 border-t border-border text-xs text-center text-muted-foreground/50">
-                ComPass by {brandName}
+                COMPASS by {brandName}
             </div>
         </div>
     )

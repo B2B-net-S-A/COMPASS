@@ -1,5 +1,5 @@
 /**
- * Centralny moduł toast dla ComPass
+ * Centralny moduł toast dla COMPASS
  * ===================================
  * AUTOMATYCZNIE zastępuje toast.success() animowanym checkmarkiem.
  *

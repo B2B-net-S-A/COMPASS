@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Shield, FileText, Users, ExternalLink } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Compliance | ComPass Admin' }
+export const metadata = { title: 'Compliance | COMPASS Admin' }
 
 // Mapowanie document_type → slug do podglądu strony.
 // Phase 11 schema legal_documents miało osobne pole `slug`, ale aktualny prod

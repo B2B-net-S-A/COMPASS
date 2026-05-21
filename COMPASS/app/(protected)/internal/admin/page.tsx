@@ -1,4 +1,4 @@
-import { ClipboardList, Receipt, Users, FileText, Gift, UserPlus } from 'lucide-react'
+import { ClipboardList, Receipt, Users, FileText, Gift, UserPlus, Coins, Briefcase } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AdminLeaveRequestsPanel } from '@/components/internal/panels/AdminLeaveRequestsPanel'
 import { LeaveOnBehalfPanel } from '@/components/internal/panels/LeaveOnBehalfPanel'
@@ -6,6 +6,8 @@ import { AdminTimesheetsPanel } from '@/components/internal/panels/AdminTimeshee
 import { AdminEmployeesPanel } from '@/components/internal/panels/AdminEmployeesPanel'
 import { AdminInvoicesPanel } from '@/components/internal/panels/AdminInvoicesPanel'
 import { AdminBonusesPanel } from '@/components/internal/panels/AdminBonusesPanel'
+import { AdminRatesPanel } from '@/components/internal/panels/AdminRatesPanel'
+import { AdminClientsPanel } from '@/components/internal/panels/AdminClientsPanel'
 import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 
@@ -18,6 +20,8 @@ const ALL_TABS_RAW: ReadonlyArray<HubTab> = [
     { id: 'timesheets', label: 'Timesheety', icon: Receipt },
     { id: 'invoices', label: 'Faktury', icon: FileText },
     { id: 'bonuses', label: 'Premie', icon: Gift },
+    { id: 'rates', label: 'Stawki i Umowy', icon: Coins },
+    { id: 'clients', label: 'Klienci', icon: Briefcase },
     { id: 'employees', label: 'Pracownicy', icon: Users },
 ]
 
@@ -49,7 +53,8 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
     //   manager          → timesheets + invoices + bonuses + leave-on-behalf (zespół; invoices gated)
     const visibleTabs = ALL_TABS.filter((t) => {
         if (ctx.isAdmin) return true
-        if (ctx.role === 'finanse') return t.id === 'invoices' || t.id === 'bonuses'
+        if (ctx.role === 'finanse')
+            return t.id === 'invoices' || t.id === 'bonuses' || t.id === 'rates' || t.id === 'clients'
         if (ctx.isManager) {
             return t.id === 'timesheets'
                 || t.id === 'invoices'
@@ -106,6 +111,8 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             {tab === 'timesheets' && <AdminTimesheetsPanel year={year} month={month} />}
             {tab === 'invoices' && invoicesUiOn && <AdminInvoicesPanel scope={scope} />}
             {tab === 'bonuses' && <AdminBonusesPanel />}
+            {tab === 'rates' && <AdminRatesPanel />}
+            {tab === 'clients' && <AdminClientsPanel />}
             {tab === 'employees' && <AdminEmployeesPanel />}
         </div>
     )
