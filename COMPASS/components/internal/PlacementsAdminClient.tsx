@@ -4,7 +4,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, CheckCircle2, Ban } from 'lucide-react'
+import { Loader2, CheckCircle2, Ban, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/lib/toast'
@@ -97,7 +97,14 @@ export function PlacementsAdminClient({ placements }: Props) {
                         </Button>
                     ))}
                 </div>
-                <PlacementImportDialog onImported={refresh} />
+                <div className="flex items-center gap-2">
+                    <Button asChild variant="outline" className="gap-2">
+                        <a href="/szablon-placementy-compass.xlsx" download="szablon-placementy-compass.xlsx">
+                            <Download className="h-4 w-4" /> Pobierz szablon
+                        </a>
+                    </Button>
+                    <PlacementImportDialog onImported={refresh} />
+                </div>
             </div>
 
             {visible.length === 0 ? (
