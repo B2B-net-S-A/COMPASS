@@ -22,7 +22,7 @@ export async function LeaveOnBehalfPanel() {
                 </p>
             </div>
             <CreateLeaveOnBehalfForm candidates={candidates} />
-            <TeamLeavesList leaves={teamLeaves} />
+            <TeamLeavesList leaves={teamLeaves} candidates={candidates} />
         </section>
     )
 }
