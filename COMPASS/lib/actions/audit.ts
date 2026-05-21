@@ -97,6 +97,12 @@ export type AuditAction =
     // Phase 26 — Bonus assigned workflow (auto-approved, no invoice link)
     | 'BONUS_ASSIGNED'
     | 'BONUS_UPDATED'
+    // Phase 28 — Placementy (Excel import, eligibility, auto-bonus, TCM tickets)
+    | 'PLACEMENTS_IMPORTED'
+    | 'PLACEMENT_CANCELLED'
+    | 'PLACEMENT_HOURS_CONFIRMED'
+    | 'PLACEMENT_BONUSES_GENERATED'
+    | 'PLACEMENT_PERSON_ALIAS_SET'
     // Phase 24 — Timesheet UX (templates, role defaults, CSV export, preview, archive)
     | 'TIMESHEET_COPIED_FROM_PREVIOUS'
     | 'TIMESHEET_APPLIED_DEFAULT'

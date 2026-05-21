@@ -679,6 +679,39 @@ Test Graph `/users/compass-tickets@b2bnetwork.pl/messages` → **HTTP 200** od r
 
 **Filters zachowują headers:** User mailbox API zwraca `internetMessageHeaders` (Auto-Submitted/Precedence/X-Auto-Response-Suppress), więc NDR/OOF detection wraca do pełnej skuteczności (Phase 26c caveat odpada dla `compass-tickets@`).
 
+## Phase 28 — Placementy (import Excela → auto-premie DL/Rekruter + tickety TCM, 2026-05-21)
+
+Manager (Dominik) wgrywa raz w miesiącu Excela z nowymi placementami (umieszczenie zewnętrznego konsultanta u klienta). System liczy premie, prognozuje datę należności (168h), a po potwierdzeniu generuje premie DL + rekrutera. Każdy DL/Rekruter widzi swoje placementy. Każdy nowy placement tworzy ticket onboardingu dla TCM.
+
+**Reguły premii (reuse Phase 27b/d):**
+- DL: `monthly_margin × 10%` (monthly_margin = (stawka_przychodowa − kosztowa) × 168h).
+- Rekruter wg progu marży/h: ≤40 → 1000 zł, 40–50 → 1500 zł, ≥50 → 2000 zł (`recruiterTierForMargin`, `lib/types/bonus.ts`).
+- Należność: konsultant musi przepracować **168h** (~21 dni roboczych od startu). `bonus_eligible_date = start + 21 dni rob.`
+
+**Schema (migracje 28a + 28b, zaaplikowane na prod via MCP 2026-05-21):**
+- `placements` — źródło prawdy (1 wiersz = 1 podpisana umowa). Konsultant = free text (zewnętrzny, nie user); DL i Rekruter linkują do `profiles` (NOT NULL — wiersze bez dopasowania blokowane przy imporcie). Klucz naturalny `(lower(consultant)+lower(client)+start_date)` UNIQUE → idempotentny re-upload. Stan: `upcoming → started → bonus_confirmed` (+ `cancelled`). Linki `dl_bonus_id`/`recruiter_bonus_id` (anty-dubel generacji), `tcm_ticket_id`.
+- `placement_person_aliases` — pamięć nazwisko→profil; kolejne uploady auto-rozwiązują znane nazwiska.
+- `support_categories` += `inbox_onboarding` (slug `inbox_%` → ticket trafia na Kanban `/admin/inbox`). `notifications` type += `placement_reminder`.
+- Brak migracji „relax unique" — `bonuses_one_per_recipient_period` już zdjęty w Phase 27e (rekruter może mieć wiele premii/mies.).
+
+**Flow:**
+- `/internal/admin?tab=placements` (admin + manager): upload `.xlsx` → `PlacementImportDialog` (preview diff nowe/zmiana/zniknięte + mapowanie distinct nazwisk + blokada commitu na nierozwiązanych) → commit (UPSERT po kluczu, tworzy ticket TCM per nowy placement). Daty w Excelu **muszą mieć rok** (parser exceljs czyta realne daty).
+- Potwierdzenie 168h: hybryda — cron `placement-hours-reminder` przypomina managerowi (push + in-app `placement_reminder`); klik „168h" (`confirmPlacementHours`) generuje 2 rekordy `bonuses` (kat. `delivery_lead` + `recruiter`, status `assigned`, service-role insert), notyfikacje (`sendBonusAssigned` + push) i ustawia `bonus_confirmed`.
+- Self-view `/internal/placements` (DL/Rekruter): własne placementy (RLS scope) + prognoza premii (kwota + ~data).
+
+**Pliki:** `lib/types/placement.ts`, `lib/placements/{parse-xlsx,import}.ts` (+ testy), `lib/actions/placements.ts`, `components/internal/{PlacementImportDialog,PlacementsAdminClient}.tsx` + `panels/PlacementsAdminPanel.tsx`, `app/(protected)/internal/placements/page.tsx`, `app/api/cron/{placement-status-tick,placement-hours-reminder}/route.ts`. Dep: `exceljs`.
+
+**Audit log:** `PLACEMENTS_IMPORTED`, `PLACEMENT_HOURS_CONFIRMED`, `PLACEMENT_BONUSES_GENERATED`, `PLACEMENT_CANCELLED`, `PLACEMENT_PERSON_ALIAS_SET`.
+
+**Coolify cron jobs (do dodania po deploy):**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `placement-status-tick` | `0 6 * * *` (06:00 UTC daily) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/placement-status-tick"` |
+| `placement-hours-reminder` | `0 8 * * *` (08:00 UTC daily) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/placement-hours-reminder"` |
+
+`placement-status-tick`: `upcoming → started` gdy `start_date ≤ dziś`. `placement-hours-reminder`: dla `started` placementów po `bonus_eligible_date` (ostatnie 30 dni), niepotwierdzonych → przypomnienie do importera (lub managerów/adminów) o potwierdzeniu 168h.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

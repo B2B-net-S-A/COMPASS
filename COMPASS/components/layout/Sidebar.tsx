@@ -24,6 +24,7 @@ import {
     ClipboardCheck,
     Plane,
     Wallet,
+    Briefcase,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -190,6 +191,13 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                 name: 'Payroll',
                 href: '/internal/payroll',
                 icon: Wallet,
+                feature: null,
+            },
+            // Phase 28 — Moje placementy (DL/Rekruter widzą własne umowy + prognozę premii).
+            {
+                name: 'Moje placementy',
+                href: '/internal/placements',
+                icon: Briefcase,
                 feature: null,
             },
         ],

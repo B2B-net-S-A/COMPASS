@@ -1,0 +1,499 @@
+'use server'
+
+// Phase 28 — Placementy: server actions (Excel import preview/commit, aliases, listing).
+// Authorization: admin or manager (requireBonusProposerAction). Writes use the service
+// client after the guard — the action is the trusted write path; RLS is defense-in-depth.
+
+import { revalidatePath } from 'next/cache'
+import { requireBonusProposerAction } from '@/lib/auth/internal-guard'
+import { createServiceClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import { logAudit } from '@/lib/actions/audit'
+import { sendBonusAssigned } from '@/lib/email'
+import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { differenceInCalendarDays } from 'date-fns'
+import {
+    normalizePersonName,
+    placementNaturalKey,
+    type CommitImportResult,
+    type PlacementImportPreview,
+    type PlacementReviewRow,
+    type PlacementRow,
+} from '@/lib/types/placement'
+import { parsePlacementsWorkbook } from '@/lib/placements/parse-xlsx'
+import {
+    buildPeopleResolutions,
+    classifyRow,
+    computeBonusFields,
+    findDisappeared,
+    marginMismatch,
+    type ExistingPlacementKey,
+    type ProfileLite,
+} from '@/lib/placements/import'
+
+type ServiceClient = ReturnType<typeof createServiceClient>
+
+const EXISTING_KEY_COLUMNS =
+    'id, consultant_name, client_name, start_date, cost_rate, revenue_rate, position, delivery_lead_raw, recruiter_raw'
+
+async function fileFromForm(formData: FormData): Promise<ArrayBuffer> {
+    const file = formData.get('file')
+    if (!file || typeof file === 'string') {
+        throw new Error('Brak pliku. Załącz plik .xlsx.')
+    }
+    const f = file as File
+    if (f.size === 0) throw new Error('Plik jest pusty.')
+    if (f.size > 10 * 1024 * 1024) throw new Error('Plik za duży (max 10 MB).')
+    return await f.arrayBuffer()
+}
+
+async function loadProfilesForMatching(admin: ServiceClient): Promise<ProfileLite[]> {
+    const { data } = await admin
+        .from('profiles')
+        .select('id, full_name, role')
+        .not('full_name', 'is', null)
+        .neq('employment_status', 'exited')
+    return ((data ?? []) as ProfileLite[]).filter((p) => (p.full_name ?? '').trim().length > 0)
+}
+
+async function loadAliasMap(admin: ServiceClient): Promise<Map<string, string>> {
+    const { data } = await admin.from('placement_person_aliases').select('raw_name_norm, profile_id')
+    const map = new Map<string, string>()
+    for (const a of (data ?? []) as Array<{ raw_name_norm: string; profile_id: string }>) {
+        map.set(a.raw_name_norm, a.profile_id)
+    }
+    return map
+}
+
+async function loadExistingKeys(admin: ServiceClient): Promise<ExistingPlacementKey[]> {
+    const { data } = await admin
+        .from('placements')
+        .select(EXISTING_KEY_COLUMNS)
+        .neq('status', 'cancelled')
+    return (data ?? []) as ExistingPlacementKey[]
+}
+
+/**
+ * Parse + analyse an uploaded file WITHOUT writing anything.
+ * Returns review rows (with computed bonuses + diff), distinct people to resolve, and
+ * existing placements missing from the file (cumulative mode → cancellation candidates).
+ */
+export async function previewPlacementImport(formData: FormData): Promise<PlacementImportPreview> {
+    await requireBonusProposerAction()
+    const admin = createServiceClient()
+
+    const buf = await fileFromForm(formData)
+    const parsed = await parsePlacementsWorkbook(buf)
+
+    const [profiles, aliasMap, existing] = await Promise.all([
+        loadProfilesForMatching(admin),
+        loadAliasMap(admin),
+        loadExistingKeys(admin),
+    ])
+    const existingByKey = new Map<string, ExistingPlacementKey>()
+    for (const e of existing) {
+        existingByKey.set(placementNaturalKey(e.consultant_name, e.client_name, e.start_date), e)
+    }
+
+    const warnings = [...parsed.errors]
+    const rows: PlacementReviewRow[] = []
+    for (const r of parsed.rows) {
+        const computed = computeBonusFields(r)
+        if (marginMismatch(r, computed)) {
+            warnings.push(
+                `Wiersz ${r.rowNumber}: marża w pliku (${r.marginFromFile}) różni się od policzonej (${computed.marginPerHour}). Użyto policzonej ze stawek.`,
+            )
+        }
+        const key = placementNaturalKey(r.consultantName, r.clientName, r.startDate)
+        rows.push({ ...r, ...computed, naturalKey: key, diff: classifyRow(r, existingByKey.get(key)) })
+    }
+
+    const people = buildPeopleResolutions(parsed.rows, profiles, aliasMap)
+    const candidates = profiles
+        .map((p) => ({ id: p.id, fullName: p.full_name, role: p.role }))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'pl'))
+    const disappeared = findDisappeared(parsed.rows, existing).map((e) => ({
+        id: e.id,
+        consultantName: e.consultant_name,
+        clientName: e.client_name,
+        startDate: e.start_date,
+    }))
+
+    return { rows, people, candidates, disappeared, warnings }
+}
+
+function priorityForStart(startDate: string): { priority: 'low' | 'normal' | 'high'; level: 'P1' | 'P2' | 'P3' } {
+    const days = differenceInCalendarDays(new Date(startDate), new Date())
+    if (days <= 14) return { priority: 'high', level: 'P1' }
+    if (days <= 30) return { priority: 'normal', level: 'P2' }
+    return { priority: 'low', level: 'P3' }
+}
+
+async function createTcmOnboardingTicket(
+    admin: ServiceClient,
+    placement: { id: string; consultant_name: string; client_name: string; position: string | null; start_date: string; delivery_lead_raw: string; recruiter_raw: string },
+    importerUserId: string,
+    categoryId: string,
+): Promise<string | null> {
+    const { priority, level } = priorityForStart(placement.start_date)
+    const subject = `Onboarding placementu: ${placement.consultant_name} @ ${placement.client_name} — start ${placement.start_date}`
+    const bodyMd = [
+        `**Nowy placement do przygotowania onboardingu.**`,
+        ``,
+        `- Konsultant: ${placement.consultant_name}`,
+        `- Klient: ${placement.client_name}`,
+        placement.position ? `- Stanowisko: ${placement.position}` : null,
+        `- Data startu: ${placement.start_date}`,
+        `- Delivery Lead: ${placement.delivery_lead_raw}`,
+        `- Rekruter: ${placement.recruiter_raw}`,
+    ].filter(Boolean).join('\n')
+
+    const { data: ticket, error } = await admin
+        .from('support_tickets')
+        .insert({ user_id: importerUserId, assignee_id: null, category_id: categoryId, subject, body_md: bodyMd, priority, status: 'open' })
+        .select('id')
+        .single()
+    if (error || !ticket) return null
+    const ticketId = (ticket as { id: string }).id
+
+    const { error: metaErr } = await admin.from('support_inbox_meta').insert({
+        ticket_id: ticketId,
+        source: 'user',
+        external_message_id: `placement:${placement.id}`,
+        priority_level: level,
+        due_date: new Date(`${placement.start_date}T00:00:00Z`).toISOString(),
+        email_subject: subject,
+    })
+    if (metaErr) {
+        await admin.from('support_tickets').delete().eq('id', ticketId)
+        return null
+    }
+    return ticketId
+}
+
+/**
+ * Re-parse the file (authoritative recompute), resolve every DL/recruiter via the supplied
+ * name→profile map (rows with an unresolved person are rejected), UPSERT by natural key, and
+ * create a TCM onboarding ticket per NEW placement. Optionally cancel disappeared placements.
+ */
+export async function commitPlacementImport(formData: FormData): Promise<CommitImportResult> {
+    const ctx = await requireBonusProposerAction()
+    const admin = createServiceClient()
+
+    const buf = await fileFromForm(formData)
+    const parsed = await parsePlacementsWorkbook(buf)
+    if (parsed.rows.length === 0) {
+        throw new Error(parsed.errors[0] ?? 'Plik nie zawiera poprawnych wierszy.')
+    }
+
+    const personMapRaw = formData.get('personMap')
+    const personMap: Record<string, string> =
+        typeof personMapRaw === 'string' && personMapRaw ? JSON.parse(personMapRaw) : {}
+    const cancelIdsRaw = formData.get('cancelDisappeared')
+    const cancelIds: string[] =
+        typeof cancelIdsRaw === 'string' && cancelIdsRaw ? JSON.parse(cancelIdsRaw) : []
+
+    // Resolve every row's people; block if any unresolved (decision 7).
+    const unresolved = new Set<string>()
+    for (const r of parsed.rows) {
+        if (!personMap[normalizePersonName(r.deliveryLeadRaw)]) unresolved.add(r.deliveryLeadRaw.trim())
+        if (!personMap[normalizePersonName(r.recruiterRaw)]) unresolved.add(r.recruiterRaw.trim())
+    }
+    if (unresolved.size > 0) {
+        throw new Error(`Nie przypisano profilu do: ${Array.from(unresolved).join(', ')}. Domapuj wszystkie osoby przed zapisem.`)
+    }
+
+    // Persist new aliases (raw_name_norm → profile).
+    const aliasRows = Object.entries(personMap).map(([raw_name_norm, profile_id]) => ({
+        raw_name_norm,
+        profile_id,
+        created_by: ctx.userId,
+    }))
+    if (aliasRows.length > 0) {
+        await admin.from('placement_person_aliases').upsert(aliasRows, { onConflict: 'raw_name_norm' })
+    }
+
+    const existing = await loadExistingKeys(admin)
+    const existingByKey = new Map<string, ExistingPlacementKey>()
+    for (const e of existing) existingByKey.set(placementNaturalKey(e.consultant_name, e.client_name, e.start_date), e)
+
+    const { data: cat } = await admin.from('support_categories').select('id').eq('slug', 'inbox_onboarding').single()
+    const categoryId = (cat as { id: string } | null)?.id ?? null
+
+    const batchId = crypto.randomUUID()
+    let created = 0
+    let updated = 0
+    let ticketsCreated = 0
+
+    for (const r of parsed.rows) {
+        const computed = computeBonusFields(r)
+        const key = placementNaturalKey(r.consultantName, r.clientName, r.startDate)
+        const ex = existingByKey.get(key)
+        const base = {
+            consultant_name: r.consultantName,
+            client_name: r.clientName,
+            position: r.position,
+            start_date: r.startDate,
+            signing_date: r.signingDate,
+            delivery_lead_id: personMap[normalizePersonName(r.deliveryLeadRaw)],
+            recruiter_id: personMap[normalizePersonName(r.recruiterRaw)],
+            delivery_lead_raw: r.deliveryLeadRaw.trim(),
+            recruiter_raw: r.recruiterRaw.trim(),
+            cost_rate: r.costRate,
+            revenue_rate: r.revenueRate,
+            margin_per_hour: computed.marginPerHour,
+            monthly_margin: computed.monthlyMargin,
+            bonus_eligible_date: computed.bonusEligibleDate,
+            dl_bonus_amount: computed.dlBonusAmount,
+            recruiter_tier: computed.recruiterTier,
+            recruiter_bonus_amount: computed.recruiterBonusAmount,
+            last_import_batch_id: batchId,
+            updated_at: new Date().toISOString(),
+        }
+
+        if (ex) {
+            // Update import-snapshot fields only; never clobber lifecycle/status/bonus links.
+            await admin.from('placements').update(base).eq('id', ex.id)
+            updated += 1
+        } else {
+            const { data: inserted } = await admin
+                .from('placements')
+                .insert({ ...base, status: 'upcoming', imported_by: ctx.userId })
+                .select('id, consultant_name, client_name, position, start_date, delivery_lead_raw, recruiter_raw')
+                .single()
+            created += 1
+            if (inserted && categoryId) {
+                const ticketId = await createTcmOnboardingTicket(
+                    admin,
+                    inserted as {
+                        id: string
+                        consultant_name: string
+                        client_name: string
+                        position: string | null
+                        start_date: string
+                        delivery_lead_raw: string
+                        recruiter_raw: string
+                    },
+                    ctx.userId,
+                    categoryId,
+                )
+                if (ticketId) {
+                    await admin.from('placements').update({ tcm_ticket_id: ticketId }).eq('id', (inserted as { id: string }).id)
+                    ticketsCreated += 1
+                }
+            }
+        }
+    }
+
+    // Optional: cancel placements the manager confirmed are gone from the file.
+    let cancelled = 0
+    if (cancelIds.length > 0) {
+        const { count } = await admin
+            .from('placements')
+            .update({
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
+                cancelled_by: ctx.userId,
+                cancel_reason: 'Usunięty z pliku importu',
+            }, { count: 'exact' })
+            .in('id', cancelIds)
+            .neq('status', 'bonus_confirmed')
+        cancelled = count ?? 0
+    }
+
+    await logAudit(ctx.userId, 'PLACEMENTS_IMPORTED', { batch_id: batchId, created, updated, tickets: ticketsCreated, cancelled })
+    if (aliasRows.length > 0) {
+        await logAudit(ctx.userId, 'PLACEMENT_PERSON_ALIAS_SET', { count: aliasRows.length })
+    }
+
+    revalidatePath('/internal/admin')
+    revalidatePath('/internal/placements')
+    return { created, updated, ticketsCreated, cancelled }
+}
+
+/** Manager/admin: list all placements (newest first). */
+export async function listPlacements(): Promise<PlacementRow[]> {
+    await requireBonusProposerAction()
+    const admin = createServiceClient()
+    const { data } = await admin.from('placements').select('*').order('start_date', { ascending: false })
+    return (data ?? []) as PlacementRow[]
+}
+
+/** DL/Recruiter self-view: own placements (RLS scopes to delivery_lead_id/recruiter_id = me). */
+export async function listMyPlacements(): Promise<PlacementRow[]> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Brak sesji.')
+    const { data } = await supabase
+        .from('placements')
+        .select('*')
+        .or(`delivery_lead_id.eq.${user.id},recruiter_id.eq.${user.id}`)
+        .order('start_date', { ascending: false })
+    return (data ?? []) as PlacementRow[]
+}
+
+interface Contact {
+    id: string
+    full_name: string | null
+    email: string | null
+}
+
+async function notifyBonusRecipient(
+    recipient: Contact,
+    proposerName: string,
+    amount: number,
+    year: number,
+    month: number,
+    reason: string,
+    bonusId: string,
+    kind: 'dl' | 'recruiter',
+): Promise<void> {
+    if (recipient.email) {
+        await sendBonusAssigned(
+            recipient.email,
+            recipient.full_name ?? recipient.email,
+            proposerName,
+            amount,
+            'PLN',
+            year,
+            month,
+            reason,
+        ).catch(() => undefined)
+    }
+    await sendPushToUserId(recipient.id, {
+        title: 'Przyznano premię',
+        body: `${amount.toLocaleString('pl-PL')} zł — ${reason}`,
+        url: '/internal?tab=bonuses',
+        tag: `bonus-${kind}-${bonusId}`,
+    }).catch(() => undefined)
+}
+
+/**
+ * Confirm a placement's consultant worked 168h → generate the DL + recruiter bonuses
+ * (status 'assigned'), link them on the placement, notify recipients. Idempotent: skips a
+ * bonus that was already generated (guarded by dl_bonus_id / recruiter_bonus_id).
+ */
+export async function confirmPlacementHours(placementId: string): Promise<void> {
+    const ctx = await requireBonusProposerAction()
+    const admin = createServiceClient()
+
+    const { data: pRaw } = await admin.from('placements').select('*').eq('id', placementId).single()
+    if (!pRaw) throw new Error('Placement nie znaleziony.')
+    const p = pRaw as PlacementRow
+    if (p.status === 'cancelled') throw new Error('Placement jest anulowany.')
+
+    const [year, month] = p.bonus_eligible_date.split('-').slice(0, 2).map(Number)
+
+    const { data: peopleRaw } = await admin
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', [p.delivery_lead_id, p.recruiter_id])
+    const people = (peopleRaw ?? []) as Contact[]
+    const dl = people.find((x) => x.id === p.delivery_lead_id) ?? null
+    const rec = people.find((x) => x.id === p.recruiter_id) ?? null
+    const { data: proposerRow } = await admin.from('profiles').select('full_name').eq('id', ctx.userId).single()
+    const proposerName = (proposerRow as { full_name: string | null } | null)?.full_name ?? 'Manager'
+
+    let dlBonusId = p.dl_bonus_id
+    if (!dlBonusId) {
+        const amount = Number(p.dl_bonus_amount)
+        const reason = `Premia DL — placement ${p.consultant_name} @ ${p.client_name} (10% z marży miesięcznej ${Number(p.monthly_margin).toLocaleString('pl-PL')} zł)`
+        const { data: b, error } = await admin
+            .from('bonuses')
+            .insert({
+                recipient_user_id: p.delivery_lead_id,
+                proposed_by: ctx.userId,
+                amount,
+                currency: 'PLN',
+                reason,
+                status: 'assigned',
+                period_year: year,
+                period_month: month,
+                category: 'delivery_lead',
+                client_name: p.client_name,
+                delivery_candidate_name: p.consultant_name,
+                delivery_margin_amount: Number(p.monthly_margin),
+                delivery_margin_percent: 10,
+            })
+            .select('id')
+            .single()
+        if (error || !b) throw new Error(`Nie udało się utworzyć premii DL: ${error?.message ?? 'unknown'}`)
+        dlBonusId = (b as { id: string }).id
+        if (dl) await notifyBonusRecipient(dl, proposerName, amount, year, month, reason, dlBonusId, 'dl')
+    }
+
+    let recBonusId = p.recruiter_bonus_id
+    if (!recBonusId) {
+        const amount = Number(p.recruiter_bonus_amount)
+        const reason = `Premia rekrutacyjna — placement ${p.consultant_name} @ ${p.client_name} (próg ${p.recruiter_tier}, marża ${Number(p.margin_per_hour)} zł/h)`
+        const { data: b, error } = await admin
+            .from('bonuses')
+            .insert({
+                recipient_user_id: p.recruiter_id,
+                proposed_by: ctx.userId,
+                amount,
+                currency: 'PLN',
+                reason,
+                status: 'assigned',
+                period_year: year,
+                period_month: month,
+                category: 'recruiter',
+                client_name: p.client_name,
+                recruiter_margin_per_hour: Number(p.margin_per_hour),
+                recruiter_candidate_name: p.consultant_name,
+                recruiter_calculated_tier: p.recruiter_tier,
+            })
+            .select('id')
+            .single()
+        if (error || !b) throw new Error(`Nie udało się utworzyć premii rekrutera: ${error?.message ?? 'unknown'}`)
+        recBonusId = (b as { id: string }).id
+        if (rec) await notifyBonusRecipient(rec, proposerName, amount, year, month, reason, recBonusId, 'recruiter')
+    }
+
+    await admin
+        .from('placements')
+        .update({
+            status: 'bonus_confirmed',
+            hours_confirmed_at: new Date().toISOString(),
+            hours_confirmed_by: ctx.userId,
+            dl_bonus_id: dlBonusId,
+            recruiter_bonus_id: recBonusId,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', placementId)
+
+    await logAudit(ctx.userId, 'PLACEMENT_HOURS_CONFIRMED', { placement_id: placementId })
+    await logAudit(ctx.userId, 'PLACEMENT_BONUSES_GENERATED', {
+        placement_id: placementId,
+        dl_bonus_id: dlBonusId,
+        recruiter_bonus_id: recBonusId,
+    })
+
+    revalidatePath('/internal/admin')
+    revalidatePath('/internal/placements')
+    revalidatePath('/internal')
+}
+
+/** Cancel a placement (only before bonuses are generated). */
+export async function cancelPlacement(placementId: string, reason: string): Promise<void> {
+    const ctx = await requireBonusProposerAction()
+    const admin = createServiceClient()
+    const { data: p } = await admin.from('placements').select('status').eq('id', placementId).single()
+    if (!p) throw new Error('Placement nie znaleziony.')
+    if ((p as { status: string }).status === 'bonus_confirmed') {
+        throw new Error('Nie można anulować — premie zostały już wygenerowane.')
+    }
+    await admin
+        .from('placements')
+        .update({
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: ctx.userId,
+            cancel_reason: reason.trim() || null,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', placementId)
+    await logAudit(ctx.userId, 'PLACEMENT_CANCELLED', { placement_id: placementId, reason })
+    revalidatePath('/internal/admin')
+    revalidatePath('/internal/placements')
+}

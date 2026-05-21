@@ -1,4 +1,4 @@
-import { ClipboardList, Receipt, Users, FileText, Gift, UserPlus, Coins, Briefcase } from 'lucide-react'
+import { ClipboardList, Receipt, Users, FileText, Gift, UserPlus, Coins, Briefcase, FileSpreadsheet } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AdminLeaveRequestsPanel } from '@/components/internal/panels/AdminLeaveRequestsPanel'
 import { LeaveOnBehalfPanel } from '@/components/internal/panels/LeaveOnBehalfPanel'
@@ -8,6 +8,7 @@ import { AdminInvoicesPanel } from '@/components/internal/panels/AdminInvoicesPa
 import { AdminBonusesPanel } from '@/components/internal/panels/AdminBonusesPanel'
 import { AdminRatesPanel } from '@/components/internal/panels/AdminRatesPanel'
 import { AdminClientsPanel } from '@/components/internal/panels/AdminClientsPanel'
+import { PlacementsAdminPanel } from '@/components/internal/panels/PlacementsAdminPanel'
 import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 
@@ -20,6 +21,7 @@ const ALL_TABS_RAW: ReadonlyArray<HubTab> = [
     { id: 'timesheets', label: 'Timesheety', icon: Receipt },
     { id: 'invoices', label: 'Faktury', icon: FileText },
     { id: 'bonuses', label: 'Premie', icon: Gift },
+    { id: 'placements', label: 'Placementy', icon: FileSpreadsheet },
     { id: 'rates', label: 'Stawki i Umowy', icon: Coins },
     { id: 'clients', label: 'Klienci', icon: Briefcase },
     { id: 'employees', label: 'Pracownicy', icon: Users },
@@ -59,6 +61,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             return t.id === 'timesheets'
                 || t.id === 'invoices'
                 || t.id === 'bonuses'
+                || t.id === 'placements'
                 || t.id === 'leave-on-behalf'
         }
         return false
@@ -111,6 +114,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             {tab === 'timesheets' && <AdminTimesheetsPanel year={year} month={month} />}
             {tab === 'invoices' && invoicesUiOn && <AdminInvoicesPanel scope={scope} />}
             {tab === 'bonuses' && <AdminBonusesPanel />}
+            {tab === 'placements' && <PlacementsAdminPanel />}
             {tab === 'rates' && <AdminRatesPanel />}
             {tab === 'clients' && <AdminClientsPanel />}
             {tab === 'employees' && <AdminEmployeesPanel />}
