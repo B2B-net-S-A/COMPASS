@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { totalVacationDaysUsed, workingDaysInLeave } from '../leave-balance'
+import {
+    totalVacationDaysUsed,
+    workingDaysInLeave,
+    computeRemaining,
+    VACATION_POOL_TYPES,
+} from '../leave-balance'
 
 const HOLIDAYS = [{ date: '2026-05-01', name_pl: 'Święto Pracy' }]
 
@@ -56,5 +61,32 @@ describe('totalVacationDaysUsed', () => {
         ]
         // 2 + 1 = 3 (ignoring sick)
         expect(totalVacationDaysUsed(spans, HOLIDAYS)).toBe(3)
+    })
+
+    it('counts on_demand toward the vacation pool (Phase 27k)', () => {
+        const spans = [
+            { start_date: '2026-05-04', end_date: '2026-05-05', half_day: null, leave_type: 'vacation' }, // 2
+            { start_date: '2026-05-06', end_date: '2026-05-06', half_day: null, leave_type: 'on_demand' }, // 1 (Wed)
+            { start_date: '2026-05-07', end_date: '2026-05-07', half_day: null, leave_type: 'occasional' }, // ignored
+        ]
+        expect(totalVacationDaysUsed(spans, HOLIDAYS)).toBe(3)
+    })
+})
+
+describe('VACATION_POOL_TYPES', () => {
+    it('contains vacation and on_demand only', () => {
+        expect([...VACATION_POOL_TYPES].sort()).toEqual(['on_demand', 'vacation'])
+    })
+})
+
+describe('computeRemaining (Phase 27k)', () => {
+    it('remaining = entitlement + carried − used − approvedFuture', () => {
+        expect(computeRemaining(26, 5, 10, 4)).toBe(17)
+    })
+    it('goes negative when over-booked', () => {
+        expect(computeRemaining(26, 0, 20, 10)).toBe(-4)
+    })
+    it('handles half-day fractions', () => {
+        expect(computeRemaining(20, 0, 10.5, 0)).toBe(9.5)
     })
 })

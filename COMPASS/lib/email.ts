@@ -237,10 +237,19 @@ export async function sendBroadcastEmail(
 
 export const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
     vacation: 'Urlop wypoczynkowy',
+    on_demand: 'Urlop na żądanie',
+    occasional: 'Urlop okolicznościowy',
+    childcare: 'Opieka nad dzieckiem (art. 188)',
+    care_leave: 'Urlop opiekuńczy',
+    force_majeure: 'Siła wyższa',
     sick_leave: 'L4 / chorobowe',
-    parental_leave: 'Opieka rodzicielska',
+    maternity: 'Urlop macierzyński',
+    paternity: 'Urlop ojcowski',
+    parental_leave: 'Urlop rodzicielski',
+    childrearing: 'Urlop wychowawczy',
     unpaid_leave: 'Urlop bezpłatny',
-    training: 'Szkolenie',
+    blood_donation: 'Krwiodawstwo',
+    training: 'Urlop szkoleniowy',
     other: 'Inne',
 }
 

@@ -20,8 +20,19 @@ import {
 
 const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'parental_leave', label: 'Opieka rodzicielska' },
+    { value: 'on_demand', label: 'Urlop na żądanie' },
+    { value: 'occasional', label: 'Urlop okolicznościowy', needsDocs: true },
+    { value: 'childcare', label: 'Opieka nad dzieckiem (art. 188)' },
+    { value: 'care_leave', label: 'Urlop opiekuńczy' },
+    { value: 'force_majeure', label: 'Siła wyższa' },
+    { value: 'sick_leave', label: 'L4 / chorobowe', needsDocs: true },
+    { value: 'maternity', label: 'Urlop macierzyński' },
+    { value: 'paternity', label: 'Urlop ojcowski' },
+    { value: 'parental_leave', label: 'Urlop rodzicielski' },
+    { value: 'childrearing', label: 'Urlop wychowawczy' },
     { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
+    { value: 'blood_donation', label: 'Krwiodawstwo' },
+    { value: 'training', label: 'Urlop szkoleniowy' },
     { value: 'other', label: 'Inne' },
 ]
 
@@ -58,7 +69,7 @@ export function LeaveRequestForm() {
     }, [])
 
     const showHalfDay = startDate && endDate && startDate === endDate
-    const showDocsField = leaveType === 'sick_leave'
+    const showDocsField = LEAVE_TYPES.find((t) => t.value === leaveType)?.needsDocs ?? false
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
