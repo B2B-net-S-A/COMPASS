@@ -29,6 +29,7 @@ import { useConfirm } from '@/components/shared/ConfirmDialog'
 import {
     cancelTeamLeave,
     updateTeamLeave,
+    type LeaveOnBehalfCandidate,
     type LeaveType,
     type TeamLeaveRow,
 } from '@/lib/actions/internal-leave'
@@ -61,9 +62,10 @@ function fmt(d: string): string {
 
 interface Props {
     leaves: TeamLeaveRow[]
+    candidates: LeaveOnBehalfCandidate[]
 }
 
-export function TeamLeavesList({ leaves }: Props) {
+export function TeamLeavesList({ leaves, candidates }: Props) {
     const router = useRouter()
     const [confirm, ConfirmUI] = useConfirm()
     const [pending, startTransition] = useTransition()
@@ -191,6 +193,7 @@ export function TeamLeavesList({ leaves }: Props) {
             {editTarget && (
                 <EditTeamLeaveDialog
                     leave={editTarget}
+                    candidates={candidates}
                     onClose={() => setEditTarget(null)}
                     onSaved={() => {
                         setEditTarget(null)
@@ -205,11 +208,12 @@ export function TeamLeavesList({ leaves }: Props) {
 
 interface EditDialogProps {
     leave: TeamLeaveRow
+    candidates: LeaveOnBehalfCandidate[]
     onClose: () => void
     onSaved: () => void
 }
 
-function EditTeamLeaveDialog({ leave, onClose, onSaved }: EditDialogProps) {
+function EditTeamLeaveDialog({ leave, candidates, onClose, onSaved }: EditDialogProps) {
     const [leaveType, setLeaveType] = useState<LeaveType>(
         (EDITABLE_LEAVE_TYPES.some((t) => t.value === leave.leave_type)
             ? leave.leave_type
@@ -219,9 +223,22 @@ function EditTeamLeaveDialog({ leave, onClose, onSaved }: EditDialogProps) {
     const [endDate, setEndDate] = useState(leave.end_date)
     const [halfDay, setHalfDay] = useState<'' | 'morning' | 'afternoon'>(leave.half_day ?? '')
     const [note, setNote] = useState(leave.note ?? '')
+    const [substituteId, setSubstituteId] = useState(leave.substitute_id ?? '')
     const [pending, startTransition] = useTransition()
 
     const showHalfDay = startDate !== '' && startDate === endDate
+
+    // Substitute options: HR-zone people the caller manages, minus the employee.
+    // Keep the current substitute selectable even if outside the candidate set.
+    const substituteOptions = candidates
+        .filter((c) => c.id !== leave.user_id)
+        .map((c) => ({ id: c.id, label: c.full_name ?? c.email }))
+    if (leave.substitute_id && !substituteOptions.some((o) => o.id === leave.substitute_id)) {
+        substituteOptions.unshift({
+            id: leave.substitute_id,
+            label: leave.substitute_full_name ?? 'Obecny zastępca',
+        })
+    }
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -242,6 +259,7 @@ function EditTeamLeaveDialog({ leave, onClose, onSaved }: EditDialogProps) {
                     endDate,
                     halfDay: showHalfDay && halfDay ? halfDay : null,
                     note: note.trim() || null,
+                    substituteId: substituteId || null,
                 })
                 toastSuccess('Urlop zaktualizowany — pracownik dostał powiadomienie.')
                 onSaved()
@@ -320,6 +338,25 @@ function EditTeamLeaveDialog({ leave, onClose, onSaved }: EditDialogProps) {
                             </select>
                         </div>
                     )}
+                    <div className="space-y-1.5">
+                        <Label htmlFor="edit_substitute" className="flex items-center gap-1.5">
+                            <UserCheck className="w-3.5 h-3.5" />
+                            Zastępca (opcjonalnie)
+                        </Label>
+                        <select
+                            id="edit_substitute"
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                            value={substituteId}
+                            onChange={(e) => setSubstituteId(e.target.value)}
+                        >
+                            <option value="">— bez zastępcy —</option>
+                            {substituteOptions.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                    {o.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                     <div className="space-y-1.5">
                         <Label htmlFor="edit_note">Notatka (opcjonalna)</Label>
                         <Textarea

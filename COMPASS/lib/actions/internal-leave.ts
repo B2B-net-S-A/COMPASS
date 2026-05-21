@@ -875,6 +875,7 @@ export interface TeamLeaveRow {
     created_on_behalf: boolean
     created_by: string | null
     substitute_full_name: string | null
+    substitute_id: string | null
 }
 
 interface TeamLeaveQueryRow {
@@ -888,13 +889,14 @@ interface TeamLeaveQueryRow {
     note: string | null
     created_on_behalf: boolean | null
     created_by: string | null
+    substitute_id: string | null
     profiles: { full_name: string | null; email: string | null; manager_id: string | null } | null
     substitute: { full_name: string | null } | null
 }
 
 const TEAM_LEAVE_SELECT = `
     id, user_id, start_date, end_date, leave_type, half_day, status, note,
-    created_on_behalf, created_by,
+    created_on_behalf, created_by, substitute_id,
     profiles:profiles!leave_requests_user_id_fkey(full_name, email, manager_id),
     substitute:profiles!leave_requests_substitute_id_fkey(full_name)
 `
@@ -914,6 +916,7 @@ function mapTeamLeaveRow(r: TeamLeaveQueryRow): TeamLeaveRow {
         created_on_behalf: Boolean(r.created_on_behalf),
         created_by: r.created_by,
         substitute_full_name: r.substitute?.full_name ?? null,
+        substitute_id: r.substitute_id,
     }
 }
 
@@ -1090,6 +1093,8 @@ export interface UpdateTeamLeaveInput {
     endDate?: string
     halfDay?: 'morning' | 'afternoon' | null
     note?: string | null
+    /** undefined = leave unchanged; null/'' = clear substitute; uuid = set substitute. */
+    substituteId?: string | null
 }
 
 /**
@@ -1105,7 +1110,7 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
     const admin = createServiceClient()
     const { data: row, error } = await admin
         .from('leave_requests')
-        .select('id, user_id, status, start_date, end_date, leave_type, half_day, note')
+        .select('id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id')
         .eq('id', input.id)
         .single<{
             id: string
@@ -1116,6 +1121,7 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
             leave_type: LeaveType
             half_day: 'morning' | 'afternoon' | null
             note: string | null
+            substitute_id: string | null
         }>()
     if (error || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'pending' && row.status !== 'approved') {
@@ -1128,6 +1134,8 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
     const newEnd = input.endDate ?? row.end_date
     let newHalfDay = input.halfDay !== undefined ? input.halfDay : row.half_day
     const newNote = input.note !== undefined ? input.note?.trim() || null : row.note
+    const newSubstituteId =
+        input.substituteId !== undefined ? input.substituteId || null : row.substitute_id
 
     if (input.leaveType) validateLeaveType(input.leaveType)
     validateDateString(newStart, 'start_date')
@@ -1137,6 +1145,21 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
     if (newHalfDay && newStart !== newEnd) newHalfDay = null
     if (newHalfDay && !['morning', 'afternoon'].includes(newHalfDay)) {
         throw new Error('half_day musi być "morning" lub "afternoon".')
+    }
+    // Validate a (newly) chosen substitute — HR-zone, not the employee themselves.
+    if (input.substituteId) {
+        if (input.substituteId === row.user_id) {
+            throw new Error('Pracownik nie może być sam swoim zastępcą.')
+        }
+        const { data: sub } = await admin
+            .from('profiles')
+            .select('id, role')
+            .eq('id', input.substituteId)
+            .maybeSingle<{ id: string; role: string }>()
+        if (!sub) throw new Error('Wybrany zastępca nie istnieje.')
+        if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(sub.role)) {
+            throw new Error('Zastępca musi mieć dostęp do strefy HR.')
+        }
     }
 
     const spanChanged =
@@ -1162,6 +1185,7 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
             end_date: newEnd,
             half_day: newHalfDay,
             note: newNote,
+            substitute_id: newSubstituteId,
         })
         .eq('id', input.id)
     if (updErr) throw new Error(`Błąd zapisu zmian: ${updErr.message}`)
