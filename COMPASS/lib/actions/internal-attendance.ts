@@ -198,8 +198,10 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
     const [employeesRes, leavesRes, attendancesRes, holidaysRes] = await Promise.all([
         admin
             .from('profiles')
+            // Full HR-zone roster, not just internal+admin — managers/finanse and
+            // talent_community (e.g. Błażej, Paulina) belong on the team calendar too.
             .select('id, full_name, email, avatar_url, role')
-            .in('role', ['internal', 'admin'])
+            .in('role', ['admin', 'internal', 'manager', 'finanse', 'talent_community'])
             .order('full_name'),
         admin
             .from('leave_requests')
