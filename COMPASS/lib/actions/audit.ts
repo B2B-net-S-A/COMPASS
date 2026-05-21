@@ -113,6 +113,9 @@ export type AuditAction =
     | 'LEAVE_OOF_DISABLED'
     // Phase 25b — Manager/admin wpisuje urlop w imieniu pracownika
     | 'LEAVE_CREATED_ON_BEHALF'
+    // Phase 27j — Manager/admin zarządza urlopem zespołu (edycja / anulowanie)
+    | 'LEAVE_UPDATED_BY_MANAGER'
+    | 'LEAVE_CANCELLED_BY_MANAGER'
     // Phase 25c — Lifecycle emails są opt-in (welcome / exit invitation / manager checklist)
     | 'ONBOARDING_WELCOME_EMAIL_SENT'
     | 'EXIT_INVITATION_EMAIL_SENT'

@@ -1,8 +1,12 @@
-import { listTeamMembersForLeaveOnBehalf } from '@/lib/actions/internal-leave'
+import { listTeamMembersForLeaveOnBehalf, listTeamLeaves } from '@/lib/actions/internal-leave'
 import { CreateLeaveOnBehalfForm } from '@/components/internal/CreateLeaveOnBehalfForm'
+import { TeamLeavesList } from '@/components/internal/TeamLeavesList'
 
 export async function LeaveOnBehalfPanel() {
-    const candidates = await listTeamMembersForLeaveOnBehalf()
+    const [candidates, teamLeaves] = await Promise.all([
+        listTeamMembersForLeaveOnBehalf(),
+        listTeamLeaves(),
+    ])
 
     return (
         <section className="space-y-4">
@@ -18,6 +22,7 @@ export async function LeaveOnBehalfPanel() {
                 </p>
             </div>
             <CreateLeaveOnBehalfForm candidates={candidates} />
+            <TeamLeavesList leaves={teamLeaves} />
         </section>
     )
 }

@@ -26,7 +26,7 @@ import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { totalVacationDaysUsed, type LeaveSpan } from '@/lib/hr/leave-balance'
 import { workingDaysBetween, type PublicHolidayDate } from '@/lib/hr/working-days'
-import { format, parseISO } from 'date-fns'
+import { endOfMonth, format, parseISO } from 'date-fns'
 
 export type LeaveType =
     | 'vacation'
@@ -774,6 +774,335 @@ export async function listTeamMembersForLeaveOnBehalf(): Promise<LeaveOnBehalfCa
     return ((data ?? []) as unknown as Array<LeaveOnBehalfCandidate & { employment_status: string | null }>)
         .filter((p) => p.employment_status !== 'exited' && p.employment_status !== 'offboarding')
         .map(({ id, full_name, email, role, manager_id }) => ({ id, full_name, email, role, manager_id }))
+}
+
+// ─── Phase 27j: manager/admin team-leave management (list / cancel / edit) ──
+
+export interface TeamLeaveRow {
+    id: string
+    user_id: string
+    user_full_name: string | null
+    user_email: string
+    start_date: string
+    end_date: string
+    leave_type: LeaveType
+    half_day: 'morning' | 'afternoon' | null
+    status: LeaveStatus
+    note: string | null
+    created_on_behalf: boolean
+    created_by: string | null
+    substitute_full_name: string | null
+}
+
+interface TeamLeaveQueryRow {
+    id: string
+    user_id: string
+    start_date: string
+    end_date: string
+    leave_type: LeaveType
+    half_day: 'morning' | 'afternoon' | null
+    status: LeaveStatus
+    note: string | null
+    created_on_behalf: boolean | null
+    created_by: string | null
+    profiles: { full_name: string | null; email: string | null; manager_id: string | null } | null
+    substitute: { full_name: string | null } | null
+}
+
+const TEAM_LEAVE_SELECT = `
+    id, user_id, start_date, end_date, leave_type, half_day, status, note,
+    created_on_behalf, created_by,
+    profiles:profiles!leave_requests_user_id_fkey(full_name, email, manager_id),
+    substitute:profiles!leave_requests_substitute_id_fkey(full_name)
+`
+
+function mapTeamLeaveRow(r: TeamLeaveQueryRow): TeamLeaveRow {
+    return {
+        id: r.id,
+        user_id: r.user_id,
+        user_full_name: r.profiles?.full_name ?? null,
+        user_email: r.profiles?.email ?? '',
+        start_date: r.start_date,
+        end_date: r.end_date,
+        leave_type: r.leave_type,
+        half_day: r.half_day,
+        status: r.status,
+        note: r.note,
+        created_on_behalf: Boolean(r.created_on_behalf),
+        created_by: r.created_by,
+        substitute_full_name: r.substitute?.full_name ?? null,
+    }
+}
+
+/** Guard: caller must manage `targetUserId` (admin, or their direct manager). */
+async function assertManagesTarget(
+    admin: ReturnType<typeof createServiceClient>,
+    ctx: { userId: string; isAdmin: boolean },
+    targetUserId: string,
+): Promise<void> {
+    if (targetUserId === ctx.userId) {
+        throw new Error('To Twój własny wniosek — użyj sekcji „Moje urlopy".')
+    }
+    if (ctx.isAdmin) return
+    const { data: target } = await admin
+        .from('profiles')
+        .select('manager_id')
+        .eq('id', targetUserId)
+        .single<{ manager_id: string | null }>()
+    if (target?.manager_id !== ctx.userId) {
+        throw new Error('Możesz zarządzać urlopami tylko swojego zespołu.')
+    }
+}
+
+/**
+ * Phase 27j — actionable team leaves (pending/approved) the caller can manage.
+ *  - Admin: every HR-zone employee's leaves.
+ *  - Manager: only direct reports (profiles.manager_id = ctx.userId).
+ * Window: ending within the last ~month or any time in the future, so recently
+ * entered and upcoming leaves both show. Newest first. Excludes the caller's own.
+ */
+export async function listTeamLeaves(): Promise<TeamLeaveRow[]> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    const admin = createServiceClient()
+    const since = new Date()
+    since.setDate(since.getDate() - 31)
+    const sinceStr = since.toISOString().slice(0, 10)
+
+    const { data, error } = await admin
+        .from('leave_requests')
+        .select(TEAM_LEAVE_SELECT)
+        .in('status', ['pending', 'approved'])
+        .gte('end_date', sinceStr)
+        .neq('user_id', ctx.userId)
+        .order('start_date', { ascending: false })
+        .limit(200)
+    if (error) throw new Error(`Błąd pobierania urlopów zespołu: ${error.message}`)
+
+    return ((data ?? []) as unknown as TeamLeaveQueryRow[])
+        .filter((r) => r.profiles && (ctx.isAdmin || r.profiles.manager_id === ctx.userId))
+        .map(mapTeamLeaveRow)
+}
+
+/**
+ * Phase 27j — leaves overlapping a given month for one employee, used by the
+ * timesheet preview so an approver sees (and can cancel) leave that blocks
+ * logging hours. Same admin/manager-of scope as listTeamLeaves.
+ */
+export async function listLeavesForUserMonth(
+    userId: string,
+    year: number,
+    month: number,
+): Promise<TeamLeaveRow[]> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    const admin = createServiceClient()
+    if (!ctx.isAdmin) {
+        const { data: target } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', userId)
+            .single<{ manager_id: string | null }>()
+        if (target?.manager_id !== ctx.userId) return []
+    }
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+    const monthEnd = format(endOfMonth(new Date(year, month - 1, 1)), 'yyyy-MM-dd')
+
+    const { data, error } = await admin
+        .from('leave_requests')
+        .select(TEAM_LEAVE_SELECT)
+        .eq('user_id', userId)
+        .in('status', ['pending', 'approved'])
+        .lte('start_date', monthEnd)
+        .gte('end_date', monthStart)
+        .order('start_date', { ascending: true })
+    if (error) throw new Error(`Błąd pobierania urlopów: ${error.message}`)
+    return ((data ?? []) as unknown as TeamLeaveQueryRow[]).map(mapTeamLeaveRow)
+}
+
+/**
+ * Phase 27j — manager/admin cancels a team member's leave (Dominik report:
+ * managers had no way to cancel a leave they entered). Cleans attendance + (best
+ * effort) Outlook event / OOF, notifies the employee via push.
+ */
+export async function cancelTeamLeave(id: string): Promise<void> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    const admin = createServiceClient()
+    const { data: row, error } = await admin
+        .from('leave_requests')
+        .select('id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set')
+        .eq('id', id)
+        .single<{
+            id: string
+            user_id: string
+            status: LeaveStatus
+            start_date: string
+            end_date: string
+            leave_type: LeaveType
+            outlook_event_id: string | null
+            graph_oof_set: boolean | null
+        }>()
+    if (error || !row) throw new Error('Wniosek nie istnieje.')
+    if (row.status !== 'pending' && row.status !== 'approved') {
+        throw new Error(`Nie można anulować wniosku w statusie "${row.status}".`)
+    }
+    await assertManagesTarget(admin, ctx, row.user_id)
+
+    const { error: updErr } = await admin
+        .from('leave_requests')
+        .update({ status: 'cancelled' })
+        .eq('id', id)
+    if (updErr) throw new Error(`Błąd anulowania: ${updErr.message}`)
+
+    await syncAttendanceFromLeave(id, row.user_id, 'remove').catch((e) =>
+        logCompat.error('[cancelTeamLeave] attendance cleanup failed:', e),
+    )
+
+    const contact = await fetchUserContact(row.user_id)
+    if (contact?.email && row.outlook_event_id) {
+        deleteLeaveEvent({ userEmail: contact.email, eventId: row.outlook_event_id }).catch((e) =>
+            logCompat.error('[cancelTeamLeave] calendar delete failed:', e),
+        )
+    }
+    if (contact?.email && row.graph_oof_set) {
+        disableOutOfOffice({ userEmail: contact.email })
+            .then(async (r) => {
+                if (r.success && !r.skipped) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ graph_oof_set: false } as never)
+                        .eq('id', id)
+                }
+            })
+            .catch((e) => logCompat.error('[cancelTeamLeave] OOF disable failed:', e))
+    }
+
+    await logAudit(ctx.userId, 'LEAVE_CANCELLED_BY_MANAGER', {
+        leave_id: id,
+        target_user_id: row.user_id,
+        was_approved: row.status === 'approved',
+        start_date: row.start_date,
+        end_date: row.end_date,
+    })
+
+    sendPushToUserId(row.user_id, {
+        title: 'Anulowano Twój urlop',
+        body: `${row.start_date} – ${row.end_date} — anulowane przez przełożonego.`,
+        url: '/internal?tab=leave',
+        tag: `leave-cancelled-${id}`,
+    }).catch((e) => logCompat.error('[cancelTeamLeave] push failed:', e))
+}
+
+export interface UpdateTeamLeaveInput {
+    id: string
+    leaveType?: LeaveType
+    startDate?: string
+    endDate?: string
+    halfDay?: 'morning' | 'afternoon' | null
+    note?: string | null
+}
+
+/**
+ * Phase 27j — manager/admin edits a team member's leave (Dominik report: a leave
+ * entered with the wrong type — e.g. vacation that should be unpaid — could not
+ * be fixed). Re-syncs attendance for approved leaves when type/dates/half-day change.
+ */
+export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    const admin = createServiceClient()
+    const { data: row, error } = await admin
+        .from('leave_requests')
+        .select('id, user_id, status, start_date, end_date, leave_type, half_day, note')
+        .eq('id', input.id)
+        .single<{
+            id: string
+            user_id: string
+            status: LeaveStatus
+            start_date: string
+            end_date: string
+            leave_type: LeaveType
+            half_day: 'morning' | 'afternoon' | null
+            note: string | null
+        }>()
+    if (error || !row) throw new Error('Wniosek nie istnieje.')
+    if (row.status !== 'pending' && row.status !== 'approved') {
+        throw new Error(`Nie można edytować wniosku w statusie "${row.status}".`)
+    }
+    await assertManagesTarget(admin, ctx, row.user_id)
+
+    const newType = input.leaveType ?? row.leave_type
+    const newStart = input.startDate ?? row.start_date
+    const newEnd = input.endDate ?? row.end_date
+    let newHalfDay = input.halfDay !== undefined ? input.halfDay : row.half_day
+    const newNote = input.note !== undefined ? input.note?.trim() || null : row.note
+
+    if (input.leaveType) validateLeaveType(input.leaveType)
+    validateDateString(newStart, 'start_date')
+    validateDateString(newEnd, 'end_date')
+    if (newEnd < newStart) throw new Error('Data końca musi być >= data początku.')
+    // Half-day only makes sense on a single-day leave.
+    if (newHalfDay && newStart !== newEnd) newHalfDay = null
+    if (newHalfDay && !['morning', 'afternoon'].includes(newHalfDay)) {
+        throw new Error('half_day musi być "morning" lub "afternoon".')
+    }
+
+    const spanChanged =
+        newStart !== row.start_date ||
+        newEnd !== row.end_date ||
+        newType !== row.leave_type ||
+        newHalfDay !== row.half_day
+
+    // Re-sync attendance: remove the old span first (reads the current row), then
+    // write the new values, then recreate for the new span/type (approved only —
+    // pending leaves have no attendance rows yet).
+    if (spanChanged) {
+        await syncAttendanceFromLeave(input.id, row.user_id, 'remove').catch((e) =>
+            logCompat.error('[updateTeamLeave] attendance remove failed:', e),
+        )
+    }
+
+    const { error: updErr } = await admin
+        .from('leave_requests')
+        .update({
+            leave_type: newType,
+            start_date: newStart,
+            end_date: newEnd,
+            half_day: newHalfDay,
+            note: newNote,
+        })
+        .eq('id', input.id)
+    if (updErr) throw new Error(`Błąd zapisu zmian: ${updErr.message}`)
+
+    if (spanChanged && row.status === 'approved') {
+        await syncAttendanceFromLeave(input.id, row.user_id, 'create').catch((e) =>
+            logCompat.error('[updateTeamLeave] attendance create failed:', e),
+        )
+    }
+
+    await logAudit(ctx.userId, 'LEAVE_UPDATED_BY_MANAGER', {
+        leave_id: input.id,
+        target_user_id: row.user_id,
+        leave_type: newType !== row.leave_type ? [row.leave_type, newType] : undefined,
+        start_date: newStart !== row.start_date ? [row.start_date, newStart] : undefined,
+        end_date: newEnd !== row.end_date ? [row.end_date, newEnd] : undefined,
+    })
+
+    sendPushToUserId(row.user_id, {
+        title: 'Zmieniono Twój urlop',
+        body: `${newStart} – ${newEnd} — zaktualizowane przez przełożonego.`,
+        url: '/internal?tab=leave',
+        tag: `leave-updated-${input.id}`,
+    }).catch((e) => logCompat.error('[updateTeamLeave] push failed:', e))
 }
 
 // ─── listMyLeaveRequests ─────────────────────────────────────────────────────

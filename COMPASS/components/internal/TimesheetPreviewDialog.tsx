@@ -23,7 +23,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Check, X, Loader2, FileDown, Unlock, Clock, AlertTriangle, Pencil, Trash2, Plus } from 'lucide-react'
+import { Check, X, Loader2, FileDown, Unlock, Clock, AlertTriangle, Pencil, Trash2, Plus, Ban, CalendarOff } from 'lucide-react'
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -38,6 +38,11 @@ import {
     type TimesheetEntryRow,
     type TimesheetWithEntriesAndUser,
 } from '@/lib/actions/internal-timesheet'
+import {
+    cancelTeamLeave,
+    listLeavesForUserMonth,
+    type TeamLeaveRow,
+} from '@/lib/actions/internal-leave'
 import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 
 interface Props {
@@ -63,6 +68,27 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     },
 }
 
+const LEAVE_TYPE_LABEL: Record<string, string> = {
+    vacation: 'Urlop wypoczynkowy',
+    sick_leave: 'L4',
+    parental_leave: 'Opieka rodzicielska',
+    unpaid_leave: 'Urlop bezpłatny',
+    training: 'Szkolenie',
+    other: 'Inne',
+}
+
+/** Every calendar day in [start, end] (yyyy-MM-dd) — used to block hour logging. */
+function eachDateInclusive(start: string, end: string): string[] {
+    const out: string[] = []
+    const cur = parseISO(start)
+    const last = parseISO(end)
+    while (cur <= last) {
+        out.push(format(cur, 'yyyy-MM-dd'))
+        cur.setDate(cur.getDate() + 1)
+    }
+    return out
+}
+
 export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onRequestReject }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
@@ -76,12 +102,40 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
     const [editingEntry, setEditingEntry] = useState<TimesheetEntryRow | null>(null)
     const [creating, setCreating] = useState(false)
 
+    // Phase 27j / Issue 8 — the employee's leaves overlapping this month. Shown so
+    // the approver sees (and can cancel) leave that blocks logging hours, and so
+    // the entry dialog can pre-warn instead of hitting the prod-masked server error.
+    const [leaves, setLeaves] = useState<TeamLeaveRow[]>([])
+    const [leavesLoadedId, setLeavesLoadedId] = useState<string | null>(null)
+    const [cancellingLeaveId, setCancellingLeaveId] = useState<string | null>(null)
+
     useEffect(() => {
         if (timesheet && timesheet.id !== loadedId) {
             setLocalEntries(timesheet.entries)
             setLoadedId(timesheet.id)
         }
     }, [timesheet, loadedId])
+
+    useEffect(() => {
+        if (!open || !timesheet || !timesheet.id || timesheet.id === leavesLoadedId) return
+        let cancelled = false
+        listLeavesForUserMonth(timesheet.user_id, timesheet.year, timesheet.month)
+            .then((data) => {
+                if (!cancelled) {
+                    setLeaves(data)
+                    setLeavesLoadedId(timesheet.id)
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setLeaves([])
+                    setLeavesLoadedId(timesheet.id)
+                }
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [open, timesheet, leavesLoadedId])
 
     if (!timesheet) return null
 
@@ -93,6 +147,30 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
     const ref = new Date(timesheet.year, timesheet.month - 1, 1)
     const minDate = format(startOfMonth(ref), 'yyyy-MM-dd')
     const maxDate = format(endOfMonth(ref), 'yyyy-MM-dd')
+    const blockedLeaveDates = leaves.flatMap((l) => eachDateInclusive(l.start_date, l.end_date))
+
+    async function handleCancelLeave(leave: TeamLeaveRow) {
+        const ok = await confirm({
+            title: 'Anulować urlop',
+            description: `${LEAVE_TYPE_LABEL[leave.leave_type] ?? leave.leave_type} (${format(parseISO(leave.start_date), 'd LLL', { locale: pl })} – ${format(parseISO(leave.end_date), 'd LLL', { locale: pl })})? Pracownik dostanie powiadomienie.`,
+            confirmLabel: 'Anuluj urlop',
+            variant: 'destructive',
+        })
+        if (!ok) return
+        setCancellingLeaveId(leave.id)
+        startTransition(async () => {
+            try {
+                await cancelTeamLeave(leave.id)
+                setLeaves((prev) => prev.filter((l) => l.id !== leave.id))
+                toastSuccess('Urlop anulowany')
+                router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            } finally {
+                setCancellingLeaveId(null)
+            }
+        })
+    }
 
     function handleApprove() {
         if (!timesheet) return
@@ -234,6 +312,47 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                         Możesz poprawić wpisy bezpośrednio — zmiany zapisują się od razu na koncie
                         pracownika i są audytowane.
                     </p>
+                )}
+
+                {leaves.length > 0 && (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs space-y-2">
+                        <p className="font-medium text-amber-200 flex items-center gap-1.5">
+                            <CalendarOff className="h-3.5 w-3.5" />
+                            Urlopy w tym miesiącu — w te dni nie można logować godzin
+                        </p>
+                        {leaves.map((l) => (
+                            <div
+                                key={l.id}
+                                className="flex items-center justify-between gap-2 flex-wrap"
+                            >
+                                <span className="text-amber-100/90">
+                                    {LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type} ·{' '}
+                                    {format(parseISO(l.start_date), 'd LLL', { locale: pl })} –{' '}
+                                    {format(parseISO(l.end_date), 'd LLL', { locale: pl })}
+                                    {l.status === 'pending' && ' (oczekuje)'}
+                                </span>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-amber-200 hover:text-amber-100"
+                                    onClick={() => handleCancelLeave(l)}
+                                    disabled={pending}
+                                >
+                                    {cancellingLeaveId === l.id ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Ban className="h-3 w-3 mr-1" />
+                                            Anuluj urlop
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        ))}
+                        <p className="text-[10px] text-amber-100/70">
+                            Edycja typu/dat urlopu w zakładce „Wpisz urlop pracownika".
+                        </p>
+                    </div>
                 )}
 
                 <ScrollArea className="flex-1 -mx-6 px-6">
@@ -430,6 +549,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                 maxDate={maxDate}
                 saving={pending}
                 existingEntries={entries}
+                blockedLeaveDates={blockedLeaveDates}
                 onOpenChange={(o) => {
                     if (!o) {
                         setEditingEntry(null)
