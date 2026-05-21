@@ -272,7 +272,9 @@ export function BonusesAdminClient({
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                     <div className="text-xs text-muted-foreground">Liczba premii</div>
-                    <div className="text-2xl font-bold">{bonuses.length}</div>
+                    {/* Match the active filter so the number agrees with the list below
+                        (was bonuses.length — confusing when filtering, Dominik Issue 7). */}
+                    <div className="text-2xl font-bold">{filtered.length}</div>
                 </div>
             </div>
 
@@ -317,12 +319,16 @@ export function BonusesAdminClient({
             ) : (
                 <div className="space-y-2">
                     {filtered.map((b) => {
-                        const canEditRow =
-                            b.status === 'assigned' &&
-                            (b.proposed_by === currentUserId || canCancelAny)
+                        // A manager manages every bonus shown for their team (the list is
+                        // RLS-scoped to their reports), even ones an admin assigned — but
+                        // never a bonus they received themselves. Admin + proposer always.
+                        const canManageRow =
+                            b.proposed_by === currentUserId ||
+                            canCancelAny ||
+                            (viewerMode === 'manager' && b.recipient_user_id !== currentUserId)
+                        const canEditRow = b.status === 'assigned' && canManageRow
                         const canCancelRow =
-                            (b.status === 'assigned' || b.status === 'pending') &&
-                            (b.proposed_by === currentUserId || canCancelAny)
+                            (b.status === 'assigned' || b.status === 'pending') && canManageRow
                         return (
                             <div
                                 key={b.id}
