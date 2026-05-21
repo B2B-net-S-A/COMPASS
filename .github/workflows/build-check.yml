@@ -56,3 +56,28 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
           NEXT_PUBLIC_APP_URL: https://placeholder.example.com
         run: npm run build
+
+  security-scan:
+    name: Trivy + hadolint (report-only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      # Report-only first pass — flip continue-on-error:false / exit-code:'1' after triaging findings.
+      - name: Hadolint
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: COMPASS/Dockerfile
+          failure-threshold: warning
+        continue-on-error: true
+      - name: Trivy filesystem scan (deps + Dockerfile misconfig)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          skip-dirs: .claude,node_modules
+          exit-code: '0'
