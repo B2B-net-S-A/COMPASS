@@ -37,6 +37,15 @@ const LEAVE_LABEL_PL: Record<string, string> = {
     parental_leave: 'Opieka',
     unpaid_leave: 'Bezpłatny',
     training: 'Szkolenie',
+    on_demand: 'Na żądanie',
+    occasional: 'Okolicznościowy',
+    childcare: 'Opieka dz.',
+    care_leave: 'Opiekuńczy',
+    force_majeure: 'Siła wyższa',
+    maternity: 'Macierzyński',
+    paternity: 'Ojcowski',
+    childrearing: 'Wychowawczy',
+    blood_donation: 'Krwiodawstwo',
     holiday_in_lieu: 'Odbiór',
     other: 'Inne',
 }
@@ -329,6 +338,19 @@ function statusCellMeta(
                 tooltip: 'Inny status' + noteSuffix,
                 readOnly: false,
             }
+        default: {
+            // Statutory leave types (Phase 27k) synced into attendance:
+            // on_demand, occasional, childcare, care_leave, force_majeure,
+            // maternity, paternity, childrearing, blood_donation.
+            const leaveLabel = LEAVE_LABEL_PL[status] ?? 'Urlop'
+            return {
+                bg: 'bg-teal-500/15 border-teal-500/40',
+                text: 'text-teal-200',
+                label: leaveLabel + noteSuffix,
+                tooltip: leaveLabel + noteSuffix,
+                readOnly: false,
+            }
+        }
     }
 }
 

@@ -1744,7 +1744,24 @@ async function syncAttendanceFromLeave(
             .eq('user_id', userId)
             .gte('date', leave.start_date)
             .lte('date', leave.end_date)
-            .in('status', ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'training', 'holiday_in_lieu', 'other'])
+            .in('status', [
+                'vacation',
+                'on_demand',
+                'occasional',
+                'childcare',
+                'care_leave',
+                'force_majeure',
+                'sick_leave',
+                'maternity',
+                'paternity',
+                'parental_leave',
+                'childrearing',
+                'unpaid_leave',
+                'blood_donation',
+                'training',
+                'holiday_in_lieu',
+                'other',
+            ])
         if (error) logCompat.error('[syncAttendanceFromLeave] delete error:', error)
     }
 }
