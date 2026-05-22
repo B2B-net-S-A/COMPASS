@@ -93,4 +93,20 @@ export default withSentryConfig(nextConfig, {
     sourcemaps: {
         disable: !process.env.SENTRY_AUTH_TOKEN,
     },
+    // Resilience: a transient Sentry API error (e.g. 504 on `releases new` or a
+    // sourcemap upload) must NOT fail `next build`. Coolify rebuilds from source on
+    // every push to main, so a Sentry outage would otherwise block ALL deploys.
+    // By default the webpack plugin rethrows release/upload errors (aborting the
+    // build); a non-throwing errorHandler downgrades them to a warning and lets the
+    // build finish. The healthy path is unchanged — upload still runs when Sentry is
+    // reachable and the token is present. In @sentry/nextjs v8 `errorHandler` is only
+    // reachable via the unstable_ passthrough, which is spread last into the plugin
+    // options (see @sentry/nextjs build/cjs/config/webpackPluginOptions.js).
+    unstable_sentryWebpackPluginOptions: {
+        errorHandler: (err) => {
+            console.warn(
+                `[sentry] release/sourcemap step failed — continuing build without it: ${err.message}`,
+            )
+        },
+    },
 });
