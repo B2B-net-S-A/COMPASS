@@ -216,10 +216,11 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     // invoicesUiOn is still used by managerGroup.
     const invoicesUiOn = isInvoicesEnabled()
 
-    // Phase 20 + 26: Manager group — team timesheet (always) + invoice approvals (only when invoices UI enabled).
+    // Phase 20 + 26: Manager group — team leave + timesheet (always) + invoice approvals (only when invoices UI enabled).
     const managerGroup: NavGroup = {
         heading: 'Mój zespół',
         links: [
+            { name: 'Wnioski urlopowe zespołu', href: '/internal/admin?tab=leave-requests', icon: Plane, feature: null },
             { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets&scope=team', icon: Users, feature: null },
             ...(invoicesUiOn
                 ? [{ name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null }]

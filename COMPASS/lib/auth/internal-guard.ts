@@ -118,6 +118,19 @@ export async function requireTimesheetApproverAction(): Promise<InternalAuthCont
 }
 
 /**
+ * Leave approver guard.
+ * Allowed: admin (everyone), manager (own team only). Finanse has no role in leaves.
+ * Team scope (target.manager_id = ctx.userId) enforced separately in action body.
+ */
+export async function requireLeaveApproverAction(): Promise<InternalAuthContext> {
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+    }
+    return ctx
+}
+
+/**
  * Phase 20 + 20e — Manager invoice approver guard — stage 1 (merit).
  * Allowed: admin (everyone), manager (own team), finanse (own team via manager_id link).
  * Team scope enforced separately in action body.
