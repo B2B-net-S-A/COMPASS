@@ -29,6 +29,7 @@ const LEAVE_LABEL_PL: Record<string, string> = {
     parental_leave: 'Opieka',
     unpaid_leave: 'Bezpłatny',
     training: 'Szkolenie',
+    holiday_in_lieu: 'Odbiór',
     other: 'Inne',
 }
 
@@ -38,6 +39,7 @@ const LEAVE_BG: Record<string, string> = {
     parental_leave: 'bg-pink-500/40',
     unpaid_leave: 'bg-gray-500/40',
     training: 'bg-cyan-500/40',
+    holiday_in_lieu: 'bg-indigo-500/40',
     other: 'bg-orange-500/40',
 }
 

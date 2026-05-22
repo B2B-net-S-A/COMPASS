@@ -20,7 +20,7 @@ export async function LeavePanel() {
             </div>
             <LeaveStatsWidget balance={balance} />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <LeaveRequestForm />
+                <LeaveRequestForm isUop={balance.employment_type === 'uop'} />
                 <MyLeaveList requests={requests} />
             </div>
         </section>

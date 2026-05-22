@@ -250,6 +250,7 @@ export const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
     unpaid_leave: 'Urlop bezpłatny',
     blood_donation: 'Krwiodawstwo',
     training: 'Urlop szkoleniowy',
+    holiday_in_lieu: 'Odbiór dnia za święto',
     other: 'Inne',
 }
 

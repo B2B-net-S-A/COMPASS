@@ -16,7 +16,7 @@ import { format } from 'date-fns'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
 import type { AppRole } from '@/lib/types/role'
 
-const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave']
+const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'holiday_in_lieu']
 
 export interface TimesheetRoleDefault {
     id: string

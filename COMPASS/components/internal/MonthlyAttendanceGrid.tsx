@@ -37,6 +37,7 @@ const LEAVE_LABEL_PL: Record<string, string> = {
     parental_leave: 'Opieka',
     unpaid_leave: 'Bezpłatny',
     training: 'Szkolenie',
+    holiday_in_lieu: 'Odbiór',
     other: 'Inne',
 }
 
@@ -310,6 +311,14 @@ function statusCellMeta(
                 text: 'text-cyan-200',
                 label: 'Szkolenie' + noteSuffix,
                 tooltip: 'Szkolenie / konferencja' + noteSuffix,
+                readOnly: false,
+            }
+        case 'holiday_in_lieu':
+            return {
+                bg: 'bg-indigo-500/15 border-indigo-500/40',
+                text: 'text-indigo-200',
+                label: 'Odbiór' + noteSuffix,
+                tooltip: 'Odbiór dnia za święto' + noteSuffix,
                 readOnly: false,
             }
         case 'other':

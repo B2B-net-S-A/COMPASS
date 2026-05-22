@@ -160,6 +160,7 @@ const LEAVE_TYPE_PL: Record<string, string> = {
     parental_leave: 'Opieka rodzicielska',
     unpaid_leave: 'Urlop bezpłatny',
     training: 'Szkolenie',
+    holiday_in_lieu: 'Odbiór dnia za święto',
     other: 'Inne',
 }
 

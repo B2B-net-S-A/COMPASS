@@ -14,6 +14,7 @@ export type AttendanceStatus =
     | 'unpaid_leave'
     | 'business_trip'
     | 'training'
+    | 'holiday_in_lieu'
     | 'other'
 
 export type AttendanceLocation = 'onsite' | 'remote'
