@@ -70,11 +70,11 @@ export function VacationCalendar({ data, filter }: Props) {
         return map
     }, [data.leaves])
 
-    // Index attendance (business_trip / training)
+    // Index attendance (business_trip / training / remote workday)
     const attIdx = useMemo(() => {
-        const map = new Map<string, { status: string }>()
+        const map = new Map<string, { status: string; location: string | null }>()
         for (const a of data.attendances) {
-            map.set(`${a.user_id}|${a.date}`, { status: a.status })
+            map.set(`${a.user_id}|${a.date}`, { status: a.status, location: a.location })
         }
         return map
     }, [data.attendances])
@@ -130,6 +130,9 @@ export function VacationCalendar({ data, filter }: Props) {
         }
         if (att?.status === 'training') {
             return { bg: 'bg-cyan-500/40', label: 'S', title: 'Szkolenie' }
+        }
+        if (att?.status === 'active' && att.location === 'remote') {
+            return { bg: 'bg-blue-500/40', label: 'Z', title: 'Praca zdalna' }
         }
         return { bg: '', label: '', title: '' }
     }
@@ -257,6 +260,7 @@ export function VacationCalendar({ data, filter }: Props) {
                     <Badge className="bg-pink-500/40 text-pink-100 border-transparent">O — Opieka</Badge>
                     <Badge className="bg-purple-500/40 text-purple-100 border-transparent">D — Delegacja</Badge>
                     <Badge className="bg-cyan-500/40 text-cyan-100 border-transparent">S — Szkolenie</Badge>
+                    <Badge className="bg-blue-500/40 text-blue-100 border-transparent">Z — Zdalnie</Badge>
                     <Badge variant="outline" className="bg-muted text-muted-foreground">
                         Święto / weekend
                     </Badge>
