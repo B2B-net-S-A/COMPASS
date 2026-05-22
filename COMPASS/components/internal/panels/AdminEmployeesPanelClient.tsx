@@ -249,23 +249,23 @@ function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchivePr
     function handleConfirm() {
         if (!employee) return
         startTransition(async () => {
-            try {
-                await archiveEmployee(employee.id, terminationDate, {
-                    sendEmployeeEmail,
-                    sendManagerEmail,
-                })
-                const sentParts: string[] = []
-                if (sendEmployeeEmail) sentParts.push('zaproszenie do pracownika')
-                if (sendManagerEmail) sentParts.push('checklist do managera')
-                toastSuccess(
-                    sentParts.length > 0
-                        ? `Uruchomiono offboarding dla ${employee.full_name ?? employee.email}. Wysłano: ${sentParts.join(' + ')}.`
-                        : `Uruchomiono offboarding dla ${employee.full_name ?? employee.email} (bez emaili — możesz je wysłać później z karty exit).`,
-                )
-                onArchived()
-            } catch (err: unknown) {
-                toast.error(err instanceof Error ? err.message : 'Nie udało się zarchiwizować konta.')
+            const res = await archiveEmployee(employee.id, terminationDate, {
+                sendEmployeeEmail,
+                sendManagerEmail,
+            })
+            if (!res.ok) {
+                toast.error(res.error)
+                return
             }
+            const sentParts: string[] = []
+            if (sendEmployeeEmail) sentParts.push('zaproszenie do pracownika')
+            if (sendManagerEmail) sentParts.push('checklist do managera')
+            toastSuccess(
+                sentParts.length > 0
+                    ? `Uruchomiono offboarding dla ${employee.full_name ?? employee.email}. Wysłano: ${sentParts.join(' + ')}.`
+                    : `Uruchomiono offboarding dla ${employee.full_name ?? employee.email} (bez emaili — możesz je wysłać później z karty exit).`,
+            )
+            onArchived()
         })
     }
 
@@ -393,14 +393,14 @@ function DeleteEmployeeDialog({ employee, onOpenChange, onDeleted }: DeleteProps
     function handleConfirm() {
         if (!employee || !matches) return
         startTransition(async () => {
-            try {
-                await deleteUserAccount(employee.id, confirmEmail)
-                toastSuccess(`Konto ${employee.email} zostało usunięte.`)
-                setConfirmEmail('')
-                onDeleted(employee.id)
-            } catch (err: unknown) {
-                toast.error(err instanceof Error ? err.message : 'Nie udało się usunąć konta.')
+            const res = await deleteUserAccount(employee.id, confirmEmail)
+            if (!res.ok) {
+                toast.error(res.error)
+                return
             }
+            toastSuccess(`Konto ${employee.email} zostało usunięte.`)
+            setConfirmEmail('')
+            onDeleted(employee.id)
         })
     }
 

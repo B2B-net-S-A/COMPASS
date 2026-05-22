@@ -41,6 +41,13 @@ export interface ListAllUsersResult {
     limit: number
 }
 
+// Structured results so the real reason survives Next.js prod error masking
+// (a thrown server-action error is replaced with a generic message in prod).
+export type DeleteUserResult = { ok: true } | { ok: false; error: string }
+export type ArchiveEmployeeResult =
+    | { ok: true; interviewId: string }
+    | { ok: false; error: string }
+
 // ─── Auth guard ──────────────────────────────────────────────────────────────
 
 async function requireSuperAdmin() {
@@ -731,29 +738,34 @@ export async function archiveEmployee(
     targetUserId: string,
     terminationDate?: string,
     options?: { sendEmployeeEmail?: boolean; sendManagerEmail?: boolean },
-): Promise<{ interviewId: string }> {
-    const { user: actor } = await requireSuperAdmin()
-    const target = await fetchTargetUser(targetUserId)
-    ensureCanModify(actor.id, target)
+): Promise<ArchiveEmployeeResult> {
+    try {
+        const { user: actor } = await requireSuperAdmin()
+        const target = await fetchTargetUser(targetUserId)
+        ensureCanModify(actor.id, target)
 
-    // Validate termination date (yyyy-mm-dd); default = today (UTC).
-    const today = new Date().toISOString().slice(0, 10)
-    const date = terminationDate?.trim() || today
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        throw new Error('Data zakończenia musi być w formacie YYYY-MM-DD.')
+        // Validate termination date (yyyy-mm-dd); default = today (UTC).
+        const today = new Date().toISOString().slice(0, 10)
+        const date = terminationDate?.trim() || today
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return { ok: false, error: 'Data zakończenia musi być w formacie YYYY-MM-DD.' }
+        }
+
+        // Lazy import: keeps `lifecycle.ts` (and its email/internal-guard imports)
+        // out of the user-admin module graph at load time, so existing test mocks
+        // for user-admin don't need to also stub the lifecycle module surface.
+        const { scheduleExitInterview } = await import('@/lib/actions/lifecycle')
+        // Phase 25c: emails are opt-in; defaults preserved as `false` when caller
+        // doesn't specify options (silent archive — TCM can send manually later).
+        const interviewId = await scheduleExitInterview(targetUserId, date, null, {
+            sendEmployeeEmail: options?.sendEmployeeEmail === true,
+            sendManagerEmail: options?.sendManagerEmail === true,
+        })
+        return { ok: true, interviewId }
+    } catch (e) {
+        logCompat.error('[archiveEmployee] failed:', e)
+        return { ok: false, error: e instanceof Error ? e.message : 'Nie udało się zarchiwizować konta.' }
     }
-
-    // Lazy import: keeps `lifecycle.ts` (and its email/internal-guard imports)
-    // out of the user-admin module graph at load time, so existing test mocks
-    // for user-admin don't need to also stub the lifecycle module surface.
-    const { scheduleExitInterview } = await import('@/lib/actions/lifecycle')
-    // Phase 25c: emails are opt-in; defaults preserved as `false` when caller
-    // doesn't specify options (silent archive — TCM can send manually later).
-    const interviewId = await scheduleExitInterview(targetUserId, date, null, {
-        sendEmployeeEmail: options?.sendEmployeeEmail === true,
-        sendManagerEmail: options?.sendManagerEmail === true,
-    })
-    return { interviewId }
 }
 
 /**
@@ -777,44 +789,57 @@ export async function archiveEmployee(
 export async function deleteUserAccount(
     targetUserId: string,
     confirmEmail: string,
-): Promise<void> {
-    const { user: actor } = await requireSuperAdmin()
-    const target = await fetchTargetUser(targetUserId)
-    ensureCanModify(actor.id, target)
+): Promise<DeleteUserResult> {
+    try {
+        const { user: actor } = await requireSuperAdmin()
+        const target = await fetchTargetUser(targetUserId)
+        ensureCanModify(actor.id, target)
 
-    const trimmed = confirmEmail.trim().toLowerCase()
-    const targetEmail = (target.email ?? '').trim().toLowerCase()
-    if (!targetEmail || trimmed !== targetEmail) {
-        throw new Error('Potwierdzenie nie pasuje do emaila użytkownika.')
-    }
+        const trimmed = confirmEmail.trim().toLowerCase()
+        const targetEmail = (target.email ?? '').trim().toLowerCase()
+        if (!targetEmail || trimmed !== targetEmail) {
+            return { ok: false, error: 'Potwierdzenie nie pasuje do emaila użytkownika.' }
+        }
 
-    // Snapshot for audit BEFORE delete (after delete row is gone).
-    const admin = createServiceClient()
-    const { data: profileSnapshot } = await admin
-        .from('profiles')
-        .select('full_name, role, employment_status, manager_id')
-        .eq('id', target.id)
-        .maybeSingle<{
-            full_name: string | null
-            role: string | null
-            employment_status: string | null
-            manager_id: string | null
-        }>()
+        // Snapshot for audit BEFORE delete (after delete row is gone).
+        const admin = createServiceClient()
+        const { data: profileSnapshot } = await admin
+            .from('profiles')
+            .select('full_name, role, employment_status, manager_id')
+            .eq('id', target.id)
+            .maybeSingle<{
+                full_name: string | null
+                role: string | null
+                employment_status: string | null
+                manager_id: string | null
+            }>()
 
-    // Audit FIRST — if delete succeeds but audit fails we still want the trail;
-    // if audit fails we'd rather abort than silently lose the record.
-    await logAudit(actor.id, 'DELETE_USER', {
-        target_user_id: target.id,
-        target_email: target.email ?? null,
-        target_full_name: profileSnapshot?.full_name ?? null,
-        target_role: profileSnapshot?.role ?? null,
-        target_employment_status: profileSnapshot?.employment_status ?? null,
-        target_manager_id: profileSnapshot?.manager_id ?? null,
-    })
+        // Audit FIRST — if delete succeeds but audit fails we still want the trail;
+        // if audit fails we'd rather abort than silently lose the record.
+        await logAudit(actor.id, 'DELETE_USER', {
+            target_user_id: target.id,
+            target_email: target.email ?? null,
+            target_full_name: profileSnapshot?.full_name ?? null,
+            target_role: profileSnapshot?.role ?? null,
+            target_employment_status: profileSnapshot?.employment_status ?? null,
+            target_manager_id: profileSnapshot?.manager_id ?? null,
+        })
 
-    const { error } = await admin.auth.admin.deleteUser(target.id)
-    if (error) {
-        logCompat.error('[deleteUserAccount] deleteUser error:', error)
-        throw new Error(`Błąd usuwania konta: ${error.message}`)
+        // Hard delete via SECURITY DEFINER RPC. A plain auth.users delete cascades
+        // into lifecycle_events, whose append-only trigger aborts the cascade; the
+        // RPC permits the cascade DELETE for its own transaction only (migration
+        // 20260529000001_fix_user_hard_delete). `as any`: RPC not yet in generated
+        // DB types until the migration is applied + types regenerated.
+        const { error } = await (admin as any).rpc('admin_hard_delete_user', {
+            p_user_id: target.id,
+        })
+        if (error) {
+            logCompat.error('[deleteUserAccount] admin_hard_delete_user error:', error)
+            return { ok: false, error: `Błąd usuwania konta: ${error.message}` }
+        }
+        return { ok: true }
+    } catch (e) {
+        logCompat.error('[deleteUserAccount] failed:', e)
+        return { ok: false, error: e instanceof Error ? e.message : 'Nie udało się usunąć konta.' }
     }
 }
