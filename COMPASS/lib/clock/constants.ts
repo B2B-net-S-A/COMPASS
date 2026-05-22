@@ -14,6 +14,7 @@ export const HOURS_BLOCKING_ATTENDANCE: readonly string[] = [
     'sick_leave',
     'parental_leave',
     'unpaid_leave',
+    'holiday_in_lieu',
 ]
 
 export type ClockClosedReason =

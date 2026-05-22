@@ -21,10 +21,12 @@ interface Props {
 }
 
 // L4 (sick_leave) celowo wykluczony — wpisuje pracownik z dokumentem.
-const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string }> = [
+const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; uopOnly?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
     { value: 'parental_leave', label: 'Opieka rodzicielska' },
     { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
+    // Tylko UoP — pokazywany, gdy wybrany pracownik ma umowę o pracę.
+    { value: 'holiday_in_lieu', label: 'Odbiór dnia za święto', uopOnly: true },
     { value: 'other', label: 'Inne' },
 ]
 
@@ -49,6 +51,16 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
     const substituteCandidates = useMemo(
         () => candidates.filter((c) => c.id !== targetUserId),
         [candidates, targetUserId],
+    )
+
+    // "Odbiór dnia za święto" dostępny tylko gdy wybrany pracownik jest na UoP.
+    const targetIsUop = useMemo(
+        () => candidates.find((c) => c.id === targetUserId)?.employment_type === 'uop',
+        [candidates, targetUserId],
+    )
+    const leaveTypeOptions = useMemo(
+        () => LEAVE_TYPES.filter((t) => !t.uopOnly || targetIsUop),
+        [targetIsUop],
     )
 
     function resetForm() {
@@ -124,7 +136,15 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                             id="target_user"
                             className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             value={targetUserId}
-                            onChange={(e) => setTargetUserId(e.target.value)}
+                            onChange={(e) => {
+                                const newId = e.target.value
+                                setTargetUserId(newId)
+                                // Jeśli nowy pracownik nie jest na UoP, a wybrano odbiór — wróć do urlopu.
+                                const t = candidates.find((c) => c.id === newId)
+                                if (t?.employment_type !== 'uop' && leaveType === 'holiday_in_lieu') {
+                                    setLeaveType('vacation')
+                                }
+                            }}
                             required
                         >
                             <option value="">— wybierz pracownika —</option>
@@ -144,7 +164,7 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                             value={leaveType}
                             onChange={(e) => setLeaveType(e.target.value as LeaveType)}
                         >
-                            {LEAVE_TYPES.map((t) => (
+                            {leaveTypeOptions.map((t) => (
                                 <option key={t.value} value={t.value}>
                                     {t.label}
                                 </option>
@@ -152,6 +172,7 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                         </select>
                         <p className="text-[11px] text-muted-foreground">
                             L4 (zwolnienie lekarskie) musi wpisać pracownik z dołączonym skanem dokumentu.
+                            {targetIsUop && ' Odbiór dnia za święto dostępny tylko dla pracowników na UoP.'}
                         </p>
                     </div>
 

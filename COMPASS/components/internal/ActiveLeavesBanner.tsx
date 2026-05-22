@@ -13,6 +13,7 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
     parental_leave: 'opieka',
     unpaid_leave: 'bezpłatny',
     training: 'szkolenie',
+    holiday_in_lieu: 'odbiór dnia',
     other: 'urlop',
 }
 

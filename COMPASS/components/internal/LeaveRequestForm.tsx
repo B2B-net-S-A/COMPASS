@@ -18,7 +18,7 @@ import {
     type LeaveType,
 } from '@/lib/actions/internal-leave'
 
-const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean }> = [
+const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean; uopOnly?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
     { value: 'on_demand', label: 'Urlop na żądanie' },
     { value: 'occasional', label: 'Urlop okolicznościowy', needsDocs: true },
@@ -33,10 +33,17 @@ const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: 
     { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
     { value: 'blood_donation', label: 'Krwiodawstwo' },
     { value: 'training', label: 'Urlop szkoleniowy' },
+    // Tylko UoP — odbiór dnia za święto przypadające w dzień wolny (Kodeks pracy art. 130 §2).
+    { value: 'holiday_in_lieu', label: 'Odbiór dnia za święto', uopOnly: true },
     { value: 'other', label: 'Inne' },
 ]
 
-export function LeaveRequestForm() {
+interface LeaveRequestFormProps {
+    /** Czy zalogowany pracownik jest na UoP — odblokowuje "Odbiór dnia za święto". */
+    isUop?: boolean
+}
+
+export function LeaveRequestForm({ isUop = false }: LeaveRequestFormProps) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [leaveType, setLeaveType] = useState<LeaveType>('vacation')
@@ -146,7 +153,7 @@ export function LeaveRequestForm() {
                             value={leaveType}
                             onChange={(e) => setLeaveType(e.target.value as LeaveType)}
                         >
-                            {LEAVE_TYPES.map((t) => (
+                            {LEAVE_TYPES.filter((t) => !t.uopOnly || isUop).map((t) => (
                                 <option key={t.value} value={t.value}>
                                     {t.label}
                                 </option>

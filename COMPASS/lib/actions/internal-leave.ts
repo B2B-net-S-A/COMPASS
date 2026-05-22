@@ -49,6 +49,7 @@ export type LeaveType =
     | 'unpaid_leave' // Urlop bezpłatny
     | 'blood_donation' // Krwiodawstwo
     | 'training' // Urlop szkoleniowy
+    | 'holiday_in_lieu' // Odbiór dnia za święto (tylko UoP)
     | 'other' // Inne
 
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
@@ -158,8 +159,21 @@ function validateDateString(value: string, label: string): void {
 const SELF_SERVICE_LEAVE_TYPES: LeaveType[] = [
     'vacation', 'on_demand', 'occasional', 'childcare', 'care_leave', 'force_majeure',
     'sick_leave', 'maternity', 'paternity', 'parental_leave', 'childrearing',
-    'unpaid_leave', 'blood_donation', 'training', 'other',
+    'unpaid_leave', 'blood_donation', 'training', 'holiday_in_lieu', 'other',
 ]
+
+/**
+ * "Odbiór dnia za święto" (holiday_in_lieu) przysługuje tylko pracownikom na
+ * umowie o pracę (UoP). Rzuca błąd, gdy wskazany pracownik nie ma employment_type='uop'.
+ */
+function assertHolidayInLieuEligible(employmentType: string | null, forSelf: boolean): void {
+    if (employmentType === 'uop') return
+    throw new Error(
+        forSelf
+            ? 'Odbiór dnia za święto przysługuje tylko pracownikom na umowie o pracę (UoP).'
+            : 'Odbiór dnia za święto można wpisać tylko pracownikowi na umowie o pracę (UoP).',
+    )
+}
 
 function validateLeaveType(value: string): asserts value is LeaveType {
     if (!(SELF_SERVICE_LEAVE_TYPES as string[]).includes(value)) {
@@ -275,6 +289,16 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
                 )
             }
         }
+    }
+
+    // "Odbiór dnia za święto" — tylko dla pracowników na UoP.
+    if (input.leaveType === 'holiday_in_lieu') {
+        const { data: meRow } = await supabase
+            .from('profiles')
+            .select('employment_type')
+            .eq('id', ctx.userId)
+            .maybeSingle<{ employment_type: string | null }>()
+        assertHolidayInLieuEligible(meRow?.employment_type ?? null, true)
     }
 
     // Phase 25a: validate substitute (must be a real HR-zone employee in tenant,
@@ -573,13 +597,14 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
     // do wykluczenia exited/offboarding.
     const { data: target, error: targetErr } = await admin
         .from('profiles')
-        .select('id, role, manager_id, employment_status, email, full_name')
+        .select('id, role, manager_id, employment_status, employment_type, email, full_name')
         .eq('id', input.targetUserId)
         .single<{
             id: string
             role: string
             manager_id: string | null
             employment_status: string | null
+            employment_type: string | null
             email: string | null
             full_name: string | null
         }>()
@@ -594,6 +619,9 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
     }
     if (target.employment_status === 'exited' || target.employment_status === 'offboarding') {
         throw new Error('Pracownik jest w trakcie offboardingu lub już opuścił firmę.')
+    }
+    if (input.leaveType === 'holiday_in_lieu') {
+        assertHolidayInLieuEligible(target.employment_type, false)
     }
 
     // Team-scope check dla managera (admin pomija). Pattern z approveTimesheet.
@@ -828,6 +856,7 @@ export interface LeaveOnBehalfCandidate {
     email: string
     role: string
     manager_id: string | null
+    employment_type: 'uop' | 'b2b' | null
 }
 
 /**
@@ -843,7 +872,7 @@ export async function listTeamMembersForLeaveOnBehalf(): Promise<LeaveOnBehalfCa
     const admin = createServiceClient()
     let query = admin
         .from('profiles')
-        .select('id, full_name, email, role, manager_id, employment_status')
+        .select('id, full_name, email, role, manager_id, employment_status, employment_type')
         .in('role', ['admin', 'internal', 'manager', 'finanse', 'talent_community'])
         .neq('id', ctx.userId)
         .order('full_name', { ascending: true })
@@ -856,7 +885,14 @@ export async function listTeamMembersForLeaveOnBehalf(): Promise<LeaveOnBehalfCa
     }
     return ((data ?? []) as unknown as Array<LeaveOnBehalfCandidate & { employment_status: string | null }>)
         .filter((p) => p.employment_status !== 'exited' && p.employment_status !== 'offboarding')
-        .map(({ id, full_name, email, role, manager_id }) => ({ id, full_name, email, role, manager_id }))
+        .map(({ id, full_name, email, role, manager_id, employment_type }) => ({
+            id,
+            full_name,
+            email,
+            role,
+            manager_id,
+            employment_type: employment_type === 'uop' || employment_type === 'b2b' ? employment_type : null,
+        }))
 }
 
 // ─── Phase 27j: manager/admin team-leave management (list / cancel / edit) ──
@@ -1708,7 +1744,7 @@ async function syncAttendanceFromLeave(
             .eq('user_id', userId)
             .gte('date', leave.start_date)
             .lte('date', leave.end_date)
-            .in('status', ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'training', 'other'])
+            .in('status', ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'training', 'holiday_in_lieu', 'other'])
         if (error) logCompat.error('[syncAttendanceFromLeave] delete error:', error)
     }
 }
