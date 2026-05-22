@@ -81,7 +81,7 @@ export interface TimesheetWithEntriesAndUser extends TimesheetWithEntries {
     user_email: string
 }
 
-const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave']
+const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'holiday_in_lieu']
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
