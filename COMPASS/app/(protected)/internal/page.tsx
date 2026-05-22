@@ -64,7 +64,7 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
                 </p>
             </header>
 
-            {/* Phase 25d — show active leaves with substitutes (scope: own team / manager) */}
+            {/* Phase 25d — show active leaves with substitutes (company-wide, all HR-zone roles) */}
             <ActiveLeavesBanner />
 
             <HubTabs basePath="/internal" tabs={TABS} active={tab} />
