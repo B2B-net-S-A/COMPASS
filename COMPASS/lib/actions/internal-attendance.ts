@@ -215,7 +215,8 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
             .select('user_id, date, status, location')
             .gte('date', start)
             .lte('date', end)
-            .in('status', ['business_trip', 'training']),
+            // business trips + trainings, plus explicitly-marked remote workdays
+            .or('status.in.(business_trip,training),and(status.eq.active,location.eq.remote)'),
         admin.from('public_holidays').select('date, name_pl').gte('date', start).lte('date', end),
     ])
 
