@@ -1717,54 +1717,22 @@ async function syncAttendanceFromLeave(
 
 /**
  * Returns currently-active approved leaves (start_date <= today <= end_date)
- * within scope:
- *  - admin / talent_community: all
- *  - manager: own team (profiles.manager_id = ctx.userId)
- *  - finanse / internal / consultant: own colleagues + own manager
+ * company-wide.
+ *
+ * Visible to every HR-zone role (admin, internal, finanse, manager,
+ * talent_community) — i.e. everyone EXCEPT Konsultant IT, who has no /internal
+ * access (enforced by requireInternalOrAdminAction). All these roles see the
+ * full company list, not just their own team.
  *
  * Used by ActiveLeavesBanner on /internal to inform users who's away and
  * who's substituting.
  */
 export async function listActiveLeaves(): Promise<ActiveLeaveRow[]> {
-    const ctx = await requireInternalOrAdminAction()
+    await requireInternalOrAdminAction()
     const admin = createServiceClient()
     const today = new Date().toISOString().slice(0, 10)
 
-    // Determine scope: which user_ids to include in the banner.
-    let scopeUserIds: string[] | null = null
-    if (!ctx.isAdmin && !ctx.isTalentCommunity) {
-        // Build relevant set: own manager + colleagues in same manager's team + self.
-        const { data: selfProfile } = await admin
-            .from('profiles')
-            .select('manager_id, role')
-            .eq('id', ctx.userId)
-            .single<{ manager_id: string | null; role: string }>()
-
-        const ids = new Set<string>([ctx.userId])
-        if (selfProfile?.manager_id) ids.add(selfProfile.manager_id)
-
-        // Manager → all direct reports
-        if (ctx.isManager) {
-            const { data: team } = await admin
-                .from('profiles')
-                .select('id')
-                .eq('manager_id', ctx.userId)
-            for (const t of (team ?? []) as Array<{ id: string }>) ids.add(t.id)
-        }
-
-        // Colleagues with same manager
-        if (selfProfile?.manager_id) {
-            const { data: peers } = await admin
-                .from('profiles')
-                .select('id')
-                .eq('manager_id', selfProfile.manager_id)
-            for (const p of (peers ?? []) as Array<{ id: string }>) ids.add(p.id)
-        }
-
-        scopeUserIds = Array.from(ids)
-    }
-
-    let query = admin
+    const { data, error } = await admin
         .from('leave_requests')
         .select(`
             id, user_id, start_date, end_date, leave_type,
@@ -1778,11 +1746,6 @@ export async function listActiveLeaves(): Promise<ActiveLeaveRow[]> {
         .order('start_date', { ascending: true })
         .limit(20)
 
-    if (scopeUserIds && scopeUserIds.length > 0) {
-        query = query.in('user_id', scopeUserIds)
-    }
-
-    const { data, error } = await query
     if (error) throw new Error(`Błąd pobierania aktywnych urlopów: ${error.message}`)
 
     return (data ?? []).map((row: any) => ({
@@ -1808,55 +1771,22 @@ export async function listActiveLeaves(): Promise<ActiveLeaveRow[]> {
  * Lightweight version of listActiveLeaves — returns only count + flag whether
  * caller themselves is currently on leave. Used by sidebar badge on /internal
  * link (avoids fetching full join + substitute data when only number needed).
+ *
+ * Same company-wide scope as listActiveLeaves (all HR-zone roles, not just own
+ * team) so the badge count matches the banner.
  */
 export async function getActiveLeavesCount(): Promise<{ count: number; selfOnLeave: boolean }> {
     const ctx = await requireInternalOrAdminAction()
     const admin = createServiceClient()
     const today = new Date().toISOString().slice(0, 10)
 
-    // Build scope identically to listActiveLeaves for consistency.
-    let scopeUserIds: string[] | null = null
-    if (!ctx.isAdmin && !ctx.isTalentCommunity) {
-        const { data: selfProfile } = await admin
-            .from('profiles')
-            .select('manager_id')
-            .eq('id', ctx.userId)
-            .single<{ manager_id: string | null }>()
-
-        const ids = new Set<string>([ctx.userId])
-        if (selfProfile?.manager_id) ids.add(selfProfile.manager_id)
-
-        if (ctx.isManager) {
-            const { data: team } = await admin
-                .from('profiles')
-                .select('id')
-                .eq('manager_id', ctx.userId)
-            for (const t of (team ?? []) as Array<{ id: string }>) ids.add(t.id)
-        }
-
-        if (selfProfile?.manager_id) {
-            const { data: peers } = await admin
-                .from('profiles')
-                .select('id')
-                .eq('manager_id', selfProfile.manager_id)
-            for (const p of (peers ?? []) as Array<{ id: string }>) ids.add(p.id)
-        }
-
-        scopeUserIds = Array.from(ids)
-    }
-
-    let query = admin
+    const { data, count, error } = await admin
         .from('leave_requests')
         .select('user_id', { count: 'exact' })
         .eq('status', 'approved')
         .lte('start_date', today)
         .gte('end_date', today)
 
-    if (scopeUserIds && scopeUserIds.length > 0) {
-        query = query.in('user_id', scopeUserIds)
-    }
-
-    const { data, count, error } = await query
     if (error) return { count: 0, selfOnLeave: false }
 
     const selfOnLeave = ((data ?? []) as Array<{ user_id: string }>).some(
