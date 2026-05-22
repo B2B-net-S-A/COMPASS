@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import {
     requireAdminAction,
     requireInternalOrAdminAction,
+    requireLeaveApproverAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import {
@@ -379,6 +380,40 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
                 url: '/internal/admin?tab=leave-requests',
                 tag: `leave-new-${inserted.id}`,
             }).catch((e) => logCompat.error('[createLeaveRequest] admin push failed:', e))
+        }
+
+        // Parytet z timesheetami: powiadom managera wnioskodawcy (jeśli istnieje
+        // i nie jest adminem — admini dostali notyfikację wyżej). Manager widzi
+        // teraz kolejkę swojego zespołu i może akceptować/odrzucać.
+        const { data: requester } = await adminClient
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', ctx.userId)
+            .maybeSingle<{ manager_id: string | null }>()
+        if (requester?.manager_id) {
+            const { data: mgr } = await adminClient
+                .from('profiles')
+                .select('id, email, role')
+                .eq('id', requester.manager_id)
+                .maybeSingle<{ id: string; email: string | null; role: string }>()
+            if (mgr && mgr.role !== 'admin') {
+                if (mgr.email) {
+                    sendLeaveRequestSubmitted(
+                        [mgr.email],
+                        requesterName,
+                        input.leaveType,
+                        input.startDate,
+                        input.endDate,
+                        input.note ?? null,
+                    ).catch((e) => logCompat.error('[createLeaveRequest] manager notify failed:', e))
+                }
+                sendPushToUserId(mgr.id, {
+                    title: 'Nowy wniosek urlopowy (zespół)',
+                    body: `${requesterName}: ${input.startDate} – ${input.endDate}`,
+                    url: '/internal/admin?tab=leave-requests',
+                    tag: `leave-new-${inserted.id}`,
+                }).catch((e) => logCompat.error('[createLeaveRequest] manager push failed:', e))
+            }
         }
     }
 
@@ -1358,10 +1393,22 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
 // ─── Admin: listPendingLeaveRequests ─────────────────────────────────────────
 
 export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
-    await requireAdminAction()
+    const ctx = await requireLeaveApproverAction()
     const admin = createServiceClient()
 
-    const { data, error } = await admin
+    // Manager widzi kolejkę tylko swojego zespołu (profiles.manager_id = ctx.userId).
+    // Admin widzi wszystkie wnioski.
+    let teamIds: string[] | null = null
+    if (!ctx.isAdmin) {
+        const { data: team } = await admin
+            .from('profiles')
+            .select('id')
+            .eq('manager_id', ctx.userId)
+        teamIds = ((team ?? []) as Array<{ id: string }>).map((t) => t.id)
+        if (teamIds.length === 0) return []
+    }
+
+    let query = admin
         .from('leave_requests')
         .select(`
             id, user_id, start_date, end_date, leave_type, half_day, note,
@@ -1373,6 +1420,10 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
         `)
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
+
+    if (teamIds) query = query.in('user_id', teamIds)
+
+    const { data, error } = await query
 
     if (error) throw new Error(`Błąd pobierania kolejki wniosków: ${error.message}`)
 
@@ -1407,7 +1458,7 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
 // ─── Admin: approve / reject ─────────────────────────────────────────────────
 
 export async function approveLeaveRequest(id: string, decisionNote?: string): Promise<void> {
-    const ctx = await requireAdminAction()
+    const ctx = await requireLeaveApproverAction()
     const admin = createServiceClient()
 
     const { data: row, error: fetchErr } = await admin
@@ -1432,6 +1483,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
     if (row.status !== 'pending') {
         throw new Error(`Nie można zaakceptować wniosku w statusie ${row.status}.`)
     }
+    await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
 
     const { error } = await admin
         .from('leave_requests')
@@ -1589,7 +1641,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
 }
 
 export async function rejectLeaveRequest(id: string, decisionNote: string): Promise<void> {
-    const ctx = await requireAdminAction()
+    const ctx = await requireLeaveApproverAction()
     if (!decisionNote?.trim()) {
         throw new Error('Powód odrzucenia jest wymagany.')
     }
@@ -1604,6 +1656,7 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
     if (row.status !== 'pending') {
         throw new Error(`Nie można odrzucić wniosku w statusie ${row.status}.`)
     }
+    await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
 
     const { error } = await admin
         .from('leave_requests')
@@ -1663,6 +1716,27 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
+
+/**
+ * Manager może decydować (approve/reject) tylko o wnioskach swojego zespołu
+ * (profiles.manager_id = ctx.userId). Admin — bez ograniczeń.
+ * Rzuca, gdy manager próbuje zadecydować o wniosku spoza zespołu.
+ */
+async function assertManagerOwnsLeaveTarget(
+    ctx: { isAdmin: boolean; userId: string },
+    admin: ReturnType<typeof createServiceClient>,
+    targetUserId: string,
+): Promise<void> {
+    if (ctx.isAdmin) return
+    const { data: target } = await admin
+        .from('profiles')
+        .select('manager_id')
+        .eq('id', targetUserId)
+        .single<{ manager_id: string | null }>()
+    if (target?.manager_id !== ctx.userId) {
+        throw new Error('Możesz decydować tylko o wnioskach swojego zespołu.')
+    }
+}
 
 async function fetchAdminEmails(): Promise<string[]> {
     const admin = createServiceClient()

@@ -52,13 +52,14 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
     // Phase 20 + 22 + 25b + 26: tabs visible per role.
     //   admin            → all tabs
     //   finanse          → invoices + bonuses (raport read-only; gdy invoices off → only bonuses)
-    //   manager          → timesheets + invoices + bonuses + leave-on-behalf (zespół; invoices gated)
+    //   manager          → leave-requests + timesheets + invoices + bonuses + leave-on-behalf (zespół; invoices gated)
     const visibleTabs = ALL_TABS.filter((t) => {
         if (ctx.isAdmin) return true
         if (ctx.role === 'finanse')
             return t.id === 'invoices' || t.id === 'bonuses' || t.id === 'rates' || t.id === 'clients'
         if (ctx.isManager) {
-            return t.id === 'timesheets'
+            return t.id === 'leave-requests'
+                || t.id === 'timesheets'
                 || t.id === 'invoices'
                 || t.id === 'bonuses'
                 || t.id === 'placements'
@@ -92,8 +93,8 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             : 'Administracja HR'
     const subheading = ctx.isManager && !ctx.isAdmin
         ? (invoicesUiOn
-            ? 'Akceptacja timesheetów i faktur (etap merytoryczny) Twoich podwładnych.'
-            : 'Akceptacja timesheetów Twoich podwładnych i przypisywanie premii.')
+            ? 'Akceptacja wniosków urlopowych, timesheetów i faktur (etap merytoryczny) Twoich podwładnych.'
+            : 'Akceptacja wniosków urlopowych i timesheetów Twoich podwładnych oraz przypisywanie premii.')
         : ctx.role === 'finanse' && !ctx.isAdmin
             ? (invoicesUiOn
                 ? 'Etap 2 akceptacji — po akceptacji merytorycznej managera lub bezpośrednio jeśli pracownik nie ma managera.'
@@ -109,7 +110,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
 
             <HubTabs basePath="/internal/admin" tabs={visibleTabs} active={tab} />
 
-            {tab === 'leave-requests' && <AdminLeaveRequestsPanel />}
+            {tab === 'leave-requests' && <AdminLeaveRequestsPanel isAdmin={ctx.isAdmin} />}
             {tab === 'leave-on-behalf' && <LeaveOnBehalfPanel />}
             {tab === 'timesheets' && <AdminTimesheetsPanel year={year} month={month} />}
             {tab === 'invoices' && invoicesUiOn && <AdminInvoicesPanel scope={scope} />}
