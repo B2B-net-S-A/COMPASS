@@ -4,7 +4,6 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { createClient } from '@/lib/supabase/client'
 
 export type ThemeId = 'inframinds' | 'qualrix' | 'b2bnetwork'
-export type ColorMode = 'dark' | 'light'
 
 export interface ThemeConfig {
     id: ThemeId
@@ -43,7 +42,6 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
 }
 
 const STORAGE_KEY = 'compass-theme'
-const MODE_STORAGE_KEY = 'compass-color-mode'
 const THEME_IDS: ThemeId[] = ['inframinds', 'qualrix', 'b2bnetwork']
 
 interface ThemeContextValue {
@@ -51,9 +49,6 @@ interface ThemeContextValue {
     themeConfig: ThemeConfig
     setTheme: (id: ThemeId) => void
     brandName: string
-    colorMode: ColorMode
-    setColorMode: (mode: ColorMode) => void
-    toggleColorMode: () => void
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -61,9 +56,6 @@ const ThemeContext = createContext<ThemeContextValue>({
     themeConfig: THEMES.inframinds,
     setTheme: () => {},
     brandName: 'B2Bnetwork',
-    colorMode: 'dark',
-    setColorMode: () => {},
-    toggleColorMode: () => {},
 })
 
 function buildFaviconSvg(color: string): string {
@@ -94,32 +86,15 @@ function applyThemeClass(themeId: ThemeId) {
     applyFavicon(THEMES[themeId].preview.primary)
 }
 
-function applyColorMode(mode: ColorMode) {
-    const root = document.documentElement
-    if (mode === 'light') {
-        root.classList.add('light')
-    } else {
-        root.classList.remove('light')
-    }
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setThemeState] = useState<ThemeId>('inframinds')
-    const [colorMode, setColorModeState] = useState<ColorMode>('dark')
 
     useEffect(() => {
-        let localTheme: ThemeId | null = null
         try {
             const stored = localStorage.getItem(STORAGE_KEY) as ThemeId | null
             if (stored && THEMES[stored]) {
-                localTheme = stored
                 setThemeState(stored)
                 applyThemeClass(stored)
-            }
-            const storedMode = localStorage.getItem(MODE_STORAGE_KEY) as ColorMode | null
-            if (storedMode === 'light' || storedMode === 'dark') {
-                setColorModeState(storedMode)
-                applyColorMode(storedMode)
             }
         } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
 
@@ -135,27 +110,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         try { localStorage.setItem(STORAGE_KEY, id) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
     }, [])
 
-    const setColorMode = useCallback((mode: ColorMode) => {
-        setColorModeState(mode)
-        applyColorMode(mode)
-        try { localStorage.setItem(MODE_STORAGE_KEY, mode) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
-    }, [])
-
-    const toggleColorMode = useCallback(() => {
-        setColorModeState(prev => {
-            const next = prev === 'dark' ? 'light' : 'dark'
-            applyColorMode(next)
-            try { localStorage.setItem(MODE_STORAGE_KEY, next) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
-            return next
-        })
-    }, [])
-
     const themeConfig = THEMES[theme]
 
     return (
         <ThemeContext.Provider value={{
             theme, themeConfig, setTheme, brandName: themeConfig.brandName,
-            colorMode, setColorMode, toggleColorMode,
         }}>
             {children}
         </ThemeContext.Provider>
