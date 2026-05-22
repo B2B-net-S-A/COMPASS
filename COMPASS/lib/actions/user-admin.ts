@@ -756,65 +756,81 @@ export async function archiveEmployee(
     return { interviewId }
 }
 
+// Structured result so the real reason survives Next.js prod error masking
+// (a thrown server-action error is replaced with a generic message in prod,
+// which is exactly why hard-delete failures were previously undiagnosable).
+export type DeleteUserResult = { ok: true } | { ok: false; error: string }
+
 /**
  * Hard delete user account.
  *
- * WARNING: destructive. Cascades through Supabase Auth `auth.users` FK to
- * `profiles.id`, which then cascades to most child tables (timesheets,
- * invoices, documents, lifecycle artefacts, etc. — depending on per-table
- * `ON DELETE CASCADE` vs `SET NULL` vs `RESTRICT`). Some tables (e.g.
- * `incubator_submissions.submitter_id`) have `ON DELETE RESTRICT` and will
- * block deletion — in that case the operation fails and nothing is removed.
+ * WARNING: destructive. Deletes the Supabase Auth `auth.users` row, which
+ * cascades to `profiles` and its child tables. Runs via the SECURITY DEFINER
+ * RPC `admin_hard_delete_user` (migration 20260529000001), which:
+ *   - bypasses the `lifecycle_events` append-only trigger for this transaction
+ *     so the cascade can remove the user's HR-lifecycle audit rows, and
+ *   - PRE-FLIGHT REFUSES (clear, itemised message) when the account owns
+ *     financial/business/content/admin-action data (rates, bonuses, placements,
+ *     invoices, authored content, approvals, …). Those must be retained — the
+ *     caller should `archiveEmployee` instead.
  *
- * Requires Super Admin. Refuses self-delete and deletion of other Super
- * Admins. Caller must pass `confirmEmail` matching target's email (UI types
- * it into a confirm box).
- *
- * For RODO-compliant audit retention, prefer `archiveEmployee` (Phase 22
- * offboarding flow). Use this only when the account was created in error or
- * the user has no production data tied to them.
+ * So this only succeeds for "clean" accounts: created in error, test accounts,
+ * or users whose only footprint is HR-lifecycle data. Requires Super Admin;
+ * refuses self-delete and deletion of other Super Admins. Caller must pass
+ * `confirmEmail` matching the target's email (UI types it into a confirm box).
  */
 export async function deleteUserAccount(
     targetUserId: string,
     confirmEmail: string,
-): Promise<void> {
-    const { user: actor } = await requireSuperAdmin()
-    const target = await fetchTargetUser(targetUserId)
-    ensureCanModify(actor.id, target)
+): Promise<DeleteUserResult> {
+    try {
+        const { user: actor } = await requireSuperAdmin()
+        const target = await fetchTargetUser(targetUserId)
+        ensureCanModify(actor.id, target)
 
-    const trimmed = confirmEmail.trim().toLowerCase()
-    const targetEmail = (target.email ?? '').trim().toLowerCase()
-    if (!targetEmail || trimmed !== targetEmail) {
-        throw new Error('Potwierdzenie nie pasuje do emaila użytkownika.')
-    }
+        const trimmed = confirmEmail.trim().toLowerCase()
+        const targetEmail = (target.email ?? '').trim().toLowerCase()
+        if (!targetEmail || trimmed !== targetEmail) {
+            return { ok: false, error: 'Potwierdzenie nie pasuje do emaila użytkownika.' }
+        }
 
-    // Snapshot for audit BEFORE delete (after delete row is gone).
-    const admin = createServiceClient()
-    const { data: profileSnapshot } = await admin
-        .from('profiles')
-        .select('full_name, role, employment_status, manager_id')
-        .eq('id', target.id)
-        .maybeSingle<{
-            full_name: string | null
-            role: string | null
-            employment_status: string | null
-            manager_id: string | null
-        }>()
+        // Snapshot for audit BEFORE delete (after delete the row is gone).
+        const admin = createServiceClient()
+        const { data: profileSnapshot } = await admin
+            .from('profiles')
+            .select('full_name, role, employment_status, manager_id')
+            .eq('id', target.id)
+            .maybeSingle<{
+                full_name: string | null
+                role: string | null
+                employment_status: string | null
+                manager_id: string | null
+            }>()
 
-    // Audit FIRST — if delete succeeds but audit fails we still want the trail;
-    // if audit fails we'd rather abort than silently lose the record.
-    await logAudit(actor.id, 'DELETE_USER', {
-        target_user_id: target.id,
-        target_email: target.email ?? null,
-        target_full_name: profileSnapshot?.full_name ?? null,
-        target_role: profileSnapshot?.role ?? null,
-        target_employment_status: profileSnapshot?.employment_status ?? null,
-        target_manager_id: profileSnapshot?.manager_id ?? null,
-    })
+        // `as any`: RPC not in generated DB types (matches the convention in
+        // internal-rates.ts / internal-payroll.ts for app-defined RPCs).
+        const { error } = await (admin as any).rpc('admin_hard_delete_user', {
+            p_user_id: target.id,
+        })
+        if (error) {
+            logCompat.error('[deleteUserAccount] admin_hard_delete_user error:', error)
+            return { ok: false, error: error.message || 'Nie udało się usunąć konta.' }
+        }
 
-    const { error } = await admin.auth.admin.deleteUser(target.id)
-    if (error) {
-        logCompat.error('[deleteUserAccount] deleteUser error:', error)
-        throw new Error(`Błąd usuwania konta: ${error.message}`)
+        // Audit only after a successful delete — the RPC pre-flight commonly
+        // refuses (account has data), and we don't want false DELETE_USER trails.
+        await logAudit(actor.id, 'DELETE_USER', {
+            target_user_id: target.id,
+            target_email: target.email ?? null,
+            target_full_name: profileSnapshot?.full_name ?? null,
+            target_role: profileSnapshot?.role ?? null,
+            target_employment_status: profileSnapshot?.employment_status ?? null,
+            target_manager_id: profileSnapshot?.manager_id ?? null,
+        })
+
+        return { ok: true }
+    } catch (e) {
+        logCompat.error('[deleteUserAccount] failed:', e)
+        return { ok: false, error: e instanceof Error ? e.message : 'Nie udało się usunąć konta.' }
     }
 }

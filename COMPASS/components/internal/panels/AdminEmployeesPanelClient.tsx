@@ -394,7 +394,13 @@ function DeleteEmployeeDialog({ employee, onOpenChange, onDeleted }: DeleteProps
         if (!employee || !matches) return
         startTransition(async () => {
             try {
-                await deleteUserAccount(employee.id, confirmEmail)
+                const result = await deleteUserAccount(employee.id, confirmEmail)
+                if (!result.ok) {
+                    // Real reason (e.g. pre-flight "ma 6 stawek — użyj Archiwizuj")
+                    // survives prod error masking because it's returned, not thrown.
+                    toast.error(result.error)
+                    return
+                }
                 toastSuccess(`Konto ${employee.email} zostało usunięte.`)
                 setConfirmEmail('')
                 onDeleted(employee.id)
