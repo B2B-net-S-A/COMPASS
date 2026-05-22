@@ -122,6 +122,7 @@ export function PlacementsAdminClient({ placements }: Props) {
                                 <th className="p-2 text-left">Rekruter</th>
                                 <th className="p-2 text-left">Start</th>
                                 <th className="p-2 text-left">168h ~</th>
+                                <th className="p-2 text-right">Marża/h</th>
                                 <th className="p-2 text-right">Premia DL</th>
                                 <th className="p-2 text-right">Premia rekr.</th>
                                 <th className="p-2 text-left">Status</th>
@@ -139,6 +140,7 @@ export function PlacementsAdminClient({ placements }: Props) {
                                         <td className="p-2">{p.recruiter_raw}</td>
                                         <td className="p-2">{p.start_date}</td>
                                         <td className="p-2 text-muted-foreground">{p.bonus_eligible_date}</td>
+                                        <td className="p-2 text-right">{Number(p.margin_per_hour)} zł/h</td>
                                         <td className="p-2 text-right">{pln(p.dl_bonus_amount)}</td>
                                         <td className="p-2 text-right">
                                             {pln(p.recruiter_bonus_amount)}{' '}
