@@ -181,11 +181,11 @@ export function VacationCalendar({ data, filter }: Props) {
                         Brak pracowników wewnętrznych spełniających filtr.
                     </p>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                         <table className="w-full border-collapse text-xs">
                             <thead>
                                 <tr>
-                                    <th className="sticky left-0 bg-card text-left p-2 min-w-[180px] border-b border-border z-10">
+                                    <th className="sticky left-0 top-0 bg-card text-left p-2 min-w-[180px] border-b border-border z-30">
                                         Pracownik
                                     </th>
                                     {days.map((d) => {
@@ -194,7 +194,7 @@ export function VacationCalendar({ data, filter }: Props) {
                                         return (
                                             <th
                                                 key={d.toISOString()}
-                                                className={`p-1 text-center font-medium border-b border-border min-w-[24px] ${
+                                                className={`sticky top-0 z-20 bg-card p-1 text-center font-medium border-b border-border min-w-[24px] ${
                                                     isWE || isHoliday ? 'text-muted-foreground/60' : ''
                                                 }`}
                                                 title={
