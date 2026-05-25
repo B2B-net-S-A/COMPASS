@@ -697,3 +697,104 @@ export async function copyRateProgression(input: CopyProgressionInput): Promise<
     })
     return { applied, skipped, inserted_count: inserted }
 }
+
+// ─── Phase 30b — Vacation pool (per-user) for Rates panel ──────────────────
+// Pozwala finanse+admin edytować pulę płatnych urlopów per pracownik bezpośrednio
+// z `/internal/admin?tab=rates`. Narrow scope — tylko 3 pool fields, NIE rozszerza
+// uprawnień do zmiany roli/employment_type (te zostają w `setEmployeeProfile`
+// gated na SuperAdmin).
+
+export interface UserVacationPoolFields {
+    employment_type: 'uop' | 'b2b' | 'zlecenie' | null
+    leave_entitlement_days: number | null
+    leave_carried_over_days: number
+    leave_used_initial_days: number
+}
+
+export interface UpdateUserVacationPoolInput {
+    leave_entitlement_days?: number | null
+    leave_carried_over_days?: number
+    leave_used_initial_days?: number
+}
+
+export async function getUserVacationPool(targetUserId: string): Promise<UserVacationPoolFields> {
+    await requireFinanseOrAdminAction()
+    const admin = createServiceClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (admin.from('profiles') as any)
+        .select('employment_type, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days')
+        .eq('id', targetUserId)
+        .single()
+    if (error) throw new Error(`Nie udało się odczytać puli urlopowej: ${error.message}`)
+    const row = data as {
+        employment_type: 'uop' | 'b2b' | 'zlecenie' | null
+        leave_entitlement_days: number | null
+        leave_carried_over_days: number | string | null
+        leave_used_initial_days: number | string | null
+    }
+    return {
+        employment_type: row?.employment_type ?? null,
+        leave_entitlement_days: row?.leave_entitlement_days ?? null,
+        leave_carried_over_days: Number(row?.leave_carried_over_days ?? 0),
+        leave_used_initial_days: Number(row?.leave_used_initial_days ?? 0),
+    }
+}
+
+export async function setUserVacationPool(
+    targetUserId: string,
+    input: UpdateUserVacationPoolInput,
+): Promise<void> {
+    const ctx = await requireFinanseOrAdminAction()
+
+    const updates: Record<string, unknown> = {}
+    if (input.leave_entitlement_days !== undefined) {
+        const v = input.leave_entitlement_days
+        if (v !== null && (!Number.isInteger(v) || v < 0 || v > 366)) {
+            throw new Error('Wymiar urlopu musi być liczbą całkowitą 0–366 lub pusty (brak puli).')
+        }
+        updates.leave_entitlement_days = v
+    }
+    if (input.leave_carried_over_days !== undefined) {
+        const v = input.leave_carried_over_days
+        if (!Number.isFinite(v) || v < 0 || v > 366) {
+            throw new Error('Urlop zaległy musi być liczbą 0–366.')
+        }
+        updates.leave_carried_over_days = v
+    }
+    if (input.leave_used_initial_days !== undefined) {
+        const v = input.leave_used_initial_days
+        if (!Number.isFinite(v) || v < 0 || v > 366) {
+            throw new Error('"Już zużyte" musi być liczbą 0–366.')
+        }
+        updates.leave_used_initial_days = v
+    }
+    if (Object.keys(updates).length === 0) return
+
+    const admin = createServiceClient()
+    const { data: target } = await admin
+        .from('profiles')
+        .select('email, full_name, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days')
+        .eq('id', targetUserId)
+        .single<{
+            email: string | null
+            full_name: string | null
+            leave_entitlement_days: number | null
+            leave_carried_over_days: number | string | null
+            leave_used_initial_days: number | string | null
+        }>()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin.from('profiles') as any).update(updates).eq('id', targetUserId)
+    if (error) throw new Error(`Błąd zapisu puli urlopowej: ${error.message}`)
+
+    await logAudit(ctx.userId, 'USER_VACATION_POOL_UPDATED', {
+        target_user_id: targetUserId,
+        target_email: target?.email ?? null,
+        previous: {
+            leave_entitlement_days: target?.leave_entitlement_days ?? null,
+            leave_carried_over_days: Number(target?.leave_carried_over_days ?? 0),
+            leave_used_initial_days: Number(target?.leave_used_initial_days ?? 0),
+        },
+        updated: updates,
+    })
+}

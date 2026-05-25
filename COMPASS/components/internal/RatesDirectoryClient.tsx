@@ -3,13 +3,14 @@
 // Phase 27c/27h — Finance/Admin "Stawki i Umowy" directory client.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Coins, FileText, History } from 'lucide-react'
+import { Coins, FileText, History, CalendarDays } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { UserRateDirectoryRow } from '@/lib/types/rates'
 import { EMPLOYMENT_TYPE_LABELS_PL } from '@/lib/types/rates'
 import { ManageRateDialog } from './ManageRateDialog'
 import { ManageContractDialog } from './ManageContractDialog'
 import { RateHistoryDialog } from './RateHistoryDialog'
+import { ManageVacationPoolDialog } from './ManageVacationPoolDialog'
 
 interface Props {
     initialDirectory: UserRateDirectoryRow[]
@@ -29,6 +30,8 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
     const [rateTarget, setRateTarget] = useState<UserRateDirectoryRow | null>(null)
     const [contractTarget, setContractTarget] = useState<UserRateDirectoryRow | null>(null)
     const [historyTarget, setHistoryTarget] = useState<UserRateDirectoryRow | null>(null)
+    // Phase 30b — Pula urlopowa per pracownik
+    const [poolTarget, setPoolTarget] = useState<UserRateDirectoryRow | null>(null)
     const [filterRole, setFilterRole] = useState<string>('all')
     const [search, setSearch] = useState<string>('')
 
@@ -172,6 +175,15 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                                         </Button>
                                         <Button
                                             size="sm"
+                                            variant="outline"
+                                            className="h-7 px-2 text-xs"
+                                            onClick={() => setPoolTarget(r)}
+                                        >
+                                            <CalendarDays className="h-3 w-3 mr-1" />
+                                            Pula urlopów
+                                        </Button>
+                                        <Button
+                                            size="sm"
                                             variant="ghost"
                                             className="h-7 px-2 text-xs"
                                             onClick={() => setHistoryTarget(r)}
@@ -212,6 +224,14 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                     userId={historyTarget.user_id}
                     userName={historyTarget.full_name ?? historyTarget.email}
                     onOpenChange={(open) => !open && setHistoryTarget(null)}
+                />
+            )}
+            {poolTarget && (
+                <ManageVacationPoolDialog
+                    targetUserId={poolTarget.user_id}
+                    targetName={poolTarget.full_name ?? poolTarget.email}
+                    targetEmail={poolTarget.email}
+                    onOpenChange={(open) => !open && setPoolTarget(null)}
                 />
             )}
         </div>
