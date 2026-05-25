@@ -9,7 +9,14 @@ import {
     requireBonusReadAllAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
-import { sendBonusProposed, sendBonusCancelled, sendBonusAssigned, sendBonusUpdated } from '@/lib/email'
+import {
+    sendBonusProposed,
+    sendBonusCancelled,
+    sendBonusAssigned,
+    sendBonusUpdated,
+    sendChampionsLeagueAssigned,
+    sendChampionsLeagueCancelled,
+} from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { requireInvoicesEnabled } from '@/lib/feature-flags'
 import type {
@@ -35,6 +42,10 @@ import {
     BONUS_ATTACHMENT_MAX_BYTES,
     BONUS_ATTACHMENT_ALLOWED_MIME,
     BONUS_CUSTOM_MEMO_MAX_LENGTH,
+    BONUS_QUARTERS_PL,
+    CHAMPIONS_LEAGUE_PLACE_LABELS_PL,
+    CHAMPIONS_LEAGUE_PLACE_SHORT_PL,
+    isQuarterInAllowedRange,
     recruiterTierForMargin,
 } from '@/lib/types/bonus'
 
@@ -97,8 +108,29 @@ function validateAssignInput(input: AssignBonusInput): void {
     validateAmount(input.amount)
     validateReason(input.reason)
     validateCurrency(input.currency)
-    validatePeriod(input.period_year, input.period_month)
+    // Phase 31 — champions_league uses period_quarter zamiast period_month.
+    if (input.category === 'champions_league') {
+        validateChampionsLeagueInput(input.period_year, input.period_quarter, input.place_rank)
+    } else {
+        validatePeriod(input.period_year, input.period_month)
+    }
     validateCategoryFields(input)
+}
+
+/** Phase 31 — walidacja kwartału i miejsca dla champions_league. */
+function validateChampionsLeagueInput(year: number, quarter: number, placeRank: number): void {
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+        throw new Error('Niepoprawny rok.')
+    }
+    if (!Number.isInteger(quarter) || quarter < 1 || quarter > 4) {
+        throw new Error('Niepoprawny kwartał (1-4).')
+    }
+    if (!Number.isInteger(placeRank) || placeRank < 1 || placeRank > 3) {
+        throw new Error('Niepoprawne miejsce (1, 2 lub 3).')
+    }
+    if (!isQuarterInAllowedRange(year, quarter as 1 | 2 | 3 | 4)) {
+        throw new Error('Kwartał musi mieścić się w ostatnich 4 kwartałach + bieżący.')
+    }
 }
 
 /** Phase 27d — validate client name (shared across sales/delivery/recruiter). */
@@ -166,6 +198,11 @@ function validateCategoryFields(input: AssignBonusInput): void {
             }
             break
         }
+        case 'champions_league': {
+            // Period+place już zwalidowane w validateChampionsLeagueInput (przed tym wywołaniem).
+            // Tu nic dodatkowego do sprawdzania (amount domyślny pobiera klient z CHAMPIONS_LEAGUE_AMOUNTS).
+            break
+        }
         default: {
             // Exhaustive check.
             const _exhaustive: never = input
@@ -178,7 +215,12 @@ function periodLabelPl(year: number, month: number): string {
     return `${BONUS_MONTHS_PL[month - 1]} ${year}`
 }
 
-/** Phase 27b/d — extract per-category columns from input for INSERT. */
+/** Phase 31 — etykieta kwartału dla emaila / notyfikacji (np. "Q1 2026"). */
+function quarterLabelPl(year: number, quarter: 1 | 2 | 3 | 4): string {
+    return `${BONUS_QUARTERS_PL[quarter - 1]} ${year}`
+}
+
+/** Phase 27b/d + 31 — extract per-category columns from input for INSERT. */
 function buildCategoryInsertPayload(input: AssignBonusInput): Record<string, unknown> {
     switch (input.category) {
         case 'sales':
@@ -206,6 +248,10 @@ function buildCategoryInsertPayload(input: AssignBonusInput): Record<string, unk
             return {
                 custom_email_memo: input.custom_email_memo?.trim() || null,
             }
+        case 'champions_league':
+            // Period_quarter, place_rank, period_month=NULL ustawiane w assignBonus przez periodFields.
+            // Tu kategoria nie ma typed columns oprócz period_quarter/place_rank.
+            return {}
     }
 }
 
@@ -390,6 +436,109 @@ async function notifyRecipient(args: {
         if (r.status === 'rejected') {
             logger.error({
                 event: 'bonus.notify.channel_failed',
+                channel: channels[idx],
+                bonus_id: args.bonusId,
+                kind: args.kind,
+                error: r.reason,
+            })
+        }
+    })
+}
+
+// ─── Phase 31 — Champions League notifications (osobny helper) ──────────────
+
+type ChampionsLeagueNotifyKind = 'assigned' | 'cancelled'
+
+/**
+ * Phase 31 — multi-channel notification dla Champions League.
+ * Trzy kanały (in-app + email + push) z accent złotym, period kwartalne.
+ */
+async function notifyChampionsLeagueRecipient(args: {
+    recipientId: string
+    recipientEmail: string
+    recipientName: string
+    proposerName: string
+    bonusId: string
+    amount: number
+    currency: string
+    reason: string
+    periodYear: number
+    periodQuarter: 1 | 2 | 3 | 4
+    placeRank: 1 | 2 | 3
+    kind: ChampionsLeagueNotifyKind
+    cancellationReason?: string
+}): Promise<void> {
+    const supabase = createServiceClient()
+    const quarterLabel = quarterLabelPl(args.periodYear, args.periodQuarter)
+    const placeLabel = CHAMPIONS_LEAGUE_PLACE_LABELS_PL[args.placeRank]
+
+    const isCancelled = args.kind === 'cancelled'
+    const titlePl = isCancelled
+        ? `Anulowano premię Champions League — ${placeLabel} (${quarterLabel})`
+        : `🏆 Champions League ${quarterLabel} — ${placeLabel}`
+    const titleEn = isCancelled
+        ? `Champions League bonus cancelled — ${quarterLabel}`
+        : `🏆 Champions League ${quarterLabel} — place ${args.placeRank}`
+    const bodyPl = isCancelled
+        ? `${args.amount.toFixed(2)} ${args.currency} — ${truncate(args.cancellationReason ?? args.reason, 120)}`
+        : `${args.amount.toFixed(2)} ${args.currency} — ${truncate(args.reason, 120)}`
+
+    // 1. In-app — używamy bonus_assigned/bonus_cancelled przy cancel (typ champions_league_cancelled
+    //    nie istnieje w notifications_type_check), assigned używa nowego typu Phase 31.
+    const inAppType = isCancelled ? 'bonus_cancelled' : 'champions_league_assigned'
+    const inAppPromise = supabase.rpc('create_notification', {
+        p_user_id: args.recipientId,
+        p_type: inAppType,
+        p_title_pl: titlePl,
+        p_title_en: titleEn,
+        p_body_pl: bodyPl,
+        p_body_en: bodyPl,
+        p_action_url: '/internal?tab=bonuses',
+        p_priority: 'normal',
+    })
+
+    // 2. Email — accent złoty (#EAB308).
+    const emailPromise = isCancelled
+        ? sendChampionsLeagueCancelled(
+              args.recipientEmail,
+              args.recipientName,
+              args.proposerName,
+              args.amount,
+              args.currency,
+              args.periodYear,
+              args.periodQuarter,
+              args.placeRank,
+              args.cancellationReason ?? 'Brak podanego powodu.',
+          )
+        : sendChampionsLeagueAssigned(
+              args.recipientEmail,
+              args.recipientName,
+              args.proposerName,
+              args.amount,
+              args.currency,
+              args.periodYear,
+              args.periodQuarter,
+              args.placeRank,
+              args.reason,
+          )
+
+    // 3. Web push.
+    const pushPromise = sendPushToUserId(args.recipientId, {
+        title: titlePl,
+        body: bodyPl,
+        url: '/internal?tab=bonuses',
+        tag: `champions-league-${args.kind}-${args.bonusId}`,
+    }).catch((err) => {
+        logCompat.error('Champions League push failed:', err)
+        return { sent: 0, failed: 1 }
+    })
+
+    const results = await Promise.allSettled([inAppPromise, emailPromise, pushPromise])
+    const channels = ['in_app', 'email', 'push'] as const
+    results.forEach((r, idx) => {
+        if (r.status === 'rejected') {
+            logger.error({
+                event: 'champions_league.notify.channel_failed',
                 channel: channels[idx],
                 bonus_id: args.bonusId,
                 kind: args.kind,
@@ -648,7 +797,9 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
         .single<BonusRow>()
     if (updErr || !updated) throw new Error(`Błąd anulowania: ${updErr?.message}`)
 
-    await logAudit(ctx.userId, 'BONUS_CANCELLED', {
+    const isChampionsLeague = updated.category === 'champions_league'
+    const auditAction = isChampionsLeague ? 'CHAMPIONS_LEAGUE_CANCELLED' : 'BONUS_CANCELLED'
+    await logAudit(ctx.userId, auditAction, {
         bonus_id: updated.id,
         recipient_user_id: updated.recipient_user_id,
         amount: Number(updated.amount),
@@ -656,26 +807,47 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
         cancellation_reason: cancellationReason,
         period_year: updated.period_year,
         period_month: updated.period_month,
+        period_quarter: updated.period_quarter,
+        place_rank: updated.place_rank,
+        category: updated.category,
     })
 
     // Notify recipient.
     const recipient = await fetchRecipientContact(updated.recipient_user_id)
     if (recipient?.email) {
         const proposerName = await fetchUserDisplayName(ctx.userId, ctx.email)
-        await notifyRecipient({
-            recipientId: updated.recipient_user_id,
-            recipientEmail: recipient.email,
-            recipientName: recipient.full_name ?? 'Pracownik',
-            proposerName,
-            bonusId: updated.id,
-            amount: Number(updated.amount),
-            currency: updated.currency,
-            reason: updated.reason,
-            kind: 'cancelled',
-            cancellationReason,
-            periodYear: updated.period_year ?? undefined,
-            periodMonth: updated.period_month ?? undefined,
-        })
+        if (isChampionsLeague && updated.period_quarter && updated.place_rank) {
+            await notifyChampionsLeagueRecipient({
+                recipientId: updated.recipient_user_id,
+                recipientEmail: recipient.email,
+                recipientName: recipient.full_name ?? 'Pracownik',
+                proposerName,
+                bonusId: updated.id,
+                amount: Number(updated.amount),
+                currency: updated.currency,
+                reason: updated.reason,
+                periodYear: updated.period_year ?? new Date().getFullYear(),
+                periodQuarter: updated.period_quarter as 1 | 2 | 3 | 4,
+                placeRank: updated.place_rank as 1 | 2 | 3,
+                kind: 'cancelled',
+                cancellationReason,
+            })
+        } else {
+            await notifyRecipient({
+                recipientId: updated.recipient_user_id,
+                recipientEmail: recipient.email,
+                recipientName: recipient.full_name ?? 'Pracownik',
+                proposerName,
+                bonusId: updated.id,
+                amount: Number(updated.amount),
+                currency: updated.currency,
+                reason: updated.reason,
+                kind: 'cancelled',
+                cancellationReason,
+                periodYear: updated.period_year ?? undefined,
+                periodMonth: updated.period_month ?? undefined,
+            })
+        }
     }
 
     return updated
@@ -714,6 +886,22 @@ export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
     // Phase 27b — build per-category insert payload.
     const categoryPayload = buildCategoryInsertPayload(input)
 
+    // Phase 31 — period_year zawsze; reszta zależy od kategorii (miesiąc vs kwartał).
+    const isChampionsLeague = input.category === 'champions_league'
+    const periodFields = isChampionsLeague
+        ? {
+            period_year: input.period_year,
+            period_month: null as number | null,
+            period_quarter: input.period_quarter,
+            place_rank: input.place_rank,
+        }
+        : {
+            period_year: input.period_year,
+            period_month: input.period_month,
+            period_quarter: null as number | null,
+            place_rank: null as number | null,
+        }
+
     const { data: inserted, error } = await supabase
         .from('bonuses')
         .insert({
@@ -724,19 +912,38 @@ export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
             reason,
             notes: input.notes ?? null,
             status: 'assigned',
-            period_year: input.period_year,
-            period_month: input.period_month,
             category: input.category,
+            ...periodFields,
             ...categoryPayload,
         })
         .select('*')
         .single<BonusRow>()
 
     if (error || !inserted) {
+        // Phase 31 — friendly error przy konflikcie partial UNIQUE dla champions_league.
+        if (
+            isChampionsLeague &&
+            error?.code === '23505' &&
+            (error.message?.includes('bonuses_champions_league_unique') ?? false)
+        ) {
+            const existingWinnerName = await findChampionsLeagueWinnerName(
+                input.period_year,
+                input.period_quarter,
+                input.place_rank,
+            )
+            const placeLabel = CHAMPIONS_LEAGUE_PLACE_SHORT_PL[input.place_rank]
+            const quarterLabel = quarterLabelPl(input.period_year, input.period_quarter)
+            const occupiedBy = existingWinnerName ? ` przez ${existingWinnerName}` : ''
+            throw new Error(
+                `${placeLabel} miejsce w ${quarterLabel} jest już zajęte${occupiedBy}. Najpierw anuluj poprzednią premię.`,
+            )
+        }
         throw new Error(`Błąd przypisania premii: ${error?.message}`)
     }
 
-    await logAudit(ctx.userId, 'BONUS_ASSIGNED', {
+    // Phase 31 — osobny action type dla audytu CL ułatwia filtrowanie.
+    const auditAction = isChampionsLeague ? 'CHAMPIONS_LEAGUE_ASSIGNED' : 'BONUS_ASSIGNED'
+    await logAudit(ctx.userId, auditAction, {
         bonus_id: inserted.id,
         recipient_user_id: inserted.recipient_user_id,
         amount: Number(inserted.amount),
@@ -744,28 +951,72 @@ export async function assignBonus(input: AssignBonusInput): Promise<BonusRow> {
         reason: inserted.reason,
         period_year: inserted.period_year,
         period_month: inserted.period_month,
+        period_quarter: inserted.period_quarter,
+        place_rank: inserted.place_rank,
         category: inserted.category,
     })
 
     const recipient = await fetchRecipientContact(input.recipient_user_id)
     if (recipient?.email) {
         const proposerName = await fetchUserDisplayName(ctx.userId, ctx.email)
-        await notifyRecipient({
-            recipientId: input.recipient_user_id,
-            recipientEmail: recipient.email,
-            recipientName: recipient.full_name ?? 'Pracownik',
-            proposerName,
-            bonusId: inserted.id,
-            amount: Number(inserted.amount),
-            currency: inserted.currency,
-            reason: inserted.reason,
-            kind: 'assigned',
-            periodYear: inserted.period_year ?? undefined,
-            periodMonth: inserted.period_month ?? undefined,
-        })
+        if (isChampionsLeague) {
+            await notifyChampionsLeagueRecipient({
+                recipientId: input.recipient_user_id,
+                recipientEmail: recipient.email,
+                recipientName: recipient.full_name ?? 'Pracownik',
+                proposerName,
+                bonusId: inserted.id,
+                amount: Number(inserted.amount),
+                currency: inserted.currency,
+                reason: inserted.reason,
+                periodYear: inserted.period_year ?? input.period_year,
+                periodQuarter: (inserted.period_quarter ?? input.period_quarter) as 1 | 2 | 3 | 4,
+                placeRank: (inserted.place_rank ?? input.place_rank) as 1 | 2 | 3,
+                kind: 'assigned',
+            })
+        } else {
+            await notifyRecipient({
+                recipientId: input.recipient_user_id,
+                recipientEmail: recipient.email,
+                recipientName: recipient.full_name ?? 'Pracownik',
+                proposerName,
+                bonusId: inserted.id,
+                amount: Number(inserted.amount),
+                currency: inserted.currency,
+                reason: inserted.reason,
+                kind: 'assigned',
+                periodYear: inserted.period_year ?? undefined,
+                periodMonth: inserted.period_month ?? undefined,
+            })
+        }
     }
 
     return inserted
+}
+
+/** Phase 31 — lookup full_name istniejącego zwycięzcy CL dla friendly error przy konflikcie UNIQUE. */
+async function findChampionsLeagueWinnerName(
+    year: number,
+    quarter: 1 | 2 | 3 | 4,
+    placeRank: 1 | 2 | 3,
+): Promise<string | null> {
+    const admin = createServiceClient()
+    const { data } = await admin
+        .from('bonuses')
+        .select('recipient_user_id')
+        .eq('category', 'champions_league')
+        .eq('status', 'assigned')
+        .eq('period_year', year)
+        .eq('period_quarter', quarter)
+        .eq('place_rank', placeRank)
+        .maybeSingle<{ recipient_user_id: string }>()
+    if (!data?.recipient_user_id) return null
+    const { data: profile } = await admin
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', data.recipient_user_id)
+        .single<{ full_name: string | null; email: string }>()
+    return profile?.full_name ?? profile?.email ?? null
 }
 
 /**
@@ -841,11 +1092,16 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
         changes.notes = [bonus.notes, updated.notes]
     }
 
-    await logAudit(ctx.userId, 'BONUS_UPDATED', {
+    const isChampionsLeague = updated.category === 'champions_league'
+    const auditAction = isChampionsLeague ? 'CHAMPIONS_LEAGUE_UPDATED' : 'BONUS_UPDATED'
+    await logAudit(ctx.userId, auditAction, {
         bonus_id: updated.id,
         recipient_user_id: updated.recipient_user_id,
         period_year: updated.period_year,
         period_month: updated.period_month,
+        period_quarter: updated.period_quarter,
+        place_rank: updated.place_rank,
+        category: updated.category,
         changes,
     })
 
@@ -861,6 +1117,15 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
         if (changes.reason) changesSummaryParts.push('zmieniono uzasadnienie')
         const changesSummary = changesSummaryParts.join('; ') || 'edytowano'
 
+        // Phase 31 — dla CL używamy generic bonus_updated emaila (treść po staremu),
+        // bo zmiany dotyczą tylko amount/reason/notes (place_rank/quarter immutable).
+        // Email helper sendBonusUpdated obsługuje monthly period; dla CL używamy stub
+        // który mapuje period_quarter na month=quarter*3 dla tytułu (lub można dodać
+        // dedykowany sendChampionsLeagueUpdated w przyszłości jeśli mocniejszy branding).
+        const fallbackMonth = isChampionsLeague && updated.period_quarter
+            ? updated.period_quarter * 3
+            : updated.period_month ?? new Date().getMonth() + 1
+
         await notifyRecipient({
             recipientId: updated.recipient_user_id,
             recipientEmail: recipient.email,
@@ -872,7 +1137,7 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
             reason: updated.reason,
             kind: 'updated',
             periodYear: updated.period_year ?? undefined,
-            periodMonth: updated.period_month ?? undefined,
+            periodMonth: fallbackMonth,
             changesSummary,
         })
     }

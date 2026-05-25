@@ -28,8 +28,13 @@ import type { PayrollSummary } from '@/lib/types/rates'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 import { AssignBonusForm } from './AssignBonusForm'
 import { OvertimeOverrideDialog } from './OvertimeOverrideDialog'
-import { BONUS_MONTHS_PL, BONUS_CATEGORIES_PL } from '@/lib/types/bonus'
-import type { EligibleEmployeeForBonus } from '@/lib/types/bonus'
+import {
+    BONUS_MONTHS_PL,
+    BONUS_CATEGORIES_PL,
+    BONUS_QUARTERS_PL,
+    CHAMPIONS_LEAGUE_PLACE_SHORT_PL,
+} from '@/lib/types/bonus'
+import type { ChampionsLeagueRank, EligibleEmployeeForBonus } from '@/lib/types/bonus'
 
 interface Props {
     userId: string | null
@@ -124,6 +129,23 @@ const BONUS_STATUS: Record<string, { label: string; className: string }> = {
 function bonusPeriodLabel(year: number | null, month: number | null): string {
     if (!year || !month) return '—'
     return `${BONUS_MONTHS_PL[month - 1]} ${year}`
+}
+
+/** Phase 31 — period label dla rzędu w EmployeeProfileDialog (CL = Q1 2026 + miejsce). */
+function bonusRowPeriodLabel(b: {
+    category: string
+    period_year: number | null
+    period_month: number | null
+    period_quarter: 1 | 2 | 3 | 4 | null
+    place_rank: 1 | 2 | 3 | null
+}): string {
+    if (b.category === 'champions_league' && b.period_year && b.period_quarter) {
+        const place = b.place_rank
+            ? ` · ${CHAMPIONS_LEAGUE_PLACE_SHORT_PL[b.place_rank as ChampionsLeagueRank]}`
+            : ''
+        return `${BONUS_QUARTERS_PL[b.period_quarter - 1]} ${b.period_year}${place}`
+    }
+    return bonusPeriodLabel(b.period_year, b.period_month)
 }
 
 export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV }: Props) {
@@ -658,10 +680,12 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                         <tbody>
                                             {snapshot.bonuses.map((b) => {
                                                 const status = BONUS_STATUS[b.status]
+                                                const isChampionsLeague = b.category === 'champions_league'
                                                 return (
                                                     <tr key={b.id} className="border-b border-border/40">
                                                         <td className="py-2 pr-2 whitespace-nowrap text-xs">
-                                                            {bonusPeriodLabel(b.period_year, b.period_month)}
+                                                            {isChampionsLeague && <span className="mr-1">🏆</span>}
+                                                            {bonusRowPeriodLabel(b)}
                                                         </td>
                                                         <td className="py-2 pr-2 text-right font-mono text-xs tabular-nums">
                                                             {b.amount.toFixed(2)} {b.currency}

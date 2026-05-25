@@ -61,6 +61,9 @@ function buildBonus(overrides: Partial<BonusWithUsers> = {}): BonusWithUsers {
         attachment_filename: null,
         attachment_size_bytes: null,
         attachment_mime: null,
+        // Phase 31 — champions league fields (NULL dla wszystkich kategorii poza CL)
+        place_rank: null,
+        period_quarter: null,
         recipient_full_name: 'Dawid Skowronek',
         recipient_email: 'dawid@b2bnetwork.pl',
         proposer_full_name: 'Admin Test',

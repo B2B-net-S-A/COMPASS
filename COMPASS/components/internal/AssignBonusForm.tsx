@@ -88,7 +88,12 @@ function buildPeriodOptions(): PeriodOption[] {
     return options.reverse()
 }
 
-const CATEGORY_ICON: Record<BonusCategory, React.ComponentType<{ className?: string }>> = {
+// Phase 31 — AssignBonusForm obsługuje 4 standardowe kategorie. Champions League
+// ma osobny form (AssignChampionsLeagueForm) — tu wykluczamy go z typu CATEGORY_ICON
+// i z dropdown'a tabów (zobacz filter w renderze).
+type StandardBonusCategory = Exclude<BonusCategory, 'champions_league'>
+
+const CATEGORY_ICON: Record<StandardBonusCategory, React.ComponentType<{ className?: string }>> = {
     sales: Briefcase,
     delivery_lead: TrendingUp,
     recruiter: UserPlus,
@@ -202,8 +207,12 @@ export function AssignBonusForm({
     const [reason, setReason] = useState<string>(initialDraft?.reason ?? prefilled?.reason ?? '')
     const [notes, setNotes] = useState<string>(initialDraft?.notes ?? prefilled?.notes ?? '')
 
-    // Phase 27b — category state (only for assign mode)
-    const [category, setCategory] = useState<BonusCategory>(initialDraft?.category ?? 'custom')
+    // Phase 27b — category state (only for assign mode). Phase 31: typu StandardBonusCategory
+    // (Exclude<BonusCategory, 'champions_league'>) — CL ma osobny form, więc tu nigdy nie zaistnieje.
+    const draftCategory = initialDraft?.category
+    const initialCategory: StandardBonusCategory =
+        draftCategory && draftCategory !== 'champions_league' ? draftCategory : 'custom'
+    const [category, setCategory] = useState<StandardBonusCategory>(initialCategory)
     // Phase 27d — shared client (sales/delivery/recruiter) + clients list
     const [clientName, setClientName] = useState<string>(initialDraft?.clientName ?? '')
     const [clientIsOther, setClientIsOther] = useState<boolean>(initialDraft?.clientIsOther ?? false)
@@ -580,7 +589,10 @@ export function AssignBonusForm({
         <div>
             <Label>Kategoria premii</Label>
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {(Object.keys(BONUS_CATEGORIES_PL) as BonusCategory[]).map((cat) => {
+                {/* Phase 31 — pomiń champions_league; ma osobny form (AssignChampionsLeagueForm). */}
+                {(Object.keys(BONUS_CATEGORIES_PL) as BonusCategory[])
+                    .filter((cat): cat is StandardBonusCategory => cat !== 'champions_league')
+                    .map((cat) => {
                     const Icon = CATEGORY_ICON[cat]
                     const active = category === cat
                     return (
