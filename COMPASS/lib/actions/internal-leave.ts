@@ -29,6 +29,7 @@ import {
     totalVacationDaysUsed,
     workingDaysInLeave,
     computeRemaining,
+    computePaidUnpaidSplit,
     VACATION_POOL_TYPES,
     type LeaveSpan,
 } from '@/lib/hr/leave-balance'
@@ -76,6 +77,10 @@ export interface LeaveRequestRow {
     graph_oof_set?: boolean
     graph_oof_set_at?: string | null
     graph_sync_error?: string | null
+    // Phase 30 — split płatny/bezpłatny (0/0 dla historycznych przed Phase 30
+    // oraz dla non-vacation leave types out of scope of paid vacation pool).
+    paid_days?: number
+    unpaid_days?: number
 }
 
 export interface PendingLeaveRow extends LeaveRequestRow {
@@ -85,6 +90,12 @@ export interface PendingLeaveRow extends LeaveRequestRow {
     // Phase 25d — substitute info for display in admin queue
     substitute_full_name?: string | null
     substitute_email?: string | null
+    // Phase 30 — pool snapshot dla badge'a "Pula 2026: 15/20 → po akceptacji 10/20"
+    pool_employment_type?: string | null
+    pool_entitlement_days?: number | null
+    pool_carried_over_days?: number
+    pool_used_initial_days?: number
+    pool_already_booked_paid_days_in_year?: number
 }
 
 // Phase 25d — active leaves with substitute info for global banner
@@ -137,14 +148,17 @@ export interface MyLeaveBalance {
     pending_approved_future_days: number
     /** Dni z wniosków oczekujących na akceptację. */
     pending_request_days: number
-    // Phase 27k — limit/saldo. has_limit=false → B2B/zlecenie (bez limitu).
+    // Phase 27k + 30 — limit/saldo. has_limit=false → brak puli (B2B/zlecenie bez kontraktu;
+    // UoP NULL entitlement = unlimited).
     employment_type: string | null
     has_limit: boolean
     /** Roczny wymiar urlopu (np. 20/26). null gdy brak limitu. */
     entitlement_days: number | null
     /** Urlop zaległy z poprzedniego roku (dodawany do wymiaru). */
     carried_over_days: number
-    /** entitlement + carried − used − approved_future. null gdy brak limitu. */
+    /** Phase 30. Hybrydowy backfill — admin-set "już zużyte przed włączeniem feature". */
+    used_initial_days: number
+    /** entitlement + carried − used_initial − used − approved_future. null gdy brak limitu. */
     remaining_days: number | null
 }
 
@@ -204,6 +218,115 @@ function validateLeaveType(value: string): asserts value is LeaveType {
     if (!(SELF_SERVICE_LEAVE_TYPES as string[]).includes(value)) {
         throw new Error(`Nieprawidłowy typ urlopu: ${value}`)
     }
+}
+
+// Phase 30 — pool snapshot dla calc paid/unpaid split + walidacji UoP hard-limit.
+interface PoolSnapshot {
+    employmentType: string | null
+    entitlementDays: number | null
+    carriedOverDays: number
+    usedInitialDays: number
+    alreadyBookedDaysInYear: number
+}
+
+/**
+ * Phase 30 — fetch pool snapshot + compute paid/unpaid split for a leave request.
+ * Wykonuje 3 zapytania (profile + existing leaves in year + holidays). Returns:
+ *   - paid: dni płatne (z puli)
+ *   - unpaid: dni bezpłatne (poza pulą)
+ *   - workingDays: total dni roboczych w przedziale
+ *   - snapshot: pool fields dla walidacji UoP / display w queue / preview
+ *
+ * Bezpiecznie wywołać dla każdego leave_type — non-vacation types dostają 0/0/0.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function computeLeaveRequestSplit(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase: any,
+    userId: string,
+    leaveType: LeaveType,
+    startDate: string,
+    endDate: string,
+    halfDay: 'morning' | 'afternoon' | null,
+    options?: { excludeRequestId?: string },
+): Promise<{ paid: number; unpaid: number; workingDays: number; snapshot: PoolSnapshot }> {
+    // Tylko vacation + on_demand są pool-relevant
+    const isPoolType = (VACATION_POOL_TYPES as readonly string[]).includes(leaveType)
+    if (!isPoolType) {
+        return {
+            paid: 0,
+            unpaid: 0,
+            workingDays: 0,
+            snapshot: {
+                employmentType: null,
+                entitlementDays: null,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 0,
+            },
+        }
+    }
+
+    const startYear = startDate.slice(0, 4)
+    const endYear = endDate.slice(0, 4)
+
+    const [profRes, existingRes, holRes] = await Promise.all([
+        supabase
+            .from('profiles')
+            .select('employment_type, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days')
+            .eq('id', userId)
+            .maybeSingle(),
+        supabase
+            .from('leave_requests')
+            .select('id, start_date, end_date, half_day, leave_type')
+            .eq('user_id', userId)
+            .in('status', ['approved', 'pending'])
+            .in('leave_type', [...VACATION_POOL_TYPES])
+            .gte('start_date', `${startYear}-01-01`)
+            .lte('start_date', `${startYear}-12-31`),
+        supabase
+            .from('public_holidays')
+            .select('date, name_pl')
+            .gte('date', `${startYear}-01-01`)
+            .lte('date', `${endYear}-12-31`),
+    ])
+
+    const prof = (profRes.data ?? null) as {
+        employment_type: string | null
+        leave_entitlement_days: number | null
+        leave_carried_over_days: number | string | null
+        leave_used_initial_days: number | string | null
+    } | null
+    const holidays = (holRes.data ?? []) as PublicHolidayDate[]
+    let existing = (existingRes.data ?? []) as Array<LeaveSpan & { id: string }>
+    if (options?.excludeRequestId) {
+        existing = existing.filter((r) => r.id !== options.excludeRequestId)
+    }
+
+    const alreadyBooked = totalVacationDaysUsed(existing as LeaveSpan[], holidays)
+    const workingDays = workingDaysInLeave(
+        { start_date: startDate, end_date: endDate, half_day: halfDay, leave_type: leaveType },
+        holidays,
+    )
+
+    const snapshot: PoolSnapshot = {
+        employmentType: prof?.employment_type ?? null,
+        entitlementDays: prof?.leave_entitlement_days ?? null,
+        carriedOverDays: Number(prof?.leave_carried_over_days ?? 0),
+        usedInitialDays: Number(prof?.leave_used_initial_days ?? 0),
+        alreadyBookedDaysInYear: alreadyBooked,
+    }
+
+    const split = computePaidUnpaidSplit({
+        employmentType: snapshot.employmentType,
+        entitlementDays: snapshot.entitlementDays,
+        carriedOverDays: snapshot.carriedOverDays,
+        usedInitialDays: snapshot.usedInitialDays,
+        alreadyBookedDaysInYear: snapshot.alreadyBookedDaysInYear,
+        requestedWorkingDays: workingDays,
+    })
+
+    return { paid: split.paid, unpaid: split.unpaid, workingDays, snapshot }
 }
 
 // ─── H2.4: upload dokumentu (zwolnienie L4 / akt ślubu / itd.) ──────────────
@@ -275,56 +398,41 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
         assertB2bZlecenieVacationOnly(empRow?.employment_type ?? null, input.leaveType, true)
     }
 
-    // Phase 27k — vacation-pool limit for UoP employees (B2B/zlecenie = bez limitu).
-    if ((VACATION_POOL_TYPES as readonly string[]).includes(input.leaveType)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: profRow } = await (supabase.from('profiles') as any)
-            .select('employment_type, leave_entitlement_days, leave_carried_over_days')
-            .eq('id', ctx.userId)
-            .maybeSingle()
-        const p = (profRow ?? null) as {
-            employment_type: string | null
-            leave_entitlement_days: number | null
-            leave_carried_over_days: number | string | null
-        } | null
-        if (p?.employment_type === 'uop' && p.leave_entitlement_days != null) {
-            const startYear = input.startDate.slice(0, 4)
-            const endYear = input.endDate.slice(0, 4)
-            const [existingRes, holRes] = await Promise.all([
-                supabase
-                    .from('leave_requests')
-                    .select('start_date, end_date, half_day, leave_type')
-                    .eq('user_id', ctx.userId)
-                    .in('status', ['approved', 'pending'])
-                    .in('leave_type', [...VACATION_POOL_TYPES])
-                    .gte('start_date', `${startYear}-01-01`)
-                    .lte('start_date', `${startYear}-12-31`),
-                supabase
-                    .from('public_holidays')
-                    .select('date, name_pl')
-                    .gte('date', `${startYear}-01-01`)
-                    .lte('date', `${endYear}-12-31`),
-            ])
-            const holidays = (holRes.data ?? []) as PublicHolidayDate[]
-            const alreadyBooked = totalVacationDaysUsed((existingRes.data ?? []) as LeaveSpan[], holidays)
-            const requested = workingDaysInLeave(
-                {
-                    start_date: input.startDate,
-                    end_date: input.endDate,
-                    half_day: input.halfDay ?? null,
-                    leave_type: input.leaveType,
-                },
-                holidays,
+    // Phase 27k + 30 — vacation-pool split + UoP hard-limit. Liczymy paid/unpaid dla
+    // wniosku (vacation/on_demand only); non-pool types → 0/0. Dla UoP z ustawionym
+    // entitlement: hard-limit (throw gdy wniosek > remaining). Dla B2B/zlecenie z pulą:
+    // auto-split (paid z puli + unpaid reszta w jednym leave_request).
+    const split = await computeLeaveRequestSplit(
+        supabase,
+        ctx.userId,
+        input.leaveType,
+        input.startDate,
+        input.endDate,
+        input.halfDay ?? null,
+    )
+
+    // UoP hard-limit (zachowanie Phase 27k bez zmian).
+    if (
+        split.snapshot.employmentType === 'uop'
+        && split.snapshot.entitlementDays != null
+        && split.workingDays > 0
+    ) {
+        const remainingBefore =
+            split.snapshot.entitlementDays
+            + split.snapshot.carriedOverDays
+            - split.snapshot.usedInitialDays
+            - split.snapshot.alreadyBookedDaysInYear
+        if (split.workingDays > remainingBefore + 1e-9) {
+            const initialNote =
+                split.snapshot.usedInitialDays > 0
+                    ? ` − ${split.snapshot.usedInitialDays} zaległo zużyte`
+                    : ''
+            throw new Error(
+                `Przekroczono limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
+                    + `(wymiar ${split.snapshot.entitlementDays} + zaległe ${split.snapshot.carriedOverDays}${initialNote}), `
+                    + `a ten wniosek to ${split.workingDays} dni roboczych. `
+                    + `Dla nadwyżki użyj typu "Urlop bezpłatny".`,
             )
-            const limit = Number(p.leave_entitlement_days) + Number(p.leave_carried_over_days ?? 0)
-            const remainingBefore = limit - alreadyBooked
-            if (requested > remainingBefore + 1e-9) {
-                throw new Error(
-                    `Przekroczono limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
-                        + `(wymiar ${p.leave_entitlement_days} + zaległe ${Number(p.leave_carried_over_days ?? 0)}), `
-                        + `a ten wniosek to ${requested} dni roboczych.`,
-                )
-            }
         }
     }
 
@@ -374,7 +482,10 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
             oof_external_message: input.oofExternalMessage?.trim() || null,
             created_by: ctx.userId,
             created_on_behalf: false,
-        })
+            // Phase 30 — auto-split płatny (z puli) / bezpłatny.
+            paid_days: split.paid,
+            unpaid_days: split.unpaid,
+        } as never)
         .select('id, status')
         .single<{ id: string; status: LeaveStatus }>()
 
@@ -744,6 +855,42 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
     const actorName = ctx.email
     const decisionNote = `Wpisany przez ${actorName}`
 
+    // Phase 30 — split płatny/bezpłatny (analog do createLeaveRequest). Manager
+    // wpisując za pracownika UoP musi szanować hard-limit; B2B/zlecenie z pulą
+    // dostaje auto-split.
+    const split = await computeLeaveRequestSplit(
+        admin,
+        input.targetUserId,
+        input.leaveType,
+        input.startDate,
+        input.endDate,
+        input.halfDay ?? null,
+    )
+
+    if (
+        split.snapshot.employmentType === 'uop'
+        && split.snapshot.entitlementDays != null
+        && split.workingDays > 0
+    ) {
+        const remainingBefore =
+            split.snapshot.entitlementDays
+            + split.snapshot.carriedOverDays
+            - split.snapshot.usedInitialDays
+            - split.snapshot.alreadyBookedDaysInYear
+        if (split.workingDays > remainingBefore + 1e-9) {
+            const initialNote =
+                split.snapshot.usedInitialDays > 0
+                    ? ` − ${split.snapshot.usedInitialDays} zaległo zużyte`
+                    : ''
+            throw new Error(
+                `Pracownik przekroczyłby limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
+                    + `(wymiar ${split.snapshot.entitlementDays} + zaległe ${split.snapshot.carriedOverDays}${initialNote}), `
+                    + `a ten wniosek to ${split.workingDays} dni roboczych. `
+                    + `Wpisz UoP-pracownikowi "Urlop bezpłatny" dla nadwyżki.`,
+            )
+        }
+    }
+
     const { data: inserted, error: insertErr } = await admin
         .from('leave_requests')
         .insert({
@@ -760,6 +907,9 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
             decision_note: decisionNote,
             created_by: ctx.userId,
             created_on_behalf: true,
+            // Phase 30 — split płatny (z puli) / bezpłatny.
+            paid_days: split.paid,
+            unpaid_days: split.unpaid,
         } as never)
         .select('id')
         .single<{ id: string }>()
@@ -985,6 +1135,9 @@ export interface TeamLeaveRow {
     created_by: string | null
     substitute_full_name: string | null
     substitute_id: string | null
+    // Phase 30 — split płatny/bezpłatny dla display w TimesheetPreviewDialog.
+    paid_days: number
+    unpaid_days: number
 }
 
 interface TeamLeaveQueryRow {
@@ -999,13 +1152,15 @@ interface TeamLeaveQueryRow {
     created_on_behalf: boolean | null
     created_by: string | null
     substitute_id: string | null
+    paid_days: number | string | null
+    unpaid_days: number | string | null
     profiles: { full_name: string | null; email: string | null; manager_id: string | null } | null
     substitute: { full_name: string | null } | null
 }
 
 const TEAM_LEAVE_SELECT = `
     id, user_id, start_date, end_date, leave_type, half_day, status, note,
-    created_on_behalf, created_by, substitute_id,
+    created_on_behalf, created_by, substitute_id, paid_days, unpaid_days,
     profiles:profiles!leave_requests_user_id_fkey(full_name, email, manager_id),
     substitute:profiles!leave_requests_substitute_id_fkey(full_name)
 `
@@ -1026,6 +1181,8 @@ function mapTeamLeaveRow(r: TeamLeaveQueryRow): TeamLeaveRow {
         created_by: r.created_by,
         substitute_full_name: r.substitute?.full_name ?? null,
         substitute_id: r.substitute_id,
+        paid_days: Number(r.paid_days ?? 0),
+        unpaid_days: Number(r.unpaid_days ?? 0),
     }
 }
 
@@ -1364,10 +1521,10 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
 
     const pool = [...VACATION_POOL_TYPES]
     const [profileRes, leavesRes, pendingRes, holidaysRes] = await Promise.all([
-        // Phase 27k — profil: typ umowy + wymiar urlopu (kolumny jeszcze nie w database.types).
+        // Phase 27k + 30 — profil: typ umowy + wymiar urlopu + hybrydowy backfill.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('profiles') as any)
-            .select('employment_type, leave_entitlement_days, leave_carried_over_days')
+            .select('employment_type, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days')
             .eq('id', ctx.userId)
             .maybeSingle(),
         // Zatwierdzone urlopy z puli wypoczynkowej (vacation + na żądanie)
@@ -1399,6 +1556,7 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
         employment_type: string | null
         leave_entitlement_days: number | null
         leave_carried_over_days: number | string | null
+        leave_used_initial_days: number | string | null
     } | null
     const allApproved = (leavesRes.data ?? []) as LeaveSpan[]
     const pending = (pendingRes.data ?? []) as LeaveSpan[]
@@ -1412,8 +1570,12 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
 
     const entitlement = prof?.leave_entitlement_days ?? null
     const carried = Number(prof?.leave_carried_over_days ?? 0)
-    const hasLimit = prof?.employment_type === 'uop' && entitlement != null
-    const remaining = hasLimit ? computeRemaining(entitlement as number, carried, usedDays, futureDays) : null
+    const usedInitial = Number(prof?.leave_used_initial_days ?? 0)
+    // Phase 30 — pula dotyczy też B2B/zlecenie (odgate'owane). hasLimit = jest entitlement.
+    const hasLimit = entitlement != null
+    const remaining = hasLimit
+        ? computeRemaining(entitlement as number, carried, usedDays + usedInitial, futureDays)
+        : null
 
     return {
         year,
@@ -1424,7 +1586,77 @@ export async function getMyLeaveBalance(): Promise<MyLeaveBalance> {
         has_limit: hasLimit,
         entitlement_days: entitlement,
         carried_over_days: carried,
+        used_initial_days: usedInitial,
         remaining_days: remaining,
+    }
+}
+
+// ─── Phase 30: previewLeaveSplit (live preview płatny/bezpłatny w formularzu) ─
+
+export interface LeaveSplitPreview {
+    workingDays: number
+    paid: number
+    unpaid: number
+    hasPool: boolean
+    entitlementDays: number | null
+    remainingBefore: number | null
+    remainingAfter: number | null
+    employmentType: string | null
+}
+
+/**
+ * Phase 30 — preview podziału na płatne/bezpłatne dla obecnego usera, zanim
+ * złoży wniosek. Używane przez LeaveRequestForm do live banner'a.
+ * Auth: self-only (każdy zalogowany user widzi własną pulę).
+ */
+export async function previewLeaveSplit(input: {
+    startDate: string
+    endDate: string
+    halfDay: 'morning' | 'afternoon' | null
+    leaveType: LeaveType
+}): Promise<LeaveSplitPreview> {
+    const ctx = await requireInternalOrAdminAction()
+    validateDateString(input.startDate, 'start_date')
+    validateDateString(input.endDate, 'end_date')
+    validateLeaveType(input.leaveType)
+    if (input.endDate < input.startDate) {
+        throw new Error('Data końca musi być >= data początku.')
+    }
+
+    const supabase = createClient()
+    const split = await computeLeaveRequestSplit(
+        supabase,
+        ctx.userId,
+        input.leaveType,
+        input.startDate,
+        input.endDate,
+        input.halfDay,
+    )
+
+    const hasPool = split.snapshot.entitlementDays != null
+    const remainingBefore = hasPool
+        ? Number(
+            (
+                (split.snapshot.entitlementDays as number)
+                + split.snapshot.carriedOverDays
+                - split.snapshot.usedInitialDays
+                - split.snapshot.alreadyBookedDaysInYear
+            ).toFixed(1),
+        )
+        : null
+    const remainingAfter = hasPool && remainingBefore != null
+        ? Number((remainingBefore - split.paid).toFixed(1))
+        : null
+
+    return {
+        workingDays: split.workingDays,
+        paid: split.paid,
+        unpaid: split.unpaid,
+        hasPool,
+        entitlementDays: split.snapshot.entitlementDays,
+        remainingBefore,
+        remainingAfter,
+        employmentType: split.snapshot.employmentType,
     }
 }
 
@@ -1453,7 +1685,11 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
             documentation_url, status, decided_by, decided_at, decision_note, created_at,
             substitute_id, oof_internal_message, oof_external_message,
             graph_oof_set, graph_oof_set_at, graph_sync_error,
-            profiles:profiles!leave_requests_user_id_fkey(full_name, email, avatar_url),
+            paid_days, unpaid_days,
+            profiles:profiles!leave_requests_user_id_fkey(
+                full_name, email, avatar_url,
+                employment_type, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days
+            ),
             substitute:profiles!leave_requests_substitute_id_fkey(full_name, email)
         `)
         .eq('status', 'pending')
@@ -1465,32 +1701,85 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
 
     if (error) throw new Error(`Błąd pobierania kolejki wniosków: ${error.message}`)
 
-    return (data ?? []).map((row: any) => ({
-        id: row.id,
-        user_id: row.user_id,
-        start_date: row.start_date,
-        end_date: row.end_date,
-        leave_type: row.leave_type,
-        half_day: row.half_day,
-        note: row.note,
-        documentation_url: row.documentation_url,
-        status: row.status,
-        decided_by: row.decided_by,
-        decided_at: row.decided_at,
-        decision_note: row.decision_note,
-        created_at: row.created_at,
-        substitute_id: row.substitute_id,
-        oof_internal_message: row.oof_internal_message,
-        oof_external_message: row.oof_external_message,
-        graph_oof_set: row.graph_oof_set,
-        graph_oof_set_at: row.graph_oof_set_at,
-        graph_sync_error: row.graph_sync_error,
-        user_full_name: row.profiles?.full_name ?? null,
-        user_email: row.profiles?.email ?? '',
-        user_avatar_url: row.profiles?.avatar_url ?? null,
-        substitute_full_name: row.substitute?.full_name ?? null,
-        substitute_email: row.substitute?.email ?? null,
-    }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (data ?? []) as any[]
+
+    // Phase 30 — batch-fetch SUM(paid_days) per user_id × year dla badge'a
+    // "Pula 2026: 15/20" w queue. Liczymy approved leaves w roku startu wniosku
+    // (excluding pending, bo bilans po akceptacji jest informational only).
+    const yearKeys = new Set<string>()
+    const userYearMap = new Map<string, { userId: string; year: number }>()
+    for (const row of rows) {
+        const year = Number(row.start_date.slice(0, 4))
+        const key = `${row.user_id}-${year}`
+        if (!yearKeys.has(key)) {
+            yearKeys.add(key)
+            userYearMap.set(key, { userId: row.user_id, year })
+        }
+    }
+    const poolUsageMap = new Map<string, number>()
+    if (userYearMap.size > 0) {
+        const userYearValues = Array.from(userYearMap.values())
+        const userIds = Array.from(new Set(userYearValues.map((v) => v.userId)))
+        const years = Array.from(new Set(userYearValues.map((v) => v.year)))
+        const minYear = Math.min(...years)
+        const maxYear = Math.max(...years)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: usage } = await (admin.from('leave_requests') as any)
+            .select('user_id, start_date, paid_days')
+            .in('user_id', userIds)
+            .eq('status', 'approved')
+            .gte('start_date', `${minYear}-01-01`)
+            .lte('start_date', `${maxYear}-12-31`)
+        const usageRows = (usage ?? []) as unknown as Array<{
+            user_id: string
+            start_date: string
+            paid_days: number | string | null
+        }>
+        for (const u of usageRows) {
+            const y = Number(u.start_date.slice(0, 4))
+            const key = `${u.user_id}-${y}`
+            poolUsageMap.set(key, (poolUsageMap.get(key) ?? 0) + Number(u.paid_days ?? 0))
+        }
+    }
+
+    return rows.map((row) => {
+        const year = Number(row.start_date.slice(0, 4))
+        const usageKey = `${row.user_id}-${year}`
+        return {
+            id: row.id,
+            user_id: row.user_id,
+            start_date: row.start_date,
+            end_date: row.end_date,
+            leave_type: row.leave_type,
+            half_day: row.half_day,
+            note: row.note,
+            documentation_url: row.documentation_url,
+            status: row.status,
+            decided_by: row.decided_by,
+            decided_at: row.decided_at,
+            decision_note: row.decision_note,
+            created_at: row.created_at,
+            substitute_id: row.substitute_id,
+            oof_internal_message: row.oof_internal_message,
+            oof_external_message: row.oof_external_message,
+            graph_oof_set: row.graph_oof_set,
+            graph_oof_set_at: row.graph_oof_set_at,
+            graph_sync_error: row.graph_sync_error,
+            paid_days: Number(row.paid_days ?? 0),
+            unpaid_days: Number(row.unpaid_days ?? 0),
+            user_full_name: row.profiles?.full_name ?? null,
+            user_email: row.profiles?.email ?? '',
+            user_avatar_url: row.profiles?.avatar_url ?? null,
+            substitute_full_name: row.substitute?.full_name ?? null,
+            substitute_email: row.substitute?.email ?? null,
+            pool_employment_type: row.profiles?.employment_type ?? null,
+            pool_entitlement_days: row.profiles?.leave_entitlement_days ?? null,
+            pool_carried_over_days: Number(row.profiles?.leave_carried_over_days ?? 0),
+            pool_used_initial_days: Number(row.profiles?.leave_used_initial_days ?? 0),
+            pool_already_booked_paid_days_in_year: poolUsageMap.get(usageKey) ?? 0,
+        }
+    })
 }
 
 // ─── Admin: approve / reject ─────────────────────────────────────────────────

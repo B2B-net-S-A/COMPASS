@@ -335,11 +335,30 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                                 key={l.id}
                                 className="flex items-center justify-between gap-2 flex-wrap"
                             >
-                                <span className="text-amber-100/90">
-                                    {LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type} ·{' '}
-                                    {format(parseISO(l.start_date), 'd LLL', { locale: pl })} –{' '}
-                                    {format(parseISO(l.end_date), 'd LLL', { locale: pl })}
-                                    {l.status === 'pending' && ' (oczekuje)'}
+                                <span className="text-amber-100/90 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    <span>
+                                        {LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type} ·{' '}
+                                        {format(parseISO(l.start_date), 'd LLL', { locale: pl })} –{' '}
+                                        {format(parseISO(l.end_date), 'd LLL', { locale: pl })}
+                                        {l.status === 'pending' && ' (oczekuje)'}
+                                    </span>
+                                    {/* Phase 30 — pill płatny/bezpłatny dla vacation pool. */}
+                                    {l.paid_days > 0 && (
+                                        <Badge
+                                            variant="outline"
+                                            className="text-[10px] bg-green-500/15 text-green-300 border-green-500/30"
+                                        >
+                                            {l.paid_days} dni płatnych (z puli)
+                                        </Badge>
+                                    )}
+                                    {l.unpaid_days > 0 && (
+                                        <Badge
+                                            variant="outline"
+                                            className="text-[10px] bg-gray-500/15 text-gray-300 border-gray-500/30"
+                                        >
+                                            {l.unpaid_days} dni bezpłatnych
+                                        </Badge>
+                                    )}
                                 </span>
                                 <Button
                                     size="sm"
