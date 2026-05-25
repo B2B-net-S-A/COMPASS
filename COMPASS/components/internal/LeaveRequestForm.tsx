@@ -13,8 +13,10 @@ import { toastSuccess } from '@/lib/toast-success'
 import {
     createLeaveRequest,
     listEligibleSubstitutes,
+    previewLeaveSplit,
     uploadLeaveProof,
     type EligibleSubstitute,
+    type LeaveSplitPreview,
     type LeaveType,
 } from '@/lib/actions/internal-leave'
 
@@ -46,9 +48,14 @@ interface LeaveRequestFormProps {
      * (Phase 29).
      */
     isUop?: boolean
+    /**
+     * Phase 30 — czy pracownik ma ustawioną pulę płatnych urlopów. Włącza
+     * live preview "X z puli + Y bezpłatne" dla vacation/on_demand.
+     */
+    hasPool?: boolean
 }
 
-export function LeaveRequestForm({ isUop = false }: LeaveRequestFormProps) {
+export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveRequestFormProps) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [leaveType, setLeaveType] = useState<LeaveType>('vacation')
@@ -79,6 +86,34 @@ export function LeaveRequestForm({ isUop = false }: LeaveRequestFormProps) {
             cancelled = true
         }
     }, [])
+
+    // Phase 30 — live preview płatny/bezpłatny (debounce 350ms).
+    // Tylko gdy user ma pulę i typ to vacation/on_demand.
+    const [splitPreview, setSplitPreview] = useState<LeaveSplitPreview | null>(null)
+    const [previewLoading, setPreviewLoading] = useState(false)
+    const isPoolType = leaveType === 'vacation' || leaveType === 'on_demand'
+    useEffect(() => {
+        if (!hasPool || !isPoolType || !startDate || !endDate || endDate < startDate) {
+            setSplitPreview(null)
+            return
+        }
+        setPreviewLoading(true)
+        const handler = setTimeout(() => {
+            previewLeaveSplit({
+                startDate,
+                endDate,
+                halfDay: (startDate === endDate && halfDay) ? halfDay : null,
+                leaveType,
+            })
+                .then((p) => setSplitPreview(p))
+                .catch(() => setSplitPreview(null))
+                .finally(() => setPreviewLoading(false))
+        }, 350)
+        return () => {
+            clearTimeout(handler)
+            setPreviewLoading(false)
+        }
+    }, [hasPool, isPoolType, startDate, endDate, halfDay, leaveType])
 
     const showHalfDay = startDate && endDate && startDate === endDate
     const showDocsField = LEAVE_TYPES.find((t) => t.value === leaveType)?.needsDocs ?? false
@@ -207,6 +242,11 @@ export function LeaveRequestForm({ isUop = false }: LeaveRequestFormProps) {
                         </div>
                     )}
 
+                    {/* Phase 30 — live preview podziału płatny/bezpłatny dla pracownika z pulą. */}
+                    {hasPool && isPoolType && (splitPreview || previewLoading) && (
+                        <PoolSplitPreview preview={splitPreview} loading={previewLoading} />
+                    )}
+
                     {showDocsField && (
                         <>
                             <div className="space-y-1.5">
@@ -329,5 +369,55 @@ export function LeaveRequestForm({ isUop = false }: LeaveRequestFormProps) {
                 </form>
             </CardContent>
         </Card>
+    )
+}
+
+// Phase 30 — banner pokazujący auto-split płatny/bezpłatny przy składaniu wniosku.
+function PoolSplitPreview({ preview, loading }: { preview: LeaveSplitPreview | null; loading: boolean }) {
+    if (loading) {
+        return (
+            <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-muted-foreground inline-flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Liczę pulę…
+            </div>
+        )
+    }
+    if (!preview || preview.workingDays === 0) return null
+
+    const { paid, unpaid, workingDays, remainingBefore, remainingAfter, entitlementDays } = preview
+    const allPaid = paid > 0 && unpaid === 0
+    const partial = paid > 0 && unpaid > 0
+    const allUnpaid = paid === 0 && unpaid > 0
+
+    const cls = allPaid
+        ? 'border-green-500/30 bg-green-500/5 text-green-300'
+        : partial
+            ? 'border-amber-500/30 bg-amber-500/5 text-amber-300'
+            : 'border-red-500/30 bg-red-500/5 text-red-300'
+
+    const icon = allPaid ? '✓' : partial ? '⚠' : '✗'
+
+    return (
+        <div className={`rounded-md border px-3 py-2 text-xs ${cls}`}>
+            <div className="font-medium">
+                {icon} Wniosek {workingDays} {workingDays === 1 ? 'dzień roboczy' : 'dni roboczych'}:{' '}
+                {paid > 0 && <span>{paid} płatnych (z puli)</span>}
+                {partial && <span> + </span>}
+                {unpaid > 0 && <span>{unpaid} bezpłatnych</span>}
+            </div>
+            <div className="mt-0.5 text-muted-foreground">
+                Pula {entitlementDays} dni · pozostało{' '}
+                <span className="text-foreground">{remainingBefore?.toFixed(1)}</span>
+                {remainingAfter != null && (
+                    <>
+                        {' → '}
+                        <span className={`${(remainingAfter ?? 0) <= 0 ? 'text-amber-300' : 'text-foreground'}`}>
+                            {remainingAfter.toFixed(1)} po złożeniu
+                        </span>
+                    </>
+                )}
+                {allUnpaid && ' (pula wyczerpana)'}
+            </div>
+        </div>
     )
 }

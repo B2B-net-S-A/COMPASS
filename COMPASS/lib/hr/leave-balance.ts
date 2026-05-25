@@ -57,3 +57,69 @@ export function computeRemaining(
 ): number {
     return Number((entitlementDays + carriedOverDays - usedDays - approvedFutureDays).toFixed(1))
 }
+
+export interface PaidUnpaidSplit {
+    paid: number
+    unpaid: number
+}
+
+/**
+ * Phase 30 — split a leave request into paid (drawn from pool) and unpaid days.
+ *
+ * Behavior per employment_type:
+ *   - UoP: pool jest hard-limit (Phase 27k walidacja blokuje overflow przed insertem).
+ *     Tu zawsze paid=requested, unpaid=0 (jeśli caller doszedł tutaj, pula starcza).
+ *     UoP bez puli (entitlement IS NULL) = unlimited → paid=requested, unpaid=0.
+ *   - B2B/zlecenie z pulą: paid = min(requested, remaining), unpaid = requested - paid.
+ *     Auto-split w jednym leave_request (B2B/zlecenie nie mają osobnego unpaid_leave —
+ *     PR #179 blokuje wszystko poza vacation).
+ *   - B2B/zlecenie bez puli: paid=0, unpaid=requested. Historyczna semantyka.
+ *
+ * Half-day (0.5) jest atomowy — jeśli pool < 0.5, całe pół dnia idzie na unpaid
+ * (nie splitujemy fractional half-day).
+ */
+export function computePaidUnpaidSplit(args: {
+    employmentType: string | null
+    entitlementDays: number | null
+    carriedOverDays: number
+    usedInitialDays: number
+    alreadyBookedDaysInYear: number
+    requestedWorkingDays: number
+}): PaidUnpaidSplit {
+    const requested = args.requestedWorkingDays
+    if (requested <= 0) return { paid: 0, unpaid: 0 }
+
+    const isContractor = args.employmentType === 'b2b' || args.employmentType === 'zlecenie'
+    const hasPool = args.entitlementDays != null
+
+    // UoP: caller już zwalidował hard-limit. Zawsze paid=requested.
+    if (!isContractor) {
+        return { paid: round1(requested), unpaid: 0 }
+    }
+
+    // B2B/zlecenie bez puli: cały wniosek bezpłatny.
+    if (!hasPool) {
+        return { paid: 0, unpaid: round1(requested) }
+    }
+
+    // B2B/zlecenie z pulą: auto-split.
+    const remaining =
+        (args.entitlementDays as number)
+        + args.carriedOverDays
+        - args.usedInitialDays
+        - args.alreadyBookedDaysInYear
+    const available = Math.max(0, remaining)
+
+    // Half-day atomowy: jeśli pool < 0.5, całe pół dnia bezpłatne.
+    if (requested === 0.5) {
+        return available >= 0.5 ? { paid: 0.5, unpaid: 0 } : { paid: 0, unpaid: 0.5 }
+    }
+
+    const paid = Math.min(requested, available)
+    const unpaid = requested - paid
+    return { paid: round1(paid), unpaid: round1(unpaid) }
+}
+
+function round1(n: number): number {
+    return Number(n.toFixed(1))
+}

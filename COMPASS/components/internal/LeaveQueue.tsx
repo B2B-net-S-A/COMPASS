@@ -308,6 +308,8 @@ export function LeaveQueue({ requests }: Props) {
                                                         Custom Out of Office message
                                                     </p>
                                                 )}
+                                                {/* Phase 30 — pool snapshot dla B2B/zlecenie + UoP z pulą */}
+                                                <PoolBadge req={req} />
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
@@ -379,6 +381,8 @@ export function LeaveQueue({ requests }: Props) {
                 </DialogContent>
             </Dialog>
 
+            {/* (Phase 30 PoolBadge defined below) */}
+
             {/* H2.2: bulk reject dialog */}
             <Dialog
                 open={bulkRejectOpen}
@@ -417,5 +421,55 @@ export function LeaveQueue({ requests }: Props) {
                 </DialogContent>
             </Dialog>
         </>
+    )
+}
+
+// Phase 30 — badge w queue: pula 2026 + breakdown ten wniosek. Renderuje się
+// tylko gdy wniosek dotyczy puli (vacation/on_demand) i są wartości paid/unpaid.
+function PoolBadge({ req }: { req: PendingLeaveRow }) {
+    const paid = req.paid_days ?? 0
+    const unpaid = req.unpaid_days ?? 0
+    if (paid === 0 && unpaid === 0) return null
+
+    const entitlement = req.pool_entitlement_days
+    const carried = req.pool_carried_over_days ?? 0
+    const usedInitial = req.pool_used_initial_days ?? 0
+    const alreadyBookedPaid = req.pool_already_booked_paid_days_in_year ?? 0
+    const year = req.start_date.slice(0, 4)
+
+    // Pula totalna i remaining przed akceptacją (już zawiera SUM(paid_days)
+    // zatwierdzonych w tym roku, więc nie wlicza tego pending request).
+    const hasPool = entitlement != null
+    const total = hasPool ? entitlement + carried - usedInitial : null
+    const remainingBefore = hasPool ? (total as number) - alreadyBookedPaid : null
+    const remainingAfter = hasPool && remainingBefore != null ? remainingBefore - paid : null
+
+    return (
+        <div className="text-[11px] mt-1.5 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            {/* Breakdown — zawsze gdy split ≠ 0/0 */}
+            <span>
+                {paid > 0 && <span className="text-green-300 font-medium">{paid} płatnych</span>}
+                {paid > 0 && unpaid > 0 && <span className="text-muted-foreground"> + </span>}
+                {unpaid > 0 && <span className="text-muted-foreground">{unpaid} bezpłatnych</span>}
+            </span>
+            {hasPool && (
+                <span className="text-muted-foreground">
+                    · Pula {year}:{' '}
+                    <span className="text-foreground font-medium">
+                        {remainingBefore?.toFixed(1)}
+                    </span>
+                    /{total}
+                    {remainingAfter != null && (
+                        <>
+                            {' → po akceptacji '}
+                            <span className={`font-medium ${(remainingAfter ?? 0) <= 0 ? 'text-amber-300' : 'text-foreground'}`}>
+                                {remainingAfter.toFixed(1)}
+                            </span>
+                            /{total}
+                        </>
+                    )}
+                </span>
+            )}
+        </div>
     )
 }

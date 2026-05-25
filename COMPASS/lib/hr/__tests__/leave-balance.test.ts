@@ -3,6 +3,7 @@ import {
     totalVacationDaysUsed,
     workingDaysInLeave,
     computeRemaining,
+    computePaidUnpaidSplit,
     VACATION_POOL_TYPES,
 } from '../leave-balance'
 
@@ -88,5 +89,163 @@ describe('computeRemaining (Phase 27k)', () => {
     })
     it('handles half-day fractions', () => {
         expect(computeRemaining(20, 0, 10.5, 0)).toBe(9.5)
+    })
+})
+
+describe('computePaidUnpaidSplit (Phase 30)', () => {
+    it('B2B/zlecenie bez puli → cały wniosek bezpłatny', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: null,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 0,
+                requestedWorkingDays: 5,
+            }),
+        ).toEqual({ paid: 0, unpaid: 5 })
+    })
+
+    it('zlecenie bez puli → cały wniosek bezpłatny (analogicznie do B2B)', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'zlecenie',
+                entitlementDays: null,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 0,
+                requestedWorkingDays: 3,
+            }),
+        ).toEqual({ paid: 0, unpaid: 3 })
+    })
+
+    it('UoP zawsze paid=requested (hard-limit walidowany wcześniej)', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'uop',
+                entitlementDays: 26,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 5,
+                requestedWorkingDays: 10,
+            }),
+        ).toEqual({ paid: 10, unpaid: 0 })
+    })
+
+    it('UoP bez puli (unlimited) → paid=requested', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'uop',
+                entitlementDays: null,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 0,
+                requestedWorkingDays: 7,
+            }),
+        ).toEqual({ paid: 7, unpaid: 0 })
+    })
+
+    it('B2B z pulą, wniosek mieści się → wszystko płatne', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 0,
+                usedInitialDays: 3,
+                alreadyBookedDaysInYear: 2,
+                requestedWorkingDays: 5,
+            }),
+        ).toEqual({ paid: 5, unpaid: 0 }) // remaining=15, requested=5
+    })
+
+    it('B2B z pulą, wniosek przekracza → auto-split', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 17,
+                requestedWorkingDays: 10,
+            }),
+        ).toEqual({ paid: 3, unpaid: 7 }) // remaining=3, requested=10
+    })
+
+    it('B2B z pulą wyczerpaną → cały wniosek bezpłatny', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 20,
+                requestedWorkingDays: 5,
+            }),
+        ).toEqual({ paid: 0, unpaid: 5 })
+    })
+
+    it('B2B z carried_over i used_initial → liczy poprawnie', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 5,
+                usedInitialDays: 3,
+                alreadyBookedDaysInYear: 10,
+                requestedWorkingDays: 8,
+            }),
+        ).toEqual({ paid: 8, unpaid: 0 }) // remaining = 20+5-3-10 = 12, req=8 → all paid
+    })
+
+    it('B2B half-day z pulą ≥ 0.5 → płatne', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 19,
+                requestedWorkingDays: 0.5,
+            }),
+        ).toEqual({ paid: 0.5, unpaid: 0 }) // remaining=1, requested=0.5
+    })
+
+    it('B2B half-day z pulą < 0.5 → atomowy, całe bezpłatne', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 19.8,
+                requestedWorkingDays: 0.5,
+            }),
+        ).toEqual({ paid: 0, unpaid: 0.5 }) // remaining=0.2 < 0.5 → all unpaid
+    })
+
+    it('B2B z over-booked pulą (negative remaining) → wszystko bezpłatne', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 25, // already over
+                requestedWorkingDays: 3,
+            }),
+        ).toEqual({ paid: 0, unpaid: 3 })
+    })
+
+    it('requested = 0 → 0/0', () => {
+        expect(
+            computePaidUnpaidSplit({
+                employmentType: 'b2b',
+                entitlementDays: 20,
+                carriedOverDays: 0,
+                usedInitialDays: 0,
+                alreadyBookedDaysInYear: 0,
+                requestedWorkingDays: 0,
+            }),
+        ).toEqual({ paid: 0, unpaid: 0 })
     })
 })

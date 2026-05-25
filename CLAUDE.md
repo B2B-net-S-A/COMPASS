@@ -712,6 +712,53 @@ Manager (Dominik) wgrywa raz w miesiącu Excela z nowymi placementami (umieszcze
 
 `placement-status-tick`: `upcoming → started` gdy `start_date ≤ dziś`. `placement-hours-reminder`: dla `started` placementów po `bonus_eligible_date` (ostatnie 30 dni), niepotwierdzonych → przypomnienie do importera (lub managerów/adminów) o potwierdzeniu 168h.
 
+## Phase 30 — Pula płatnych urlopów dla B2B/zlecenie (2026-06-01)
+
+Rozszerzenie infrastruktury Phase 27k (urlop UoP) na B2B i zlecenie — dla pracowników którzy mają w kontrakcie wynegocjowany benefit "X dni płatnych urlopów rocznie". PR #179 / `phase29_b2b_zlecenie_vacation_only` zablokował B2B/zlecenie do `leave_type='vacation'` ale bez puli — domyślnie wszystko bezpłatne. Phase 30 daje adminowi opcję ustawić pulę per pracownik; system auto-splituje wniosek na płatny (z puli) + bezpłatny (nadwyżka) w jednym `leave_request`.
+
+**Kluczowe decyzje (z planowania):**
+- **Roczna pula, bez carry-over** — reset implicit przez `WHERE start_date BETWEEN year-01-01 AND year-12-31` w `getMyLeaveBalance`.
+- **Tylko B2B/zlecenie** dostają nową semantykę auto-split. UoP zostaje przy hard-limit (PR #179 + Phase 27k unchanged — UoP używa osobnego `leave_type='unpaid_leave'` dla nadwyżki, czego B2B/zlecenie nie mają).
+- **Auto-split**: jeden `leave_request` z `paid_days + unpaid_days = working_days`. Per-day distinction w timesheet: chronologicznie pierwsze N dni roboczych = płatne, reszta = bezpłatne.
+- **Hybrydowy backfill** przez nową kolumnę `profiles.leave_used_initial_days` — admin przy włączeniu puli wpisuje "ile już zużyto w tym roku" (np. "pula 20, wpisz 5 → balance 15").
+- **Display**: per-leave badge w `TimesheetPreviewDialog` (admin/finanse/manager), breakdown w `MyLeaveList` (pracownik), preview w `LeaveRequestForm`. Kalendarz zespołu `/internal?tab=calendar` bez zmian (consolidacja OOO/Zdalnie/Święto z PR #179/180/181 zostaje). Brak proaktywnych emaili/push o końcu puli — info widoczne tylko w widget'cie.
+
+**Migracja `phase30_paid_vacation_pool_b2b`:**
+- `profiles.leave_entitlement_days` — comment update (pula dotyczy każdego employment_type, nie tylko UoP)
+- `profiles.leave_used_initial_days NUMERIC(4,1) DEFAULT 0` — hybrydowy backfill
+- `leave_requests.paid_days NUMERIC(4,1) DEFAULT 0` — split płatne
+- `leave_requests.unpaid_days NUMERIC(4,1) DEFAULT 0` — split bezpłatne
+- Index `idx_leave_requests_user_year_pool` (partial — vacation+on_demand z status approved/pending)
+- **Świadomie BEZ** triggera walidującego sum (computation świąt PL w PG SQL jest pain — walidacja w app layer)
+- **Świadomie BEZ** backfilla historycznych leave_requests (zostają z 0/0; admin użyje `leave_used_initial_days` per user)
+
+**Backend:**
+- `lib/hr/leave-balance.ts` += `computePaidUnpaidSplit({employmentType, entitlementDays, carriedOverDays, usedInitialDays, alreadyBookedDaysInYear, requestedWorkingDays})` — pure helper z 10 unit testami (B2B/zlecenie bez puli, z pulą fits/partial/exhausted, UoP zawsze paid=requested, half-day atomowy, over-booked, requested=0).
+- `lib/actions/internal-leave.ts`:
+  - Nowy helper `computeLeaveRequestSplit(supabase, userId, leaveType, start, end, halfDay)` — fetch 3 zapytań (profile + existing-in-year + holidays) → wywołuje `computePaidUnpaidSplit`.
+  - `createLeaveRequest` + `createLeaveOnBehalf` — używają split, wstawiają `paid_days/unpaid_days` do INSERT. UoP hard-limit zachowany (throw przy overshoot z friendly errorem).
+  - `getMyLeaveBalance` — odgate'owana (`hasLimit = entitlement != null` zamiast `employment_type === 'uop' && entitlement != null`). Odejmuje `leave_used_initial_days` z remaining.
+  - `listPendingLeaveRequests` — extended SELECT (paid_days/unpaid_days + profile pool fields via nested select) + batch-fetch SUM(paid_days) per user/year dla badge'a "Pula 2026: 15/20".
+  - Nowy `previewLeaveSplit({startDate, endDate, halfDay, leaveType})` — używany przez LeaveRequestForm do live banner'a.
+- `lib/actions/user-admin.ts` `setEmployeeProfile`/`getEmployeeProfileFields` — dodane `leave_used_initial_days` w UpdateableFields + SELECT + walidacja.
+
+**Frontend:**
+- `EmployeeProfileDialog` (admin) — odgate'owane (sekcja puli widoczna dla każdego employment_type), 3-ci input `leave_used_initial_days`, adaptive label (UoP: "Limit urlopu (KP)" vs B2B/zlecenie: "Pula płatnych (z kontraktu, opcjonalna)"), adaptive helper text.
+- `LeavePanel` — conditional render `LeaveStatsWidget`: visible TYLKO gdy UoP lub B2B/zlecenie z pulą. B2B/zlecenie bez puli → widget w ogóle nie renderuje się (per user req: "jak nie ma, to nie pokazuj sekcji").
+- `LeaveStatsWidget` — adaptive header ("Pula płatnych urlopów" dla B2B/zlecenie z pulą vs "Urlop wypoczynkowy"); breakdown wymiar/zaległe/zużyte-na-start; tekst "Bez puli płatnych" dla B2B/zlecenie bez puli.
+- `LeaveRequestForm` += `hasPool` prop + live preview banner (debounce 350ms) z 3 stanami: ✓ wszystko płatne (green), ⚠ częściowo (amber), ✗ wszystko bezpłatne (red). Visible dla vacation/on_demand gdy `hasPool=true`.
+- `MyLeaveList` — breakdown per wniosek: "5 dni płatnych (z puli) + 3 dni bezpłatnych".
+- `LeaveQueue` (manager/admin/finanse) — badge per pending row: "5 płatnych + 0 bezpłatnych · Pula 2026: 15/20 → po akceptacji 10/20".
+- `TimesheetPreviewDialog` — w sekcji "Urlopy w tym miesiącu" dodano pill "X dni płatnych (z puli)" + "Y dni bezpłatnych" przy każdym urlopie. `TimesheetEditor` (widok własny pracownika) — bez zmian; pracownik widzi breakdown w `MyLeaveList`.
+
+**Ops po deploy:**
+1. Aplikuj migrację `phase30_paid_vacation_pool_b2b` przez Supabase MCP (`mcp__e0e020fb...__apply_migration`).
+2. Dla każdego B2B/zlecenie pracownika z benefitem (Dominik/Artur ustala listę): `/internal/admin?tab=rates` → button "Profil" → wypełnij "Wymiar dni/rok" + "Już zużyte (start)" + Save. Backfill manualny przez `leave_used_initial_days` zachowuje historyczne wnioski jako 0/0 ale "zjada" pulę zgodnie z deklaracją admina.
+3. Komunikat dla tych pracowników (Slack/Teams): "Od dziś widzisz pulę płatnych urlopów w `/internal?tab=leaves`."
+4. Brak cron jobów, brak nowych env vars.
+
+**Audit log:** existing `EMPLOYEE_PROFILE_UPDATE` payload zawiera `leave_entitlement_days` / `leave_carried_over_days` / `leave_used_initial_days` (zmiana fields obiektu — bez nowych action types). Existing `LEAVE_APPROVED` (Phase 25) niezmieniona — paid/unpaid są na samym `leave_requests` row.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

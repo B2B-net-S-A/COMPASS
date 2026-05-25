@@ -7,16 +7,14 @@ interface Props {
 }
 
 /**
- * Statystyki urlopowe per rok — B2B model bez limitu dni.
- * Pokazuje:
- *  - used (już wykorzystane dni vacation w bieżącym roku)
- *  - approved future (zatwierdzone na przyszłość)
- *  - pending (oczekujące na akceptację)
- *
- * Brak salda / limitu — wszyscy są na B2B i mogą brać tyle ile chcą,
- * pod warunkiem złożenia wniosku i akceptacji przez admina.
+ * Statystyki urlopowe per rok.
+ *  - UoP z limitem: pokazuje "X dni pozostało" + breakdown wymiar/zaległy/zużyte.
+ *  - UoP bez limitu (entitlement IS NULL): "X dni wykorzystane" + badge "Bez limitu".
+ *  - B2B/zlecenie z pulą (Phase 30): "X dni pozostało" jak UoP. Pula z kontraktu.
+ *  - B2B/zlecenie bez puli: widget w ogóle nie renderuje się (parent ukrywa).
  */
 export function LeaveStatsWidget({ balance }: Props) {
+    const isContractor = balance.employment_type === 'b2b' || balance.employment_type === 'zlecenie'
     return (
         <Card>
             <CardContent className="pt-6">
@@ -27,7 +25,9 @@ export function LeaveStatsWidget({ balance }: Props) {
                         </div>
                         <div>
                             <h3 className="text-sm font-medium text-muted-foreground">
-                                Urlop wypoczynkowy ({balance.year})
+                                {balance.has_limit && isContractor
+                                    ? `Pula płatnych urlopów (${balance.year})`
+                                    : `Urlop wypoczynkowy (${balance.year})`}
                             </h3>
                             {balance.has_limit ? (
                                 <p
@@ -54,14 +54,16 @@ export function LeaveStatsWidget({ balance }: Props) {
                         <div className="text-right text-xs text-muted-foreground">
                             <div>
                                 Wymiar: {balance.entitlement_days}
-                                {balance.carried_over_days > 0 ? ` + ${balance.carried_over_days} zaległe` : ''} dni
+                                {balance.carried_over_days > 0 ? ` + ${balance.carried_over_days} zaległe` : ''}
+                                {balance.used_initial_days > 0 ? ` − ${balance.used_initial_days} zaległo zużyte` : ''}{' '}
+                                dni
                             </div>
-                            <div className="mt-0.5">Wykorzystane: {balance.used_days} dni</div>
+                            <div className="mt-0.5">Wykorzystane w {balance.year}: {balance.used_days} dni</div>
                         </div>
                     ) : (
                         <div className="text-right text-xs text-muted-foreground inline-flex items-center gap-1.5">
                             <InfinityIcon className="w-3.5 h-3.5" />
-                            <span>Bez limitu</span>
+                            <span>{isContractor ? 'Bez puli płatnych' : 'Bez limitu'}</span>
                         </div>
                     )}
                 </div>

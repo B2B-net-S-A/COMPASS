@@ -402,9 +402,11 @@ export interface EmployeeProfileInput {
     default_location?: 'onsite' | 'remote'
     employment_type?: 'uop' | 'b2b' | 'zlecenie'
     work_start_date?: string | null
-    // Phase 27k — vacation entitlement (UoP). null = no limit.
+    // Phase 27k — vacation entitlement. Phase 30: dotyczy też B2B/zlecenie (opcjonalna pula).
     leave_entitlement_days?: number | null
     leave_carried_over_days?: number
+    // Phase 30 — hybrydowy backfill puli (ile już zużyto przed włączeniem feature).
+    leave_used_initial_days?: number
 }
 
 export interface EmployeeProfileFields {
@@ -413,6 +415,7 @@ export interface EmployeeProfileFields {
     work_start_date: string | null
     leave_entitlement_days: number | null
     leave_carried_over_days: number
+    leave_used_initial_days: number
 }
 
 export async function setEmployeeProfile(targetUserId: string, fields: EmployeeProfileInput): Promise<void> {
@@ -453,6 +456,13 @@ export async function setEmployeeProfile(targetUserId: string, fields: EmployeeP
         }
         updates.leave_carried_over_days = v
     }
+    if (fields.leave_used_initial_days !== undefined) {
+        const v = fields.leave_used_initial_days
+        if (!Number.isFinite(v) || v < 0 || v > 366) {
+            throw new Error('"Już zużyte" musi być liczbą 0–366.')
+        }
+        updates.leave_used_initial_days = v
+    }
 
     if (Object.keys(updates).length === 0) {
         return
@@ -474,7 +484,10 @@ export async function getEmployeeProfileFields(targetUserId: string): Promise<Em
     const admin = createServiceClient()
     const { data, error } = await admin
         .from('profiles')
-        .select('default_location, employment_type, work_start_date, leave_entitlement_days, leave_carried_over_days')
+        .select(
+            'default_location, employment_type, work_start_date, '
+            + 'leave_entitlement_days, leave_carried_over_days, leave_used_initial_days',
+        )
         .eq('id', targetUserId)
         .single<EmployeeProfileFields>()
     if (error) throw new Error(`Nie udało się odczytać profilu: ${error.message}`)
@@ -484,6 +497,7 @@ export async function getEmployeeProfileFields(targetUserId: string): Promise<Em
         work_start_date: data?.work_start_date ?? null,
         leave_entitlement_days: data?.leave_entitlement_days ?? null,
         leave_carried_over_days: Number(data?.leave_carried_over_days ?? 0),
+        leave_used_initial_days: Number(data?.leave_used_initial_days ?? 0),
     }
 }
 

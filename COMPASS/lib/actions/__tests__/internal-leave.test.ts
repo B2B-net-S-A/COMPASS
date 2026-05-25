@@ -89,6 +89,8 @@ function makeChain(table: string) {
             state.inCalls.push({ col, vals })
             return chain
         }),
+        gte: vi.fn(() => chain),
+        lte: vi.fn(() => chain),
         order: vi.fn(() => chain),
         limit: vi.fn(() => chain),
         update: vi.fn((payload: Record<string, unknown>) => {
@@ -186,7 +188,7 @@ describe('listPendingLeaveRequests — manager team scoping', () => {
         expect(state.inCalls.find((c) => c.col === 'user_id')).toBeUndefined()
     })
 
-    it('does not scope an admin (no user_id filter applied)', async () => {
+    it('does not scope an admin to a team (returns all pending users)', async () => {
         authContextMock.isAdmin = true
         authContextMock.isManager = false
         authContextMock.role = 'admin'
@@ -194,8 +196,12 @@ describe('listPendingLeaveRequests — manager team scoping', () => {
 
         const result = await listPendingLeaveRequests()
 
-        expect(state.inCalls.find((c) => c.col === 'user_id')).toBeUndefined()
+        // Admin sees ALL pending leaves (no team filter applied to main query).
+        // Phase 30 — note: a separate pool-aggregator query DOES call
+        // .in('user_id', distinctPendingUserIds), so checking inCalls directly
+        // is ambiguous. Assert via result instead: both pending users present.
         expect(result).toHaveLength(2)
+        expect(result.map((r) => r.user_id).sort()).toEqual(['emp-1', 'emp-9'])
     })
 
     it('throws for a non-approver role (consultant)', async () => {
