@@ -157,6 +157,8 @@ export type AuditAction =
     // Phase 27i — Contract documents (umowa + aneksy)
     | 'CONTRACT_DOCUMENT_UPLOADED'
     | 'CONTRACT_DOCUMENT_DELETED'
+    // Phase 30b — Vacation pool edit from Rates panel (finanse + admin)
+    | 'USER_VACATION_POOL_UPDATED'
 
 export async function logAudit(
     userId: string | null,
