@@ -176,6 +176,30 @@ function assertHolidayInLieuEligible(employmentType: string | null, forSelf: boo
     )
 }
 
+/**
+ * Phase 29: B2B i zlecenie mogą wnioskować TYLKO o urlop wypoczynkowy
+ * (leave_type='vacation'). Pełen katalog statutowy (L4, urlop okolicznościowy,
+ * opiekuńczy, macierzyński itd.) jest zarezerwowany dla pracowników UoP.
+ *
+ * NULL employment_type → traktujemy jak UoP (bezpieczna strona; admin powinien
+ * uzupełnić). DB trigger enforce_b2b_zlecenie_vacation_only jest ostatnią linią
+ * obrony, ten guard daje friendly error message.
+ */
+function assertB2bZlecenieVacationOnly(
+    employmentType: string | null,
+    leaveType: LeaveType,
+    forSelf: boolean,
+): void {
+    if (leaveType === 'vacation') return
+    if (employmentType !== 'b2b' && employmentType !== 'zlecenie') return
+    const label = employmentType === 'b2b' ? 'B2B' : 'umowie zlecenie'
+    throw new Error(
+        forSelf
+            ? `Na umowie ${label} możesz wnioskować wyłącznie o urlop wypoczynkowy.`
+            : `Pracownikowi na umowie ${label} możesz wpisać wyłącznie urlop wypoczynkowy (vacation).`,
+    )
+}
+
 function validateLeaveType(value: string): asserts value is LeaveType {
     if (!(SELF_SERVICE_LEAVE_TYPES as string[]).includes(value)) {
         throw new Error(`Nieprawidłowy typ urlopu: ${value}`)
@@ -238,6 +262,18 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
     }
 
     const supabase = createClient()
+
+    // Phase 29 — B2B / zlecenie mogą wnioskować tylko o 'vacation'. Friendly
+    // error message; DB trigger enforce_b2b_zlecenie_vacation_only jest ostatnią
+    // linią obrony. Skip fetch gdy już vacation (szybki happy path).
+    if (input.leaveType !== 'vacation') {
+        const { data: empRow } = await supabase
+            .from('profiles')
+            .select('employment_type')
+            .eq('id', ctx.userId)
+            .maybeSingle<{ employment_type: string | null }>()
+        assertB2bZlecenieVacationOnly(empRow?.employment_type ?? null, input.leaveType, true)
+    }
 
     // Phase 27k — vacation-pool limit for UoP employees (B2B/zlecenie = bez limitu).
     if ((VACATION_POOL_TYPES as readonly string[]).includes(input.leaveType)) {
@@ -658,6 +694,8 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
     if (input.leaveType === 'holiday_in_lieu') {
         assertHolidayInLieuEligible(target.employment_type, false)
     }
+    // Phase 29 — B2B / zlecenie: tylko vacation (analogicznie do self-service).
+    assertB2bZlecenieVacationOnly(target.employment_type, input.leaveType, false)
 
     // Team-scope check dla managera (admin pomija). Pattern z approveTimesheet.
     if (!ctx.isAdmin) {
