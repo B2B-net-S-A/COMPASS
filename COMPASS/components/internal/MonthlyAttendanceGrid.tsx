@@ -239,7 +239,7 @@ function computeCellMeta(args: {
             bg: 'bg-muted/40 border-border/40',
             text: 'text-muted-foreground',
             label: 'Weekend',
-            tooltip: 'Weekend — kliknij aby nadpisać (np. delegacja)',
+            tooltip: 'Weekend — kliknij aby nadpisać (np. pracowałem w sobotę)',
             readOnly: false,
         }
     }
