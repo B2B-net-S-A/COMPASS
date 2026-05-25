@@ -23,43 +23,16 @@ interface CellInfo {
     title: string
 }
 
-const LEAVE_LABEL_PL: Record<string, string> = {
-    vacation: 'Urlop',
-    sick_leave: 'L4',
-    parental_leave: 'Opieka',
-    unpaid_leave: 'Bezpłatny',
-    training: 'Szkolenie',
-    on_demand: 'Na żądanie',
-    occasional: 'Okolicznościowy',
-    childcare: 'Opieka dz.',
-    care_leave: 'Opiekuńczy',
-    force_majeure: 'Siła wyższa',
-    maternity: 'Macierzyński',
-    paternity: 'Ojcowski',
-    childrearing: 'Wychowawczy',
-    blood_donation: 'Krwiodawstwo',
-    holiday_in_lieu: 'Odbiór',
-    other: 'Inne',
-}
-
-const LEAVE_BG: Record<string, string> = {
-    vacation: 'bg-yellow-500/40',
-    sick_leave: 'bg-red-500/40',
-    parental_leave: 'bg-pink-500/40',
-    unpaid_leave: 'bg-gray-500/40',
-    training: 'bg-cyan-500/40',
-    on_demand: 'bg-yellow-500/40',
-    occasional: 'bg-amber-500/40',
-    childcare: 'bg-pink-500/40',
-    care_leave: 'bg-rose-500/40',
-    force_majeure: 'bg-red-500/40',
-    maternity: 'bg-pink-500/40',
-    paternity: 'bg-pink-500/40',
-    childrearing: 'bg-pink-500/40',
-    blood_donation: 'bg-rose-500/40',
-    holiday_in_lieu: 'bg-indigo-500/40',
-    other: 'bg-orange-500/40',
-}
+// Phase 29: kalendarz publiczny (/internal?tab=calendar) pokazuje tylko 3 statusy:
+//   OOO (Out of Office)  — każdy zatwierdzony urlop + delegacja + szkolenie
+//   Zdalnie (Z)          — attendance.status='active' AND location='remote'
+//   Święto / weekend     — public_holidays + sobota/niedziela
+// Szczegółowe typy urlopu (L4, opiekuńczy, okolicznościowy itd.) są widoczne
+// w "Wnioskach urlopowych" (/internal?tab=leaves) — tutaj świadomie konsolidujemy
+// żeby koledzy w zespole nie widzieli rodzaju nieobecności (privacy by default).
+const OOO_BG = 'bg-amber-500/40'
+const OOO_LABEL = 'X'
+const OOO_TITLE = 'Out of Office'
 
 export function VacationCalendar({ data, filter }: Props) {
     const router = useRouter()
@@ -134,21 +107,16 @@ export function VacationCalendar({ data, filter }: Props) {
         const holiday = holidayName.get(iso)
         if (holiday) return { bg: 'bg-muted', label: '', title: holiday }
         if (isWeekend(day)) return { bg: 'bg-muted/30', label: '', title: 'Weekend' }
-        const leave = leaveIdx.get(key)
-        if (leave) {
-            return {
-                bg: LEAVE_BG[leave.leave_type] ?? 'bg-yellow-500/40',
-                label: LEAVE_LABEL_PL[leave.leave_type]?.[0] ?? 'U',
-                title: LEAVE_LABEL_PL[leave.leave_type] ?? 'Urlop',
-            }
+        // Phase 29 — każdy urlop dowolnego typu → OOO (typ widoczny tylko w /internal?tab=leaves).
+        if (leaveIdx.has(key)) {
+            return { bg: OOO_BG, label: OOO_LABEL, title: OOO_TITLE }
         }
         const att = attIdx.get(key)
-        if (att?.status === 'business_trip') {
-            return { bg: 'bg-purple-500/40', label: 'D', title: 'Delegacja' }
+        // Delegacja i szkolenie → też OOO (osoba niedostępna dla zespołu).
+        if (att?.status === 'business_trip' || att?.status === 'training') {
+            return { bg: OOO_BG, label: OOO_LABEL, title: OOO_TITLE }
         }
-        if (att?.status === 'training') {
-            return { bg: 'bg-cyan-500/40', label: 'S', title: 'Szkolenie' }
-        }
+        // Zdalnie zostaje jako osobny status — osoba dostępna, ale nie w biurze.
         if (att?.status === 'active' && att.location === 'remote') {
             return { bg: 'bg-blue-500/40', label: 'Z', title: 'Praca zdalna' }
         }
@@ -272,16 +240,15 @@ export function VacationCalendar({ data, filter }: Props) {
                     </div>
                 )}
 
-                <div className="mt-6 flex flex-wrap gap-2 text-[10px]">
-                    <Badge className="bg-yellow-500/40 text-yellow-100 border-transparent">U — Urlop</Badge>
-                    <Badge className="bg-red-500/40 text-red-100 border-transparent">L — L4</Badge>
-                    <Badge className="bg-pink-500/40 text-pink-100 border-transparent">O — Opieka</Badge>
-                    <Badge className="bg-purple-500/40 text-purple-100 border-transparent">D — Delegacja</Badge>
-                    <Badge className="bg-cyan-500/40 text-cyan-100 border-transparent">S — Szkolenie</Badge>
+                <div className="mt-6 flex flex-wrap gap-2 text-[10px] items-center">
+                    <Badge className="bg-amber-500/40 text-amber-100 border-transparent">X — Out of Office</Badge>
                     <Badge className="bg-blue-500/40 text-blue-100 border-transparent">Z — Zdalnie</Badge>
                     <Badge variant="outline" className="bg-muted text-muted-foreground">
                         Święto / weekend
                     </Badge>
+                    <span className="text-[10px] text-muted-foreground ml-2">
+                        Szczegóły urlopów (typ, data) widoczne w zakładce „Wnioski urlopowe".
+                    </span>
                 </div>
             </CardContent>
         </Card>

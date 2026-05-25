@@ -20,26 +20,31 @@ import {
 
 const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean; uopOnly?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'on_demand', label: 'Urlop na żądanie' },
-    { value: 'occasional', label: 'Urlop okolicznościowy', needsDocs: true },
-    { value: 'childcare', label: 'Opieka nad dzieckiem (art. 188)' },
-    { value: 'care_leave', label: 'Urlop opiekuńczy' },
-    { value: 'force_majeure', label: 'Siła wyższa' },
-    { value: 'sick_leave', label: 'L4 / chorobowe', needsDocs: true },
-    { value: 'maternity', label: 'Urlop macierzyński' },
-    { value: 'paternity', label: 'Urlop ojcowski' },
-    { value: 'parental_leave', label: 'Urlop rodzicielski' },
-    { value: 'childrearing', label: 'Urlop wychowawczy' },
-    { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
-    { value: 'blood_donation', label: 'Krwiodawstwo' },
-    { value: 'training', label: 'Urlop szkoleniowy' },
-    // Tylko UoP — odbiór dnia za święto przypadające w dzień wolny (Kodeks pracy art. 130 §2).
+    // Phase 29: pozostałe typy poniżej są UoP-only (B2B/zlecenie mają tylko 'vacation').
+    { value: 'on_demand', label: 'Urlop na żądanie', uopOnly: true },
+    { value: 'occasional', label: 'Urlop okolicznościowy', needsDocs: true, uopOnly: true },
+    { value: 'childcare', label: 'Opieka nad dzieckiem (art. 188)', uopOnly: true },
+    { value: 'care_leave', label: 'Urlop opiekuńczy', uopOnly: true },
+    { value: 'force_majeure', label: 'Siła wyższa', uopOnly: true },
+    { value: 'sick_leave', label: 'L4 / chorobowe', needsDocs: true, uopOnly: true },
+    { value: 'maternity', label: 'Urlop macierzyński', uopOnly: true },
+    { value: 'paternity', label: 'Urlop ojcowski', uopOnly: true },
+    { value: 'parental_leave', label: 'Urlop rodzicielski', uopOnly: true },
+    { value: 'childrearing', label: 'Urlop wychowawczy', uopOnly: true },
+    { value: 'unpaid_leave', label: 'Urlop bezpłatny', uopOnly: true },
+    { value: 'blood_donation', label: 'Krwiodawstwo', uopOnly: true },
+    { value: 'training', label: 'Urlop szkoleniowy', uopOnly: true },
+    // Odbiór dnia za święto przypadające w dzień wolny (Kodeks pracy art. 130 §2).
     { value: 'holiday_in_lieu', label: 'Odbiór dnia za święto', uopOnly: true },
-    { value: 'other', label: 'Inne' },
+    { value: 'other', label: 'Inne', uopOnly: true },
 ]
 
 interface LeaveRequestFormProps {
-    /** Czy zalogowany pracownik jest na UoP — odblokowuje "Odbiór dnia za święto". */
+    /**
+     * Czy zalogowany pracownik jest na UoP. Gdy true — widzi pełny katalog
+     * 16 typów statutowych. Gdy false (B2B/zlecenie) — tylko 'vacation'
+     * (Phase 29).
+     */
     isUop?: boolean
 }
 
