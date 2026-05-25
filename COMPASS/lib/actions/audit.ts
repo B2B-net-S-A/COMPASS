@@ -97,6 +97,10 @@ export type AuditAction =
     // Phase 26 — Bonus assigned workflow (auto-approved, no invoice link)
     | 'BONUS_ASSIGNED'
     | 'BONUS_UPDATED'
+    // Phase 31 — Champions League (kwartalna premia rekrutacyjna)
+    | 'CHAMPIONS_LEAGUE_ASSIGNED'
+    | 'CHAMPIONS_LEAGUE_UPDATED'
+    | 'CHAMPIONS_LEAGUE_CANCELLED'
     // Phase 28 — Placementy (Excel import, eligibility, auto-bonus, TCM tickets)
     | 'PLACEMENTS_IMPORTED'
     | 'PLACEMENT_CANCELLED'

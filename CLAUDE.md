@@ -759,6 +759,65 @@ Rozszerzenie infrastruktury Phase 27k (urlop UoP) na B2B i zlecenie — dla prac
 
 **Audit log:** existing `EMPLOYEE_PROFILE_UPDATE` payload zawiera `leave_entitlement_days` / `leave_carried_over_days` / `leave_used_initial_days` (zmiana fields obiektu — bez nowych action types). Existing `LEAVE_APPROVED` (Phase 25) niezmieniona — paid/unpaid są na samym `leave_requests` row.
 
+## Phase 31 — Premia Champions League (kwartalna, manualna, 2026-06-02)
+
+Piąta kategoria premii (po `sales`/`delivery_lead`/`recruiter`/`custom` z Phase 27b): **`champions_league`** — kwartalny ranking rekrutacyjny zarządu z hard-coded nagrodami za 3 pierwsze miejsca.
+
+**Reguły kwot (hard-coded `CHAMPIONS_LEAGUE_AMOUNTS` w `lib/types/bonus.ts`):**
+- 🥇 1. miejsce: **5 000 PLN**
+- 🥈 2. miejsce: **3 000 PLN**
+- 🥉 3. miejsce: **2 000 PLN**
+
+Admin/manager może nadpisać kwotę w formie (np. 7 000 PLN dla wybitnego osiągnięcia) — ostrzeżenie w UI ("⚠ Nadpisałeś domyślną kwotę").
+
+**Migracja `phase31_champions_league_bonus`:**
+- `bonuses.place_rank SMALLINT` (CHECK IN 1/2/3 lub NULL)
+- `bonuses.period_quarter SMALLINT` (CHECK 1-4 lub NULL)
+- Rozszerzony `bonuses_category_check` o `'champions_league'` (5 kategorii)
+- Rozszerzony `bonuses_category_fields_required` o piątą gałąź (CL wymaga `place_rank + period_quarter + period_month=NULL`)
+- Partial UNIQUE `bonuses_champions_league_unique (period_year, period_quarter, place_rank) WHERE category='champions_league' AND status='assigned'` — 1 zwycięzca per (rok, kwartał, miejsce); cancel zwalnia miejsce
+- Trigger `enforce_bonus_stage_transitions` rozszerzony — INSERT champions_league wymaga period_year+period_quarter (zamiast period_month); UPDATE blokuje zmianę place_rank/period_quarter/category
+- `notifications_type_check` += `'champions_league_assigned'`
+- Inline smoke test: insert champions_league + update amount + próba zmiany place_rank (expected to fail)
+
+**Workflow (jak Phase 26 — terminal `assigned`, opcjonalny cancel):**
+- Admin lub manager (scope: tylko swój zespół, `profiles.manager_id = ja`) przypisuje przez `/internal/admin?tab=bonuses` → drugi button "🏆 Champions League" obok "Przypisz premię" → dedykowany `AssignChampionsLeagueForm` (5 pól)
+- Forma auto-prefilluje `amount` przy zmianie miejsca; period selector = past 4 kwartałów + current; recipient list z `listEligibleEmployeesForBonus` (HR-zone, exclude exited/self)
+- Po insert: audit `CHAMPIONS_LEAGUE_ASSIGNED` + email złoty (`#EAB308`) + push + in-app (`type='champions_league_assigned'`, kanał `Promise.allSettled`)
+- Edit: tylko amount/reason/notes (place/quarter/recipient immutable per trigger); osobny dialog z `AssignChampionsLeagueForm mode='edit'`
+- Cancel: jak Phase 26 — `BonusesAdminClient` cancel dialog; audit `CHAMPIONS_LEAGUE_CANCELLED`; email czerwony do recipient
+
+**Pracownik widzi w `/internal?tab=bonuses`** (reuse `MyBonusesPanel`) — wiersz CL ma żółty badge "🏆 Liga Mistrzów" + period "Q1 2026" + szczegóły "🥇 1. miejsce w Champions League" + kwotę.
+
+**Friendly error przy konflikcie miejsca:** jeśli admin/manager próbuje przypisać 1. miejsce w Q1 2026 gdy już ktoś je dostał, server action łapie PostgresError `23505` z constraint `bonuses_champions_league_unique`, robi lookup nazwy istniejącego zwycięzcy i rzuca "🥇 1. miejsce w Q1 2026 jest już zajęte przez Anna Kowalska. Najpierw anuluj poprzednią premię."
+
+**Pliki:**
+- Migracja: `COMPASS/supabase/migrations/20260602000001_phase31_champions_league_bonus.sql`
+- Backend: `COMPASS/lib/actions/internal-bonus.ts` (extend `assignBonus`, `notifyChampionsLeagueRecipient`, `findChampionsLeagueWinnerName`, `validateChampionsLeagueInput`, `buildCategoryInsertPayload` branch CL)
+- Typy: `COMPASS/lib/types/bonus.ts` (`AssignBonusInputChampionsLeague`, `CHAMPIONS_LEAGUE_AMOUNTS`, `championsLeagueAmountForPlace`, `isQuarterInAllowedRange`, `BONUS_QUARTERS_PL`, `CHAMPIONS_LEAGUE_PLACE_LABELS_PL`, `ChampionsLeagueRank`, `Quarter`)
+- Email: `COMPASS/lib/email.ts` (`sendChampionsLeagueAssigned` accent złoty `#EAB308`, `sendChampionsLeagueCancelled` accent czerwony)
+- UI nowe: `COMPASS/components/internal/AssignChampionsLeagueForm.tsx` (dedykowany, ~280 lines — separat od 997-liniowego AssignBonusForm dla mniejszego ryzyka regresji w istniejących 4 kategoriach)
+- UI rozszerzone: `BonusesAdminClient.tsx` (button + dialog + dispatch w edit), `MyBonusesClient.tsx` (badge + period kwartalne), `EmployeeProfileDialog.tsx` (Premie tab z period+miejsce dla CL), `internal-employee-profile.ts` (`BonusHistoryRow` += category/period_quarter/place_rank)
+
+**Audit log akcje (Phase 31):**
+- `CHAMPIONS_LEAGUE_ASSIGNED` z payload `{bonus_id, recipient_user_id, place_rank, period_year, period_quarter, amount, currency, reason, category}`
+- `CHAMPIONS_LEAGUE_UPDATED` z payload `{bonus_id, recipient_user_id, period_year, period_quarter, place_rank, category, changes: {amount/reason/notes: [old, new]}}`
+- `CHAMPIONS_LEAGUE_CANCELLED` z payload `{bonus_id, recipient_user_id, place_rank, period_year, period_quarter, amount, cancellation_reason, category}`
+
+Standardowe `BONUS_ASSIGNED/UPDATED/CANCELLED` zostają dla innych kategorii — split umożliwia łatwe filtrowanie audytu per produkt.
+
+**Ops po deploy:**
+1. Aplikuj migrację `phase31_champions_league_bonus` przez Supabase MCP (`mcp__e0e020fb...__apply_migration`). Inline smoke test sprawdzi insert+update+immutability.
+2. Brak nowych cron jobów ani env vars.
+3. Smoke test prod: admin → przypisz testową Champions League Q1 2026 / 1. miejsce → próba drugiej osoby na to samo miejsce → expect friendly error. Anuluj testową.
+
+**Co świadomie NIE wchodzi:**
+- Dashboard analityczny "Hall of Fame" (top 3 per kwartał historycznie) — można w Phase 31.1.
+- Konfigurowalne kwoty w UI (hard-coded zostaje).
+- Automatyczne wyliczanie rankingu z metryk (Liga jest manualna z definicji).
+- Ex aequo split (1 miejsce = 1 zwycięzca, partial UNIQUE wymusza).
+- Broadcast email do całej firmy "Nowy zwycięzca!" — TODO follow-up.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
