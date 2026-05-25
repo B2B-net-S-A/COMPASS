@@ -19,8 +19,8 @@ export async function CalendarPanel({ year, month, filter = 'all' }: Props) {
                 <h2 className="text-xl font-semibold">Kalendarz urlopów zespołu</h2>
                 <p className="text-sm text-muted-foreground mt-1">
                     Widok wszystkich pracowników strefy HR (wewnętrzni, managerowie, finanse,
-                    talent community, admini) na cały miesiąc. Pokazuje zaakceptowane urlopy,
-                    delegacje, szkolenia i pracę zdalną.
+                    talent community, admini) na cały miesiąc. Pokazuje zaakceptowane urlopy
+                    (jako Out of Office) i pracę zdalną.
                 </p>
             </div>
             <VacationCalendar data={data} filter={filter} />
