@@ -19,14 +19,13 @@ interface Props {
     onClear: () => void
 }
 
-const STATUS_OPTIONS: ReadonlyArray<{ value: AttendanceStatus; label: string }> = [
-    { value: 'active', label: 'Pracuję' },
-    { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'parental_leave', label: 'Opieka rodzicielska' },
-    { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
-    { value: 'business_trip', label: 'Delegacja' },
-    { value: 'other', label: 'Inne' },
-]
+// Phase 29 / Attendance STRICT: pracownik samodzielnie wpisuje TYLKO swoją
+// lokalizację w dniach gdy pracuje (W biurze / Zdalnie). Każda nieobecność
+// (urlop, L4, opieka, delegacja, szkolenie) musi mieć dokument źródłowy
+// (leave_request, ewentualnie inny rejestr) — nie pozwalamy obejść procesu approval
+// przez \"ręczny\" wpis w attendance. Pozostałe statusy w AttendanceStatus typie
+// zostają — trafiają do attendance_records przez sync z leave_requests
+// (syncAttendanceFromLeave), nie przez ten dialog.
 
 export function AttendanceDayPopover({
     date,
@@ -37,7 +36,6 @@ export function AttendanceDayPopover({
     onSave,
     onClear,
 }: Props) {
-    const [status, setStatus] = useState<AttendanceStatus>(existing?.status ?? 'active')
     const [location, setLocation] = useState<AttendanceLocation>(
         (existing?.location as AttendanceLocation | null) ?? defaultLocation,
     )
@@ -70,43 +68,24 @@ export function AttendanceDayPopover({
                 <DialogHeader>
                     <DialogTitle className="capitalize">{heading}</DialogTitle>
                     <DialogDescription>
-                        {existing
-                            ? 'Edytuj status dla tego dnia.'
-                            : 'Nadpisz domyślny status dla tego dnia.'}
+                        Oznacz gdzie pracujesz. Jeśli nie pracujesz w tym dniu — złóż wniosek
+                        urlopowy w zakładce <strong>Urlopy</strong>.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
                     <div className="space-y-1.5">
-                        <Label htmlFor="att_status">Status</Label>
+                        <Label htmlFor="att_location">Lokalizacja</Label>
                         <select
-                            id="att_status"
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value as AttendanceStatus)}
+                            id="att_location"
+                            value={location}
+                            onChange={(e) => setLocation(e.target.value as AttendanceLocation)}
                             className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         >
-                            {STATUS_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>
-                                    {o.label}
-                                </option>
-                            ))}
+                            <option value="onsite">W biurze</option>
+                            <option value="remote">Zdalnie</option>
                         </select>
                     </div>
-
-                    {status === 'active' && (
-                        <div className="space-y-1.5">
-                            <Label htmlFor="att_location">Lokalizacja</Label>
-                            <select
-                                id="att_location"
-                                value={location}
-                                onChange={(e) => setLocation(e.target.value as AttendanceLocation)}
-                                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            >
-                                <option value="onsite">W biurze</option>
-                                <option value="remote">Zdalnie</option>
-                            </select>
-                        </div>
-                    )}
 
                     <div className="space-y-1.5">
                         <Label htmlFor="att_note">Notatka (opcjonalna)</Label>
@@ -135,11 +114,7 @@ export function AttendanceDayPopover({
                     )}
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={onClose}>Anuluj</Button>
-                        <Button
-                            onClick={() => onSave(status, status === 'active' ? location : null, note)}
-                        >
-                            Zapisz
-                        </Button>
+                        <Button onClick={() => onSave('active', location, note)}>Zapisz</Button>
                     </div>
                 </DialogFooter>
             </DialogContent>

@@ -107,16 +107,13 @@ export function VacationCalendar({ data, filter }: Props) {
         const holiday = holidayName.get(iso)
         if (holiday) return { bg: 'bg-muted', label: '', title: holiday }
         if (isWeekend(day)) return { bg: 'bg-muted/30', label: '', title: 'Weekend' }
-        // Phase 29 — każdy urlop dowolnego typu → OOO (typ widoczny tylko w /internal?tab=leaves).
+        // Phase 29 — każdy urlop dowolnego typu → OOO (typ widoczny tylko w /internal?tab=leave).
         if (leaveIdx.has(key)) {
             return { bg: OOO_BG, label: OOO_LABEL, title: OOO_TITLE }
         }
         const att = attIdx.get(key)
-        // Delegacja i szkolenie → też OOO (osoba niedostępna dla zespołu).
-        if (att?.status === 'business_trip' || att?.status === 'training') {
-            return { bg: OOO_BG, label: OOO_LABEL, title: OOO_TITLE }
-        }
-        // Zdalnie zostaje jako osobny status — osoba dostępna, ale nie w biurze.
+        // Attendance STRICT: jedyny attendance overlay to praca zdalna. Nieobecności
+        // (delegacja/szkolenie/urlop) idą z leave_requests, nie z attendance_records.
         if (att?.status === 'active' && att.location === 'remote') {
             return { bg: 'bg-blue-500/40', label: 'Z', title: 'Praca zdalna' }
         }

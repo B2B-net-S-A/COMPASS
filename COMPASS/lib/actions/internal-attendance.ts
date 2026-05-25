@@ -224,8 +224,11 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
             .select('user_id, date, status, location')
             .gte('date', start)
             .lte('date', end)
-            // business trips + trainings, plus explicitly-marked remote workdays
-            .or('status.in.(business_trip,training),and(status.eq.active,location.eq.remote)'),
+            // Phase 29 / Attendance STRICT: pracownik wpisuje tylko swoją lokalizację,
+            // więc team calendar overlay z attendance = wyłącznie remote workdays.
+            // Każdą nieobecność (urlop/delegacja/szkolenie) pokazujemy z leave_requests.
+            .eq('status', 'active')
+            .eq('location', 'remote'),
         admin.from('public_holidays').select('date, name_pl').gte('date', start).lte('date', end),
     ])
 

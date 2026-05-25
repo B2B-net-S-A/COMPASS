@@ -306,22 +306,11 @@ function statusCellMeta(
                 tooltip: 'Urlop bezpłatny' + noteSuffix,
                 readOnly: false,
             }
-        case 'business_trip':
-            return {
-                bg: 'bg-purple-500/15 border-purple-500/40',
-                text: 'text-purple-200',
-                label: 'Delegacja' + noteSuffix,
-                tooltip: 'Wyjazd służbowy' + noteSuffix,
-                readOnly: false,
-            }
-        case 'training':
-            return {
-                bg: 'bg-cyan-500/15 border-cyan-500/40',
-                text: 'text-cyan-200',
-                label: 'Szkolenie' + noteSuffix,
-                tooltip: 'Szkolenie / konferencja' + noteSuffix,
-                readOnly: false,
-            }
+        // Phase 29 / Attendance STRICT: business_trip i training są typami w
+        // AttendanceStatus, ale nie są dostępne do wpisania przez dialog (pracownik
+        // wpisuje tylko swoją lokalizację). Defensive fallback dla legacy danych —
+        // w prod 0 takich rekordów, ale gdyby się pojawiły, lecą do default branch
+        // (statutory leave fallback) jako szare/teal tile.
         case 'holiday_in_lieu':
             return {
                 bg: 'bg-indigo-500/15 border-indigo-500/40',
@@ -365,12 +354,6 @@ function Legend() {
             </Badge>
             <Badge variant="outline" className="bg-yellow-500/20 text-yellow-200 border-yellow-500/40">
                 Urlop
-            </Badge>
-            <Badge
-                variant="outline"
-                className="bg-purple-500/15 text-purple-200 border-purple-500/40"
-            >
-                Delegacja
             </Badge>
             <Badge variant="outline" className="bg-muted text-muted-foreground">
                 Święto / weekend
