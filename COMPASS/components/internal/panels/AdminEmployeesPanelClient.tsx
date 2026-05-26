@@ -56,6 +56,13 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
 
     const filtered = filter === 'all' ? employees : employees.filter((e) => e.role === filter)
 
+    // Licznik per rola — gdy 27 wierszy 'internal' dominuje, bez licznika
+    // można nie zauważyć że na liście są też manager/finanse/talent_community.
+    const countByRole: Record<string, number> = {}
+    for (const e of employees) {
+        countByRole[e.role] = (countByRole[e.role] ?? 0) + 1
+    }
+
     function onUpdated(updated: EmployeeRow) {
         setEmployees((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
         setEditTarget(null)
@@ -89,20 +96,24 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
 
             <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs uppercase text-muted-foreground">Filtr:</span>
-                {ROLE_FILTERS.map((f) => (
-                    <button
-                        key={f}
-                        type="button"
-                        onClick={() => setFilter(f)}
-                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                            filter === f
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted text-muted-foreground hover:bg-muted/70'
-                        }`}
-                    >
-                        {f === 'all' ? 'Wszyscy' : roleLabelPl(f)}
-                    </button>
-                ))}
+                {ROLE_FILTERS.map((f) => {
+                    const count = f === 'all' ? employees.length : countByRole[f] ?? 0
+                    return (
+                        <button
+                            key={f}
+                            type="button"
+                            onClick={() => setFilter(f)}
+                            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                                filter === f
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                            }`}
+                        >
+                            {f === 'all' ? 'Wszyscy' : roleLabelPl(f)}{' '}
+                            <span className="opacity-70">({count})</span>
+                        </button>
+                    )
+                })}
             </div>
 
             <Card>

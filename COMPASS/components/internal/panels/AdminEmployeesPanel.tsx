@@ -11,10 +11,19 @@ export async function AdminEmployeesPanel() {
             'id, full_name, email, avatar_url, role, default_location, employment_type, work_start_date, manager_id',
         )
         .in('role', ['admin', 'internal', 'finanse', 'manager', 'talent_community'])
-        .order('role')
         .order('full_name')
 
-    const rawProfiles = (data ?? []) as Array<{
+    // Kolejność wyświetlania ról: kierownicze najpierw, internal (najliczniejsza grupa) na końcu,
+    // żeby finanse/manager/TCM nie były wciśnięte między 27 wierszy 'internal' (kolejność enum
+    // ordinal w PG sortowała je w środku — niewidoczne bez przewijania).
+    const ROLE_DISPLAY_ORDER: Record<string, number> = {
+        admin: 1,
+        manager: 2,
+        finanse: 3,
+        talent_community: 4,
+        internal: 5,
+    }
+    const rawProfiles = ((data ?? []) as Array<{
         id: string
         full_name: string | null
         email: string
@@ -24,7 +33,12 @@ export async function AdminEmployeesPanel() {
         employment_type: 'uop' | 'b2b' | null
         work_start_date: string | null
         manager_id: string | null
-    }>
+    }>).slice().sort((a, b) => {
+        const ra = ROLE_DISPLAY_ORDER[a.role] ?? 99
+        const rb = ROLE_DISPLAY_ORDER[b.role] ?? 99
+        if (ra !== rb) return ra - rb
+        return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email, 'pl')
+    })
 
     // Phase 20f: doładuj nazwy managerów jednym SELECT (uniknij N+1).
     const managerIds = Array.from(
