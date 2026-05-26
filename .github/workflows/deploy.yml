@@ -105,11 +105,11 @@ jobs:
             exit 1
           fi
           EXPECTED_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          # Coolify build teraz ~3-4 min (po BuildKit cache mounts + ARG reorder
-          # + force_rebuild=f). Plus restart ~30s. 20 retries × 15s = 5 min,
-          # plus initial 60s wait = ~6 min total window. Wcześniejsze 32×15s +
-          # sleep 90 (9.5 min) było over-prowisioned dla ~14min builda — teraz
-          # niepotrzebnie żre minuty GHA gdy fail (8 min wasted polling).
+          # Coolify build typowo 3-5 min (BuildKit cache mounts + ARG reorder
+          # + force_rebuild=f), max ~7-8 min na pierwszy build po dużej zmianie
+          # next.config / Dockerfile. Plus restart ~30s. 28 retries × 15s = 7 min,
+          # plus initial 60s wait = ~8 min total window — pokrywa worst-case
+          # cold-cache, ale -1.5 min vs poprzednie 32×15s + sleep 90 (9.5 min).
           #
           # Cloudflare path — testujemy real CF→origin route (jak Atlas).
           # Wcześniejsze PR #91/#92 dostawały 32×403 od Bot Fight Mode (ASN +
@@ -120,7 +120,7 @@ jobs:
           # — patrz ~/.claude/rules/observability.md §Cloudflare smoke-test
           # bypass. Drop --resolve + hardcoded origin IP, używamy standardu.
           UA="dynaminds-smoke-test/1.0 (+github-actions; compass)"
-          for i in $(seq 1 20); do
+          for i in $(seq 1 28); do
             response=$(curl -fsSL \
               -A "$UA" \
               "$APP_URL/api/health" 2>/tmp/curl_err || echo '')
@@ -133,17 +133,17 @@ jobs:
                   echo "✅ Pass: status=$status version=$version"
                   exit 0
                 fi
-                echo "Attempt $i/20: stale version (got $version_short, expected $EXPECTED_SHA), retrying in 15s..."
+                echo "Attempt $i/28: stale version (got $version_short, expected $EXPECTED_SHA), retrying in 15s..."
               else
-                echo "Attempt $i/20: status=$status, retrying in 15s..."
+                echo "Attempt $i/28: status=$status, retrying in 15s..."
               fi
             else
               # Surface curl's actual error so future silent failures are
               # diagnosable in 1 attempt instead of 32 (e.g. Cloudflare WAF
               # 403 on the runner IP, like Atlas hit — see Atlas PR #96).
-              echo "Attempt $i/20: no response — $(cat /tmp/curl_err 2>/dev/null | head -1), retrying in 15s..."
+              echo "Attempt $i/28: no response — $(cat /tmp/curl_err 2>/dev/null | head -1), retrying in 15s..."
             fi
             sleep 15
           done
-          echo "::error::Smoke test failed after 20 attempts (5 min)"
+          echo "::error::Smoke test failed after 28 attempts (7 min)"
           exit 1
