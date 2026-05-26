@@ -125,6 +125,16 @@ export interface PlacementRow {
     updated_at: string
 }
 
+/**
+ * Phase 28 follow-up — placement row augmented with the current status of its linked
+ * DL/recruiter bonuses, so the admin/manager UI can hide the cancel button after a
+ * bonus has already been cancelled (or never linked, e.g. legacy rows).
+ */
+export interface PlacementWithBonusStatus extends PlacementRow {
+    dl_bonus_status: 'assigned' | 'pending' | 'paid' | 'cancelled' | null
+    recruiter_bonus_status: 'assigned' | 'pending' | 'paid' | 'cancelled' | null
+}
+
 /** Case-insensitive natural key for idempotent re-upload (consultant + client + start). */
 export function placementNaturalKey(consultantName: string, clientName: string, startDateISO: string): string {
     return `${consultantName.trim().toLowerCase()}|${clientName.trim().toLowerCase()}|${startDateISO}`
