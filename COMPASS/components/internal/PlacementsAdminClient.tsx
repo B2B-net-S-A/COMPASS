@@ -8,16 +8,20 @@ import { Loader2, CheckCircle2, Ban, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/lib/toast'
-import { confirmPlacementHours, cancelPlacement } from '@/lib/actions/placements'
+import {
+    confirmPlacementHours,
+    cancelPlacement,
+    cancelPlacementBonus,
+} from '@/lib/actions/placements'
 import {
     placementStatusLabelPl,
-    type PlacementRow,
     type PlacementStatus,
+    type PlacementWithBonusStatus,
 } from '@/lib/types/placement'
 import { PlacementImportDialog } from '@/components/internal/PlacementImportDialog'
 
 interface Props {
-    placements: PlacementRow[]
+    placements: PlacementWithBonusStatus[]
 }
 
 const FILTERS: Array<{ id: PlacementStatus | 'all'; label: string }> = [
@@ -51,7 +55,7 @@ export function PlacementsAdminClient({ placements }: Props) {
         startTransition(() => router.refresh())
     }
 
-    async function onConfirm(p: PlacementRow) {
+    async function onConfirm(p: PlacementWithBonusStatus) {
         if (!window.confirm(
             `Potwierdzasz, że ${p.consultant_name} przepracował 168h?\n\nWygeneruje to premie:\n• DL (${p.delivery_lead_raw}): ${pln(p.dl_bonus_amount)}\n• Rekruter (${p.recruiter_raw}): ${pln(p.recruiter_bonus_amount)}`,
         )) return
@@ -67,7 +71,7 @@ export function PlacementsAdminClient({ placements }: Props) {
         }
     }
 
-    async function onCancel(p: PlacementRow) {
+    async function onCancel(p: PlacementWithBonusStatus) {
         const reason = window.prompt(`Anulować placement ${p.consultant_name} @ ${p.client_name}?\nPodaj powód:`, '')
         if (reason === null) return
         setBusyId(p.id)
@@ -77,6 +81,35 @@ export function PlacementsAdminClient({ placements }: Props) {
             refresh()
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Nie udało się anulować.')
+        } finally {
+            setBusyId(null)
+        }
+    }
+
+    async function onCancelBonus(p: PlacementWithBonusStatus, kind: 'dl' | 'recruiter') {
+        const who = kind === 'dl' ? p.delivery_lead_raw : p.recruiter_raw
+        const label = kind === 'dl' ? 'DL' : 'rekrutera'
+        const amount = kind === 'dl' ? p.dl_bonus_amount : p.recruiter_bonus_amount
+        const reason = window.prompt(
+            `Anulować premię ${label} (${who}, ${pln(amount)}) za placement ${p.consultant_name} @ ${p.client_name}?\n\nPodaj powód (min. 3 znaki). Pracownik dostanie email + powiadomienie.`,
+            '',
+        )
+        if (reason === null) return
+        if (reason.trim().length < 3) {
+            toast.error('Powód anulowania musi mieć co najmniej 3 znaki.')
+            return
+        }
+        setBusyId(p.id)
+        try {
+            await cancelPlacementBonus({
+                placementId: p.id,
+                bonusKind: kind,
+                cancellationReason: reason,
+            })
+            toast.success(`Premia ${label} anulowana.`)
+            refresh()
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Nie udało się anulować premii.')
         } finally {
             setBusyId(null)
         }
@@ -132,6 +165,11 @@ export function PlacementsAdminClient({ placements }: Props) {
                         <tbody>
                             {visible.map((p) => {
                                 const actionable = p.status === 'upcoming' || p.status === 'started'
+                                const isConfirmed = p.status === 'bonus_confirmed'
+                                const dlActive = isConfirmed && p.dl_bonus_status === 'assigned'
+                                const recActive = isConfirmed && p.recruiter_bonus_status === 'assigned'
+                                const dlCancelled = isConfirmed && p.dl_bonus_status === 'cancelled'
+                                const recCancelled = isConfirmed && p.recruiter_bonus_status === 'cancelled'
                                 return (
                                     <tr key={p.id} className="border-t align-middle">
                                         <td className="p-2 font-medium">{p.consultant_name}</td>
@@ -176,6 +214,50 @@ export function PlacementsAdminClient({ placements }: Props) {
                                                     >
                                                         <Ban className="h-3.5 w-3.5" />
                                                     </Button>
+                                                </div>
+                                            ) : isConfirmed ? (
+                                                <div className="flex flex-col items-end gap-1">
+                                                    {dlActive ? (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            disabled={busyId === p.id}
+                                                            onClick={() => onCancelBonus(p, 'dl')}
+                                                            className="h-7 gap-1 px-2 text-xs"
+                                                            title="Anuluj premię Delivery Lead"
+                                                        >
+                                                            {busyId === p.id ? (
+                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                            ) : (
+                                                                <Ban className="h-3 w-3" />
+                                                            )}
+                                                            Anuluj DL
+                                                        </Button>
+                                                    ) : dlCancelled ? (
+                                                        <span className="text-[11px] text-muted-foreground">DL: anulowana</span>
+                                                    ) : null}
+                                                    {recActive ? (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            disabled={busyId === p.id}
+                                                            onClick={() => onCancelBonus(p, 'recruiter')}
+                                                            className="h-7 gap-1 px-2 text-xs"
+                                                            title="Anuluj premię rekrutera"
+                                                        >
+                                                            {busyId === p.id ? (
+                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                            ) : (
+                                                                <Ban className="h-3 w-3" />
+                                                            )}
+                                                            Anuluj rekr.
+                                                        </Button>
+                                                    ) : recCancelled ? (
+                                                        <span className="text-[11px] text-muted-foreground">Rekr.: anulowana</span>
+                                                    ) : null}
+                                                    {!dlActive && !recActive && !dlCancelled && !recCancelled ? (
+                                                        <span className="text-xs text-muted-foreground">—</span>
+                                                    ) : null}
                                                 </div>
                                             ) : (
                                                 <span className="text-xs text-muted-foreground">—</span>

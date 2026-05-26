@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 import { logAudit } from '@/lib/actions/audit'
 import { sendBonusAssigned } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { cancelBonus } from '@/lib/actions/internal-bonus'
 import { differenceInCalendarDays } from 'date-fns'
 import {
     normalizePersonName,
@@ -19,7 +20,9 @@ import {
     type PlacementImportPreview,
     type PlacementReviewRow,
     type PlacementRow,
+    type PlacementWithBonusStatus,
 } from '@/lib/types/placement'
+import type { BonusStatus } from '@/lib/types/bonus'
 import { parsePlacementsWorkbook } from '@/lib/placements/parse-xlsx'
 import {
     buildPeopleResolutions,
@@ -311,12 +314,40 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
     return { created, updated, ticketsCreated, cancelled }
 }
 
-/** Manager/admin: list all placements (newest first). */
-export async function listPlacements(): Promise<PlacementRow[]> {
+/**
+ * Manager/admin: list all placements (newest first) augmented with the live status of
+ * the linked DL/recruiter bonuses. The UI uses this to hide cancel buttons once a
+ * placement bonus is already cancelled.
+ */
+export async function listPlacements(): Promise<PlacementWithBonusStatus[]> {
     await requireBonusProposerAction()
     const admin = createServiceClient()
     const { data } = await admin.from('placements').select('*').order('start_date', { ascending: false })
-    return (data ?? []) as PlacementRow[]
+    const placements = (data ?? []) as PlacementRow[]
+
+    const bonusIds = Array.from(
+        new Set(
+            placements
+                .flatMap((p) => [p.dl_bonus_id, p.recruiter_bonus_id])
+                .filter((id): id is string => Boolean(id)),
+        ),
+    )
+    const statusById = new Map<string, BonusStatus>()
+    if (bonusIds.length > 0) {
+        const { data: bonusRows } = await admin
+            .from('bonuses')
+            .select('id, status')
+            .in('id', bonusIds)
+        for (const b of (bonusRows ?? []) as Array<{ id: string; status: BonusStatus }>) {
+            statusById.set(b.id, b.status)
+        }
+    }
+
+    return placements.map((p) => ({
+        ...p,
+        dl_bonus_status: p.dl_bonus_id ? statusById.get(p.dl_bonus_id) ?? null : null,
+        recruiter_bonus_status: p.recruiter_bonus_id ? statusById.get(p.recruiter_bonus_id) ?? null : null,
+    }))
 }
 
 /** DL/Recruiter self-view: own placements (RLS scopes to delivery_lead_id/recruiter_id = me). */
@@ -467,6 +498,63 @@ export async function confirmPlacementHours(placementId: string): Promise<void> 
         placement_id: placementId,
         dl_bonus_id: dlBonusId,
         recruiter_bonus_id: recBonusId,
+    })
+
+    revalidatePath('/internal/admin')
+    revalidatePath('/internal/placements')
+    revalidatePath('/internal')
+}
+
+/**
+ * Cancel one of the two bonuses linked to a `bonus_confirmed` placement (DL or recruiter)
+ * after acceptance — e.g. when the consultant left before completing the 168h window or
+ * the placement turned out invalid. Delegates the actual write/notification to
+ * `cancelBonus` from internal-bonus, so the recipient gets the standard cancel email +
+ * push and the bonuses RLS/trigger checks apply.
+ *
+ * The placement itself stays at `bonus_confirmed` and keeps the link (anti-dubel guard).
+ * If both bonuses need to be re-issued, cancel the placement and re-import it.
+ */
+export async function cancelPlacementBonus(input: {
+    placementId: string
+    bonusKind: 'dl' | 'recruiter'
+    cancellationReason: string
+}): Promise<void> {
+    const ctx = await requireBonusProposerAction()
+    const admin = createServiceClient()
+
+    const { data: pRaw } = await admin
+        .from('placements')
+        .select('id, status, dl_bonus_id, recruiter_bonus_id, consultant_name, client_name')
+        .eq('id', input.placementId)
+        .single()
+    if (!pRaw) throw new Error('Placement nie znaleziony.')
+    const p = pRaw as {
+        id: string
+        status: string
+        dl_bonus_id: string | null
+        recruiter_bonus_id: string | null
+        consultant_name: string
+        client_name: string
+    }
+
+    const bonusId = input.bonusKind === 'dl' ? p.dl_bonus_id : p.recruiter_bonus_id
+    const label = input.bonusKind === 'dl' ? 'DL' : 'rekrutera'
+    if (!bonusId) {
+        throw new Error(`Premia ${label} nie istnieje dla tego placementu.`)
+    }
+
+    // cancelBonus enforces: status in (assigned, pending), proposer/admin/manager-of-recipient,
+    // reason length 3..500, audit (BONUS_CANCELLED), email + push to recipient.
+    await cancelBonus({ id: bonusId, cancellation_reason: input.cancellationReason })
+
+    await logAudit(ctx.userId, 'PLACEMENT_BONUS_CANCELLED', {
+        placement_id: p.id,
+        bonus_id: bonusId,
+        bonus_kind: input.bonusKind,
+        consultant_name: p.consultant_name,
+        client_name: p.client_name,
+        cancellation_reason: input.cancellationReason.trim(),
     })
 
     revalidatePath('/internal/admin')
