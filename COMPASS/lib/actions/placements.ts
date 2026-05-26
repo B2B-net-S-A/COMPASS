@@ -9,9 +9,8 @@ import { requireBonusProposerAction } from '@/lib/auth/internal-guard'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { logAudit } from '@/lib/actions/audit'
-import { sendBonusAssigned } from '@/lib/email'
+import { sendBonusAssigned, sendBonusCancelled } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
-import { cancelBonus } from '@/lib/actions/internal-bonus'
 import { differenceInCalendarDays } from 'date-fns'
 import {
     normalizePersonName,
@@ -506,22 +505,30 @@ export async function confirmPlacementHours(placementId: string): Promise<void> 
 }
 
 /**
- * Cancel one of the two bonuses linked to a `bonus_confirmed` placement (DL or recruiter)
- * after acceptance — e.g. when the consultant left before completing the 168h window or
- * the placement turned out invalid. Delegates the actual write/notification to
- * `cancelBonus` from internal-bonus, so the recipient gets the standard cancel email +
- * push and the bonuses RLS/trigger checks apply.
+ * Hard-delete one of the two bonuses linked to a placement (DL or recruiter). The
+ * `bonuses` row is removed from the DB; the FK from placements is `ON DELETE SET NULL`,
+ * so the link disappears automatically. If both linked bonuses end up NULL, the
+ * placement is reverted to `started` so the manager can re-click 168h with updated
+ * numbers (e.g. after rate corrections). A snapshot is preserved in audit_log even
+ * though the bonus row is gone.
  *
- * The placement itself stays at `bonus_confirmed` and keeps the link (anti-dubel guard).
- * If both bonuses need to be re-issued, cancel the placement and re-import it.
+ * Notifies the recipient (email + push) only if the bonus was still active —
+ * legacy `cancelled` rows from the soft-cancel iteration are purged silently.
+ *
+ * Blocked when the bonus is already paid or linked to an invoice (payment trail must
+ * stay intact).
  */
-export async function cancelPlacementBonus(input: {
+export async function deletePlacementBonus(input: {
     placementId: string
     bonusKind: 'dl' | 'recruiter'
-    cancellationReason: string
+    deletionReason: string
 }): Promise<void> {
     const ctx = await requireBonusProposerAction()
     const admin = createServiceClient()
+
+    const reason = (input.deletionReason ?? '').trim()
+    if (reason.length < 3) throw new Error('Powód usunięcia musi mieć co najmniej 3 znaki.')
+    if (reason.length > 500) throw new Error('Powód usunięcia za długi (max 500 znaków).')
 
     const { data: pRaw } = await admin
         .from('placements')
@@ -544,18 +551,130 @@ export async function cancelPlacementBonus(input: {
         throw new Error(`Premia ${label} nie istnieje dla tego placementu.`)
     }
 
-    // cancelBonus enforces: status in (assigned, pending), proposer/admin/manager-of-recipient,
-    // reason length 3..500, audit (BONUS_CANCELLED), email + push to recipient.
-    await cancelBonus({ id: bonusId, cancellation_reason: input.cancellationReason })
+    const { data: bRaw } = await admin
+        .from('bonuses')
+        .select('id, recipient_user_id, proposed_by, amount, currency, reason, status, period_year, period_month, linked_invoice_id')
+        .eq('id', bonusId)
+        .single()
+    if (!bRaw) {
+        // Bonus already gone — make sure the placement link is null and we're done.
+        await admin
+            .from('placements')
+            .update({
+                ...(input.bonusKind === 'dl' ? { dl_bonus_id: null } : { recruiter_bonus_id: null }),
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', input.placementId)
+        revalidatePath('/internal/admin')
+        revalidatePath('/internal/placements')
+        return
+    }
+    const b = bRaw as {
+        id: string
+        recipient_user_id: string
+        proposed_by: string
+        amount: number | string
+        currency: string
+        reason: string
+        status: 'assigned' | 'pending' | 'paid' | 'cancelled'
+        period_year: number | null
+        period_month: number | null
+        linked_invoice_id: string | null
+    }
 
-    await logAudit(ctx.userId, 'PLACEMENT_BONUS_CANCELLED', {
+    if (b.status === 'paid') {
+        throw new Error('Nie można usunąć wypłaconej premii.')
+    }
+    if (b.linked_invoice_id) {
+        throw new Error('Premia jest podlinkowana do faktury — najpierw odlinkuj fakturę.')
+    }
+
+    // Authorization: admin, proposer, or manager of recipient. Mirrors cancelBonus.
+    const { data: recipProfile } = await admin
+        .from('profiles')
+        .select('id, full_name, email, manager_id')
+        .eq('id', b.recipient_user_id)
+        .single()
+    const recip = recipProfile as
+        | { id: string; full_name: string | null; email: string | null; manager_id: string | null }
+        | null
+    if (!ctx.isAdmin && b.proposed_by !== ctx.userId && recip?.manager_id !== ctx.userId) {
+        throw new Error('Możesz usuwać tylko premie swoich podwładnych lub te, które sam wystawiłeś.')
+    }
+
+    const { error: delErr } = await admin.from('bonuses').delete().eq('id', bonusId)
+    if (delErr) throw new Error(`Nie udało się usunąć premii: ${delErr.message}`)
+
+    // FK ON DELETE SET NULL already nulled the placement link; check if both are null now.
+    const { data: pAfterRaw } = await admin
+        .from('placements')
+        .select('dl_bonus_id, recruiter_bonus_id, status')
+        .eq('id', input.placementId)
+        .single()
+    const pAfter = pAfterRaw as
+        | { dl_bonus_id: string | null; recruiter_bonus_id: string | null; status: string }
+        | null
+
+    let revertedToStarted = false
+    if (
+        pAfter &&
+        pAfter.dl_bonus_id === null &&
+        pAfter.recruiter_bonus_id === null &&
+        pAfter.status === 'bonus_confirmed'
+    ) {
+        await admin
+            .from('placements')
+            .update({
+                status: 'started',
+                hours_confirmed_at: null,
+                hours_confirmed_by: null,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', input.placementId)
+        revertedToStarted = true
+    }
+
+    await logAudit(ctx.userId, 'PLACEMENT_BONUS_DELETED', {
         placement_id: p.id,
         bonus_id: bonusId,
         bonus_kind: input.bonusKind,
+        recipient_user_id: b.recipient_user_id,
+        amount: Number(b.amount),
+        currency: b.currency,
+        bonus_reason: b.reason,
+        previous_status: b.status,
+        period_year: b.period_year,
+        period_month: b.period_month,
         consultant_name: p.consultant_name,
         client_name: p.client_name,
-        cancellation_reason: input.cancellationReason.trim(),
+        deletion_reason: reason,
+        placement_reverted_to_started: revertedToStarted,
     })
+
+    // Notify the recipient only if the bonus was still active. Legacy rows that were
+    // already in `cancelled` from the soft-cancel iteration already got their email.
+    if (b.status !== 'cancelled' && recip?.email) {
+        const { data: proposerRow } = await admin
+            .from('profiles')
+            .select('full_name')
+            .eq('id', ctx.userId)
+            .single()
+        const proposerName = (proposerRow as { full_name: string | null } | null)?.full_name ?? 'Manager'
+        await sendBonusCancelled(
+            recip.email,
+            recip.full_name ?? recip.email,
+            proposerName,
+            Number(b.amount),
+            b.currency,
+            reason,
+        ).catch(() => undefined)
+        await sendPushToUserId(b.recipient_user_id, {
+            title: 'Anulowano premię',
+            body: `${Number(b.amount).toLocaleString('pl-PL')} zł — ${reason}`,
+            url: '/internal?tab=bonuses',
+            tag: `bonus-deleted-${bonusId}`,
+        }).catch(() => undefined)
+    }
 
     revalidatePath('/internal/admin')
     revalidatePath('/internal/placements')

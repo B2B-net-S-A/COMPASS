@@ -4,14 +4,14 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, CheckCircle2, Ban, Download } from 'lucide-react'
+import { Loader2, CheckCircle2, Ban, Download, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/lib/toast'
 import {
     confirmPlacementHours,
     cancelPlacement,
-    cancelPlacementBonus,
+    deletePlacementBonus,
 } from '@/lib/actions/placements'
 import {
     placementStatusLabelPl,
@@ -86,30 +86,35 @@ export function PlacementsAdminClient({ placements }: Props) {
         }
     }
 
-    async function onCancelBonus(p: PlacementWithBonusStatus, kind: 'dl' | 'recruiter') {
+    async function onDeleteBonus(p: PlacementWithBonusStatus, kind: 'dl' | 'recruiter') {
         const who = kind === 'dl' ? p.delivery_lead_raw : p.recruiter_raw
         const label = kind === 'dl' ? 'DL' : 'rekrutera'
         const amount = kind === 'dl' ? p.dl_bonus_amount : p.recruiter_bonus_amount
+        const status = kind === 'dl' ? p.dl_bonus_status : p.recruiter_bonus_status
+        const willNotify = status !== 'cancelled'
+        const notifyLine = willNotify
+            ? '\nPracownik dostanie email + powiadomienie o anulowaniu.'
+            : '\n(Premia jest już w statusie anulowanym — pracownik nie dostanie ponownego powiadomienia.)'
         const reason = window.prompt(
-            `Anulować premię ${label} (${who}, ${pln(amount)}) za placement ${p.consultant_name} @ ${p.client_name}?\n\nPodaj powód (min. 3 znaki). Pracownik dostanie email + powiadomienie.`,
+            `Usunąć bezpowrotnie premię ${label} (${who}, ${pln(amount)}) z placementu ${p.consultant_name} @ ${p.client_name}?\n\nPodaj powód (min. 3 znaki).${notifyLine}`,
             '',
         )
         if (reason === null) return
         if (reason.trim().length < 3) {
-            toast.error('Powód anulowania musi mieć co najmniej 3 znaki.')
+            toast.error('Powód usunięcia musi mieć co najmniej 3 znaki.')
             return
         }
         setBusyId(p.id)
         try {
-            await cancelPlacementBonus({
+            await deletePlacementBonus({
                 placementId: p.id,
                 bonusKind: kind,
-                cancellationReason: reason,
+                deletionReason: reason,
             })
-            toast.success(`Premia ${label} anulowana.`)
+            toast.success(`Premia ${label} usunięta.`)
             refresh()
         } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Nie udało się anulować premii.')
+            toast.error(e instanceof Error ? e.message : 'Nie udało się usunąć premii.')
         } finally {
             setBusyId(null)
         }
@@ -166,10 +171,18 @@ export function PlacementsAdminClient({ placements }: Props) {
                             {visible.map((p) => {
                                 const actionable = p.status === 'upcoming' || p.status === 'started'
                                 const isConfirmed = p.status === 'bonus_confirmed'
-                                const dlActive = isConfirmed && p.dl_bonus_status === 'assigned'
-                                const recActive = isConfirmed && p.recruiter_bonus_status === 'assigned'
-                                const dlCancelled = isConfirmed && p.dl_bonus_status === 'cancelled'
-                                const recCancelled = isConfirmed && p.recruiter_bonus_status === 'cancelled'
+                                // Show "Usuń" whenever the link still points to a non-paid bonus.
+                                // Includes assigned/pending (active) AND legacy cancelled rows so
+                                // the manager can clean them up; deletion path silently skips
+                                // notification for status='cancelled' (already notified earlier).
+                                const dlDeletable =
+                                    isConfirmed &&
+                                    p.dl_bonus_status !== null &&
+                                    p.dl_bonus_status !== 'paid'
+                                const recDeletable =
+                                    isConfirmed &&
+                                    p.recruiter_bonus_status !== null &&
+                                    p.recruiter_bonus_status !== 'paid'
                                 return (
                                     <tr key={p.id} className="border-t align-middle">
                                         <td className="p-2 font-medium">{p.consultant_name}</td>
@@ -217,45 +230,41 @@ export function PlacementsAdminClient({ placements }: Props) {
                                                 </div>
                                             ) : isConfirmed ? (
                                                 <div className="flex flex-col items-end gap-1">
-                                                    {dlActive ? (
+                                                    {dlDeletable ? (
                                                         <Button
                                                             size="sm"
                                                             variant="ghost"
                                                             disabled={busyId === p.id}
-                                                            onClick={() => onCancelBonus(p, 'dl')}
-                                                            className="h-7 gap-1 px-2 text-xs"
-                                                            title="Anuluj premię Delivery Lead"
+                                                            onClick={() => onDeleteBonus(p, 'dl')}
+                                                            className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+                                                            title="Usuń bezpowrotnie premię Delivery Lead"
                                                         >
                                                             {busyId === p.id ? (
                                                                 <Loader2 className="h-3 w-3 animate-spin" />
                                                             ) : (
-                                                                <Ban className="h-3 w-3" />
+                                                                <Trash2 className="h-3 w-3" />
                                                             )}
-                                                            Anuluj DL
+                                                            Usuń DL
                                                         </Button>
-                                                    ) : dlCancelled ? (
-                                                        <span className="text-[11px] text-muted-foreground">DL: anulowana</span>
                                                     ) : null}
-                                                    {recActive ? (
+                                                    {recDeletable ? (
                                                         <Button
                                                             size="sm"
                                                             variant="ghost"
                                                             disabled={busyId === p.id}
-                                                            onClick={() => onCancelBonus(p, 'recruiter')}
-                                                            className="h-7 gap-1 px-2 text-xs"
-                                                            title="Anuluj premię rekrutera"
+                                                            onClick={() => onDeleteBonus(p, 'recruiter')}
+                                                            className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+                                                            title="Usuń bezpowrotnie premię rekrutera"
                                                         >
                                                             {busyId === p.id ? (
                                                                 <Loader2 className="h-3 w-3 animate-spin" />
                                                             ) : (
-                                                                <Ban className="h-3 w-3" />
+                                                                <Trash2 className="h-3 w-3" />
                                                             )}
-                                                            Anuluj rekr.
+                                                            Usuń rekr.
                                                         </Button>
-                                                    ) : recCancelled ? (
-                                                        <span className="text-[11px] text-muted-foreground">Rekr.: anulowana</span>
                                                     ) : null}
-                                                    {!dlActive && !recActive && !dlCancelled && !recCancelled ? (
+                                                    {!dlDeletable && !recDeletable ? (
                                                         <span className="text-xs text-muted-foreground">—</span>
                                                     ) : null}
                                                 </div>

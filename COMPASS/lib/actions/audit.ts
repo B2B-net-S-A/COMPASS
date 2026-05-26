@@ -107,6 +107,7 @@ export type AuditAction =
     | 'PLACEMENT_HOURS_CONFIRMED'
     | 'PLACEMENT_BONUSES_GENERATED'
     | 'PLACEMENT_BONUS_CANCELLED'
+    | 'PLACEMENT_BONUS_DELETED'
     | 'PLACEMENT_PERSON_ALIAS_SET'
     // Phase 24 — Timesheet UX (templates, role defaults, CSV export, preview, archive)
     | 'TIMESHEET_COPIED_FROM_PREVIOUS'
