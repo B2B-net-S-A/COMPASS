@@ -226,6 +226,7 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
     let created = 0
     let updated = 0
     let ticketsCreated = 0
+    const rowErrors: string[] = []
 
     for (const r of parsed.rows) {
         const computed = computeBonusFields(r)
@@ -254,17 +255,29 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
         }
 
         if (ex) {
-            // Update import-snapshot fields only; never clobber lifecycle/status/bonus links.
-            await admin.from('placements').update(base).eq('id', ex.id)
+            const { error: updErr } = await admin.from('placements').update(base).eq('id', ex.id)
+            if (updErr) {
+                rowErrors.push(`Wiersz ${r.rowNumber} (${r.consultantName} @ ${r.clientName}): UPDATE failed — ${updErr.message}`)
+                continue
+            }
             updated += 1
         } else {
-            const { data: inserted } = await admin
+            const { data: inserted, error: insErr } = await admin
                 .from('placements')
                 .insert({ ...base, status: 'upcoming', imported_by: ctx.userId })
                 .select('id, consultant_name, client_name, position, start_date, delivery_lead_raw, recruiter_raw')
                 .single()
+            if (insErr || !inserted) {
+                // Most common cause: idx_placements_natural_key collision with a cancelled
+                // placement holding the same (consultant, client, start). Surface clearly so
+                // the manager isn't told "Sukces!" while nothing landed in DB.
+                rowErrors.push(
+                    `Wiersz ${r.rowNumber} (${r.consultantName} @ ${r.clientName}, start ${r.startDate}): INSERT failed — ${insErr?.message ?? 'no row returned'}`,
+                )
+                continue
+            }
             created += 1
-            if (inserted && categoryId) {
+            if (categoryId) {
                 const ticketId = await createTcmOnboardingTicket(
                     admin,
                     inserted as {
@@ -303,13 +316,30 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
         cancelled = count ?? 0
     }
 
-    await logAudit(ctx.userId, 'PLACEMENTS_IMPORTED', { batch_id: batchId, created, updated, tickets: ticketsCreated, cancelled })
+    await logAudit(ctx.userId, 'PLACEMENTS_IMPORTED', {
+        batch_id: batchId,
+        created,
+        updated,
+        tickets: ticketsCreated,
+        cancelled,
+        row_errors: rowErrors.length > 0 ? rowErrors : undefined,
+    })
     if (aliasRows.length > 0) {
         await logAudit(ctx.userId, 'PLACEMENT_PERSON_ALIAS_SET', { count: aliasRows.length })
     }
 
     revalidatePath('/internal/admin')
     revalidatePath('/internal/placements')
+
+    // If any row failed, throw AFTER successful rows have been persisted — the manager
+    // sees an error toast with the failing rows listed, but the partial progress is
+    // already saved. This is safer than silently lying "Sukces!" while half the file
+    // didn't land in DB.
+    if (rowErrors.length > 0) {
+        const summary = `Zaimportowano ${created} nowych, ${updated} zaktualizowanych. ${rowErrors.length} wierszy NIE zapisano:\n\n${rowErrors.slice(0, 10).join('\n')}${rowErrors.length > 10 ? `\n…i ${rowErrors.length - 10} więcej (zobacz audit log).` : ''}`
+        throw new Error(summary)
+    }
+
     return { created, updated, ticketsCreated, cancelled }
 }
 
