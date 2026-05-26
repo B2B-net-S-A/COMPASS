@@ -93,4 +93,11 @@ export default withSentryConfig(nextConfig, {
     sourcemaps: {
         disable: !process.env.SENTRY_AUTH_TOKEN,
     },
+    // Resilience: Sentry release create/upload occasionally returns 5xx
+    // (504 gateway timeout — `sentry-cli releases new` then aborts the
+    // whole `next build`). Source maps are a nice-to-have for debugging,
+    // not a release blocker. Log + continue instead of failing the build.
+    errorHandler: (err) => {
+        console.warn('[sentry] non-fatal source-map upload error:', err.message);
+    },
 });
