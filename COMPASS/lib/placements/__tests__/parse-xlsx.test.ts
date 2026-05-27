@@ -67,4 +67,34 @@ describe('parsePlacementsWorkbook', () => {
         expect(res.rows).toHaveLength(0)
         expect(res.errors.join(' ')).toMatch(/podpisania/i)
     })
+
+    it('reports scannedRows and skippedBlankRows separately', async () => {
+        const buf = await buildBuffer([
+            // Valid row
+            ['Valid Person', 'NORDEA', 'DL X', 'Pos', 100, 140, 40, 6720, '2026-02-12', '2026-04-15', 'Rec Y'],
+            // Fully blank separator
+            ['', '', '', '', '', '', '', '', '', '', ''],
+            // Row with date error (should land in errors[] + count as scanned)
+            ['Bad Date', 'BNP', 'DL Z', 'Pos', 100, 140, 40, 6720, '', '1.04', 'Rec W'],
+        ])
+        const res = await parsePlacementsWorkbook(buf)
+        expect(res.rows).toHaveLength(1)
+        expect(res.scannedRows).toBe(2)
+        expect(res.skippedBlankRows).toBe(1)
+        expect(res.errors).toHaveLength(1)
+        // Error message must surface the raw date so the user can see "1.04" → missing year
+        expect(res.errors[0]).toMatch(/Bad Date/)
+        expect(res.errors[0]).toMatch(/„1\.04"/)
+    })
+
+    it('flags a date without a year as invalid and surfaces the raw value', async () => {
+        const buf = await buildBuffer([
+            ['Adam Sadowski', 'NORDEA', 'DL X', 'Pos', 100, 140, 40, 6720, '2026-02-12', '1.04', 'Rec Y'],
+        ])
+        const res = await parsePlacementsWorkbook(buf)
+        expect(res.rows).toHaveLength(0)
+        expect(res.errors[0]).toMatch(/Adam Sadowski/)
+        expect(res.errors[0]).toMatch(/wymagany rok/)
+        expect(res.errors[0]).toMatch(/„1\.04"/)
+    })
 })

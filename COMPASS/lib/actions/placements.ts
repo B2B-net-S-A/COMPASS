@@ -121,7 +121,15 @@ export async function previewPlacementImport(formData: FormData): Promise<Placem
         startDate: e.start_date,
     }))
 
-    return { rows, people, candidates, disappeared, warnings }
+    return {
+        rows,
+        people,
+        candidates,
+        disappeared,
+        warnings,
+        scannedRows: parsed.scannedRows,
+        skippedBlankRows: parsed.skippedBlankRows,
+    }
 }
 
 function priorityForStart(startDate: string): { priority: 'low' | 'normal' | 'high'; level: 'P1' | 'P2' | 'P3' } {

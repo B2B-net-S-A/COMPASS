@@ -9,6 +9,10 @@ import { PLACEMENT_COLUMNS, type ParsedPlacementRow } from '@/lib/types/placemen
 export interface ParseResult {
     rows: ParsedPlacementRow[]
     errors: string[]
+    /** Total non-empty rows that the parser scanned below the header (= rejected + accepted). */
+    scannedRows: number
+    /** Rows skipped silently because every required identifier (consultant/client/DL/rekruter) was blank. */
+    skippedBlankRows: number
 }
 
 type CellVal = ExcelJS.CellValue
@@ -81,7 +85,7 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0])
     const ws = wb.worksheets[0]
-    if (!ws) return { rows: [], errors: ['Plik nie zawiera żadnego arkusza.'] }
+    if (!ws) return { rows: [], errors: ['Plik nie zawiera żadnego arkusza.'], scannedRows: 0, skippedBlankRows: 0 }
 
     // Locate header row + column indices.
     const wantedConsultant = normHeader(PLACEMENT_COLUMNS.consultant)
@@ -101,7 +105,12 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
         }
     }
     if (headerRowNo === -1) {
-        return { rows: [], errors: [`Nie znaleziono nagłówka „${PLACEMENT_COLUMNS.consultant}". Sprawdź czy plik ma poprawne kolumny.`] }
+        return {
+            rows: [],
+            errors: [`Nie znaleziono nagłówka „${PLACEMENT_COLUMNS.consultant}". Sprawdź czy plik ma poprawne kolumny.`],
+            scannedRows: 0,
+            skippedBlankRows: 0,
+        }
     }
 
     const col = (key: keyof typeof PLACEMENT_COLUMNS): number | undefined => colIndex[normHeader(PLACEMENT_COLUMNS[key])]
@@ -110,11 +119,18 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
     ]
     const missing = required.filter((k) => col(k) == null)
     if (missing.length > 0) {
-        return { rows: [], errors: [`Brak wymaganych kolumn: ${missing.map((k) => PLACEMENT_COLUMNS[k]).join(', ')}.`] }
+        return {
+            rows: [],
+            errors: [`Brak wymaganych kolumn: ${missing.map((k) => PLACEMENT_COLUMNS[k]).join(', ')}.`],
+            scannedRows: 0,
+            skippedBlankRows: 0,
+        }
     }
 
     const rows: ParsedPlacementRow[] = []
     const errors: string[] = []
+    let scannedRows = 0
+    let skippedBlankRows = 0
 
     for (let r = headerRowNo + 1; r <= ws.rowCount; r += 1) {
         const row = ws.getRow(r)
@@ -127,8 +143,32 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
         const clientName = cellString(get('client'))
         const deliveryLeadRaw = cellString(get('deliveryLead'))
         const recruiterRaw = cellString(get('recruiter'))
-        // Skip fully blank rows silently.
-        if (!consultantName && !clientName && !deliveryLeadRaw && !recruiterRaw) continue
+
+        // Detect whether ANY cell in the row has data — needed to distinguish a fully blank
+        // separator row from a row that has some data but missing identifiers (e.g. only a
+        // date, or only a position — typical when a user paste-overwrites part of a row).
+        const hasAnyValue =
+            consultantName.length > 0 ||
+            clientName.length > 0 ||
+            deliveryLeadRaw.length > 0 ||
+            recruiterRaw.length > 0 ||
+            cellString(get('position')).length > 0 ||
+            cellNumber(get('costRate')) != null ||
+            cellNumber(get('revenueRate')) != null ||
+            cellString(get('startDate')).length > 0 ||
+            cellString(get('signingDate')).length > 0 ||
+            cellNumber(get('margin')) != null ||
+            cellNumber(get('monthlyMargin')) != null
+
+        if (!hasAnyValue) {
+            // Truly blank row — skip silently but count it so the dialog can show the total.
+            skippedBlankRows += 1
+            continue
+        }
+
+        // From here on, the row counts as "scanned" (= seen by the parser, with at least one
+        // non-empty cell). Either it lands in `rows` (valid) or `errors` (rejected with reason).
+        scannedRows += 1
 
         const rowErrs: string[] = []
         if (!consultantName) rowErrs.push('brak konsultanta')
@@ -142,7 +182,13 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
         if (revenueRate == null) rowErrs.push('brak/niepoprawna stawka przychodowa')
 
         const startDate = cellDate(get('startDate'))
-        if (!startDate) rowErrs.push('brak/niepoprawna data startu (wymagany rok, np. 2026-04-01)')
+        if (!startDate) {
+            // Surface the raw cell value so the user can SEE the difference between
+            // "1.04" (no year) and "2026-04-01" (parseable) without opening Excel.
+            const rawStart = cellString(get('startDate'))
+            const detail = rawStart ? ` (w pliku: „${rawStart}")` : ''
+            rowErrs.push(`brak/niepoprawna data startu (wymagany rok, np. 2026-04-01)${detail}`)
+        }
         const signingDate = cellDate(get('signingDate'))
 
         if (startDate && signingDate && signingDate > startDate) {
@@ -150,7 +196,8 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
         }
 
         if (rowErrs.length > 0) {
-            errors.push(`Wiersz ${r}: ${rowErrs.join(', ')}.`)
+            const label = consultantName || clientName || `(wiersz ${r})`
+            errors.push(`Wiersz ${r} [${label}]: ${rowErrs.join(', ')}.`)
             continue
         }
 
@@ -173,5 +220,5 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
     if (rows.length === 0 && errors.length === 0) {
         errors.push('Plik nie zawiera żadnych wierszy z danymi.')
     }
-    return { rows, errors }
+    return { rows, errors, scannedRows, skippedBlankRows }
 }
