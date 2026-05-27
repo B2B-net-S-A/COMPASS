@@ -132,13 +132,31 @@ export function PlacementImportDialog({ onImported }: Props) {
 
                     {preview && (
                         <div className="space-y-5">
+                            {/* Scan summary — surfaces parser drops at a glance (e.g. user expects
+                                26 wierszy, parser found 23, the diff means 3 rows were rejected). */}
+                            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                                <div className="font-medium">
+                                    Wczytano: <span className="text-emerald-700">{preview.rows.length}</span> wierszy
+                                    {' '}/ przeskanowano: <span className="text-foreground">{preview.scannedRows}</span>
+                                    {preview.skippedBlankRows > 0 ? (
+                                        <> · pominięto pustych: <span className="text-muted-foreground">{preview.skippedBlankRows}</span></>
+                                    ) : null}
+                                </div>
+                                {preview.rows.length < preview.scannedRows ? (
+                                    <div className="mt-1 text-amber-700">
+                                        ⚠ Parser odrzucił <strong>{preview.scannedRows - preview.rows.length}</strong> wierszy.
+                                        Zobacz listę „Uwagi" niżej — każdy odrzucony wiersz ma podany powód.
+                                    </div>
+                                ) : null}
+                            </div>
+
                             {preview.warnings.length > 0 && (
                                 <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-                                    <div className="mb-1 flex items-center gap-2 font-medium">
+                                    <div className="mb-2 flex items-center gap-2 font-medium">
                                         <AlertTriangle className="h-4 w-4" /> Uwagi ({preview.warnings.length})
                                     </div>
-                                    <ul className="list-inside list-disc space-y-0.5">
-                                        {preview.warnings.slice(0, 8).map((w, i) => (
+                                    <ul className="max-h-64 list-inside list-disc space-y-0.5 overflow-y-auto pr-2">
+                                        {preview.warnings.map((w, i) => (
                                             <li key={i}>{w}</li>
                                         ))}
                                     </ul>

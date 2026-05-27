@@ -83,6 +83,11 @@ export interface PlacementImportPreview {
     /** Existing placements whose natural key is absent from the uploaded file. */
     disappeared: Array<{ id: string; consultantName: string; clientName: string; startDate: string }>
     warnings: string[]
+    /** Total rows scanned below the header (= accepted + rejected). Lets the UI surface
+     *  silent parser drops by comparing against `rows.length`. */
+    scannedRows: number
+    /** Rows skipped silently because every column was blank (separator rows). */
+    skippedBlankRows: number
 }
 
 /** Result summary returned by a commit import. */
