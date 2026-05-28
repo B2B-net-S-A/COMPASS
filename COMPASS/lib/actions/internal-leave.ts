@@ -77,6 +77,8 @@ export interface LeaveRequestRow {
     graph_oof_set?: boolean
     graph_oof_set_at?: string | null
     graph_sync_error?: string | null
+    // Phase 25d — Compass świadomie nie nadpisał OOF (np. 'user_custom').
+    graph_oof_skip_reason?: string | null
     // Phase 30 — split płatny/bezpłatny (0/0 dla historycznych przed Phase 30
     // oraz dla non-vacation leave types out of scope of paid vacation pool).
     paid_days?: number
@@ -160,6 +162,76 @@ export interface MyLeaveBalance {
     used_initial_days: number
     /** entitlement + carried − used_initial − used − approved_future. null gdy brak limitu. */
     remaining_days: number | null
+}
+
+// ─── Phase 25d: persist Graph OOF result (success / user_custom skip / failure) ──
+
+type OofPersistArgs = {
+    admin: ReturnType<typeof createServiceClient>
+    leaveRequestId: string
+    actorUserId: string
+    targetUserId: string
+    result: { success: boolean; skipped?: boolean; skipReason?: string; error?: string }
+    auditExtra?: Record<string, unknown>
+}
+
+/**
+ * Single source of truth for "what happened after we called setOutOfOffice".
+ * Handles 3 outcomes:
+ *   - success (PATCH wrote our OOF): graph_oof_set=true + LEAVE_OOF_SET audit
+ *   - skipped user_custom (Phase 25d): graph_oof_skip_reason='user_custom' +
+ *     LEAVE_OOF_SKIPPED_USER_CUSTOM audit. Does NOT set graph_oof_set so the
+ *     cancel-flow won't disable an OOF Compass never owned.
+ *   - failure: graph_sync_error='oof: <msg>' + LEAVE_OOF_FAILED audit
+ *   - skipped no_credentials: silent (dev/local — nothing persisted)
+ */
+async function persistOofResult(args: OofPersistArgs): Promise<void> {
+    const { admin, leaveRequestId, actorUserId, targetUserId, result, auditExtra } = args
+
+    if (result.success && !result.skipped) {
+        await admin
+            .from('leave_requests')
+            .update({
+                graph_oof_set: true,
+                graph_oof_set_at: new Date().toISOString(),
+                graph_oof_skip_reason: null,
+            } as never)
+            .eq('id', leaveRequestId)
+        await logAudit(actorUserId, 'LEAVE_OOF_SET', {
+            leave_id: leaveRequestId,
+            target_user_id: targetUserId,
+            ...auditExtra,
+        })
+        return
+    }
+
+    if (result.skipped && result.skipReason === 'user_custom') {
+        await admin
+            .from('leave_requests')
+            .update({ graph_oof_skip_reason: 'user_custom' } as never)
+            .eq('id', leaveRequestId)
+        await logAudit(actorUserId, 'LEAVE_OOF_SKIPPED_USER_CUSTOM', {
+            leave_id: leaveRequestId,
+            target_user_id: targetUserId,
+            reason: 'user_custom',
+            ...auditExtra,
+        })
+        return
+    }
+
+    if (!result.success && !result.skipped) {
+        await admin
+            .from('leave_requests')
+            .update({ graph_sync_error: `oof: ${result.error}` } as never)
+            .eq('id', leaveRequestId)
+        await logAudit(actorUserId, 'LEAVE_OOF_FAILED', {
+            leave_id: leaveRequestId,
+            target_user_id: targetUserId,
+            error: result.error,
+            ...auditExtra,
+        })
+    }
+    // skipReason='no_credentials' → silent (dev/local).
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -1012,33 +1084,19 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
             internalReply: defaults.internal,
             externalReply: defaults.external,
         })
-            .then(async (r) => {
-                if (r.success && !r.skipped) {
-                    await admin
-                        .from('leave_requests')
-                        .update({
-                            graph_oof_set: true,
-                            graph_oof_set_at: new Date().toISOString(),
-                        } as never)
-                        .eq('id', inserted.id)
-                    await logAudit(ctx.userId, 'LEAVE_OOF_SET', {
-                        leave_id: inserted.id,
-                        target_user_id: input.targetUserId,
+            .then((r) =>
+                persistOofResult({
+                    admin,
+                    leaveRequestId: inserted.id,
+                    actorUserId: ctx.userId,
+                    targetUserId: input.targetUserId,
+                    result: r,
+                    auditExtra: {
                         has_substitute: Boolean(input.substituteId),
                         via: 'on_behalf',
-                    })
-                } else if (!r.success && !r.skipped) {
-                    await admin
-                        .from('leave_requests')
-                        .update({ graph_sync_error: `oof: ${r.error}` } as never)
-                        .eq('id', inserted.id)
-                    await logAudit(ctx.userId, 'LEAVE_OOF_FAILED', {
-                        leave_id: inserted.id,
-                        target_user_id: input.targetUserId,
-                        error: r.error,
-                    })
-                }
-            })
+                    },
+                }),
+            )
             .catch((e) => logCompat.error('[createLeaveOnBehalf] OOF set failed:', e))
 
         if (substituteEmail) {
@@ -1902,34 +1960,18 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                 internalReply: row.oof_internal_message?.trim() || defaults.internal,
                 externalReply: row.oof_external_message?.trim() || defaults.external,
             })
-                .then(async (r) => {
-                    if (r.success && !r.skipped) {
-                        await admin
-                            .from('leave_requests')
-                            .update({
-                                graph_oof_set: true,
-                                graph_oof_set_at: new Date().toISOString(),
-                            } as never)
-                            .eq('id', id)
-                        await logAudit(ctx.userId, 'LEAVE_OOF_SET', {
-                            leave_id: id,
-                            target_user_id: row.user_id,
+                .then((r) =>
+                    persistOofResult({
+                        admin,
+                        leaveRequestId: id,
+                        actorUserId: ctx.userId,
+                        targetUserId: row.user_id,
+                        result: r,
+                        auditExtra: {
                             has_substitute: Boolean(row.substitute_id),
-                        })
-                    } else if (!r.success && !r.skipped) {
-                        await admin
-                            .from('leave_requests')
-                            .update({
-                                graph_sync_error: `oof: ${r.error}`,
-                            } as never)
-                            .eq('id', id)
-                        await logAudit(ctx.userId, 'LEAVE_OOF_FAILED', {
-                            leave_id: id,
-                            target_user_id: row.user_id,
-                            error: r.error,
-                        })
-                    }
-                })
+                        },
+                    }),
+                )
                 .catch((e) => logCompat.error('[approveLeaveRequest] OOF set failed:', e))
 
             // Email do zastępcy (fire-and-forget).
@@ -2263,7 +2305,8 @@ export async function listLeavesWithSyncIssues(): Promise<PendingLeaveRow[]> {
             id, user_id, start_date, end_date, leave_type, half_day, note,
             documentation_url, status, decided_by, decided_at, decision_note, created_at,
             substitute_id, oof_internal_message, oof_external_message,
-            graph_oof_set, graph_oof_set_at, graph_sync_error, outlook_event_id,
+            graph_oof_set, graph_oof_set_at, graph_sync_error, graph_oof_skip_reason,
+            outlook_event_id,
             profiles:profiles!leave_requests_user_id_fkey(full_name, email, avatar_url),
             substitute:profiles!leave_requests_substitute_id_fkey(full_name, email)
         `)
@@ -2294,6 +2337,65 @@ export async function listLeavesWithSyncIssues(): Promise<PendingLeaveRow[]> {
         graph_oof_set: row.graph_oof_set,
         graph_oof_set_at: row.graph_oof_set_at,
         graph_sync_error: row.graph_sync_error,
+        graph_oof_skip_reason: row.graph_oof_skip_reason ?? null,
+        user_full_name: row.profiles?.full_name ?? null,
+        user_email: row.profiles?.email ?? '',
+        user_avatar_url: row.profiles?.avatar_url ?? null,
+        substitute_full_name: row.substitute?.full_name ?? null,
+        substitute_email: row.substitute?.email ?? null,
+    }))
+}
+
+// ─── Phase 25d: leaves where Compass preserved a user-set OOF (informational) ──
+//
+// Different from `listLeavesWithSyncIssues` — these are NOT errors, just
+// "Compass świadomie nie ustawił OOF bo pracownik miał już swój własny". Admin
+// sees them in a separate informational panel; no retry button.
+
+export async function listLeavesWithUserCustomOof(): Promise<PendingLeaveRow[]> {
+    await requireAdminAction()
+    const admin = createServiceClient()
+    const today = new Date().toISOString().slice(0, 10)
+
+    const { data, error } = await admin
+        .from('leave_requests')
+        .select(`
+            id, user_id, start_date, end_date, leave_type, half_day, note,
+            documentation_url, status, decided_by, decided_at, decision_note, created_at,
+            substitute_id, oof_internal_message, oof_external_message,
+            graph_oof_set, graph_oof_set_at, graph_sync_error, graph_oof_skip_reason,
+            outlook_event_id,
+            profiles:profiles!leave_requests_user_id_fkey(full_name, email, avatar_url),
+            substitute:profiles!leave_requests_substitute_id_fkey(full_name, email)
+        `)
+        .eq('status', 'approved')
+        .gte('end_date', today)
+        .eq('graph_oof_skip_reason', 'user_custom')
+        .order('start_date', { ascending: true })
+        .limit(50)
+
+    if (error) throw new Error(`Błąd: ${error.message}`)
+    return (data ?? []).map((row: any) => ({
+        id: row.id,
+        user_id: row.user_id,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        leave_type: row.leave_type,
+        half_day: row.half_day,
+        note: row.note,
+        documentation_url: row.documentation_url,
+        status: row.status,
+        decided_by: row.decided_by,
+        decided_at: row.decided_at,
+        decision_note: row.decision_note,
+        created_at: row.created_at,
+        substitute_id: row.substitute_id,
+        oof_internal_message: row.oof_internal_message,
+        oof_external_message: row.oof_external_message,
+        graph_oof_set: row.graph_oof_set,
+        graph_oof_set_at: row.graph_oof_set_at,
+        graph_sync_error: row.graph_sync_error,
+        graph_oof_skip_reason: row.graph_oof_skip_reason ?? null,
         user_full_name: row.profiles?.full_name ?? null,
         user_email: row.profiles?.email ?? '',
         user_avatar_url: row.profiles?.avatar_url ?? null,
@@ -2359,6 +2461,7 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
     })
 
     let oofOk = false
+    let oofSkipReason: string | null = null
     let calOk = false
     const errors: string[] = []
 
@@ -2369,15 +2472,27 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
         internalReply: row.oof_internal_message?.trim() || defaults.internal,
         externalReply: row.oof_external_message?.trim() || defaults.external,
     })
-    if (oofRes.success) {
+    if (oofRes.success && !oofRes.skipped) {
         oofOk = true
         await admin
             .from('leave_requests')
             .update({
                 graph_oof_set: true,
                 graph_oof_set_at: new Date().toISOString(),
+                graph_oof_skip_reason: null,
             } as never)
             .eq('id', id)
+    } else if (oofRes.success && oofRes.skipped && oofRes.skipReason === 'user_custom') {
+        // Phase 25d — user has their own OOF; respect it. Retry treats this as success.
+        oofOk = true
+        oofSkipReason = 'user_custom'
+        await admin
+            .from('leave_requests')
+            .update({ graph_oof_skip_reason: 'user_custom' } as never)
+            .eq('id', id)
+    } else if (oofRes.success && oofRes.skipped) {
+        // no_credentials — dev/local; nothing to persist, nothing to retry.
+        oofOk = true
     } else if (oofRes.error) {
         errors.push(`oof: ${oofRes.error}`)
     }
@@ -2418,10 +2533,17 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
             .eq('id', id)
     }
 
-    await logAudit(ctx.userId, oofOk && calOk ? 'LEAVE_OOF_SET' : 'LEAVE_OOF_FAILED', {
+    const auditAction =
+        oofOk && calOk
+            ? oofSkipReason === 'user_custom'
+                ? 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
+                : 'LEAVE_OOF_SET'
+            : 'LEAVE_OOF_FAILED'
+    await logAudit(ctx.userId, auditAction, {
         leave_id: id,
         retry: true,
         oof_ok: oofOk,
+        oof_skip_reason: oofSkipReason ?? undefined,
         calendar_ok: calOk,
         errors: errors.length > 0 ? errors.join('; ') : undefined,
     })
