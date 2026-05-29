@@ -759,6 +759,33 @@ Rozszerzenie infrastruktury Phase 27k (urlop UoP) na B2B i zlecenie — dla prac
 
 **Audit log:** existing `EMPLOYEE_PROFILE_UPDATE` payload zawiera `leave_entitlement_days` / `leave_carried_over_days` / `leave_used_initial_days` (zmiana fields obiektu — bez nowych action types). Existing `LEAVE_APPROVED` (Phase 25) niezmieniona — paid/unpaid są na samym `leave_requests` row.
 
+## Phase 30b — Płatny urlop z puli pokazuje godziny w timesheet (2026-05-29)
+
+Decyzja Artura: dla B2B/zlecenie z pulą **dni płatnego urlopu (z puli) mają pokazywać się w timesheet jak normalny dzień roboczy — auto-wpis 8h, billable**. Dopiero po wyczerpaniu puli nadwyżkowe dni (`unpaid_days`) blokują timesheet jak zawsze (i nie pokazują się). UoP **bez zmian** (urlop nadal blokuje — etatowiec nie rozlicza godzin za urlop).
+
+**Mechanizm (zmiana względem Phase 30):** wcześniej approved `vacation` tworzył `attendance_records` (status=`vacation`) dla **wszystkich** dni roboczych → wszystkie zablokowane w timesheet. Teraz `syncAttendanceFromLeave` dzieli dni przez `splitLeaveWorkingDays`:
+- **dni płatne** (pierwsze `paid_days` dni roboczych, B2B/zlecenie pool) → **BEZ** attendance + auto-wpis do `timesheet_entries` (8h/4h, `source='leave_paid'`, opis „Urlop płatny (z puli)"), getOrCreate timesheet per (rok, miesiąc), idempotentny.
+- **dni blokujące** (nadwyżka/UoP/non-pool) → `attendance_records` jak dotąd.
+- `remove` (cancel/reject urlopu) → usuwa attendance **i** auto-wpisy `leave_paid` w zakresie.
+
+**Kalendarz zespołu** (`VacationCalendar`) bez zmian — czyta OOO z `leave_requests` (pełen zakres), więc płatne dni nadal pokazują się jako urlop, mimo braku rekordu attendance.
+
+**Pliki:**
+- `lib/hr/leave-timesheet-split.ts` (NEW) — czysty helper `splitLeaveWorkingDays` + stałe `PAID_LEAVE_ENTRY_SOURCE='leave_paid'`, `PAID_LEAVE_ENTRY_DESCRIPTION`, `STANDARD_PAID_LEAVE_HOURS=8` (+ 18 testów).
+- `lib/actions/internal-leave.ts` — przebudowane `syncAttendanceFromLeave` + helpery (`autoFillPaidLeaveEntries`, `getOrCreateTimesheetForAutoFill`, `recomputeTimesheetHashIfSet`, `removePaidLeaveEntries`) + nowa server-action `getTimesheetBlockedDates(year, month, targetUserId?)` (split-aware źródło blokad).
+- `components/internal/TimesheetEditor.tsx` + `TimesheetPreviewDialog.tsx` — blokady dni z `getTimesheetBlockedDates` (zamiast pełnych zakresów `leave_requests`); płatny dzień z puli nie jest blokowany.
+- Migracja `20260605000001_phase30b_leave_paid_timesheet_source.sql` — rozszerza CHECK `timesheet_entries.source` o `'leave_paid'`.
+
+**Hash integralności (H2.8):** auto-wpis do **approved** timesheetu (z `pdf_hash`) wymaga przeliczenia hasha, inaczej PDF route zwraca 409. `recomputeTimesheetHashIfSet` przelicza `pdf_hash` przez `computeTimesheetHash` po każdej zmianie wpisów hashowanego timesheetu. `trg_timesheet_unlock_guard` nie blokuje (odpala się tylko przy zmianie statusu approved→inny, nie przy update pdf_hash).
+
+**Pending urlop:** `getTimesheetBlockedDates` traktuje pending zachowawczo (wszystkie dni robocze blokują, jak dotąd) — split (płatne nie-blokują) stosuje się dopiero po `approved`. `quickFillMonth` bez zmian (pomija attendance-blocked + wszystkie pending; approved płatne dni mają już wpis `leave_paid` → pomijane jako istniejące).
+
+**Audit log:** nowy `TIMESHEET_PAID_LEAVE_AUTOFILL` (tylko gdy auto-wpis dotyka non-draft timesheetu — traceability korekt approved/submitted).
+
+**Backfill (2026-05-29, jednorazowo na prod):** 6 approved urlopów B2B z pulą (Anna Korycka 28–29.05; Dominik 5.06 + 15–23.06; Klaudia 8–12.06; Malwina 22–26.06; Michał 22.05 + 29.05) — wszystkie mieszczą się w puli → w pełni płatne. Recompute `paid_days` (część miała stale 0/0 sprzed Phase 30), zwolnienie attendance, auto-wpis `leave_paid`, recompute `pdf_hash` dla maja Michała (jedyny approved+hash; formuła SQL sha256 pre-zweryfikowana 1:1 z JS `computeTimesheetHash`).
+
+**Ops po deploy:** brak nowych cron jobów ani env vars (migracja `source` CHECK + jednorazowy backfill SQL).
+
 ## Phase 31 — Premia Champions League (kwartalna, manualna, 2026-06-02)
 
 Piąta kategoria premii (po `sales`/`delivery_lead`/`recruiter`/`custom` z Phase 27b): **`champions_league`** — kwartalny ranking rekrutacyjny zarządu z hard-coded nagrodami za 3 pierwsze miejsca.

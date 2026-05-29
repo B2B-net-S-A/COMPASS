@@ -23,7 +23,7 @@ import {
     type TimesheetWithEntries,
 } from '@/lib/actions/internal-timesheet'
 import { applyDefaultsToTimesheet } from '@/lib/actions/internal-timesheet-role-defaults'
-import { listMyLeaveRequests } from '@/lib/actions/internal-leave'
+import { getTimesheetBlockedDates } from '@/lib/actions/internal-leave'
 import {
     clearAutoFilledTimesheet,
     suggestTimesheetEntriesFromClock,
@@ -42,18 +42,6 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
 }
 
-/** Every calendar day in [start, end] (yyyy-MM-dd) — used to block hour logging. */
-function eachDateInclusive(start: string, end: string): string[] {
-    const out: string[] = []
-    const cur = parseISO(start)
-    const last = parseISO(end)
-    while (cur <= last) {
-        out.push(format(cur, 'yyyy-MM-dd'))
-        cur.setDate(cur.getDate() + 1)
-    }
-    return out
-}
-
 export function TimesheetEditor({ timesheet }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
@@ -69,23 +57,14 @@ export function TimesheetEditor({ timesheet }: Props) {
     const minDate = format(startOfMonth(ref), 'yyyy-MM-dd')
     const maxDate = format(endOfMonth(ref), 'yyyy-MM-dd')
 
-    // Issue 4: own leave/L4 days block logging hours server-side, but the thrown
-    // error is masked in prod. Pre-load this user's pending/approved leave days
-    // for the month so the entry dialog can warn with a clear message instead.
+    // Issue 4 + Phase 30b: dni urlopu blokują logowanie godzin server-side, ale błąd
+    // jest maskowany w prod. Pre-load dni blokujących (split-aware: płatny urlop z puli
+    // B2B/zlecenie NIE blokuje — ma auto-wpis godzin) żeby dialog ostrzegał czytelnie.
     useEffect(() => {
         let cancelled = false
-        listMyLeaveRequests(timesheet.year)
-            .then((rows) => {
-                if (cancelled) return
-                const blocked = rows
-                    .filter(
-                        (r) =>
-                            (r.status === 'approved' || r.status === 'pending') &&
-                            r.start_date <= maxDate &&
-                            r.end_date >= minDate,
-                    )
-                    .flatMap((r) => eachDateInclusive(r.start_date, r.end_date))
-                setBlockedLeaveDates(blocked)
+        getTimesheetBlockedDates(timesheet.year, timesheet.month)
+            .then((dates) => {
+                if (!cancelled) setBlockedLeaveDates(dates)
             })
             .catch(() => {
                 if (!cancelled) setBlockedLeaveDates([])
@@ -93,7 +72,7 @@ export function TimesheetEditor({ timesheet }: Props) {
         return () => {
             cancelled = true
         }
-    }, [timesheet.year, timesheet.month, minDate, maxDate])
+    }, [timesheet.year, timesheet.month])
 
     const totalHours = useMemo(
         () => timesheet.entries.reduce((sum, e) => sum + Number(e.hours), 0),
