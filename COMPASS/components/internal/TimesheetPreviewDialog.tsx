@@ -324,7 +324,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                     <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs space-y-2">
                         <p className="font-medium text-amber-200 flex items-center gap-1.5">
                             <CalendarOff className="h-3.5 w-3.5" />
-                            Urlopy w tym miesiącu — w te dni nie można logować godzin
+                            Urlopy w tym miesiącu — blokują logowanie godzin (poza płatnym urlopem z puli, który liczy się jak normalny dzień)
                         </p>
                         {leaves.map((l) => (
                             <div
