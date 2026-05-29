@@ -247,7 +247,9 @@ export function BonusesAdminClient({
     const [cancelTarget, setCancelTarget] = useState<BonusWithUsers | null>(null)
 
     const canAssign = viewerMode === 'admin' || viewerMode === 'manager'
-    const canCancelAny = viewerMode === 'admin'
+    // Phase 32 — po przypisaniu premii (akceptacja managera) edytować/anulować
+    // może tylko administrator lub finanse. Manager przypisuje, ale potem nie zmienia.
+    const canManageAny = viewerMode === 'admin' || viewerMode === 'finanse'
 
     const filtered = useMemo(() => {
         if (filterStatus === 'all') return bonuses
@@ -362,13 +364,9 @@ export function BonusesAdminClient({
             ) : (
                 <div className="space-y-2">
                     {filtered.map((b) => {
-                        // A manager manages every bonus shown for their team (the list is
-                        // RLS-scoped to their reports), even ones an admin assigned — but
-                        // never a bonus they received themselves. Admin + proposer always.
-                        const canManageRow =
-                            b.proposed_by === currentUserId ||
-                            canCancelAny ||
-                            (viewerMode === 'manager' && b.recipient_user_id !== currentUserId)
+                        // Phase 32 — edit/cancel locked to admin + finanse once assigned.
+                        // Managers assign but can no longer change the bonus afterwards.
+                        const canManageRow = canManageAny
                         const canEditRow = b.status === 'assigned' && canManageRow
                         const canCancelRow =
                             (b.status === 'assigned' || b.status === 'pending') && canManageRow

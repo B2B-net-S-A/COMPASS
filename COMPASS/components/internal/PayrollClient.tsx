@@ -1,11 +1,24 @@
 'use client'
 
 // Phase 27c — Payroll client: 3 tabs (mine/team/all) + period picker + summary tables.
+// Phase 32 — per-person timesheet PDF download, person search, "ready for payout"
+//            filter (approved + assigned, locked from the manager), and full bonus
+//            detail ("za co") expandable per row so finanse sees the whole picture.
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Loader2, Download, AlertCircle } from 'lucide-react'
+import {
+    Loader2,
+    Download,
+    AlertCircle,
+    FileDown,
+    Lock,
+    Search,
+    ChevronDown,
+    ChevronRight,
+    CheckCircle2,
+} from 'lucide-react'
 import { toast } from '@/lib/toast'
 import {
     getMyPayrollSummary,
@@ -13,8 +26,8 @@ import {
     getPayrollSummaryAll,
     exportPayrollCsv,
 } from '@/lib/actions/internal-payroll'
-import type { PayrollSummary } from '@/lib/types/rates'
-import { BONUS_CATEGORIES_PL, BONUS_MONTHS_PL } from '@/lib/types/bonus'
+import type { PayrollSummary, PayrollBonusLine } from '@/lib/types/rates'
+import { BONUS_CATEGORIES_PL, BONUS_MONTHS_PL, BONUS_QUARTERS_PL } from '@/lib/types/bonus'
 
 interface Props {
     initialTab: 'mine' | 'team' | 'all'
@@ -46,13 +59,82 @@ function formatMoney(value: number | null, currency: string | null | undefined):
     return `${value.toFixed(2)} ${currency}`
 }
 
+function formatDateTime(iso: string | null): string {
+    if (!iso) return '—'
+    return new Date(iso).toLocaleDateString('pl-PL', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    })
+}
+
+const TIMESHEET_STATUS_PL: Record<PayrollSummary['timesheet_status'], string> = {
+    approved: 'Zatwierdzony',
+    submitted: 'Oczekuje',
+    draft: 'Szkic',
+    rejected: 'Odrzucony',
+    missing: 'Brak',
+}
+
+/** Phase 32 — per-bonus "za co" detail lines, category aware. */
+function bonusDetailRows(b: PayrollBonusLine): Array<{ label: string; value: string }> {
+    const rows: Array<{ label: string; value: string }> = []
+    switch (b.category) {
+        case 'sales':
+            if (b.client_name) rows.push({ label: 'Klient', value: b.client_name })
+            if (b.sales_service_description)
+                rows.push({ label: 'Opis usługi', value: b.sales_service_description })
+            break
+        case 'delivery_lead':
+            if (b.client_name) rows.push({ label: 'Klient', value: b.client_name })
+            if (b.delivery_candidate_name)
+                rows.push({ label: 'Kandydat', value: b.delivery_candidate_name })
+            if (b.delivery_margin_amount != null)
+                rows.push({
+                    label: 'Marża miesięczna',
+                    value: `${b.delivery_margin_amount.toFixed(2)} PLN`,
+                })
+            if (b.delivery_margin_percent != null)
+                rows.push({ label: 'Procent premii', value: `${b.delivery_margin_percent}%` })
+            break
+        case 'recruiter':
+            if (b.client_name) rows.push({ label: 'Klient', value: b.client_name })
+            if (b.recruiter_candidate_name)
+                rows.push({ label: 'Kandydat', value: b.recruiter_candidate_name })
+            if (b.recruiter_margin_per_hour != null)
+                rows.push({
+                    label: 'Marża',
+                    value: `${b.recruiter_margin_per_hour.toFixed(2)} PLN/h`,
+                })
+            if (b.recruiter_calculated_tier)
+                rows.push({ label: 'Próg', value: `${b.recruiter_calculated_tier}` })
+            break
+        case 'custom':
+            if (b.custom_email_memo) rows.push({ label: 'Memo', value: b.custom_email_memo })
+            break
+        case 'champions_league':
+            if (b.place_rank) rows.push({ label: 'Miejsce', value: `${b.place_rank}.` })
+            if (b.period_quarter)
+                rows.push({
+                    label: 'Kwartał',
+                    value: `${BONUS_QUARTERS_PL[b.period_quarter - 1]} ${b.period_year ?? ''}`.trim(),
+                })
+            break
+    }
+    rows.push({ label: 'Uzasadnienie', value: b.reason })
+    if (b.notes) rows.push({ label: 'Notatka', value: b.notes })
+    if (b.proposed_by_name) rows.push({ label: 'Przypisał', value: b.proposed_by_name })
+    return rows
+}
+
 export function PayrollClient({
     initialTab,
     initialYear,
     initialMonth,
     isManager,
     isAdminOrFinanse,
-    currentUserId,
 }: Props) {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -64,6 +146,10 @@ export function PayrollClient({
     const [teamSummaries, setTeamSummaries] = useState<PayrollSummary[] | null>(null)
     const [allSummaries, setAllSummaries] = useState<PayrollSummary[] | null>(null)
     const [exporting, setExporting] = useState<boolean>(false)
+
+    // Phase 32 — list-view filters (apply to team + all tables, client-side).
+    const [query, setQuery] = useState<string>('')
+    const [readyOnly, setReadyOnly] = useState<boolean>(false)
 
     const monthOptions = useMemo(() => buildMonthOptions(), [])
 
@@ -122,6 +208,26 @@ export function PayrollClient({
         }
     }
 
+    // Apply person search + ready filter to the active list.
+    const activeList = tab === 'team' ? teamSummaries : tab === 'all' ? allSummaries : null
+    const filteredList = useMemo(() => {
+        if (!activeList) return null
+        const q = query.trim().toLowerCase()
+        return activeList.filter((s) => {
+            if (readyOnly && s.timesheet_status !== 'approved') return false
+            if (q) {
+                const hay = `${s.full_name ?? ''} ${s.email}`.toLowerCase()
+                if (!hay.includes(q)) return false
+            }
+            return true
+        })
+    }, [activeList, query, readyOnly])
+
+    const readyCount = activeList?.filter((s) => s.timesheet_status === 'approved').length ?? 0
+    const totalCount = activeList?.length ?? 0
+
+    const isListTab = tab === 'team' || tab === 'all'
+
     return (
         <div className="space-y-4">
             {/* Tabs */}
@@ -161,7 +267,7 @@ export function PayrollClient({
                         ))}
                     </select>
                 </div>
-                {(tab === 'team' || tab === 'all') && isAdminOrFinanse && (
+                {isListTab && isAdminOrFinanse && (
                     <Button
                         size="sm"
                         variant="outline"
@@ -178,6 +284,37 @@ export function PayrollClient({
                 )}
             </div>
 
+            {/* List-view filters: person search + ready-for-payout toggle */}
+            {isListTab && !loading && activeList && (
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="relative flex-1 min-w-[220px] max-w-md">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Szukaj po osobie (imię, nazwisko, email)…"
+                            className="w-full rounded-md border bg-background pl-8 pr-3 py-1.5 text-sm"
+                        />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={readyOnly}
+                            onChange={(e) => setReadyOnly(e.target.checked)}
+                            className="h-4 w-4 rounded border-border"
+                        />
+                        <span className="inline-flex items-center gap-1">
+                            <Lock className="h-3.5 w-3.5 text-green-400" />
+                            Tylko zatwierdzone (gotowe do wypłaty)
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            {readyCount}/{totalCount}
+                        </span>
+                    </label>
+                </div>
+            )}
+
             {/* Content */}
             {loading ? (
                 <div className="py-12 flex items-center justify-center">
@@ -185,10 +322,19 @@ export function PayrollClient({
                 </div>
             ) : tab === 'mine' && mineSummary ? (
                 <MineSummaryView summary={mineSummary} />
-            ) : tab === 'team' && teamSummaries ? (
-                <SummaryTable summaries={teamSummaries} emptyText="Brak pracowników w Twoim zespole." />
-            ) : tab === 'all' && allSummaries ? (
-                <SummaryTable summaries={allSummaries} emptyText="Brak danych dla wybranego miesiąca." />
+            ) : isListTab && filteredList ? (
+                <SummaryTable
+                    summaries={filteredList}
+                    year={year}
+                    month={month}
+                    emptyText={
+                        (activeList?.length ?? 0) === 0
+                            ? tab === 'team'
+                                ? 'Brak pracowników w Twoim zespole.'
+                                : 'Brak danych dla wybranego miesiąca.'
+                            : 'Brak wyników dla wybranego filtra.'
+                    }
+                />
             ) : null}
         </div>
     )
@@ -235,7 +381,7 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
                 />
             </div>
 
-            <BonusTable bonuses={summary.bonuses} />
+            <BonusDetailList bonuses={summary.bonuses} />
 
             <div className="rounded-lg border border-white/10 bg-white/5 p-4 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Suma całkowita</span>
@@ -253,14 +399,16 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
 
             {summary.timesheet_status !== 'approved' && (
                 <p className="text-xs text-amber-400">
-                    Status timesheet: {summary.timesheet_status}. Kwota podstawowa zostanie sfinalizowana po akceptacji.
+                    Status timesheet: {TIMESHEET_STATUS_PL[summary.timesheet_status]}. Kwota
+                    podstawowa zostanie sfinalizowana po akceptacji.
                 </p>
             )}
         </div>
     )
 }
 
-function BonusTable({ bonuses }: { bonuses: PayrollSummary['bonuses'] }) {
+/** Phase 32 — full bonus detail ("za co"). Used in Mine view + expandable rows. */
+function BonusDetailList({ bonuses }: { bonuses: PayrollBonusLine[] }) {
     if (bonuses.length === 0) {
         return (
             <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-4 text-center text-sm text-muted-foreground">
@@ -269,32 +417,56 @@ function BonusTable({ bonuses }: { bonuses: PayrollSummary['bonuses'] }) {
         )
     }
     return (
-        <div className="rounded-lg border border-white/10">
-            <table className="w-full text-sm">
-                <thead className="border-b border-border/40 text-xs text-muted-foreground">
-                    <tr>
-                        <th className="text-left p-2 font-medium">Kategoria</th>
-                        <th className="text-right p-2 font-medium">Kwota</th>
-                        <th className="text-left p-2 font-medium">Powód</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {bonuses.map((b) => (
-                        <tr key={b.id} className="border-b border-border/20 last:border-0">
-                            <td className="p-2">{BONUS_CATEGORIES_PL[b.category]}</td>
-                            <td className="p-2 text-right font-mono tabular-nums">
-                                {b.amount.toFixed(2)} {b.currency}
-                            </td>
-                            <td className="p-2 text-muted-foreground max-w-[420px]">{b.reason}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+        <div className="space-y-2">
+            {bonuses.map((b) => (
+                <div key={b.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] px-1.5 py-0.5 rounded border border-white/15 text-muted-foreground">
+                            {b.category === 'champions_league' ? '🏆 ' : ''}
+                            {BONUS_CATEGORIES_PL[b.category]}
+                        </span>
+                        <span className="font-semibold tabular-nums">
+                            {b.amount.toFixed(2)} {b.currency}
+                        </span>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-x-3 gap-y-1 text-sm">
+                        {bonusDetailRows(b).map((row, i) => (
+                            <div key={i} className="contents">
+                                <dt className="text-xs text-muted-foreground sm:text-right pt-0.5">
+                                    {row.label}
+                                </dt>
+                                <dd className="whitespace-pre-wrap break-words">{row.value}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                </div>
+            ))}
         </div>
     )
 }
 
-function SummaryTable({ summaries, emptyText }: { summaries: PayrollSummary[]; emptyText: string }) {
+function SummaryTable({
+    summaries,
+    year,
+    month,
+    emptyText,
+}: {
+    summaries: PayrollSummary[]
+    year: number
+    month: number
+    emptyText: string
+}) {
+    const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+    function toggle(id: string) {
+        setExpanded((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+
     if (summaries.length === 0) {
         return (
             <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-8 text-center text-muted-foreground">
@@ -307,6 +479,7 @@ function SummaryTable({ summaries, emptyText }: { summaries: PayrollSummary[]; e
             <table className="w-full text-sm">
                 <thead className="border-b border-border/40 text-xs text-muted-foreground sticky top-0 bg-background">
                     <tr>
+                        <th className="w-8 p-2" />
                         <th className="text-left p-2 font-medium">Pracownik</th>
                         <th className="text-left p-2 font-medium">Rola</th>
                         <th className="text-right p-2 font-medium">Godziny</th>
@@ -315,6 +488,7 @@ function SummaryTable({ summaries, emptyText }: { summaries: PayrollSummary[]; e
                         <th className="text-right p-2 font-medium">Premie</th>
                         <th className="text-right p-2 font-medium">Suma</th>
                         <th className="text-left p-2 font-medium">Timesheet</th>
+                        <th className="text-right p-2 font-medium">Pobierz</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -322,41 +496,151 @@ function SummaryTable({ summaries, emptyText }: { summaries: PayrollSummary[]; e
                         const bonusBreakdown = Object.entries(s.bonus_totals_by_currency)
                             .map(([cur, amt]) => `${amt.toFixed(2)} ${cur}`)
                             .join(', ')
+                        const isApproved = s.timesheet_status === 'approved'
+                        const isOpen = expanded.has(s.user_id)
+                        const hasDetail = s.bonuses.length > 0 || isApproved
                         return (
-                            <tr key={s.user_id} className="border-b border-border/20 last:border-0">
-                                <td className="p-2">
-                                    <div className="font-medium">{s.full_name ?? s.email}</div>
-                                    <div className="text-xs text-muted-foreground">{s.email}</div>
-                                </td>
-                                <td className="p-2 text-xs">{s.role}</td>
-                                <td className="p-2 text-right font-mono tabular-nums">
-                                    {s.hours_total.toFixed(2)}
-                                </td>
-                                <td className="p-2 text-right font-mono tabular-nums">
-                                    {s.rate != null
-                                        ? `${s.rate.toFixed(2)} ${s.rate_currency}/h`
-                                        : '—'}
-                                </td>
-                                <td className="p-2 text-right font-mono tabular-nums">
-                                    {formatMoney(s.base_amount, s.rate_currency)}
-                                </td>
-                                <td className="p-2 text-right font-mono tabular-nums text-xs">
-                                    {bonusBreakdown || '—'}
-                                </td>
-                                <td className="p-2 text-right font-mono tabular-nums font-semibold">
-                                    {s.grand_total != null
-                                        ? formatMoney(s.grand_total, s.rate_currency)
-                                        : (
-                                              <span className="text-amber-400 text-[11px]">mieszane</span>
-                                          )}
-                                </td>
-                                <td className="p-2 text-xs text-muted-foreground">{s.timesheet_status}</td>
-                            </tr>
+                            <FragmentRows
+                                key={s.user_id}
+                                s={s}
+                                year={year}
+                                month={month}
+                                isApproved={isApproved}
+                                isOpen={isOpen}
+                                hasDetail={hasDetail}
+                                bonusBreakdown={bonusBreakdown}
+                                onToggle={() => toggle(s.user_id)}
+                            />
                         )
                     })}
                 </tbody>
             </table>
         </div>
+    )
+}
+
+function FragmentRows({
+    s,
+    year,
+    month,
+    isApproved,
+    isOpen,
+    hasDetail,
+    bonusBreakdown,
+    onToggle,
+}: {
+    s: PayrollSummary
+    year: number
+    month: number
+    isApproved: boolean
+    isOpen: boolean
+    hasDetail: boolean
+    bonusBreakdown: string
+    onToggle: () => void
+}) {
+    return (
+        <>
+            <tr className="border-b border-border/20">
+                <td className="p-2 align-top">
+                    {hasDetail && (
+                        <button
+                            type="button"
+                            onClick={onToggle}
+                            className="text-muted-foreground hover:text-foreground"
+                            title="Szczegóły premii i akceptacji"
+                            aria-label="Rozwiń szczegóły"
+                        >
+                            {isOpen ? (
+                                <ChevronDown className="h-4 w-4" />
+                            ) : (
+                                <ChevronRight className="h-4 w-4" />
+                            )}
+                        </button>
+                    )}
+                </td>
+                <td className="p-2">
+                    <div className="font-medium">{s.full_name ?? s.email}</div>
+                    <div className="text-xs text-muted-foreground">{s.email}</div>
+                </td>
+                <td className="p-2 text-xs">{s.role}</td>
+                <td className="p-2 text-right font-mono tabular-nums">{s.hours_total.toFixed(2)}</td>
+                <td className="p-2 text-right font-mono tabular-nums">
+                    {s.rate != null ? `${s.rate.toFixed(2)} ${s.rate_currency}/h` : '—'}
+                </td>
+                <td className="p-2 text-right font-mono tabular-nums">
+                    {formatMoney(s.base_amount, s.rate_currency)}
+                </td>
+                <td className="p-2 text-right font-mono tabular-nums text-xs">
+                    {bonusBreakdown || '—'}
+                </td>
+                <td className="p-2 text-right font-mono tabular-nums font-semibold">
+                    {s.grand_total != null ? (
+                        formatMoney(s.grand_total, s.rate_currency)
+                    ) : (
+                        <span className="text-amber-400 text-[11px]">mieszane</span>
+                    )}
+                </td>
+                <td className="p-2">
+                    {isApproved ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400">
+                            <Lock className="h-3 w-3" />
+                            Zatwierdzony
+                        </span>
+                    ) : (
+                        <span className="text-xs text-muted-foreground">
+                            {TIMESHEET_STATUS_PL[s.timesheet_status]}
+                        </span>
+                    )}
+                </td>
+                <td className="p-2 text-right whitespace-nowrap">
+                    {isApproved ? (
+                        <a
+                            href={`/internal/timesheet/${year}/${month}/pdf?user=${s.user_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Pobierz timesheet PDF tego pracownika"
+                        >
+                            <Button size="sm" variant="outline">
+                                <FileDown className="h-3.5 w-3.5 mr-1" />
+                                PDF
+                            </Button>
+                        </a>
+                    ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                </td>
+            </tr>
+            {isOpen && hasDetail && (
+                <tr className="border-b border-border/20 bg-white/[0.03]">
+                    <td />
+                    <td colSpan={9} className="p-3">
+                        <div className="space-y-3">
+                            {isApproved && (
+                                <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+                                    Timesheet zatwierdzony
+                                    {s.timesheet_approved_by_name && (
+                                        <> przez <strong>{s.timesheet_approved_by_name}</strong></>
+                                    )}
+                                    {s.timesheet_approved_at && (
+                                        <> · {formatDateTime(s.timesheet_approved_at)}</>
+                                    )}
+                                    <span className="text-green-400/80">
+                                        — zablokowany dla managera, gotowy do wypłaty
+                                    </span>
+                                </div>
+                            )}
+                            <div>
+                                <div className="text-xs font-medium text-muted-foreground mb-1.5">
+                                    Premie ({s.bonuses.length})
+                                </div>
+                                <BonusDetailList bonuses={s.bonuses} />
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            )}
+        </>
     )
 }
 

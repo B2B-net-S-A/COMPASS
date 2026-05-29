@@ -48,6 +48,8 @@ import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 interface Props {
     timesheet: TimesheetWithEntriesAndUser | null
     open: boolean
+    /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
+    canUnlockApproved?: boolean
     onOpenChange: (open: boolean) => void
     onRequestReject: (t: TimesheetWithEntriesAndUser) => void
 }
@@ -99,7 +101,7 @@ function eachDateInclusive(start: string, end: string): string[] {
     return out
 }
 
-export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onRequestReject }: Props) {
+export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = true, onOpenChange, onRequestReject }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [confirm, ConfirmUI] = useConfirm()
@@ -539,15 +541,17 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                     )}
                     {timesheet.status === 'approved' && (
                         <>
-                            <Button
-                                variant="ghost"
-                                onClick={handleUnlock}
-                                disabled={pending}
-                                title="Cofnij do szkicu — pracownik będzie mógł edytować"
-                            >
-                                <Unlock className="h-4 w-4 mr-1" />
-                                Odblokuj
-                            </Button>
+                            {canUnlockApproved && (
+                                <Button
+                                    variant="ghost"
+                                    onClick={handleUnlock}
+                                    disabled={pending}
+                                    title="Cofnij do szkicu — pracownik będzie mógł edytować"
+                                >
+                                    <Unlock className="h-4 w-4 mr-1" />
+                                    Odblokuj
+                                </Button>
+                            )}
                             <a
                                 href={`/internal/timesheet/${timesheet.year}/${timesheet.month}/pdf?user=${timesheet.user_id}`}
                                 target="_blank"
