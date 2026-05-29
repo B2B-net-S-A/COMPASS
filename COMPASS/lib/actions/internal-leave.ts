@@ -33,8 +33,15 @@ import {
     VACATION_POOL_TYPES,
     type LeaveSpan,
 } from '@/lib/hr/leave-balance'
-import { workingDaysBetween, type PublicHolidayDate } from '@/lib/hr/working-days'
-import { endOfMonth, format, parseISO } from 'date-fns'
+import { type PublicHolidayDate } from '@/lib/hr/working-days'
+import {
+    splitLeaveWorkingDays,
+    PAID_LEAVE_ENTRY_SOURCE,
+    PAID_LEAVE_ENTRY_DESCRIPTION,
+    type PaidLeaveDay,
+} from '@/lib/hr/leave-timesheet-split'
+import { computeTimesheetHash, type TimesheetEntryForHash } from '@/lib/hr/timesheet-hash'
+import { endOfMonth, format } from 'date-fns'
 
 export type LeaveType =
     | 'vacation' // Urlop wypoczynkowy
@@ -1334,6 +1341,105 @@ export async function listLeavesForUserMonth(
     return ((data ?? []) as unknown as TeamLeaveQueryRow[]).map(mapTeamLeaveRow)
 }
 
+// ─── Phase 30b: dni blokujące timesheet (split-aware) ───────────────────────
+
+/**
+ * Phase 30b — zwraca dni (yyyy-MM-dd) w danym miesiącu, które BLOKUJĄ logowanie
+ * godzin w timesheet. Źródło prawdy dla overlay'a w edytorze i podglądzie admina.
+ *
+ * Reguła:
+ *   - approved urlop → splitLeaveWorkingDays: dni płatne z puli (B2B/zlecenie) NIE
+ *     blokują (mają auto-wpis godzin), nadwyżkowe/UoP/non-pool dni blokują.
+ *   - pending urlop → wszystkie dni robocze blokują (zachowawczo, jak dotąd — split
+ *     jest prowizoryczny dopóki wniosek nie zatwierdzony).
+ *
+ * Scope: własny timesheet (bez `targetUserId`) lub — dla approvera (admin / manager
+ * pracownika) — wskazany pracownik.
+ */
+export async function getTimesheetBlockedDates(
+    year: number,
+    month: number,
+    targetUserId?: string,
+): Promise<string[]> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+
+    let userId = ctx.userId
+    if (targetUserId && targetUserId !== ctx.userId) {
+        if (!ctx.isAdmin) {
+            const { data: t } = await admin
+                .from('profiles')
+                .select('manager_id')
+                .eq('id', targetUserId)
+                .maybeSingle<{ manager_id: string | null }>()
+            if (t?.manager_id !== ctx.userId) {
+                throw new Error('Brak uprawnień do timesheetu tego pracownika.')
+            }
+        }
+        userId = targetUserId
+    }
+
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+    const monthEnd = format(endOfMonth(new Date(year, month - 1, 1)), 'yyyy-MM-dd')
+
+    const [leavesRes, profRes] = await Promise.all([
+        admin
+            .from('leave_requests')
+            .select('start_date, end_date, half_day, leave_type, status, paid_days')
+            .eq('user_id', userId)
+            .in('status', ['approved', 'pending'])
+            .lte('start_date', monthEnd)
+            .gte('end_date', monthStart),
+        admin
+            .from('profiles')
+            .select('employment_type')
+            .eq('id', userId)
+            .maybeSingle<{ employment_type: string | null }>(),
+    ])
+
+    const leaves = (leavesRes.data ?? []) as unknown as Array<{
+        start_date: string
+        end_date: string
+        half_day: 'morning' | 'afternoon' | null
+        leave_type: string
+        status: LeaveStatus
+        paid_days: number | string | null
+    }>
+    if (leaves.length === 0) return []
+
+    // Święta dla pełnego zakresu wszystkich urlopów (urlop może zaczynać się w
+    // poprzednim miesiącu — split liczy dni robocze całego urlopu, by poprawnie
+    // wybrać pierwsze N płatnych).
+    const minStart = leaves.reduce((m, l) => (l.start_date < m ? l.start_date : m), leaves[0].start_date)
+    const maxEnd = leaves.reduce((m, l) => (l.end_date > m ? l.end_date : m), leaves[0].end_date)
+    const { data: holRows } = await admin
+        .from('public_holidays')
+        .select('date, name_pl')
+        .gte('date', minStart)
+        .lte('date', maxEnd)
+    const holidays = (holRows ?? []) as PublicHolidayDate[]
+    const employmentType = profRes.data?.employment_type ?? null
+
+    const blocked = new Set<string>()
+    for (const lv of leaves) {
+        // Pending → traktuj jak w pełni blokujący (paidDays=0); approved → realny split.
+        const effectivePaid = lv.status === 'approved' ? Number(lv.paid_days ?? 0) : 0
+        const split = splitLeaveWorkingDays({
+            startDate: lv.start_date,
+            endDate: lv.end_date,
+            halfDay: lv.half_day,
+            leaveType: lv.leave_type,
+            paidDays: effectivePaid,
+            employmentType,
+            holidays,
+        })
+        for (const d of split.blockedDays) {
+            if (d >= monthStart && d <= monthEnd) blocked.add(d)
+        }
+    }
+    return Array.from(blocked).sort()
+}
+
 /**
  * Phase 27j — manager/admin cancels a team member's leave (Dominik report:
  * managers had no way to cancel a leave they entered). Cleans attendance + (best
@@ -2139,6 +2245,201 @@ async function fetchUserContact(userId: string): Promise<{ email: string; full_n
     return { email: data.email, full_name: data.full_name }
 }
 
+// Phase 30b — statusy attendance pochodzące z wniosków urlopowych (do czyszczenia).
+const LEAVE_ATTENDANCE_STATUSES = [
+    'vacation', 'on_demand', 'occasional', 'childcare', 'care_leave', 'force_majeure',
+    'sick_leave', 'maternity', 'paternity', 'parental_leave', 'childrearing',
+    'unpaid_leave', 'blood_donation', 'training', 'holiday_in_lieu', 'other',
+] as const
+
+/** Phase 30b — getOrCreate timesheet (service client) dla auto-wpisu płatnego urlopu. */
+async function getOrCreateTimesheetForAutoFill(
+    admin: ReturnType<typeof createServiceClient>,
+    userId: string,
+    year: number,
+    month: number,
+): Promise<{ id: string; status: string; pdf_hash: string | null } | null> {
+    const { data: existing } = await admin
+        .from('timesheets')
+        .select('id, status, pdf_hash')
+        .eq('user_id', userId)
+        .eq('year', year)
+        .eq('month', month)
+        .maybeSingle<{ id: string; status: string; pdf_hash: string | null }>()
+    if (existing) return existing
+    const { data: created, error } = await admin
+        .from('timesheets')
+        .insert({ user_id: userId, year, month } as never)
+        .select('id, status, pdf_hash')
+        .single<{ id: string; status: string; pdf_hash: string | null }>()
+    if (error || !created) {
+        logCompat.error('[autoFillPaidLeave] timesheet getOrCreate error:', error)
+        return null
+    }
+    return created
+}
+
+/**
+ * Phase 30b — po zmianie wpisów: jeśli timesheet ma pdf_hash (był approved), przelicz
+ * go, żeby walidacja integralności w PDF route nie zwracała 409 (H2.8 tamper check).
+ */
+async function recomputeTimesheetHashIfSet(
+    admin: ReturnType<typeof createServiceClient>,
+    timesheetId: string,
+): Promise<void> {
+    const { data: ts } = await admin
+        .from('timesheets')
+        .select('pdf_hash')
+        .eq('id', timesheetId)
+        .maybeSingle<{ pdf_hash: string | null }>()
+    if (!ts?.pdf_hash) return
+    const { data: entries } = await admin
+        .from('timesheet_entries')
+        .select('work_date, hours, project, description')
+        .eq('timesheet_id', timesheetId)
+    const newHash = computeTimesheetHash((entries ?? []) as TimesheetEntryForHash[])
+    if (newHash !== ts.pdf_hash) {
+        await admin.from('timesheets').update({ pdf_hash: newHash } as never).eq('id', timesheetId)
+    }
+}
+
+/**
+ * Phase 30b — auto-wpis płatnego urlopu (z puli) do timesheet jako godziny.
+ * Idempotentny: dzień z istniejącym leave_paid → aktualizuje godziny; dzień z ręcznym
+ * wpisem → zostawia (nie duplikuje); pusty dzień → wstawia 8h/4h. Urlop może przecinać
+ * 2 miesiące → grupuje per (rok, miesiąc) i getOrCreate timesheet każdego.
+ */
+async function autoFillPaidLeaveEntries(
+    admin: ReturnType<typeof createServiceClient>,
+    userId: string,
+    paidDays: ReadonlyArray<PaidLeaveDay>,
+): Promise<void> {
+    const byMonth = new Map<string, PaidLeaveDay[]>()
+    for (const pd of paidDays) {
+        const key = pd.date.slice(0, 7) // yyyy-MM
+        const arr = byMonth.get(key)
+        if (arr) arr.push(pd)
+        else byMonth.set(key, [pd])
+    }
+
+    for (const [key, days] of Array.from(byMonth.entries())) {
+        const year = Number(key.slice(0, 4))
+        const month = Number(key.slice(5, 7))
+        const ts = await getOrCreateTimesheetForAutoFill(admin, userId, year, month)
+        if (!ts) continue
+
+        const dates = days.map((d) => d.date)
+        const { data: existing } = await admin
+            .from('timesheet_entries')
+            .select('id, work_date, source, hours')
+            .eq('timesheet_id', ts.id)
+            .in('work_date', dates)
+        const existingRows = (existing ?? []) as Array<{
+            id: string
+            work_date: string
+            source: string
+            hours: number | string
+        }>
+
+        const toInsert: Array<{
+            timesheet_id: string
+            work_date: string
+            hours: number
+            project: string | null
+            description: string
+            source: string
+        }> = []
+        let changed = false
+
+        for (const pd of days) {
+            const dayEntries = existingRows.filter((e) => e.work_date === pd.date)
+            const lp = dayEntries.find((e) => e.source === PAID_LEAVE_ENTRY_SOURCE)
+            if (lp) {
+                if (Number(lp.hours) !== pd.hours) {
+                    await admin.from('timesheet_entries').update({ hours: pd.hours } as never).eq('id', lp.id)
+                    changed = true
+                }
+                continue
+            }
+            if (dayEntries.length > 0) continue // ręczny wpis tego dnia — nie duplikuj
+            toInsert.push({
+                timesheet_id: ts.id,
+                work_date: pd.date,
+                hours: pd.hours,
+                project: null,
+                description: PAID_LEAVE_ENTRY_DESCRIPTION,
+                source: PAID_LEAVE_ENTRY_SOURCE,
+            })
+        }
+
+        if (toInsert.length > 0) {
+            const { error } = await admin.from('timesheet_entries').insert(toInsert as never)
+            if (error) logCompat.error('[autoFillPaidLeave] insert error:', error)
+            else changed = true
+        }
+
+        if (changed) {
+            if (ts.status !== 'draft') {
+                await logAudit(userId, 'TIMESHEET_PAID_LEAVE_AUTOFILL', {
+                    timesheet_id: ts.id,
+                    year,
+                    month,
+                    status: ts.status,
+                    dates,
+                }).catch(() => {})
+            }
+            await recomputeTimesheetHashIfSet(admin, ts.id)
+        }
+    }
+}
+
+/** Phase 30b — usuń auto-wpisy płatnego urlopu w zakresie (przy anulowaniu/odrzuceniu). */
+async function removePaidLeaveEntries(
+    admin: ReturnType<typeof createServiceClient>,
+    userId: string,
+    startDate: string,
+    endDate: string,
+): Promise<void> {
+    const { data: tsRows } = await admin.from('timesheets').select('id').eq('user_id', userId)
+    const ids = ((tsRows ?? []) as Array<{ id: string }>).map((t) => t.id)
+    if (ids.length === 0) return
+
+    const { data: affected } = await admin
+        .from('timesheet_entries')
+        .select('timesheet_id')
+        .eq('source', PAID_LEAVE_ENTRY_SOURCE)
+        .in('timesheet_id', ids)
+        .gte('work_date', startDate)
+        .lte('work_date', endDate)
+    const affectedIds = Array.from(
+        new Set(((affected ?? []) as Array<{ timesheet_id: string }>).map((e) => e.timesheet_id)),
+    )
+    if (affectedIds.length === 0) return
+
+    const { error } = await admin
+        .from('timesheet_entries')
+        .delete()
+        .eq('source', PAID_LEAVE_ENTRY_SOURCE)
+        .in('timesheet_id', ids)
+        .gte('work_date', startDate)
+        .lte('work_date', endDate)
+    if (error) {
+        logCompat.error('[removePaidLeaveEntries] delete error:', error)
+        return
+    }
+    for (const id of affectedIds) await recomputeTimesheetHashIfSet(admin, id)
+}
+
+/**
+ * Phase 11 + 30b — sync attendance_records + timesheet z wniosku urlopowego.
+ *
+ * create:
+ *   - dni BLOKUJĄCE (unpaid / non-pool / UoP) → attendance_records (timesheet zablokowany).
+ *   - dni PŁATNE z puli (B2B/zlecenie) → BEZ attendance + auto-wpis godzin do timesheet
+ *     (pokazują się jak normalny dzień, billable). Decyzja Artura 2026-05-29.
+ * remove:
+ *   - usuń attendance w zakresie + usuń auto-wpisy płatnego urlopu.
+ */
 async function syncAttendanceFromLeave(
     leaveId: string,
     userId: string,
@@ -2147,30 +2448,60 @@ async function syncAttendanceFromLeave(
     const admin = createServiceClient()
     const { data: leave } = await admin
         .from('leave_requests')
-        .select('start_date, end_date, leave_type, half_day')
+        .select('start_date, end_date, leave_type, half_day, paid_days')
         .eq('id', leaveId)
         .single<{
             start_date: string
             end_date: string
             leave_type: LeaveType
             half_day: 'morning' | 'afternoon' | null
+            paid_days: number | string | null
         }>()
     if (!leave) return
 
-    const { data: holidayRows } = await admin
-        .from('public_holidays')
-        .select('date, name_pl')
-        .gte('date', leave.start_date)
-        .lte('date', leave.end_date)
-    const holidays: PublicHolidayDate[] = (holidayRows ?? []) as PublicHolidayDate[]
+    if (op === 'remove') {
+        const { error } = await admin
+            .from('attendance_records')
+            .delete()
+            .eq('user_id', userId)
+            .gte('date', leave.start_date)
+            .lte('date', leave.end_date)
+            .in('status', [...LEAVE_ATTENDANCE_STATUSES])
+        if (error) logCompat.error('[syncAttendanceFromLeave] delete error:', error)
+        await removePaidLeaveEntries(admin, userId, leave.start_date, leave.end_date)
+        return
+    }
 
-    const days = workingDaysBetween(parseISO(leave.start_date), parseISO(leave.end_date), holidays)
+    // op === 'create'
+    const [holidayRes, profRes] = await Promise.all([
+        admin
+            .from('public_holidays')
+            .select('date, name_pl')
+            .gte('date', leave.start_date)
+            .lte('date', leave.end_date),
+        admin
+            .from('profiles')
+            .select('employment_type')
+            .eq('id', userId)
+            .maybeSingle<{ employment_type: string | null }>(),
+    ])
+    const holidays: PublicHolidayDate[] = (holidayRes.data ?? []) as PublicHolidayDate[]
 
-    if (op === 'create') {
-        if (days.length === 0) return
-        const rows = days.map((d) => ({
+    const split = splitLeaveWorkingDays({
+        startDate: leave.start_date,
+        endDate: leave.end_date,
+        halfDay: leave.half_day,
+        leaveType: leave.leave_type,
+        paidDays: Number(leave.paid_days ?? 0),
+        employmentType: profRes.data?.employment_type ?? null,
+        holidays,
+    })
+
+    // Dni blokujące → attendance_records (timesheet zablokowany jak zawsze).
+    if (split.blockedDays.length > 0) {
+        const rows = split.blockedDays.map((date) => ({
             user_id: userId,
-            date: format(d, 'yyyy-MM-dd'),
+            date,
             status: leave.leave_type,
             location: null as string | null,
             note: 'Z wniosku urlopowego',
@@ -2179,33 +2510,20 @@ async function syncAttendanceFromLeave(
         const { error } = await admin
             .from('attendance_records')
             .upsert(rows, { onConflict: 'user_id,date' })
-        if (error) logCompat.error('[syncAttendanceFromLeave] upsert error:', error)
-    } else {
-        const { error } = await admin
+        if (error) logCompat.error('[syncAttendanceFromLeave] block upsert error:', error)
+    }
+
+    // Dni płatne z puli → bez blokady attendance + auto-wpis godzin do timesheet.
+    if (split.paidDays.length > 0) {
+        const paidDates = split.paidDays.map((p) => p.date)
+        const { error: delErr } = await admin
             .from('attendance_records')
             .delete()
             .eq('user_id', userId)
-            .gte('date', leave.start_date)
-            .lte('date', leave.end_date)
-            .in('status', [
-                'vacation',
-                'on_demand',
-                'occasional',
-                'childcare',
-                'care_leave',
-                'force_majeure',
-                'sick_leave',
-                'maternity',
-                'paternity',
-                'parental_leave',
-                'childrearing',
-                'unpaid_leave',
-                'blood_donation',
-                'training',
-                'holiday_in_lieu',
-                'other',
-            ])
-        if (error) logCompat.error('[syncAttendanceFromLeave] delete error:', error)
+            .in('date', paidDates)
+            .in('status', [...LEAVE_ATTENDANCE_STATUSES])
+        if (delErr) logCompat.error('[syncAttendanceFromLeave] paid attendance cleanup error:', delErr)
+        await autoFillPaidLeaveEntries(admin, userId, split.paidDays)
     }
 }
 

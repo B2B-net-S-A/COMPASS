@@ -40,6 +40,7 @@ import {
 } from '@/lib/actions/internal-timesheet'
 import {
     cancelTeamLeave,
+    getTimesheetBlockedDates,
     listLeavesForUserMonth,
     type TeamLeaveRow,
 } from '@/lib/actions/internal-leave'
@@ -87,17 +88,6 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
     other: 'Inne',
 }
 
-/** Every calendar day in [start, end] (yyyy-MM-dd) — used to block hour logging. */
-function eachDateInclusive(start: string, end: string): string[] {
-    const out: string[] = []
-    const cur = parseISO(start)
-    const last = parseISO(end)
-    while (cur <= last) {
-        out.push(format(cur, 'yyyy-MM-dd'))
-        cur.setDate(cur.getDate() + 1)
-    }
-    return out
-}
 
 export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onRequestReject }: Props) {
     const router = useRouter()
@@ -116,6 +106,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
     // the approver sees (and can cancel) leave that blocks logging hours, and so
     // the entry dialog can pre-warn instead of hitting the prod-masked server error.
     const [leaves, setLeaves] = useState<TeamLeaveRow[]>([])
+    const [blockedLeaveDates, setBlockedLeaveDates] = useState<string[]>([])
     const [leavesLoadedId, setLeavesLoadedId] = useState<string | null>(null)
     const [cancellingLeaveId, setCancellingLeaveId] = useState<string | null>(null)
 
@@ -129,16 +120,22 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
     useEffect(() => {
         if (!open || !timesheet || !timesheet.id || timesheet.id === leavesLoadedId) return
         let cancelled = false
-        listLeavesForUserMonth(timesheet.user_id, timesheet.year, timesheet.month)
-            .then((data) => {
+        Promise.all([
+            listLeavesForUserMonth(timesheet.user_id, timesheet.year, timesheet.month),
+            // Phase 30b — split-aware: płatny urlop z puli (B2B/zlecenie) NIE blokuje.
+            getTimesheetBlockedDates(timesheet.year, timesheet.month, timesheet.user_id),
+        ])
+            .then(([data, blocked]) => {
                 if (!cancelled) {
                     setLeaves(data)
+                    setBlockedLeaveDates(blocked)
                     setLeavesLoadedId(timesheet.id)
                 }
             })
             .catch(() => {
                 if (!cancelled) {
                     setLeaves([])
+                    setBlockedLeaveDates([])
                     setLeavesLoadedId(timesheet.id)
                 }
             })
@@ -157,7 +154,6 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
     const ref = new Date(timesheet.year, timesheet.month - 1, 1)
     const minDate = format(startOfMonth(ref), 'yyyy-MM-dd')
     const maxDate = format(endOfMonth(ref), 'yyyy-MM-dd')
-    const blockedLeaveDates = leaves.flatMap((l) => eachDateInclusive(l.start_date, l.end_date))
 
     async function handleCancelLeave(leave: TeamLeaveRow) {
         const ok = await confirm({
