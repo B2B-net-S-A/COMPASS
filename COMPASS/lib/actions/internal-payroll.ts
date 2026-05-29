@@ -73,16 +73,25 @@ async function buildSummary(
     // Timesheet for the period.
     const { data: timesheet } = await admin
         .from('timesheets')
-        .select('id, status')
+        .select('id, status, approved_at, approved_by')
         .eq('user_id', userId)
         .eq('year', year)
         .eq('month', month)
-        .maybeSingle<{ id: string; status: string }>()
+        .maybeSingle<{
+            id: string
+            status: string
+            approved_at: string | null
+            approved_by: string | null
+        }>()
 
     let hoursTotal = 0
     let tsStatus: PayrollSummary['timesheet_status'] = 'missing'
+    let tsApprovedAt: string | null = null
+    let tsApprovedBy: string | null = null
     if (timesheet) {
         tsStatus = (timesheet.status as PayrollSummary['timesheet_status']) ?? 'missing'
+        tsApprovedAt = timesheet.approved_at
+        tsApprovedBy = timesheet.approved_by
         const { data: entries } = await admin
             .from('timesheet_entries')
             .select('hours')
@@ -120,27 +129,88 @@ async function buildSummary(
 
     // Bonuses for the period (status='assigned').
     // Phase 27c — `category` column added in Phase 27b but types.ts may lag.
+    // Phase 32 — pull full per-category detail so finanse sees "za co" in payroll.
+    // Scope unchanged: only monthly bonuses for this exact month. Champions League
+    // is quarterly (period_month=NULL) and settled separately — deliberately excluded
+    // from monthly payroll to avoid triple-counting across the quarter's months.
     const { data: bonusRows } = await admin
         .from('bonuses')
-        .select('id, amount, currency, category, reason, created_at')
+        .select(
+            'id, amount, currency, category, reason, notes, created_at, proposed_by, ' +
+                'period_year, period_month, period_quarter, place_rank, ' +
+                'client_name, sales_service_description, delivery_candidate_name, ' +
+                'delivery_margin_amount, delivery_margin_percent, recruiter_candidate_name, ' +
+                'recruiter_margin_per_hour, recruiter_calculated_tier, custom_email_memo',
+        )
         .eq('recipient_user_id', userId)
         .eq('status', 'assigned')
         .eq('period_year', year)
         .eq('period_month', month)
-    const bonuses: PayrollBonusLine[] = (((bonusRows ?? []) as unknown) as Array<{
+    type BonusDetailRow = {
         id: string
         amount: number | string
         currency: string
         category: BonusCategory
         reason: string
+        notes: string | null
         created_at: string
-    }>).map((b) => ({
+        proposed_by: string | null
+        period_year: number | null
+        period_month: number | null
+        period_quarter: number | null
+        place_rank: number | null
+        client_name: string | null
+        sales_service_description: string | null
+        delivery_candidate_name: string | null
+        delivery_margin_amount: number | string | null
+        delivery_margin_percent: number | string | null
+        recruiter_candidate_name: string | null
+        recruiter_margin_per_hour: number | string | null
+        recruiter_calculated_tier: number | null
+        custom_email_memo: string | null
+    }
+    const bonusDetailRows = ((bonusRows ?? []) as unknown) as BonusDetailRow[]
+
+    // Resolve display names for everyone who approved data this period (bonus
+    // proposers + the timesheet approver) in a single profiles query.
+    const nameIds = new Set<string>()
+    for (const b of bonusDetailRows) {
+        if (b.proposed_by) nameIds.add(b.proposed_by)
+    }
+    if (tsApprovedBy) nameIds.add(tsApprovedBy)
+    const nameMap = new Map<string, string>()
+    if (nameIds.size > 0) {
+        const { data: names } = await admin
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', Array.from(nameIds))
+        for (const p of (names ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
+            nameMap.set(p.id, p.full_name ?? p.email)
+        }
+    }
+
+    const bonuses: PayrollBonusLine[] = bonusDetailRows.map((b) => ({
         id: b.id,
         amount: Number(b.amount),
         currency: b.currency,
         category: b.category,
         reason: b.reason,
         created_at: b.created_at,
+        notes: b.notes,
+        period_year: b.period_year,
+        period_month: b.period_month,
+        period_quarter: b.period_quarter,
+        place_rank: b.place_rank,
+        client_name: b.client_name,
+        sales_service_description: b.sales_service_description,
+        delivery_candidate_name: b.delivery_candidate_name,
+        delivery_margin_amount: b.delivery_margin_amount != null ? Number(b.delivery_margin_amount) : null,
+        delivery_margin_percent: b.delivery_margin_percent != null ? Number(b.delivery_margin_percent) : null,
+        recruiter_candidate_name: b.recruiter_candidate_name,
+        recruiter_margin_per_hour: b.recruiter_margin_per_hour != null ? Number(b.recruiter_margin_per_hour) : null,
+        recruiter_calculated_tier: b.recruiter_calculated_tier,
+        custom_email_memo: b.custom_email_memo,
+        proposed_by_name: b.proposed_by ? (nameMap.get(b.proposed_by) ?? null) : null,
     }))
 
     const bonusTotalsByCurrency: Record<string, number> = {}
@@ -172,6 +242,8 @@ async function buildSummary(
         month,
         hours_total: Number(hoursTotal.toFixed(2)),
         timesheet_status: tsStatus,
+        timesheet_approved_at: tsApprovedAt,
+        timesheet_approved_by_name: tsApprovedBy ? (nameMap.get(tsApprovedBy) ?? null) : null,
         rate,
         rate_currency: rateCurrency,
         base_amount: baseAmount,

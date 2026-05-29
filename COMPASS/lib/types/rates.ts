@@ -114,6 +114,23 @@ export interface PayrollBonusLine {
     category: BonusCategory
     reason: string
     created_at: string
+    // Phase 32 — full "za co" detail surfaced in payroll (finanse review).
+    notes: string | null
+    period_year: number | null
+    period_month: number | null
+    period_quarter: number | null
+    place_rank: number | null
+    client_name: string | null
+    sales_service_description: string | null
+    delivery_candidate_name: string | null
+    delivery_margin_amount: number | null
+    delivery_margin_percent: number | null
+    recruiter_candidate_name: string | null
+    recruiter_margin_per_hour: number | null
+    recruiter_calculated_tier: number | null
+    custom_email_memo: string | null
+    /** Who assigned/approved the bonus (manager/admin). */
+    proposed_by_name: string | null
 }
 
 /** Phase 27c — payroll summary per user per month. */
@@ -127,6 +144,9 @@ export interface PayrollSummary {
     month: number
     hours_total: number
     timesheet_status: 'approved' | 'submitted' | 'draft' | 'rejected' | 'missing'
+    /** Phase 32 — when + by whom the timesheet was approved (finanse payroll review). */
+    timesheet_approved_at: string | null
+    timesheet_approved_by_name: string | null
     rate: number | null
     rate_currency: RateCurrency | null
     /** hours_total × rate (in rate_currency), or null when no rate set. */

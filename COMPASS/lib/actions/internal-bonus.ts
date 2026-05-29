@@ -7,6 +7,7 @@ import {
     requireInternalOrAdminAction,
     requireBonusProposerAction,
     requireBonusReadAllAction,
+    requireFinanseOrAdminAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import {
@@ -743,7 +744,10 @@ export async function proposeBonus(input: ProposeBonusInput): Promise<BonusRow> 
 }
 
 export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
-    const ctx = await requireInternalOrAdminAction()
+    // Phase 32 — po przypisaniu (akceptacji managera) premię może anulować TYLKO
+    // administrator lub finanse. Manager traci prawo edycji/anulowania po assign,
+    // żeby finanse miały stabilny obraz do wypłaty ("nic się już nie zmieni").
+    const ctx = await requireFinanseOrAdminAction()
     if (!input.id) throw new Error('Brak id premii.')
     const cancellationReason = (input.cancellation_reason ?? '').trim()
     if (cancellationReason.length < 3) {
@@ -761,29 +765,16 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
         .single<BonusRow>()
     if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
 
-    // Authorization: proposer (manager) or admin can cancel; status must be assigned or pending (legacy).
+    // Status must be assigned or pending (legacy).
     if (bonus.status !== 'assigned' && bonus.status !== 'pending') {
         throw new Error(
             `Można anulować tylko premie w statusie "assigned" lub "pending" (jest: "${bonus.status}").`,
         )
     }
-    if (bonus.proposed_by !== ctx.userId && !ctx.isAdmin) {
-        // A manager can also cancel a bonus assigned to their direct report
-        // (e.g. one an admin assigned), but never their own received bonus.
-        const recipientForAuth = await fetchRecipientContact(bonus.recipient_user_id)
-        const managesRecipient =
-            bonus.recipient_user_id !== ctx.userId &&
-            recipientForAuth?.manager_id === ctx.userId
-        if (!managesRecipient) {
-            throw new Error(
-                'Możesz anulować tylko premie swoich podwładnych lub te, które sam przypisałeś.',
-            )
-        }
-    }
 
-    // Service-client write: a recipient's manager who is not the proposer is
-    // blocked by the bonuses UPDATE RLS (proposer/admin only) but is authorized
-    // above. The DB stage-transition trigger still enforces a valid transition.
+    // Service-client write: bonuses UPDATE RLS is proposer/admin-only, so finanse
+    // must go through the service client. The DB stage-transition trigger still
+    // enforces a valid transition.
     const admin = createServiceClient()
     const { data: updated, error: updErr } = await admin
         .from('bonuses')
@@ -1024,7 +1015,9 @@ async function findChampionsLeagueWinnerName(
  * Period + recipient są immutable (DB trigger guard).
  */
 export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
-    const ctx = await requireBonusProposerAction()
+    // Phase 32 — po przypisaniu premię może edytować TYLKO administrator lub finanse
+    // (manager traci prawo po assign — patrz cancelBonus comment).
+    const ctx = await requireFinanseOrAdminAction()
     if (!input.id) throw new Error('Brak id premii.')
 
     const hasAmount = input.amount !== undefined
@@ -1048,19 +1041,6 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
         throw new Error(
             `Można edytować tylko premie w statusie "assigned" (jest: "${bonus.status}").`,
         )
-    }
-    if (bonus.proposed_by !== ctx.userId && !ctx.isAdmin) {
-        // A manager can also edit a bonus assigned to their direct report
-        // (e.g. one an admin assigned), but never their own received bonus.
-        const recipientForAuth = await fetchRecipientContact(bonus.recipient_user_id)
-        const managesRecipient =
-            bonus.recipient_user_id !== ctx.userId &&
-            recipientForAuth?.manager_id === ctx.userId
-        if (!managesRecipient) {
-            throw new Error(
-                'Możesz edytować tylko premie swoich podwładnych lub te, które sam przypisałeś.',
-            )
-        }
     }
 
     const patch: Partial<BonusRow> = {}

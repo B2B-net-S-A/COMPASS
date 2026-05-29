@@ -28,6 +28,8 @@ interface Props {
     year: number
     month: number
     timesheets: TimesheetWithEntriesAndUser[]
+    /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
+    canUnlockApproved: boolean
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -37,7 +39,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
 }
 
-export function TimesheetAdminList({ year, month, timesheets }: Props) {
+export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
@@ -305,16 +307,18 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                                             PDF
                                                         </Button>
                                                     </a>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() => handleUnlock(t)}
-                                                        disabled={pending}
-                                                        title="Cofnij do szkicu — pracownik będzie mógł edytować"
-                                                    >
-                                                        <Unlock className="h-3.5 w-3.5 mr-1" />
-                                                        Odblokuj
-                                                    </Button>
+                                                    {canUnlockApproved && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => handleUnlock(t)}
+                                                            disabled={pending}
+                                                            title="Cofnij do szkicu — pracownik będzie mógł edytować"
+                                                        >
+                                                            <Unlock className="h-3.5 w-3.5 mr-1" />
+                                                            Odblokuj
+                                                        </Button>
+                                                    )}
                                                 </>
                                             )}
                                             {t.status === 'rejected' && (
@@ -340,6 +344,7 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
             <TimesheetPreviewDialog
                 timesheet={previewTarget}
                 open={!!previewTarget}
+                canUnlockApproved={canUnlockApproved}
                 onOpenChange={(o) => {
                     if (!o) setPreviewTarget(null)
                 }}

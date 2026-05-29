@@ -725,6 +725,9 @@ export async function unlockTimesheet(timesheetId: string): Promise<void> {
     // Phase 27f: approver = admin OR manager-of-team (parytet z approve/reject),
     // żeby manager mógł cofnąć zaakceptowany/odrzucony timesheet swojego zespołu
     // do edycji bez angażowania admina.
+    // Phase 32: PO AKCEPCJI manager traci prawo odblokowania — zaakceptowany
+    // timesheet może cofnąć do edycji tylko administrator lub finanse, żeby
+    // finanse miały stabilny obraz do wypłaty ("nic się już nie zmieni").
     const ctx = await requireTimesheetApproverAction()
     const admin = createServiceClient()
 
@@ -734,6 +737,12 @@ export async function unlockTimesheet(timesheetId: string): Promise<void> {
         .eq('id', timesheetId)
         .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'status'>>()
     if (fetchErr || !header) throw new Error('Timesheet nie istnieje.')
+
+    if (header.status === 'approved' && !ctx.isAdmin && ctx.role !== 'finanse') {
+        throw new Error(
+            'Po akceptacji timesheet może odblokować tylko administrator lub finanse.',
+        )
+    }
 
     await assertApproverTeamScope(admin, ctx, header.user_id)
 

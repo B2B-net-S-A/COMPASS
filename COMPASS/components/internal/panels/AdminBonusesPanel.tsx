@@ -1,7 +1,8 @@
-// Phase 23 + 26 — Premie review panel.
-//   admin    → sees ALL bonuses, can assign for anyone, cancel any active.
-//   manager  → sees own team only, can assign for own reports, cancel own assigned.
-//   finanse  → sees ALL bonuses, read-only report (no assign/cancel buttons).
+// Phase 23 + 26 + 32 — Premie review panel.
+//   admin    → sees ALL bonuses, can assign for anyone, edit/cancel any.
+//   manager  → sees own team only, can assign for own reports, but CANNOT edit/cancel
+//              after assigning (Phase 32 — manager locked out post-approval).
+//   finanse  → sees ALL bonuses, cannot assign, but CAN edit/cancel (post-approval owner).
 import {
     listAllBonusesForFinance,
     listTeamBonuses,
