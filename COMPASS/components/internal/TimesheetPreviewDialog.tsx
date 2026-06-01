@@ -382,7 +382,9 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                     </div>
                 )}
 
-                <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+                {/* type="auto" — pasek przewijania widoczny zawsze gdy lista się nie mieści
+                    (nie tylko po najechaniu), żeby od razu było widać że jest więcej wpisów. */}
+                <ScrollArea type="auto" className="flex-1 min-h-0 -mx-6 px-6">
                     {entries.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-8 text-center">
                             Brak wpisów w timesheecie.
