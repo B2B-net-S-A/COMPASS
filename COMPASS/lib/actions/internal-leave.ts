@@ -1190,6 +1190,8 @@ export interface TeamLeaveRow {
     user_id: string
     user_full_name: string | null
     user_email: string
+    // Phase 29 — sterowanie dostępnymi typami w edytorze (B2B/zlecenie = tylko vacation).
+    employment_type: string | null
     start_date: string
     end_date: string
     leave_type: LeaveType
@@ -1219,14 +1221,19 @@ interface TeamLeaveQueryRow {
     substitute_id: string | null
     paid_days: number | string | null
     unpaid_days: number | string | null
-    profiles: { full_name: string | null; email: string | null; manager_id: string | null } | null
+    profiles: {
+        full_name: string | null
+        email: string | null
+        manager_id: string | null
+        employment_type: string | null
+    } | null
     substitute: { full_name: string | null } | null
 }
 
 const TEAM_LEAVE_SELECT = `
     id, user_id, start_date, end_date, leave_type, half_day, status, note,
     created_on_behalf, created_by, substitute_id, paid_days, unpaid_days,
-    profiles:profiles!leave_requests_user_id_fkey(full_name, email, manager_id),
+    profiles:profiles!leave_requests_user_id_fkey(full_name, email, manager_id, employment_type),
     substitute:profiles!leave_requests_substitute_id_fkey(full_name)
 `
 
@@ -1236,6 +1243,7 @@ function mapTeamLeaveRow(r: TeamLeaveQueryRow): TeamLeaveRow {
         user_id: r.user_id,
         user_full_name: r.profiles?.full_name ?? null,
         user_email: r.profiles?.email ?? '',
+        employment_type: r.profiles?.employment_type ?? null,
         start_date: r.start_date,
         end_date: r.end_date,
         leave_type: r.leave_type,
@@ -1590,6 +1598,20 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
         if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(sub.role)) {
             throw new Error('Zastępca musi mieć dostęp do strefy HR.')
         }
+    }
+
+    // Phase 29 friendly guard — B2B/zlecenie may only hold 'vacation'. The DB
+    // trigger enforce_b2b_zlecenie_vacation_only is the hard backstop, but in
+    // prod it surfaces as a masked "Server Components render" error; validate
+    // here for a clear message and to fail before touching attendance. Only the
+    // type-change-to-non-vacation case can trip the trigger, so guard just that.
+    if (newType !== row.leave_type && newType !== 'vacation') {
+        const { data: empRow } = await admin
+            .from('profiles')
+            .select('employment_type')
+            .eq('id', row.user_id)
+            .maybeSingle<{ employment_type: string | null }>()
+        assertB2bZlecenieVacationOnly(empRow?.employment_type ?? null, newType, false)
     }
 
     const spanChanged =
@@ -2431,6 +2453,78 @@ async function removePaidLeaveEntries(
 }
 
 /**
+ * Phase 30c — gdy zatwierdzony urlop BLOKUJE dzień (unpaid / non-pool / UoP),
+ * usuń kolidujące wpisy godzin, które istniały na tym dniu zanim urlop został
+ * zatwierdzony. Klasyka: pracownik wypełnia timesheet (8h), POTEM składa/dostaje
+ * urlop na ten sam dzień → dzień liczy się podwójnie (urlop + 8h pracy), bo
+ * blokada edytora dotyczy tylko NOWYCH wpisów, nie istniejących.
+ *
+ * Pomija auto-wpisy płatnego urlopu (source='leave_paid' — te należą do logiki
+ * puli i są zarządzane osobno). Przelicza pdf_hash dla approved timesheetów
+ * (H2.8 tamper check) i audytuje dotknięcie non-draft timesheetu.
+ *
+ * NIE wołane dla połówek dnia (half_day) — wtedy pracownik może legalnie
+ * przepracować drugą połowę, więc nie kasujemy automatycznie (caller pilnuje).
+ */
+async function removeConflictingWorkEntries(
+    admin: ReturnType<typeof createServiceClient>,
+    userId: string,
+    blockedDates: ReadonlyArray<string>,
+): Promise<void> {
+    if (blockedDates.length === 0) return
+    const { data: tsRows } = await admin.from('timesheets').select('id, status').eq('user_id', userId)
+    const tsList = (tsRows ?? []) as Array<{ id: string; status: string }>
+    if (tsList.length === 0) return
+    const ids = tsList.map((t) => t.id)
+
+    const { data: conflicting } = await admin
+        .from('timesheet_entries')
+        .select('id, timesheet_id, work_date, hours, description')
+        .in('timesheet_id', ids)
+        .in('work_date', [...blockedDates])
+        .neq('source', PAID_LEAVE_ENTRY_SOURCE)
+    const rows = (conflicting ?? []) as Array<{
+        id: string
+        timesheet_id: string
+        work_date: string
+        hours: number | string
+        description: string | null
+    }>
+    if (rows.length === 0) return
+
+    const { error } = await admin
+        .from('timesheet_entries')
+        .delete()
+        .in(
+            'id',
+            rows.map((r) => r.id),
+        )
+    if (error) {
+        logCompat.error('[removeConflictingWorkEntries] delete error:', error)
+        return
+    }
+
+    const statusById = new Map(tsList.map((t) => [t.id, t.status]))
+    const affectedIds = Array.from(new Set(rows.map((r) => r.timesheet_id)))
+    for (const tsId of affectedIds) {
+        if (statusById.get(tsId) !== 'draft') {
+            await logAudit(userId, 'TIMESHEET_LEAVE_CONFLICT_REMOVED', {
+                timesheet_id: tsId,
+                status: statusById.get(tsId),
+                removed: rows
+                    .filter((r) => r.timesheet_id === tsId)
+                    .map((r) => ({
+                        work_date: r.work_date,
+                        hours: Number(r.hours),
+                        description: r.description,
+                    })),
+            }).catch(() => {})
+        }
+        await recomputeTimesheetHashIfSet(admin, tsId)
+    }
+}
+
+/**
  * Phase 11 + 30b — sync attendance_records + timesheet z wniosku urlopowego.
  *
  * create:
@@ -2511,6 +2605,12 @@ async function syncAttendanceFromLeave(
             .from('attendance_records')
             .upsert(rows, { onConflict: 'user_id,date' })
         if (error) logCompat.error('[syncAttendanceFromLeave] block upsert error:', error)
+
+        // Phase 30c — usuń godziny pracy wpisane na te dni ZANIM urlop zatwierdzono
+        // (TS-przed-urlopem → podwójne liczenie). Tylko pełne dni; połówki zostawiamy.
+        if (!leave.half_day) {
+            await removeConflictingWorkEntries(admin, userId, split.blockedDays)
+        }
     }
 
     // Dni płatne z puli → bez blokady attendance + auto-wpis godzin do timesheet.

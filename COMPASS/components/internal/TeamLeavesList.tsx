@@ -224,10 +224,21 @@ interface EditDialogProps {
 }
 
 function EditTeamLeaveDialog({ leave, candidates, onClose, onSaved }: EditDialogProps) {
+    // Phase 29: B2B/zlecenie mogą mieć wyłącznie 'vacation' — DB trigger odrzuca
+    // każdy inny typ (a w prod błąd jest zamaskowany). Pokazujemy więc tylko to,
+    // co baza zaakceptuje. NULL/UoP → pełen edytowalny katalog (jak serwer).
+    const restrictToVacation =
+        leave.employment_type === 'b2b' || leave.employment_type === 'zlecenie'
+    const typeOptions = restrictToVacation
+        ? EDITABLE_LEAVE_TYPES.filter((t) => t.value === 'vacation')
+        : EDITABLE_LEAVE_TYPES
+
     const [leaveType, setLeaveType] = useState<LeaveType>(
-        (EDITABLE_LEAVE_TYPES.some((t) => t.value === leave.leave_type)
-            ? leave.leave_type
-            : 'other') as LeaveType,
+        restrictToVacation
+            ? 'vacation'
+            : ((EDITABLE_LEAVE_TYPES.some((t) => t.value === leave.leave_type)
+                  ? leave.leave_type
+                  : 'other') as LeaveType),
     )
     const [startDate, setStartDate] = useState(leave.start_date)
     const [endDate, setEndDate] = useState(leave.end_date)
@@ -299,13 +310,21 @@ function EditTeamLeaveDialog({ leave, candidates, onClose, onSaved }: EditDialog
                             className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                             value={leaveType}
                             onChange={(e) => setLeaveType(e.target.value as LeaveType)}
+                            disabled={restrictToVacation}
                         >
-                            {EDITABLE_LEAVE_TYPES.map((t) => (
+                            {typeOptions.map((t) => (
                                 <option key={t.value} value={t.value}>
                                     {t.label}
                                 </option>
                             ))}
                         </select>
+                        {restrictToVacation && (
+                            <p className="text-xs text-muted-foreground">
+                                Pracownik na umowie B2B / zlecenie — dostępny tylko urlop
+                                wypoczynkowy. Bez puli płatnych dni liczy się jako bezpłatny
+                                (0 godzin w timesheecie).
+                            </p>
+                        )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">

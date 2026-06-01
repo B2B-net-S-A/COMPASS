@@ -38,6 +38,8 @@ export type AuditAction =
     | 'TIMESHEET_HASH_MISMATCH'
     // Phase 30b — auto-wpis płatnego urlopu (z puli) do timesheet
     | 'TIMESHEET_PAID_LEAVE_AUTOFILL'
+    // Phase 30c — usunięcie godzin pracy kolidujących z zatwierdzonym urlopem
+    | 'TIMESHEET_LEAVE_CONFLICT_REMOVED'
     // Phase 17 — Smart Work Clock
     | 'WORK_CLOCK_CONSENT_ACCEPTED'
     | 'WORK_CLOCK_CONSENT_REVOKED'
