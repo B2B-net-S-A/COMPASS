@@ -531,7 +531,7 @@ export async function listEntries(filters: { client?: string } = {}): Promise<En
     const admin = createServiceClient()
     let eq = admin.from('client_entries').select('*').order('start_date', { ascending: false, nullsFirst: false })
     if (filters.client) eq = eq.ilike('client_name', `%${filters.client}%`)
-    let pq = admin.from('placements').select('id, consultant_name, client_name, position, start_date, monthly_margin, recruiter_raw, status').order('start_date', { ascending: false })
+    let pq = admin.from('placements').select('id, consultant_name, client_name, position, start_date, recruiter_raw, status').order('start_date', { ascending: false })
     if (filters.client) pq = pq.ilike('client_name', `%${filters.client}%`)
     const [entries, placements] = await Promise.all([eq, pq])
 
@@ -542,10 +542,9 @@ export async function listEntries(filters: { client?: string } = {}): Promise<En
         client_name: e.client_name,
         position: e.position,
         start_date: e.start_date,
-        monthly_margin: e.monthly_margin,
         recruiter: e.recruiter_raw,
     }))
-    const fromPlacements = ((placements.data ?? []) as Array<{ id: string; consultant_name: string; client_name: string; position: string | null; start_date: string; monthly_margin: number | string | null; recruiter_raw: string; status: string }>)
+    const fromPlacements = ((placements.data ?? []) as Array<{ id: string; consultant_name: string; client_name: string; position: string | null; start_date: string; recruiter_raw: string; status: string }>)
         .filter((p) => p.status !== 'cancelled')
         .map((p) => ({
             id: p.id,
@@ -554,7 +553,6 @@ export async function listEntries(filters: { client?: string } = {}): Promise<En
             client_name: p.client_name,
             position: p.position,
             start_date: p.start_date,
-            monthly_margin: p.monthly_margin != null ? Number(p.monthly_margin) : null,
             recruiter: p.recruiter_raw,
         }))
     return [...fromPlacements, ...fromArchive].sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''))
@@ -568,25 +566,19 @@ export async function getContractorDashboard(): Promise<ContractorDashboard> {
     const [contractors, convs, entries, placements, deps] = await Promise.all([
         admin.from('contractors').select('status'),
         admin.from('contractor_conversations').select('status, tcm_id, tcm_raw'),
-        admin.from('client_entries').select('monthly_margin'),
-        admin.from('placements').select('monthly_margin, status'),
-        admin.from('client_departures').select('who_resigned, client_name, monthly_margin'),
+        admin.from('client_entries').select('id'),
+        admin.from('placements').select('status'),
+        admin.from('client_departures').select('who_resigned, client_name'),
     ])
 
     const cRows = (contractors.data ?? []) as Array<{ status: ContractorStatus }>
     const convRows = (convs.data ?? []) as Array<{ status: ConversationStatus; tcm_id: string | null; tcm_raw: string | null }>
-    const entryRows = (entries.data ?? []) as Array<{ monthly_margin: number | string | null }>
-    const placRows = (placements.data ?? []) as Array<{ monthly_margin: number | string | null; status: string }>
-    const depRows = (deps.data ?? []) as Array<{ who_resigned: WhoResigned | null; client_name: string; monthly_margin: number | string | null }>
+    const entryRows = (entries.data ?? []) as Array<{ id: string }>
+    const placRows = (placements.data ?? []) as Array<{ status: string }>
+    const depRows = (deps.data ?? []) as Array<{ who_resigned: WhoResigned | null; client_name: string }>
 
     const tcmIds = Array.from(new Set(convRows.map((r) => r.tcm_id ?? '').filter(Boolean)))
     const tcmMap = await loadProfilesByIds(admin, tcmIds)
-
-    const num = (v: number | string | null) => (v != null ? Number(v) : 0)
-    const marginGained =
-        entryRows.reduce((s, r) => s + num(r.monthly_margin), 0) +
-        placRows.filter((p) => p.status !== 'cancelled').reduce((s, r) => s + num(r.monthly_margin), 0)
-    const marginLost = depRows.reduce((s, r) => s + num(r.monthly_margin), 0)
 
     const reasonCount = new Map<WhoResigned, number>()
     const clientCount = new Map<string, number>()
@@ -607,8 +599,6 @@ export async function getContractorDashboard(): Promise<ContractorDashboard> {
         openConversations: convRows.filter((c) => c.status === 'potrzebny_kontakt' || c.status === 'pilne').length,
         entriesTotal: entryRows.length + placRows.filter((p) => p.status !== 'cancelled').length,
         departuresTotal: depRows.length,
-        marginGained,
-        marginLost,
         departureReasons: Array.from(reasonCount.entries()).map(([who, count]) => ({ who, count })).sort((a, b) => b.count - a.count),
         conversationsByTcm: Array.from(tcmCount.entries()).map(([tcm, count]) => ({ tcm, count })).sort((a, b) => b.count - a.count),
         departuresByClient: Array.from(clientCount.entries()).map(([client, count]) => ({ client, count })).sort((a, b) => b.count - a.count).slice(0, 15),

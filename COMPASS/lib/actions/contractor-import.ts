@@ -257,7 +257,7 @@ export async function previewWejsciaImport(formData: FormData): Promise<ImportPr
         peopleMatched: matched,
         peopleUnmatched: distinct.size - matched,
         warnings: parsed.errors,
-        sample: parsed.rows.slice(0, 10).map((r) => ({ kontraktor: r.fullName, klient: r.client, rekruter: r.recruiterRaw, start: r.startDate, marza: r.monthlyMargin != null ? String(r.monthlyMargin) : null })),
+        sample: parsed.rows.slice(0, 10).map((r) => ({ kontraktor: r.fullName, klient: r.client, rekruter: r.recruiterRaw, start: r.startDate })),
     }
 }
 

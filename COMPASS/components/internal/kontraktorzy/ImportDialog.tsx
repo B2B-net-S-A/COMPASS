@@ -29,12 +29,12 @@ const META: Record<Kind, { title: string; desc: string; preview: (fd: FormData) 
     },
     wejscia: {
         title: 'Import wejść do klientów',
-        desc: 'Arkusz „Wejścia do klientów". Archiwum analityczne (nie nalicza premii — to robi moduł Placementy).',
+        desc: 'Arkusz „Wejścia do klientów" — archiwum kto/kiedy wszedł do klienta. Bez danych finansowych.',
         preview: previewWejsciaImport, commit: commitWejsciaImport,
     },
     zejscia: {
         title: 'Import zejść od klientów',
-        desc: 'Arkusz „Zejścia od klientów". Zapisuje powód, przepięcie, replacement i marżę-stratę.',
+        desc: 'Arkusz „Zejścia od klientów". Zapisuje powód, przepięcie i replacement.',
         preview: previewZejsciaImport, commit: commitZejsciaImport,
     },
 }

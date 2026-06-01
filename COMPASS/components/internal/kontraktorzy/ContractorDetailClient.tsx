@@ -20,8 +20,6 @@ import {
     type ContractorDetail,
 } from '@/lib/types/contractor'
 
-const pln = (n: number | null): string => (n != null ? `${Number(n).toLocaleString('pl-PL')} zł` : '—')
-
 export function ContractorDetailClient({ detail, tcmProfiles }: { detail: ContractorDetail; tcmProfiles: Array<{ id: string; fullName: string }> }) {
     const router = useRouter()
     const refresh = () => router.refresh()
@@ -133,7 +131,7 @@ export function ContractorDetailClient({ detail, tcmProfiles }: { detail: Contra
                             <div className="mb-1 font-medium">Wejścia</div>
                             <ul className="space-y-1">
                                 {placements.map((p) => <li key={p.id}>📋 {p.client_name} {p.position ? `· ${p.position}` : ''} · start {p.start_date} <Badge variant="default" className="ml-1">placement</Badge></li>)}
-                                {entries.map((e) => <li key={e.id}>📁 {e.client_name} {e.position ? `· ${e.position}` : ''} · start {e.start_date ?? '—'} · {pln(e.monthly_margin)} <Badge variant="secondary" className="ml-1">archiwum</Badge></li>)}
+                                {entries.map((e) => <li key={e.id}>📁 {e.client_name} {e.position ? `· ${e.position}` : ''} · start {e.start_date ?? '—'} <Badge variant="secondary" className="ml-1">archiwum</Badge></li>)}
                             </ul>
                         </div>
                     )}
