@@ -380,6 +380,54 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
         supabaseState.bonusRow = makeAssignedBonusRow()
         await expect(updateBonus({ id: 'bonus-1' })).rejects.toThrow(/Brak zmian/i)
     })
+
+    it('allows finanse to correct the month of a standard assigned bonus (Phase 32)', async () => {
+        setFinanceContext()
+        // Use the current + previous month so validatePeriod stays in-window regardless of wall clock.
+        const now = new Date()
+        const curYear = now.getFullYear()
+        const curMonth = now.getMonth() + 1
+        const prev = new Date(curYear, now.getMonth() - 1, 1)
+        const prevYear = prev.getFullYear()
+        const prevMonth = prev.getMonth() + 1
+        const row = makeAssignedBonusRow('different-manager')
+        row.period_year = curYear
+        row.period_month = curMonth
+        supabaseState.bonusRow = row
+        await updateBonus({ id: 'bonus-1', period_year: prevYear, period_month: prevMonth })
+        expect(supabaseState.bonusRow).toMatchObject({
+            period_year: prevYear,
+            period_month: prevMonth,
+        })
+    })
+
+    it('rejects a period change missing the month (Phase 32)', async () => {
+        setAdminContext()
+        supabaseState.bonusRow = makeAssignedBonusRow()
+        await expect(updateBonus({ id: 'bonus-1', period_year: 2026 })).rejects.toThrow(
+            /rok i miesiąc/i,
+        )
+    })
+
+    it('rejects changing the month of a champions_league bonus (Phase 32)', async () => {
+        setAdminContext()
+        const now = new Date()
+        supabaseState.bonusRow = {
+            ...makeAssignedBonusRow(),
+            category: 'champions_league',
+            period_month: null,
+            period_quarter: 2,
+            place_rank: 1,
+        }
+        // Current month keeps validatePeriod happy so we reach the category guard.
+        await expect(
+            updateBonus({
+                id: 'bonus-1',
+                period_year: now.getFullYear(),
+                period_month: now.getMonth() + 1,
+            }),
+        ).rejects.toThrow(/Champions League/i)
+    })
 })
 
 describe('cancelBonus (Phase 26 + 32 — admin/finanse only)', () => {

@@ -1023,11 +1023,17 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
     const hasAmount = input.amount !== undefined
     const hasReason = input.reason !== undefined
     const hasNotes = input.notes !== undefined
-    if (!hasAmount && !hasReason && !hasNotes) {
+    // Phase 32 — period correction (finanse/admin). Oba pola wymagane razem.
+    const hasPeriod = input.period_year !== undefined || input.period_month !== undefined
+    if (hasPeriod && (input.period_year === undefined || input.period_month === undefined)) {
+        throw new Error('Aby zmienić miesiąc premii, podaj rok i miesiąc.')
+    }
+    if (!hasAmount && !hasReason && !hasNotes && !hasPeriod) {
         throw new Error('Brak zmian do zapisania.')
     }
 
     if (hasAmount) validateAmount(input.amount as number)
+    if (hasPeriod) validatePeriod(input.period_year as number, input.period_month as number)
     const trimmedReason = hasReason ? validateReason(input.reason as string) : undefined
 
     const supabase = createClient()
@@ -1047,6 +1053,17 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
     if (hasAmount) patch.amount = input.amount as number
     if (hasReason) patch.reason = trimmedReason as string
     if (hasNotes) patch.notes = input.notes ?? null
+    if (hasPeriod) {
+        // Champions League ma okres kwartalny (period_quarter) i edytuje się osobnym
+        // formularzem — tu blokujemy zmianę miesiąca dla CL (defensywnie, UI i tak nie wysyła).
+        if (bonus.category === 'champions_league') {
+            throw new Error(
+                'Okres premii Champions League zmienia się przez osobny formularz (kwartał + miejsce).',
+            )
+        }
+        patch.period_year = input.period_year as number
+        patch.period_month = input.period_month as number
+    }
 
     // Service-client write: a recipient's manager who is not the proposer is
     // blocked by the bonuses UPDATE RLS (proposer/admin only) but is authorized
@@ -1070,6 +1087,16 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
     }
     if (hasNotes && (bonus.notes ?? null) !== (updated.notes ?? null)) {
         changes.notes = [bonus.notes, updated.notes]
+    }
+    if (
+        hasPeriod &&
+        (Number(bonus.period_year) !== Number(updated.period_year) ||
+            Number(bonus.period_month) !== Number(updated.period_month))
+    ) {
+        changes.period = [
+            `${bonus.period_year}-${String(bonus.period_month).padStart(2, '0')}`,
+            `${updated.period_year}-${String(updated.period_month).padStart(2, '0')}`,
+        ]
     }
 
     const isChampionsLeague = updated.category === 'champions_league'
@@ -1095,6 +1122,9 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
             )
         }
         if (changes.reason) changesSummaryParts.push('zmieniono uzasadnienie')
+        if (changes.period) {
+            changesSummaryParts.push(`miesiąc: ${changes.period[0]} → ${changes.period[1]}`)
+        }
         const changesSummary = changesSummaryParts.join('; ') || 'edytowano'
 
         // Phase 31 — dla CL używamy generic bonus_updated emaila (treść po staremu),

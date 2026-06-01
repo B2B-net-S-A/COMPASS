@@ -175,7 +175,22 @@ export function AssignBonusForm({
     const router = useRouter()
     const [pending, startTransition] = useTransition()
 
-    const periodOptions = useMemo(() => buildPeriodOptions(), [])
+    const periodOptions = useMemo(() => {
+        const opts = buildPeriodOptions()
+        // Phase 32 — w trybie edycji zapewnij, że bieżący miesiąc premii jest na liście,
+        // nawet jeśli wypadł poza standardowe okno (ostatnie 12 mies. + bieżący).
+        if (
+            prefilled &&
+            !opts.some((o) => o.year === prefilled.period_year && o.month === prefilled.period_month)
+        ) {
+            opts.unshift({
+                year: prefilled.period_year,
+                month: prefilled.period_month,
+                label: `${BONUS_MONTHS_PL[prefilled.period_month - 1]} ${prefilled.period_year}`,
+            })
+        }
+        return opts
+    }, [prefilled])
     const defaultPeriodKey = useMemo(() => {
         if (prefilled) return `${prefilled.period_year}-${prefilled.period_month}`
         const now = new Date()
@@ -243,7 +258,10 @@ export function AssignBonusForm({
     const [attachment, setAttachment] = useState<File | null>(null)
 
     const recipientLocked = isEdit || !!prefilledRecipientId
-    const periodLocked = isEdit
+    // Phase 32 — miesiąc edytowalny także po przypisaniu (finanse/admin koryguje błędny okres).
+    // AssignBonusForm obsługuje wyłącznie premie standardowe; Champions League (okres kwartalny)
+    // edytuje się osobnym formularzem, więc tu period zawsze dotyczy zwykłej premii miesięcznej.
+    const periodLocked = false
 
     const recipientName = useMemo(() => {
         if (prefilled?.recipient_full_name) return prefilled.recipient_full_name
@@ -507,7 +525,7 @@ export function AssignBonusForm({
         e.preventDefault()
 
         if (isEdit && prefilled) {
-            // Edit path: amount/reason/notes only (kategoria + period immutable per DB trigger).
+            // Edit path: amount/reason/notes + miesiąc (Phase 32). Kategoria i odbiorca immutable per DB trigger.
             const amountNum = Number(amount)
             if (!Number.isFinite(amountNum) || amountNum < BONUS_MIN_AMOUNT) {
                 toast.error(`Kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
@@ -522,6 +540,9 @@ export function AssignBonusForm({
                 toast.error(`Uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.`)
                 return
             }
+            const [editYearStr, editMonthStr] = periodKey.split('-')
+            const editPeriodYear = Number(editYearStr)
+            const editPeriodMonth = Number(editMonthStr)
             startTransition(async () => {
                 try {
                     const updated = await updateBonus({
@@ -529,6 +550,8 @@ export function AssignBonusForm({
                         amount: amountNum,
                         reason: reasonTrimmed,
                         notes: notes.trim() || null,
+                        period_year: editPeriodYear,
+                        period_month: editPeriodMonth,
                     })
                     toastSuccess('Premia zaktualizowana.')
                     router.refresh()

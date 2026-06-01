@@ -545,7 +545,7 @@ export function BonusesAdminClient({
                         <DialogHeader>
                             <DialogTitle>Edytuj premię</DialogTitle>
                             <DialogDescription>
-                                Pracownik dostanie powiadomienie o zmianach. Okres i odbiorca są niezmienne.
+                                Pracownik dostanie powiadomienie o zmianach. Odbiorca i kategoria są niezmienne.
                             </DialogDescription>
                         </DialogHeader>
                         <AssignBonusForm

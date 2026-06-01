@@ -155,12 +155,18 @@ export type AssignBonusInput =
     | AssignBonusInputCustom
     | AssignBonusInputChampionsLeague
 
-/** Phase 26 — edit existing assigned bonus (amount/reason/notes only; period+recipient immutable). */
+/**
+ * Phase 26 — edit existing assigned bonus (amount/reason/notes; recipient+category immutable).
+ * Phase 32 — finanse/admin może też skorygować miesiąc standardowej premii (period_year +
+ * period_month, oba razem). Champions League ma okres kwartalny i edytuje się osobnym formularzem.
+ */
 export interface UpdateBonusInput {
     id: string
     amount?: number
     reason?: string
     notes?: string | null
+    period_year?: number
+    period_month?: number
 }
 
 /** Phase 26 — dropdown candidate for AssignBonusForm. */
