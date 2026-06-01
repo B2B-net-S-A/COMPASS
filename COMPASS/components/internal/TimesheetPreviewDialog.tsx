@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Check, X, Loader2, FileDown, Unlock, Clock, AlertTriangle, Pencil, Trash2, Plus, Ban, CalendarOff } from 'lucide-react'
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -382,9 +381,15 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                     </div>
                 )}
 
-                {/* type="auto" — pasek przewijania widoczny zawsze gdy lista się nie mieści
-                    (nie tylko po najechaniu), żeby od razu było widać że jest więcej wpisów. */}
-                <ScrollArea type="auto" className="flex-1 min-h-0 -mx-6 px-6">
+                {/* Natywny scroll na elemencie flex-1 min-h-0 — NIE Radix ScrollArea.
+                    Radix ScrollArea ma wewnętrzny viewport z height:100%, który nie
+                    rozwiązuje się gdy DialogContent ma tylko max-height (nie definite
+                    height) → viewport rósł do pełnej wysokości treści i był przycinany
+                    bez scrolla. Plain overflow-y-auto na flex-bounded divie nie ma tego
+                    problemu (brak procentowej wysokości do rozwiązania) i adaptuje się do
+                    rozmiaru okna. Pasek stylowany na zawsze-widoczny (webkit), żeby od
+                    razu było widać, że jest więcej wpisów. */}
+                <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:hover:bg-muted-foreground/40">
                     {entries.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-8 text-center">
                             Brak wpisów w timesheecie.
@@ -502,7 +507,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                             </tfoot>
                         </table>
                     )}
-                </ScrollArea>
+                </div>
 
                 <DialogFooter className="flex flex-wrap gap-2">
                     {editable && (
