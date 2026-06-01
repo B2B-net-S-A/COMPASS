@@ -381,7 +381,6 @@ export interface EntryListItem {
     client_name: string
     position: string | null
     start_date: string | null
-    monthly_margin: number | null
     recruiter: string | null
 }
 
@@ -391,8 +390,6 @@ export interface ContractorDashboard {
     openConversations: number
     entriesTotal: number
     departuresTotal: number
-    marginGained: number
-    marginLost: number
     departureReasons: Array<{ who: WhoResigned; count: number }>
     conversationsByTcm: Array<{ tcm: string; count: number }>
     departuresByClient: Array<{ client: string; count: number }>

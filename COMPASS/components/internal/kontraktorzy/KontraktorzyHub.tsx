@@ -21,7 +21,6 @@ import {
 } from '@/lib/types/contractor'
 
 const selectCls = 'flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm'
-const pln = (n: number | null): string => (n != null ? `${Number(n).toLocaleString('pl-PL')} zł` : '—')
 
 interface Props {
     dashboard: ContractorDashboard
@@ -77,8 +76,8 @@ export function KontraktorzyHub({ dashboard, conversations, contractors, entries
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <Kpi label="Kontraktorzy" value={`${dashboard.contractorsActive}/${dashboard.contractorsTotal}`} hint="aktywni / wszyscy" />
                 <Kpi label="Otwarte rozmowy" value={dashboard.openConversations} hint="pilne + potrzebny kontakt" accent={dashboard.openConversations > 0 ? 'amber' : undefined} />
-                <Kpi label="Wejścia" value={dashboard.entriesTotal} hint={pln(dashboard.marginGained) + ' marży'} accent="green" />
-                <Kpi label="Zejścia" value={dashboard.departuresTotal} hint={pln(dashboard.marginLost) + ' straty'} accent="red" />
+                <Kpi label="Wejścia" value={dashboard.entriesTotal} hint="archiwum + placementy" accent="green" />
+                <Kpi label="Zejścia" value={dashboard.departuresTotal} hint="zarejestrowane" accent="red" />
             </div>
 
             <Tabs defaultValue="rozmowy">
@@ -194,7 +193,6 @@ export function KontraktorzyHub({ dashboard, conversations, contractors, entries
                                     <th className="p-2 text-left">Stanowisko</th>
                                     <th className="p-2 text-left">Rekruter</th>
                                     <th className="p-2 text-left">Start</th>
-                                    <th className="p-2 text-right">Marża/mc</th>
                                     <th className="p-2 text-left">Źródło</th>
                                 </tr>
                             </thead>
@@ -206,11 +204,10 @@ export function KontraktorzyHub({ dashboard, conversations, contractors, entries
                                         <td className="p-2">{e.position ?? '—'}</td>
                                         <td className="p-2">{e.recruiter ?? '—'}</td>
                                         <td className="p-2">{e.start_date ?? '—'}</td>
-                                        <td className="p-2 text-right">{pln(e.monthly_margin)}</td>
                                         <td className="p-2"><Badge variant={e.source === 'placement' ? 'default' : 'secondary'}>{e.source === 'placement' ? 'placement' : 'archiwum 2024'}</Badge></td>
                                     </tr>
                                 ))}
-                                {entries.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Brak wejść. Zaimportuj plik (zakładka Import).</td></tr>}
+                                {entries.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Brak wejść. Zaimportuj plik (zakładka Import).</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -228,7 +225,6 @@ export function KontraktorzyHub({ dashboard, conversations, contractors, entries
                                     <th className="p-2 text-left">Kto zrezygnował</th>
                                     <th className="p-2 text-center">Przepięcie</th>
                                     <th className="p-2 text-center">Replacement</th>
-                                    <th className="p-2 text-right">Strata/mc</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -240,10 +236,9 @@ export function KontraktorzyHub({ dashboard, conversations, contractors, entries
                                         <td className="p-2">{d.who_resigned ? WHO_RESIGNED_PL[d.who_resigned] : '—'}</td>
                                         <td className="p-2 text-center">{d.transferred ? '✓' : '—'}</td>
                                         <td className="p-2 text-center">{d.replacement ? '✓' : '—'}</td>
-                                        <td className="p-2 text-right">{pln(d.monthly_margin)}</td>
                                     </tr>
                                 ))}
-                                {departures.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Brak zejść.</td></tr>}
+                                {departures.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Brak zejść.</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -265,10 +260,10 @@ export function KontraktorzyHub({ dashboard, conversations, contractors, entries
                         <ImportCard title="Rozmowy z kontraktorami" desc="Log rozmów telefonicznych (Imię/Nazwisko/Sprawa/Notatka + status z koloru).">
                             <ImportDialog kind="rozmowy" onImported={refresh} />
                         </ImportCard>
-                        <ImportCard title="Wejścia do klientów" desc="Archiwum 2024 — kto wszedł do jakiego klienta, marża.">
+                        <ImportCard title="Wejścia do klientów" desc="Archiwum 2024 — kto wszedł do jakiego klienta i kiedy.">
                             <ImportDialog kind="wejscia" onImported={refresh} />
                         </ImportCard>
-                        <ImportCard title="Zejścia od klientów" desc="Zejścia — powód, przepięcie, replacement, strata.">
+                        <ImportCard title="Zejścia od klientów" desc="Zejścia — powód, przepięcie, replacement.">
                             <ImportDialog kind="zejscia" onImported={refresh} />
                         </ImportCard>
                     </div>
