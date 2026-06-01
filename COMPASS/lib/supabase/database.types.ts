@@ -85,6 +85,13 @@ export type Database = {
           start_date: string
           status: string
           tcm_ticket_id: string | null
+          contractor_id: string | null
+          guarantee: string | null
+          note_am: string | null
+          note_billing: string | null
+          note_hr: string | null
+          order_number: string | null
+          order_term: string | null
           updated_at: string
         }
         Insert: {
@@ -118,6 +125,13 @@ export type Database = {
           start_date: string
           status?: string
           tcm_ticket_id?: string | null
+          contractor_id?: string | null
+          guarantee?: string | null
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
           updated_at?: string
         }
         Update: {
@@ -151,6 +165,13 @@ export type Database = {
           start_date?: string
           status?: string
           tcm_ticket_id?: string | null
+          contractor_id?: string | null
+          guarantee?: string | null
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -211,6 +232,513 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      contractors: {
+        Row: {
+          created_at: string
+          current_client: string | null
+          current_position: string | null
+          email: string | null
+          full_name: string
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          notes: string | null
+          owner_tcm_id: string | null
+          phone: string | null
+          profile_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_client?: string | null
+          current_position?: string | null
+          email?: string | null
+          full_name: string
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          notes?: string | null
+          owner_tcm_id?: string | null
+          phone?: string | null
+          profile_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_client?: string | null
+          current_position?: string | null
+          email?: string | null
+          full_name?: string
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          notes?: string | null
+          owner_tcm_id?: string | null
+          phone?: string | null
+          profile_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contractor_conversations: {
+        Row: {
+          category: string
+          client_snapshot: string | null
+          contractor_id: string
+          conversation_date: string
+          created_at: string
+          created_by: string | null
+          external_key: string | null
+          follow_up_date: string | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          note: string | null
+          placement_id: string | null
+          resolved_at: string | null
+          source: string
+          status: string
+          tcm_id: string | null
+          tcm_raw: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          client_snapshot?: string | null
+          contractor_id: string
+          conversation_date: string
+          created_at?: string
+          created_by?: string | null
+          external_key?: string | null
+          follow_up_date?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          note?: string | null
+          placement_id?: string | null
+          resolved_at?: string | null
+          source?: string
+          status?: string
+          tcm_id?: string | null
+          tcm_raw?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          client_snapshot?: string | null
+          contractor_id?: string
+          conversation_date?: string
+          created_at?: string
+          created_by?: string | null
+          external_key?: string | null
+          follow_up_date?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          note?: string | null
+          placement_id?: string | null
+          resolved_at?: string | null
+          source?: string
+          status?: string
+          tcm_id?: string | null
+          tcm_raw?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contractor_onboarding_interviews: {
+        Row: {
+          attachments: Json
+          client_manager_name: string | null
+          client_snapshot: string | null
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          cs_challenge: string | null
+          cs_client: string | null
+          cs_sector: string | null
+          cs_solution: string | null
+          cs_technologies: string | null
+          doubts_note: string | null
+          duties_note: string | null
+          equipment_note: string | null
+          first_day_note: string | null
+          id: string
+          manager_relation_note: string | null
+          missing_resolved_note: string | null
+          negative_surprise: string | null
+          placement_id: string | null
+          position_snapshot: string | null
+          positive_surprise: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          scheduled_for: string | null
+          side_projects_interest: boolean | null
+          start_date: string | null
+          status: string
+          submitted_at: string | null
+          system_access_note: string | null
+          tcm_role_note: string | null
+          updated_at: string
+          work_note: string | null
+        }
+        Insert: {
+          attachments?: Json
+          client_manager_name?: string | null
+          client_snapshot?: string | null
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          cs_challenge?: string | null
+          cs_client?: string | null
+          cs_sector?: string | null
+          cs_solution?: string | null
+          cs_technologies?: string | null
+          doubts_note?: string | null
+          duties_note?: string | null
+          equipment_note?: string | null
+          first_day_note?: string | null
+          id?: string
+          manager_relation_note?: string | null
+          missing_resolved_note?: string | null
+          negative_surprise?: string | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          positive_surprise?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          side_projects_interest?: boolean | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          system_access_note?: string | null
+          tcm_role_note?: string | null
+          updated_at?: string
+          work_note?: string | null
+        }
+        Update: {
+          attachments?: Json
+          client_manager_name?: string | null
+          client_snapshot?: string | null
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          cs_challenge?: string | null
+          cs_client?: string | null
+          cs_sector?: string | null
+          cs_solution?: string | null
+          cs_technologies?: string | null
+          doubts_note?: string | null
+          duties_note?: string | null
+          equipment_note?: string | null
+          first_day_note?: string | null
+          id?: string
+          manager_relation_note?: string | null
+          missing_resolved_note?: string | null
+          negative_surprise?: string | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          positive_surprise?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          side_projects_interest?: boolean | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          system_access_note?: string | null
+          tcm_role_note?: string | null
+          updated_at?: string
+          work_note?: string | null
+        }
+        Relationships: []
+      }
+      contractor_exit_interviews: {
+        Row: {
+          attachments: Json
+          can_extend_departure: boolean | null
+          can_retain_transfer: boolean | null
+          causes: string | null
+          client_snapshot: string | null
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          end_date: string | null
+          extend_departure_note: string | null
+          feedback_lessons: string | null
+          formal_reason: string | null
+          id: string
+          is_final: boolean | null
+          placement_id: string | null
+          position_snapshot: string | null
+          repair_potential: string | null
+          retain_transfer_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          scheduled_for: string | null
+          start_date: string | null
+          status: string
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          attachments?: Json
+          can_extend_departure?: boolean | null
+          can_retain_transfer?: boolean | null
+          causes?: string | null
+          client_snapshot?: string | null
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string | null
+          extend_departure_note?: string | null
+          feedback_lessons?: string | null
+          formal_reason?: string | null
+          id?: string
+          is_final?: boolean | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          repair_potential?: string | null
+          retain_transfer_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attachments?: Json
+          can_extend_departure?: boolean | null
+          can_retain_transfer?: boolean | null
+          causes?: string | null
+          client_snapshot?: string | null
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string | null
+          extend_departure_note?: string | null
+          feedback_lessons?: string | null
+          formal_reason?: string | null
+          id?: string
+          is_final?: boolean | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          repair_potential?: string | null
+          retain_transfer_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      client_entries: {
+        Row: {
+          client_name: string
+          consultant_name: string
+          contractor_id: string | null
+          cost_rate: number | null
+          created_at: string
+          delivery_lead_id: string | null
+          delivery_lead_raw: string | null
+          external_key: string | null
+          guarantee: string | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          monthly_margin: number | null
+          note_am: string | null
+          note_billing: string | null
+          note_hr: string | null
+          order_number: string | null
+          order_term: string | null
+          position: string | null
+          recruiter_id: string | null
+          recruiter_raw: string | null
+          revenue_rate: number | null
+          signing_date: string | null
+          source: string
+          start_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_name: string
+          consultant_name: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          delivery_lead_id?: string | null
+          delivery_lead_raw?: string | null
+          external_key?: string | null
+          guarantee?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          position?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          revenue_rate?: number | null
+          signing_date?: string | null
+          source?: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_name?: string
+          consultant_name?: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          delivery_lead_id?: string | null
+          delivery_lead_raw?: string | null
+          external_key?: string | null
+          guarantee?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          position?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          revenue_rate?: number | null
+          signing_date?: string | null
+          source?: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      client_departures: {
+        Row: {
+          client_name: string
+          comment: string | null
+          consultant_name: string
+          contractor_id: string | null
+          cost_rate: number | null
+          created_at: string
+          created_by: string | null
+          departure_date: string | null
+          external_key: string | null
+          guarantee_ratio: number | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          last_notice_day: string | null
+          manager_raw: string | null
+          monthly_margin: number | null
+          note_am: string | null
+          note_hr: string | null
+          order_number: string | null
+          order_term: string | null
+          placement_id: string | null
+          position: string | null
+          reason: string | null
+          recruiter_id: string | null
+          recruiter_raw: string | null
+          replacement: boolean
+          revenue_rate: number | null
+          source: string
+          start_date: string | null
+          transferred: boolean
+          updated_at: string
+          who_resigned: string | null
+        }
+        Insert: {
+          client_name: string
+          comment?: string | null
+          consultant_name: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          external_key?: string | null
+          guarantee_ratio?: number | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          last_notice_day?: string | null
+          manager_raw?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          placement_id?: string | null
+          position?: string | null
+          reason?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          replacement?: boolean
+          revenue_rate?: number | null
+          source?: string
+          start_date?: string | null
+          transferred?: boolean
+          updated_at?: string
+          who_resigned?: string | null
+        }
+        Update: {
+          client_name?: string
+          comment?: string | null
+          consultant_name?: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          external_key?: string | null
+          guarantee_ratio?: number | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          last_notice_day?: string | null
+          manager_raw?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          placement_id?: string | null
+          position?: string | null
+          reason?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          replacement?: boolean
+          revenue_rate?: number | null
+          source?: string
+          start_date?: string | null
+          transferred?: boolean
+          updated_at?: string
+          who_resigned?: string | null
+        }
+        Relationships: []
       }
       admin_access_list: {
         Row: {
