@@ -382,7 +382,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                     </div>
                 )}
 
-                <ScrollArea className="flex-1 -mx-6 px-6">
+                <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
                     {entries.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-8 text-center">
                             Brak wpisów w timesheecie.
