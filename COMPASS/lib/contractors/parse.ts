@@ -192,6 +192,7 @@ export async function parseRozmowyWorkbook(buffer: ArrayBuffer | Buffer): Promis
     const errors: string[] = []
     let scannedRows = 0
     let skippedBlankRows = 0
+    let blankRun = 0 // stop after a long run of blank rows (sheets bloated to 1M-row dimension)
 
     for (let r = hit.headerRowNo + 1; r <= hit.ws.rowCount; r += 1) {
         const row = hit.ws.getRow(r)
@@ -208,8 +209,10 @@ export async function parseRozmowyWorkbook(buffer: ArrayBuffer | Buffer): Promis
 
         if (!fullName && !sprawa && !note && !client) {
             skippedBlankRows += 1
+            if (++blankRun > 200) break
             continue
         }
+        blankRun = 0
         scannedRows += 1
         if (!fullName) {
             errors.push(`Wiersz ${r}: brak imienia/nazwiska — pominięto.`)
@@ -253,6 +256,7 @@ export async function parseWejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promis
     const errors: string[] = []
     let scannedRows = 0
     let skippedBlankRows = 0
+    let blankRun = 0 // stop after a long run of blank rows (sheets bloated to 1M-row dimension)
 
     for (let r = hit.headerRowNo + 1; r <= hit.ws.rowCount; r += 1) {
         const row = hit.ws.getRow(r)
@@ -264,8 +268,10 @@ export async function parseWejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promis
         const client = cellString(get('Klient'))
         if (!fullName && !client) {
             skippedBlankRows += 1
+            if (++blankRun > 200) break
             continue
         }
+        blankRun = 0
         scannedRows += 1
         if (!fullName || !client) {
             errors.push(`Wiersz ${r}: brak ${!fullName ? 'nazwiska' : 'klienta'} — pominięto.`)
@@ -306,6 +312,7 @@ export async function parseZejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promis
     const errors: string[] = []
     let scannedRows = 0
     let skippedBlankRows = 0
+    let blankRun = 0 // stop after a long run of blank rows (sheets bloated to 1M-row dimension)
 
     for (let r = hit.headerRowNo + 1; r <= hit.ws.rowCount; r += 1) {
         const row = hit.ws.getRow(r)
@@ -317,8 +324,10 @@ export async function parseZejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promis
         const client = cellString(get('Klient'))
         if (!fullName && !client) {
             skippedBlankRows += 1
+            if (++blankRun > 200) break
             continue
         }
+        blankRun = 0
         scannedRows += 1
         if (!fullName || !client) {
             errors.push(`Wiersz ${r}: brak ${!fullName ? 'nazwiska' : 'klienta'} — pominięto.`)
