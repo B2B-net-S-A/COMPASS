@@ -25,6 +25,7 @@ import {
     Plane,
     Wallet,
     Briefcase,
+    Headset,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -253,6 +254,14 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
+    // Phase 33 — Kontraktorzy: TCM contractor-care module. VISIBLE ONLY to TCM + admin.
+    const kontraktorzyGroup: NavGroup = {
+        heading: 'Kontraktorzy',
+        links: [
+            { name: 'Opieka nad kontraktorami', href: '/internal/kontraktorzy', icon: Headset, feature: null },
+        ],
+    }
+
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
@@ -263,6 +272,8 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         if (isManager) out.push(managerGroup)
         if (isTalentCommunity) out.push(tcmGroup)
         if (isHrZone) out.push(lifecycleGroup)
+        // Phase 33 — Kontraktorzy: TCM + admin only.
+        if (isTalentCommunity || isAdmin) out.push(kontraktorzyGroup)
         return out
     })()
 
