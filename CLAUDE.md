@@ -845,6 +845,28 @@ Standardowe `BONUS_ASSIGNED/UPDATED/CANCELLED` zostają dla innych kategorii —
 - Ex aequo split (1 miejsce = 1 zwycięzca, partial UNIQUE wymusza).
 - Broadcast email do całej firmy "Nowy zwycięzca!" — TODO follow-up.
 
+## Phase 33 — Kontraktorzy (moduł Talent Community, 2026-06-01)
+
+Przeniesienie 4 plików TCM (Word/Excel) do Compass — pełen cykl opieki nad **kontraktorem u klienta** (zewnętrzny konsultant, NIE user Compass): wejście → onboarding interview → log rozmów → exit interview → zejście. Pełny raport: `docs/kontraktorzy-tcm-completion-report.md`.
+
+**Decyzje:** (1) cały moduł naraz; (2) import historii 2024 idempotentny; (3) **lekka tabela `contractors`** zamiast wpychania w `profiles`/`auth.users` (kontraktorzy mają telefon, nie mail; ~300 zalałoby katalog pracowników i dropdowny); (4) **widoczność tylko `talent_community` + `admin`**.
+
+**Schema (4 migracje addytywne, prod via MCP):**
+- `phase33a_contractors` — `contractors` (tożsamość: `full_name` natural-key, phone, current_client, owner_tcm_id, status, `profile_id` leniwy link) + ALTER `placements` (`contractor_id` + pola Wejść) + backfill 17 placementów.
+- `phase33b_contractor_conversations` — log rozmów (`category` ← Sprawa, `status` ← kolor: w_toku/rozwiazane/potrzebny_kontakt/pilne, `external_key` dedup) + `notifications.type += 'contractor_followup'`.
+- `phase33c_contractor_interviews` — `contractor_onboarding_interviews` + `contractor_exit_interviews` (trigger transition scheduled→submitted→reviewed→archived bez NPS; załączniki inline JSONB; storage reuse `lifecycle-docs` prefiksy `contractor-onboarding/`,`contractor-exit/`).
+- `phase33d_client_movements` — `client_entries` (archiwum Wejść 2024, read-only, NIE napędza premii) + `client_departures` (Zejścia hist.+go-forward; who_resigned/przepięcie/replacement/strata).
+
+**RLS wszystkich nowych tabel:** `has_lifecycle_access()` (admin OR talent_community). `placements` BEZ zmian RLS (Phase 28 premie zostają). Importery reużywają `placement_person_aliases`.
+
+**UI:** `/internal/kontraktorzy` (guard `requireTalentCommunityOrAdminLayout`) — zakładki Rozmowy/Kontraktorzy/Wejścia (UNION client_entries+placements)/Zejścia/Statystyki/Import. Karta `[id]`: timeline + onboarding+exit interview (schema-driven, zastępuje 2 docx) + ruchy. Sidebar: grupa „Kontraktorzy" tylko TCM+admin.
+
+**Importery (wzorzec Phase 28):** `lib/contractors/parse.ts` (break po 200 pustych — arkusz Zejścia ma wymiar ~1M wierszy) + `lib/actions/contractor-import.ts` (idempotentne po `external_key`, fuzzy-match recruiter/DL/TCM). Zweryfikowane: Rozmowy 147 / Wejścia 273 / Zejścia 332.
+
+**Coolify cron (do dodania):** `contractor-followup-reminder` — `0 8 * * *` — `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/contractor-followup-reminder"` (rozmowy potrzebny_kontakt/pilne/follow_up → push+in-app do owner TCM).
+
+**Ops po deploy:** (1) cron w Coolify; (2) import 3 plików przez `/internal/kontraktorzy` → Import; (3) status rozmów z importu = `rozwiazane` (kolory Excela z conditional-formatting nieczytelne przez `cell.fill.fgColor` — go-forward w UI).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
