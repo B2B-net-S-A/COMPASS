@@ -201,6 +201,12 @@ export interface AddEntryInput {
     hours: number
     project?: string | null
     description: string
+    /**
+     * Phase 33b — admin-only inline overtime. When hours > 8 the approver edit
+     * flow (admin only) records this as an overtime override; reason ≥5 chars is
+     * required. Ignored by the employee self-service flow (capped at 8h).
+     */
+    overtimeReason?: string | null
 }
 
 export async function addEntry(input: AddEntryInput): Promise<TimesheetEntryRow> {
@@ -425,6 +431,12 @@ export interface UpdateEntryInput {
     hours?: number
     project?: string | null
     description?: string
+    /**
+     * Phase 33b — admin-only inline overtime. When hours > 8 the approver edit
+     * flow (admin only) records this as an overtime override; reason ≥5 chars is
+     * required. Lowering hours back to ≤8 clears the override.
+     */
+    overtimeReason?: string | null
 }
 
 export async function updateEntry(input: UpdateEntryInput): Promise<void> {
@@ -841,17 +853,70 @@ async function assertApproverDateNotBlocked(
     }
 }
 
+/** Override column patch returned by {@link resolveOvertimeColumns}. */
+interface OvertimeColumns {
+    is_overtime_override: boolean
+    override_reason: string | null
+    override_by: string | null
+    override_at: string | null
+}
+
+/**
+ * Phase 33b — resolve the overtime-override columns for an approver-entered
+ * `hours` value. Standard days (≤8h) clear any override. Days > 8h are an
+ * admin-only overtime override: capped at {@link OVERTIME_OVERRIDE_HOURS_MAX}
+ * and requiring a reason (≥{@link OVERTIME_REASON_MIN_LENGTH} chars), matching
+ * the dedicated overtime panel + the DB CHECK/trigger from Phase 27a.
+ */
+function resolveOvertimeColumns(
+    ctx: InternalAuthContext,
+    hours: number,
+    reason: string | null | undefined,
+): OvertimeColumns {
+    if (hours <= STANDARD_DAILY_HOURS_MAX) {
+        return {
+            is_overtime_override: false,
+            override_reason: null,
+            override_by: null,
+            override_at: null,
+        }
+    }
+    if (!ctx.isAdmin) {
+        throw new Error(
+            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny (>8h) może wpisać tylko administrator.`,
+        )
+    }
+    if (hours > OVERTIME_OVERRIDE_HOURS_MAX) {
+        throw new Error(`Maksymalnie ${OVERTIME_OVERRIDE_HOURS_MAX}h/dzień (nadgodziny).`)
+    }
+    const trimmed = (reason ?? '').trim()
+    if (trimmed.length < OVERTIME_REASON_MIN_LENGTH) {
+        throw new Error(
+            `Uzasadnienie nadgodzin musi mieć co najmniej ${OVERTIME_REASON_MIN_LENGTH} znaki.`,
+        )
+    }
+    if (trimmed.length > OVERTIME_REASON_MAX_LENGTH) {
+        throw new Error(`Uzasadnienie za długie (max ${OVERTIME_REASON_MAX_LENGTH} znaków).`)
+    }
+    return {
+        is_overtime_override: true,
+        override_reason: trimmed,
+        override_by: ctx.userId,
+        override_at: new Date().toISOString(),
+    }
+}
+
 export async function approverAddEntry(input: AddEntryInput): Promise<TimesheetEntryRow> {
     const ctx = await requireTimesheetApproverAction()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
         throw new Error('work_date musi być w formacie YYYY-MM-DD.')
     }
-    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
-        throw new Error(
-            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny wpisuje administrator z panelu nadgodzin.`,
-        )
+    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > OVERTIME_OVERRIDE_HOURS_MAX) {
+        throw new Error(`Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`)
     }
     if (!input.description?.trim()) throw new Error('Opis jest wymagany.')
+    // Phase 33b — >8h is an admin-only overtime override (reason required). ≤8h clears it.
+    const overtime = resolveOvertimeColumns(ctx, input.hours, input.overtimeReason)
 
     const admin = createServiceClient()
     const header = await loadApproverEditableTimesheet(admin, ctx, input.timesheetId)
@@ -865,6 +930,7 @@ export async function approverAddEntry(input: AddEntryInput): Promise<TimesheetE
             hours: input.hours,
             project: input.project?.trim() || null,
             description: input.description.trim(),
+            ...overtime,
         })
         .select('*')
         .single<TimesheetEntryRow>()
@@ -876,6 +942,8 @@ export async function approverAddEntry(input: AddEntryInput): Promise<TimesheetE
         entry_id: data.id,
         work_date: input.workDate,
         hours: input.hours,
+        is_overtime_override: overtime.is_overtime_override,
+        ...(overtime.is_overtime_override ? { override_reason: overtime.override_reason } : {}),
     })
     return data
 }
@@ -890,7 +958,9 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Time
         .eq('id', input.entryId)
         .single<{ id: string; timesheet_id: string; is_overtime_override: boolean }>()
     if (eErr || !entry) throw new Error('Wpis nie istnieje.')
-    if (entry.is_overtime_override) {
+    // Phase 33b — overtime rows are editable inline by admins; managers still
+    // route through the read-only flow (cannot touch overtime entries).
+    if (entry.is_overtime_override && !ctx.isAdmin) {
         throw new Error('Ten wpis to nadgodziny — edytuj go w panelu nadgodzin (administrator).')
     }
     const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)
@@ -903,12 +973,16 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Time
         updates.work_date = input.workDate
     }
     if (input.hours !== undefined) {
-        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
-            throw new Error(
-                `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny wpisuje administrator z panelu nadgodzin.`,
-            )
+        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > OVERTIME_OVERRIDE_HOURS_MAX) {
+            throw new Error(`Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`)
         }
         updates.hours = input.hours
+        // Phase 33b — >8h = admin-only overtime override (reason required); ≤8h clears it.
+        const overtime = resolveOvertimeColumns(ctx, input.hours, input.overtimeReason)
+        updates.is_overtime_override = overtime.is_overtime_override
+        updates.override_reason = overtime.override_reason
+        updates.override_by = overtime.override_by
+        updates.override_at = overtime.override_at
     }
     if (input.project !== undefined) updates.project = input.project?.trim() || null
     if (input.description !== undefined) {
@@ -961,7 +1035,8 @@ export async function approverDeleteEntry(entryId: string): Promise<void> {
             is_overtime_override: boolean
         }>()
     if (eErr || !entry) throw new Error('Wpis nie istnieje.')
-    if (entry.is_overtime_override) {
+    // Phase 33b — admins may delete overtime rows inline; managers cannot.
+    if (entry.is_overtime_override && !ctx.isAdmin) {
         throw new Error('Ten wpis to nadgodziny — usuń go w panelu nadgodzin (administrator).')
     }
     const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)

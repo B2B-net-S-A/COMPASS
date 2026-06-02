@@ -50,6 +50,8 @@ interface Props {
     open: boolean
     /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
     canUnlockApproved?: boolean
+    /** Phase 33b — admin may enter > 8h/day (overtime override) inline + edit/delete overtime rows. */
+    isAdmin?: boolean
     onOpenChange: (open: boolean) => void
     onRequestReject: (t: TimesheetWithEntriesAndUser) => void
 }
@@ -90,7 +92,7 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
 }
 
 
-export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = true, onOpenChange, onRequestReject }: Props) {
+export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = true, isAdmin = false, onOpenChange, onRequestReject }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [confirm, ConfirmUI] = useConfirm()
@@ -212,6 +214,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         hours: number
         project: string | null
         description: string
+        overtimeReason: string | null
     }) {
         if (!timesheet) return
         startTransition(async () => {
@@ -234,6 +237,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         hours: number
         project: string | null
         description: string
+        overtimeReason: string | null
     }) {
         if (!editingEntry) return
         const id = editingEntry.id
@@ -245,6 +249,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                     hours: values.hours,
                     project: values.project,
                     description: values.description,
+                    overtimeReason: values.overtimeReason,
                 })
                 setLocalEntries((prev) =>
                     prev
@@ -451,7 +456,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                                 {e.is_overtime_override && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-purple-300">
                                                         <Clock className="h-3 w-3" />
-                                                        nadgodziny (panel admina)
+                                                        nadgodziny
                                                     </span>
                                                 )}
                                             </div>
@@ -461,7 +466,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                         </td>
                                         {editable && (
                                             <td className="py-2 text-right whitespace-nowrap align-top">
-                                                {e.is_overtime_override ? (
+                                                {e.is_overtime_override && !isAdmin ? (
                                                     <span className="text-[10px] text-muted-foreground">
                                                         —
                                                     </span>
@@ -586,6 +591,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                 saving={pending}
                 existingEntries={entries}
                 blockedLeaveDates={blockedLeaveDates}
+                allowOvertime={isAdmin}
                 onOpenChange={(o) => {
                     if (!o) {
                         setEditingEntry(null)
