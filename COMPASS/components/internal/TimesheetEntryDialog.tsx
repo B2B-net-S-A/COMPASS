@@ -25,7 +25,18 @@ interface Props {
     existingEntries?: ReadonlyArray<Pick<TimesheetEntryRow, 'id' | 'work_date' | 'hours' | 'project'>>
     /** Phase 27j (Issue 4): dni (yyyy-MM-dd) z urlopem/L4 — logowanie godzin zablokowane. */
     blockedLeaveDates?: ReadonlyArray<string>
-    onSubmit: (values: { workDate: string; hours: number; project: string | null; description: string }) => void
+    /**
+     * Phase 33b — admin-only: allow entering > 8h/day (overtime override, up to 16h).
+     * When true the hours cap is raised and a reason field appears for > 8h.
+     */
+    allowOvertime?: boolean
+    onSubmit: (values: {
+        workDate: string
+        hours: number
+        project: string | null
+        description: string
+        overtimeReason: string | null
+    }) => void
 }
 
 export function TimesheetEntryDialog({
@@ -37,12 +48,15 @@ export function TimesheetEntryDialog({
     saving,
     existingEntries,
     blockedLeaveDates,
+    allowOvertime = false,
     onSubmit,
 }: Props) {
     const [workDate, setWorkDate] = useState<string>(initial?.work_date ?? minDate)
     const [hours, setHours] = useState<string>(initial?.hours?.toString() ?? '8')
     const [project, setProject] = useState<string>(initial?.project ?? '')
     const [description, setDescription] = useState<string>(initial?.description ?? '')
+    // Phase 33b — overtime reason (admin only, required when hours > 8).
+    const [overtimeReason, setOvertimeReason] = useState<string>(initial?.override_reason ?? '')
     const [templates, setTemplates] = useState<TimesheetUserTemplate[]>([])
     const [templatesLoaded, setTemplatesLoaded] = useState(false)
 
@@ -80,6 +94,16 @@ export function TimesheetEntryDialog({
     // Detect it client-side to show a clear message instead.
     const isLeaveDay = (blockedLeaveDates ?? []).includes(workDate)
 
+    // Phase 33b — admin-only overtime caps. Standard day = 8h; admin may go to 16h
+    // with a reason. Non-admin (employee / manager) stays capped at 8h.
+    const STANDARD_MAX = 8
+    const OVERTIME_MAX = 16
+    const REASON_MIN = 5
+    const maxHours = allowOvertime ? OVERTIME_MAX : STANDARD_MAX
+    const hoursNum = Number(hours)
+    const isOvertime = allowOvertime && Number.isFinite(hoursNum) && hoursNum > STANDARD_MAX
+    const overtimeReasonTrimmed = overtimeReason.trim()
+
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (isLeaveDay) {
@@ -89,10 +113,16 @@ export function TimesheetEntryDialog({
             return
         }
         const h = Number(hours)
-        if (!Number.isFinite(h) || h <= 0 || h > 8) {
+        if (!Number.isFinite(h) || h <= 0 || h > maxHours) {
             alert(
-                'Maksymalnie 8h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.',
+                allowOvertime
+                    ? `Godziny muszą być w zakresie 0–${OVERTIME_MAX}h/dzień.`
+                    : 'Maksymalnie 8h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.',
             )
+            return
+        }
+        if (h > STANDARD_MAX && overtimeReasonTrimmed.length < REASON_MIN) {
+            alert(`Przy ponad ${STANDARD_MAX}h podaj uzasadnienie nadgodzin (min. ${REASON_MIN} znaki).`)
             return
         }
         if (!description.trim()) {
@@ -116,6 +146,7 @@ export function TimesheetEntryDialog({
             hours: h,
             project: project.trim() || null,
             description: description.trim(),
+            overtimeReason: h > STANDARD_MAX ? overtimeReasonTrimmed : null,
         })
     }
 
@@ -156,13 +187,13 @@ export function TimesheetEntryDialog({
                             )}
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="entry_hours" className="text-sm">Godziny <span className="text-xs text-muted-foreground">(max 8)</span></Label>
+                            <Label htmlFor="entry_hours" className="text-sm">Godziny <span className="text-xs text-muted-foreground">(max {maxHours})</span></Label>
                             <Input
                                 id="entry_hours"
                                 type="number"
                                 step="0.25"
                                 min="0.25"
-                                max="8"
+                                max={String(maxHours)}
                                 inputMode="decimal"
                                 pattern="[0-9]*\.?[0-9]*"
                                 value={hours}
@@ -171,10 +202,33 @@ export function TimesheetEntryDialog({
                                 className="min-h-[44px] text-base"
                             />
                             <p className="text-[10px] text-muted-foreground">
-                                Nadgodziny wpisuje administrator z poziomu profilu pracownika.
+                                {allowOvertime
+                                    ? 'Ponad 8h = nadgodziny (wymagane uzasadnienie). Tylko administrator.'
+                                    : 'Nadgodziny wpisuje administrator z poziomu profilu pracownika.'}
                             </p>
                         </div>
                     </div>
+
+                    {isOvertime && (
+                        <div className="space-y-1.5">
+                            <Label htmlFor="entry_overtime_reason" className="text-sm">
+                                Uzasadnienie nadgodzin{' '}
+                                <span className="text-xs text-muted-foreground">(wymagane przy &gt;8h)</span>
+                            </Label>
+                            <Textarea
+                                id="entry_overtime_reason"
+                                rows={2}
+                                maxLength={1000}
+                                placeholder="np. wdrożenie produkcyjne w weekend, awaria u klienta…"
+                                value={overtimeReason}
+                                onChange={(e) => setOvertimeReason(e.target.value)}
+                                className="text-base"
+                            />
+                            <p className="text-[10px] text-amber-400">
+                                ⚠ Wpis powyżej 8h zostanie oznaczony jako nadgodziny (audytowane).
+                            </p>
+                        </div>
+                    )}
 
                     <div className="space-y-1.5">
                         <Label htmlFor="entry_project" className="text-sm">Projekt (opcjonalny)</Label>

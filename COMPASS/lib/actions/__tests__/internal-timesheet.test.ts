@@ -38,6 +38,8 @@ const state = vi.hoisted(() => ({
         | { email: string; full_name: string | null }
         | null,
     insertedTimesheet: null as Record<string, unknown> | null,
+    // Phase 33b — captures the timesheet_entries insert for overtime assertions.
+    insertedEntry: null as Record<string, unknown> | null,
 }))
 
 function makeChain(table: string) {
@@ -71,7 +73,23 @@ function makeChain(table: string) {
             }
             return { data: state.existingTimesheet, error: null }
         }
-        if (table === 'timesheet_entries') return { data: [], error: null }
+        if (table === 'timesheet_entries') {
+            // Phase 33b — when an insert happened on this chain, echo it back as the
+            // created row (with override defaults) so callers get a usable entry.
+            if (insertedRow) {
+                const row = {
+                    id: 'entry-new',
+                    is_overtime_override: false,
+                    override_reason: null,
+                    override_by: null,
+                    override_at: null,
+                    ...insertedRow,
+                }
+                state.insertedEntry = row
+                return { data: row, error: null }
+            }
+            return { data: [], error: null }
+        }
         return { data: null, error: null }
     }
 
@@ -108,7 +126,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
-import { ensureTeamTimesheet } from '@/lib/actions/internal-timesheet'
+import { approverAddEntry, ensureTeamTimesheet } from '@/lib/actions/internal-timesheet'
 
 beforeEach(() => {
     authContextMock.userId = 'manager-1'
@@ -119,6 +137,7 @@ beforeEach(() => {
     state.existingTimesheet = null
     state.contact = { email: 'emp@b2bnetwork.pl', full_name: 'Emp Loyee' }
     state.insertedTimesheet = null
+    state.insertedEntry = null
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -181,5 +200,88 @@ describe('ensureTeamTimesheet (Phase 27g)', () => {
 
     it('rejects an invalid month', async () => {
         await expect(ensureTeamTimesheet('emp-1', 2026, 13)).rejects.toThrow(/Miesiąc/i)
+    })
+})
+
+describe('approverAddEntry — admin overtime > 8h (Phase 33b)', () => {
+    const baseInput = {
+        timesheetId: 'ts-1',
+        workDate: '2026-05-18',
+        project: null,
+        description: 'Wdrożenie produkcyjne',
+    }
+
+    beforeEach(() => {
+        // Editable timesheet for the target employee.
+        state.existingTimesheet = {
+            id: 'ts-1',
+            user_id: 'emp-1',
+            year: 2026,
+            month: 5,
+            status: 'submitted',
+        }
+    })
+
+    it('admin can log > 8h and the entry is flagged as an overtime override', async () => {
+        authContextMock.isAdmin = true
+        authContextMock.isManager = false
+        authContextMock.role = 'admin'
+        authContextMock.userId = 'admin-1'
+
+        await approverAddEntry({ ...baseInput, hours: 10, overtimeReason: 'Awaria u klienta w weekend' })
+
+        expect(state.insertedEntry).toMatchObject({
+            hours: 10,
+            is_overtime_override: true,
+            override_reason: 'Awaria u klienta w weekend',
+            override_by: 'admin-1',
+        })
+        expect(state.insertedEntry?.override_at).toBeTruthy()
+    })
+
+    it('admin > 8h without a reason is rejected', async () => {
+        authContextMock.isAdmin = true
+        authContextMock.isManager = false
+        authContextMock.role = 'admin'
+
+        await expect(
+            approverAddEntry({ ...baseInput, hours: 10, overtimeReason: 'x' }),
+        ).rejects.toThrow(/Uzasadnienie/i)
+        expect(state.insertedEntry).toBeNull()
+    })
+
+    it('admin cannot exceed the 16h ceiling', async () => {
+        authContextMock.isAdmin = true
+        authContextMock.isManager = false
+        authContextMock.role = 'admin'
+
+        await expect(
+            approverAddEntry({ ...baseInput, hours: 17, overtimeReason: 'Long incident bridge' }),
+        ).rejects.toThrow(/16/)
+        expect(state.insertedEntry).toBeNull()
+    })
+
+    it('a non-admin approver (manager) is blocked from > 8h', async () => {
+        // default ctx = manager, manager-of-team
+        await expect(
+            approverAddEntry({ ...baseInput, hours: 10, overtimeReason: 'Weekend deploy' }),
+        ).rejects.toThrow(/tylko administrator/i)
+        expect(state.insertedEntry).toBeNull()
+    })
+
+    it('admin ≤ 8h stays a normal entry (no override flags)', async () => {
+        authContextMock.isAdmin = true
+        authContextMock.isManager = false
+        authContextMock.role = 'admin'
+
+        await approverAddEntry({ ...baseInput, hours: 8, overtimeReason: null })
+
+        expect(state.insertedEntry).toMatchObject({
+            hours: 8,
+            is_overtime_override: false,
+            override_reason: null,
+            override_by: null,
+            override_at: null,
+        })
     })
 })

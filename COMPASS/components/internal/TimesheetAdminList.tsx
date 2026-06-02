@@ -30,6 +30,8 @@ interface Props {
     timesheets: TimesheetWithEntriesAndUser[]
     /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
     canUnlockApproved: boolean
+    /** Phase 33b — admin may enter > 8h/day (overtime override) inline in the preview dialog. */
+    isAdmin: boolean
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -39,7 +41,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
 }
 
-export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved }: Props) {
+export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved, isAdmin }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
@@ -345,6 +347,7 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved 
                 timesheet={previewTarget}
                 open={!!previewTarget}
                 canUnlockApproved={canUnlockApproved}
+                isAdmin={isAdmin}
                 onOpenChange={(o) => {
                     if (!o) setPreviewTarget(null)
                 }}
