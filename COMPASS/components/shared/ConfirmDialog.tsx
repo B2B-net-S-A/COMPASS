@@ -44,7 +44,7 @@ export function ConfirmDialog({
             <AlertDialogContent className="bg-[var(--color-bg-primary,#1a1a2e)] border-white/10 text-white">
                 <AlertDialogHeader>
                     <AlertDialogTitle className="text-white">{title}</AlertDialogTitle>
-                    <AlertDialogDescription className="text-gray-400">
+                    <AlertDialogDescription className="text-gray-400 whitespace-pre-line">
                         {description}
                     </AlertDialogDescription>
                 </AlertDialogHeader>

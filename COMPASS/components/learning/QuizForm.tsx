@@ -6,6 +6,7 @@ import { Loader2, AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { submitQuizAttempt } from '@/lib/actions/course-learning'
 import type { QuizQuestionForAttempt, QuizSubmissionResult } from '@/lib/types/learning'
 
@@ -24,6 +25,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
     const [unansweredId, setUnansweredId] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
     const questionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+    const [confirm, ConfirmUI] = useConfirm()
 
     const allAnswered = questions.every((q) => !!answers[q.question_id])
     const firstUnanswered = questions.find((q) => !answers[q.question_id])
@@ -34,7 +36,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
         if (unansweredId === questionId) setUnansweredId(null)
     }
 
-    const submit = () => {
+    const submit = async () => {
         if (!allAnswered) {
             const target = firstUnanswered
             if (target) {
@@ -48,7 +50,10 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
             }
             return
         }
-        if (!window.confirm('Wysłać odpowiedzi? Punkty otrzymujesz tylko za pierwsze zaliczające podejście (≥70%).')) return
+        const ok = await confirm({
+            description: 'Wysłać odpowiedzi? Punkty otrzymujesz tylko za pierwsze zaliczające podejście (≥70%).',
+        })
+        if (!ok) return
 
         setError(null)
         setUnansweredId(null)
@@ -197,6 +202,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                     {isPending ? 'Wysyłam…' : 'Wyślij odpowiedzi'}
                 </Button>
             </div>
+            <ConfirmUI />
         </div>
     )
 }

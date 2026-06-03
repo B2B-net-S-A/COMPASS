@@ -18,6 +18,7 @@ import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { approveLeaveRequest, rejectLeaveRequest, type PendingLeaveRow } from '@/lib/actions/internal-leave'
 
 interface Props {
@@ -53,6 +54,7 @@ export function LeaveQueue({ requests }: Props) {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [bulkRejectOpen, setBulkRejectOpen] = useState(false)
     const [bulkRejectReason, setBulkRejectReason] = useState('')
+    const [confirm, ConfirmUI] = useConfirm()
 
     const allSelected = requests.length > 0 && selectedIds.size === requests.length
     const someSelected = selectedIds.size > 0
@@ -69,9 +71,12 @@ export function LeaveQueue({ requests }: Props) {
         setSelectedIds(next)
     }
 
-    function handleBulkApprove() {
+    async function handleBulkApprove() {
         if (selectedIds.size === 0) return
-        if (!window.confirm(`Zaakceptować ${selectedIds.size} wnioski/-ów?`)) return
+        const ok = await confirm({
+            description: `Zaakceptować ${selectedIds.size} wnioski/-ów?`,
+        })
+        if (!ok) return
         const ids = Array.from(selectedIds)
         startTransition(async () => {
             let ok = 0
@@ -420,6 +425,7 @@ export function LeaveQueue({ requests }: Props) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <ConfirmUI />
         </>
     )
 }

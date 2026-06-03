@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import {
     listContractDocuments,
     uploadContractDocument,
@@ -39,6 +40,7 @@ export function ContractDocumentsSection({ userId }: Props) {
     const [fileInputKey, setFileInputKey] = useState(0)
     const [uploading, setUploading] = useState(false)
     const [busyId, setBusyId] = useState<string | null>(null)
+    const [confirm, ConfirmUI] = useConfirm()
 
     async function refresh() {
         try {
@@ -100,7 +102,11 @@ export function ContractDocumentsSection({ userId }: Props) {
     }
 
     async function handleDelete(docId: string) {
-        if (!window.confirm('Usunąć ten dokument? Tej operacji nie można cofnąć.')) return
+        const ok = await confirm({
+            description: 'Usunąć ten dokument? Tej operacji nie można cofnąć.',
+            variant: 'destructive',
+        })
+        if (!ok) return
         setBusyId(docId)
         try {
             await deleteContractDocument(docId)
@@ -236,6 +242,7 @@ export function ContractDocumentsSection({ userId }: Props) {
                     </Button>
                 </div>
             </div>
+            <ConfirmUI />
         </div>
     )
 }
