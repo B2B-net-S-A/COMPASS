@@ -24,7 +24,14 @@ import type {
     ConversationListItem,
     ConversationStatus,
     ContractorStatus,
+    ContractorTaskFilters,
+    ContractorTaskListItem,
+    ContractorTaskRow,
+    ContractorTaskStatus,
     EntryListItem,
+    ExitQueueItem,
+    InterviewStatus,
+    OnboardingQueueItem,
     WhoResigned,
 } from '@/lib/types/contractor'
 
@@ -603,4 +610,192 @@ export async function getContractorDashboard(): Promise<ContractorDashboard> {
         conversationsByTcm: Array.from(tcmCount.entries()).map(([tcm, count]) => ({ tcm, count })).sort((a, b) => b.count - a.count),
         departuresByClient: Array.from(clientCount.entries()).map(([client, count]) => ({ client, count })).sort((a, b) => b.count - a.count).slice(0, 15),
     }
+}
+
+// ─── Phase 34: journey-stage queues (Onboarding / Exit tabs) ──────────────────
+/** Contractors still in prospect/onboarding + their latest onboarding-interview status. */
+export async function listOnboardingQueue(): Promise<OnboardingQueueItem[]> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    const { data } = await admin
+        .from('contractors')
+        .select('id, full_name, current_client, current_position, status, owner_tcm_id')
+        .in('status', ['prospect', 'onboarding'])
+        .order('full_name', { ascending: true })
+    const rows = (data ?? []) as Array<{
+        id: string; full_name: string; current_client: string | null
+        current_position: string | null; status: ContractorStatus; owner_tcm_id: string | null
+    }>
+    if (rows.length === 0) return []
+
+    const ids = rows.map((r) => r.id)
+    const [ownerMap, interviews] = await Promise.all([
+        loadProfilesByIds(admin, rows.map((r) => r.owner_tcm_id ?? '').filter(Boolean)),
+        admin
+            .from('contractor_onboarding_interviews')
+            .select('contractor_id, status, created_at')
+            .in('contractor_id', ids)
+            .order('created_at', { ascending: false }),
+    ])
+    // First row per contractor is the latest interview (ordered created_at desc).
+    const interviewStatus = new Map<string, InterviewStatus>()
+    for (const r of (interviews.data ?? []) as Array<{ contractor_id: string; status: InterviewStatus; created_at: string }>) {
+        if (!interviewStatus.has(r.contractor_id)) interviewStatus.set(r.contractor_id, r.status)
+    }
+    return rows.map((r) => ({
+        contractor_id: r.id,
+        full_name: r.full_name,
+        current_client: r.current_client,
+        current_position: r.current_position,
+        status: r.status,
+        owner_tcm_name: r.owner_tcm_id ? ownerMap.get(r.owner_tcm_id)?.full_name ?? null : null,
+        interview_status: interviewStatus.get(r.id) ?? null,
+    }))
+}
+
+/** Scheduled or submitted exit interviews awaiting action, with contractor context. */
+export async function listExitInterviewQueue(): Promise<ExitQueueItem[]> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    const { data } = await admin
+        .from('contractor_exit_interviews')
+        .select('id, contractor_id, client_snapshot, status, scheduled_for, submitted_at, formal_reason')
+        .in('status', ['scheduled', 'submitted'])
+        .order('scheduled_for', { ascending: true, nullsFirst: false })
+    const rows = (data ?? []) as Array<{
+        id: string; contractor_id: string; client_snapshot: string | null
+        status: InterviewStatus; scheduled_for: string | null; submitted_at: string | null; formal_reason: string | null
+    }>
+    if (rows.length === 0) return []
+
+    const ids = Array.from(new Set(rows.map((r) => r.contractor_id)))
+    const { data: cs } = await admin.from('contractors').select('id, full_name').in('id', ids)
+    const nameMap = new Map<string, string>()
+    for (const c of (cs ?? []) as Array<{ id: string; full_name: string }>) nameMap.set(c.id, c.full_name)
+    return rows.map((r) => ({
+        interview_id: r.id,
+        contractor_id: r.contractor_id,
+        contractor_name: nameMap.get(r.contractor_id) ?? '—',
+        client_snapshot: r.client_snapshot,
+        status: r.status,
+        scheduled_for: r.scheduled_for,
+        submitted_at: r.submitted_at,
+        formal_reason: r.formal_reason,
+    }))
+}
+
+// ─── Phase 34: Zadania (department task list) ─────────────────────────────────
+export async function listTasks(filters: ContractorTaskFilters = {}): Promise<ContractorTaskListItem[]> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    let q = admin.from('contractor_tasks').select('*').order('created_at', { ascending: false })
+    if (filters.status) q = q.eq('status', filters.status)
+    if (filters.assignedTcmId) q = q.eq('assigned_tcm_id', filters.assignedTcmId)
+    if (filters.contractorId) q = q.eq('contractor_id', filters.contractorId)
+    const { data } = await q
+    const rows = (data ?? []) as ContractorTaskRow[]
+    if (rows.length === 0) return []
+
+    const [assigneeMap, contractorMap, ticketMap] = await Promise.all([
+        loadProfilesByIds(admin, rows.map((r) => r.assigned_tcm_id ?? '').filter(Boolean)),
+        (async () => {
+            const ids = Array.from(new Set(rows.map((r) => r.contractor_id ?? '').filter(Boolean)))
+            const m = new Map<string, string>()
+            if (ids.length === 0) return m
+            const { data: cs } = await admin.from('contractors').select('id, full_name').in('id', ids)
+            for (const c of (cs ?? []) as Array<{ id: string; full_name: string }>) m.set(c.id, c.full_name)
+            return m
+        })(),
+        (async () => {
+            const ids = Array.from(new Set(rows.map((r) => r.source_ticket_id ?? '').filter(Boolean)))
+            const m = new Map<string, string>()
+            if (ids.length === 0) return m
+            const { data: ts } = await admin.from('support_tickets').select('id, subject').in('id', ids)
+            for (const t of (ts ?? []) as Array<{ id: string; subject: string }>) m.set(t.id, t.subject)
+            return m
+        })(),
+    ])
+
+    return rows.map((r) => ({
+        ...r,
+        assigned_tcm_name: r.assigned_tcm_id ? assigneeMap.get(r.assigned_tcm_id)?.full_name ?? null : null,
+        contractor_name: r.contractor_id ? contractorMap.get(r.contractor_id) ?? null : null,
+        source_ticket_subject: r.source_ticket_id ? ticketMap.get(r.source_ticket_id) ?? null : null,
+    }))
+}
+
+export async function createTask(input: {
+    title: string
+    description?: string | null
+    status?: ContractorTaskStatus
+    assignedTcmId?: string | null
+    dueDate?: string | null
+    contractorId?: string | null
+    sourceTicketId?: string | null
+}): Promise<{ id: string }> {
+    const ctx = await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    const title = input.title.trim()
+    if (title.length < 2) throw new Error('Tytuł zadania jest wymagany.')
+
+    const { data, error } = await admin
+        .from('contractor_tasks')
+        .insert({
+            title,
+            description: input.description?.trim() || null,
+            status: input.status ?? 'todo',
+            assigned_tcm_id: input.assignedTcmId || null,
+            due_date: input.dueDate || null,
+            contractor_id: input.contractorId || null,
+            source_ticket_id: input.sourceTicketId || null,
+            created_by: ctx.userId,
+        })
+        .select('id')
+        .single()
+    if (error || !data) throw new Error(`Nie udało się utworzyć zadania: ${error?.message ?? 'unknown'}`)
+    await logAudit(ctx.userId, 'CONTRACTOR_TASK_CREATED', {
+        task_id: (data as { id: string }).id,
+        title,
+        source_ticket_id: input.sourceTicketId ?? null,
+        contractor_id: input.contractorId ?? null,
+    })
+    revalidatePath(HUB)
+    if (input.sourceTicketId) revalidatePath(`/admin/inbox/${input.sourceTicketId}`)
+    return data as { id: string }
+}
+
+export async function updateTask(
+    id: string,
+    input: Partial<{
+        title: string
+        description: string | null
+        status: ContractorTaskStatus
+        assignedTcmId: string | null
+        dueDate: string | null
+        contractorId: string | null
+    }>,
+): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (input.title !== undefined) patch.title = input.title.trim()
+    if (input.description !== undefined) patch.description = input.description?.trim() || null
+    if (input.status !== undefined) patch.status = input.status
+    if (input.assignedTcmId !== undefined) patch.assigned_tcm_id = input.assignedTcmId || null
+    if (input.dueDate !== undefined) patch.due_date = input.dueDate || null
+    if (input.contractorId !== undefined) patch.contractor_id = input.contractorId || null
+
+    const { error } = await admin.from('contractor_tasks').update(patch).eq('id', id)
+    if (error) throw new Error(`Nie udało się zaktualizować zadania: ${error.message}`)
+    await logAudit(ctx.userId, 'CONTRACTOR_TASK_UPDATED', { task_id: id, fields: Object.keys(patch) })
+    revalidatePath(HUB)
+}
+
+export async function deleteTask(id: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    const { error } = await admin.from('contractor_tasks').delete().eq('id', id)
+    if (error) throw new Error(`Nie udało się usunąć zadania: ${error.message}`)
+    await logAudit(ctx.userId, 'CONTRACTOR_TASK_DELETED', { task_id: id })
+    revalidatePath(HUB)
 }
