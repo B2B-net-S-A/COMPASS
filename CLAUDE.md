@@ -889,6 +889,17 @@ Przebudowa modułu Kontraktorzy (Phase 33) w spójny workspace działu Talent Co
 
 **Ops:** migracja zaaplikowana na prod 2026-06-03 (PR #205); brak nowych cron jobów ani env vars. `database.types.ts` ma ręcznie dodany `contractor_tasks` (FK relationships zsynchronizują się przy najbliższym pełnym regenie). Świadomie poza zakresem: automat handoffu placement→onboarding (dziś = ticket inbox), link ticket↔kontraktor (`support_inbox_meta.contractor_id`), cron SLA breach, scalanie Faz 22/33.
 
+## Phase 35 — Talent Community: 5 sekcji (Sprawy otwarte / Onboarding / Retencja / Offboarding / Analityka) (2026-06-03)
+
+Restrukturyzacja hubu Kontraktorów z 6 zakładek (Phase 34) na **5 sekcji** wg życzenia Artura: **Sprawy otwarte · Onboarding · Retencja · Offboarding · Analityka** (`KontraktorzyHub.tsx`, panele w `components/internal/kontraktorzy/panels/`).
+- **Sprawy otwarte** (`SprawyOtwartePanel`) — dzienny worklist: otwarte tickety ze skrzynki administracja@ (lista z linkami do `/admin/inbox/{id}`) + otwarte rozmowy (pilne/potrzebny kontakt/follow-up po terminie) + zadania działu (`ZadaniaPanel` zagnieżdżony). Nowy typ `OpenInboxTicketLite` (`lib/types/support.ts`) + fetch `listInboxTickets()` w `page.tsx` (graceful empty gdy caller nie jest inbox-handler).
+- **Onboarding** (`OnboardingPanel`) — bez zmian (kolejka prospect/onboarding + Wejścia).
+- **Retencja** (`RetencjaPanel`) — scalone dawne *Opieka* + *Retencja*: zagrożeni (at-risk) + roster + log rozmów.
+- **Offboarding** (`OffboardingPanel`) — exit interviews + zejścia (operacyjne).
+- **Analityka** (`AnalitykaPanel`) — KPI + liczniki etapów (onboarding/retencja-zagrożeni/offboarding) + trendy (powody zejść, per klient, per TCM) + Import Excel.
+
+Usunięte panele: `PulpitPanel`, `OpiekaPanel`, `ExitPanel` (treść rozdzielona). Zadania nie są już osobną zakładką (żyją w Sprawach otwartych). `getInboxSummary` zostaje w kodzie, ale hub już go nie woła (zastąpione listą ticketów). Bez zmian w DB/API/migracjach.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

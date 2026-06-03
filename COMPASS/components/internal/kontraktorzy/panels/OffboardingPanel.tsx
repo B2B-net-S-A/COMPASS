@@ -1,21 +1,20 @@
 'use client'
 
-// Phase 34 — Exit & analiza zejść: exit-interview queue + departures + departure-reason trends.
+// Phase 35 — Offboarding: exit-interview queue + recorded departures (operational; trends live in Analityka).
 
 import { Badge } from '@/components/ui/badge'
 import {
     INTERVIEW_STATUS_PL, WHO_RESIGNED_PL,
-    type ClientDepartureRow, type ContractorDashboard, type ExitQueueItem,
+    type ClientDepartureRow, type ExitQueueItem,
 } from '@/lib/types/contractor'
-import { ContractorLink, StatList } from './shared'
+import { ContractorLink } from './shared'
 
 interface Props {
     exitQueue: ExitQueueItem[]
     departures: ClientDepartureRow[]
-    dashboard: ContractorDashboard
 }
 
-export function ExitPanel({ exitQueue, departures, dashboard }: Props) {
+export function OffboardingPanel({ exitQueue, departures }: Props) {
     return (
         <div className="space-y-6">
             <section className="space-y-2">
@@ -45,11 +44,6 @@ export function ExitPanel({ exitQueue, departures, dashboard }: Props) {
                         </tbody>
                     </table>
                 </div>
-            </section>
-
-            <section className="grid gap-4 md:grid-cols-2">
-                <StatList title="Powody zejść" rows={dashboard.departureReasons.map((r) => ({ label: WHO_RESIGNED_PL[r.who], value: r.count }))} />
-                <StatList title="Zejścia per klient" rows={dashboard.departuresByClient.map((r) => ({ label: r.client, value: r.count }))} />
             </section>
 
             <section className="space-y-2">
