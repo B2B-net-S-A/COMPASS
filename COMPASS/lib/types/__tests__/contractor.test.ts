@@ -4,6 +4,9 @@ import {
     normalizeWhoResigned,
     conversationStatusFromFill,
     importExternalKey,
+    isOpenConversation,
+    type ConversationListItem,
+    type ConversationStatus,
 } from '@/lib/types/contractor'
 
 describe('normalizeConversationCategory (Sprawa → enum)', () => {
@@ -89,5 +92,29 @@ describe('importExternalKey', () => {
         expect(importExternalKey('conv', 'Jan Kowalski', '2024-01-01')).not.toBe(
             importExternalKey('conv', 'Jan Kowalski', '2024-01-02'),
         )
+    })
+})
+
+describe('isOpenConversation (daily worklist predicate)', () => {
+    const conv = (status: ConversationStatus, follow_up_date: string | null = null) =>
+        ({ status, follow_up_date } as ConversationListItem)
+    const today = '2026-06-03'
+
+    it('is open when urgent or needs-contact, regardless of follow-up', () => {
+        expect(isOpenConversation(conv('pilne'), today)).toBe(true)
+        expect(isOpenConversation(conv('potrzebny_kontakt'), today)).toBe(true)
+    })
+    it('is open when a follow-up is due (on/before today) and not resolved', () => {
+        expect(isOpenConversation(conv('w_toku', '2026-06-01'), today)).toBe(true)
+        expect(isOpenConversation(conv('w_toku', today), today)).toBe(true)
+    })
+    it('is NOT open when the follow-up is in the future', () => {
+        expect(isOpenConversation(conv('w_toku', '2026-06-10'), today)).toBe(false)
+    })
+    it('is NOT open when resolved, even with a due follow-up', () => {
+        expect(isOpenConversation(conv('rozwiazane', '2026-06-01'), today)).toBe(false)
+    })
+    it('is NOT open when in progress with no follow-up', () => {
+        expect(isOpenConversation(conv('w_toku', null), today)).toBe(false)
     })
 })

@@ -65,6 +65,9 @@ interface SidebarProps {
     permissions?: Record<PermissionFeature, PermissionValue>
     forMobile?: boolean
     badges?: SidebarBadgeCounts
+    // Phase 36: gate the "Skrzynka administracja@" link to inbox handlers / admin
+    // (others get redirected away from /admin/inbox). Computed server-side in the layout.
+    isInboxHandler?: boolean
 }
 
 interface NavLink {
@@ -82,7 +85,7 @@ interface NavGroup {
     links: NavLink[]
 }
 
-export function Sidebar({ role, user, permissions, forMobile = false, badges }: SidebarProps) {
+export function Sidebar({ role, user, permissions, forMobile = false, badges, isInboxHandler = false }: SidebarProps) {
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const { t } = useTranslation()
@@ -239,26 +242,35 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     // contractor journey / daily workflow: skrzynka → kontraktorzy (core) → onboarding pracowników → compliance → news.
     // Phase 35 — Talent Community group = the 5 contractor-journey sections (deep-links to the
     // Kontraktorzy hub tabs), then the cross-cutting TCM tools (Compliance, News composer).
-    // Skrzynka administracja@ lives inside "Sprawy otwarte"; employee onboarding/exit is a
-    // SEPARATE population and moved to the standalone "Lifecycle" group below.
-    const talentCommunityGroup: NavGroup = {
-        heading: 'Talent Community',
-        links: [
-            { name: 'Sprawy otwarte', href: '/internal/kontraktorzy?tab=sprawy', icon: Inbox, feature: null, badgeCount: badges?.adminInbox },
-            { name: 'Onboarding', href: '/internal/kontraktorzy?tab=onboarding', icon: UserPlus, feature: null },
-            { name: 'Retencja', href: '/internal/kontraktorzy?tab=retencja', icon: Headset, feature: null },
-            { name: 'Offboarding', href: '/internal/kontraktorzy?tab=offboarding', icon: LogOut, feature: null },
-            { name: 'Analityka', href: '/internal/kontraktorzy?tab=analityka', icon: BarChart3, feature: null },
-            { name: 'Compliance', href: '/admin/compliance', icon: ShieldCheck, feature: null },
-            { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
-        ],
+    // Phase 36 — the administracja@ inbox is now a first-class link (gated to inbox handlers),
+    // no longer mirrored as a read-only table inside "Sprawy otwarte". Employee onboarding/exit
+    // is a SEPARATE population in the standalone "Pracownicy wewnętrzni" group below.
+    const talentCommunityLinks: NavLink[] = [
+        { name: 'Sprawy otwarte', href: '/internal/kontraktorzy?tab=sprawy', icon: Inbox, feature: null },
+        { name: 'Onboarding', href: '/internal/kontraktorzy?tab=onboarding', icon: UserPlus, feature: null },
+        { name: 'Retencja', href: '/internal/kontraktorzy?tab=retencja', icon: Headset, feature: null },
+        { name: 'Offboarding', href: '/internal/kontraktorzy?tab=offboarding', icon: LogOut, feature: null },
+        { name: 'Analityka', href: '/internal/kontraktorzy?tab=analityka', icon: BarChart3, feature: null },
+        { name: 'Compliance', href: '/admin/compliance', icon: ShieldCheck, feature: null },
+        { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
+    ]
+    // Phase 36: the administracja@ inbox (formerly only reachable via the "Sprawy otwarte" table)
+    // is now a first-class link — but only for inbox handlers / admin, who can actually open
+    // /admin/inbox. The adminInbox badge moves here from "Sprawy otwarte".
+    if (isInboxHandler) {
+        talentCommunityLinks.unshift({
+            name: 'Skrzynka administracja@', href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox,
+        })
     }
+    const talentCommunityGroup: NavGroup = { heading: 'Talent Community', links: talentCommunityLinks }
 
     // Phase 22 / 34 — standalone Onboarding & Exit link for non-TCM/admin HR-zone roles
     // (internal / finanse / manager) so they can still reach their own / their team's
     // lifecycle forms. TCM + admin get this link inside talentCommunityGroup instead.
     const lifecycleGroup: NavGroup = {
-        heading: 'Lifecycle',
+        // Phase 36: renamed from "Lifecycle" so the population is unmistakable — this is the
+        // internal-employee onboarding/exit, distinct from the contractor journey above.
+        heading: 'Pracownicy wewnętrzni',
         links: [
             {
                 name: 'Onboarding & Exit',

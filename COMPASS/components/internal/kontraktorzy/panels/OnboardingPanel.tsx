@@ -57,7 +57,7 @@ export function OnboardingPanel({ onboardingQueue, entries }: Props) {
 
             <section className="space-y-2">
                 <h3 className="text-sm font-semibold">Wejścia ({entries.length})</h3>
-                <p className="text-xs text-muted-foreground">Kto wszedł do klienta (placementy Dominika + archiwum 2024).</p>
+                <p className="text-xs text-muted-foreground">Kto wszedł do klienta (placementy Dominika + archiwum 2024). Placementy i premie zarządzasz w module Placementy — tu tylko widok wlotowy (read-only).</p>
                 <div className="overflow-x-auto rounded-md border">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50">
