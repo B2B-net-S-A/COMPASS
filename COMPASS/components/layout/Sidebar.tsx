@@ -156,14 +156,13 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ? fullPlatformGroups
         : commonHrZoneGroups
 
-    // Admin extras — expanded as new admin pages ship per phase.
+    // Admin extras — platform administration only. Phase 34: the candidate inbox,
+    // compliance and news-composer links moved into the unified Talent Community group below.
     const adminGroup: NavGroup = {
         heading: t('group_admin'),
         links: [
             { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: 'learning' },
             { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null, badgeCount: badges?.adminTickets },
-            { name: t('nav_admin_inbox'), href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox },
-            { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
             { name: t('nav_admin_incubator'), href: '/admin/incubator', icon: Sparkles, feature: null, badgeCount: badges?.adminPitches },
             { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
         ],
@@ -229,18 +228,33 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    // Phase 20: Talent Community Manager group — inbox + compliance + news composer.
-    const tcmGroup: NavGroup = {
+    // Phase 34 — unified "Talent Community" people-ops group for TCM + admin.
+    // Consolidates what were three separate groups (Talent Community / Lifecycle / Kontraktorzy)
+    // plus the candidate inbox, compliance and news-composer links that previously lived under
+    // Administracja. A single definition is now shared identically by both roles, ordered by the
+    // contractor journey / daily workflow: skrzynka → kontraktorzy (core) → onboarding pracowników → compliance → news.
+    const talentCommunityGroup: NavGroup = {
         heading: 'Talent Community',
         links: [
-            { name: 'Kolejka zgłoszeń', href: '/admin/inbox', icon: Inbox, feature: null, badgeCount: badges?.adminInbox },
+            { name: 'Skrzynka administracja@', href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox },
+            // Core of the department — contractor care workspace (Phase 33/34, journey-staged hub).
+            { name: 'Kontraktorzy', href: '/internal/kontraktorzy', icon: Headset, feature: null },
+            // Phase 22 lifecycle is a SEPARATE population (internal employees) — labelled to make that clear.
+            {
+                name: 'Onboarding pracowników (wewn.)',
+                href: '/internal/lifecycle',
+                icon: ClipboardCheck,
+                feature: null,
+                badgeCount: badges?.lifecyclePendingTasks,
+            },
             { name: 'Compliance', href: '/admin/compliance', icon: ShieldCheck, feature: null },
-            { name: 'News composer', href: '/admin/news', icon: PenSquare, feature: null },
+            { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
         ],
     }
 
-    // Phase 22 — Lifecycle hub for TCM, admin, and managers (managers see team scope).
-    // Sidebar link is rendered also for HR-zone employees so they can reach their own onboarding/exit form.
+    // Phase 22 / 34 — standalone Onboarding & Exit link for non-TCM/admin HR-zone roles
+    // (internal / finanse / manager) so they can still reach their own / their team's
+    // lifecycle forms. TCM + admin get this link inside talentCommunityGroup instead.
     const lifecycleGroup: NavGroup = {
         heading: 'Lifecycle',
         links: [
@@ -254,26 +268,19 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    // Phase 33 — Kontraktorzy: TCM contractor-care module. VISIBLE ONLY to TCM + admin.
-    const kontraktorzyGroup: NavGroup = {
-        heading: 'Kontraktorzy',
-        links: [
-            { name: 'Opieka nad kontraktorami', href: '/internal/kontraktorzy', icon: Headset, feature: null },
-        ],
-    }
-
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
-        if (isAdmin) out.push(internalAdminGroup, adminGroup)
         // Phase 27i: finanse reaches the Administracja HR hub (invoices/bonuses/rates/clients tabs)
         // via this link — the dedicated "Finanse" group was removed.
-        else if (isFinance) out.push(internalAdminGroup)
+        if (isAdmin || isFinance) out.push(internalAdminGroup)
         if (isManager) out.push(managerGroup)
-        if (isTalentCommunity) out.push(tcmGroup)
-        if (isHrZone) out.push(lifecycleGroup)
-        // Phase 33 — Kontraktorzy: TCM + admin only.
-        if (isTalentCommunity || isAdmin) out.push(kontraktorzyGroup)
+        // Phase 34 — unified Talent Community group (TCM + admin share one definition).
+        // Other HR-zone roles keep just the standalone Onboarding & Exit link.
+        if (isTalentCommunity || isAdmin) out.push(talentCommunityGroup)
+        else if (isHrZone) out.push(lifecycleGroup)
+        // Platform administration sits last (admin only).
+        if (isAdmin) out.push(adminGroup)
         return out
     })()
 

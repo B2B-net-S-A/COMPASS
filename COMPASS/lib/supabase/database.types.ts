@@ -284,6 +284,48 @@ export type Database = {
         }
         Relationships: []
       }
+      contractor_tasks: {
+        Row: {
+          assigned_tcm_id: string | null
+          contractor_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          source_ticket_id: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_tcm_id?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          source_ticket_id?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_tcm_id?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          source_ticket_id?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contractor_conversations: {
         Row: {
           category: string

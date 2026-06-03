@@ -8,6 +8,7 @@ import { computeDueDate } from '@/lib/utils/sla'
 import {
     INBOX_CATEGORY_SLUGS,
     type CreateInboxTicketInput,
+    type InboxSummary,
     type InboxTicketWithMeta,
     type SupportActionResult,
     type SupportComment,
@@ -544,6 +545,56 @@ export async function searchConsultants(query: string): Promise<SupportActionRes
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wyszukiwania konsultantów'
         logCompat.error('[searchConsultants]', error)
+        return { success: false, error: msg }
+    }
+}
+
+// Phase 34 — lightweight inbox counts for the Talent Community Pulpit (open / overdue / unassigned).
+export async function getInboxSummary(): Promise<SupportActionResult<InboxSummary>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+        if (!(await isCallerHandler(supabase, user.id))) {
+            return { success: false, error: 'Niewystarczające uprawnienia' }
+        }
+
+        const inboxCategoryIds = await getInboxCategoryIds(supabase)
+        if (inboxCategoryIds.length === 0) {
+            return { success: true, data: { open: 0, overdue: 0, unassigned: 0 } }
+        }
+
+        const { data: tickets } = await supabase
+            .from('support_tickets')
+            .select('id, status, assignee_id')
+            .in('category_id', inboxCategoryIds)
+        const rows = (tickets ?? []) as Array<{ id: string; status: TicketStatus; assignee_id: string | null }>
+        const openRows = rows.filter((t) => t.status !== 'resolved' && t.status !== 'closed')
+
+        // Overdue = open tickets whose inbox meta due_date is in the past.
+        let overdue = 0
+        const openIds = openRows.map((t) => t.id)
+        if (openIds.length > 0) {
+            const { data: metas } = await supabase
+                .from('support_inbox_meta')
+                .select('ticket_id, due_date')
+                .in('ticket_id', openIds)
+            const nowIso = new Date().toISOString()
+            overdue = ((metas ?? []) as Array<{ ticket_id: string; due_date: string | null }>)
+                .filter((m) => m.due_date != null && m.due_date < nowIso).length
+        }
+
+        return {
+            success: true,
+            data: {
+                open: openRows.length,
+                overdue,
+                unassigned: openRows.filter((t) => t.assignee_id == null).length,
+            },
+        }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd pobierania podsumowania skrzynki'
+        logCompat.error('[getInboxSummary]', error)
         return { success: false, error: msg }
     }
 }

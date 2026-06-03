@@ -182,6 +182,10 @@ export type AuditAction =
     | 'CONTRACTOR_EXIT_INTERVIEW_REVIEWED'
     | 'CLIENT_DEPARTURE_RECORDED'
     | 'CONTRACTORS_IMPORTED'
+    // Phase 34 — Talent Community department task list
+    | 'CONTRACTOR_TASK_CREATED'
+    | 'CONTRACTOR_TASK_UPDATED'
+    | 'CONTRACTOR_TASK_DELETED'
 
 export async function logAudit(
     userId: string | null,
