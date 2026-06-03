@@ -6,6 +6,7 @@ import { FileText, BookOpen, ListChecks, Upload, Loader2, AlertCircle, CheckCirc
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { CourseAuthorForm } from './CourseAuthorForm'
 import { LessonsEditor } from './LessonsEditor'
 import { QuizEditor } from './QuizEditor'
@@ -34,8 +35,13 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
         lessonsCount >= 1 &&
         quizCount >= QUIZ_MIN_QUESTIONS
 
-    const handleSubmit = () => {
-        if (!window.confirm('Wysłać szkolenie do moderacji? Po wysłaniu nie będzie można edytować dopóki moderator nie odpowie.')) return
+    const [confirm, ConfirmUI] = useConfirm()
+
+    const handleSubmit = async () => {
+        const ok = await confirm({
+            description: 'Wysłać szkolenie do moderacji? Po wysłaniu nie będzie można edytować dopóki moderator nie odpowie.',
+        })
+        if (!ok) return
         setSubmitError(null)
         setSubmitSuccess(null)
         startTransition(async () => {
@@ -195,6 +201,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                     </CardContent>
                 </Card>
             </TabsContent>
+            <ConfirmUI />
         </Tabs>
     )
 }

@@ -6,6 +6,7 @@ import { Check, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { approveCourse, rejectCourse } from '@/lib/actions/courses-admin'
 
 interface AdminReviewActionsProps {
@@ -21,8 +22,13 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
     const [success, setSuccess] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
 
-    const handleApprove = () => {
-        if (!window.confirm(`Zatwierdzić "${title}" do publikacji?`)) return
+    const [confirm, ConfirmUI] = useConfirm()
+
+    const handleApprove = async () => {
+        const ok = await confirm({
+            description: `Zatwierdzić "${title}" do publikacji?`,
+        })
+        if (!ok) return
         setError(null)
         setSuccess(null)
         startTransition(async () => {
@@ -115,6 +121,7 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
                     </div>
                 )}
             </CardContent>
+            <ConfirmUI />
         </Card>
     )
 }

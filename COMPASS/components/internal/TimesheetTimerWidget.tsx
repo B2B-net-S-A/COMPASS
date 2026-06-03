@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import {
     startTimer,
     stopActiveTimer,
@@ -41,6 +42,7 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
     const [project, setProject] = useState('')
     const [description, setDescription] = useState('')
     const [pending, startTransition] = useTransition()
+    const [confirm, ConfirmUI] = useConfirm()
 
     // Tick co 1s gdy timer aktywny
     useEffect(() => {
@@ -84,8 +86,12 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
         })
     }
 
-    const handleCancel = () => {
-        if (!window.confirm('Anulować timer? Czas zostanie utracony.')) return
+    const handleCancel = async () => {
+        const ok = await confirm({
+            description: 'Anulować timer? Czas zostanie utracony.',
+            variant: 'destructive',
+        })
+        if (!ok) return
         startTransition(async () => {
             try {
                 await cancelActiveTimer()
@@ -99,6 +105,7 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
 
     if (active) {
         return (
+            <>
             <Card className="bg-gradient-to-r from-green-500/10 to-emerald-500/5 border-green-500/30">
                 <CardContent className="p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <div className="flex items-center gap-3 flex-1">
@@ -124,6 +131,8 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
                     </div>
                 </CardContent>
             </Card>
+            <ConfirmUI />
+            </>
         )
     }
 

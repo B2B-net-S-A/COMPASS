@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2, CheckCircle2, Ban, Download, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { toast } from '@/lib/toast'
 import {
     confirmPlacementHours,
@@ -48,6 +49,7 @@ export function PlacementsAdminClient({ placements }: Props) {
     const [filter, setFilter] = useState<PlacementStatus | 'all'>('all')
     const [busyId, setBusyId] = useState<string | null>(null)
     const [, startTransition] = useTransition()
+    const [confirm, ConfirmUI] = useConfirm()
 
     const visible = placements.filter((p) => filter === 'all' || p.status === filter)
 
@@ -56,9 +58,10 @@ export function PlacementsAdminClient({ placements }: Props) {
     }
 
     async function onConfirm(p: PlacementWithBonusStatus) {
-        if (!window.confirm(
-            `Potwierdzasz, że ${p.consultant_name} przepracował 168h?\n\nWygeneruje to premie:\n• DL (${p.delivery_lead_raw}): ${pln(p.dl_bonus_amount)}\n• Rekruter (${p.recruiter_raw}): ${pln(p.recruiter_bonus_amount)}`,
-        )) return
+        const ok = await confirm({
+            description: `Potwierdzasz, że ${p.consultant_name} przepracował 168h?\n\nWygeneruje to premie:\n• DL (${p.delivery_lead_raw}): ${pln(p.dl_bonus_amount)}\n• Rekruter (${p.recruiter_raw}): ${pln(p.recruiter_bonus_amount)}`,
+        })
+        if (!ok) return
         setBusyId(p.id)
         try {
             await confirmPlacementHours(p.id)
@@ -279,6 +282,7 @@ export function PlacementsAdminClient({ placements }: Props) {
                     </table>
                 </div>
             )}
+            <ConfirmUI />
         </div>
     )
 }

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { Loader2, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import type { TimesheetEntryRow } from '@/lib/actions/internal-timesheet'
@@ -59,6 +60,7 @@ export function TimesheetEntryDialog({
     const [overtimeReason, setOvertimeReason] = useState<string>(initial?.override_reason ?? '')
     const [templates, setTemplates] = useState<TimesheetUserTemplate[]>([])
     const [templatesLoaded, setTemplatesLoaded] = useState(false)
+    const [confirm, ConfirmUI] = useConfirm()
 
     useEffect(() => {
         if (!open || templatesLoaded) return
@@ -104,7 +106,7 @@ export function TimesheetEntryDialog({
     const isOvertime = allowOvertime && Number.isFinite(hoursNum) && hoursNum > STANDARD_MAX
     const overtimeReasonTrimmed = overtimeReason.trim()
 
-    function handleSubmit(e: React.FormEvent) {
+    async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (isLeaveDay) {
             alert(
@@ -134,11 +136,11 @@ export function TimesheetEntryDialog({
             const projectsList = conflictingEntries
                 .map((e) => e.project ?? '(bez projektu)')
                 .join(', ')
-            const ok = window.confirm(
-                `Ten dzień ma już ${conflictingEntries.length} ${
+            const ok = await confirm({
+                description: `Ten dzień ma już ${conflictingEntries.length} ${
                     conflictingEntries.length === 1 ? 'wpis' : 'wpisy'
                 } na łącznie ${conflictingTotalHours}h (${projectsList}).\n\nDodać kolejny wpis (${h}h)? Suma: ${conflictingTotalHours + h}h.`,
-            )
+            })
             if (!ok) return
         }
         onSubmit({
@@ -151,6 +153,7 @@ export function TimesheetEntryDialog({
     }
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md max-h-[95vh] overflow-y-auto">
                 <DialogHeader>
@@ -311,5 +314,7 @@ export function TimesheetEntryDialog({
                 </form>
             </DialogContent>
         </Dialog>
+        <ConfirmUI />
+        </>
     )
 }

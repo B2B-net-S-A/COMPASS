@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from 'react'
 import { Plus, Check, X, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import {
@@ -27,6 +28,7 @@ export function ClientsAdminClient({ initialClients }: Props) {
     const [editId, setEditId] = useState<string | null>(null)
     const [editName, setEditName] = useState('')
     const [pending, startTransition] = useTransition()
+    const [confirm, ConfirmUI] = useConfirm()
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase()
@@ -91,10 +93,12 @@ export function ClientsAdminClient({ initialClients }: Props) {
         })
     }
 
-    function handleDelete(client: ClientRow) {
-        if (!window.confirm(`Usunąć klienta "${client.name}"? Historia premii zachowa nazwę jako tekst.`)) {
-            return
-        }
+    async function handleDelete(client: ClientRow) {
+        const ok = await confirm({
+            description: `Usunąć klienta "${client.name}"? Historia premii zachowa nazwę jako tekst.`,
+            variant: 'destructive',
+        })
+        if (!ok) return
         startTransition(async () => {
             try {
                 await deleteClient(client.id)
@@ -222,6 +226,7 @@ export function ClientsAdminClient({ initialClients }: Props) {
                     ))
                 )}
             </div>
+            <ConfirmUI />
         </div>
     )
 }

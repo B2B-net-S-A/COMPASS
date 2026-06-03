@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Loader2, AlertCircle, RotateCcw } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import {
     adminOverrideTimesheetEntry,
     clearOvertimeOverride,
@@ -58,6 +59,7 @@ export function OvertimeOverrideDialog({
 }: Props) {
     const [entries, setEntries] = useState<EmployeeMonthEntryRow[]>([])
     const [loading, setLoading] = useState(false)
+    const [confirm, ConfirmUI] = useConfirm()
     const [selectedEntryId, setSelectedEntryId] = useState<string>('')
     const [hours, setHours] = useState<string>('10')
     const [reason, setReason] = useState<string>('')
@@ -133,13 +135,11 @@ export function OvertimeOverrideDialog({
 
     async function handleClear() {
         if (!selectedEntry || !canClear) return
-        if (
-            !window.confirm(
-                `Cofnąć override dla ${selectedEntry.work_date}? Godziny wrócą do 8h, dane override zostaną wyczyszczone.`,
-            )
-        ) {
-            return
-        }
+        const ok = await confirm({
+            description: `Cofnąć override dla ${selectedEntry.work_date}? Godziny wrócą do 8h, dane override zostaną wyczyszczone.`,
+            variant: 'destructive',
+        })
+        if (!ok) return
         setSaving(true)
         try {
             await clearOvertimeOverride(selectedEntry.id)
@@ -154,6 +154,7 @@ export function OvertimeOverrideDialog({
     }
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -303,5 +304,7 @@ export function OvertimeOverrideDialog({
                 )}
             </DialogContent>
         </Dialog>
+        <ConfirmUI />
+        </>
     )
 }
