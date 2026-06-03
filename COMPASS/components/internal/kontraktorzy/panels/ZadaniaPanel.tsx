@@ -15,6 +15,7 @@ import {
     type ContractorTaskListItem, type ContractorTaskStatus,
 } from '@/lib/types/contractor'
 import { selectCls, todayISO } from './shared'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 
 interface Props {
     tasks: ContractorTaskListItem[]
@@ -28,6 +29,7 @@ export function ZadaniaPanel({ tasks, tcmProfiles, contractorsLite, onSaved }: P
     const [fAssignee, setFAssignee] = useState('')
     const [q, setQ] = useState('')
     const [busyId, setBusyId] = useState<string | null>(null)
+    const [confirm, ConfirmUI] = useConfirm()
 
     const filtered = useMemo(() => tasks.filter((t) => {
         if (fStatus && t.status !== fStatus) return false
@@ -52,7 +54,13 @@ export function ZadaniaPanel({ tasks, tcmProfiles, contractorsLite, onSaved }: P
     }
 
     async function remove(id: string) {
-        if (!window.confirm('Usunąć zadanie?')) return
+        const ok = await confirm({
+            title: 'Usunąć zadanie?',
+            description: 'Tej operacji nie można cofnąć.',
+            confirmLabel: 'Usuń',
+            variant: 'destructive',
+        })
+        if (!ok) return
         setBusyId(id)
         try {
             await deleteTask(id)
@@ -133,6 +141,7 @@ export function ZadaniaPanel({ tasks, tcmProfiles, contractorsLite, onSaved }: P
                     </tbody>
                 </table>
             </div>
+            <ConfirmUI />
         </div>
     )
 }
