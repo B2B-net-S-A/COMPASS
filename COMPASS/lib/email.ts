@@ -333,16 +333,21 @@ export async function sendLeaveRequestSubmitted(
     startDate: string,
     endDate: string,
     note: string | null,
+    substituteName: string | null = null,
 ): Promise<{ success: boolean }> {
     if (recipientEmails.length === 0) return { success: true }
     const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
     const subject = `[COMPASS HR] Nowy wniosek urlopowy — ${requesterName}`
+    const substituteLine = substituteName
+        ? `<li><strong>Zastępca:</strong> ${substituteName} — zastępuje ${requesterName} na czas nieobecności</li>`
+        : `<li><strong>Zastępca:</strong> <span style="color: #9ca3af;">nie wskazano</span></li>`
     const bodyHtml = `
         <p style="color: #d1d5db; font-size: 14px;">${requesterName} złożył wniosek urlopowy do akceptacji:</p>
         <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
             <li><strong>Typ:</strong> ${typeLabel}</li>
             <li><strong>Od:</strong> ${startDate}</li>
             <li><strong>Do:</strong> ${endDate}</li>
+            ${substituteLine}
             ${note ? `<li><strong>Notatka:</strong> ${note}</li>` : ''}
         </ul>
         <p style="color: #d1d5db; font-size: 14px;">Zaakceptuj/odrzuć w panelu administracyjnym.</p>
