@@ -4,8 +4,8 @@
 // Tabs: Sprawy otwarte → Onboarding → Retencja → Offboarding → Analityka.
 // Thin orchestrator: data loaded server-side (page.tsx), rendered by per-stage panels.
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ContractorDialog } from './ContractorDialog'
 import { ConversationDialog } from './ConversationDialog'
@@ -20,6 +20,9 @@ import type {
     EntryListItem, OnboardingQueueItem, ExitQueueItem, ContractorTaskListItem,
 } from '@/lib/types/contractor'
 import type { OpenInboxTicketLite } from '@/lib/types/support'
+
+// Tab values — kept in sync with the sidebar deep-links (/internal/kontraktorzy?tab=…).
+const KONTRAKTOR_TABS = ['sprawy', 'onboarding', 'retencja', 'offboarding', 'analityka']
 
 interface Props {
     dashboard: ContractorDashboard
@@ -40,8 +43,14 @@ export function KontraktorzyHub({
     onboardingQueue, exitQueue, tasks, openInboxTickets,
 }: Props) {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const refresh = () => router.refresh()
-    const [tab, setTab] = useState('sprawy')
+    // Open the tab requested by the sidebar deep-link (?tab=…), default "Sprawy otwarte".
+    const paramTab = searchParams.get('tab')
+    const [tab, setTab] = useState(() => (paramTab && KONTRAKTOR_TABS.includes(paramTab) ? paramTab : 'sprawy'))
+    useEffect(() => {
+        if (paramTab && KONTRAKTOR_TABS.includes(paramTab)) setTab(paramTab)
+    }, [paramTab])
 
     const openIssuesCount = openInboxTickets.length + tasks.filter((t) => t.status !== 'done').length
 

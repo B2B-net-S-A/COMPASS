@@ -900,6 +900,8 @@ Restrukturyzacja hubu Kontraktorów z 6 zakładek (Phase 34) na **5 sekcji** wg 
 
 Usunięte panele: `PulpitPanel`, `OpiekaPanel`, `ExitPanel` (treść rozdzielona). Zadania nie są już osobną zakładką (żyją w Sprawach otwartych). `getInboxSummary` zostaje w kodzie, ale hub już go nie woła (zastąpione listą ticketów). Bez zmian w DB/API/migracjach.
 
+**Sidebar (`Sidebar.tsx`):** grupa „Talent Community" = **5 deep-linków do zakładek huba** (`/internal/kontraktorzy?tab=sprawy|onboarding|retencja|offboarding|analityka`) + Compliance + Composer News. Skrzynka administracja@ usunięta z sidebara (jest w „Sprawach otwartych"). „Onboarding pracowników (wewn.)" przeniesiony do osobnej grupy „Lifecycle" (pokazywanej teraz dla WSZYSTKICH HR-zone, nie tylko internal/finanse/manager — to inna populacja niż kontraktorzy). Hub czyta `?tab=` (`useSearchParams` + sync `useEffect`); active-state w sidebarze rozpoznaje `?tab=` (default = `sprawy`).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
