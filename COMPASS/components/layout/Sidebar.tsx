@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n/context'
 import {
@@ -26,6 +26,9 @@ import {
     Wallet,
     Briefcase,
     Headset,
+    UserPlus,
+    LogOut,
+    BarChart3,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -81,6 +84,7 @@ interface NavGroup {
 
 export function Sidebar({ role, user, permissions, forMobile = false, badges }: SidebarProps) {
     const pathname = usePathname()
+    const searchParams = useSearchParams()
     const { t } = useTranslation()
     const { brandName } = useTheme()
 
@@ -233,20 +237,18 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     // plus the candidate inbox, compliance and news-composer links that previously lived under
     // Administracja. A single definition is now shared identically by both roles, ordered by the
     // contractor journey / daily workflow: skrzynka → kontraktorzy (core) → onboarding pracowników → compliance → news.
+    // Phase 35 — Talent Community group = the 5 contractor-journey sections (deep-links to the
+    // Kontraktorzy hub tabs), then the cross-cutting TCM tools (Compliance, News composer).
+    // Skrzynka administracja@ lives inside "Sprawy otwarte"; employee onboarding/exit is a
+    // SEPARATE population and moved to the standalone "Lifecycle" group below.
     const talentCommunityGroup: NavGroup = {
         heading: 'Talent Community',
         links: [
-            { name: 'Skrzynka administracja@', href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox },
-            // Core of the department — contractor care workspace (Phase 33/34, journey-staged hub).
-            { name: 'Kontraktorzy', href: '/internal/kontraktorzy', icon: Headset, feature: null },
-            // Phase 22 lifecycle is a SEPARATE population (internal employees) — labelled to make that clear.
-            {
-                name: 'Onboarding pracowników (wewn.)',
-                href: '/internal/lifecycle',
-                icon: ClipboardCheck,
-                feature: null,
-                badgeCount: badges?.lifecyclePendingTasks,
-            },
+            { name: 'Sprawy otwarte', href: '/internal/kontraktorzy?tab=sprawy', icon: Inbox, feature: null, badgeCount: badges?.adminInbox },
+            { name: 'Onboarding', href: '/internal/kontraktorzy?tab=onboarding', icon: UserPlus, feature: null },
+            { name: 'Retencja', href: '/internal/kontraktorzy?tab=retencja', icon: Headset, feature: null },
+            { name: 'Offboarding', href: '/internal/kontraktorzy?tab=offboarding', icon: LogOut, feature: null },
+            { name: 'Analityka', href: '/internal/kontraktorzy?tab=analityka', icon: BarChart3, feature: null },
             { name: 'Compliance', href: '/admin/compliance', icon: ShieldCheck, feature: null },
             { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
         ],
@@ -275,10 +277,10 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         // via this link — the dedicated "Finanse" group was removed.
         if (isAdmin || isFinance) out.push(internalAdminGroup)
         if (isManager) out.push(managerGroup)
-        // Phase 34 — unified Talent Community group (TCM + admin share one definition).
-        // Other HR-zone roles keep just the standalone Onboarding & Exit link.
+        // Phase 35 — Talent Community = contractor-journey sections (TCM + admin).
         if (isTalentCommunity || isAdmin) out.push(talentCommunityGroup)
-        else if (isHrZone) out.push(lifecycleGroup)
+        // Employee onboarding/exit (separate population) is its own group for ALL HR-zone roles.
+        if (isHrZone) out.push(lifecycleGroup)
         // Platform administration sits last (admin only).
         if (isAdmin) out.push(adminGroup)
         return out
@@ -314,10 +316,16 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                             </div>
                             {visibleLinks.map((link) => {
                                 const Icon = link.icon
-                                const isActive = link.exactMatch
-                                    ? pathname === link.href
-                                    : pathname === link.href || pathname.startsWith(`${link.href}/`)
-                                const testId = `nav-${link.href.replace(/^\//, '').replace(/\//g, '-')}`
+                                // Phase 35 — tab deep-links (e.g. /internal/kontraktorzy?tab=retencja) are
+                                // "active" only for the matching tab; default (no ?tab) maps to 'sprawy'.
+                                const [linkPath, linkQuery] = link.href.split('?')
+                                const isActive = linkQuery
+                                    ? pathname === linkPath
+                                        && (searchParams.get('tab') ?? 'sprawy') === new URLSearchParams(linkQuery).get('tab')
+                                    : link.exactMatch
+                                        ? pathname === link.href
+                                        : pathname === link.href || pathname.startsWith(`${link.href}/`)
+                                const testId = `nav-${link.href.replace(/^\//, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/-+$/, '')}`
 
                                 return (
                                     <Link
