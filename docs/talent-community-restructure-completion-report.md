@@ -1,6 +1,6 @@
 # Talent Community — przebudowa wokół journey kontraktora (Faza 34)
 
-> Branch: `claude/infallible-williams-969fa8`. Status: **kod gotowy, niezdeployowany** — czeka na wizualną akceptację + aplikację migracji (per plan).
+> Zmergowane do `main` ([#205](https://github.com/artur-t-96/compass/pull/205), `d5eb362`). Status: **wdrożone i zweryfikowane na prodzie** (2026-06-03).
 
 ## Cel
 
@@ -39,17 +39,20 @@ Dział Talent Community pracuje wg ścieżki osoby: **placement → onboarding �
 
 ## Weryfikacja
 
-- ✅ **Typecheck**: `tsc --noEmit` czysty (poza 7 pre-existing błędami `exceljs` — artefakt symlinka `node_modules` z głównego checkoutu, nie z tej zmiany).
-- ✅ **Lint**: eslint czysty na wszystkich dotkniętych plikach (pozostałe 2 warningi — `Sidebar` `user`, `audit.ts` `any` — są pre-existing).
-- ⏳ **Smoke UI (Chrome)**: niewykonany — worktree nie ma `.env.local` (tylko `.example`), więc brak auth/Supabase do lokalnego uruchomienia. Wizualna akceptacja = krok użytkownika przy shipie.
-- ⏳ **Migracja**: NIE zaaplikowana (per plan: DDL na prod dopiero po akceptacji).
+- ✅ **Typecheck**: `tsc --noEmit` czysty.
+- ✅ **Lint**: eslint czysty na dotkniętych plikach.
+- ✅ **Build**: `next build` exit 0; CI (gitleaks / lint / typecheck / test / build / review) all pass.
+- ✅ **Migracja**: `phase34a_contractor_tasks` zaaplikowana na prod (11 kolumn, RLS on, 1 policy, 5 indexów).
+- ✅ **Deploy**: Coolify (merge #205 → `main`), `/api/health` → `healthy`, version `d5eb362`, supabase healthy.
+- ✅ **Smoke UI (Chrome, prod)**: 6 zakładek hubu + Opieka (583), Pulpit z inbox KPI (41 / 40 / 40), sidebar, **„Ticket → Zadanie" end-to-end** (utworzenie z ticketu → odnośnik powrotny w Zadaniach → cleanup).
 
-## Ops przy shipie (do zrobienia)
+## Ops — wykonane przy shipie (2026-06-03)
 
-1. Zaaplikuj migrację `phase34a_contractor_tasks` (Supabase MCP `apply_migration` / `supabase db push`).
-2. Zregeneruj `lib/supabase/database.types.ts` (MCP `generate_typescript_types`) — powinno odpowiadać ręcznie dodanemu kształtowi.
-3. Wizualny smoke jako admin: 6 zakładek hubu + „Ticket → Zadanie" w `/admin/inbox/{id}` + sidebar (nowa kolejność, „Onboarding pracowników (wewn.)").
-4. Regresja: internal/manager nadal widzą standalone „Onboarding & Exit".
+1. ✅ Migracja `phase34a_contractor_tasks` zaaplikowana na prod (Supabase MCP).
+2. ✅ Deploy przez Coolify (merge #205 → main), smoke `/api/health` version-match OK.
+3. ✅ Smoke UI przez Chrome (admin) — pełny flow.
+
+`lib/supabase/database.types.ts` ma ręcznie dodany `contractor_tasks` (zgodny z prod); przy najbliższym pełnym regenie typów zsynchronizują się relacje FK (kosmetyka).
 
 ## Świadomie poza zakresem (opcja C / przyszłość)
 

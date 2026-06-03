@@ -867,6 +867,26 @@ Przeniesienie 4 plików TCM (Word/Excel) do Compass — pełen cykl opieki nad *
 
 **Ops po deploy:** (1) cron w Coolify; (2) import 3 plików przez `/internal/kontraktorzy` → Import; (3) status rozmów z importu = `rozwiazane` (kolory Excela z conditional-formatting nieczytelne przez `cell.fill.fgColor` — go-forward w UI).
 
+## Phase 34 — Talent Community: hub wg journey + Zadania + Ticket→Zadanie (2026-06-03)
+
+Przebudowa modułu Kontraktorzy (Phase 33) w spójny workspace działu Talent Community ułożony wg ścieżki osoby: **onboarding → opieka → retencja → exit → analiza zejść**, plus przekrojowo skrzynka administracja@ i zadania działowe. Raport: `docs/talent-community-restructure-completion-report.md`.
+
+**Sidebar** (`components/layout/Sidebar.tsx`) — grupa „Talent Community" (TCM + admin), jedna definicja dla obu ról, kolejność wg dnia pracy: **Skrzynka administracja@** (`/admin/inbox`) → **Kontraktorzy** (`/internal/kontraktorzy`, headline) → **Onboarding pracowników (wewn.)** (`/internal/lifecycle` — Phase 22, jasno oznaczone: inna populacja = pracownicy wewnętrzni z kontem) → **Compliance** → **News composer**. Wcześniejsze 3 osobne grupy (tcmGroup/lifecycleGroup/kontraktorzyGroup) + rozsypane linki admina scalone. Inne HR-zone role (internal/finanse/manager) zachowują standalone „Onboarding & Exit".
+
+**Hub Kontraktorów** (`components/internal/kontraktorzy/KontraktorzyHub.tsx` + `panels/`) — zakładki z technicznych (Rozmowy/Wejścia/Zejścia/Statystyki) na **journey**: `Pulpit · Onboarding · Opieka · Retencja · Exit & analiza zejść · Zadania`.
+- **Pulpit** — KPI (dashboard) + „wymaga uwagi dziś" (at-risk / follow-up due / onboarding / exit, derived) + **skrzynka administracja@** (open/overdue/unassigned z `getInboxSummary`) + Import (zwinięty).
+- **Onboarding** — kolejka kontraktorów `status IN (prospect,onboarding)` + stan wywiadu (`listOnboardingQueue`) + Wejścia (intake).
+- **Opieka** — roster + log rozmów (dawne Rozmowy + Kontraktorzy).
+- **Retencja** (NEW) — proaktywna worklista zagrożonych, derived z rozmów: `category IN (zejscie,przedluzenie)` lub `status IN (pilne,potrzebny_kontakt)` (helpery `deriveAtRisk`/`isRetentionRisk` w `lib/types/contractor.ts`, bez migracji).
+- **Exit & analiza zejść** — kolejka exit interview (`listExitInterviewQueue`) + zejścia + trendy (powody, per klient).
+- **Zadania** (NEW) — prosta lista zadań działu.
+
+**Zadania — tabela `contractor_tasks`** (migracja `20260607000001_phase34a_contractor_tasks`): status `todo/in_progress/done`, `assigned_tcm_id`, `due_date`, opcjonalny `contractor_id` (zadanie działowe gdy NULL) i `source_ticket_id` (link do ticketu inboxu). RLS `has_lifecycle_access()` (TCM+admin), trigger `updated_at`, 4 indexy. Akcje `listTasks/createTask/updateTask/deleteTask` w `lib/actions/contractors.ts`; audit `CONTRACTOR_TASK_CREATED/UPDATED/DELETED`. UI: `TaskDialog.tsx` + `panels/ZadaniaPanel.tsx` (delete przez `useConfirm()` z `components/shared/ConfirmDialog`, NIE window.confirm).
+
+**Ticket → Zadanie** — przycisk „Utwórz zadanie z tego zgłoszenia" w `/admin/inbox/[id]` (`components/inbox/TicketToTaskButton.tsx`, tylko TCM/admin) tworzy `contractor_tasks` z `source_ticket_id` = ticket; zadanie ma odnośnik powrotny do `/admin/inbox/{id}`. Tak issue z administracja@ staje się śledzonym zadaniem, które przeżyje zamknięcie ticketu. `getInboxSummary` w `lib/actions/support-inbox.ts` zasila KPI Pulpitu (guard `is_inbox_handler` / admin).
+
+**Ops:** migracja zaaplikowana na prod 2026-06-03 (PR #205); brak nowych cron jobów ani env vars. `database.types.ts` ma ręcznie dodany `contractor_tasks` (FK relationships zsynchronizują się przy najbliższym pełnym regenie). Świadomie poza zakresem: automat handoffu placement→onboarding (dziś = ticket inbox), link ticket↔kontraktor (`support_inbox_meta.contractor_id`), cron SLA breach, scalanie Faz 22/33.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
