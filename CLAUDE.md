@@ -764,9 +764,11 @@ Rozszerzenie infrastruktury Phase 27k (urlop UoP) na B2B i zlecenie — dla prac
 Decyzja Artura: dla B2B/zlecenie z pulą **dni płatnego urlopu (z puli) mają pokazywać się w timesheet jak normalny dzień roboczy — auto-wpis 8h, billable**. Dopiero po wyczerpaniu puli nadwyżkowe dni (`unpaid_days`) blokują timesheet jak zawsze (i nie pokazują się). UoP **bez zmian** (urlop nadal blokuje — etatowiec nie rozlicza godzin za urlop).
 
 **Mechanizm (zmiana względem Phase 30):** wcześniej approved `vacation` tworzył `attendance_records` (status=`vacation`) dla **wszystkich** dni roboczych → wszystkie zablokowane w timesheet. Teraz `syncAttendanceFromLeave` dzieli dni przez `splitLeaveWorkingDays`:
-- **dni płatne** (pierwsze `paid_days` dni roboczych, B2B/zlecenie pool) → **BEZ** attendance + auto-wpis do `timesheet_entries` (8h/4h, `source='leave_paid'`, opis „Urlop płatny (z puli)"), getOrCreate timesheet per (rok, miesiąc), idempotentny.
+- **dni płatne** (pierwsze `paid_days` dni roboczych, B2B/zlecenie pool) → **BEZ** attendance + auto-wpis do `timesheet_entries` (8h/4h, `source='leave_paid'`, opis „Praca standardowa" — patrz nota niżej), getOrCreate timesheet per (rok, miesiąc), idempotentny.
 - **dni blokujące** (nadwyżka/UoP/non-pool) → `attendance_records` jak dotąd.
 - `remove` (cancel/reject urlopu) → usuwa attendance **i** auto-wpisy `leave_paid` w zakresie.
+
+**Opis auto-wpisu = „Praca standardowa" (decyzja Artura, 2026-06-03):** płatny dzień z puli ma na karcie pracy/PDF wyglądać jak NORMALNY dzień roboczy (string identyczny z `DEFAULT_QUICK_FILL_DESCRIPTION`). Pierwotnie opis brzmiał „Urlop płatny (z puli)", co zdradzało pochodzenie na dokumencie idącym do klienta. Pochodzenie z puli COMPASS śledzi WYŁĄCZNIE wewnętrznie przez `source='leave_paid'` — nie przez opis (PDF renderuje tylko `description`; edytor/preview nie mają badge'a dla `leave_paid`). Istniejące TS-y poprawione na prod (23 wpisy w 6 TS-ach; `pdf_hash` przeliczony dla 3 approved — Anna Korycka/Malwina Jobda/Michał Stankiewicz maj 2026).
 
 **Kalendarz zespołu** (`VacationCalendar`) bez zmian — czyta OOO z `leave_requests` (pełen zakres), więc płatne dni nadal pokazują się jako urlop, mimo braku rekordu attendance.
 
