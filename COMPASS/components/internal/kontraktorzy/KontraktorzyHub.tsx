@@ -8,18 +8,17 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ContractorDialog } from './ContractorDialog'
-import { ConversationDialog } from './ConversationDialog'
-import { TaskDialog } from './TaskDialog'
 import { SprawyOtwartePanel } from './panels/SprawyOtwartePanel'
 import { OnboardingPanel } from './panels/OnboardingPanel'
 import { RetencjaPanel } from './panels/RetencjaPanel'
 import { OffboardingPanel } from './panels/OffboardingPanel'
 import { AnalitykaPanel } from './panels/AnalitykaPanel'
-import type {
-    ConversationListItem, ContractorListItem, ContractorDashboard, ClientDepartureRow,
-    EntryListItem, OnboardingQueueItem, ExitQueueItem, ContractorTaskListItem,
+import { todayISO } from './panels/shared'
+import {
+    isOpenConversation,
+    type ConversationListItem, type ContractorListItem, type ContractorDashboard, type ClientDepartureRow,
+    type EntryListItem, type OnboardingQueueItem, type ExitQueueItem, type ContractorTaskListItem,
 } from '@/lib/types/contractor'
-import type { OpenInboxTicketLite } from '@/lib/types/support'
 
 // Tab values — kept in sync with the sidebar deep-links (/internal/kontraktorzy?tab=…).
 const KONTRAKTOR_TABS = ['sprawy', 'onboarding', 'retencja', 'offboarding', 'analityka']
@@ -35,12 +34,11 @@ interface Props {
     onboardingQueue: OnboardingQueueItem[]
     exitQueue: ExitQueueItem[]
     tasks: ContractorTaskListItem[]
-    openInboxTickets: OpenInboxTicketLite[]
 }
 
 export function KontraktorzyHub({
     dashboard, conversations, contractors, entries, departures, tcmProfiles, contractorsLite,
-    onboardingQueue, exitQueue, tasks, openInboxTickets,
+    onboardingQueue, exitQueue, tasks,
 }: Props) {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -52,7 +50,11 @@ export function KontraktorzyHub({
         if (paramTab && KONTRAKTOR_TABS.includes(paramTab)) setTab(paramTab)
     }, [paramTab])
 
-    const openIssuesCount = openInboxTickets.length + tasks.filter((t) => t.status !== 'done').length
+    // "Sprawy otwarte" now scopes to contractor work only (inbox has its own sidebar link):
+    // open conversations + not-done department tasks. Shares isOpenConversation with the panel.
+    const today = todayISO()
+    const openIssuesCount = conversations.filter((c) => isOpenConversation(c, today)).length
+        + tasks.filter((t) => t.status !== 'done').length
 
     return (
         <div className="space-y-6">
@@ -63,11 +65,13 @@ export function KontraktorzyHub({
                         Opieka nad konsultantami u klientów wg ścieżki: onboarding → retencja → offboarding.
                     </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <ContractorDialog tcmProfiles={tcmProfiles} onSaved={refresh} />
-                    <ConversationDialog contractors={contractorsLite} tcmProfiles={tcmProfiles} onSaved={refresh} />
-                    <TaskDialog tcmProfiles={tcmProfiles} contractors={contractorsLite} onSaved={refresh} triggerVariant="secondary" />
-                </div>
+                {/* Phase 36 — header keeps only the primary "add contractor" action (hidden on
+                    Analityka). Conversation/task add live contextually in Retencja / Zadania. */}
+                {tab !== 'analityka' && (
+                    <div className="flex flex-wrap gap-2">
+                        <ContractorDialog tcmProfiles={tcmProfiles} onSaved={refresh} />
+                    </div>
+                )}
             </header>
 
             <Tabs value={tab} onValueChange={setTab}>
@@ -81,7 +85,6 @@ export function KontraktorzyHub({
 
                 <TabsContent value="sprawy">
                     <SprawyOtwartePanel
-                        openInboxTickets={openInboxTickets}
                         conversations={conversations}
                         tasks={tasks}
                         tcmProfiles={tcmProfiles}

@@ -465,6 +465,16 @@ export function isRetentionRisk(c: ConversationListItem): boolean {
     return riskCategory || riskStatus
 }
 
+/**
+ * "Open" conversation for the daily worklist: urgent / needs-contact, or a follow-up
+ * that is due (on or before `today`) and not yet resolved. Pure — derives from loaded
+ * data. Shared by the hub tab count and the "Sprawy otwarte" panel list so they agree.
+ */
+export function isOpenConversation(c: ConversationListItem, today: string): boolean {
+    if (c.status === 'pilne' || c.status === 'potrzebny_kontakt') return true
+    return c.follow_up_date != null && c.follow_up_date <= today && c.status !== 'rozwiazane'
+}
+
 /** Group open risk conversations by contractor, newest first, most-open first. */
 export function deriveAtRisk(conversations: ConversationListItem[]): AtRiskContractor[] {
     const byContractor = new Map<string, ConversationListItem[]>()

@@ -252,14 +252,3 @@ export interface InboxSummary {
     /** Open tickets with no assignee. */
     unassigned: number
 }
-
-// ─── Phase 35: open inbox ticket (lite) for the Talent Community "Sprawy otwarte" tab ──
-export interface OpenInboxTicketLite {
-    id: string
-    subject: string
-    status: TicketStatus
-    priority_level: InboxPriorityLevel
-    due_date: string | null
-    assignee_name: string | null
-    category_name_pl: string
-}
