@@ -3,6 +3,7 @@ import {
     splitLeaveWorkingDays,
     isContractorPaidVacation,
     PAID_LEAVE_ENTRY_SOURCE,
+    PAID_LEAVE_ENTRY_DESCRIPTION,
 } from '../leave-timesheet-split'
 
 const HOLIDAYS = [{ date: '2026-05-01', name_pl: 'Święto Pracy' }]
@@ -121,5 +122,13 @@ describe('splitLeaveWorkingDays — poza zakresem reguły (wszystko blocked)', (
 describe('constants', () => {
     it('source tag = leave_paid', () => {
         expect(PAID_LEAVE_ENTRY_SOURCE).toBe('leave_paid')
+    })
+
+    // Decyzja Artura (2026-06-03): płatny dzień z puli na TS = normalny dzień
+    // roboczy. Opis musi być identyczny z DEFAULT_QUICK_FILL_DESCRIPTION
+    // ('Praca standardowa'), żeby na PDF nie zdradzać że to urlop — pochodzenie
+    // z puli COMPASS śledzi wyłącznie przez source='leave_paid'.
+    it('opis auto-wpisu = "Praca standardowa" (wygląda jak normalny dzień pracy)', () => {
+        expect(PAID_LEAVE_ENTRY_DESCRIPTION).toBe('Praca standardowa')
     })
 })

@@ -18,8 +18,15 @@ import { VACATION_POOL_TYPES } from './leave-balance'
 
 /** Source tag dla auto-wpisanych godzin płatnego urlopu (rozszerza CHECK na timesheet_entries.source). */
 export const PAID_LEAVE_ENTRY_SOURCE = 'leave_paid'
-/** Opis auto-wpisu — wliczany do sumy/billingu, ale czytelnie oznaczony jako urlop. */
-export const PAID_LEAVE_ENTRY_DESCRIPTION = 'Urlop płatny (z puli)'
+/**
+ * Opis auto-wpisu płatnego urlopu z puli. Decyzja Artura (2026-06-03): na karcie
+ * pracy (TS/PDF) dzień płatny z puli ma wyglądać jak NORMALNY dzień roboczy —
+ * "Praca standardowa" (string identyczny z DEFAULT_QUICK_FILL_DESCRIPTION w
+ * lib/actions/internal-timesheet.ts). To że dzień pochodzi z puli urlopowej COMPASS
+ * śledzi WEWNĘTRZNIE przez source='leave_paid' (PAID_LEAVE_ENTRY_SOURCE) — nie przez
+ * opis. Nie zmieniaj tej wartości bez aktualizacji DEFAULT_QUICK_FILL_DESCRIPTION.
+ */
+export const PAID_LEAVE_ENTRY_DESCRIPTION = 'Praca standardowa'
 /** Standardowy dzień = 8h (spójne z STANDARD_DAILY_HOURS_MAX i quick-fill). */
 export const STANDARD_PAID_LEAVE_HOURS = 8
 
