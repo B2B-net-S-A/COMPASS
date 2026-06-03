@@ -528,6 +528,7 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
     // Phase 25a: validate substitute (must be a real HR-zone employee in tenant,
     // not the requester himself). Optional — sick_leave / single-day urlopy
     // mogą iść bez.
+    let substituteName: string | null = null
     if (input.substituteId) {
         if (input.substituteId === ctx.userId) {
             throw new Error('Nie możesz wybrać siebie jako zastępcy.')
@@ -535,15 +536,16 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
         const adminClient = createServiceClient()
         const { data: sub } = await adminClient
             .from('profiles')
-            .select('id, role')
+            .select('id, role, full_name, email')
             .eq('id', input.substituteId)
-            .maybeSingle<{ id: string; role: string }>()
+            .maybeSingle<{ id: string; role: string; full_name: string | null; email: string | null }>()
         if (!sub) {
             throw new Error('Wybrany zastępca nie istnieje.')
         }
         if (!['admin', 'internal', 'manager', 'finanse', 'talent_community'].includes(sub.role)) {
             throw new Error('Zastępca musi mieć dostęp do strefy HR (internal/manager/admin/finanse/TCM).')
         }
+        substituteName = sub.full_name ?? sub.email ?? null
     }
 
     const { data: inserted, error } = await supabase
@@ -594,6 +596,7 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
                 input.startDate,
                 input.endDate,
                 input.note ?? null,
+                substituteName,
             ).catch((e) => logCompat.error('[createLeaveRequest] notify failed:', e))
         }
         // H3.3: Push do adminów
@@ -631,6 +634,7 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
                         input.startDate,
                         input.endDate,
                         input.note ?? null,
+                        substituteName,
                     ).catch((e) => logCompat.error('[createLeaveRequest] manager notify failed:', e))
                 }
                 sendPushToUserId(mgr.id, {
