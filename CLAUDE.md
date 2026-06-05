@@ -957,6 +957,35 @@ Konsolidacja rozsypanego people-ops (Talent Community/Lifecycle/Kontraktorzy + 3
 
 **Follow-up (świadomie nie zrobione):** „contract step" = migracja backendu na czytanie mirror + drop legacy (duży, osobny — teraz legacy działa jako źródło prawdy). Patrz pamięć [[supabase-branch-empty-validate-readonly]].
 
+## Phase 38 — Talent Community: 5 elementów + upload plików wywiadów (PR #222, 2026-06-05)
+
+Rozbicie people-ops kontraktorskiego (Phase 37 scaliło je w Zgłoszenia + Onboarding&Exit) z powrotem na **5 dedykowanych elementów** wg ścieżki życia kontraktora, wszystkie w sidebarze. **Bez migracji** — reużywa tabel Phase 33 + bucketu `lifecycle-docs` (Phase 33c). Pełny raport: `docs/talent-community-5-elementow-completion-report.md`.
+
+**Sidebar (TCM + admin):**
+- **Talent Community** = Rozmowy / Onboarding / Exit / Kontraktorzy (zakładki huba `/internal/kontraktorzy?tab=…`) + **Analityka** (osobny route `/internal/analityka`) → 5 linków.
+- Nowa grupa **„Komunikacja"** = Zgłoszenia (skrzynka administracja@ + helpdesk) + Composer News — wydzielone z TC, nic nie usunięto („Zostaw osobno").
+- **„Pracownicy wewnętrzni"** (Lifecycle, Phase 22 — inna populacja) widoczne teraz też dla TCM/admin (`/internal/lifecycle`).
+
+**Elementy (4 zakładki huba `KontraktorzyHub` + panele w `components/internal/kontraktorzy/panels/`):**
+- **Rozmowy** (`RozmowyPanel`) — Zagrożeni (`deriveAtRisk`) + Logi rozmów (`contractor_conversations`) + import rozmów. (Roster wyszedł stąd do osobnego elementu Kontraktorzy.)
+- **Onboarding** (`OnboardingEntriesPanel`) — Wejścia (feed) + tabela Onboarding (przepisane Imię/Klient/Stanowisko/Rekruter/Start + **upload pliku „Onboarding interview"** per wiersz) + import wejść.
+- **Exit** (`ExitPanel`) — Zejścia (pełne kolumny) + Exit Interview (przepisane Imię/Klient/Stanowisko + **upload pliku „Exit Interview"**) + import zejść.
+- **Kontraktorzy** (`KontraktorzyRosterPanel`) — aktualni kontraktorzy ze stawkami: Imię, Klient, Rekruter, **Delivery Lead**, Data wejścia, **Stawka przychodowa/kosztowa, Marża**.
+
+**Źródła danych (nowe akcje w `lib/actions/contractors.ts`):**
+- `listContractorRoster()` — `placements` (status ≠ cancelled) ∪ `client_entries` (archiwum 2024), dedup po kluczu naturalnym (konsultant+klient+start), placement wygrywa. Stawki/DL/marża z tych tabel (NIE z `contractors`).
+- `listOnboardingEntries()` / `listExitDepartures()` — wejścia/zejścia wzbogacone o `contractor_id` + najnowszy wywiad (status + `attachments`).
+
+**Upload plików wywiadów (nowa funkcja — kolumna `attachments` JSONB istniała od Phase 33, brakowało UI/akcji):**
+- `uploadContractorInterviewFile(formData)` → upload do `lifecycle-docs/contractor-{onboarding|exit}/{contractorId}/`, dopina do `attachments` najnowszego wywiadu (tworzy wywiad gdy brak). Gdy wiersz niepowiązany — **find-or-create kontraktora po nazwisku** (`resolveOrCreateContractor`, normalizacja `normalizeContractorName`) + podlinkowanie wejścia/zejścia (`placements`/`client_entries`/`client_departures`).
+- `removeContractorInterviewFile` + `getContractorInterviewFileUrl` (signed URL 5 min). Walidacja ≤10 MB, PDF/Word/Excel/obrazy. Service client po guardzie (`requireLifecycleManagerAction`). Komponent `InterviewFileCell`.
+
+**Routing:** `kontraktorzy/page.tsx` z redirectu → ładowanie danych + `KontraktorzyHub` (4 zakładki); `[id]` detail bez zmian. `onboarding/page.tsx` → redirect `?tab=onboarding`. `/internal/analityka` i `/internal/zgloszenia` bez zmian.
+
+**Audit log:** `CONTRACTOR_ONBOARDING_INTERVIEW_FILE_UPLOADED`, `CONTRACTOR_EXIT_INTERVIEW_FILE_UPLOADED`, `CONTRACTOR_INTERVIEW_FILE_REMOVED`.
+
+**Loose ends (świadomie):** widok **Zadań** (Phase 34) zniknął z huba (nie ma w 5-elementowej specyfikacji; tworzenie z ticketu `TicketToTaskButton` nadal działa, brak widoku). Kilka osieroconych plików-paneli zostawione jako martwy kod (build przechodzi) — cleanup follow-up. Upload anchoruje do kontraktora, nie do konkretnego wejścia (wystarczające dla 1 bieżącego wejścia/osobę).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

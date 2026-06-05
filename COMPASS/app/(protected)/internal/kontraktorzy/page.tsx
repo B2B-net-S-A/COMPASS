@@ -1,12 +1,41 @@
-// Phase 37 — the old 5-tab Kontraktorzy hub is retired. Its content now lives in the unified
-// modules: onboarding/exit → /internal/onboarding, conversations/roster + tasks → /internal/zgloszenia
-// (Sprawy kontraktorskie), analytics → /internal/analityka. Contractor detail pages
-// (/internal/kontraktorzy/[id]) are unchanged and still linked from the new hubs.
+// Phase 38 — Talent Community / Kontraktorzy hub: five contractor-lifecycle elements. Four render
+// here as tabs (Rozmowy / Onboarding / Exit / Kontraktorzy); Analityka is its own route. Contractor
+// detail pages (/internal/kontraktorzy/[id]) are linked from the tables.
 
-import { redirect } from 'next/navigation'
+import { requireTalentCommunityOrAdminLayout } from '@/lib/auth/internal-guard'
+import {
+    listConversations,
+    listOnboardingEntries,
+    listExitDepartures,
+    listContractorRoster,
+    listTcmProfiles,
+    listContractors,
+} from '@/lib/actions/contractors'
+import { KontraktorzyHub } from '@/components/internal/kontraktorzy/KontraktorzyHub'
 
 export const dynamic = 'force-dynamic'
 
-export default function KontraktorzyMovedPage() {
-    redirect('/internal/onboarding')
+export default async function KontraktorzyPage() {
+    await requireTalentCommunityOrAdminLayout()
+
+    const [conversations, onboardingEntries, departures, roster, tcmProfiles, contractors] = await Promise.all([
+        listConversations({ limit: 800 }),
+        listOnboardingEntries(),
+        listExitDepartures(),
+        listContractorRoster(),
+        listTcmProfiles(),
+        listContractors(),
+    ])
+    const contractorsLite = contractors.map((c) => ({ id: c.id, full_name: c.full_name }))
+
+    return (
+        <KontraktorzyHub
+            conversations={conversations}
+            onboardingEntries={onboardingEntries}
+            departures={departures}
+            roster={roster}
+            tcmProfiles={tcmProfiles}
+            contractorsLite={contractorsLite}
+        />
+    )
 }

@@ -533,3 +533,56 @@ export interface ExitQueueItem {
     submitted_at: string | null
     formal_reason: string | null
 }
+
+// ─── Phase 38: 5-element Talent Community hub (Rozmowy / Onboarding / Exit / Kontraktorzy) ──
+/**
+ * One "Wejście" (placement or 2024 archive) augmented with its contractor link and the latest
+ * onboarding-interview attachments. Drives both the read-only "Wejścia" feed and the actionable
+ * "Onboarding" table (where the onboarding-interview file is uploaded per row).
+ */
+export interface OnboardingEntryItem {
+    entry_id: string
+    source: 'placement' | 'archive'
+    consultant_name: string
+    client_name: string
+    position: string | null
+    recruiter: string | null
+    start_date: string | null
+    /** Linked contractor, or null when the entry hasn't been matched to one yet. */
+    contractor_id: string | null
+    /** Latest onboarding interview for the contractor (null = none yet). */
+    interview_id: string | null
+    interview_status: InterviewStatus | null
+    attachments: InterviewAttachment[]
+}
+
+/**
+ * A recorded departure augmented with the latest exit-interview attachments. Drives both the full
+ * "Zejścia" table and the "Exit Interview" table (where the exit-interview file is uploaded).
+ */
+export interface ExitDepartureItem extends ClientDepartureRow {
+    interview_id: string | null
+    interview_status: InterviewStatus | null
+    attachments: InterviewAttachment[]
+}
+
+/**
+ * Current contractor roster with commercials — sourced from live placements (Phase 28) plus the
+ * 2024 archive, deduped by natural key. Surfaces the rate columns the contractor roster needs.
+ */
+export interface ContractorRosterItem {
+    id: string
+    source: 'placement' | 'archive'
+    consultant_name: string
+    client_name: string
+    recruiter: string | null
+    delivery_lead: string | null
+    start_date: string | null
+    revenue_rate: number | null
+    cost_rate: number | null
+    monthly_margin: number | null
+    contractor_id: string | null
+}
+
+/** File kinds that accept an interview attachment upload. */
+export type InterviewKind = 'onboarding' | 'exit'
