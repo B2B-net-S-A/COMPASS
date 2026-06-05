@@ -25,9 +25,7 @@ import {
     Plane,
     Wallet,
     Briefcase,
-    Headset,
     UserPlus,
-    LogOut,
     BarChart3,
     type LucideIcon,
 } from 'lucide-react'
@@ -85,7 +83,7 @@ interface NavGroup {
     links: NavLink[]
 }
 
-export function Sidebar({ role, user, permissions, forMobile = false, badges, isInboxHandler = false }: SidebarProps) {
+export function Sidebar({ role, user, permissions, forMobile = false, badges }: SidebarProps) {
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const { t } = useTranslation()
@@ -245,23 +243,18 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges, is
     // Phase 36 — the administracja@ inbox is now a first-class link (gated to inbox handlers),
     // no longer mirrored as a read-only table inside "Sprawy otwarte". Employee onboarding/exit
     // is a SEPARATE population in the standalone "Pracownicy wewnętrzni" group below.
+    // Phase 37 — consolidated to two grubsze moduły + analityka:
+    //   Zgłoszenia (skrzynka administracja@ + helpdesk konsultantów + sprawy kontraktorskie),
+    //   Onboarding & Exit (pracownicy wewnętrzni + konsultanci, jeden hub),
+    //   Analityka (powody zejść + typy zgłoszeń). Compliance i osobne zakładki Retencja/Offboarding
+    //   usunięte. Inbox/helpdesk żyją wewnątrz huba Zgłoszenia.
+    const ticketsBadge = (badges?.adminInbox ?? 0) + (badges?.adminTickets ?? 0)
     const talentCommunityLinks: NavLink[] = [
-        { name: 'Sprawy otwarte', href: '/internal/kontraktorzy?tab=sprawy', icon: Inbox, feature: null },
-        { name: 'Onboarding', href: '/internal/kontraktorzy?tab=onboarding', icon: UserPlus, feature: null },
-        { name: 'Retencja', href: '/internal/kontraktorzy?tab=retencja', icon: Headset, feature: null },
-        { name: 'Offboarding', href: '/internal/kontraktorzy?tab=offboarding', icon: LogOut, feature: null },
-        { name: 'Analityka', href: '/internal/kontraktorzy?tab=analityka', icon: BarChart3, feature: null },
-        { name: 'Compliance', href: '/admin/compliance', icon: ShieldCheck, feature: null },
+        { name: 'Zgłoszenia', href: '/internal/zgloszenia', icon: Inbox, feature: null, badgeCount: ticketsBadge > 0 ? ticketsBadge : undefined },
+        { name: 'Onboarding & Exit', href: '/internal/onboarding', icon: UserPlus, feature: null },
+        { name: 'Analityka', href: '/internal/analityka', icon: BarChart3, feature: null },
         { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
     ]
-    // Phase 36: the administracja@ inbox (formerly only reachable via the "Sprawy otwarte" table)
-    // is now a first-class link — but only for inbox handlers / admin, who can actually open
-    // /admin/inbox. The adminInbox badge moves here from "Sprawy otwarte".
-    if (isInboxHandler) {
-        talentCommunityLinks.unshift({
-            name: 'Skrzynka administracja@', href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox,
-        })
-    }
     const talentCommunityGroup: NavGroup = { heading: 'Talent Community', links: talentCommunityLinks }
 
     // Phase 22 / 34 — standalone Onboarding & Exit link for non-TCM/admin HR-zone roles
@@ -289,10 +282,11 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges, is
         // via this link — the dedicated "Finanse" group was removed.
         if (isAdmin || isFinance) out.push(internalAdminGroup)
         if (isManager) out.push(managerGroup)
-        // Phase 35 — Talent Community = contractor-journey sections (TCM + admin).
+        // Phase 37 — Talent Community = Zgłoszenia + Onboarding & Exit + Analityka (TCM + admin).
         if (isTalentCommunity || isAdmin) out.push(talentCommunityGroup)
-        // Employee onboarding/exit (separate population) is its own group for ALL HR-zone roles.
-        if (isHrZone) out.push(lifecycleGroup)
+        // Onboarding & Exit for the OTHER HR-zone roles (internal / finanse / manager) — their own
+        // team/self view at /internal/lifecycle. TCM + admin use the unified hub above instead.
+        if (isHrZone && !isTalentCommunity && !isAdmin) out.push(lifecycleGroup)
         // Platform administration sits last (admin only).
         if (isAdmin) out.push(adminGroup)
         return out
