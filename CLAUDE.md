@@ -932,6 +932,31 @@ Kierunek odwrotny do Phase 25 (Compass→Outlook). Pracownicy czasem ustawiają 
 
 **Świadomie poza zakresem:** badge „z Outlook OOF" w UI kolejki wniosków (follow-up — `source` już w DB), obsługa OOF `alwaysEnabled` (wymaga ręcznego wpisu), nudge do pracownika „złóż wniosek". **Reverse sync NIE cofa**: wyłączenie OOF nie kasuje już utworzonego wniosku (rozprzęgnięte).
 
+## Phase 37 — People-ops: scalenie w 2 moduły (Onboarding + Zgłoszenia), usunięcie Compliance/Retencja, analityka typów zgłoszeń (2026-06-05)
+
+Konsolidacja rozsypanego people-ops (Talent Community/Lifecycle/Kontraktorzy + 3 powierzchnie zgłoszeń) w **2 grube moduły + analityka**. PR #216 (główny) + #217 (hotfix). Pełen „full DB merge" zrealizowany jako **read-model** (nie przepisywanie backendu).
+
+**Architektura — read-model + sync triggery (KLUCZOWE):** legacy tabele zostają **źródłem prawdy** (RPC `start_onboarding_for_user`, triggery anonimizacji/transition, RLS, `lifecycle.ts`/`contractors.ts`/`support-*` — **bez zmian**). Zunifikowany store to mirror utrzymywany w spójności przez 6 `AFTER`-triggerów (`SECURITY DEFINER`, exception-safe → nigdy nie blokują legacy write). Nowe huby czytają mirror / komponują istniejące widoki. Zero rewrite backendu, w pełni odwracalne (drop mirror = rollback).
+
+**Migracje (additive, `*_legacy` NIE tworzone — legacy = source of truth):**
+- `20260608000001_phase37a` — `onboarding_cases` + `exit_cases` (`person_type` employee|contractor, `person_id` polimorficzny profiles|contractors), backfill **id-preserving**, RLS branched per typ. Mirror BEZ triggerów transition (te są na legacy).
+- `20260608000002_phase37b` — kategorie `contractor_conversation`/`contractor_task` + `support_contractor_meta` (1:1), fold rozmów/zadań do `support_tickets` (id = source UUID, idempotentnie), `is_contractor_category()`, RLS `support_tickets` rozszerzona o 3. gałąź `CASE` (inbox→handler / contractor→lifecycle / else→user; inbox+konsultant **verbatim**).
+- `20260608000003_phase37c` — 6 sync-triggerów legacy→mirror.
+
+**Aplikacja na prod:** przez Supabase MCP `apply_migration` (atomic). **Branch Supabase startuje pusty** (bez prod-danych) → backfill walidowany read-only SELECT-em na prodzie (status-mapy, 0 kolizji UUID, admin-fallback). Gotcha: `onboarding_progress.cancellation_reason` (NIE `cancelled_reason` — sprawdzaj realny schemat, nie docs).
+
+**UI (reuse komponentów):**
+- `/internal/zgloszenia` — Skrzynka (`KanbanBoard`) / Helpdesk (`listTickets`) / Sprawy kontraktorskie (`RetencjaPanel` — log rozmów + roster, treść z usuniętej Retencji).
+- `/internal/onboarding` — Pracownicy (queue + `HubActionButtons` + Szablony/Pracownicy/Archiwum) / Konsultanci (`OnboardingPanel` + exit).
+- `/internal/analityka` — `getContractorDashboard` (zejścia) + `getTicketTypeAnalytics` (`lib/actions/zgloszenia-analytics.ts` — typy/status/priorytet z **scalonego** `support_tickets`).
+- `Sidebar.tsx`: Talent Community = 4 linki (Zgłoszenia / Onboarding & Exit / Analityka / Composer News); `lifecycleGroup` tylko dla internal/finanse/manager (TCM+admin używają nowego huba).
+
+**Usunięcia (bez utraty danych):** `/admin/compliance` → redirect `/home` (tabele `um_*` + akcje logowania zostają — RODO); Retencja zakładka znika (`deriveAtRisk` zachowany); `/internal/kontraktorzy` (5 zakładek) → redirect `/internal/onboarding` (karty `[id]` bez zmian).
+
+**Gotcha (#217):** rozmowy zmirrorowane do `support_tickets` zanieczyszczały helpdesk — `listTickets` musi wykluczać też `contractor_%` (nie tylko `inbox_%`). Wzorzec: **każdy broad reader `support_tickets` poza inboxem/analityką wyklucza `inbox_%` ORAZ `contractor_%`**.
+
+**Follow-up (świadomie nie zrobione):** „contract step" = migracja backendu na czytanie mirror + drop legacy (duży, osobny — teraz legacy działa jako źródło prawdy). Patrz pamięć [[supabase-branch-empty-validate-readonly]].
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
