@@ -158,15 +158,19 @@ export function VacationCalendar({ data, role, status }: Props) {
         const holiday = holidayName.get(iso)
         if (holiday) return { bg: 'bg-muted', label: '', title: holiday }
         if (isWeekend(day)) return { bg: 'bg-muted/30', label: '', title: 'Weekend' }
+        // The status filter is per-day: when one status is picked, only that overlay
+        // is painted — the other status renders blank for that day.
         // Phase 29 — każdy urlop dowolnego typu → OOO (typ widoczny tylko w /internal?tab=leave).
-        if (leaveIdx.has(key)) {
+        if (statusFilter !== 'remote' && leaveIdx.has(key)) {
             return { bg: OOO_BG, label: OOO_LABEL, title: OOO_TITLE }
         }
-        const att = attIdx.get(key)
         // Attendance STRICT: jedyny attendance overlay to praca zdalna. Nieobecności
         // (delegacja/szkolenie/urlop) idą z leave_requests, nie z attendance_records.
-        if (att?.status === 'active' && att.location === 'remote') {
-            return { bg: 'bg-blue-500/40', label: 'Z', title: 'Praca zdalna' }
+        if (statusFilter !== 'ooo') {
+            const att = attIdx.get(key)
+            if (att?.status === 'active' && att.location === 'remote') {
+                return { bg: 'bg-blue-500/40', label: 'Z', title: 'Praca zdalna' }
+            }
         }
         return { bg: '', label: '', title: '' }
     }
@@ -307,8 +311,12 @@ export function VacationCalendar({ data, role, status }: Props) {
                 )}
 
                 <div className="mt-6 flex flex-wrap gap-2 text-[10px] items-center">
-                    <Badge className="bg-amber-500/40 text-amber-100 border-transparent">X — Out of Office</Badge>
-                    <Badge className="bg-blue-500/40 text-blue-100 border-transparent">Z — Zdalnie</Badge>
+                    {statusFilter !== 'remote' && (
+                        <Badge className="bg-amber-500/40 text-amber-100 border-transparent">X — Out of Office</Badge>
+                    )}
+                    {statusFilter !== 'ooo' && (
+                        <Badge className="bg-blue-500/40 text-blue-100 border-transparent">Z — Zdalnie</Badge>
+                    )}
                     <Badge variant="outline" className="bg-muted text-muted-foreground">
                         Święto / weekend
                     </Badge>
