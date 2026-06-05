@@ -186,6 +186,10 @@ export type AuditAction =
     | 'CONTRACTOR_TASK_CREATED'
     | 'CONTRACTOR_TASK_UPDATED'
     | 'CONTRACTOR_TASK_DELETED'
+    // Phase 38 — interview file uploads (Onboarding / Exit elements)
+    | 'CONTRACTOR_ONBOARDING_INTERVIEW_FILE_UPLOADED'
+    | 'CONTRACTOR_EXIT_INTERVIEW_FILE_UPLOADED'
+    | 'CONTRACTOR_INTERVIEW_FILE_REMOVED'
 
 export async function logAudit(
     userId: string | null,

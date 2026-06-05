@@ -4,10 +4,12 @@
 // Authorization: admin OR talent_community (requireLifecycleManagerAction). Writes use the
 // service client after the guard — the action is the trusted write path; RLS is defense-in-depth.
 
+import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { requireLifecycleManagerAction } from '@/lib/auth/internal-guard'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logAudit } from '@/lib/actions/audit'
+import { normalizeContractorName } from '@/lib/types/contractor'
 import type {
     ClientDepartureRow,
     ClientEntryRow,
@@ -18,6 +20,7 @@ import type {
     ContractorFilters,
     ContractorListItem,
     ContractorOnboardingInterviewRow,
+    ContractorRosterItem,
     ContractorRow,
     ConversationCategory,
     ConversationFilters,
@@ -29,14 +32,48 @@ import type {
     ContractorTaskRow,
     ContractorTaskStatus,
     EntryListItem,
+    ExitDepartureItem,
     ExitQueueItem,
+    InterviewAttachment,
+    InterviewKind,
     InterviewStatus,
+    OnboardingEntryItem,
     OnboardingQueueItem,
     WhoResigned,
 } from '@/lib/types/contractor'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 const HUB = '/internal/kontraktorzy'
+
+// ─── Interview file uploads (Phase 38) ───────────────────────────────────────
+// Bucket + prefixes provisioned in Phase 33c. Writes/reads go through the service client after the
+// guard (the action is the trusted path); the file never touches a client-readable bucket directly.
+const INTERVIEW_BUCKET = 'lifecycle-docs'
+const MAX_INTERVIEW_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
+const ALLOWED_INTERVIEW_MIME = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+])
+
+function sanitizeFileName(name: string): string {
+    return name
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/_+/g, '_')
+}
+
+async function fileSha256(file: File): Promise<string> {
+    const buf = Buffer.from(await file.arrayBuffer())
+    return createHash('sha256').update(buf).digest('hex')
+}
 
 interface ProfileLite {
     id: string
@@ -798,4 +835,339 @@ export async function deleteTask(id: string): Promise<void> {
     if (error) throw new Error(`Nie udało się usunąć zadania: ${error.message}`)
     await logAudit(ctx.userId, 'CONTRACTOR_TASK_DELETED', { task_id: id })
     revalidatePath(HUB)
+}
+
+// ─── Phase 38: Onboarding / Exit / Roster lists for the 5-element hub ──────────
+/** Latest interview (id, status, attachments) per contractor for a given kind. */
+async function latestInterviewByContractor(
+    admin: ServiceClient,
+    kind: InterviewKind,
+    contractorIds: string[],
+): Promise<Map<string, { id: string; status: InterviewStatus; attachments: InterviewAttachment[] }>> {
+    const map = new Map<string, { id: string; status: InterviewStatus; attachments: InterviewAttachment[] }>()
+    const ids = Array.from(new Set(contractorIds.filter(Boolean)))
+    if (ids.length === 0) return map
+    const table = kind === 'onboarding' ? 'contractor_onboarding_interviews' : 'contractor_exit_interviews'
+    const { data } = await admin
+        .from(table)
+        .select('id, contractor_id, status, attachments, created_at')
+        .in('contractor_id', ids)
+        .order('created_at', { ascending: false })
+    for (const r of (data ?? []) as Array<{ id: string; contractor_id: string; status: InterviewStatus; attachments: InterviewAttachment[] | null }>) {
+        if (!map.has(r.contractor_id)) {
+            map.set(r.contractor_id, { id: r.id, status: r.status, attachments: r.attachments ?? [] })
+        }
+    }
+    return map
+}
+
+/**
+ * "Wejścia" feed enriched with contractor link + latest onboarding-interview attachments. Drives
+ * both the read-only Wejścia table and the actionable Onboarding table (interview file upload).
+ */
+export async function listOnboardingEntries(filters: { client?: string } = {}): Promise<OnboardingEntryItem[]> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+
+    let eq = admin
+        .from('client_entries')
+        .select('id, contractor_id, consultant_name, client_name, position, recruiter_raw, start_date')
+        .order('start_date', { ascending: false, nullsFirst: false })
+    if (filters.client) eq = eq.ilike('client_name', `%${filters.client}%`)
+    let pq = admin
+        .from('placements')
+        .select('id, contractor_id, consultant_name, client_name, position, recruiter_raw, start_date, status')
+        .neq('status', 'cancelled')
+        .order('start_date', { ascending: false })
+    if (filters.client) pq = pq.ilike('client_name', `%${filters.client}%`)
+    const [entries, placements] = await Promise.all([eq, pq])
+
+    const rows: Array<Omit<OnboardingEntryItem, 'interview_id' | 'interview_status' | 'attachments'>> = [
+        ...((placements.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; position: string | null; recruiter_raw: string | null; start_date: string | null }>).map((p) => ({
+            entry_id: p.id,
+            source: 'placement' as const,
+            consultant_name: p.consultant_name,
+            client_name: p.client_name,
+            position: p.position,
+            recruiter: p.recruiter_raw,
+            start_date: p.start_date,
+            contractor_id: p.contractor_id,
+        })),
+        ...((entries.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; position: string | null; recruiter_raw: string | null; start_date: string | null }>).map((e) => ({
+            entry_id: e.id,
+            source: 'archive' as const,
+            consultant_name: e.consultant_name,
+            client_name: e.client_name,
+            position: e.position,
+            recruiter: e.recruiter_raw,
+            start_date: e.start_date,
+            contractor_id: e.contractor_id,
+        })),
+    ].sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''))
+
+    const interviews = await latestInterviewByContractor(admin, 'onboarding', rows.map((r) => r.contractor_id ?? ''))
+    return rows.map((r) => {
+        const iv = r.contractor_id ? interviews.get(r.contractor_id) : undefined
+        return { ...r, interview_id: iv?.id ?? null, interview_status: iv?.status ?? null, attachments: iv?.attachments ?? [] }
+    })
+}
+
+/** Recorded departures enriched with latest exit-interview attachments (Zejścia + Exit Interview). */
+export async function listExitDepartures(filters: { client?: string } = {}): Promise<ExitDepartureItem[]> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    let q = admin.from('client_departures').select('*').order('departure_date', { ascending: false, nullsFirst: false })
+    if (filters.client) q = q.ilike('client_name', `%${filters.client}%`)
+    const { data } = await q
+    const rows = (data ?? []) as ClientDepartureRow[]
+    if (rows.length === 0) return []
+
+    const interviews = await latestInterviewByContractor(admin, 'exit', rows.map((r) => r.contractor_id ?? ''))
+    return rows.map((r) => {
+        const iv = r.contractor_id ? interviews.get(r.contractor_id) : undefined
+        return { ...r, interview_id: iv?.id ?? null, interview_status: iv?.status ?? null, attachments: iv?.attachments ?? [] }
+    })
+}
+
+/**
+ * Current contractor roster with commercials — live placements (non-cancelled) + the 2024 archive,
+ * deduped by natural key (consultant + client + start), placements winning. Includes the rate columns.
+ */
+export async function listContractorRoster(filters: { client?: string; search?: string } = {}): Promise<ContractorRosterItem[]> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+
+    const [placements, entries] = await Promise.all([
+        admin
+            .from('placements')
+            .select('id, contractor_id, consultant_name, client_name, recruiter_raw, delivery_lead_raw, start_date, revenue_rate, cost_rate, monthly_margin, status')
+            .neq('status', 'cancelled')
+            .order('start_date', { ascending: false }),
+        admin
+            .from('client_entries')
+            .select('id, contractor_id, consultant_name, client_name, recruiter_raw, delivery_lead_raw, start_date, revenue_rate, cost_rate, monthly_margin')
+            .order('start_date', { ascending: false, nullsFirst: false }),
+    ])
+
+    const naturalKey = (consultant: string, client: string, start: string | null) =>
+        `${consultant.trim().toLowerCase()}|${client.trim().toLowerCase()}|${start ?? ''}`
+    const byKey = new Map<string, ContractorRosterItem>()
+
+    for (const p of (placements.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; recruiter_raw: string | null; delivery_lead_raw: string | null; start_date: string | null; revenue_rate: number | null; cost_rate: number | null; monthly_margin: number | null }>) {
+        byKey.set(naturalKey(p.consultant_name, p.client_name, p.start_date), {
+            id: p.id,
+            source: 'placement',
+            consultant_name: p.consultant_name,
+            client_name: p.client_name,
+            recruiter: p.recruiter_raw,
+            delivery_lead: p.delivery_lead_raw,
+            start_date: p.start_date,
+            revenue_rate: p.revenue_rate,
+            cost_rate: p.cost_rate,
+            monthly_margin: p.monthly_margin,
+            contractor_id: p.contractor_id,
+        })
+    }
+    for (const e of (entries.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; recruiter_raw: string | null; delivery_lead_raw: string | null; start_date: string | null; revenue_rate: number | null; cost_rate: number | null; monthly_margin: number | null }>) {
+        const key = naturalKey(e.consultant_name, e.client_name, e.start_date)
+        if (byKey.has(key)) continue // placement wins
+        byKey.set(key, {
+            id: e.id,
+            source: 'archive',
+            consultant_name: e.consultant_name,
+            client_name: e.client_name,
+            recruiter: e.recruiter_raw,
+            delivery_lead: e.delivery_lead_raw,
+            start_date: e.start_date,
+            revenue_rate: e.revenue_rate,
+            cost_rate: e.cost_rate,
+            monthly_margin: e.monthly_margin,
+            contractor_id: e.contractor_id,
+        })
+    }
+
+    let out = Array.from(byKey.values()).sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''))
+    if (filters.client) out = out.filter((r) => r.client_name.toLowerCase().includes(filters.client!.toLowerCase()))
+    if (filters.search) {
+        const s = filters.search.toLowerCase()
+        out = out.filter((r) => r.consultant_name.toLowerCase().includes(s) || r.client_name.toLowerCase().includes(s))
+    }
+    return out
+}
+
+// ─── Phase 38: interview file uploads ─────────────────────────────────────────
+/** Find a contractor by exact (case-insensitive) name, or create one; optionally link the source entry. */
+async function resolveOrCreateContractor(
+    admin: ServiceClient,
+    ctxUserId: string,
+    input: {
+        consultantName: string
+        client?: string | null
+        position?: string | null
+        status?: ContractorStatus
+        entrySource?: 'placement' | 'archive' | 'departure' | null
+        entryId?: string | null
+    },
+): Promise<string> {
+    const name = input.consultantName.trim()
+    if (name.length < 2) throw new Error('Brak imienia i nazwiska kontraktora — nie mogę powiązać wywiadu.')
+
+    // Match on normalized name (case/whitespace-insensitive) among existing contractors.
+    const norm = normalizeContractorName(name)
+    const { data: candidates } = await admin.from('contractors').select('id, full_name').ilike('full_name', name)
+    let contractorId = ((candidates ?? []) as Array<{ id: string; full_name: string }>)
+        .find((c) => normalizeContractorName(c.full_name) === norm)?.id ?? null
+
+    if (!contractorId) {
+        const { data: created, error } = await admin
+            .from('contractors')
+            .insert({
+                full_name: name,
+                current_client: input.client?.trim() || null,
+                current_position: input.position?.trim() || null,
+                status: input.status ?? 'active',
+                imported_by: ctxUserId,
+            })
+            .select('id')
+            .single()
+        if (error || !created) {
+            if (error?.code === '23505') {
+                const { data: again } = await admin.from('contractors').select('id').ilike('full_name', name).limit(1)
+                contractorId = ((again ?? []) as Array<{ id: string }>)[0]?.id ?? null
+            }
+            if (!contractorId) throw new Error(`Nie udało się utworzyć kontraktora: ${error?.message ?? 'unknown'}`)
+        } else {
+            contractorId = (created as { id: string }).id
+            await logAudit(ctxUserId, 'CONTRACTOR_CREATED', { contractor_id: contractorId, full_name: name, via: 'interview_upload' })
+        }
+    }
+
+    // Link the source row so the file shows up against it on next render (only when currently unlinked).
+    if (input.entryId && input.entrySource) {
+        const table =
+            input.entrySource === 'placement' ? 'placements'
+            : input.entrySource === 'archive' ? 'client_entries'
+            : 'client_departures'
+        await admin.from(table).update({ contractor_id: contractorId }).eq('id', input.entryId).is('contractor_id', null)
+    }
+    return contractorId
+}
+
+/**
+ * Upload an onboarding/exit interview file. Resolves (or creates + links) the contractor when only
+ * an entry/departure identity is known, appends the file to the latest interview's attachments
+ * (creating the interview if none exists yet).
+ */
+export async function uploadContractorInterviewFile(formData: FormData): Promise<{ contractorId: string; attachment: InterviewAttachment }> {
+    const ctx = await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+
+    const kind = (formData.get('kind')?.toString() ?? '') as InterviewKind
+    if (kind !== 'onboarding' && kind !== 'exit') throw new Error('Nieprawidłowy typ wywiadu.')
+    const file = formData.get('file') as File | null
+    if (!file || file.size === 0) throw new Error('Brak pliku.')
+    if (file.size > MAX_INTERVIEW_FILE_BYTES) throw new Error('Plik za duży (max 10 MB).')
+    if (file.type && !ALLOWED_INTERVIEW_MIME.has(file.type)) {
+        throw new Error('Niedozwolony format. Dozwolone: PDF, Word, Excel, obrazy.')
+    }
+
+    const explicitContractorId = formData.get('contractorId')?.toString() || null
+    const contractorId = explicitContractorId ?? await resolveOrCreateContractor(admin, ctx.userId, {
+        consultantName: formData.get('consultantName')?.toString() ?? '',
+        client: formData.get('client')?.toString() ?? null,
+        position: formData.get('position')?.toString() ?? null,
+        status: kind === 'exit' ? 'offboarding' : 'onboarding',
+        entrySource: (formData.get('entrySource')?.toString() || null) as 'placement' | 'archive' | 'departure' | null,
+        entryId: formData.get('entryId')?.toString() || null,
+    })
+
+    const table = kind === 'onboarding' ? 'contractor_onboarding_interviews' : 'contractor_exit_interviews'
+
+    // Latest interview for this contractor + kind, or create one carrying the contractor snapshot.
+    const { data: existing } = await admin
+        .from(table)
+        .select('id, attachments')
+        .eq('contractor_id', contractorId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+    let interviewId = ((existing ?? []) as Array<{ id: string; attachments: InterviewAttachment[] | null }>)[0]?.id ?? null
+    let attachments = ((existing ?? []) as Array<{ id: string; attachments: InterviewAttachment[] | null }>)[0]?.attachments ?? []
+
+    if (!interviewId) {
+        const { data: c } = await admin.from('contractors').select('current_client, current_position').eq('id', contractorId).single()
+        const snap = (c ?? {}) as { current_client: string | null; current_position: string | null }
+        const { data: created, error: createErr } = await admin
+            .from(table)
+            .insert({ contractor_id: contractorId, client_snapshot: snap.current_client, position_snapshot: snap.current_position, status: 'scheduled', created_by: ctx.userId })
+            .select('id, attachments')
+            .single()
+        if (createErr || !created) throw new Error(`Nie udało się utworzyć wywiadu: ${createErr?.message ?? 'unknown'}`)
+        interviewId = (created as { id: string }).id
+        attachments = ((created as { attachments: InterviewAttachment[] | null }).attachments) ?? []
+    }
+
+    const prefix = kind === 'onboarding' ? 'contractor-onboarding' : 'contractor-exit'
+    const path = `${prefix}/${contractorId}/${Date.now()}_${sanitizeFileName(file.name)}`
+    const { error: uploadErr } = await admin.storage.from(INTERVIEW_BUCKET).upload(path, file, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+    })
+    if (uploadErr) throw new Error(`Nie udało się wgrać pliku: ${uploadErr.message}`)
+
+    const attachment: InterviewAttachment = {
+        path,
+        name: file.name,
+        size: file.size,
+        hash: await fileSha256(file),
+        uploaded_at: new Date().toISOString(),
+    }
+    const nextAttachments = [...attachments, attachment]
+    const updatePatch: Record<string, unknown> = { attachments: nextAttachments, updated_at: new Date().toISOString() }
+    const { error: updErr } = await admin.from(table).update(updatePatch).eq('id', interviewId)
+    if (updErr) {
+        await admin.storage.from(INTERVIEW_BUCKET).remove([path]).catch(() => undefined)
+        throw new Error(`Nie udało się zapisać załącznika: ${updErr.message}`)
+    }
+
+    await logAudit(ctx.userId, kind === 'onboarding' ? 'CONTRACTOR_ONBOARDING_INTERVIEW_FILE_UPLOADED' : 'CONTRACTOR_EXIT_INTERVIEW_FILE_UPLOADED', {
+        contractor_id: contractorId,
+        interview_id: interviewId,
+        file: attachment.name,
+        size: attachment.size,
+    })
+    revalidatePath(HUB)
+    revalidatePath(`${HUB}/${contractorId}`)
+    return { contractorId, attachment }
+}
+
+/** Remove one attachment from a contractor's latest interview of the given kind (best-effort storage delete). */
+export async function removeContractorInterviewFile(kind: InterviewKind, contractorId: string, path: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    const table = kind === 'onboarding' ? 'contractor_onboarding_interviews' : 'contractor_exit_interviews'
+    const { data } = await admin
+        .from(table)
+        .select('id, attachments')
+        .eq('contractor_id', contractorId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+    const row = ((data ?? []) as Array<{ id: string; attachments: InterviewAttachment[] | null }>)[0]
+    if (!row) throw new Error('Wywiad nie znaleziony.')
+    const next = (row.attachments ?? []).filter((a) => a.path !== path)
+    const removePatch: Record<string, unknown> = { attachments: next, updated_at: new Date().toISOString() }
+    const { error } = await admin.from(table).update(removePatch).eq('id', row.id)
+    if (error) throw new Error(`Nie udało się usunąć załącznika: ${error.message}`)
+    await admin.storage.from(INTERVIEW_BUCKET).remove([path]).catch(() => undefined)
+    await logAudit(ctx.userId, 'CONTRACTOR_INTERVIEW_FILE_REMOVED', { contractor_id: contractorId, kind, path })
+    revalidatePath(HUB)
+    revalidatePath(`${HUB}/${contractorId}`)
+}
+
+/** Short-lived signed URL to view/download an uploaded interview attachment. */
+export async function getContractorInterviewFileUrl(path: string): Promise<string> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+    const { data, error } = await admin.storage.from(INTERVIEW_BUCKET).createSignedUrl(path, 300)
+    if (error || !data?.signedUrl) throw new Error('Nie udało się wygenerować linku do pliku.')
+    return data.signedUrl
 }
