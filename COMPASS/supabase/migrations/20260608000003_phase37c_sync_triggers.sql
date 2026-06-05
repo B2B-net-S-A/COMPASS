@@ -44,7 +44,7 @@ BEGIN
         NEW.checkin_day1_at, NEW.checkin_day1_score, NEW.checkin_day1_note,
         NEW.checkin_day7_at, NEW.checkin_day7_score, NEW.checkin_day7_note,
         NEW.checkin_day30_at, NEW.checkin_day30_score, NEW.checkin_day30_note,
-        NEW.started_at, NEW.completed_at, NEW.cancelled_at, NEW.cancelled_by, NEW.cancelled_reason,
+        NEW.started_at, NEW.completed_at, NEW.cancelled_at, NEW.cancelled_by, NEW.cancellation_reason,
         NEW.created_at, NEW.updated_at
     )
     ON CONFLICT (id) DO UPDATE SET

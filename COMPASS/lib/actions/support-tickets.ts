@@ -144,19 +144,22 @@ export async function listTickets(options: ListTicketsOptions): Promise<SupportA
         const offset = Math.max(0, options.offset ?? 0)
 
         // Phase 10: exclude inbox-* categories — those have their own queue at /admin/inbox.
-        const { data: inboxCats } = await supabase
+        // Phase 37: also exclude contractor-* categories — contractor conversations/tasks are
+        // mirrored into support_tickets but belong to the Zgłoszenia "Sprawy kontraktorskie" view,
+        // not the consultant helpdesk.
+        const { data: excludedCats } = await supabase
             .from('support_categories')
             .select('id')
-            .like('slug', 'inbox_%')
-        const inboxCategoryIds = (inboxCats ?? []).map((c: { id: string }) => c.id)
+            .or('slug.like.inbox_%,slug.like.contractor_%')
+        const excludedCategoryIds = (excludedCats ?? []).map((c: { id: string }) => c.id)
 
         let query = supabase
             .from('support_tickets')
             .select('*', { count: 'exact' })
             .order('updated_at', { ascending: false })
 
-        if (inboxCategoryIds.length > 0) {
-            query = query.not('category_id', 'in', `(${inboxCategoryIds.join(',')})`)
+        if (excludedCategoryIds.length > 0) {
+            query = query.not('category_id', 'in', `(${excludedCategoryIds.join(',')})`)
         }
         if (options.scope === 'mine') {
             query = query.eq('user_id', user.id)
