@@ -162,7 +162,7 @@ SELECT
     p.checkin_day1_at, p.checkin_day1_score, p.checkin_day1_note,
     p.checkin_day7_at, p.checkin_day7_score, p.checkin_day7_note,
     p.checkin_day30_at, p.checkin_day30_score, p.checkin_day30_note,
-    p.started_at, p.completed_at, p.cancelled_at, p.cancelled_by, p.cancelled_reason,
+    p.started_at, p.completed_at, p.cancelled_at, p.cancelled_by, p.cancellation_reason,
     p.created_at, p.updated_at
 FROM onboarding_progress p
 ON CONFLICT (id) DO NOTHING;
