@@ -1,13 +1,14 @@
 import { getTeamCalendar } from '@/lib/actions/internal-attendance'
-import { VacationCalendar } from '@/components/internal/VacationCalendar'
+import { VacationCalendar, type CalendarStatusFilter } from '@/components/internal/VacationCalendar'
 
 interface Props {
     year?: number
     month?: number
-    filter?: 'all' | 'internal' | 'admin'
+    role?: string
+    status?: CalendarStatusFilter
 }
 
-export async function CalendarPanel({ year, month, filter = 'all' }: Props) {
+export async function CalendarPanel({ year, month, role = 'all', status = 'all' }: Props) {
     const now = new Date()
     const y = year ?? now.getFullYear()
     const m = Math.min(12, Math.max(1, month ?? now.getMonth() + 1))
@@ -20,10 +21,10 @@ export async function CalendarPanel({ year, month, filter = 'all' }: Props) {
                 <p className="text-sm text-muted-foreground mt-1">
                     Widok wszystkich pracowników strefy HR (wewnętrzni, managerowie, finanse,
                     talent community, admini) na cały miesiąc. Pokazuje zaakceptowane urlopy
-                    (jako Out of Office) i pracę zdalną.
+                    (jako Out of Office) i pracę zdalną. Filtruj po roli i statusie.
                 </p>
             </div>
-            <VacationCalendar data={data} filter={filter} />
+            <VacationCalendar data={data} role={role} status={status} />
         </section>
     )
 }
