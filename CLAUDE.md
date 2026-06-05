@@ -902,6 +902,36 @@ Usunięte panele: `PulpitPanel`, `OpiekaPanel`, `ExitPanel` (treść rozdzielona
 
 **Sidebar (`Sidebar.tsx`):** grupa „Talent Community" = **5 deep-linków do zakładek huba** (`/internal/kontraktorzy?tab=sprawy|onboarding|retencja|offboarding|analityka`) + Compliance + Composer News. Skrzynka administracja@ usunięta z sidebara (jest w „Sprawach otwartych"). „Onboarding pracowników (wewn.)" przeniesiony do osobnej grupy „Lifecycle" (pokazywanej teraz dla WSZYSTKICH HR-zone, nie tylko internal/finanse/manager — to inna populacja niż kontraktorzy). Hub czyta `?tab=` (`useSearchParams` + sync `useEffect`); active-state w sidebarze rozpoznaje `?tab=` (default = `sprawy`).
 
+## Phase 36 — Reverse sync: Outlook OOF → auto-pending wnioski urlopowe (2026-06-05)
+
+Kierunek odwrotny do Phase 25 (Compass→Outlook). Pracownicy czasem ustawiają **Out of Office w Outlooku bez wniosku urlopowego w COMPASS** → kalendarz zespołu (czyta tylko `leave_requests`) systemowo niedoszacowuje nieobecności. Cron wykrywa takie luki i tworzy **PENDING** wniosek do akceptacji w normalnej kolejce — **człowiek w pętli, nic auto-zatwierdzane**. Integracja jest teraz dwustronna.
+
+**Mechanizm** (`GET /api/cron/oof-reconcile`, `withCronAuth`, service-role):
+1. Skan OOF każdej skrzynki strefy HR przez Graph (`getCurrentOof`; uprawnienia `MailboxSettings.Read` już są — skan zwrócił 37×200).
+2. Pomija OOF ustawione przez Compass (marker `compass-managed-oof-v1`) — już mirrorują urlop (Phase 25d).
+3. Dla OOF ustawionego ręcznie: brakujące dni robocze = zakres OOF − weekendy − święta (`public_holidays`) − istniejące urlopy (`approved`/`pending` + odrzucony `outlook_oof`).
+4. Każdy ciągły run brakujących dni → 1 PENDING `leave_request` (`vacation`, `source='outlook_oof'`); split płatny/bezpłatny jak `createLeaveOnBehalf` (`computePaidUnpaidSplit`).
+
+**Reguła dat OOF:** koniec o północy Warszawy = **exclusive** (Graph/Compass piszą koniec = ostatniDzień+1 @00:00); inny czas = **inclusive** (np. „wracam 16:00"). Konwersja przez `Intl` w `Europe/Warsaw` (DST-safe).
+
+**Idempotencja:** dzień pokryty `approved`/`pending` nie jest ponawiany; odrzucony `outlook_oof` też (żeby nie zapętlić po odrzuceniu przez managera). `alwaysEnabled` / OOF bez dat → flaga w `errors`, **nie zgadujemy** zakresu.
+
+**Schema:** migracja `20260607000002_phase36_leave_source.sql` — `leave_requests.source TEXT` (NULL/`self` / `on_behalf` / `outlook_oof`) + partial index `idx_leave_source_oof`. `created_by` (NOT NULL) = system actor (`OOF_RECONCILE_ACTOR_ID` lub pierwszy admin).
+
+**Pliki:** `lib/oof/oof-dates.ts` (czyste, deterministyczne helpery: konwersja dat + run-grupowanie + 9 testów), `lib/oof/reconcile.ts` (orchestrator skan→split→insert), `app/api/cron/oof-reconcile/route.ts`.
+
+**Coolify cron (dodany 2026-06-05, scheduled_tasks id 15):**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `oof-reconcile` | `0 6 * * *` | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/oof-reconcile"` |
+
+**Weryfikacja (2026-06-05):** live tick — 37 skrzynek, 10 OOF-Compass (pominięte) / 10 OOF-user, `gapsFound=0`, `created=0`, `errors=[]` (0 fałszywych alarmów). Przy okazji dorejestrowano 4 zaległe luki ręcznie przez „Wpisz urlop za pracownika": Klaudia Uliasz 05.06, Michał Stankiewicz 05.06, Marcin Kraszewski 03.06, Dorota Głowczyńska 01.06 (dwie ostatnie jako cały dzień — OOF od popołudnia, możliwe pół dnia, flaga w notatce).
+
+**Opcjonalny env:** `OOF_RECONCILE_ACTOR_ID` — UUID profilu jako `created_by` auto-wniosków (domyślnie pierwszy admin chronologicznie).
+
+**Świadomie poza zakresem:** badge „z Outlook OOF" w UI kolejki wniosków (follow-up — `source` już w DB), obsługa OOF `alwaysEnabled` (wymaga ręcznego wpisu), nudge do pracownika „złóż wniosek". **Reverse sync NIE cofa**: wyłączenie OOF nie kasuje już utworzonego wniosku (rozprzęgnięte).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
