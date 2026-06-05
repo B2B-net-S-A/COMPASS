@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { eachDayOfInterval, endOfMonth, format, isWeekend, parseISO, startOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -8,13 +8,25 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { ChevronLeft, ChevronRight, X as XIcon } from 'lucide-react'
 import { roleLabelPl } from '@/lib/types/role'
 import type { TeamCalendarData } from '@/lib/actions/internal-attendance'
 
+// Status the public calendar can filter by (mirrors the 2 overlay types it renders).
+export type CalendarStatusFilter = 'all' | 'ooo' | 'remote'
+
 interface Props {
     data: TeamCalendarData
-    filter: 'all' | 'internal' | 'admin'
+    // Initial filter values (from URL) — persisted across month navigation.
+    role: string
+    status: CalendarStatusFilter
 }
 
 interface CellInfo {
@@ -34,19 +46,55 @@ const OOO_BG = 'bg-amber-500/40'
 const OOO_LABEL = 'X'
 const OOO_TITLE = 'Out of Office'
 
-export function VacationCalendar({ data, filter }: Props) {
+// Stable display order for the role dropdown (HR-zone roles present on the calendar).
+const ROLE_ORDER = ['internal', 'manager', 'finanse', 'talent_community', 'admin']
+
+export function VacationCalendar({ data, role, status }: Props) {
     const router = useRouter()
+
+    // Filters live as client state (all data is already on the client) so toggling
+    // is instant — no server round-trip. Month navigation re-seeds them from the URL.
+    const [roleFilter, setRoleFilter] = useState<string>(role)
+    const [statusFilter, setStatusFilter] = useState<CalendarStatusFilter>(status)
 
     const monthStart = startOfMonth(new Date(data.year, data.month - 1, 1))
     const monthEnd = endOfMonth(monthStart)
     const days = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
-    // Filter employees
+    // user_ids actually on the calendar that have each status this month. The server
+    // already scoped leaves (approved, overlapping month) and attendances (active +
+    // remote, within month), so membership alone implies ≥1 matching day. Intersect
+    // with the roster so counts never include off-calendar users (e.g. exited).
+    const employeeIds = useMemo(() => new Set(data.employees.map((e) => e.id)), [data.employees])
+    const oooUserIds = useMemo(
+        () => new Set(data.leaves.map((l) => l.user_id).filter((id) => employeeIds.has(id))),
+        [data.leaves, employeeIds],
+    )
+    const remoteUserIds = useMemo(
+        () => new Set(data.attendances.map((a) => a.user_id).filter((id) => employeeIds.has(id))),
+        [data.attendances, employeeIds],
+    )
+
+    // Role options derived from the roster actually present this month (+ counts).
+    const roleOptions = useMemo(() => {
+        const counts = new Map<string, number>()
+        for (const e of data.employees) counts.set(e.role, (counts.get(e.role) ?? 0) + 1)
+        const present = ROLE_ORDER.filter((r) => counts.has(r))
+        for (const r of Array.from(counts.keys())) if (!present.includes(r)) present.push(r)
+        return present.map((r) => ({ value: r, label: roleLabelPl(r), count: counts.get(r) ?? 0 }))
+    }, [data.employees])
+
+    // Apply role + status filters (AND).
     const employees = useMemo(() => {
-        if (filter === 'internal') return data.employees.filter((e) => e.role === 'internal')
-        if (filter === 'admin') return data.employees.filter((e) => e.role === 'admin')
-        return data.employees
-    }, [data.employees, filter])
+        return data.employees.filter((e) => {
+            if (roleFilter !== 'all' && e.role !== roleFilter) return false
+            if (statusFilter === 'ooo' && !oooUserIds.has(e.id)) return false
+            if (statusFilter === 'remote' && !remoteUserIds.has(e.id)) return false
+            return true
+        })
+    }, [data.employees, roleFilter, statusFilter, oooUserIds, remoteUserIds])
+
+    const filtersActive = roleFilter !== 'all' || statusFilter !== 'all'
 
     // Index leaves: user_id+date → leave info
     const leaveIdx = useMemo(() => {
@@ -88,17 +136,20 @@ export function VacationCalendar({ data, filter }: Props) {
             newM = 1
             newY += 1
         }
-        const params = new URLSearchParams({ year: String(newY), month: String(newM), filter })
-        router.push(`/internal/calendar?${params}`)
+        const params = new URLSearchParams({
+            tab: 'calendar',
+            year: String(newY),
+            month: String(newM),
+        })
+        // Carry the active filters so they survive the month change (server refetch).
+        if (roleFilter !== 'all') params.set('role', roleFilter)
+        if (statusFilter !== 'all') params.set('status', statusFilter)
+        router.push(`/internal?${params}`)
     }
 
-    function setFilter(next: 'all' | 'internal' | 'admin') {
-        const params = new URLSearchParams({
-            year: String(data.year),
-            month: String(data.month),
-            filter: next,
-        })
-        router.push(`/internal/calendar?${params}`)
+    function resetFilters() {
+        setRoleFilter('all')
+        setStatusFilter('all')
     }
 
     function cellFor(userId: string, day: Date): CellInfo {
@@ -127,46 +178,64 @@ export function VacationCalendar({ data, filter }: Props) {
 
     return (
         <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <CardTitle className="text-lg capitalize">
-                    {format(monthStart, 'LLLL yyyy', { locale: pl })}
-                </CardTitle>
-                <div className="flex flex-wrap gap-2 items-center">
-                    <div className="flex gap-1 items-center mr-2">
-                        <Button
-                            variant={filter === 'all' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setFilter('all')}
-                        >
-                            Wszyscy ({data.employees.length})
+            <CardHeader className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <CardTitle className="text-lg capitalize">
+                        {format(monthStart, 'LLLL yyyy', { locale: pl })}
+                    </CardTitle>
+                    <div className="flex gap-2 items-center">
+                        <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)}>
+                            <ChevronLeft className="h-4 w-4" />
                         </Button>
-                        <Button
-                            variant={filter === 'internal' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setFilter('internal')}
-                        >
-                            Internal
-                        </Button>
-                        <Button
-                            variant={filter === 'admin' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setFilter('admin')}
-                        >
-                            Admin
+                        <Button variant="outline" size="icon" onClick={() => navigateMonth(1)}>
+                            <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)}>
-                        <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(1)}>
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                    <Select value={roleFilter} onValueChange={setRoleFilter}>
+                        <SelectTrigger className="h-9 w-[220px]" aria-label="Filtr po roli">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Wszystkie role ({data.employees.length})</SelectItem>
+                            {roleOptions.map((o) => (
+                                <SelectItem key={o.value} value={o.value}>
+                                    {o.label} ({o.count})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select
+                        value={statusFilter}
+                        onValueChange={(v) => setStatusFilter(v as CalendarStatusFilter)}
+                    >
+                        <SelectTrigger className="h-9 w-[200px]" aria-label="Filtr po statusie">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Wszystkie statusy</SelectItem>
+                            <SelectItem value="ooo">Out of Office ({oooUserIds.size})</SelectItem>
+                            <SelectItem value="remote">Praca zdalna ({remoteUserIds.size})</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {filtersActive && (
+                        <Button variant="ghost" size="sm" className="h-9" onClick={resetFilters}>
+                            <XIcon className="h-3.5 w-3.5 mr-1" />
+                            Wyczyść
+                        </Button>
+                    )}
+                    <span className="text-xs text-muted-foreground ml-auto">
+                        {employees.length} / {data.employees.length} prac.
+                    </span>
                 </div>
             </CardHeader>
             <CardContent>
                 {employees.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
-                        Brak pracowników wewnętrznych spełniających filtr.
+                        {filtersActive
+                            ? 'Brak pracowników spełniających wybrane filtry.'
+                            : 'Brak pracowników strefy HR.'}
                     </p>
                 ) : (
                     <div className="overflow-auto max-h-[70vh]">

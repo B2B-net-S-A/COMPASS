@@ -8,6 +8,8 @@ import { TimesheetPanel } from '@/components/internal/panels/TimesheetPanel'
 import { InvoicesPanel } from '@/components/internal/panels/InvoicesPanel'
 import { MyBonusesPanel } from '@/components/internal/panels/MyBonusesPanel'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
+import { DB_ROLES } from '@/lib/types/role'
+import type { CalendarStatusFilter } from '@/components/internal/VacationCalendar'
 // Smart Work Clock (Phase 17) UI disabled — to re-enable, restore Clock icon + ClockPanel import + tab + render below.
 // import { Clock } from 'lucide-react'
 // import { ClockPanel } from '@/components/internal/panels/ClockPanel'
@@ -36,7 +38,11 @@ interface PageProps {
         tab?: string
         year?: string
         month?: string
+        // Calendar filters. `filter` is the legacy (≤Phase 35) role param, still
+        // honored so old bookmarks keep working; `role`/`status` supersede it.
         filter?: string
+        role?: string
+        status?: string
     }
 }
 
@@ -46,6 +52,17 @@ function parseInt(value: string | undefined): number | undefined {
     return Number.isFinite(n) ? n : undefined
 }
 
+function parseRole(role: string | undefined, legacy: string | undefined): string {
+    const candidate = role ?? legacy ?? 'all'
+    return candidate === 'all' || (DB_ROLES as readonly string[]).includes(candidate)
+        ? candidate
+        : 'all'
+}
+
+function parseStatus(value: string | undefined): CalendarStatusFilter {
+    return value === 'ooo' || value === 'remote' ? value : 'all'
+}
+
 export default async function InternalHubPage({ searchParams }: PageProps) {
     const tab = VALID_TAB_IDS.includes(searchParams?.tab ?? '')
         ? (searchParams!.tab as string)
@@ -53,7 +70,8 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
 
     const year = parseInt(searchParams?.year)
     const month = parseInt(searchParams?.month)
-    const filter = (searchParams?.filter ?? 'all') as 'all' | 'internal' | 'admin'
+    const role = parseRole(searchParams?.role, searchParams?.filter)
+    const status = parseStatus(searchParams?.status)
 
     return (
         <div className="space-y-6">
@@ -71,7 +89,7 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
 
             {tab === 'attendance' && <AttendancePanel year={year} month={month} />}
             {tab === 'calendar' && (
-                <CalendarPanel year={year} month={month} filter={filter} />
+                <CalendarPanel year={year} month={month} role={role} status={status} />
             )}
             {tab === 'leave' && <LeavePanel />}
             {tab === 'timesheet' && <TimesheetPanel year={year} month={month} />}
