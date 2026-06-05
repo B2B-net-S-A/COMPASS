@@ -27,6 +27,9 @@ interface Props {
     // Initial filter values (from URL) — persisted across month navigation.
     role: string
     status: CalendarStatusFilter
+    // Today's date (YYYY-MM-DD, Europe/Warsaw) computed server-side. The status
+    // filter is "today only" when this date falls inside the displayed month.
+    todayIso: string
 }
 
 interface CellInfo {
@@ -49,7 +52,7 @@ const OOO_TITLE = 'Out of Office'
 // Stable display order for the role dropdown (HR-zone roles present on the calendar).
 const ROLE_ORDER = ['internal', 'manager', 'finanse', 'talent_community', 'admin']
 
-export function VacationCalendar({ data, role, status }: Props) {
+export function VacationCalendar({ data, role, status, todayIso }: Props) {
     const router = useRouter()
 
     // Filters live as client state (all data is already on the client) so toggling
@@ -75,6 +78,34 @@ export function VacationCalendar({ data, role, status }: Props) {
         [data.attendances, employeeIds],
     )
 
+    // Czy dziś mieści się w wyświetlanym miesiącu? (ISO porównanie leksykograficzne)
+    const monthPrefix = `${data.year}-${String(data.month).padStart(2, '0')}`
+    const todayInView = todayIso.startsWith(monthPrefix)
+
+    // Osoby z danym statusem DOKŁADNIE dzisiaj (gdy dziś jest w widoku).
+    const oooTodayUserIds = useMemo(() => {
+        const s = new Set<string>()
+        for (const l of data.leaves) {
+            if (employeeIds.has(l.user_id) && l.start_date <= todayIso && todayIso <= l.end_date) {
+                s.add(l.user_id)
+            }
+        }
+        return s
+    }, [data.leaves, employeeIds, todayIso])
+    const remoteTodayUserIds = useMemo(() => {
+        const s = new Set<string>()
+        for (const a of data.attendances) {
+            if (a.date === todayIso && employeeIds.has(a.user_id)) s.add(a.user_id)
+        }
+        return s
+    }, [data.attendances, employeeIds, todayIso])
+
+    // Filtr statusu = "tylko dziś" dla bieżącego miesiąca; dla innych miesięcy
+    // (dziś poza widokiem) wracamy do całomiesięcznego zbioru, żeby przeglądanie
+    // przeszłych/przyszłych miesięcy nie dawało pustej listy.
+    const oooFilterIds = todayInView ? oooTodayUserIds : oooUserIds
+    const remoteFilterIds = todayInView ? remoteTodayUserIds : remoteUserIds
+
     // Role options derived from the roster actually present this month (+ counts).
     const roleOptions = useMemo(() => {
         const counts = new Map<string, number>()
@@ -88,11 +119,11 @@ export function VacationCalendar({ data, role, status }: Props) {
     const employees = useMemo(() => {
         return data.employees.filter((e) => {
             if (roleFilter !== 'all' && e.role !== roleFilter) return false
-            if (statusFilter === 'ooo' && !oooUserIds.has(e.id)) return false
-            if (statusFilter === 'remote' && !remoteUserIds.has(e.id)) return false
+            if (statusFilter === 'ooo' && !oooFilterIds.has(e.id)) return false
+            if (statusFilter === 'remote' && !remoteFilterIds.has(e.id)) return false
             return true
         })
-    }, [data.employees, roleFilter, statusFilter, oooUserIds, remoteUserIds])
+    }, [data.employees, roleFilter, statusFilter, oooFilterIds, remoteFilterIds])
 
     const filtersActive = roleFilter !== 'all' || statusFilter !== 'all'
 
@@ -219,8 +250,12 @@ export function VacationCalendar({ data, role, status }: Props) {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Wszystkie statusy</SelectItem>
-                            <SelectItem value="ooo">Out of Office ({oooUserIds.size})</SelectItem>
-                            <SelectItem value="remote">Praca zdalna ({remoteUserIds.size})</SelectItem>
+                            <SelectItem value="ooo">
+                                Out of Office{todayInView ? ' dziś' : ''} ({oooFilterIds.size})
+                            </SelectItem>
+                            <SelectItem value="remote">
+                                Praca zdalna{todayInView ? ' dziś' : ''} ({remoteFilterIds.size})
+                            </SelectItem>
                         </SelectContent>
                     </Select>
                     {filtersActive && (
@@ -237,9 +272,11 @@ export function VacationCalendar({ data, role, status }: Props) {
             <CardContent>
                 {employees.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
-                        {filtersActive
-                            ? 'Brak pracowników spełniających wybrane filtry.'
-                            : 'Brak pracowników strefy HR.'}
+                        {!filtersActive
+                            ? 'Brak pracowników strefy HR.'
+                            : statusFilter !== 'all' && todayInView
+                              ? 'Nikt nie ma wybranego statusu dzisiaj.'
+                              : 'Brak pracowników spełniających wybrane filtry.'}
                     </p>
                 ) : (
                     <div className="overflow-auto max-h-[70vh]">
@@ -250,18 +287,26 @@ export function VacationCalendar({ data, role, status }: Props) {
                                         Pracownik
                                     </th>
                                     {days.map((d) => {
+                                        const iso = format(d, 'yyyy-MM-dd')
                                         const isWE = isWeekend(d)
-                                        const isHoliday = holidayDates.has(format(d, 'yyyy-MM-dd'))
+                                        const isHoliday = holidayDates.has(iso)
+                                        const isToday = iso === todayIso
                                         return (
                                             <th
                                                 key={d.toISOString()}
                                                 className={`sticky top-0 z-20 bg-card p-1 text-center font-medium border-b border-border min-w-[24px] ${
-                                                    isWE || isHoliday ? 'text-muted-foreground/60' : ''
+                                                    isToday
+                                                        ? 'text-primary font-bold ring-1 ring-inset ring-primary/50 rounded-t'
+                                                        : isWE || isHoliday
+                                                          ? 'text-muted-foreground/60'
+                                                          : ''
                                                 }`}
                                                 title={
-                                                    isHoliday
-                                                        ? holidayName.get(format(d, 'yyyy-MM-dd'))
-                                                        : undefined
+                                                    isToday
+                                                        ? 'Dziś'
+                                                        : isHoliday
+                                                          ? holidayName.get(iso)
+                                                          : undefined
                                                 }
                                             >
                                                 {format(d, 'd')}
@@ -293,10 +338,13 @@ export function VacationCalendar({ data, role, status }: Props) {
                                         </td>
                                         {days.map((d) => {
                                             const meta = cellFor(emp.id, d)
+                                            const isToday = format(d, 'yyyy-MM-dd') === todayIso
                                             return (
                                                 <td
                                                     key={d.toISOString()}
-                                                    className={`text-center font-bold text-[10px] border-b border-border/50 ${meta.bg}`}
+                                                    className={`text-center font-bold text-[10px] border-b border-border/50 ${meta.bg} ${
+                                                        isToday ? 'ring-1 ring-inset ring-primary/40' : ''
+                                                    }`}
                                                     title={meta.title}
                                                 >
                                                     {meta.label || ''}

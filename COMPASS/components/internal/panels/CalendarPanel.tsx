@@ -13,6 +13,9 @@ export async function CalendarPanel({ year, month, role = 'all', status = 'all' 
     const y = year ?? now.getFullYear()
     const m = Math.min(12, Math.max(1, month ?? now.getMonth() + 1))
     const data = await getTeamCalendar(y, m)
+    // "Dziś" w strefie Europe/Warsaw (niezależnie od TZ serwera, który może być UTC).
+    // Liczony serwerowo i przekazany w dół — stabilny dla SSR/klienta (bez hydration mismatch).
+    const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw' }).format(now)
 
     return (
         <section className="space-y-4">
@@ -21,10 +24,11 @@ export async function CalendarPanel({ year, month, role = 'all', status = 'all' 
                 <p className="text-sm text-muted-foreground mt-1">
                     Widok wszystkich pracowników strefy HR (wewnętrzni, managerowie, finanse,
                     talent community, admini) na cały miesiąc. Pokazuje zaakceptowane urlopy
-                    (jako Out of Office) i pracę zdalną. Filtruj po roli i statusie.
+                    (jako Out of Office) i pracę zdalną. Filtr statusu pokazuje osoby z danym
+                    statusem dzisiaj (w bieżącym miesiącu).
                 </p>
             </div>
-            <VacationCalendar data={data} role={role} status={status} />
+            <VacationCalendar data={data} role={role} status={status} todayIso={todayIso} />
         </section>
     )
 }
