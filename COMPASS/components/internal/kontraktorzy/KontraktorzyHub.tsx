@@ -14,7 +14,7 @@ import { OnboardingEntriesPanel } from './panels/OnboardingEntriesPanel'
 import { ExitPanel } from './panels/ExitPanel'
 import { KontraktorzyRosterPanel } from './panels/KontraktorzyRosterPanel'
 import type {
-    ConversationListItem, OnboardingEntryItem, ExitDepartureItem, ContractorRosterItem,
+    ConversationListItem, OnboardingEntryItem, ExitDepartureItem, ContractorRosterItem, BenchItem,
 } from '@/lib/types/contractor'
 
 const KONTRAKTOR_TABS = ['rozmowy', 'onboarding', 'exit', 'kontraktorzy']
@@ -23,12 +23,13 @@ interface Props {
     conversations: ConversationListItem[]
     onboardingEntries: OnboardingEntryItem[]
     departures: ExitDepartureItem[]
+    bench: BenchItem[]
     roster: ContractorRosterItem[]
     tcmProfiles: Array<{ id: string; fullName: string }>
     contractorsLite: Array<{ id: string; full_name: string }>
 }
 
-export function KontraktorzyHub({ conversations, onboardingEntries, departures, roster, tcmProfiles, contractorsLite }: Props) {
+export function KontraktorzyHub({ conversations, onboardingEntries, departures, bench, roster, tcmProfiles, contractorsLite }: Props) {
     const router = useRouter()
     const searchParams = useSearchParams()
     const refresh = () => router.refresh()
@@ -70,7 +71,7 @@ export function KontraktorzyHub({ conversations, onboardingEntries, departures, 
                     <OnboardingEntriesPanel entries={onboardingEntries} onSaved={refresh} />
                 </TabsContent>
                 <TabsContent value="exit">
-                    <ExitPanel departures={departures} onSaved={refresh} />
+                    <ExitPanel bench={bench} departures={departures} onSaved={refresh} />
                 </TabsContent>
                 <TabsContent value="kontraktorzy">
                     <KontraktorzyRosterPanel roster={roster} />

@@ -986,6 +986,24 @@ Rozbicie people-ops kontraktorskiego (Phase 37 scaliło je w Zgłoszenia + Onboa
 
 **Loose ends (świadomie):** widok **Zadań** (Phase 34) zniknął z huba (nie ma w 5-elementowej specyfikacji; tworzenie z ticketu `TicketToTaskButton` nadal działa, brak widoku). Kilka osieroconych plików-paneli zostawione jako martwy kod (build przechodzi) — cleanup follow-up. Upload anchoruje do kontraktora, nie do konkretnego wejścia (wystarczające dla 1 bieżącego wejścia/osobę).
 
+## Phase 39 — Exit: Bench + filtr Zejść + auto-update z SharePoint (2026-06-08)
+
+Rozszerzenie zakładki **Exit** (Phase 38) o tabelę **Bench** (konsultanci między projektami) + przeporządkowanie tabel + filtr Zejść. Dwie fazy:
+
+### Faza A (zrobiona) — Bench + filtr Zejść + kolejność
+
+Kolejność tabel w Exit: **Bench → Exit Interview → Zejścia**.
+
+**Bench** (`contractor_bench`, migracja `phase39a_contractor_bench`) — worklista osób po zejściu (lub schodzących wkrótce), którym szukamy projektu. **Hybryda:** auto-seed z `client_departures` (zejścia ostatnich ~90 dni + przyszłe/bez daty, idempotentnie przez unikalny `departure_id`) + ręczne dodanie (`source='manual'`, `departure_id NULL`). Kolumny: Imię, Klient, Rola, Data zejścia, Data wypowiedzenia + **edytowalne**: `status` (`w_rekrutacji`/`przepiety`/`zakonczenie_umowy`) i `benefits` (`aktywne`/`nieaktywne`/`do_wygaszenia`). `dismissed_at` = soft-remove (zachowuje slot, żeby auto-seed nie dodał ponownie). Domyślny widok = aktywni (`w_rekrutacji`); toggle „Pokaż wszystkich" odsłania resolved. RLS `has_lifecycle_access()`. Auto-seed odpala się przy `listBench()` (na load zakładki) — idempotentny, kolejne loady nie wstawiają nic gdy brak nowych zejść. ~42 kandydatów z 331 zejść (okno 90 dni).
+
+**Zejścia** — domyślnie tylko **bieżący + następny miesiąc** (filtr klient-side po `departure_date`), przycisk **„Pokaż pełną"/„Pokaż skróconą"**. Exit Interview bez zmian (pełna lista z uploadem).
+
+Pliki: migracja + `contractor_bench` w `database.types.ts` (ręcznie, jak `contractor_tasks`); typy + akcje `listBench`/`addBenchEntry`/`updateBenchEntry`/`dismissBenchEntry` w `contractors.ts`; `BenchPanel.tsx` (edytowalne dropdowny optymistycznie + toggle + dismiss), `BenchDialog.tsx` (ręczne dodanie); `ExitPanel.tsx` przeporządkowany + filtr Zejść; hub + `page.tsx` ładują `listBench()`. Audyt: `BENCH_ENTRY_ADDED/UPDATED/DISMISSED`.
+
+### Faza B (pending) — auto-update Wejść/Zejść z SharePoint/OneDrive
+
+User wybrał **SharePoint/Graph**: tabele Wejścia/Zejścia mają się **same aktualizować raz dziennie** zaciągając plik Excel. Zablokowane na 2 rzeczach: (1) **link(i) do plików** Wejścia/Zejścia na SharePoint/OneDrive od usera; (2) **uprawnienie Graph `Files.Read.All`** (lub `Sites.Selected`) w Entra dla app Compass (`17f9ff8c-...`) + admin consent (analogicznie do Mail/Calendar — patrz Phase 25/26 RBAC, ale Files/Sites nie dotyczy RAOP). Plan: Graph helper pobiera plik → istniejący idempotentny importer (`contractor-import.ts`) upsertuje do `client_entries`/`client_departures` → cron endpoint `/api/cron/...` + Coolify schedule (raz dziennie). Reuse idempotencji (external_key) = bezpieczne re-runy.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
