@@ -8,6 +8,7 @@ import {
     listOnboardingEntries,
     listExitDepartures,
     listContractorRoster,
+    listBench,
     listTcmProfiles,
     listContractors,
 } from '@/lib/actions/contractors'
@@ -18,10 +19,11 @@ export const dynamic = 'force-dynamic'
 export default async function KontraktorzyPage() {
     await requireTalentCommunityOrAdminLayout()
 
-    const [conversations, onboardingEntries, departures, roster, tcmProfiles, contractors] = await Promise.all([
+    const [conversations, onboardingEntries, departures, bench, roster, tcmProfiles, contractors] = await Promise.all([
         listConversations({ limit: 800 }),
         listOnboardingEntries(),
         listExitDepartures(),
+        listBench(),
         listContractorRoster(),
         listTcmProfiles(),
         listContractors(),
@@ -33,6 +35,7 @@ export default async function KontraktorzyPage() {
             conversations={conversations}
             onboardingEntries={onboardingEntries}
             departures={departures}
+            bench={bench}
             roster={roster}
             tcmProfiles={tcmProfiles}
             contractorsLite={contractorsLite}

@@ -284,6 +284,60 @@ export type Database = {
         }
         Relationships: []
       }
+      contractor_bench: {
+        Row: {
+          benefits: string
+          client_name: string | null
+          consultant_name: string
+          contractor_id: string | null
+          created_at: string
+          created_by: string | null
+          departure_date: string | null
+          departure_id: string | null
+          dismissed_at: string | null
+          id: string
+          notice_date: string | null
+          role: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          benefits?: string
+          client_name?: string | null
+          consultant_name: string
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          departure_id?: string | null
+          dismissed_at?: string | null
+          id?: string
+          notice_date?: string | null
+          role?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          benefits?: string
+          client_name?: string | null
+          consultant_name?: string
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          departure_id?: string | null
+          dismissed_at?: string | null
+          id?: string
+          notice_date?: string | null
+          role?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contractor_tasks: {
         Row: {
           assigned_tcm_id: string | null

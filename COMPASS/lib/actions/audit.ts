@@ -190,6 +190,10 @@ export type AuditAction =
     | 'CONTRACTOR_ONBOARDING_INTERVIEW_FILE_UPLOADED'
     | 'CONTRACTOR_EXIT_INTERVIEW_FILE_UPLOADED'
     | 'CONTRACTOR_INTERVIEW_FILE_REMOVED'
+    // Phase 39 — bench (consultants between projects)
+    | 'BENCH_ENTRY_ADDED'
+    | 'BENCH_ENTRY_UPDATED'
+    | 'BENCH_ENTRY_DISMISSED'
 
 export async function logAudit(
     userId: string | null,

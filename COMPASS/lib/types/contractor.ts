@@ -586,3 +586,38 @@ export interface ContractorRosterItem {
 
 /** File kinds that accept an interview attachment upload. */
 export type InterviewKind = 'onboarding' | 'exit'
+
+// ─── Phase 39: Bench (consultants between projects) ──────────────────────────
+export type BenchStatus = 'w_rekrutacji' | 'przepiety' | 'zakonczenie_umowy'
+export type BenchBenefits = 'aktywne' | 'nieaktywne' | 'do_wygaszenia'
+
+export const BENCH_STATUS_PL: Record<BenchStatus, string> = {
+    w_rekrutacji: 'W rekrutacji',
+    przepiety: 'Przepięty',
+    zakonczenie_umowy: 'Zakończenie umowy',
+}
+
+export const BENCH_BENEFITS_PL: Record<BenchBenefits, string> = {
+    aktywne: 'Aktywne',
+    nieaktywne: 'Nieaktywne',
+    do_wygaszenia: 'Do wygaszenia',
+}
+
+export const BENCH_STATUSES: BenchStatus[] = Object.keys(BENCH_STATUS_PL) as BenchStatus[]
+export const BENCH_BENEFITS: BenchBenefits[] = Object.keys(BENCH_BENEFITS_PL) as BenchBenefits[]
+
+/** A bench worklist entry — a consultant who left (or is leaving soon) and needs a new project. */
+export interface BenchItem {
+    id: string
+    contractor_id: string | null
+    departure_id: string | null
+    consultant_name: string
+    client_name: string | null
+    role: string | null
+    departure_date: string | null
+    notice_date: string | null
+    status: BenchStatus
+    benefits: BenchBenefits
+    source: 'auto' | 'manual'
+    dismissed_at: string | null
+}
