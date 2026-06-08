@@ -1000,9 +1000,17 @@ Kolejność tabel w Exit: **Bench → Exit Interview → Zejścia**.
 
 Pliki: migracja + `contractor_bench` w `database.types.ts` (ręcznie, jak `contractor_tasks`); typy + akcje `listBench`/`addBenchEntry`/`updateBenchEntry`/`dismissBenchEntry` w `contractors.ts`; `BenchPanel.tsx` (edytowalne dropdowny optymistycznie + toggle + dismiss), `BenchDialog.tsx` (ręczne dodanie); `ExitPanel.tsx` przeporządkowany + filtr Zejść; hub + `page.tsx` ładują `listBench()`. Audyt: `BENCH_ENTRY_ADDED/UPDATED/DISMISSED`.
 
-### Faza B (pending) — auto-update Wejść/Zejść z SharePoint/OneDrive
+### Faza B (zrobiona) — auto-update Wejść/Zejść z SharePoint/Graph
 
-User wybrał **SharePoint/Graph**: tabele Wejścia/Zejścia mają się **same aktualizować raz dziennie** zaciągając plik Excel. Zablokowane na 2 rzeczach: (1) **link(i) do plików** Wejścia/Zejścia na SharePoint/OneDrive od usera; (2) **uprawnienie Graph `Files.Read.All`** (lub `Sites.Selected`) w Entra dla app Compass (`17f9ff8c-...`) + admin consent (analogicznie do Mail/Calendar — patrz Phase 25/26 RBAC, ale Files/Sites nie dotyczy RAOP). Plan: Graph helper pobiera plik → istniejący idempotentny importer (`contractor-import.ts`) upsertuje do `client_entries`/`client_departures` → cron endpoint `/api/cron/...` + Coolify schedule (raz dziennie). Reuse idempotencji (external_key) = bezpieczne re-runy.
+Tabele Wejścia/Zejścia **same aktualizują się raz dziennie** zaciągając plik **„Wejścia i zejścia od klientów 2024.xlsx"** (jeden skoroszyt, 2 arkusze: „Wejścia do klientów" + „Zejścia od klientów") z SharePoint site **B2BKlienci** przez Graph (app-only).
+
+- **Uprawnienie:** Graph **`Sites.Read.All`** (Application) nadane app Compass (`17f9ff8c-...`, SP `90ea31d8-...`) przez `az rest` appRoleAssignment (id `2DHqkIjINE…`). Least-privilege dla SharePoint (węższe niż Files.Read.All; **NIE** dotyczy RAOP/CompassMailSenders — to Exchange-only). Hardening na przyszłość: `Sites.Selected` scoped do B2BKlienci.
+- **Pobranie:** `lib/graph/sharepoint.ts` → `downloadSharedWorkbook(shareUrl)` = `GET /shares/{u!token}/driveItem/content` (`responseType('arraybuffer')`). Token = base64url(url) z prefiksem `u!`.
+- **Import:** rdzeń wyciągnięty do `lib/contractors/import-core.ts` (plain module, NIE 'use server') — `importWejsciaFromBuffer`/`importZejsciaFromBuffer`/`importRozmowyFromBuffer` (bufor + `actorUserId`), idempotentne (upsert po `external_key`). `lib/actions/contractor-import.ts` to teraz cienkie wrappery (guard + FormData + revalidate) nad tym rdzeniem — manual import i cron dzielą tę samą logikę. **Każdy parser sam znajduje swój arkusz** (`findSheet` po nagłówkach), więc jeden bufor obsługuje oba.
+- **Cron:** `GET /api/cron/tc-sync` (`withCronAuth`, Bearer `CRON_SECRET`, `maxDuration 240`). Pobiera plik → importuje oba arkusze niezależnie → `revalidatePath(HUB)`. Zwraca JSON `{ok, bytes, wejscia:{inserted,...}, zejscia:{...}}`.
+- **Env (Coolify, runtime):** `TC_SYNC_FILE_URL` = sharing link do skoroszytu (wymagany); `TC_SYNC_USER_ID` = profil dla `imported_by`/audytu (opcjonalny, fallback = najstarszy admin).
+- **Coolify schedule:** `tc-sync` — `0 5 * * *` (05:00 UTC daily) — `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/tc-sync"`.
+- **Semantyka:** **additive** (jak manual import) — nowe wiersze w pliku trafiają do `client_entries`/`client_departures`; usunięcia/edycje pól kluczowych (`external_key`) nie propagują (świadome ograniczenie v1; dedup ręczny lub follow-up). Re-runy bezpieczne (idempotent).
 
 ## Observability
 
