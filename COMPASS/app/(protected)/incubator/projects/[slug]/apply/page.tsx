@@ -22,7 +22,7 @@ export default async function ApplyPage({ params }: PageProps) {
                 <Link href={`/incubator/projects/${project.slug}`} className="text-sm text-muted-foreground hover:text-primary">
                     ← {project.title}
                 </Link>
-                <Card className="bg-amber-500/5 border-amber-500/20">
+                <Card className="bg-warning/5 border-warning/20">
                     <CardContent className="p-6 text-sm">
                         Już aplikowałeś do tego projektu (status: {project.user_application_status}).
                     </CardContent>

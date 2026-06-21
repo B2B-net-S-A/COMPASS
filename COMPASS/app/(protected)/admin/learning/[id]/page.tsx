@@ -38,13 +38,13 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{course.title}</h1>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <Badge variant="outline" className="border-amber-500/30 text-amber-400 bg-amber-500/10 text-[10px]">
+                    <Badge variant="outline" className="border-warning/30 text-warning bg-warning/10 text-[10px]">
                         W moderacji
                     </Badge>
                     <Badge variant="outline" className="text-[10px]">{course.category}</Badge>
-                    <Badge variant="outline" className="text-[10px] border-white/10">{course.level}</Badge>
+                    <Badge variant="outline" className="text-[10px] border-border">{course.level}</Badge>
                     {course.duration_minutes && (
-                        <Badge variant="outline" className="text-[10px] border-white/10">
+                        <Badge variant="outline" className="text-[10px] border-border">
                             <Clock className="w-3 h-3 mr-1" />
                             {course.duration_minutes} min
                         </Badge>
@@ -56,13 +56,13 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
             </div>
 
             {course.description && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-muted border-border">
                     <CardContent className="p-5">
                         <p className="text-sm">{course.description}</p>
                         {course.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-3">
                                 {course.tags.map((t) => (
-                                    <Badge key={t} className="bg-white/5 text-muted-foreground border-0 text-[10px]">{t}</Badge>
+                                    <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[10px]">{t}</Badge>
                                 ))}
                             </div>
                         )}
@@ -81,13 +81,13 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                 </div>
                 <div className="space-y-3">
                     {lessons.map((lesson, idx) => (
-                        <Card key={lesson.id} className="bg-white/5 border-white/10">
+                        <Card key={lesson.id} className="bg-muted border-border">
                             <CardContent className="p-5 space-y-3">
                                 <div className="flex items-center gap-2">
                                     <Badge variant="outline" className="text-[10px]">{idx + 1}</Badge>
                                     <h3 className="font-semibold">{lesson.title}</h3>
                                     {lesson.estimated_minutes && (
-                                        <Badge variant="outline" className="text-[9px] border-white/10">
+                                        <Badge variant="outline" className="text-[9px] border-border">
                                             {lesson.estimated_minutes} min
                                         </Badge>
                                     )}
@@ -101,7 +101,7 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                                     <p className="text-xs text-muted-foreground">{lesson.attachments.length} załącznik(ów) PDF</p>
                                 )}
                                 {lesson.content_md && (
-                                    <div className="pt-2 border-t border-white/5">
+                                    <div className="pt-2 border-t border-border">
                                         <MarkdownView content={lesson.content_md} />
                                     </div>
                                 )}
@@ -109,8 +109,8 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                         </Card>
                     ))}
                     {lessons.length === 0 && (
-                        <Card className="bg-red-500/5 border-red-500/20">
-                            <CardContent className="p-4 text-sm text-red-400">
+                        <Card className="bg-destructive/5 border-destructive/20">
+                            <CardContent className="p-4 text-sm text-destructive">
                                 Brak lekcji — kurs nie powinien być w kolejce moderacji.
                             </CardContent>
                         </Card>
@@ -126,7 +126,7 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                 </div>
                 <div className="space-y-3">
                     {quiz.map((q, idx) => (
-                        <Card key={q.id} className="bg-white/5 border-white/10">
+                        <Card key={q.id} className="bg-muted border-border">
                             <CardContent className="p-4 space-y-2">
                                 <div className="flex items-start gap-2">
                                     <Badge variant="outline" className="text-[10px] mt-0.5">{idx + 1}</Badge>
@@ -138,8 +138,8 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                                             key={o.id}
                                             className={`p-2 rounded text-xs ${
                                                 o.is_correct
-                                                    ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-                                                    : 'bg-white/5 border border-white/10 text-muted-foreground'
+                                                    ? 'bg-success/10 border border-success/30 text-success'
+                                                    : 'bg-muted border border-border text-muted-foreground'
                                             }`}
                                         >
                                             {String.fromCharCode(65 + o.order_index)}. {o.option_text}

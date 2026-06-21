@@ -35,7 +35,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                     <Badge variant="outline" className="text-[10px]">{PROJECT_STATUS_LABEL[p.status]}</Badge>
                     {p.compensation_model && <Badge variant="outline" className="text-[10px]">{p.compensation_model}</Badge>}
                     {p.user_application_status && (
-                        <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                        <Badge variant="outline" className="text-[10px] border-success/30 text-success bg-success/10">
                             Aplikowałeś: {APPLICATION_STATUS_LABEL[p.user_application_status]}
                         </Badge>
                     )}
@@ -44,7 +44,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 {p.tech_stack && p.tech_stack.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                         {p.tech_stack.map((t) => (
-                            <Badge key={t} className="bg-white/5 text-muted-foreground border-0 text-[10px]">
+                            <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[10px]">
                                 {t}
                             </Badge>
                         ))}
@@ -52,7 +52,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 )}
             </div>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-6">
                     <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">
                         {p.description_md}
@@ -60,7 +60,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 </CardContent>
             </Card>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Users className="w-4 h-4" />

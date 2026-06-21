@@ -34,11 +34,11 @@ export function PitchReviewActions({ pitchId, currentStatus, initialNotes }: Pit
     }
 
     return (
-        <Card className="bg-white/5 border-white/10">
+        <Card className="bg-card border-border">
             <CardContent className="p-5 space-y-3">
                 <h3 className="font-semibold">Akcje recenzenta</h3>
 
-                {error && <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400">{error}</div>}
+                {error && <div className="p-2 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive">{error}</div>}
 
                 <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Notatka recenzenta</label>

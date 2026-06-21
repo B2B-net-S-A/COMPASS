@@ -43,7 +43,7 @@ export function ReactionBar({ postId, counts, userReaction }: ReactionBarProps) 
                             'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                             active
                                 ? 'bg-primary/15 border-primary/40 text-primary'
-                                : 'bg-white/5 border-white/10 text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                                : 'bg-muted border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
                         )}
                     >
                         <span>{REACTION_LABEL[kind]}</span>

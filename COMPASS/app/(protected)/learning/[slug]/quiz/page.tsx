@@ -36,14 +36,14 @@ export default async function QuizPage({ params }: PageProps) {
             </div>
 
             {!quizResult.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{quizResult.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{quizResult.error}</CardContent>
                 </Card>
             )}
 
             {quizResult.success && quizResult.data.length === 0 && (
-                <Card className="bg-amber-500/5 border-amber-500/20">
-                    <CardContent className="p-6 text-sm text-amber-300">Quiz nie ma jeszcze pytań.</CardContent>
+                <Card className="bg-warning/5 border-warning/20">
+                    <CardContent className="p-6 text-sm text-warning">Quiz nie ma jeszcze pytań.</CardContent>
                 </Card>
             )}
 

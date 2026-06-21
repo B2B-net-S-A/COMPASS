@@ -32,7 +32,7 @@ export default async function AdminProjectsPage() {
             </div>
 
             {items.length === 0 ? (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-muted border-border">
                     <CardContent className="p-12 text-center text-muted-foreground">
                         Brak projektów. Stwórz pierwszy.
                     </CardContent>
@@ -41,7 +41,7 @@ export default async function AdminProjectsPage() {
                 <div className="space-y-2">
                     {items.map((p) => (
                         <Link key={p.id} href={`/admin/incubator/projects/${p.slug}`} className="block group">
-                            <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                            <Card className="bg-muted border-border hover:border-primary/40 transition-colors">
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between gap-3 flex-wrap">
                                         <div className="flex-1 min-w-0">

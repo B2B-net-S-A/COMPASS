@@ -261,14 +261,14 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
         : (otherParticipant?.full_name || 'Użytkownik')
 
     return (
-        <div className="flex h-full rounded-xl border border-white/10 overflow-hidden bg-black/20">
+        <div className="flex h-full rounded-xl border border-border overflow-hidden bg-card">
             {/* Left Panel - Conversation List */}
-            <div className="w-80 lg:w-96 border-r border-white/10 flex flex-col shrink-0">
+            <div className="w-80 lg:w-96 border-r border-border flex flex-col shrink-0">
                 {/* Header */}
-                <div className="p-4 border-b border-white/10 space-y-3">
+                <div className="p-4 border-b border-border space-y-3">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                            <MessageCircle className="w-5 h-5 text-slate-200" />
+                        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                            <MessageCircle className="w-5 h-5 text-muted-foreground" />
                             Wiadomości
                         </h2>
                         <div className="flex gap-2">
@@ -276,7 +276,7 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                 <Button
                                     size="sm"
                                     onClick={() => setBroadcastOpen(true)}
-                                    className="bg-amber-600 hover:bg-amber-500 text-xs gap-1"
+                                    className="bg-warning hover:bg-warning/90 text-xs gap-1"
                                 >
                                     <Megaphone className="w-3.5 h-3.5" />
                                     Ogłoszenie
@@ -286,7 +286,7 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                 size="sm"
                                 variant="outline"
                                 onClick={() => setSearchMode(!searchMode)}
-                                className="border-white/10 text-xs gap-1"
+                                className="border-border text-xs gap-1"
                             >
                                 <Plus className="w-3.5 h-3.5" />
                                 Nowa
@@ -297,17 +297,17 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                     {/* Search new conversation */}
                     {searchMode && (
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                             <Input
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Szukaj osoby do napisania..."
-                                className="pl-10 bg-white/5 border-white/10 text-sm"
+                                className="pl-10 bg-muted border-border text-sm"
                                 autoFocus
                             />
                             {searchQuery && (
                                 <button onClick={() => { setSearchQuery(''); setSearchMode(false) }} className="absolute right-3 top-1/2 -translate-y-1/2">
-                                    <X className="w-4 h-4 text-slate-600" />
+                                    <X className="w-4 h-4 text-muted-foreground" />
                                 </button>
                             )}
                         </div>
@@ -316,17 +316,17 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
 
                 {/* Recipients List / Search Results */}
                 {searchMode && (
-                    <div className="border-b border-white/10 max-h-72 overflow-y-auto">
+                    <div className="border-b border-border max-h-72 overflow-y-auto">
                         {loadingUsers || searching ? (
                             <div className="p-4 text-center">
-                                <Loader2 className="w-4 h-4 animate-spin mx-auto text-slate-600" />
-                                <p className="text-[10px] text-slate-600 mt-1">Ładowanie listy...</p>
+                                <Loader2 className="w-4 h-4 animate-spin mx-auto text-muted-foreground" />
+                                <p className="text-[10px] text-muted-foreground mt-1">Ładowanie listy...</p>
                             </div>
                         ) : (() => {
                             const usersToShow = searchQuery.length >= 1 ? searchResults : allUsers
                             if (usersToShow.length === 0) {
                                 return (
-                                    <div className="p-4 text-center text-xs text-slate-600">
+                                    <div className="p-4 text-center text-xs text-muted-foreground">
                                         {searchQuery ? 'Nie znaleziono' : 'Brak dostępnych odbiorców'}
                                     </div>
                                 )
@@ -342,19 +342,19 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                 <button
                                     key={user.id}
                                     onClick={() => handleStartConversation(user.id)}
-                                    className="w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left"
+                                    className="w-full flex items-center gap-3 p-3 hover:bg-muted transition-colors text-left"
                                 >
                                     <Avatar className="w-8 h-8">
                                         <AvatarImage src={user.avatar_url} />
-                                        <AvatarFallback className="bg-slate-200/20 text-slate-200 text-xs">
+                                        <AvatarFallback className="bg-muted text-muted-foreground text-xs">
                                             {(user.full_name || user.email || '?').charAt(0).toUpperCase()}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-white truncate">
+                                        <div className="text-sm font-medium text-foreground truncate">
                                             {user.full_name || user.email}
                                         </div>
-                                        <div className="text-[10px] text-slate-600">
+                                        <div className="text-[10px] text-muted-foreground">
                                             {ROLE_LABELS[user.role] || user.role}
                                         </div>
                                     </div>
@@ -368,15 +368,15 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                 <div className="flex-1 overflow-y-auto">
                     {loading ? (
                         <div className="p-8 text-center">
-                            <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-600" />
-                            <p className="text-xs text-slate-600 mt-2">Ładowanie...</p>
+                            <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground mt-2">Ładowanie...</p>
                         </div>
                     ) : (
                         <>
                             {/* Broadcasts Section */}
                             {broadcasts.length > 0 && (
                                 <div>
-                                    <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-amber-400 font-bold flex items-center gap-1.5 bg-amber-500/5">
+                                    <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-warning font-bold flex items-center gap-1.5 bg-warning/5">
                                         <Megaphone className="w-3 h-3" /> Ogłoszenia
                                     </div>
                                     {broadcasts.map(conv => {
@@ -387,31 +387,31 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                                 key={conv.id}
                                                 onClick={() => handleSelectConversation(conv)}
                                                 className={cn(
-                                                    "w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left border-b border-white/5",
-                                                    isActive && "bg-amber-500/10 border-l-2 border-l-amber-500"
+                                                    "w-full flex items-center gap-3 p-3 hover:bg-muted transition-colors text-left border-b border-border",
+                                                    isActive && "bg-warning/10 border-l-2 border-l-warning"
                                                 )}
                                             >
-                                                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
-                                                    <Megaphone className="w-5 h-5 text-amber-400" />
+                                                <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center shrink-0">
+                                                    <Megaphone className="w-5 h-5 text-warning" />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between">
-                                                        <span className={cn("text-sm font-medium truncate", isUnread ? "text-white" : "text-slate-300")}>
+                                                        <span className={cn("text-sm font-medium truncate", isUnread ? "text-foreground" : "text-muted-foreground")}>
                                                             {conv.name || 'Ogłoszenie'}
                                                         </span>
                                                         {conv.last_message && (
-                                                            <span className="text-[10px] text-slate-600 shrink-0 ml-2">
+                                                            <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
                                                                 {format(new Date(conv.last_message.created_at), 'dd.MM', { locale: pl })}
                                                             </span>
                                                         )}
                                                     </div>
                                                     {conv.last_message && (
-                                                        <p className={cn("text-xs truncate mt-0.5", isUnread ? "text-slate-300" : "text-slate-600")}>
+                                                        <p className={cn("text-xs truncate mt-0.5", isUnread ? "text-muted-foreground" : "text-muted-foreground")}>
                                                             {conv.last_message.content}
                                                         </p>
                                                     )}
                                                 </div>
-                                                {isUnread && <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />}
+                                                {isUnread && <div className="w-2 h-2 rounded-full bg-warning shrink-0" />}
                                             </button>
                                         )
                                     })}
@@ -420,14 +420,14 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
 
                             {/* Direct Conversations Section */}
                             <div>
-                                <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-slate-200 font-bold flex items-center gap-1.5 bg-slate-200/5">
+                                <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground font-bold flex items-center gap-1.5 bg-muted">
                                     <MessageCircle className="w-3 h-3" /> Konwersacje
                                 </div>
                                 {directs.length === 0 ? (
                                     <div className="p-8 text-center">
-                                        <MessageCircle className="w-8 h-8 text-slate-700 mx-auto mb-2" />
-                                        <p className="text-xs text-slate-600">Brak konwersacji</p>
-                                        <p className="text-[10px] text-slate-600 mt-1">Kliknij "Nowa" aby rozpocząć</p>
+                                        <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                                        <p className="text-xs text-muted-foreground">Brak konwersacji</p>
+                                        <p className="text-[10px] text-muted-foreground mt-1">Kliknij "Nowa" aby rozpocząć</p>
                                     </div>
                                 ) : (
                                     directs.map(conv => {
@@ -439,35 +439,35 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                                 key={conv.id}
                                                 onClick={() => handleSelectConversation(conv)}
                                                 className={cn(
-                                                    "w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left border-b border-white/5",
-                                                    isActive && "bg-slate-200/10 border-l-2 border-l-foreground"
+                                                    "w-full flex items-center gap-3 p-3 hover:bg-muted transition-colors text-left border-b border-border",
+                                                    isActive && "bg-muted border-l-2 border-l-foreground"
                                                 )}
                                             >
                                                 <Avatar className="w-10 h-10 shrink-0">
                                                     <AvatarImage src={other?.avatar_url} />
-                                                    <AvatarFallback className="bg-slate-200/20 text-slate-200 text-sm">
+                                                    <AvatarFallback className="bg-muted text-muted-foreground text-sm">
                                                         {other?.full_name?.charAt(0) || '?'}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between">
-                                                        <span className={cn("text-sm font-medium truncate", isUnread ? "text-white" : "text-slate-300")}>
+                                                        <span className={cn("text-sm font-medium truncate", isUnread ? "text-foreground" : "text-muted-foreground")}>
                                                             {other?.full_name || 'Użytkownik'}
                                                         </span>
                                                         {conv.last_message && (
-                                                            <span className="text-[10px] text-slate-600 shrink-0 ml-2">
+                                                            <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
                                                                 {format(new Date(conv.last_message.created_at), 'dd.MM', { locale: pl })}
                                                             </span>
                                                         )}
                                                     </div>
                                                     {conv.last_message && (
-                                                        <p className={cn("text-xs truncate mt-0.5", isUnread ? "text-slate-300" : "text-slate-600")}>
+                                                        <p className={cn("text-xs truncate mt-0.5", isUnread ? "text-muted-foreground" : "text-muted-foreground")}>
                                                             {conv.last_message.sender_id === currentUser.id ? 'Ty: ' : ''}
                                                             {conv.last_message.content}
                                                         </p>
                                                     )}
                                                 </div>
-                                                {isUnread && <div className="w-2 h-2 rounded-full bg-slate-200 shrink-0" />}
+                                                {isUnread && <div className="w-2 h-2 rounded-full bg-muted-foreground shrink-0" />}
                                             </button>
                                         )
                                     })
@@ -484,32 +484,32 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                     /* Empty State */
                     <div className="flex-1 flex items-center justify-center">
                         <div className="text-center">
-                            <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
-                                <MessageCircle className="w-10 h-10 text-slate-600" />
+                            <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                                <MessageCircle className="w-10 h-10 text-muted-foreground" />
                             </div>
-                            <h3 className="text-lg font-bold text-slate-600">Wybierz konwersację</h3>
-                            <p className="text-sm text-slate-600 mt-1">Lub rozpocznij nową klikając przycisk "Nowa"</p>
+                            <h3 className="text-lg font-bold text-muted-foreground">Wybierz konwersację</h3>
+                            <p className="text-sm text-muted-foreground mt-1">Lub rozpocznij nową klikając przycisk "Nowa"</p>
                         </div>
                     </div>
                 ) : (
                     <>
                         {/* Chat Header */}
-                        <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-white/5">
+                        <div className="p-4 border-b border-border flex items-center gap-3 bg-muted">
                             {activeConversation.type === 'broadcast' ? (
-                                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
-                                    <Megaphone className="w-5 h-5 text-amber-400" />
+                                <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
+                                    <Megaphone className="w-5 h-5 text-warning" />
                                 </div>
                             ) : (
                                 <Avatar className="w-10 h-10">
                                     <AvatarImage src={otherParticipant?.avatar_url} />
-                                    <AvatarFallback className="bg-slate-200/20 text-slate-200">
+                                    <AvatarFallback className="bg-muted text-muted-foreground">
                                         {otherParticipant?.full_name?.charAt(0) || '?'}
                                     </AvatarFallback>
                                 </Avatar>
                             )}
                             <div className="flex-1 min-w-0">
-                                <h3 className="font-bold text-white truncate">{chatTitle}</h3>
-                                <p className="text-[10px] text-slate-600">
+                                <h3 className="font-bold text-foreground truncate">{chatTitle}</h3>
+                                <p className="text-[10px] text-muted-foreground">
                                     {activeConversation.type === 'broadcast' ? 'Ogłoszenie dla wszystkich' : 'Konwersacja prywatna'}
                                 </p>
                             </div>
@@ -536,11 +536,11 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
                             {loadingMessages ? (
                                 <div className="flex items-center justify-center h-full">
-                                    <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
+                                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                                 </div>
                             ) : messages.length === 0 ? (
                                 <div className="flex items-center justify-center h-full">
-                                    <p className="text-sm text-slate-600">Brak wiadomości. Napisz pierwszą!</p>
+                                    <p className="text-sm text-muted-foreground">Brak wiadomości. Napisz pierwszą!</p>
                                 </div>
                             ) : (
                                 messages.map((msg) => (
@@ -561,28 +561,28 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
 
                         {/* Input */}
                         {canSendInActive ? (
-                            <div className="p-4 border-t border-white/10 bg-white/5">
+                            <div className="p-4 border-t border-border bg-muted">
                                 <div className="flex gap-2">
                                     <Input
                                         value={newMessage}
                                         onChange={(e) => setNewMessage(e.target.value)}
                                         onKeyDown={handleKeyDown}
                                         placeholder="Napisz wiadomość..."
-                                        className="bg-black/30 border-white/10 text-sm"
+                                        className="bg-card border-border text-sm"
                                         disabled={sending}
                                     />
                                     <Button
                                         onClick={handleSend}
                                         disabled={!newMessage.trim() || sending}
-                                        className="bg-burgundy hover:bg-slate-200 px-4"
+                                        className="bg-burgundy hover:bg-primary/90 px-4"
                                     >
                                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                     </Button>
                                 </div>
                             </div>
                         ) : (
-                            <div className="p-4 border-t border-white/10 bg-white/5 text-center">
-                                <p className="text-xs text-slate-600">Ogłoszenia są tylko do odczytu</p>
+                            <div className="p-4 border-t border-border bg-muted text-center">
+                                <p className="text-xs text-muted-foreground">Ogłoszenia są tylko do odczytu</p>
                             </div>
                         )}
                     </>

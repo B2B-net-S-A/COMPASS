@@ -21,9 +21,9 @@ interface LeaderboardRowProps {
 }
 
 function rankAccent(rank: number): string {
-    if (rank === 1) return 'text-amber-400 font-bold'
-    if (rank === 2) return 'text-slate-300 font-bold'
-    if (rank === 3) return 'text-amber-700 font-bold'
+    if (rank === 1) return 'text-warning font-bold'
+    if (rank === 2) return 'text-muted-foreground font-bold'
+    if (rank === 3) return 'text-tier-bronze font-bold'
     return 'text-muted-foreground'
 }
 
@@ -44,7 +44,7 @@ export function LeaderboardRow({ entry, className }: LeaderboardRowProps) {
             role="listitem"
             aria-label={`Pozycja ${entry.rank}: ${displayName}, ${entry.loyalty_points} punktów`}
             className={cn(
-                'flex items-center gap-3 p-3 border-b border-white/5 last:border-0 transition-colors',
+                'flex items-center gap-3 p-3 border-b border-border last:border-0 transition-colors',
                 entry.is_self && 'bg-primary/5 ring-1 ring-primary/20',
                 className,
             )}
@@ -54,7 +54,7 @@ export function LeaderboardRow({ entry, className }: LeaderboardRowProps) {
             </span>
             <Avatar className="h-9 w-9">
                 {!entry.is_anonymous && entry.avatar_url && <AvatarImage src={entry.avatar_url} alt={displayName} />}
-                <AvatarFallback className="text-[10px] bg-white/5">{initials}</AvatarFallback>
+                <AvatarFallback className="text-[10px] bg-muted">{initials}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">

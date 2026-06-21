@@ -118,18 +118,18 @@ export default async function CompliancePage() {
                                         <td className="px-4 py-3">{doc.version}</td>
                                         <td className="px-4 py-3">
                                             {doc.is_active ? (
-                                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                                                <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success">
                                                     Aktywny
                                                 </span>
                                             ) : (
-                                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400">
+                                                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                                                     Archiwalny
                                                 </span>
                                             )}
                                         </td>
                                         <td className="px-4 py-3">
                                             {requiresAcceptance ? (
-                                                <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">Tak</span>
+                                                <span className="text-xs text-warning font-medium">Tak</span>
                                             ) : (
                                                 <span className="text-xs text-muted-foreground">Nie</span>
                                             )}

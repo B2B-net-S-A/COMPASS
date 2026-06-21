@@ -46,9 +46,9 @@ export default function AdminSettingsPage() {
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-                <Card className="bg-card border-white/10">
+                <Card className="bg-card border-border">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-red-400">
+                        <CardTitle className="flex items-center gap-2 text-destructive">
                             <Trash2 className="w-5 h-5" />
                             Czyszczenie Duplikatów
                         </CardTitle>
@@ -58,7 +58,7 @@ export default function AdminSettingsPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-lg text-sm text-red-300">
+                        <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg text-sm text-destructive">
                             ⚠️ Uwaga: Ta operacja usunie trwale nadmiarowe rekordy z bazy danych.
                         </div>
 
@@ -79,7 +79,7 @@ export default function AdminSettingsPage() {
                         </Button>
 
                         {result && (
-                            <div className={`flex items-center gap-2 text-sm p-2 rounded ${result.count > 0 ? 'text-green-400 bg-green-500/10' : 'text-gray-400 bg-secondary/20'}`}>
+                            <div className={`flex items-center gap-2 text-sm p-2 rounded ${result.count > 0 ? 'text-success bg-success/10' : 'text-muted-foreground bg-secondary/20'}`}>
                                 {result.count > 0 ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                                 {result.message}
                             </div>

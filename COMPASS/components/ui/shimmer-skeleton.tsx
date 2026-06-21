@@ -17,7 +17,7 @@ export function Shimmer({ className }: { className?: string }) {
     return (
         <div
             className={cn(
-                'relative overflow-hidden rounded-md bg-slate-700/20',
+                'relative overflow-hidden rounded-md bg-muted',
                 className
             )}
         >
@@ -29,7 +29,7 @@ export function Shimmer({ className }: { className?: string }) {
 // Dashboard welcome panel skeleton
 export function WelcomeSkeleton() {
     return (
-        <div className="bg-gradient-to-r from-blue-900/40 to-slate-900/40 border border-white/10 rounded-xl p-6 flex items-center gap-4">
+        <div className="bg-gradient-to-r from-primary/40 to-card border border-border rounded-xl p-6 flex items-center gap-4">
             <Shimmer className="w-16 h-16 rounded-full shrink-0" />
             <div className="space-y-2 flex-1">
                 <Shimmer className="h-7 w-64" />
@@ -52,7 +52,7 @@ export function WelcomeSkeleton() {
 // Stat card skeleton (for dashboard stat cards: Konsultanci, Projekty, etc.)
 export function StatCardSkeleton() {
     return (
-        <div className="bg-card border border-white/10 rounded-xl p-6 space-y-3">
+        <div className="bg-card border border-border rounded-xl p-6 space-y-3">
             <div className="flex items-center justify-between">
                 <Shimmer className="h-4 w-28" />
                 <Shimmer className="h-8 w-8 rounded-lg" />
@@ -77,7 +77,7 @@ export function DashboardStatsSkeleton() {
 // Card skeleton with configurable lines
 export function CardShimmer({ lines = 3, className }: { lines?: number; className?: string }) {
     return (
-        <div className={cn('bg-card border border-white/10 rounded-xl p-6 space-y-4', className)}>
+        <div className={cn('bg-card border border-border rounded-xl p-6 space-y-4', className)}>
             <Shimmer className="h-5 w-1/2" />
             <div className="space-y-2">
                 {Array.from({ length: lines }).map((_, i) => (
@@ -96,7 +96,7 @@ export function ListSkeleton({ rows = 5 }: { rows?: number }) {
     return (
         <div className="space-y-2">
             {Array.from({ length: rows }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/30">
+                <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted">
                     <Shimmer className="w-10 h-10 rounded-full shrink-0" />
                     <div className="flex-1 space-y-1.5">
                         <Shimmer className="h-4 w-2/5" />
@@ -141,14 +141,14 @@ export function ProjectsListSkeleton() {
             {/* Project cards grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="bg-card border border-white/10 rounded-xl p-5 space-y-4">
+                    <div key={i} className="bg-card border border-border rounded-xl p-5 space-y-4">
                         <div className="flex items-center justify-between">
                             <Shimmer className="h-5 w-32" />
                             <Shimmer className="h-6 w-16 rounded-full" />
                         </div>
                         <Shimmer className="h-4 w-full" />
                         <Shimmer className="h-4 w-3/4" />
-                        <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                        <div className="flex items-center gap-2 pt-2 border-t border-border">
                             <Shimmer className="h-6 w-6 rounded-full" />
                             <Shimmer className="h-3 w-20" />
                             <Shimmer className="h-3 w-24 ml-auto" />
@@ -173,7 +173,7 @@ export function MessagesSkeleton() {
                 </div>
             </div>
             {/* Message list */}
-            <div className="bg-card border border-white/10 rounded-xl divide-y divide-white/5">
+            <div className="bg-card border border-border rounded-xl divide-y divide-border">
                 {[1, 2, 3, 4, 5, 6, 7].map((i) => (
                     <div key={i} className="flex items-center gap-3 p-4">
                         <Shimmer className="w-10 h-10 rounded-full shrink-0" />
@@ -208,7 +208,7 @@ export function NotificationsSkeleton() {
             {/* Notification items */}
             <div className="space-y-3">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="bg-card border border-white/10 rounded-xl p-4 flex items-start gap-3">
+                    <div key={i} className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
                         <Shimmer className="w-10 h-10 rounded-lg shrink-0" />
                         <div className="flex-1 space-y-2">
                             <Shimmer className="h-4 w-3/5" />
@@ -230,7 +230,7 @@ export function AdminPanelSkeleton() {
             <WelcomeSkeleton />
             <DashboardStatsSkeleton />
             {/* Tabs */}
-            <div className="flex gap-2 border-b border-white/10 pb-2">
+            <div className="flex gap-2 border-b border-border pb-2">
                 {[1, 2, 3, 4, 5].map((i) => (
                     <Shimmer key={i} className="h-9 w-28 rounded-md" />
                 ))}

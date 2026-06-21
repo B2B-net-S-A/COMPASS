@@ -26,16 +26,16 @@ export default async function LeaderboardPage() {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
                         <CardTitle className="text-base flex items-center gap-2">
-                            <Trophy className="w-4 h-4 text-amber-400" /> Wszech czasów
+                            <Trophy className="w-4 h-4 text-warning" /> Wszech czasów
                         </CardTitle>
                         <Link href="/settings">
                             <Button variant="link" size="sm" className="gap-1 px-0 text-xs">

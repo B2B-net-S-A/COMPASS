@@ -71,9 +71,9 @@ export function PostComposer({ initial }: PostComposerProps) {
 
     return (
         <div className="space-y-4">
-            {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>}
+            {error && <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>}
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-4">
                     <div>
                         <label className="text-xs text-muted-foreground mb-1 block">Tytuł *</label>
@@ -97,8 +97,8 @@ export function PostComposer({ initial }: PostComposerProps) {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <label className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} disabled={isPending} className="accent-amber-500" />
-                            <Pin className="w-4 h-4 text-amber-400" />
+                            <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} disabled={isPending} className="accent-warning" />
+                            <Pin className="w-4 h-4 text-warning" />
                             Przypnij na górze feeda
                         </label>
 
@@ -114,7 +114,7 @@ export function PostComposer({ initial }: PostComposerProps) {
                                         className={`px-3 py-1 rounded-md text-xs border transition-colors ${
                                             audience.includes(r)
                                                 ? 'bg-primary text-primary-foreground border-primary'
-                                                : 'bg-white/5 text-muted-foreground border-white/10 hover:border-primary/40'
+                                                : 'bg-muted text-muted-foreground border-border hover:border-primary/40'
                                         }`}
                                     >
                                         {r}
@@ -128,7 +128,7 @@ export function PostComposer({ initial }: PostComposerProps) {
 
             <div className="flex justify-between items-center gap-2">
                 {initial && (
-                    <Button variant="outline" onClick={handleDelete} disabled={isPending} className="text-red-400 border-red-500/30 hover:bg-red-500/10">
+                    <Button variant="outline" onClick={handleDelete} disabled={isPending} className="text-destructive border-destructive/30 hover:bg-destructive/10">
                         Usuń
                     </Button>
                 )}

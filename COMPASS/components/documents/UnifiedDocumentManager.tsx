@@ -192,11 +192,11 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
     const getCategoryBadge = (cat: string) => {
         const maps: Record<string, { label: string, color: string }> = {
             contract: { label: 'Kontrakt', color: 'bg-burgundy/10 text-foreground border-burgundy/20' },
-            invoice: { label: 'Faktura', color: 'bg-primary/10 text-slate-200 border-primary/20' },
+            invoice: { label: 'Faktura', color: 'bg-primary/10 text-foreground border-primary/20' },
             certificate: { label: 'Certyfikat', color: 'bg-primary/10 text-primary border-primary/20' },
             onboarding: { label: 'Onboarding', color: 'bg-burgundy/10 text-primary border-burgundy/20' },
-            benefit: { label: 'Benefit', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
-            other: { label: 'Inny', color: 'bg-slate-600/10 text-slate-600 border-slate-600/20' }
+            benefit: { label: 'Benefit', color: 'bg-destructive/10 text-destructive border-destructive/20' },
+            other: { label: 'Inny', color: 'bg-muted/10 text-muted-foreground border-border' }
         }
         const config = maps[cat] || maps.other
         return <Badge variant="outline" className={config.color}>{config.label}</Badge>
@@ -205,7 +205,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
     return (
         <div className="space-y-6">
             {/* Header / Controls */}
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-slate-900/40 p-4 rounded-xl border border-white/5 relative z-[100]">
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-card p-4 rounded-xl border border-border relative z-[100]">
                 <div className="flex gap-2">
                     <Button
                         variant={activeTab === 'all' ? 'secondary' : 'ghost'}
@@ -227,10 +227,10 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
 
                 <div className="flex w-full md:w-auto gap-3">
                     <div className="relative flex-1 md:w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
                             placeholder="Szukaj dokumentów..."
-                            className="pl-9 bg-white/5 border-white/10"
+                            className="pl-9 bg-card border-border"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -257,11 +257,11 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
 
             {/* Inline Upload Form */}
             {isUploadOpen && (
-                <Card className="bg-slate-900/50 border-slate-200/30 animate-in slide-in-from-top-2 fade-in duration-300">
+                <Card className="bg-card border-border animate-in slide-in-from-top-2 fade-in duration-300">
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Upload className="w-5 h-5 text-slate-200" />
+                            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                <Upload className="w-5 h-5 text-foreground" />
                                 Nowy Dokument
                             </h3>
                         </div>
@@ -271,7 +271,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                 <Label>Tytuł dokumentu</Label>
                                 <Input
                                     placeholder="np. Aneks do umowy B2B"
-                                    className="bg-white/5 border-white/10"
+                                    className="bg-card border-border"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
                                 />
@@ -279,10 +279,10 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                             <div className="space-y-2">
                                 <Label>Kategoria</Label>
                                 <Select value={category} onValueChange={(v: any) => setCategory(v)}>
-                                    <SelectTrigger className="bg-white/5 border-white/10">
+                                    <SelectTrigger className="bg-card border-border">
                                         <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-slate-900 border-white/10 text-white">
+                                    <SelectContent className="bg-card border-border text-foreground">
                                         {(!allowedCategories || allowedCategories.includes('contract')) && <SelectItem value="contract">Kontrakt</SelectItem>}
                                         {(!allowedCategories || allowedCategories.includes('invoice')) && <SelectItem value="invoice">Faktura</SelectItem>}
                                         {(!allowedCategories || allowedCategories.includes('certificate')) && <SelectItem value="certificate">Certyfikat</SelectItem>}
@@ -301,7 +301,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                     type="file"
                                     accept=".pdf,.docx"
                                     onChange={(e) => setFile(e.target.files?.[0] || null)}
-                                    className="bg-white/5 border-white/10 cursor-pointer"
+                                    className="bg-card border-border cursor-pointer"
                                 />
                             </div>
 
@@ -312,14 +312,14 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                         checked={initialIsPublic}
                                         disabled={true}
                                     />
-                                    <Label htmlFor="public-mode" className="text-sm text-blue-200">
+                                    <Label htmlFor="public-mode" className="text-sm text-info">
                                         Dokument publiczny (widoczny dla wszystkich)
                                     </Label>
                                 </div>
                             )}
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-2 border-t border-white/5">
+                        <div className="flex justify-end gap-3 pt-2 border-t border-border">
                             <Button variant="ghost" onClick={() => setIsUploadOpen(false)}>Anuluj</Button>
                             <Button
                                 onClick={handleUpload}
@@ -337,30 +337,30 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
             {/* Documents Grid */}
             <div className="grid grid-cols-1 gap-4">
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-slate-600">
+                    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                         <Loader2 className="w-10 h-10 animate-spin mb-4" />
                         <p>Ładowanie dokumentów...</p>
                     </div>
                 ) : filteredDocs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 bg-slate-900/20 border border-dashed border-white/10 rounded-2xl text-slate-600">
+                    <div className="flex flex-col items-center justify-center py-20 bg-muted/20 border border-dashed border-border rounded-2xl text-muted-foreground">
                         <FileText className="w-12 h-12 mb-4 opacity-10" />
                         <p>Brak dokumentów w tej kategorii.</p>
                     </div>
                 ) : (
                     filteredDocs.map((doc) => (
-                        <Card key={doc.id} className="bg-slate-900/50 border-white/5 hover:border-white/10 transition-all group overflow-hidden">
+                        <Card key={doc.id} className="bg-card border-border hover:border-border transition-all group overflow-hidden">
                             <CardContent className="p-0">
                                 <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-card to-background border border-white/10 flex items-center justify-center text-slate-200 shadow-inner group-hover:scale-110 transition-transform">
+                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-card to-background border border-border flex items-center justify-center text-foreground shadow-inner group-hover:scale-110 transition-transform">
                                             <FileText className="w-6 h-6" />
                                         </div>
                                         <div className="space-y-1">
                                             <div className="flex items-center gap-2">
-                                                <h4 className="font-bold text-slate-200 group-hover:text-white transition-colors">{doc.title}</h4>
+                                                <h4 className="font-bold text-foreground group-hover:text-foreground transition-colors">{doc.title}</h4>
                                                 {getCategoryBadge(doc.category)}
                                             </div>
-                                            <div className="flex items-center gap-3 text-xs text-slate-600">
+                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                                 <span className="flex items-center gap-1">
                                                     <Clock className="w-3 h-3" />
                                                     v{doc.latest_version?.version_number || 1}
@@ -387,32 +387,32 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                         {/* History / Versions Trigger */}
                                         <Dialog>
                                             <DialogTrigger asChild>
-                                                <Button variant="ghost" size="sm" className="text-slate-600 hover:text-white hover:bg-white/5">
+                                                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground hover:bg-muted">
                                                     <History className="w-4 h-4 mr-2" />
                                                     Historia
                                                 </Button>
                                             </DialogTrigger>
-                                            <DialogContent className="bg-slate-950 border-white/10 text-white sm:max-w-lg">
+                                            <DialogContent className="bg-card border-border text-foreground sm:max-w-lg">
                                                 <DialogHeader>
                                                     <DialogTitle>Historia Wersji: {doc.title}</DialogTitle>
                                                 </DialogHeader>
                                                 <div className="space-y-3 py-4 max-h-[400px] overflow-y-auto pr-2">
                                                     {doc.versions?.sort((a: any, b: any) => b.version_number - a.version_number).map((ver: any) => (
-                                                        <div key={ver.id} className="p-3 bg-white/5 rounded-lg border border-white/5 flex items-center justify-between group/ver">
+                                                        <div key={ver.id} className="p-3 bg-muted rounded-lg border border-border flex items-center justify-between group/ver">
                                                             <div className="space-y-1">
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className="text-xs font-bold text-slate-200">v{ver.version_number}</span>
-                                                                    <span className="text-sm font-medium text-slate-200">{ver.file_name}</span>
+                                                                    <span className="text-xs font-bold text-foreground">v{ver.version_number}</span>
+                                                                    <span className="text-sm font-medium text-foreground">{ver.file_name}</span>
                                                                 </div>
-                                                                <p className="text-[11px] text-slate-600 italic">"{ver.change_summary}"</p>
-                                                                <p className="text-[10px] text-slate-600">
+                                                                <p className="text-[11px] text-muted-foreground italic">"{ver.change_summary}"</p>
+                                                                <p className="text-[10px] text-muted-foreground">
                                                                     {format(new Date(ver.created_at), 'Pp', { locale: pl })} • {(ver.file_size / 1024).toFixed(0)} KB
                                                                 </p>
                                                             </div>
                                                             <Button
                                                                 size="icon"
                                                                 variant="ghost"
-                                                                className="h-8 w-8 text-slate-600 hover:text-slate-200"
+                                                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                                                 asChild
                                                             >
                                                                 <a href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${ver.file_url}`} target="_blank" rel="noopener noreferrer">
@@ -430,7 +430,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                className="text-slate-600 hover:text-white hover:bg-white/5"
+                                                className="text-muted-foreground hover:text-foreground hover:bg-muted"
                                                 onClick={() => {
                                                     setSelectedDoc(doc)
                                                     setIsVersionOpen(true)
@@ -441,12 +441,12 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                             </Button>
                                         )}
 
-                                        <div className="w-px h-6 bg-white/10 mx-2 hidden md:block" />
+                                        <div className="w-px h-6 bg-border mx-2 hidden md:block" />
 
                                         {/* Download Latest */}
                                         <Button
                                             size="sm"
-                                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-200/30"
+                                            className="bg-muted hover:bg-muted/80 text-foreground border border-border"
                                             asChild
                                         >
                                             <a href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${doc.latest_version?.file_url}`} target="_blank" rel="noopener noreferrer">
@@ -459,7 +459,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-9 w-9 text-slate-600 hover:text-amber-400 hover:bg-amber-400/10"
+                                                className="h-9 w-9 text-muted-foreground hover:text-warning hover:bg-warning/10"
                                                 onClick={() => handleArchive(doc.id)}
                                                 title="Archiwizuj"
                                             >
@@ -470,7 +470,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-9 w-9 text-slate-600 hover:text-red-400 hover:bg-red-400/10"
+                                                className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                                 onClick={() => handleDelete(doc.id)}
                                                 title="Usuń trwale"
                                             >
@@ -487,7 +487,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
 
             {/* New Version Dialog */}
             <Dialog open={isVersionOpen} onOpenChange={(open) => !open && setIsVersionOpen(false)}>
-                <DialogContent className="bg-slate-950 border-white/10 text-white">
+                <DialogContent className="bg-card border-border text-foreground">
                     <DialogHeader>
                         <DialogTitle>Dodaj nową wersję</DialogTitle>
                         <DialogDescription>
@@ -501,14 +501,14 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                 type="file"
                                 accept=".pdf,.docx"
                                 onChange={(e) => setFile(e.target.files?.[0] || null)}
-                                className="bg-white/5 border-white/10"
+                                className="bg-card border-border"
                             />
                         </div>
                         <div className="space-y-2">
                             <Label>Co się zmieniło?</Label>
                             <Input
                                 placeholder="np. aktualizacja terminów płatności"
-                                className="bg-white/5 border-white/10"
+                                className="bg-card border-border"
                                 value={changeSummary}
                                 onChange={(e) => setChangeSummary(e.target.value)}
                             />

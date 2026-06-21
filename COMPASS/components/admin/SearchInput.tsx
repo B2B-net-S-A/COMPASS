@@ -25,7 +25,7 @@ export function SearchInput({ placeholder }: { placeholder: string }) {
             <Input
                 type="search"
                 placeholder={placeholder}
-                className="pl-8 bg-secondary/20 border-white/10 text-white placeholder:text-gray-500"
+                className="pl-8 bg-secondary/20 border-border text-foreground placeholder:text-muted-foreground"
                 defaultValue={searchParams.get('q')?.toString()}
                 onChange={(e) => handleSearch(e.target.value)}
             />

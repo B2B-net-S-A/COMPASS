@@ -28,7 +28,7 @@ export default async function NewsDetailPage({ params }: PageProps) {
                 </Link>
                 <div className="flex items-center gap-2 flex-wrap mb-2">
                     {post.pinned && (
-                        <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10 inline-flex items-center gap-1">
+                        <Badge variant="outline" className="text-[10px] border-warning/30 text-warning bg-warning/10 inline-flex items-center gap-1">
                             <Pin className="w-2.5 h-2.5" /> Przypięty
                         </Badge>
                     )}
@@ -58,10 +58,10 @@ export default async function NewsDetailPage({ params }: PageProps) {
 
             {post.cover_url && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.cover_url} alt={post.title} className="w-full rounded-lg border border-white/10" />
+                <img src={post.cover_url} alt={post.title} className="w-full rounded-lg border border-border" />
             )}
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-6">
                     <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">
                         {post.body_md}
@@ -69,7 +69,7 @@ export default async function NewsDetailPage({ params }: PageProps) {
                 </CardContent>
             </Card>
 
-            <div className="flex items-center justify-end pt-4 border-t border-white/5">
+            <div className="flex items-center justify-end pt-4 border-t border-border">
                 <ReactionBar postId={post.id} counts={post.reaction_counts} userReaction={post.user_reaction} />
             </div>
         </article>

@@ -149,11 +149,11 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
             </div>
 
             {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>
             )}
 
             {lessons.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-8 text-center text-sm text-muted-foreground">
                         Brak lekcji. Kliknij „Dodaj lekcję" żeby utworzyć pierwszą.
                     </CardContent>
@@ -244,7 +244,7 @@ function LessonRow({
     }
 
     return (
-        <Card className="bg-white/5 border-white/10">
+        <Card className="bg-card border-border">
             <CardContent className="p-4">
                 {/* Header row */}
                 <div className="flex items-center gap-3">
@@ -259,7 +259,7 @@ function LessonRow({
                         </Badge>
                         <span className="font-medium text-sm">{lesson.title}</span>
                         {lesson.attachments.length > 0 && (
-                            <Badge variant="outline" className="text-[10px] border-white/10">
+                            <Badge variant="outline" className="text-[10px] border-border">
                                 {lesson.attachments.length} PDF
                             </Badge>
                         )}
@@ -290,7 +290,7 @@ function LessonRow({
                             size="sm"
                             onClick={onDelete}
                             disabled={disabled}
-                            className="h-8 w-8 p-0 text-red-400 hover:text-red-500 hover:bg-red-500/10"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                             title="Usuń lekcję"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -300,7 +300,7 @@ function LessonRow({
 
                 {/* Expanded body */}
                 {expanded && (
-                    <div className="mt-4 space-y-4 pt-4 border-t border-white/5">
+                    <div className="mt-4 space-y-4 pt-4 border-t border-border">
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">Tytuł lekcji</label>
                             <Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={disabled} />
@@ -351,7 +351,7 @@ function LessonRow({
                                 </Button>
                             </div>
                             {previewMode ? (
-                                <div className="min-h-[200px] p-4 rounded-lg border border-white/10 bg-black/20">
+                                <div className="min-h-[200px] p-4 rounded-lg border border-border bg-muted">
                                     {contentMd.trim() ? (
                                         <MarkdownView content={contentMd} />
                                     ) : (
@@ -376,7 +376,7 @@ function LessonRow({
                                 {lesson.attachments.map((att, i) => (
                                     <div
                                         key={`${att.storage_path}-${i}`}
-                                        className="flex items-center gap-2 p-2 rounded bg-white/5 border border-white/10"
+                                        className="flex items-center gap-2 p-2 rounded bg-muted border border-border"
                                     >
                                         <FileText className="w-4 h-4 text-muted-foreground" />
                                         <span className="flex-1 text-xs">{att.name}</span>
@@ -386,13 +386,13 @@ function LessonRow({
                                             size="sm"
                                             onClick={() => onRemoveAttachment(i)}
                                             disabled={disabled}
-                                            className="h-6 w-6 p-0 text-red-400"
+                                            className="h-6 w-6 p-0 text-destructive"
                                         >
                                             <X className="w-3 h-3" />
                                         </Button>
                                     </div>
                                 ))}
-                                <label className="flex items-center justify-center gap-2 p-3 rounded border border-dashed border-white/20 hover:border-primary/40 transition-colors cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                                <label className="flex items-center justify-center gap-2 p-3 rounded border border-dashed border-border hover:border-primary/40 transition-colors cursor-pointer text-xs text-muted-foreground hover:text-foreground">
                                     {uploading ? (
                                         <>
                                             <Loader2 className="w-4 h-4 animate-spin" /> Wgrywanie...

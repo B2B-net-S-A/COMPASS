@@ -33,9 +33,9 @@ export function ApplyForm({ projectId, projectSlug }: ApplyFormProps) {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>}
+            {error && <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>}
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-4">
                     <div>
                         <label className="text-xs text-muted-foreground mb-1 block">Motywacja *</label>

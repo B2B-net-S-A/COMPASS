@@ -46,9 +46,9 @@ export function CourseSurveyForm({ courseId }: CourseSurveyFormProps) {
 
     if (submitted) {
         return (
-            <Card className="bg-green-500/5 border-green-500/20">
+            <Card className="bg-success/5 border-success/20">
                 <CardContent className="p-5 text-center space-y-2">
-                    <Heart className="w-8 h-8 text-green-400 mx-auto" />
+                    <Heart className="w-8 h-8 text-success mx-auto" />
                     <p className="font-semibold">Dziękujemy!</p>
                     <p className="text-xs text-muted-foreground">
                         Twój feedback pomaga autorowi i innym studentom.
@@ -83,11 +83,11 @@ export function CourseSurveyForm({ courseId }: CourseSurveyFormProps) {
                                 className={`w-9 h-9 rounded-md border text-sm font-medium transition-colors ${
                                     nps === n
                                         ? n >= 9
-                                            ? 'bg-green-500/20 border-green-500/50 text-green-300'
+                                            ? 'bg-success/20 border-success/50 text-success'
                                             : n >= 7
-                                              ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
-                                              : 'bg-red-500/20 border-red-500/50 text-red-300'
-                                        : 'bg-white/5 border-white/10 hover:border-white/30'
+                                              ? 'bg-warning/20 border-warning/50 text-warning'
+                                              : 'bg-destructive/20 border-destructive/50 text-destructive'
+                                        : 'bg-muted border-border hover:border-border'
                                 }`}
                             >
                                 {n}

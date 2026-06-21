@@ -40,9 +40,9 @@ export default async function CourseDetailPage({ params }: PageProps) {
             <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className="text-[10px]">{course.category}</Badge>
-                    <Badge variant="outline" className="text-[10px] border-white/10">{LEVEL_LABEL[course.level] ?? course.level}</Badge>
+                    <Badge variant="outline" className="text-[10px] border-border">{LEVEL_LABEL[course.level] ?? course.level}</Badge>
                     {course.duration_minutes && (
-                        <Badge variant="outline" className="text-[10px] border-white/10 gap-1">
+                        <Badge variant="outline" className="text-[10px] border-border gap-1">
                             <Clock className="w-3 h-3" /> {formatDuration(course.duration_minutes)}
                         </Badge>
                     )}
@@ -54,7 +54,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 {course.description && <p className="text-muted-foreground">{course.description}</p>}
                 <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
-                        <Star className="w-3 h-3 text-amber-400" />
+                        <Star className="w-3 h-3 text-warning" />
                         {course.ratings_count > 0 ? `${course.avg_rating.toFixed(1)} (${course.ratings_count} ocen)` : 'Brak ocen'}
                     </span>
                     <span className="inline-flex items-center gap-1">
@@ -66,7 +66,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 {course.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                         {course.tags.map((t) => (
-                            <Badge key={t} className="bg-white/5 text-muted-foreground border-0 text-[10px]">{t}</Badge>
+                            <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[10px]">{t}</Badge>
                         ))}
                     </div>
                 )}
@@ -80,7 +80,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 hasQuiz={course.quiz_questions_count > 0}
             />
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-3">
                     <div className="flex items-center gap-2">
                         <BookOpen className="w-5 h-5 text-primary" />
@@ -93,7 +93,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                             {course.lessons.map((l, idx) => (
                                 <li
                                     key={l.id}
-                                    className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10"
+                                    className="flex items-center gap-3 p-3 rounded-lg bg-muted border border-border"
                                 >
                                     <Badge variant="outline" className="text-[10px] w-7 justify-center">
                                         {idx + 1}
@@ -122,7 +122,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 </CardContent>
             </Card>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-2">
                     <div className="flex items-center gap-2">
                         <ListChecks className="w-5 h-5 text-primary" />
@@ -136,7 +136,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
             </Card>
 
             {course.user_rating && (
-                <Card className="bg-amber-500/5 border-amber-500/20">
+                <Card className="bg-warning/5 border-warning/20">
                     <CardContent className="p-5">
                         <p className="text-xs text-muted-foreground mb-2">Twoja ocena:</p>
                         <div className="flex items-center gap-1 mb-2">
@@ -144,7 +144,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                                 <Star
                                     key={n}
                                     className={`w-5 h-5 ${
-                                        n <= course.user_rating!.rating ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'
+                                        n <= course.user_rating!.rating ? 'fill-warning text-warning' : 'text-muted-foreground'
                                     }`}
                                 />
                             ))}

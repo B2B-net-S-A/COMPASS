@@ -11,16 +11,16 @@ export function PostCard({ post }: { post: NewsPostListItem }) {
         <Link href={`/news/${post.slug}`} className="block group">
             <Card
                 className={cn(
-                    'border-white/10 hover:border-primary/40 transition-colors',
-                    post.pinned && 'bg-amber-500/5 border-amber-500/30',
-                    !post.pinned && 'bg-white/5',
+                    'border-border hover:border-primary/40 transition-colors',
+                    post.pinned && 'bg-warning/5 border-warning/30',
+                    !post.pinned && 'bg-card',
                 )}
             >
                 <CardContent className="p-5 space-y-3">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="flex items-center gap-2 flex-wrap">
                             {post.pinned && (
-                                <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10 inline-flex items-center gap-1">
+                                <Badge variant="outline" className="text-[10px] border-warning/30 text-warning bg-warning/10 inline-flex items-center gap-1">
                                     <Pin className="w-2.5 h-2.5" /> Przypięty
                                 </Badge>
                             )}
@@ -49,7 +49,7 @@ export function PostCard({ post }: { post: NewsPostListItem }) {
                         <p className="text-sm text-muted-foreground line-clamp-3">{post.excerpt}</p>
                     )}
 
-                    <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                    <div className="flex items-center justify-between pt-2 border-t border-border">
                         <p className="text-[10px] text-muted-foreground">
                             Autor: {post.author_name ?? '—'}
                         </p>

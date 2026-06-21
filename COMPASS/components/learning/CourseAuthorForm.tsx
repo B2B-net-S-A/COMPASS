@@ -115,14 +115,14 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
     return (
         <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>
             )}
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-4">
                     {allowCompanyType && (
-                        <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-3">
-                            <p className="text-xs font-semibold text-amber-400">Tryb autora (admin / trainer)</p>
+                        <div className="p-3 rounded-lg border border-warning/20 bg-warning/5 space-y-3">
+                            <p className="text-xs font-semibold text-warning">Tryb autora (admin / trainer)</p>
                             <div className="flex flex-wrap gap-2">
                                 <button
                                     type="button"
@@ -131,7 +131,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                                     className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${
                                         courseType === 'consultant'
                                             ? 'bg-primary text-primary-foreground border-primary'
-                                            : 'bg-white/5 text-muted-foreground border-white/10 hover:border-primary/40'
+                                            : 'bg-card text-muted-foreground border-border hover:border-primary/40'
                                     }`}
                                 >
                                     Kurs konsultancki
@@ -143,7 +143,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                                     className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${
                                         courseType === 'company'
                                             ? 'bg-primary text-primary-foreground border-primary'
-                                            : 'bg-white/5 text-muted-foreground border-white/10 hover:border-primary/40'
+                                            : 'bg-card text-muted-foreground border-border hover:border-primary/40'
                                     }`}
                                 >
                                     Kurs firmowy (B2Bnetwork)
@@ -156,7 +156,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                                         checked={isOfficial}
                                         onChange={(e) => setIsOfficial(e.target.checked)}
                                         disabled={isPending}
-                                        className="accent-amber-500"
+                                        className="accent-warning"
                                     />
                                     Oznacz jako Official (np. GASQ-certified, SAFe Agile, Pega)
                                 </label>
@@ -171,7 +171,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
 
                     <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                            Tytuł szkolenia <span className="text-red-400">*</span>
+                            Tytuł szkolenia <span className="text-destructive">*</span>
                         </label>
                         <Input
                             value={title}
@@ -197,14 +197,14 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">
-                                Kategoria <span className="text-red-400">*</span>
+                                Kategoria <span className="text-destructive">*</span>
                             </label>
                             <select
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
                                 required
                                 disabled={isPending}
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-md text-sm focus:outline-none focus:border-primary/50"
+                                className="w-full px-3 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:border-primary/50"
                             >
                                 <option value="" disabled>
                                     Wybierz...
@@ -223,7 +223,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                                 value={level}
                                 onChange={(e) => setLevel(e.target.value as CourseLevel)}
                                 disabled={isPending}
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-md text-sm focus:outline-none focus:border-primary/50"
+                                className="w-full px-3 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:border-primary/50"
                             >
                                 {LEVELS.map((l) => (
                                     <option key={l.value} value={l.value}>
@@ -276,7 +276,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                                             type="button"
                                             onClick={() => handleRemoveTag(t)}
                                             disabled={isPending}
-                                            className="hover:text-red-400"
+                                            className="hover:text-destructive"
                                         >
                                             <X className="w-3 h-3" />
                                         </button>

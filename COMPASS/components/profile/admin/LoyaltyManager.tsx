@@ -153,14 +153,14 @@ export function LoyaltyManager() {
                                 <h3 className="font-bold text-lg">{selectedUser.full_name}</h3>
                                 <div className="flex items-center gap-2 mt-1">
                                     <Badge variant="secondary">{selectedUser.role}</Badge>
-                                    <Badge className="bg-amber-500 hover:bg-amber-600">{selectedUser.loyalty_tier}</Badge>
+                                    <Badge className="bg-warning hover:bg-warning/90">{selectedUser.loyalty_tier}</Badge>
                                 </div>
                             </div>
                         </div>
 
                         <div className="flex items-center justify-between p-4 border rounded-lg">
                             <div className="flex items-center gap-3">
-                                <Award className="h-5 w-5 text-amber-500" />
+                                <Award className="h-5 w-5 text-warning" />
                                 <span className="font-medium">Aktualne Saldo</span>
                             </div>
                             <span className="text-2xl font-bold">{selectedUser.loyalty_points} pkt</span>
@@ -168,7 +168,7 @@ export function LoyaltyManager() {
 
                         <div className="grid grid-cols-2 gap-4">
                             <Button
-                                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                                className="w-full bg-success hover:bg-success/90 text-white"
                                 onClick={() => openDialog('add')}
                             >
                                 <Plus className="mr-2 h-4 w-4" /> Przyznaj Punkty

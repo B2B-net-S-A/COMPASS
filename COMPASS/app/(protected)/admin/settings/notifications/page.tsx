@@ -71,7 +71,7 @@ export default function NotificationsSettingsPage() {
                 </p>
             </div>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Mail className="w-5 h-5 text-primary" />
@@ -87,7 +87,7 @@ export default function NotificationsSettingsPage() {
                             placeholder="biurko2015@gmail.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="bg-black/30 border-white/10"
+                            className="bg-muted border-border"
                         />
                         <p className="text-xs text-muted-foreground">
                             Na ten adres będą wysyłane powiadomienia o nowych zgłoszeniach sprzętowych i deklaracjach benefitowych.
@@ -96,8 +96,8 @@ export default function NotificationsSettingsPage() {
 
                     {message && (
                         <div className={`p-3 rounded-lg border ${message.type === 'success'
-                                ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                                : 'bg-red-500/10 border-red-500/30 text-red-400'
+                                ? 'bg-success/10 border-success/30 text-success'
+                                : 'bg-destructive/10 border-destructive/30 text-destructive'
                             }`}>
                             {message.text}
                         </div>
@@ -122,8 +122,8 @@ export default function NotificationsSettingsPage() {
                     </Button>
 
                     <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/10">
-                        <p className="text-xs text-blue-300 font-medium mb-2">ℹ️ Informacja</p>
-                        <p className="text-xs text-gray-400 leading-relaxed">
+                        <p className="text-xs text-info font-medium mb-2">ℹ️ Informacja</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
                             Powiadomienia email są wysyłane automatycznie po każdym nowym zgłoszeniu.
                             Upewnij się, że adres email jest poprawny i aktywny.
                         </p>

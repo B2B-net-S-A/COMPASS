@@ -39,11 +39,11 @@ export function LinkedInShareButton({ courseTitle, courseId }: LinkedInShareButt
     }
 
     return (
-        <Card className="bg-gradient-to-br from-blue-500/5 to-blue-700/5 border-blue-500/20">
+        <Card className="bg-gradient-to-br from-info/5 to-info/5 border-info/20">
             <CardContent className="p-5 space-y-3">
                 <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                        <Linkedin className="w-5 h-5 text-blue-400" />
+                    <div className="w-10 h-10 rounded-full bg-info/20 flex items-center justify-center shrink-0">
+                        <Linkedin className="w-5 h-5 text-info" />
                     </div>
                     <div className="flex-1">
                         <h3 className="font-semibold text-sm mb-0.5">Pochwal się ukończeniem</h3>
@@ -53,7 +53,7 @@ export function LinkedInShareButton({ courseTitle, courseId }: LinkedInShareButt
                     </div>
                 </div>
 
-                <div className="p-3 rounded bg-white/5 border border-white/10 text-xs text-muted-foreground italic">
+                <div className="p-3 rounded bg-card border border-border text-xs text-muted-foreground italic">
                     {summaryText}
                 </div>
 
@@ -64,7 +64,7 @@ export function LinkedInShareButton({ courseTitle, courseId }: LinkedInShareButt
                         rel="noopener noreferrer"
                         className="inline-flex"
                     >
-                        <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                        <Button size="sm" className="gap-2 bg-info hover:bg-info/90 text-white">
                             <Linkedin className="w-3.5 h-3.5" />
                             Udostępnij na LinkedIn
                         </Button>

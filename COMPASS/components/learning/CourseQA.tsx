@@ -113,7 +113,7 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
     }
 
     return (
-        <Card className="bg-white/5 border-white/10">
+        <Card className="bg-card border-border">
             <CardContent className="p-5 space-y-4">
                 <div className="flex items-center gap-2">
                     <MessageSquare className="w-5 h-5 text-primary" />
@@ -154,7 +154,7 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
                             const isExpanded = expandedQid === q.id
                             const answers = answersMap.get(q.id) ?? []
                             return (
-                                <div key={q.id} className="border border-white/10 rounded-lg p-3 space-y-2">
+                                <div key={q.id} className="border border-border rounded-lg p-3 space-y-2">
                                     <div className="flex items-start gap-3">
                                         <Avatar className="h-7 w-7">
                                             <AvatarImage src={q.user_avatar_url || undefined} />
@@ -174,7 +174,7 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
                                                     })}
                                                 </span>
                                                 {q.is_resolved && (
-                                                    <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-400 bg-green-500/10">
+                                                    <Badge variant="outline" className="text-[10px] border-success/30 text-success bg-success/10">
                                                         <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />
                                                         Rozwiązane
                                                     </Badge>
@@ -208,7 +208,7 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
                                                     className={`p-2 rounded border ${
                                                         a.is_author_answer
                                                             ? 'border-primary/30 bg-primary/5'
-                                                            : 'border-white/10 bg-white/5'
+                                                            : 'border-border bg-card'
                                                     }`}
                                                 >
                                                     <div className="flex items-center gap-2 mb-1">

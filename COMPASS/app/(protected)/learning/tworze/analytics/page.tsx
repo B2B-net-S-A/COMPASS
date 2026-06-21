@@ -15,11 +15,11 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-    draft: 'border-white/20 text-muted-foreground',
-    pending_review: 'border-amber-500/30 text-amber-400 bg-amber-500/10',
-    published: 'border-green-500/30 text-green-400 bg-green-500/10',
-    archived: 'border-white/20 text-muted-foreground',
-    rejected: 'border-red-500/30 text-red-400 bg-red-500/10',
+    draft: 'border-border text-muted-foreground',
+    pending_review: 'border-warning/30 text-warning bg-warning/10',
+    published: 'border-success/30 text-success bg-success/10',
+    archived: 'border-border text-muted-foreground',
+    rejected: 'border-destructive/30 text-destructive bg-destructive/10',
 }
 
 export default async function AuthorAnalyticsPage() {
@@ -30,8 +30,8 @@ export default async function AuthorAnalyticsPage() {
                 <Link href="/learning/tworze" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1">
                     <ArrowLeft className="w-4 h-4" /> Wróć
                 </Link>
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error ?? 'Brak danych'}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error ?? 'Brak danych'}</CardContent>
                 </Card>
             </div>
         )
@@ -54,7 +54,7 @@ export default async function AuthorAnalyticsPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
                             <BookOpen className="w-5 h-5 text-primary" />
@@ -66,10 +66,10 @@ export default async function AuthorAnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                            <Users className="w-5 h-5 text-blue-400" />
+                        <div className="w-10 h-10 rounded-full bg-info/20 flex items-center justify-center">
+                            <Users className="w-5 h-5 text-info" />
                         </div>
                         <div>
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">Zapisanych</p>
@@ -78,10 +78,10 @@ export default async function AuthorAnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                            <CheckCircle2 className="w-5 h-5 text-green-400" />
+                        <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
+                            <CheckCircle2 className="w-5 h-5 text-success" />
                         </div>
                         <div>
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">Ukończonych</p>
@@ -90,10 +90,10 @@ export default async function AuthorAnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
-                            <Star className="w-5 h-5 text-amber-400" />
+                        <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
+                            <Star className="w-5 h-5 text-warning" />
                         </div>
                         <div>
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">Średnia ocena</p>
@@ -132,7 +132,7 @@ export default async function AuthorAnalyticsPage() {
                                 </thead>
                                 <tbody>
                                     {data.courses.map((c) => (
-                                        <tr key={c.course_id} className="border-b last:border-b-0 hover:bg-white/5">
+                                        <tr key={c.course_id} className="border-b last:border-b-0 hover:bg-muted">
                                             <td className="py-2 pr-3">
                                                 <p className="font-medium">{c.course_title}</p>
                                             </td>

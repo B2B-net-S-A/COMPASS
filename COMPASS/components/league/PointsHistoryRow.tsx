@@ -21,9 +21,9 @@ interface PointsHistoryRowProps {
 }
 
 const STATUS_BADGE: Record<LoyaltyTxStatus, { label: string; bg: string; icon: typeof Clock }> = {
-    pending: { label: 'Oczekuje', bg: 'bg-amber-500/10 text-amber-400 border-amber-500/30', icon: Clock },
-    confirmed: { label: 'Zatwierdzone', bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', icon: CheckCircle2 },
-    reversed: { label: 'Cofnięte', bg: 'bg-red-500/10 text-red-400 border-red-500/30', icon: RotateCcw },
+    pending: { label: 'Oczekuje', bg: 'bg-warning/10 text-warning border-warning/30', icon: Clock },
+    confirmed: { label: 'Zatwierdzone', bg: 'bg-success/10 text-success border-success/30', icon: CheckCircle2 },
+    reversed: { label: 'Cofnięte', bg: 'bg-destructive/10 text-destructive border-destructive/30', icon: RotateCcw },
 }
 
 export function PointsHistoryRow({ tx, className }: PointsHistoryRowProps) {
@@ -34,7 +34,7 @@ export function PointsHistoryRow({ tx, className }: PointsHistoryRowProps) {
     const isReversed = tx.status === 'reversed'
 
     return (
-        <div role="listitem" className={cn('flex items-center justify-between gap-3 p-3 border-b border-white/5 last:border-0', className)}>
+        <div role="listitem" className={cn('flex items-center justify-between gap-3 p-3 border-b border-border last:border-0', className)}>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium truncate">{tx.description}</span>
@@ -53,8 +53,8 @@ export function PointsHistoryRow({ tx, className }: PointsHistoryRowProps) {
                 className={cn(
                     'font-mono text-sm font-bold whitespace-nowrap',
                     isReversed && 'text-muted-foreground line-through',
-                    !isReversed && isPositive && (isPending ? 'text-amber-400' : 'text-emerald-400'),
-                    !isReversed && !isPositive && 'text-red-400',
+                    !isReversed && isPositive && (isPending ? 'text-warning' : 'text-success'),
+                    !isReversed && !isPositive && 'text-destructive',
                 )}
             >
                 {isPositive ? '+' : ''}

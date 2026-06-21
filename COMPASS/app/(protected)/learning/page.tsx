@@ -76,11 +76,11 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
             </div>
 
             {/* Course type filter chips (Phase 1.4) */}
-            <div className="flex flex-wrap gap-2 pb-2 border-b border-white/5">
+            <div className="flex flex-wrap gap-2 pb-2 border-b border-border">
                 <Link href="/learning">
                     <Badge
                         className={`cursor-pointer text-xs h-7 px-3 transition-colors ${
-                            !typeParam ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                            !typeParam ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                         }`}
                     >
                         Wszystkie
@@ -89,7 +89,7 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                 <Link href="/learning?type=company">
                     <Badge
                         className={`cursor-pointer text-xs h-7 px-3 transition-colors inline-flex items-center gap-1 ${
-                            typeParam === 'company' ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                            typeParam === 'company' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                         }`}
                     >
                         <Building2 className="w-3 h-3" /> Firmowe
@@ -98,7 +98,7 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                 <Link href="/learning?type=consultant">
                     <Badge
                         className={`cursor-pointer text-xs h-7 px-3 transition-colors inline-flex items-center gap-1 ${
-                            typeParam === 'consultant' ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                            typeParam === 'consultant' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                         }`}
                     >
                         <User className="w-3 h-3" /> Konsultanckie
@@ -108,9 +108,9 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
 
             {/* Catalog state */}
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
+                <Card className="bg-destructive/5 border-destructive/20">
                     <CardContent className="p-6">
-                        <p className="text-sm text-red-400">Błąd ładowania katalogu: {result.error}</p>
+                        <p className="text-sm text-destructive">Błąd ładowania katalogu: {result.error}</p>
                     </CardContent>
                 </Card>
             )}
@@ -146,19 +146,19 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                         </div>
                         {!typeParam && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-6 max-w-2xl mx-auto text-left">
-                                <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                <div className="p-3 rounded-lg bg-muted border border-border">
                                     <p className="text-xs font-semibold text-primary mb-1">+100 pkt</p>
                                     <p className="text-xs text-muted-foreground">
                                         jednorazowo za pierwsze opublikowane szkolenie
                                     </p>
                                 </div>
-                                <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                <div className="p-3 rounded-lg bg-muted border border-border">
                                     <p className="text-xs font-semibold text-primary mb-1">+50 pkt × ★</p>
                                     <p className="text-xs text-muted-foreground">
                                         za każdego konsultanta, który ukończy Twój kurs
                                     </p>
                                 </div>
-                                <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                <div className="p-3 rounded-lg bg-muted border border-border">
                                     <p className="text-xs font-semibold text-primary mb-1">+20 / +30 pkt</p>
                                     <p className="text-xs text-muted-foreground">
                                         za ukończony kurs (konsultancki / firmowy)
@@ -182,7 +182,7 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {items.map((c) => (
                             <Link key={c.id} href={`/learning/${c.slug}`} className="block group">
-                                <Card className={`bg-white/5 border-white/10 hover:border-primary/40 transition-colors h-full ${c.is_official ? 'border-amber-500/30' : ''}`}>
+                                <Card className={`bg-muted border-border hover:border-primary/40 transition-colors h-full ${c.is_official ? 'border-warning/30' : ''}`}>
                                     <CardContent className="p-5 space-y-3">
                                         <div className="flex items-start justify-between gap-2 flex-wrap">
                                             <div className="flex items-center gap-1 flex-wrap">
@@ -190,17 +190,17 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                                                     {c.category}
                                                 </Badge>
                                                 {c.course_type === 'company' && (
-                                                    <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400 bg-blue-500/10 inline-flex items-center gap-0.5">
+                                                    <Badge variant="outline" className="text-[10px] border-info/30 text-info bg-info/10 inline-flex items-center gap-0.5">
                                                         <Building2 className="w-2.5 h-2.5" /> Firmowy
                                                     </Badge>
                                                 )}
                                                 {c.is_official && (
-                                                    <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10 inline-flex items-center gap-0.5">
+                                                    <Badge variant="outline" className="text-[10px] border-warning/30 text-warning bg-warning/10 inline-flex items-center gap-0.5">
                                                         <ShieldCheck className="w-2.5 h-2.5" /> Official
                                                     </Badge>
                                                 )}
                                             </div>
-                                            <Badge variant="outline" className="text-[10px] border-white/10">
+                                            <Badge variant="outline" className="text-[10px] border-border">
                                                 {LEVEL_LABEL[c.level] ?? c.level}
                                             </Badge>
                                         </div>
@@ -216,20 +216,20 @@ export default async function AkademiaPage({ searchParams }: PageProps) {
                                             {c.tags.slice(0, 4).map((t) => (
                                                 <Badge
                                                     key={t}
-                                                    className="bg-white/5 text-muted-foreground border-0 text-[9px] h-4 px-1"
+                                                    className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1"
                                                 >
                                                     {t}
                                                 </Badge>
                                             ))}
                                             {c.tags.length > 4 && (
-                                                <Badge className="bg-white/5 text-muted-foreground border-0 text-[9px] h-4 px-1">
+                                                <Badge className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1">
                                                     +{c.tags.length - 4}
                                                 </Badge>
                                             )}
                                         </div>
-                                        <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-white/5">
+                                        <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
                                             <span className="inline-flex items-center gap-1">
-                                                <Star className="w-3 h-3 text-amber-400" />
+                                                <Star className="w-3 h-3 text-warning" />
                                                 {formatRating(c.avg_rating, c.ratings_count)}
                                             </span>
                                             <span>{formatDuration(c.duration_minutes)}</span>

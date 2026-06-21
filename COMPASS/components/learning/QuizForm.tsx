@@ -86,7 +86,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
 
     return (
         <div className="space-y-4">
-            <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
+            <div className="p-4 rounded-lg bg-warning/10 border border-warning/20 text-sm text-warning">
                 <p className="font-medium mb-1">Quiz końcowy</p>
                 <p className="text-xs">
                     Próg zaliczenia: <strong>70%</strong>. Możesz podchodzić wielokrotnie, ale punkty otrzymujesz tylko
@@ -95,7 +95,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
             </div>
 
             {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-start gap-2">
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div className="flex-1">
                         <p>{error}</p>
@@ -127,8 +127,8 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                             ref={(el) => {
                                 questionRefs.current[q.question_id] = el
                             }}
-                            className={`bg-white/5 transition-colors ${
-                                isUnanswered ? 'border-red-500/60 ring-1 ring-red-500/40' : 'border-white/10'
+                            className={`bg-card transition-colors ${
+                                isUnanswered ? 'border-destructive/60 ring-1 ring-destructive/40' : 'border-border'
                             }`}
                         >
                             <CardContent className="p-5 space-y-3">
@@ -139,7 +139,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                                     <p className="font-medium flex-1">{q.question_text}</p>
                                 </div>
                                 {hasNoOptions ? (
-                                    <div className="pl-7 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-center gap-2">
+                                    <div className="pl-7 p-3 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning flex items-center gap-2">
                                         <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                         Pytanie nie ma opcji. Skontaktuj się z autorem kursu.
                                     </div>
@@ -154,7 +154,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                                                 className={`w-full text-left p-3 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                                     selected === o.id
                                                         ? 'bg-primary/20 border-primary/50 text-foreground'
-                                                        : 'bg-white/5 border-white/10 hover:border-white/20'
+                                                        : 'bg-card border-border hover:border-border'
                                                 }`}
                                             >
                                                 <div className="flex items-center gap-3">
@@ -162,7 +162,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                                                         className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
                                                             selected === o.id
                                                                 ? 'border-primary bg-primary/20'
-                                                                : 'border-white/20'
+                                                                : 'border-border'
                                                         }`}
                                                     >
                                                         {selected === o.id && <div className="w-2 h-2 rounded-full bg-primary" />}
@@ -177,7 +177,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                                     </div>
                                 )}
                                 {isUnanswered && (
-                                    <p className="pl-7 text-xs text-red-400 flex items-center gap-1.5">
+                                    <p className="pl-7 text-xs text-destructive flex items-center gap-1.5">
                                         <AlertCircle className="w-3 h-3" />
                                         Wybierz odpowiedź na to pytanie
                                     </p>
@@ -188,7 +188,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                 })}
             </div>
 
-            <div className="flex justify-between items-center pt-4 border-t border-white/10">
+            <div className="flex justify-between items-center pt-4 border-t border-border">
                 <p className="text-xs text-muted-foreground">
                     Odpowiedziano: <strong>{Object.keys(answers).length}/{questions.length}</strong>
                 </p>

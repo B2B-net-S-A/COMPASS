@@ -39,7 +39,7 @@ export function CourseDetailActions({ courseId, courseSlug, isEnrolled, hasLesso
         <Card className="bg-gradient-to-r from-burgundy/10 to-primary/10 border-primary/30">
             <CardContent className="p-5 space-y-3">
                 {error && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-start gap-2">
+                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                         {error}
                     </div>
@@ -61,7 +61,7 @@ export function CourseDetailActions({ courseId, courseSlug, isEnrolled, hasLesso
                 {enrolled && hasLessons && (
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="flex items-center gap-2">
-                            <CheckCircle2 className="w-5 h-5 text-green-400" />
+                            <CheckCircle2 className="w-5 h-5 text-success" />
                             <span className="text-sm font-medium">Jesteś zapisany na kurs</span>
                         </div>
                         <div className="flex gap-2">

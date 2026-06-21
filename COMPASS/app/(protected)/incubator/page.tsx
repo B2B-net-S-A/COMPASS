@@ -46,7 +46,7 @@ export default function IncubatorLandingPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10 h-full">
+                <Card className="bg-card border-border h-full">
                     <CardHeader>
                         <Briefcase className="w-8 h-8 text-primary mb-2" />
                         <CardTitle className="text-xl">Pracuj nad naszym produktem</CardTitle>

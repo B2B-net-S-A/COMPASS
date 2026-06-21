@@ -44,7 +44,7 @@ export function RatingWidget({ courseId, initialRating, initialComment, onSaved 
     }
 
     return (
-        <Card className="bg-gradient-to-br from-amber-500/10 to-primary/10 border-amber-500/20">
+        <Card className="bg-gradient-to-br from-warning/10 to-primary/10 border-warning/20">
             <CardContent className="p-5 space-y-4">
                 <div>
                     <h3 className="text-lg font-semibold mb-1">{isUpdating ? 'Twoja ocena' : 'Oceń szkolenie'}</h3>
@@ -69,7 +69,7 @@ export function RatingWidget({ courseId, initialRating, initialComment, onSaved 
                             >
                                 <Star
                                     className={`w-8 h-8 transition-colors ${
-                                        filled ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'
+                                        filled ? 'fill-warning text-warning' : 'text-muted-foreground'
                                     }`}
                                 />
                             </button>
@@ -92,13 +92,13 @@ export function RatingWidget({ courseId, initialRating, initialComment, onSaved 
                 </div>
 
                 {error && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-start gap-2">
+                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                         {error}
                     </div>
                 )}
                 {success && (
-                    <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400 flex items-center gap-2">
+                    <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4" /> {success}
                     </div>
                 )}

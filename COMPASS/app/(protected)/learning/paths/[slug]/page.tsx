@@ -30,7 +30,7 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
                     <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className="text-[10px]">{LEVEL_LABEL[path.level]}</Badge>
                         {path.completed_at && (
-                            <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-400 bg-green-500/10">
+                            <Badge variant="outline" className="text-[10px] border-success/30 text-success bg-success/10">
                                 <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />
                                 Ukończona
                             </Badge>
@@ -58,7 +58,7 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
                                     {path.completed_courses_count}/{path.total_courses_count} · {path.progress_percent}%
                                 </span>
                             </div>
-                            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                            <div className="h-2 rounded-full bg-muted overflow-hidden">
                                 <div className="h-full bg-primary transition-all" style={{ width: `${path.progress_percent}%` }} />
                             </div>
                         </div>
@@ -80,16 +80,16 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
                             key={c.course.id}
                             className={
                                 isCompleted
-                                    ? 'bg-green-500/5 border-green-500/20'
+                                    ? 'bg-success/5 border-success/20'
                                     : isLocked
-                                      ? 'bg-white/5 border-white/10 opacity-60'
-                                      : 'bg-white/5 border-white/10 hover:border-primary/30 transition-colors'
+                                      ? 'bg-card border-border opacity-60'
+                                      : 'bg-card border-border hover:border-primary/30 transition-colors'
                             }
                         >
                             <CardContent className="p-4 flex items-center gap-4">
                                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-sm font-bold">
                                     {isCompleted ? (
-                                        <CheckCircle2 className="w-5 h-5 text-green-400" />
+                                        <CheckCircle2 className="w-5 h-5 text-success" />
                                     ) : isLocked ? (
                                         <Lock className="w-4 h-4 text-muted-foreground" />
                                     ) : (
@@ -101,10 +101,10 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
                                     <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                                         <Badge variant="outline" className="text-[10px]">{c.course.category}</Badge>
                                         {!c.is_required && (
-                                            <Badge variant="outline" className="text-[10px] border-white/20">Opcjonalny</Badge>
+                                            <Badge variant="outline" className="text-[10px] border-border">Opcjonalny</Badge>
                                         )}
                                         {c.is_enrolled && !c.is_completed && (
-                                            <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10">
+                                            <Badge variant="outline" className="text-[10px] border-warning/30 text-warning bg-warning/10">
                                                 W trakcie
                                             </Badge>
                                         )}

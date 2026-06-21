@@ -140,10 +140,10 @@ export function ProjectCard({
         if (!value) return null
         return (
             <div className="flex items-start gap-3 py-1.5">
-                <span className="text-gray-500 mt-0.5 shrink-0">{icon}</span>
+                <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
                 <div>
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
-                    <div className="text-sm text-gray-200">{value}</div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
+                    <div className="text-sm text-foreground">{value}</div>
                 </div>
             </div>
         )
@@ -151,11 +151,11 @@ export function ProjectCard({
 
     return (
         <>
-            <Card className={`group relative bg-card border-white/10 hover:border-slate-200/30 transition-colors ${isSelected ? 'border-slate-200/50 bg-muted/10' : ''}`}>
+            <Card className={`group relative bg-card border-border hover:border-border transition-colors ${isSelected ? 'border-border bg-muted/10' : ''}`}>
                 <div className="absolute top-4 left-4 z-10">
                     <Checkbox checked={isSelected}
                         onCheckedChange={() => onToggleSelect(project.id)}
-                        className="border-white/20 data-[state=checked]:bg-slate-200 data-[state=checked]:border-slate-200" />
+                        className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary" />
                 </div>
 
 
@@ -163,7 +163,7 @@ export function ProjectCard({
                     <div className="flex flex-row items-center justify-between gap-4 w-full min-w-0">
                         <div className="space-y-1 min-w-0 flex-1">
                             <div className="flex items-center gap-2 min-w-0">
-                                <CardTitle className="text-lg font-bold text-white truncate flex-1">{displayTitle}</CardTitle>
+                                <CardTitle className="text-lg font-bold text-foreground truncate flex-1">{displayTitle}</CardTitle>
                                 {showFavoriteButton !== false && (
                                     <FavoriteButton
                                         projectId={project.id}
@@ -174,7 +174,7 @@ export function ProjectCard({
                                     />
                                 )}
                                 {typeof favoriteCount === 'number' && favoriteCount > 0 && (
-                                    <Badge variant="secondary" className="text-xs bg-yellow-400/10 text-yellow-400 border-yellow-400/20">
+                                    <Badge variant="secondary" className="text-xs bg-warning/10 text-warning border-warning/20">
                                         {favoriteCount} zainteresowanych
                                     </Badge>
                                 )}
@@ -187,7 +187,7 @@ export function ProjectCard({
                         {!isEditing && (
                             <div className="flex items-center gap-2 shrink-0">
                                 {project.file_url && (
-                                    <Button variant="outline" size="sm" className="h-8 text-xs border-slate-200/50 text-slate-200 hover:bg-slate-200/10" asChild>
+                                    <Button variant="outline" size="sm" className="h-8 text-xs border-border text-foreground hover:bg-muted/10" asChild>
                                         <a href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${project.file_url.split('/').map(encodeURIComponent).join('/')}`}
                                             target="_blank" rel="noopener noreferrer">
                                             <Briefcase className="w-3 h-3 mr-1.5" /> Szczegóły
@@ -202,13 +202,13 @@ export function ProjectCard({
                                 >
                                     <Share2 className="w-3 h-3 mr-1.5" /> Rekomenduj
                                 </Button>
-                                <div className="w-px h-6 bg-white/10 mx-1 hidden sm:block" />
+                                <div className="w-px h-6 bg-border mx-1 hidden sm:block" />
                                 <Button variant="outline" size="icon" onClick={startEdit} title="Edytuj"
-                                    className="h-8 w-8 rounded-lg border-white/10 text-slate-600 hover:bg-white/5 hover:text-white">
+                                    className="h-8 w-8 rounded-lg border-border text-muted-foreground hover:bg-muted/5 hover:text-foreground">
                                     <Pencil className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button variant="outline" size="icon" onClick={() => onDelete(project.id)} title="Usuń"
-                                    className="h-8 w-8 rounded-lg border-white/10 text-red-400 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50">
+                                    className="h-8 w-8 rounded-lg border-border text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50">
                                     <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                             </div>
@@ -221,26 +221,26 @@ export function ProjectCard({
                         <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Nazwa profilu</label>
+                                    <label className="text-xs text-muted-foreground mb-1 block">Nazwa profilu</label>
                                     <Input value={editData.position || ''} onChange={(e) => setEditData({ ...editData, position: e.target.value })}
-                                        placeholder="np. Senior Java Developer" className="bg-secondary/50 border-white/20 text-white" />
+                                        placeholder="np. Senior Java Developer" className="bg-secondary/50 border-border text-foreground" />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Stawka</label>
+                                    <label className="text-xs text-muted-foreground mb-1 block">Stawka</label>
                                     <Input value={editData.max_rate || ''} onChange={(e) => setEditData({ ...editData, max_rate: e.target.value })}
-                                        placeholder="np. 150 PLN/h" className="bg-secondary/50 border-white/20 text-white" />
+                                        placeholder="np. 150 PLN/h" className="bg-secondary/50 border-border text-foreground" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Lokalizacja</label>
+                                    <label className="text-xs text-muted-foreground mb-1 block">Lokalizacja</label>
                                     <Input value={editData.location || ''} onChange={(e) => setEditData({ ...editData, location: e.target.value })}
-                                        placeholder="np. Gdynia, wizyty 1-2x/tyg" className="bg-secondary/50 border-white/20 text-white" />
+                                        placeholder="np. Gdynia, wizyty 1-2x/tyg" className="bg-secondary/50 border-border text-foreground" />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Tryb pracy</label>
+                                    <label className="text-xs text-muted-foreground mb-1 block">Tryb pracy</label>
                                     <select value={editData.work_type || ''} onChange={(e) => setEditData({ ...editData, work_type: e.target.value })}
-                                        title="Tryb pracy" className="w-full h-10 bg-secondary/50 border border-white/20 rounded-md px-3 text-sm text-white">
+                                        title="Tryb pracy" className="w-full h-10 bg-secondary/50 border border-border rounded-md px-3 text-sm text-foreground">
                                         <option value="">-- Wybierz --</option>
                                         <option value="remote">Zdalnie</option>
                                         <option value="hybrid">Hybryda</option>
@@ -250,43 +250,43 @@ export function ProjectCard({
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Start w projekcie</label>
+                                    <label className="text-xs text-muted-foreground mb-1 block">Start w projekcie</label>
                                     <Input value={editData.start_date || ''} onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
-                                        placeholder="np. ASAP, 01.03.2025" className="bg-secondary/50 border-white/20 text-white" />
+                                        placeholder="np. ASAP, 01.03.2025" className="bg-secondary/50 border-border text-foreground" />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Deadline na rekomendacje</label>
+                                    <label className="text-xs text-muted-foreground mb-1 block">Deadline na rekomendacje</label>
                                     <Input value={editData.recommendation_deadline || ''} onChange={(e) => setEditData({ ...editData, recommendation_deadline: e.target.value })}
-                                        placeholder="np. 14.02.2025" className="bg-secondary/50 border-white/20 text-white" />
+                                        placeholder="np. 14.02.2025" className="bg-secondary/50 border-border text-foreground" />
                                 </div>
                             </div>
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">Manager</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Manager</label>
                                 <Input value={editData.manager_name || ''} onChange={(e) => setEditData({ ...editData, manager_name: e.target.value })}
-                                    placeholder="Imię i nazwisko managera" className="bg-secondary/50 border-white/20 text-white" />
+                                    placeholder="Imię i nazwisko managera" className="bg-secondary/50 border-border text-foreground" />
                             </div>
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">Wymagane języki (przecinek)</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Wymagane języki (przecinek)</label>
                                 <Input value={Array.isArray(editData.required_languages) ? editData.required_languages.join(', ') : editData.required_languages || ''}
                                     onChange={(e) => setEditData({ ...editData, required_languages: e.target.value as unknown as string[] })}
-                                    placeholder="np. English B2, German C1" className="bg-secondary/50 border-white/20 text-white" />
+                                    placeholder="np. English B2, German C1" className="bg-secondary/50 border-border text-foreground" />
                             </div>
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">Opis projektu (EN)</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Opis projektu (EN)</label>
                                 <textarea value={editData.description || ''} onChange={(e) => setEditData({ ...editData, description: e.target.value })}
                                     rows={5} placeholder="Project description in English..."
-                                    className="w-full bg-secondary/50 border border-white/20 rounded-md px-3 py-2 text-sm text-white placeholder:text-gray-500 resize-none" />
+                                    className="w-full bg-secondary/50 border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none" />
                             </div>
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">Opis projektu (PL)</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Opis projektu (PL)</label>
                                 <textarea value={editData.description_pl || ''} onChange={(e) => setEditData({ ...editData, description_pl: e.target.value })}
                                     rows={5} placeholder="Opis projektu po polsku..."
-                                    className="w-full bg-secondary/50 border border-white/20 rounded-md px-3 py-2 text-sm text-white placeholder:text-gray-500 resize-none" />
+                                    className="w-full bg-secondary/50 border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none" />
                             </div>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2 space-y-2 border-r border-white/5 pr-6">
+                            <div className="lg:col-span-2 space-y-2 border-r border-border pr-6">
                                 <InfoRow icon={<Briefcase className="w-4 h-4" />} label="Nazwa profilu" value={project.position} />
                                 <InfoRow icon={<DollarSign className="w-4 h-4" />} label="Stawka" value={formatProjectValue(project.max_rate, isAdmin)} />
                                 <InfoRow icon={<MapPin className="w-4 h-4" />} label="Lokalizacja / Tryb pracy" value={
@@ -302,7 +302,7 @@ export function ProjectCard({
                                 {project.required_languages && project.required_languages.length > 0 && (
                                     <div className="flex items-center gap-2 flex-wrap pt-1">
                                         <Globe className="w-3.5 h-3.5 text-primary" />
-                                        <span className="text-[10px] text-gray-500 uppercase">Języki:</span>
+                                        <span className="text-[10px] text-muted-foreground uppercase">Języki:</span>
                                         {project.required_languages.map((lang, i) => (
                                             <Badge key={i} variant="outline" className="text-xs border-burgundy/30 text-foreground bg-burgundy/10">{lang}</Badge>
                                         ))}
@@ -312,35 +312,35 @@ export function ProjectCard({
                                 {project.required_skills && project.required_skills.length > 0 && (
                                     <div className="flex flex-wrap gap-1 pt-1">
                                         {project.required_skills.map((skill: string, i: number) => (
-                                            <Badge key={i} variant="outline" className="text-xs border-slate-200/30 text-foreground">{skill}</Badge>
+                                            <Badge key={i} variant="outline" className="text-xs border-border text-foreground">{skill}</Badge>
                                         ))}
                                     </div>
                                 )}
 
                                 {displayDescription && (
-                                    <div className="pt-2 border-t border-white/5">
-                                        <div className="text-[10px] text-gray-500 uppercase mb-1">Opis (EN):</div>
-                                        <p className="text-sm text-gray-400 whitespace-pre-wrap">{displayDescription}</p>
+                                    <div className="pt-2 border-t border-border">
+                                        <div className="text-[10px] text-muted-foreground uppercase mb-1">Opis (EN):</div>
+                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{displayDescription}</p>
                                     </div>
                                 )}
 
                                 {displayDescriptionPl && (
-                                    <div className="pt-2 border-t border-white/5">
-                                        <div className="text-[10px] text-gray-500 uppercase mb-1">Opis (PL):</div>
-                                        <p className="text-sm text-gray-400 whitespace-pre-wrap">{displayDescriptionPl}</p>
+                                    <div className="pt-2 border-t border-border">
+                                        <div className="text-[10px] text-muted-foreground uppercase mb-1">Opis (PL):</div>
+                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{displayDescriptionPl}</p>
                                     </div>
                                 )}
                             </div>
 
                             <div className="lg:col-span-1 space-y-4">
-                                <h4 className="text-sm font-medium text-slate-200 flex items-center justify-between border-b border-slate-200/20 pb-2">
+                                <h4 className="text-sm font-medium text-foreground flex items-center justify-between border-b border-border pb-2">
                                     <div className="flex items-center gap-2">
                                         <User className="w-4 h-4" />
                                         {isAdmin ? `Dopasowani Konsultanci (${matches.length})` : 'Moje Dopasowanie'}
                                     </div>
                                     {isAdmin && (
                                         <Button variant="ghost" size="icon" onClick={fetchMatches} disabled={loadingMatches}
-                                            className="h-6 w-6 text-slate-200 hover:text-slate-200 hover:bg-slate-200/10" title="Odśwież analizę AI">
+                                            className="h-6 w-6 text-foreground hover:text-foreground hover:bg-muted/10" title="Odśwież analizę AI">
                                             <RefreshCw className={`w-3 h-3 ${loadingMatches ? 'animate-spin' : ''}`} />
                                         </Button>
                                     )}
@@ -348,28 +348,28 @@ export function ProjectCard({
 
                                 {isAdmin ? (
                                     loadingMatches ? (
-                                        <div className="text-xs text-gray-500 animate-pulse py-2">Szukam kandydatów...</div>
+                                        <div className="text-xs text-muted-foreground animate-pulse py-2">Szukam kandydatów...</div>
                                     ) : matches.length > 0 ? (
                                         <div className="space-y-3">
                                             {(showAllMatches ? matches : matches.slice(0, 10)).map(match => (
                                                 <div key={match.id}
                                                     onClick={() => handleMatchClick(match)}
-                                                    className="flex items-center gap-3 bg-secondary/30 p-2 rounded-md border border-white/5 hover:border-slate-200/30 transition-colors cursor-pointer group/match hover:bg-muted/10">
-                                                    <Avatar className="w-8 h-8 border border-white/10">
+                                                    className="flex items-center gap-3 bg-secondary/30 p-2 rounded-md border border-border hover:border-border transition-colors cursor-pointer group/match hover:bg-muted/10">
+                                                    <Avatar className="w-8 h-8 border border-border">
                                                         <AvatarImage src={match.avatar_url || ''} />
-                                                        <AvatarFallback className="bg-muted text-cyan-200 text-xs">
+                                                        <AvatarFallback className="bg-muted text-info text-xs">
                                                             {match.full_name?.substring(0, 2).toUpperCase()}
                                                         </AvatarFallback>
                                                     </Avatar>
                                                     <div className="flex-1 min-w-0">
-                                                        <div className="text-sm font-medium text-gray-200 truncate group-hover/match:text-slate-200 transition-colors">{match.full_name}</div>
-                                                        <div className="text-[10px] text-gray-500 truncate">{match.job_title || 'Konsultant'}</div>
+                                                        <div className="text-sm font-medium text-foreground truncate group-hover/match:text-foreground transition-colors">{match.full_name}</div>
+                                                        <div className="text-[10px] text-muted-foreground truncate">{match.job_title || 'Konsultant'}</div>
                                                     </div>
                                                     {(() => {
                                                         const score = Math.round(match.similarity * 100)
-                                                        let colorClass = "bg-red-500/10 text-red-400 border-red-500/20"
-                                                        if (score >= 80) colorClass = "bg-green-500/10 text-green-400 border-green-500/20"
-                                                        else if (score >= 50) colorClass = "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                                                        let colorClass = "bg-destructive/10 text-destructive border-destructive/20"
+                                                        if (score >= 80) colorClass = "bg-success/10 text-success border-success/20"
+                                                        else if (score >= 50) colorClass = "bg-warning/10 text-warning border-warning/20"
 
                                                         return (
                                                             <div className="flex flex-col items-end gap-1">
@@ -392,42 +392,42 @@ export function ProjectCard({
                                                     variant="ghost"
                                                     size="sm"
                                                     onClick={() => setShowAllMatches(!showAllMatches)}
-                                                    className="w-full text-[10px] text-slate-200/70 hover:text-slate-200 hover:bg-slate-200/5 mt-2 h-7"
+                                                    className="w-full text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/5 mt-2 h-7"
                                                 >
                                                     {showAllMatches ? 'Pokaż mniej' : `Pokaż pozostałe ${matches.length - 10}...`}
                                                 </Button>
                                             )}
                                         </div>
                                     ) : (
-                                        <div className="text-xs text-gray-500 italic py-2">Brak idealnych dopasowań dla tego projektu.</div>
+                                        <div className="text-xs text-muted-foreground italic py-2">Brak idealnych dopasowań dla tego projektu.</div>
                                     )
                                 ) : (
                                     // Consultant View
                                     <div className="space-y-3">
                                         {!myMatch ? (
                                             <div className="flex flex-col gap-3">
-                                                <p className="text-xs text-slate-600">
+                                                <p className="text-xs text-muted-foreground">
                                                     Sprawdź, jak twoje umiejętności pasują do tego projektu.
                                                 </p>
                                                 <Button
                                                     onClick={handleAnalyzeMyMatch}
                                                     disabled={loadingMyMatch}
                                                     size="sm"
-                                                    className="w-full bg-burgundy/20 text-slate-200 hover:bg-burgundy/30 border border-slate-200/30"
+                                                    className="w-full bg-burgundy/20 text-foreground hover:bg-burgundy/30 border border-border"
                                                 >
                                                     {loadingMyMatch ? <RefreshCw className="w-3 h-3 animate-spin mr-2" /> : <Briefcase className="w-3 h-3 mr-2" />}
                                                     Analizuj dopasowanie
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <div className="bg-secondary/30 p-3 rounded-lg border border-white/5 space-y-3">
+                                            <div className="bg-secondary/30 p-3 rounded-lg border border-border space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-medium text-slate-300">Twoje dopasowanie:</span>
+                                                    <span className="text-xs font-medium text-foreground">Twoje dopasowanie:</span>
                                                     {(() => {
                                                         const score = Math.round(myMatch.similarity * 100)
-                                                        let colorClass = "bg-red-500/10 text-red-400 border-red-500/20"
-                                                        if (score >= 80) colorClass = "bg-green-500/10 text-green-400 border-green-500/20"
-                                                        else if (score >= 50) colorClass = "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                                                        let colorClass = "bg-destructive/10 text-destructive border-destructive/20"
+                                                        if (score >= 80) colorClass = "bg-success/10 text-success border-success/20"
+                                                        else if (score >= 50) colorClass = "bg-warning/10 text-warning border-warning/20"
 
                                                         return (
                                                             <Badge variant="secondary" className={`text-sm tabular-nums ${colorClass}`}>
@@ -438,7 +438,7 @@ export function ProjectCard({
                                                 </div>
 
                                                 {myMatch.ai_reasoning && (
-                                                    <div className="text-xs text-slate-600 italic border-l-2 border-white/10 pl-2">
+                                                    <div className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">
                                                         &quot;{myMatch.ai_reasoning}&quot;
                                                     </div>
                                                 )}
@@ -447,7 +447,7 @@ export function ProjectCard({
                                                     variant="ghost"
                                                     size="sm"
                                                     onClick={() => handleMatchClick(myMatch)}
-                                                    className="w-full text-xs text-slate-200 hover:text-foreground hover:bg-muted/20 border border-slate-200/20"
+                                                    className="w-full text-xs text-foreground hover:text-foreground hover:bg-muted/20 border border-border"
                                                 >
                                                     <Briefcase className="w-3 h-3 mr-2" />
                                                     Zobacz szczegóły analizy
@@ -464,7 +464,7 @@ export function ProjectCard({
                 <CardFooter className="flex justify-end gap-2 pt-0 pl-12">
                     {isEditing ? (
                         <>
-                            <Button variant="outline" size="sm" onClick={cancelEdit} className="text-xs border-white/20 text-gray-400 hover:bg-white/5">
+                            <Button variant="outline" size="sm" onClick={cancelEdit} className="text-xs border-border text-muted-foreground hover:bg-muted/5">
                                 <X className="w-3 h-3 mr-1" /> Anuluj
                             </Button>
                             <Button size="sm" onClick={saveEdit} className="text-xs bg-burgundy hover:bg-foreground text-white">

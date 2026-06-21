@@ -141,13 +141,13 @@ export function NotificationBell({ locale = 'pl' }: { locale?: 'pl' | 'en' }) {
     const getPriorityColor = (priority: Notification['priority']) => {
         switch (priority) {
             case 'urgent':
-                return 'bg-red-500/10 border-red-500/20'
+                return 'bg-destructive/10 border-destructive/20'
             case 'high':
-                return 'bg-orange-500/10 border-orange-500/20'
+                return 'bg-warning/10 border-warning/20'
             case 'normal':
                 return 'bg-primary/10 border-primary/20'
             default:
-                return 'bg-gray-500/10 border-gray-500/20'
+                return 'bg-muted border-border'
         }
     }
 

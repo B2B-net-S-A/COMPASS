@@ -25,13 +25,13 @@ export default async function ProjectsListPage() {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && items.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center text-muted-foreground">
                         Brak otwartych projektów. Wróć tu wkrótce.
                     </CardContent>
@@ -42,7 +42,7 @@ export default async function ProjectsListPage() {
                 <div className="space-y-3">
                     {items.map((p) => (
                         <Link key={p.id} href={`/incubator/projects/${p.slug}`} className="block group">
-                            <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                            <Card className="bg-card border-border hover:border-primary/40 transition-colors">
                                 <CardContent className="p-5 space-y-2">
                                     <div className="flex items-start justify-between gap-3 flex-wrap">
                                         <h3 className="font-bold text-lg group-hover:text-primary">{p.title}</h3>
@@ -51,7 +51,7 @@ export default async function ProjectsListPage() {
                                                 {PROJECT_STATUS_LABEL[p.status]}
                                             </Badge>
                                             {p.user_application_status && (
-                                                <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                                                <Badge variant="outline" className="text-[10px] border-success/30 text-success bg-success/10">
                                                     Aplikowałeś: {APPLICATION_STATUS_LABEL[p.user_application_status]}
                                                 </Badge>
                                             )}
@@ -65,14 +65,14 @@ export default async function ProjectsListPage() {
                                     {p.tech_stack && p.tech_stack.length > 0 && (
                                         <div className="flex flex-wrap gap-1">
                                             {p.tech_stack.slice(0, 8).map((t) => (
-                                                <Badge key={t} className="bg-white/5 text-muted-foreground border-0 text-[9px] h-4 px-1">
+                                                <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1">
                                                     {t}
                                                 </Badge>
                                             ))}
                                         </div>
                                     )}
 
-                                    <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1 border-t border-white/5">
+                                    <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1 border-t border-border">
                                         <span className="inline-flex items-center gap-1">
                                             <Users className="w-3 h-3" /> {p.application_count} aplikacj{p.application_count === 1 ? 'a' : 'i'}
                                         </span>
