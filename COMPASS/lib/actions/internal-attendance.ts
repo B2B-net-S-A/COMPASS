@@ -9,11 +9,21 @@ import { endOfMonth, format, startOfMonth } from 'date-fns'
 export type AttendanceStatus =
     | 'active'
     | 'vacation'
+    | 'on_demand'
+    | 'occasional'
+    | 'childcare'
+    | 'care_leave'
+    | 'force_majeure'
     | 'sick_leave'
+    | 'maternity'
+    | 'paternity'
     | 'parental_leave'
+    | 'childrearing'
     | 'unpaid_leave'
     | 'business_trip'
+    | 'blood_donation'
     | 'training'
+    | 'holiday_in_lieu'
     | 'other'
 
 export type AttendanceLocation = 'onsite' | 'remote'
@@ -198,8 +208,10 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
     const [employeesRes, leavesRes, attendancesRes, holidaysRes] = await Promise.all([
         admin
             .from('profiles')
+            // Full HR-zone roster, not just internal+admin — managers/finanse and
+            // talent_community (e.g. Błażej, Paulina) belong on the team calendar too.
             .select('id, full_name, email, avatar_url, role')
-            .in('role', ['internal', 'admin'])
+            .in('role', ['admin', 'internal', 'manager', 'finanse', 'talent_community'])
             .order('full_name'),
         admin
             .from('leave_requests')
@@ -212,7 +224,11 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
             .select('user_id, date, status, location')
             .gte('date', start)
             .lte('date', end)
-            .in('status', ['business_trip', 'training']),
+            // Phase 29 / Attendance STRICT: pracownik wpisuje tylko swoją lokalizację,
+            // więc team calendar overlay z attendance = wyłącznie remote workdays.
+            // Każdą nieobecność (urlop/delegacja/szkolenie) pokazujemy z leave_requests.
+            .eq('status', 'active')
+            .eq('location', 'remote'),
         admin.from('public_holidays').select('date, name_pl').gte('date', start).lte('date', end),
     ])
 

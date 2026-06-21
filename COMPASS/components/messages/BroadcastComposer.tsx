@@ -68,7 +68,7 @@ export function BroadcastComposer({ isOpen, onOpenChange, onSuccess }: Broadcast
                         Nowe ogłoszenie
                     </DialogTitle>
                     <DialogDescription className="text-muted-foreground">
-                        Wyślij wiadomość do wszystkich użytkowników systemu ComPass.
+                        Wyślij wiadomość do wszystkich użytkowników systemu COMPASS.
                     </DialogDescription>
                 </DialogHeader>
 

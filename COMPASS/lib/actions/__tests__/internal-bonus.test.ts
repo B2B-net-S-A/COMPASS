@@ -19,6 +19,13 @@ vi.mock('@/lib/auth/internal-guard', () => ({
         return authContextMock
     },
     requireBonusReadAllAction: async () => authContextMock,
+    // Phase 32 — edit/cancel of an assigned bonus is admin/finanse only.
+    requireFinanseOrAdminAction: async () => {
+        if (!authContextMock.isAdmin && authContextMock.role !== 'finanse') {
+            throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+        }
+        return authContextMock
+    },
 }))
 
 vi.mock('@/lib/actions/audit', () => ({
@@ -281,7 +288,10 @@ describe('assignBonus (Phase 26)', () => {
         expect(supabaseState.insertedRow).toMatchObject({ status: 'assigned' })
     })
 
-    it('returns friendly error on UNIQUE violation', async () => {
+    // Phase 27e — the one-bonus-per-recipient-per-month UNIQUE index was dropped
+    // (recruiter/sales/delivery bonuses are per-placement, so multiples per month are valid).
+    // assignBonus no longer special-cases a duplicate-key error into a "już przypisana" message.
+    it('does not map a duplicate-key DB error to a per-month "already assigned" message', async () => {
         supabaseState.insertError = { code: '23505', message: 'duplicate key' }
         const now = new Date()
         await expect(
@@ -294,31 +304,55 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'duplicate test',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/została już przypisana/i)
+        ).rejects.toThrow(/Błąd przypisania premii/i)
     })
 })
 
-describe('updateBonus (Phase 26)', () => {
-    it('updates amount and reason of an assigned bonus', async () => {
-        supabaseState.bonusRow = {
-            id: 'bonus-1',
-            recipient_user_id: 'recipient-1',
-            proposed_by: 'manager-1',
-            amount: 500,
-            currency: 'PLN',
-            reason: 'Original reason',
-            status: 'assigned',
-            period_year: 2026,
-            period_month: 5,
-            notes: null,
-            cancelled_at: null,
-            cancelled_by: null,
-            cancellation_reason: null,
-            linked_invoice_id: null,
-            paid_at: null,
-            created_at: '2026-05-19T00:00:00Z',
-            updated_at: '2026-05-19T00:00:00Z',
-        }
+// Phase 32 — after assignment a bonus can only be edited/cancelled by admin or finanse.
+// The manager assigns ("approves") but is then locked out so finanse has a stable picture.
+function makeAssignedBonusRow(proposedBy = 'manager-1') {
+    return {
+        id: 'bonus-1',
+        recipient_user_id: 'recipient-1',
+        proposed_by: proposedBy,
+        amount: 500,
+        currency: 'PLN',
+        reason: 'Original reason',
+        status: 'assigned',
+        category: 'custom',
+        period_year: 2026,
+        period_month: 5,
+        period_quarter: null,
+        place_rank: null,
+        notes: null,
+        cancelled_at: null,
+        cancelled_by: null,
+        cancellation_reason: null,
+        linked_invoice_id: null,
+        paid_at: null,
+        created_at: '2026-05-19T00:00:00Z',
+        updated_at: '2026-05-19T00:00:00Z',
+    }
+}
+
+function setAdminContext() {
+    authContextMock.userId = 'admin-1'
+    authContextMock.role = 'admin'
+    authContextMock.isAdmin = true
+    authContextMock.isManager = false
+}
+
+function setFinanceContext() {
+    authContextMock.userId = 'finance-1'
+    authContextMock.role = 'finanse'
+    authContextMock.isAdmin = false
+    authContextMock.isManager = false
+}
+
+describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
+    it('allows admin to update amount and reason of an assigned bonus', async () => {
+        setAdminContext()
+        supabaseState.bonusRow = makeAssignedBonusRow()
         await updateBonus({ id: 'bonus-1', amount: 700, reason: 'Updated reason text' })
         expect(supabaseState.bonusRow).toMatchObject({
             amount: 700,
@@ -326,57 +360,97 @@ describe('updateBonus (Phase 26)', () => {
         })
     })
 
-    it('rejects edit by non-proposer non-admin', async () => {
-        supabaseState.bonusRow = {
-            id: 'bonus-1',
-            recipient_user_id: 'recipient-1',
-            proposed_by: 'different-manager',
-            amount: 500,
-            currency: 'PLN',
-            reason: 'Original',
-            status: 'assigned',
-            period_year: 2026,
-            period_month: 5,
-            notes: null,
-            cancelled_at: null,
-            cancelled_by: null,
-            cancellation_reason: null,
-            linked_invoice_id: null,
-            paid_at: null,
-            created_at: '2026-05-19T00:00:00Z',
-            updated_at: '2026-05-19T00:00:00Z',
-        }
-        await expect(updateBonus({ id: 'bonus-1', amount: 700 })).rejects.toThrow(/sam przypisa/i)
+    it('allows finanse to update an assigned bonus', async () => {
+        setFinanceContext()
+        supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
+        await updateBonus({ id: 'bonus-1', amount: 800 })
+        expect(supabaseState.bonusRow).toMatchObject({ amount: 800 })
     })
 
-    it('rejects empty patch', async () => {
+    it('blocks a manager from editing after assignment', async () => {
+        // Default beforeEach context is a manager — even the bonus proposer is locked out now.
+        supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
+        await expect(updateBonus({ id: 'bonus-1', amount: 700 })).rejects.toThrow(
+            /administrator lub finanse/i,
+        )
+    })
+
+    it('rejects empty patch (admin)', async () => {
+        setAdminContext()
+        supabaseState.bonusRow = makeAssignedBonusRow()
         await expect(updateBonus({ id: 'bonus-1' })).rejects.toThrow(/Brak zmian/i)
+    })
+
+    it('allows finanse to correct the month of a standard assigned bonus (Phase 32)', async () => {
+        setFinanceContext()
+        // Use the current + previous month so validatePeriod stays in-window regardless of wall clock.
+        const now = new Date()
+        const curYear = now.getFullYear()
+        const curMonth = now.getMonth() + 1
+        const prev = new Date(curYear, now.getMonth() - 1, 1)
+        const prevYear = prev.getFullYear()
+        const prevMonth = prev.getMonth() + 1
+        const row = makeAssignedBonusRow('different-manager')
+        row.period_year = curYear
+        row.period_month = curMonth
+        supabaseState.bonusRow = row
+        await updateBonus({ id: 'bonus-1', period_year: prevYear, period_month: prevMonth })
+        expect(supabaseState.bonusRow).toMatchObject({
+            period_year: prevYear,
+            period_month: prevMonth,
+        })
+    })
+
+    it('rejects a period change missing the month (Phase 32)', async () => {
+        setAdminContext()
+        supabaseState.bonusRow = makeAssignedBonusRow()
+        await expect(updateBonus({ id: 'bonus-1', period_year: 2026 })).rejects.toThrow(
+            /rok i miesiąc/i,
+        )
+    })
+
+    it('rejects changing the month of a champions_league bonus (Phase 32)', async () => {
+        setAdminContext()
+        const now = new Date()
+        supabaseState.bonusRow = {
+            ...makeAssignedBonusRow(),
+            category: 'champions_league',
+            period_month: null,
+            period_quarter: 2,
+            place_rank: 1,
+        }
+        // Current month keeps validatePeriod happy so we reach the category guard.
+        await expect(
+            updateBonus({
+                id: 'bonus-1',
+                period_year: now.getFullYear(),
+                period_month: now.getMonth() + 1,
+            }),
+        ).rejects.toThrow(/Champions League/i)
     })
 })
 
-describe('cancelBonus (Phase 26 — accepts assigned status)', () => {
-    it('cancels an assigned bonus owned by current manager', async () => {
-        supabaseState.bonusRow = {
-            id: 'bonus-1',
-            recipient_user_id: 'recipient-1',
-            proposed_by: 'manager-1',
-            amount: 500,
-            currency: 'PLN',
-            reason: 'Original',
-            status: 'assigned',
-            period_year: 2026,
-            period_month: 5,
-            notes: null,
-            cancelled_at: null,
-            cancelled_by: null,
-            cancellation_reason: null,
-            linked_invoice_id: null,
-            paid_at: null,
-            created_at: '2026-05-19T00:00:00Z',
-            updated_at: '2026-05-19T00:00:00Z',
-        }
+describe('cancelBonus (Phase 26 + 32 — admin/finanse only)', () => {
+    it('allows admin to cancel an assigned bonus', async () => {
+        setAdminContext()
+        supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
         await cancelBonus({ id: 'bonus-1', cancellation_reason: 'test cancel reason' })
         expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
+    })
+
+    it('allows finanse to cancel an assigned bonus', async () => {
+        setFinanceContext()
+        supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
+        await cancelBonus({ id: 'bonus-1', cancellation_reason: 'finance correction' })
+        expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
+    })
+
+    it('blocks a manager from cancelling after assignment', async () => {
+        // Default beforeEach context is a manager — locked out even for bonuses they assigned.
+        supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
+        await expect(
+            cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager tries to cancel' }),
+        ).rejects.toThrow(/administrator lub finanse/i)
     })
 })
 

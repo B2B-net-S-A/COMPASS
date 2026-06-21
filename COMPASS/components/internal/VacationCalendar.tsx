@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { eachDayOfInterval, endOfMonth, format, isWeekend, parseISO, startOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -8,13 +8,28 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { ChevronLeft, ChevronRight, X as XIcon } from 'lucide-react'
 import { roleLabelPl } from '@/lib/types/role'
 import type { TeamCalendarData } from '@/lib/actions/internal-attendance'
 
+// Status the public calendar can filter by (mirrors the 2 overlay types it renders).
+export type CalendarStatusFilter = 'all' | 'ooo' | 'remote'
+
 interface Props {
     data: TeamCalendarData
-    filter: 'all' | 'internal' | 'admin'
+    // Initial filter values (from URL) — persisted across month navigation.
+    role: string
+    status: CalendarStatusFilter
+    // Today's date (YYYY-MM-DD, Europe/Warsaw) computed server-side. The status
+    // filter is "today only" when this date falls inside the displayed month.
+    todayIso: string
 }
 
 interface CellInfo {
@@ -23,37 +38,94 @@ interface CellInfo {
     title: string
 }
 
-const LEAVE_LABEL_PL: Record<string, string> = {
-    vacation: 'Urlop',
-    sick_leave: 'L4',
-    parental_leave: 'Opieka',
-    unpaid_leave: 'Bezpłatny',
-    training: 'Szkolenie',
-    other: 'Inne',
-}
+// Phase 29: kalendarz publiczny (/internal?tab=calendar) pokazuje tylko 3 statusy:
+//   OOO (Out of Office)  — każdy zatwierdzony urlop + delegacja + szkolenie
+//   Zdalnie (Z)          — attendance.status='active' AND location='remote'
+//   Święto / weekend     — public_holidays + sobota/niedziela
+// Szczegółowe typy urlopu (L4, opiekuńczy, okolicznościowy itd.) są widoczne
+// w "Wnioskach urlopowych" (/internal?tab=leaves) — tutaj świadomie konsolidujemy
+// żeby koledzy w zespole nie widzieli rodzaju nieobecności (privacy by default).
+const OOO_BG = 'bg-warning/40'
+const OOO_LABEL = 'X'
+const OOO_TITLE = 'Out of Office'
 
-const LEAVE_BG: Record<string, string> = {
-    vacation: 'bg-warning/40',
-    sick_leave: 'bg-destructive/40',
-    parental_leave: 'bg-pink-500/40',
-    unpaid_leave: 'bg-muted/40',
-    training: 'bg-info/40',
-    other: 'bg-warning/40',
-}
+// Stable display order for the role dropdown (HR-zone roles present on the calendar).
+const ROLE_ORDER = ['internal', 'manager', 'finanse', 'talent_community', 'admin']
 
-export function VacationCalendar({ data, filter }: Props) {
+export function VacationCalendar({ data, role, status, todayIso }: Props) {
     const router = useRouter()
+
+    // Filters live as client state (all data is already on the client) so toggling
+    // is instant — no server round-trip. Month navigation re-seeds them from the URL.
+    const [roleFilter, setRoleFilter] = useState<string>(role)
+    const [statusFilter, setStatusFilter] = useState<CalendarStatusFilter>(status)
 
     const monthStart = startOfMonth(new Date(data.year, data.month - 1, 1))
     const monthEnd = endOfMonth(monthStart)
     const days = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
-    // Filter employees
+    // user_ids actually on the calendar that have each status this month. The server
+    // already scoped leaves (approved, overlapping month) and attendances (active +
+    // remote, within month), so membership alone implies ≥1 matching day. Intersect
+    // with the roster so counts never include off-calendar users (e.g. exited).
+    const employeeIds = useMemo(() => new Set(data.employees.map((e) => e.id)), [data.employees])
+    const oooUserIds = useMemo(
+        () => new Set(data.leaves.map((l) => l.user_id).filter((id) => employeeIds.has(id))),
+        [data.leaves, employeeIds],
+    )
+    const remoteUserIds = useMemo(
+        () => new Set(data.attendances.map((a) => a.user_id).filter((id) => employeeIds.has(id))),
+        [data.attendances, employeeIds],
+    )
+
+    // Czy dziś mieści się w wyświetlanym miesiącu? (ISO porównanie leksykograficzne)
+    const monthPrefix = `${data.year}-${String(data.month).padStart(2, '0')}`
+    const todayInView = todayIso.startsWith(monthPrefix)
+
+    // Osoby z danym statusem DOKŁADNIE dzisiaj (gdy dziś jest w widoku).
+    const oooTodayUserIds = useMemo(() => {
+        const s = new Set<string>()
+        for (const l of data.leaves) {
+            if (employeeIds.has(l.user_id) && l.start_date <= todayIso && todayIso <= l.end_date) {
+                s.add(l.user_id)
+            }
+        }
+        return s
+    }, [data.leaves, employeeIds, todayIso])
+    const remoteTodayUserIds = useMemo(() => {
+        const s = new Set<string>()
+        for (const a of data.attendances) {
+            if (a.date === todayIso && employeeIds.has(a.user_id)) s.add(a.user_id)
+        }
+        return s
+    }, [data.attendances, employeeIds, todayIso])
+
+    // Filtr statusu = "tylko dziś" dla bieżącego miesiąca; dla innych miesięcy
+    // (dziś poza widokiem) wracamy do całomiesięcznego zbioru, żeby przeglądanie
+    // przeszłych/przyszłych miesięcy nie dawało pustej listy.
+    const oooFilterIds = todayInView ? oooTodayUserIds : oooUserIds
+    const remoteFilterIds = todayInView ? remoteTodayUserIds : remoteUserIds
+
+    // Role options derived from the roster actually present this month (+ counts).
+    const roleOptions = useMemo(() => {
+        const counts = new Map<string, number>()
+        for (const e of data.employees) counts.set(e.role, (counts.get(e.role) ?? 0) + 1)
+        const present = ROLE_ORDER.filter((r) => counts.has(r))
+        for (const r of Array.from(counts.keys())) if (!present.includes(r)) present.push(r)
+        return present.map((r) => ({ value: r, label: roleLabelPl(r), count: counts.get(r) ?? 0 }))
+    }, [data.employees])
+
+    // Apply role + status filters (AND).
     const employees = useMemo(() => {
-        if (filter === 'internal') return data.employees.filter((e) => e.role === 'internal')
-        if (filter === 'admin') return data.employees.filter((e) => e.role === 'admin')
-        return data.employees
-    }, [data.employees, filter])
+        return data.employees.filter((e) => {
+            if (roleFilter !== 'all' && e.role !== roleFilter) return false
+            if (statusFilter === 'ooo' && !oooFilterIds.has(e.id)) return false
+            if (statusFilter === 'remote' && !remoteFilterIds.has(e.id)) return false
+            return true
+        })
+    }, [data.employees, roleFilter, statusFilter, oooFilterIds, remoteFilterIds])
+
+    const filtersActive = roleFilter !== 'all' || statusFilter !== 'all'
 
     // Index leaves: user_id+date → leave info
     const leaveIdx = useMemo(() => {
@@ -68,11 +140,11 @@ export function VacationCalendar({ data, filter }: Props) {
         return map
     }, [data.leaves])
 
-    // Index attendance (business_trip / training)
+    // Index attendance (business_trip / training / remote workday)
     const attIdx = useMemo(() => {
-        const map = new Map<string, { status: string }>()
+        const map = new Map<string, { status: string; location: string | null }>()
         for (const a of data.attendances) {
-            map.set(`${a.user_id}|${a.date}`, { status: a.status })
+            map.set(`${a.user_id}|${a.date}`, { status: a.status, location: a.location })
         }
         return map
     }, [data.attendances])
@@ -95,17 +167,20 @@ export function VacationCalendar({ data, filter }: Props) {
             newM = 1
             newY += 1
         }
-        const params = new URLSearchParams({ year: String(newY), month: String(newM), filter })
-        router.push(`/internal/calendar?${params}`)
+        const params = new URLSearchParams({
+            tab: 'calendar',
+            year: String(newY),
+            month: String(newM),
+        })
+        // Carry the active filters so they survive the month change (server refetch).
+        if (roleFilter !== 'all') params.set('role', roleFilter)
+        if (statusFilter !== 'all') params.set('status', statusFilter)
+        router.push(`/internal?${params}`)
     }
 
-    function setFilter(next: 'all' | 'internal' | 'admin') {
-        const params = new URLSearchParams({
-            year: String(data.year),
-            month: String(data.month),
-            filter: next,
-        })
-        router.push(`/internal/calendar?${params}`)
+    function resetFilters() {
+        setRoleFilter('all')
+        setStatusFilter('all')
     }
 
     function cellFor(userId: string, day: Date): CellInfo {
@@ -114,20 +189,19 @@ export function VacationCalendar({ data, filter }: Props) {
         const holiday = holidayName.get(iso)
         if (holiday) return { bg: 'bg-muted', label: '', title: holiday }
         if (isWeekend(day)) return { bg: 'bg-muted/30', label: '', title: 'Weekend' }
-        const leave = leaveIdx.get(key)
-        if (leave) {
-            return {
-                bg: LEAVE_BG[leave.leave_type] ?? 'bg-warning/40',
-                label: LEAVE_LABEL_PL[leave.leave_type]?.[0] ?? 'U',
-                title: LEAVE_LABEL_PL[leave.leave_type] ?? 'Urlop',
+        // The status filter is per-day: when one status is picked, only that overlay
+        // is painted — the other status renders blank for that day.
+        // Phase 29 — każdy urlop dowolnego typu → OOO (typ widoczny tylko w /internal?tab=leave).
+        if (statusFilter !== 'remote' && leaveIdx.has(key)) {
+            return { bg: OOO_BG, label: OOO_LABEL, title: OOO_TITLE }
+        }
+        // Attendance STRICT: jedyny attendance overlay to praca zdalna. Nieobecności
+        // (delegacja/szkolenie/urlop) idą z leave_requests, nie z attendance_records.
+        if (statusFilter !== 'ooo') {
+            const att = attIdx.get(key)
+            if (att?.status === 'active' && att.location === 'remote') {
+                return { bg: 'bg-info/40', label: 'Z', title: 'Praca zdalna' }
             }
-        }
-        const att = attIdx.get(key)
-        if (att?.status === 'business_trip') {
-            return { bg: 'bg-primary/40', label: 'D', title: 'Delegacja' }
-        }
-        if (att?.status === 'training') {
-            return { bg: 'bg-info/40', label: 'S', title: 'Szkolenie' }
         }
         return { bg: '', label: '', title: '' }
     }
@@ -139,68 +213,100 @@ export function VacationCalendar({ data, filter }: Props) {
 
     return (
         <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <CardTitle className="text-lg capitalize">
-                    {format(monthStart, 'LLLL yyyy', { locale: pl })}
-                </CardTitle>
-                <div className="flex flex-wrap gap-2 items-center">
-                    <div className="flex gap-1 items-center mr-2">
-                        <Button
-                            variant={filter === 'all' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setFilter('all')}
-                        >
-                            Wszyscy ({data.employees.length})
+            <CardHeader className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <CardTitle className="text-lg capitalize">
+                        {format(monthStart, 'LLLL yyyy', { locale: pl })}
+                    </CardTitle>
+                    <div className="flex gap-2 items-center">
+                        <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)}>
+                            <ChevronLeft className="h-4 w-4" />
                         </Button>
-                        <Button
-                            variant={filter === 'internal' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setFilter('internal')}
-                        >
-                            Internal
-                        </Button>
-                        <Button
-                            variant={filter === 'admin' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setFilter('admin')}
-                        >
-                            Admin
+                        <Button variant="outline" size="icon" onClick={() => navigateMonth(1)}>
+                            <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)}>
-                        <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(1)}>
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                    <Select value={roleFilter} onValueChange={setRoleFilter}>
+                        <SelectTrigger className="h-9 w-[220px]" aria-label="Filtr po roli">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Wszystkie role ({data.employees.length})</SelectItem>
+                            {roleOptions.map((o) => (
+                                <SelectItem key={o.value} value={o.value}>
+                                    {o.label} ({o.count})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select
+                        value={statusFilter}
+                        onValueChange={(v) => setStatusFilter(v as CalendarStatusFilter)}
+                    >
+                        <SelectTrigger className="h-9 w-[200px]" aria-label="Filtr po statusie">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Wszystkie statusy</SelectItem>
+                            <SelectItem value="ooo">
+                                Out of Office{todayInView ? ' dziś' : ''} ({oooFilterIds.size})
+                            </SelectItem>
+                            <SelectItem value="remote">
+                                Praca zdalna{todayInView ? ' dziś' : ''} ({remoteFilterIds.size})
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {filtersActive && (
+                        <Button variant="ghost" size="sm" className="h-9" onClick={resetFilters}>
+                            <XIcon className="h-3.5 w-3.5 mr-1" />
+                            Wyczyść
+                        </Button>
+                    )}
+                    <span className="text-xs text-muted-foreground ml-auto">
+                        {employees.length} / {data.employees.length} prac.
+                    </span>
                 </div>
             </CardHeader>
             <CardContent>
                 {employees.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
-                        Brak pracowników wewnętrznych spełniających filtr.
+                        {!filtersActive
+                            ? 'Brak pracowników strefy HR.'
+                            : statusFilter !== 'all' && todayInView
+                              ? 'Nikt nie ma wybranego statusu dzisiaj.'
+                              : 'Brak pracowników spełniających wybrane filtry.'}
                     </p>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                         <table className="w-full border-collapse text-xs">
                             <thead>
                                 <tr>
-                                    <th className="sticky left-0 bg-card text-left p-2 min-w-[180px] border-b border-border z-10">
+                                    <th className="sticky left-0 top-0 bg-card text-left p-2 min-w-[180px] border-b border-border z-30">
                                         Pracownik
                                     </th>
                                     {days.map((d) => {
+                                        const iso = format(d, 'yyyy-MM-dd')
                                         const isWE = isWeekend(d)
-                                        const isHoliday = holidayDates.has(format(d, 'yyyy-MM-dd'))
+                                        const isHoliday = holidayDates.has(iso)
+                                        const isToday = iso === todayIso
                                         return (
                                             <th
                                                 key={d.toISOString()}
-                                                className={`p-1 text-center font-medium border-b border-border min-w-[24px] ${
-                                                    isWE || isHoliday ? 'text-muted-foreground/60' : ''
+                                                className={`sticky top-0 z-20 bg-card p-1 text-center font-medium border-b border-border min-w-[24px] ${
+                                                    isToday
+                                                        ? 'text-primary font-bold ring-1 ring-inset ring-primary/50 rounded-t'
+                                                        : isWE || isHoliday
+                                                          ? 'text-muted-foreground/60'
+                                                          : ''
                                                 }`}
                                                 title={
-                                                    isHoliday
-                                                        ? holidayName.get(format(d, 'yyyy-MM-dd'))
-                                                        : undefined
+                                                    isToday
+                                                        ? 'Dziś'
+                                                        : isHoliday
+                                                          ? holidayName.get(iso)
+                                                          : undefined
                                                 }
                                             >
                                                 {format(d, 'd')}
@@ -232,10 +338,13 @@ export function VacationCalendar({ data, filter }: Props) {
                                         </td>
                                         {days.map((d) => {
                                             const meta = cellFor(emp.id, d)
+                                            const isToday = format(d, 'yyyy-MM-dd') === todayIso
                                             return (
                                                 <td
                                                     key={d.toISOString()}
-                                                    className={`text-center font-bold text-[10px] border-b border-border/50 ${meta.bg}`}
+                                                    className={`text-center font-bold text-[10px] border-b border-border/50 ${meta.bg} ${
+                                                        isToday ? 'ring-1 ring-inset ring-primary/40' : ''
+                                                    }`}
                                                     title={meta.title}
                                                 >
                                                     {meta.label || ''}
@@ -249,15 +358,19 @@ export function VacationCalendar({ data, filter }: Props) {
                     </div>
                 )}
 
-                <div className="mt-6 flex flex-wrap gap-2 text-[10px]">
-                    <Badge className="bg-warning/40 text-warning-foreground border-transparent">U — Urlop</Badge>
-                    <Badge className="bg-destructive/40 text-destructive-foreground border-transparent">L — L4</Badge>
-                    <Badge className="bg-pink-500/40 text-pink-100 border-transparent">O — Opieka</Badge>
-                    <Badge className="bg-primary/40 text-primary-foreground border-transparent">D — Delegacja</Badge>
-                    <Badge className="bg-info/40 text-info-foreground border-transparent">S — Szkolenie</Badge>
+                <div className="mt-6 flex flex-wrap gap-2 text-[10px] items-center">
+                    {statusFilter !== 'remote' && (
+                        <Badge className="bg-warning/40 text-warning-foreground border-transparent">X — Out of Office</Badge>
+                    )}
+                    {statusFilter !== 'ooo' && (
+                        <Badge className="bg-info/40 text-info-foreground border-transparent">Z — Zdalnie</Badge>
+                    )}
                     <Badge variant="outline" className="bg-muted text-muted-foreground">
                         Święto / weekend
                     </Badge>
+                    <span className="text-[10px] text-muted-foreground ml-2">
+                        Szczegóły urlopów (typ, data) widoczne w zakładce „Wnioski urlopowe".
+                    </span>
                 </div>
             </CardContent>
         </Card>

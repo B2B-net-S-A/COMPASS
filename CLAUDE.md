@@ -679,6 +679,339 @@ Test Graph `/users/compass-tickets@b2bnetwork.pl/messages` → **HTTP 200** od r
 
 **Filters zachowują headers:** User mailbox API zwraca `internetMessageHeaders` (Auto-Submitted/Precedence/X-Auto-Response-Suppress), więc NDR/OOF detection wraca do pełnej skuteczności (Phase 26c caveat odpada dla `compass-tickets@`).
 
+## Phase 28 — Placementy (import Excela → auto-premie DL/Rekruter + tickety TCM, 2026-05-21)
+
+Manager (Dominik) wgrywa raz w miesiącu Excela z nowymi placementami (umieszczenie zewnętrznego konsultanta u klienta). System liczy premie, prognozuje datę należności (168h), a po potwierdzeniu generuje premie DL + rekrutera. Każdy DL/Rekruter widzi swoje placementy. Każdy nowy placement tworzy ticket onboardingu dla TCM.
+
+**Reguły premii (reuse Phase 27b/d):**
+- DL: `monthly_margin × 10%` (monthly_margin = (stawka_przychodowa − kosztowa) × 168h).
+- Rekruter wg progu marży/h: ≤40 → 1000 zł, 40–50 → 1500 zł, ≥50 → 2000 zł (`recruiterTierForMargin`, `lib/types/bonus.ts`).
+- Należność: konsultant musi przepracować **168h** (~21 dni roboczych od startu). `bonus_eligible_date = start + 21 dni rob.`
+
+**Schema (migracje 28a + 28b, zaaplikowane na prod via MCP 2026-05-21):**
+- `placements` — źródło prawdy (1 wiersz = 1 podpisana umowa). Konsultant = free text (zewnętrzny, nie user); DL i Rekruter linkują do `profiles` (NOT NULL — wiersze bez dopasowania blokowane przy imporcie). Klucz naturalny `(lower(consultant)+lower(client)+start_date)` UNIQUE → idempotentny re-upload. Stan: `upcoming → started → bonus_confirmed` (+ `cancelled`). Linki `dl_bonus_id`/`recruiter_bonus_id` (anty-dubel generacji), `tcm_ticket_id`.
+- `placement_person_aliases` — pamięć nazwisko→profil; kolejne uploady auto-rozwiązują znane nazwiska.
+- `support_categories` += `inbox_onboarding` (slug `inbox_%` → ticket trafia na Kanban `/admin/inbox`). `notifications` type += `placement_reminder`.
+- Brak migracji „relax unique" — `bonuses_one_per_recipient_period` już zdjęty w Phase 27e (rekruter może mieć wiele premii/mies.).
+
+**Flow:**
+- `/internal/admin?tab=placements` (admin + manager): upload `.xlsx` → `PlacementImportDialog` (preview diff nowe/zmiana/zniknięte + mapowanie distinct nazwisk + blokada commitu na nierozwiązanych) → commit (UPSERT po kluczu, tworzy ticket TCM per nowy placement). Daty w Excelu **muszą mieć rok** (parser exceljs czyta realne daty).
+- Potwierdzenie 168h: hybryda — cron `placement-hours-reminder` przypomina managerowi (push + in-app `placement_reminder`); klik „168h" (`confirmPlacementHours`) generuje 2 rekordy `bonuses` (kat. `delivery_lead` + `recruiter`, status `assigned`, service-role insert), notyfikacje (`sendBonusAssigned` + push) i ustawia `bonus_confirmed`.
+- Self-view `/internal/placements` (DL/Rekruter): własne placementy (RLS scope) + prognoza premii (kwota + ~data).
+
+**Pliki:** `lib/types/placement.ts`, `lib/placements/{parse-xlsx,import}.ts` (+ testy), `lib/actions/placements.ts`, `components/internal/{PlacementImportDialog,PlacementsAdminClient}.tsx` + `panels/PlacementsAdminPanel.tsx`, `app/(protected)/internal/placements/page.tsx`, `app/api/cron/{placement-status-tick,placement-hours-reminder}/route.ts`. Dep: `exceljs`.
+
+**Audit log:** `PLACEMENTS_IMPORTED`, `PLACEMENT_HOURS_CONFIRMED`, `PLACEMENT_BONUSES_GENERATED`, `PLACEMENT_CANCELLED`, `PLACEMENT_PERSON_ALIAS_SET`.
+
+**Coolify cron jobs (do dodania po deploy):**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `placement-status-tick` | `0 6 * * *` (06:00 UTC daily) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/placement-status-tick"` |
+| `placement-hours-reminder` | `0 8 * * *` (08:00 UTC daily) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/placement-hours-reminder"` |
+
+`placement-status-tick`: `upcoming → started` gdy `start_date ≤ dziś`. `placement-hours-reminder`: dla `started` placementów po `bonus_eligible_date` (ostatnie 30 dni), niepotwierdzonych → przypomnienie do importera (lub managerów/adminów) o potwierdzeniu 168h.
+
+## Phase 30 — Pula płatnych urlopów dla B2B/zlecenie (2026-06-01)
+
+Rozszerzenie infrastruktury Phase 27k (urlop UoP) na B2B i zlecenie — dla pracowników którzy mają w kontrakcie wynegocjowany benefit "X dni płatnych urlopów rocznie". PR #179 / `phase29_b2b_zlecenie_vacation_only` zablokował B2B/zlecenie do `leave_type='vacation'` ale bez puli — domyślnie wszystko bezpłatne. Phase 30 daje adminowi opcję ustawić pulę per pracownik; system auto-splituje wniosek na płatny (z puli) + bezpłatny (nadwyżka) w jednym `leave_request`.
+
+**Kluczowe decyzje (z planowania):**
+- **Roczna pula, bez carry-over** — reset implicit przez `WHERE start_date BETWEEN year-01-01 AND year-12-31` w `getMyLeaveBalance`.
+- **Tylko B2B/zlecenie** dostają nową semantykę auto-split. UoP zostaje przy hard-limit (PR #179 + Phase 27k unchanged — UoP używa osobnego `leave_type='unpaid_leave'` dla nadwyżki, czego B2B/zlecenie nie mają).
+- **Auto-split**: jeden `leave_request` z `paid_days + unpaid_days = working_days`. Per-day distinction w timesheet: chronologicznie pierwsze N dni roboczych = płatne, reszta = bezpłatne.
+- **Hybrydowy backfill** przez nową kolumnę `profiles.leave_used_initial_days` — admin przy włączeniu puli wpisuje "ile już zużyto w tym roku" (np. "pula 20, wpisz 5 → balance 15").
+- **Display**: per-leave badge w `TimesheetPreviewDialog` (admin/finanse/manager), breakdown w `MyLeaveList` (pracownik), preview w `LeaveRequestForm`. Kalendarz zespołu `/internal?tab=calendar` bez zmian (consolidacja OOO/Zdalnie/Święto z PR #179/180/181 zostaje). Brak proaktywnych emaili/push o końcu puli — info widoczne tylko w widget'cie.
+
+**Migracja `phase30_paid_vacation_pool_b2b`:**
+- `profiles.leave_entitlement_days` — comment update (pula dotyczy każdego employment_type, nie tylko UoP)
+- `profiles.leave_used_initial_days NUMERIC(4,1) DEFAULT 0` — hybrydowy backfill
+- `leave_requests.paid_days NUMERIC(4,1) DEFAULT 0` — split płatne
+- `leave_requests.unpaid_days NUMERIC(4,1) DEFAULT 0` — split bezpłatne
+- Index `idx_leave_requests_user_year_pool` (partial — vacation+on_demand z status approved/pending)
+- **Świadomie BEZ** triggera walidującego sum (computation świąt PL w PG SQL jest pain — walidacja w app layer)
+- **Świadomie BEZ** backfilla historycznych leave_requests (zostają z 0/0; admin użyje `leave_used_initial_days` per user)
+
+**Backend:**
+- `lib/hr/leave-balance.ts` += `computePaidUnpaidSplit({employmentType, entitlementDays, carriedOverDays, usedInitialDays, alreadyBookedDaysInYear, requestedWorkingDays})` — pure helper z 10 unit testami (B2B/zlecenie bez puli, z pulą fits/partial/exhausted, UoP zawsze paid=requested, half-day atomowy, over-booked, requested=0).
+- `lib/actions/internal-leave.ts`:
+  - Nowy helper `computeLeaveRequestSplit(supabase, userId, leaveType, start, end, halfDay)` — fetch 3 zapytań (profile + existing-in-year + holidays) → wywołuje `computePaidUnpaidSplit`.
+  - `createLeaveRequest` + `createLeaveOnBehalf` — używają split, wstawiają `paid_days/unpaid_days` do INSERT. UoP hard-limit zachowany (throw przy overshoot z friendly errorem).
+  - `getMyLeaveBalance` — odgate'owana (`hasLimit = entitlement != null` zamiast `employment_type === 'uop' && entitlement != null`). Odejmuje `leave_used_initial_days` z remaining.
+  - `listPendingLeaveRequests` — extended SELECT (paid_days/unpaid_days + profile pool fields via nested select) + batch-fetch SUM(paid_days) per user/year dla badge'a "Pula 2026: 15/20".
+  - Nowy `previewLeaveSplit({startDate, endDate, halfDay, leaveType})` — używany przez LeaveRequestForm do live banner'a.
+- `lib/actions/user-admin.ts` `setEmployeeProfile`/`getEmployeeProfileFields` — dodane `leave_used_initial_days` w UpdateableFields + SELECT + walidacja.
+
+**Frontend:**
+- `EmployeeProfileDialog` (admin) — odgate'owane (sekcja puli widoczna dla każdego employment_type), 3-ci input `leave_used_initial_days`, adaptive label (UoP: "Limit urlopu (KP)" vs B2B/zlecenie: "Pula płatnych (z kontraktu, opcjonalna)"), adaptive helper text.
+- `LeavePanel` — conditional render `LeaveStatsWidget`: visible TYLKO gdy UoP lub B2B/zlecenie z pulą. B2B/zlecenie bez puli → widget w ogóle nie renderuje się (per user req: "jak nie ma, to nie pokazuj sekcji").
+- `LeaveStatsWidget` — adaptive header ("Pula płatnych urlopów" dla B2B/zlecenie z pulą vs "Urlop wypoczynkowy"); breakdown wymiar/zaległe/zużyte-na-start; tekst "Bez puli płatnych" dla B2B/zlecenie bez puli.
+- `LeaveRequestForm` += `hasPool` prop + live preview banner (debounce 350ms) z 3 stanami: ✓ wszystko płatne (green), ⚠ częściowo (amber), ✗ wszystko bezpłatne (red). Visible dla vacation/on_demand gdy `hasPool=true`.
+- `MyLeaveList` — breakdown per wniosek: "5 dni płatnych (z puli) + 3 dni bezpłatnych".
+- `LeaveQueue` (manager/admin/finanse) — badge per pending row: "5 płatnych + 0 bezpłatnych · Pula 2026: 15/20 → po akceptacji 10/20".
+- `TimesheetPreviewDialog` — w sekcji "Urlopy w tym miesiącu" dodano pill "X dni płatnych (z puli)" + "Y dni bezpłatnych" przy każdym urlopie. `TimesheetEditor` (widok własny pracownika) — bez zmian; pracownik widzi breakdown w `MyLeaveList`.
+
+**Ops po deploy:**
+1. Aplikuj migrację `phase30_paid_vacation_pool_b2b` przez Supabase MCP (`mcp__e0e020fb...__apply_migration`).
+2. Dla każdego B2B/zlecenie pracownika z benefitem (Dominik/Artur ustala listę): `/internal/admin?tab=rates` → button "Profil" → wypełnij "Wymiar dni/rok" + "Już zużyte (start)" + Save. Backfill manualny przez `leave_used_initial_days` zachowuje historyczne wnioski jako 0/0 ale "zjada" pulę zgodnie z deklaracją admina.
+3. Komunikat dla tych pracowników (Slack/Teams): "Od dziś widzisz pulę płatnych urlopów w `/internal?tab=leaves`."
+4. Brak cron jobów, brak nowych env vars.
+
+**Audit log:** existing `EMPLOYEE_PROFILE_UPDATE` payload zawiera `leave_entitlement_days` / `leave_carried_over_days` / `leave_used_initial_days` (zmiana fields obiektu — bez nowych action types). Existing `LEAVE_APPROVED` (Phase 25) niezmieniona — paid/unpaid są na samym `leave_requests` row.
+
+## Phase 30b — Płatny urlop z puli pokazuje godziny w timesheet (2026-05-29)
+
+Decyzja Artura: dla B2B/zlecenie z pulą **dni płatnego urlopu (z puli) mają pokazywać się w timesheet jak normalny dzień roboczy — auto-wpis 8h, billable**. Dopiero po wyczerpaniu puli nadwyżkowe dni (`unpaid_days`) blokują timesheet jak zawsze (i nie pokazują się). UoP **bez zmian** (urlop nadal blokuje — etatowiec nie rozlicza godzin za urlop).
+
+**Mechanizm (zmiana względem Phase 30):** wcześniej approved `vacation` tworzył `attendance_records` (status=`vacation`) dla **wszystkich** dni roboczych → wszystkie zablokowane w timesheet. Teraz `syncAttendanceFromLeave` dzieli dni przez `splitLeaveWorkingDays`:
+- **dni płatne** (pierwsze `paid_days` dni roboczych, B2B/zlecenie pool) → **BEZ** attendance + auto-wpis do `timesheet_entries` (8h/4h, `source='leave_paid'`, opis „Praca standardowa" — patrz nota niżej), getOrCreate timesheet per (rok, miesiąc), idempotentny.
+- **dni blokujące** (nadwyżka/UoP/non-pool) → `attendance_records` jak dotąd.
+- `remove` (cancel/reject urlopu) → usuwa attendance **i** auto-wpisy `leave_paid` w zakresie.
+
+**Opis auto-wpisu = „Praca standardowa" (decyzja Artura, 2026-06-03):** płatny dzień z puli ma na karcie pracy/PDF wyglądać jak NORMALNY dzień roboczy (string identyczny z `DEFAULT_QUICK_FILL_DESCRIPTION`). Pierwotnie opis brzmiał „Urlop płatny (z puli)", co zdradzało pochodzenie na dokumencie idącym do klienta. Pochodzenie z puli COMPASS śledzi WYŁĄCZNIE wewnętrznie przez `source='leave_paid'` — nie przez opis (PDF renderuje tylko `description`; edytor/preview nie mają badge'a dla `leave_paid`). Istniejące TS-y poprawione na prod (23 wpisy w 6 TS-ach; `pdf_hash` przeliczony dla 3 approved — Anna Korycka/Malwina Jobda/Michał Stankiewicz maj 2026).
+
+**Kalendarz zespołu** (`VacationCalendar`) bez zmian — czyta OOO z `leave_requests` (pełen zakres), więc płatne dni nadal pokazują się jako urlop, mimo braku rekordu attendance.
+
+**Pliki:**
+- `lib/hr/leave-timesheet-split.ts` (NEW) — czysty helper `splitLeaveWorkingDays` + stałe `PAID_LEAVE_ENTRY_SOURCE='leave_paid'`, `PAID_LEAVE_ENTRY_DESCRIPTION`, `STANDARD_PAID_LEAVE_HOURS=8` (+ 18 testów).
+- `lib/actions/internal-leave.ts` — przebudowane `syncAttendanceFromLeave` + helpery (`autoFillPaidLeaveEntries`, `getOrCreateTimesheetForAutoFill`, `recomputeTimesheetHashIfSet`, `removePaidLeaveEntries`) + nowa server-action `getTimesheetBlockedDates(year, month, targetUserId?)` (split-aware źródło blokad).
+- `components/internal/TimesheetEditor.tsx` + `TimesheetPreviewDialog.tsx` — blokady dni z `getTimesheetBlockedDates` (zamiast pełnych zakresów `leave_requests`); płatny dzień z puli nie jest blokowany.
+- Migracja `20260605000001_phase30b_leave_paid_timesheet_source.sql` — rozszerza CHECK `timesheet_entries.source` o `'leave_paid'`.
+
+**Hash integralności (H2.8):** auto-wpis do **approved** timesheetu (z `pdf_hash`) wymaga przeliczenia hasha, inaczej PDF route zwraca 409. `recomputeTimesheetHashIfSet` przelicza `pdf_hash` przez `computeTimesheetHash` po każdej zmianie wpisów hashowanego timesheetu. `trg_timesheet_unlock_guard` nie blokuje (odpala się tylko przy zmianie statusu approved→inny, nie przy update pdf_hash).
+
+**Pending urlop:** `getTimesheetBlockedDates` traktuje pending zachowawczo (wszystkie dni robocze blokują, jak dotąd) — split (płatne nie-blokują) stosuje się dopiero po `approved`. `quickFillMonth` bez zmian (pomija attendance-blocked + wszystkie pending; approved płatne dni mają już wpis `leave_paid` → pomijane jako istniejące).
+
+**Audit log:** nowy `TIMESHEET_PAID_LEAVE_AUTOFILL` (tylko gdy auto-wpis dotyka non-draft timesheetu — traceability korekt approved/submitted).
+
+**Backfill (2026-05-29, jednorazowo na prod):** 6 approved urlopów B2B z pulą (Anna Korycka 28–29.05; Dominik 5.06 + 15–23.06; Klaudia 8–12.06; Malwina 22–26.06; Michał 22.05 + 29.05) — wszystkie mieszczą się w puli → w pełni płatne. Recompute `paid_days` (część miała stale 0/0 sprzed Phase 30), zwolnienie attendance, auto-wpis `leave_paid`, recompute `pdf_hash` dla maja Michała (jedyny approved+hash; formuła SQL sha256 pre-zweryfikowana 1:1 z JS `computeTimesheetHash`).
+
+**Ops po deploy:** brak nowych cron jobów ani env vars (migracja `source` CHECK + jednorazowy backfill SQL).
+
+## Phase 31 — Premia Champions League (kwartalna, manualna, 2026-06-02)
+
+Piąta kategoria premii (po `sales`/`delivery_lead`/`recruiter`/`custom` z Phase 27b): **`champions_league`** — kwartalny ranking rekrutacyjny zarządu z hard-coded nagrodami za 3 pierwsze miejsca.
+
+**Reguły kwot (hard-coded `CHAMPIONS_LEAGUE_AMOUNTS` w `lib/types/bonus.ts`):**
+- 🥇 1. miejsce: **5 000 PLN**
+- 🥈 2. miejsce: **3 000 PLN**
+- 🥉 3. miejsce: **2 000 PLN**
+
+Admin/manager może nadpisać kwotę w formie (np. 7 000 PLN dla wybitnego osiągnięcia) — ostrzeżenie w UI ("⚠ Nadpisałeś domyślną kwotę").
+
+**Migracja `phase31_champions_league_bonus`:**
+- `bonuses.place_rank SMALLINT` (CHECK IN 1/2/3 lub NULL)
+- `bonuses.period_quarter SMALLINT` (CHECK 1-4 lub NULL)
+- Rozszerzony `bonuses_category_check` o `'champions_league'` (5 kategorii)
+- Rozszerzony `bonuses_category_fields_required` o piątą gałąź (CL wymaga `place_rank + period_quarter + period_month=NULL`)
+- Partial UNIQUE `bonuses_champions_league_unique (period_year, period_quarter, place_rank) WHERE category='champions_league' AND status='assigned'` — 1 zwycięzca per (rok, kwartał, miejsce); cancel zwalnia miejsce
+- Trigger `enforce_bonus_stage_transitions` rozszerzony — INSERT champions_league wymaga period_year+period_quarter (zamiast period_month); UPDATE blokuje zmianę place_rank/period_quarter/category
+- `notifications_type_check` += `'champions_league_assigned'`
+- Inline smoke test: insert champions_league + update amount + próba zmiany place_rank (expected to fail)
+
+**Workflow (jak Phase 26 — terminal `assigned`, opcjonalny cancel):**
+- Admin lub manager (scope: tylko swój zespół, `profiles.manager_id = ja`) przypisuje przez `/internal/admin?tab=bonuses` → drugi button "🏆 Champions League" obok "Przypisz premię" → dedykowany `AssignChampionsLeagueForm` (5 pól)
+- Forma auto-prefilluje `amount` przy zmianie miejsca; period selector = past 4 kwartałów + current; recipient list z `listEligibleEmployeesForBonus` (HR-zone, exclude exited/self)
+- Po insert: audit `CHAMPIONS_LEAGUE_ASSIGNED` + email złoty (`#EAB308`) + push + in-app (`type='champions_league_assigned'`, kanał `Promise.allSettled`)
+- Edit: tylko amount/reason/notes (place/quarter/recipient immutable per trigger); osobny dialog z `AssignChampionsLeagueForm mode='edit'`
+- Cancel: jak Phase 26 — `BonusesAdminClient` cancel dialog; audit `CHAMPIONS_LEAGUE_CANCELLED`; email czerwony do recipient
+
+**Pracownik widzi w `/internal?tab=bonuses`** (reuse `MyBonusesPanel`) — wiersz CL ma żółty badge "🏆 Liga Mistrzów" + period "Q1 2026" + szczegóły "🥇 1. miejsce w Champions League" + kwotę.
+
+**Friendly error przy konflikcie miejsca:** jeśli admin/manager próbuje przypisać 1. miejsce w Q1 2026 gdy już ktoś je dostał, server action łapie PostgresError `23505` z constraint `bonuses_champions_league_unique`, robi lookup nazwy istniejącego zwycięzcy i rzuca "🥇 1. miejsce w Q1 2026 jest już zajęte przez Anna Kowalska. Najpierw anuluj poprzednią premię."
+
+**Pliki:**
+- Migracja: `COMPASS/supabase/migrations/20260602000001_phase31_champions_league_bonus.sql`
+- Backend: `COMPASS/lib/actions/internal-bonus.ts` (extend `assignBonus`, `notifyChampionsLeagueRecipient`, `findChampionsLeagueWinnerName`, `validateChampionsLeagueInput`, `buildCategoryInsertPayload` branch CL)
+- Typy: `COMPASS/lib/types/bonus.ts` (`AssignBonusInputChampionsLeague`, `CHAMPIONS_LEAGUE_AMOUNTS`, `championsLeagueAmountForPlace`, `isQuarterInAllowedRange`, `BONUS_QUARTERS_PL`, `CHAMPIONS_LEAGUE_PLACE_LABELS_PL`, `ChampionsLeagueRank`, `Quarter`)
+- Email: `COMPASS/lib/email.ts` (`sendChampionsLeagueAssigned` accent złoty `#EAB308`, `sendChampionsLeagueCancelled` accent czerwony)
+- UI nowe: `COMPASS/components/internal/AssignChampionsLeagueForm.tsx` (dedykowany, ~280 lines — separat od 997-liniowego AssignBonusForm dla mniejszego ryzyka regresji w istniejących 4 kategoriach)
+- UI rozszerzone: `BonusesAdminClient.tsx` (button + dialog + dispatch w edit), `MyBonusesClient.tsx` (badge + period kwartalne), `EmployeeProfileDialog.tsx` (Premie tab z period+miejsce dla CL), `internal-employee-profile.ts` (`BonusHistoryRow` += category/period_quarter/place_rank)
+
+**Audit log akcje (Phase 31):**
+- `CHAMPIONS_LEAGUE_ASSIGNED` z payload `{bonus_id, recipient_user_id, place_rank, period_year, period_quarter, amount, currency, reason, category}`
+- `CHAMPIONS_LEAGUE_UPDATED` z payload `{bonus_id, recipient_user_id, period_year, period_quarter, place_rank, category, changes: {amount/reason/notes: [old, new]}}`
+- `CHAMPIONS_LEAGUE_CANCELLED` z payload `{bonus_id, recipient_user_id, place_rank, period_year, period_quarter, amount, cancellation_reason, category}`
+
+Standardowe `BONUS_ASSIGNED/UPDATED/CANCELLED` zostają dla innych kategorii — split umożliwia łatwe filtrowanie audytu per produkt.
+
+**Ops po deploy:**
+1. Aplikuj migrację `phase31_champions_league_bonus` przez Supabase MCP (`mcp__e0e020fb...__apply_migration`). Inline smoke test sprawdzi insert+update+immutability.
+2. Brak nowych cron jobów ani env vars.
+3. Smoke test prod: admin → przypisz testową Champions League Q1 2026 / 1. miejsce → próba drugiej osoby na to samo miejsce → expect friendly error. Anuluj testową.
+
+**Co świadomie NIE wchodzi:**
+- Dashboard analityczny "Hall of Fame" (top 3 per kwartał historycznie) — można w Phase 31.1.
+- Konfigurowalne kwoty w UI (hard-coded zostaje).
+- Automatyczne wyliczanie rankingu z metryk (Liga jest manualna z definicji).
+- Ex aequo split (1 miejsce = 1 zwycięzca, partial UNIQUE wymusza).
+- Broadcast email do całej firmy "Nowy zwycięzca!" — TODO follow-up.
+
+## Phase 33 — Kontraktorzy (moduł Talent Community, 2026-06-01)
+
+Przeniesienie 4 plików TCM (Word/Excel) do Compass — pełen cykl opieki nad **kontraktorem u klienta** (zewnętrzny konsultant, NIE user Compass): wejście → onboarding interview → log rozmów → exit interview → zejście. Pełny raport: `docs/kontraktorzy-tcm-completion-report.md`.
+
+**Decyzje:** (1) cały moduł naraz; (2) import historii 2024 idempotentny; (3) **lekka tabela `contractors`** zamiast wpychania w `profiles`/`auth.users` (kontraktorzy mają telefon, nie mail; ~300 zalałoby katalog pracowników i dropdowny); (4) **widoczność tylko `talent_community` + `admin`**.
+
+**Schema (4 migracje addytywne, prod via MCP):**
+- `phase33a_contractors` — `contractors` (tożsamość: `full_name` natural-key, phone, current_client, owner_tcm_id, status, `profile_id` leniwy link) + ALTER `placements` (`contractor_id` + pola Wejść) + backfill 17 placementów.
+- `phase33b_contractor_conversations` — log rozmów (`category` ← Sprawa, `status` ← kolor: w_toku/rozwiazane/potrzebny_kontakt/pilne, `external_key` dedup) + `notifications.type += 'contractor_followup'`.
+- `phase33c_contractor_interviews` — `contractor_onboarding_interviews` + `contractor_exit_interviews` (trigger transition scheduled→submitted→reviewed→archived bez NPS; załączniki inline JSONB; storage reuse `lifecycle-docs` prefiksy `contractor-onboarding/`,`contractor-exit/`).
+- `phase33d_client_movements` — `client_entries` (archiwum Wejść 2024, read-only, NIE napędza premii) + `client_departures` (Zejścia hist.+go-forward; who_resigned/przepięcie/replacement/strata).
+
+**RLS wszystkich nowych tabel:** `has_lifecycle_access()` (admin OR talent_community). `placements` BEZ zmian RLS (Phase 28 premie zostają). Importery reużywają `placement_person_aliases`.
+
+**UI:** `/internal/kontraktorzy` (guard `requireTalentCommunityOrAdminLayout`) — zakładki Rozmowy/Kontraktorzy/Wejścia (UNION client_entries+placements)/Zejścia/Statystyki/Import. Karta `[id]`: timeline + onboarding+exit interview (schema-driven, zastępuje 2 docx) + ruchy. Sidebar: grupa „Kontraktorzy" tylko TCM+admin.
+
+**Importery (wzorzec Phase 28):** `lib/contractors/parse.ts` (break po 200 pustych — arkusz Zejścia ma wymiar ~1M wierszy) + `lib/actions/contractor-import.ts` (idempotentne po `external_key`, fuzzy-match recruiter/DL/TCM). Zweryfikowane: Rozmowy 147 / Wejścia 273 / Zejścia 332.
+
+**Coolify cron (do dodania):** `contractor-followup-reminder` — `0 8 * * *` — `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/contractor-followup-reminder"` (rozmowy potrzebny_kontakt/pilne/follow_up → push+in-app do owner TCM).
+
+**Ops po deploy:** (1) cron w Coolify; (2) import 3 plików przez `/internal/kontraktorzy` → Import; (3) status rozmów z importu = `rozwiazane` (kolory Excela z conditional-formatting nieczytelne przez `cell.fill.fgColor` — go-forward w UI).
+
+## Phase 34 — Talent Community: hub wg journey + Zadania + Ticket→Zadanie (2026-06-03)
+
+Przebudowa modułu Kontraktorzy (Phase 33) w spójny workspace działu Talent Community ułożony wg ścieżki osoby: **onboarding → opieka → retencja → exit → analiza zejść**, plus przekrojowo skrzynka administracja@ i zadania działowe. Raport: `docs/talent-community-restructure-completion-report.md`.
+
+**Sidebar** (`components/layout/Sidebar.tsx`) — grupa „Talent Community" (TCM + admin), jedna definicja dla obu ról, kolejność wg dnia pracy: **Skrzynka administracja@** (`/admin/inbox`) → **Kontraktorzy** (`/internal/kontraktorzy`, headline) → **Onboarding pracowników (wewn.)** (`/internal/lifecycle` — Phase 22, jasno oznaczone: inna populacja = pracownicy wewnętrzni z kontem) → **Compliance** → **News composer**. Wcześniejsze 3 osobne grupy (tcmGroup/lifecycleGroup/kontraktorzyGroup) + rozsypane linki admina scalone. Inne HR-zone role (internal/finanse/manager) zachowują standalone „Onboarding & Exit".
+
+**Hub Kontraktorów** (`components/internal/kontraktorzy/KontraktorzyHub.tsx` + `panels/`) — zakładki z technicznych (Rozmowy/Wejścia/Zejścia/Statystyki) na **journey**: `Pulpit · Onboarding · Opieka · Retencja · Exit & analiza zejść · Zadania`.
+- **Pulpit** — KPI (dashboard) + „wymaga uwagi dziś" (at-risk / follow-up due / onboarding / exit, derived) + **skrzynka administracja@** (open/overdue/unassigned z `getInboxSummary`) + Import (zwinięty).
+- **Onboarding** — kolejka kontraktorów `status IN (prospect,onboarding)` + stan wywiadu (`listOnboardingQueue`) + Wejścia (intake).
+- **Opieka** — roster + log rozmów (dawne Rozmowy + Kontraktorzy).
+- **Retencja** (NEW) — proaktywna worklista zagrożonych, derived z rozmów: `category IN (zejscie,przedluzenie)` lub `status IN (pilne,potrzebny_kontakt)` (helpery `deriveAtRisk`/`isRetentionRisk` w `lib/types/contractor.ts`, bez migracji).
+- **Exit & analiza zejść** — kolejka exit interview (`listExitInterviewQueue`) + zejścia + trendy (powody, per klient).
+- **Zadania** (NEW) — prosta lista zadań działu.
+
+**Zadania — tabela `contractor_tasks`** (migracja `20260607000001_phase34a_contractor_tasks`): status `todo/in_progress/done`, `assigned_tcm_id`, `due_date`, opcjonalny `contractor_id` (zadanie działowe gdy NULL) i `source_ticket_id` (link do ticketu inboxu). RLS `has_lifecycle_access()` (TCM+admin), trigger `updated_at`, 4 indexy. Akcje `listTasks/createTask/updateTask/deleteTask` w `lib/actions/contractors.ts`; audit `CONTRACTOR_TASK_CREATED/UPDATED/DELETED`. UI: `TaskDialog.tsx` + `panels/ZadaniaPanel.tsx` (delete przez `useConfirm()` z `components/shared/ConfirmDialog`, NIE window.confirm).
+
+**Ticket → Zadanie** — przycisk „Utwórz zadanie z tego zgłoszenia" w `/admin/inbox/[id]` (`components/inbox/TicketToTaskButton.tsx`, tylko TCM/admin) tworzy `contractor_tasks` z `source_ticket_id` = ticket; zadanie ma odnośnik powrotny do `/admin/inbox/{id}`. Tak issue z administracja@ staje się śledzonym zadaniem, które przeżyje zamknięcie ticketu. `getInboxSummary` w `lib/actions/support-inbox.ts` zasila KPI Pulpitu (guard `is_inbox_handler` / admin).
+
+**Ops:** migracja zaaplikowana na prod 2026-06-03 (PR #205); brak nowych cron jobów ani env vars. `database.types.ts` ma ręcznie dodany `contractor_tasks` (FK relationships zsynchronizują się przy najbliższym pełnym regenie). Świadomie poza zakresem: automat handoffu placement→onboarding (dziś = ticket inbox), link ticket↔kontraktor (`support_inbox_meta.contractor_id`), cron SLA breach, scalanie Faz 22/33.
+
+## Phase 35 — Talent Community: 5 sekcji (Sprawy otwarte / Onboarding / Retencja / Offboarding / Analityka) (2026-06-03)
+
+Restrukturyzacja hubu Kontraktorów z 6 zakładek (Phase 34) na **5 sekcji** wg życzenia Artura: **Sprawy otwarte · Onboarding · Retencja · Offboarding · Analityka** (`KontraktorzyHub.tsx`, panele w `components/internal/kontraktorzy/panels/`).
+- **Sprawy otwarte** (`SprawyOtwartePanel`) — dzienny worklist: otwarte tickety ze skrzynki administracja@ (lista z linkami do `/admin/inbox/{id}`) + otwarte rozmowy (pilne/potrzebny kontakt/follow-up po terminie) + zadania działu (`ZadaniaPanel` zagnieżdżony). Nowy typ `OpenInboxTicketLite` (`lib/types/support.ts`) + fetch `listInboxTickets()` w `page.tsx` (graceful empty gdy caller nie jest inbox-handler).
+- **Onboarding** (`OnboardingPanel`) — bez zmian (kolejka prospect/onboarding + Wejścia).
+- **Retencja** (`RetencjaPanel`) — scalone dawne *Opieka* + *Retencja*: zagrożeni (at-risk) + roster + log rozmów.
+- **Offboarding** (`OffboardingPanel`) — exit interviews + zejścia (operacyjne).
+- **Analityka** (`AnalitykaPanel`) — KPI + liczniki etapów (onboarding/retencja-zagrożeni/offboarding) + trendy (powody zejść, per klient, per TCM) + Import Excel.
+
+Usunięte panele: `PulpitPanel`, `OpiekaPanel`, `ExitPanel` (treść rozdzielona). Zadania nie są już osobną zakładką (żyją w Sprawach otwartych). `getInboxSummary` zostaje w kodzie, ale hub już go nie woła (zastąpione listą ticketów). Bez zmian w DB/API/migracjach.
+
+**Sidebar (`Sidebar.tsx`):** grupa „Talent Community" = **5 deep-linków do zakładek huba** (`/internal/kontraktorzy?tab=sprawy|onboarding|retencja|offboarding|analityka`) + Compliance + Composer News. Skrzynka administracja@ usunięta z sidebara (jest w „Sprawach otwartych"). „Onboarding pracowników (wewn.)" przeniesiony do osobnej grupy „Lifecycle" (pokazywanej teraz dla WSZYSTKICH HR-zone, nie tylko internal/finanse/manager — to inna populacja niż kontraktorzy). Hub czyta `?tab=` (`useSearchParams` + sync `useEffect`); active-state w sidebarze rozpoznaje `?tab=` (default = `sprawy`).
+
+## Phase 36 — Reverse sync: Outlook OOF → auto-pending wnioski urlopowe (2026-06-05)
+
+Kierunek odwrotny do Phase 25 (Compass→Outlook). Pracownicy czasem ustawiają **Out of Office w Outlooku bez wniosku urlopowego w COMPASS** → kalendarz zespołu (czyta tylko `leave_requests`) systemowo niedoszacowuje nieobecności. Cron wykrywa takie luki i tworzy **PENDING** wniosek do akceptacji w normalnej kolejce — **człowiek w pętli, nic auto-zatwierdzane**. Integracja jest teraz dwustronna.
+
+**Mechanizm** (`GET /api/cron/oof-reconcile`, `withCronAuth`, service-role):
+1. Skan OOF każdej skrzynki strefy HR przez Graph (`getCurrentOof`; uprawnienia `MailboxSettings.Read` już są — skan zwrócił 37×200).
+2. Pomija OOF ustawione przez Compass (marker `compass-managed-oof-v1`) — już mirrorują urlop (Phase 25d).
+3. Dla OOF ustawionego ręcznie: brakujące dni robocze = zakres OOF − weekendy − święta (`public_holidays`) − istniejące urlopy (`approved`/`pending` + odrzucony `outlook_oof`).
+4. Każdy ciągły run brakujących dni → 1 PENDING `leave_request` (`vacation`, `source='outlook_oof'`); split płatny/bezpłatny jak `createLeaveOnBehalf` (`computePaidUnpaidSplit`).
+
+**Reguła dat OOF:** koniec o północy Warszawy = **exclusive** (Graph/Compass piszą koniec = ostatniDzień+1 @00:00); inny czas = **inclusive** (np. „wracam 16:00"). Konwersja przez `Intl` w `Europe/Warsaw` (DST-safe).
+
+**Idempotencja:** dzień pokryty `approved`/`pending` nie jest ponawiany; odrzucony `outlook_oof` też (żeby nie zapętlić po odrzuceniu przez managera). `alwaysEnabled` / OOF bez dat → flaga w `errors`, **nie zgadujemy** zakresu.
+
+**Schema:** migracja `20260607000002_phase36_leave_source.sql` — `leave_requests.source TEXT` (NULL/`self` / `on_behalf` / `outlook_oof`) + partial index `idx_leave_source_oof`. `created_by` (NOT NULL) = system actor (`OOF_RECONCILE_ACTOR_ID` lub pierwszy admin).
+
+**Pliki:** `lib/oof/oof-dates.ts` (czyste, deterministyczne helpery: konwersja dat + run-grupowanie + 9 testów), `lib/oof/reconcile.ts` (orchestrator skan→split→insert), `app/api/cron/oof-reconcile/route.ts`.
+
+**Coolify cron (dodany 2026-06-05, scheduled_tasks id 15):**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `oof-reconcile` | `0 6 * * *` | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/oof-reconcile"` |
+
+**Weryfikacja (2026-06-05):** live tick — 37 skrzynek, 10 OOF-Compass (pominięte) / 10 OOF-user, `gapsFound=0`, `created=0`, `errors=[]` (0 fałszywych alarmów). Przy okazji dorejestrowano 4 zaległe luki ręcznie przez „Wpisz urlop za pracownika": Klaudia Uliasz 05.06, Michał Stankiewicz 05.06, Marcin Kraszewski 03.06, Dorota Głowczyńska 01.06 (dwie ostatnie jako cały dzień — OOF od popołudnia, możliwe pół dnia, flaga w notatce).
+
+**Opcjonalny env:** `OOF_RECONCILE_ACTOR_ID` — UUID profilu jako `created_by` auto-wniosków (domyślnie pierwszy admin chronologicznie).
+
+**Świadomie poza zakresem:** badge „z Outlook OOF" w UI kolejki wniosków (follow-up — `source` już w DB), obsługa OOF `alwaysEnabled` (wymaga ręcznego wpisu), nudge do pracownika „złóż wniosek". **Reverse sync NIE cofa**: wyłączenie OOF nie kasuje już utworzonego wniosku (rozprzęgnięte).
+
+## Phase 37 — People-ops: scalenie w 2 moduły (Onboarding + Zgłoszenia), usunięcie Compliance/Retencja, analityka typów zgłoszeń (2026-06-05)
+
+Konsolidacja rozsypanego people-ops (Talent Community/Lifecycle/Kontraktorzy + 3 powierzchnie zgłoszeń) w **2 grube moduły + analityka**. PR #216 (główny) + #217 (hotfix). Pełen „full DB merge" zrealizowany jako **read-model** (nie przepisywanie backendu).
+
+**Architektura — read-model + sync triggery (KLUCZOWE):** legacy tabele zostają **źródłem prawdy** (RPC `start_onboarding_for_user`, triggery anonimizacji/transition, RLS, `lifecycle.ts`/`contractors.ts`/`support-*` — **bez zmian**). Zunifikowany store to mirror utrzymywany w spójności przez 6 `AFTER`-triggerów (`SECURITY DEFINER`, exception-safe → nigdy nie blokują legacy write). Nowe huby czytają mirror / komponują istniejące widoki. Zero rewrite backendu, w pełni odwracalne (drop mirror = rollback).
+
+**Migracje (additive, `*_legacy` NIE tworzone — legacy = source of truth):**
+- `20260608000001_phase37a` — `onboarding_cases` + `exit_cases` (`person_type` employee|contractor, `person_id` polimorficzny profiles|contractors), backfill **id-preserving**, RLS branched per typ. Mirror BEZ triggerów transition (te są na legacy).
+- `20260608000002_phase37b` — kategorie `contractor_conversation`/`contractor_task` + `support_contractor_meta` (1:1), fold rozmów/zadań do `support_tickets` (id = source UUID, idempotentnie), `is_contractor_category()`, RLS `support_tickets` rozszerzona o 3. gałąź `CASE` (inbox→handler / contractor→lifecycle / else→user; inbox+konsultant **verbatim**).
+- `20260608000003_phase37c` — 6 sync-triggerów legacy→mirror.
+
+**Aplikacja na prod:** przez Supabase MCP `apply_migration` (atomic). **Branch Supabase startuje pusty** (bez prod-danych) → backfill walidowany read-only SELECT-em na prodzie (status-mapy, 0 kolizji UUID, admin-fallback). Gotcha: `onboarding_progress.cancellation_reason` (NIE `cancelled_reason` — sprawdzaj realny schemat, nie docs).
+
+**UI (reuse komponentów):**
+- `/internal/zgloszenia` — Skrzynka (`KanbanBoard`) / Helpdesk (`listTickets`) / Sprawy kontraktorskie (`RetencjaPanel` — log rozmów + roster, treść z usuniętej Retencji).
+- `/internal/onboarding` — Pracownicy (queue + `HubActionButtons` + Szablony/Pracownicy/Archiwum) / Konsultanci (`OnboardingPanel` + exit).
+- `/internal/analityka` — `getContractorDashboard` (zejścia) + `getTicketTypeAnalytics` (`lib/actions/zgloszenia-analytics.ts` — typy/status/priorytet z **scalonego** `support_tickets`).
+- `Sidebar.tsx`: Talent Community = 4 linki (Zgłoszenia / Onboarding & Exit / Analityka / Composer News); `lifecycleGroup` tylko dla internal/finanse/manager (TCM+admin używają nowego huba).
+
+**Usunięcia (bez utraty danych):** `/admin/compliance` → redirect `/home` (tabele `um_*` + akcje logowania zostają — RODO); Retencja zakładka znika (`deriveAtRisk` zachowany); `/internal/kontraktorzy` (5 zakładek) → redirect `/internal/onboarding` (karty `[id]` bez zmian).
+
+**Gotcha (#217):** rozmowy zmirrorowane do `support_tickets` zanieczyszczały helpdesk — `listTickets` musi wykluczać też `contractor_%` (nie tylko `inbox_%`). Wzorzec: **każdy broad reader `support_tickets` poza inboxem/analityką wyklucza `inbox_%` ORAZ `contractor_%`**.
+
+**Follow-up (świadomie nie zrobione):** „contract step" = migracja backendu na czytanie mirror + drop legacy (duży, osobny — teraz legacy działa jako źródło prawdy). Patrz pamięć [[supabase-branch-empty-validate-readonly]].
+
+## Phase 38 — Talent Community: 5 elementów + upload plików wywiadów (PR #222, 2026-06-05)
+
+Rozbicie people-ops kontraktorskiego (Phase 37 scaliło je w Zgłoszenia + Onboarding&Exit) z powrotem na **5 dedykowanych elementów** wg ścieżki życia kontraktora, wszystkie w sidebarze. **Bez migracji** — reużywa tabel Phase 33 + bucketu `lifecycle-docs` (Phase 33c). Pełny raport: `docs/talent-community-5-elementow-completion-report.md`.
+
+**Sidebar (TCM + admin):**
+- **Talent Community** = Rozmowy / Onboarding / Exit / Kontraktorzy (zakładki huba `/internal/kontraktorzy?tab=…`) + **Analityka** (osobny route `/internal/analityka`) → 5 linków.
+- Nowa grupa **„Komunikacja"** = Zgłoszenia (skrzynka administracja@ + helpdesk) + Composer News — wydzielone z TC, nic nie usunięto („Zostaw osobno").
+- **„Pracownicy wewnętrzni"** (Lifecycle, Phase 22 — inna populacja) widoczne teraz też dla TCM/admin (`/internal/lifecycle`).
+
+**Elementy (4 zakładki huba `KontraktorzyHub` + panele w `components/internal/kontraktorzy/panels/`):**
+- **Rozmowy** (`RozmowyPanel`) — Zagrożeni (`deriveAtRisk`) + Logi rozmów (`contractor_conversations`) + import rozmów. (Roster wyszedł stąd do osobnego elementu Kontraktorzy.)
+- **Onboarding** (`OnboardingEntriesPanel`) — Wejścia (feed) + tabela Onboarding (przepisane Imię/Klient/Stanowisko/Rekruter/Start + **upload pliku „Onboarding interview"** per wiersz) + import wejść.
+- **Exit** (`ExitPanel`) — Zejścia (pełne kolumny) + Exit Interview (przepisane Imię/Klient/Stanowisko + **upload pliku „Exit Interview"**) + import zejść.
+- **Kontraktorzy** (`KontraktorzyRosterPanel`) — aktualni kontraktorzy ze stawkami: Imię, Klient, Rekruter, **Delivery Lead**, Data wejścia, **Stawka przychodowa/kosztowa, Marża**.
+
+**Źródła danych (nowe akcje w `lib/actions/contractors.ts`):**
+- `listContractorRoster()` — `placements` (status ≠ cancelled) ∪ `client_entries` (archiwum 2024), dedup po kluczu naturalnym (konsultant+klient+start), placement wygrywa. Stawki/DL/marża z tych tabel (NIE z `contractors`).
+- `listOnboardingEntries()` / `listExitDepartures()` — wejścia/zejścia wzbogacone o `contractor_id` + najnowszy wywiad (status + `attachments`).
+
+**Upload plików wywiadów (nowa funkcja — kolumna `attachments` JSONB istniała od Phase 33, brakowało UI/akcji):**
+- `uploadContractorInterviewFile(formData)` → upload do `lifecycle-docs/contractor-{onboarding|exit}/{contractorId}/`, dopina do `attachments` najnowszego wywiadu (tworzy wywiad gdy brak). Gdy wiersz niepowiązany — **find-or-create kontraktora po nazwisku** (`resolveOrCreateContractor`, normalizacja `normalizeContractorName`) + podlinkowanie wejścia/zejścia (`placements`/`client_entries`/`client_departures`).
+- `removeContractorInterviewFile` + `getContractorInterviewFileUrl` (signed URL 5 min). Walidacja ≤10 MB, PDF/Word/Excel/obrazy. Service client po guardzie (`requireLifecycleManagerAction`). Komponent `InterviewFileCell`.
+
+**Routing:** `kontraktorzy/page.tsx` z redirectu → ładowanie danych + `KontraktorzyHub` (4 zakładki); `[id]` detail bez zmian. `onboarding/page.tsx` → redirect `?tab=onboarding`. `/internal/analityka` i `/internal/zgloszenia` bez zmian.
+
+**Audit log:** `CONTRACTOR_ONBOARDING_INTERVIEW_FILE_UPLOADED`, `CONTRACTOR_EXIT_INTERVIEW_FILE_UPLOADED`, `CONTRACTOR_INTERVIEW_FILE_REMOVED`.
+
+**Loose ends (świadomie):** widok **Zadań** (Phase 34) zniknął z huba (nie ma w 5-elementowej specyfikacji; tworzenie z ticketu `TicketToTaskButton` nadal działa, brak widoku). Kilka osieroconych plików-paneli zostawione jako martwy kod (build przechodzi) — cleanup follow-up. Upload anchoruje do kontraktora, nie do konkretnego wejścia (wystarczające dla 1 bieżącego wejścia/osobę).
+
+## Phase 39 — Exit: Bench + filtr Zejść + auto-update z SharePoint (2026-06-08)
+
+Rozszerzenie zakładki **Exit** (Phase 38) o tabelę **Bench** (konsultanci między projektami) + przeporządkowanie tabel + filtr Zejść. Dwie fazy:
+
+### Faza A (zrobiona) — Bench + filtr Zejść + kolejność
+
+Kolejność tabel w Exit: **Bench → Exit Interview → Zejścia**.
+
+**Bench** (`contractor_bench`, migracja `phase39a_contractor_bench`) — worklista osób po zejściu (lub schodzących wkrótce), którym szukamy projektu. **Hybryda:** auto-seed z `client_departures` (zejścia ostatnich ~90 dni + przyszłe/bez daty, idempotentnie przez unikalny `departure_id`) + ręczne dodanie (`source='manual'`, `departure_id NULL`). Kolumny: Imię, Klient, Rola, Data zejścia, Data wypowiedzenia + **edytowalne**: `status` (`w_rekrutacji`/`przepiety`/`zakonczenie_umowy`) i `benefits` (`aktywne`/`nieaktywne`/`do_wygaszenia`). `dismissed_at` = soft-remove (zachowuje slot, żeby auto-seed nie dodał ponownie). Domyślny widok = aktywni (`w_rekrutacji`); toggle „Pokaż wszystkich" odsłania resolved. RLS `has_lifecycle_access()`. Auto-seed odpala się przy `listBench()` (na load zakładki) — idempotentny, kolejne loady nie wstawiają nic gdy brak nowych zejść. ~42 kandydatów z 331 zejść (okno 90 dni).
+
+**Zejścia** — domyślnie tylko **bieżący + następny miesiąc** (filtr klient-side po `departure_date`), przycisk **„Pokaż pełną"/„Pokaż skróconą"**. Exit Interview bez zmian (pełna lista z uploadem).
+
+Pliki: migracja + `contractor_bench` w `database.types.ts` (ręcznie, jak `contractor_tasks`); typy + akcje `listBench`/`addBenchEntry`/`updateBenchEntry`/`dismissBenchEntry` w `contractors.ts`; `BenchPanel.tsx` (edytowalne dropdowny optymistycznie + toggle + dismiss), `BenchDialog.tsx` (ręczne dodanie); `ExitPanel.tsx` przeporządkowany + filtr Zejść; hub + `page.tsx` ładują `listBench()`. Audyt: `BENCH_ENTRY_ADDED/UPDATED/DISMISSED`.
+
+### Faza B (zrobiona) — auto-update Wejść/Zejść z SharePoint/Graph
+
+Tabele Wejścia/Zejścia **same aktualizują się raz dziennie** zaciągając plik **„Wejścia i zejścia od klientów 2024.xlsx"** (jeden skoroszyt, 2 arkusze: „Wejścia do klientów" + „Zejścia od klientów") z SharePoint site **B2BKlienci** przez Graph (app-only).
+
+- **Uprawnienie:** Graph **`Sites.Read.All`** (Application) nadane app Compass (`17f9ff8c-...`, SP `90ea31d8-...`) przez `az rest` appRoleAssignment (id `2DHqkIjINE…`). Least-privilege dla SharePoint (węższe niż Files.Read.All; **NIE** dotyczy RAOP/CompassMailSenders — to Exchange-only). Hardening na przyszłość: `Sites.Selected` scoped do B2BKlienci.
+- **Pobranie:** `lib/graph/sharepoint.ts` → `downloadSharedWorkbook(shareUrl)` = `GET /shares/{u!token}/driveItem/content` (`responseType('arraybuffer')`). Token = base64url(url) z prefiksem `u!`.
+- **Import:** rdzeń wyciągnięty do `lib/contractors/import-core.ts` (plain module, NIE 'use server') — `importWejsciaFromBuffer`/`importZejsciaFromBuffer`/`importRozmowyFromBuffer` (bufor + `actorUserId`), idempotentne (upsert po `external_key`). `lib/actions/contractor-import.ts` to teraz cienkie wrappery (guard + FormData + revalidate) nad tym rdzeniem — manual import i cron dzielą tę samą logikę. **Każdy parser sam znajduje swój arkusz** (`findSheet` po nagłówkach), więc jeden bufor obsługuje oba.
+- **Cron:** `GET /api/cron/tc-sync` (`withCronAuth`, Bearer `CRON_SECRET`, `maxDuration 240`). Pobiera plik → importuje oba arkusze niezależnie → `revalidatePath(HUB)`. Zwraca JSON `{ok, bytes, wejscia:{inserted,...}, zejscia:{...}}`.
+- **Env (Coolify, runtime):** `TC_SYNC_FILE_URL` = sharing link do skoroszytu (wymagany); `TC_SYNC_USER_ID` = profil dla `imported_by`/audytu (opcjonalny, fallback = najstarszy admin).
+- **Coolify schedule:** `tc-sync` — `0 5 * * *` (05:00 UTC daily) — `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/tc-sync"`.
+- **Semantyka:** **additive** (jak manual import) — nowe wiersze w pliku trafiają do `client_entries`/`client_departures`; usunięcia/edycje pól kluczowych (`external_key`) nie propagują (świadome ograniczenie v1; dedup ręczny lub follow-up). Re-runy bezpieczne (idempotent).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

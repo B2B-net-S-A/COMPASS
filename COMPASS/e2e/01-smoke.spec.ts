@@ -18,7 +18,7 @@ test.describe('Smoke Tests', () => {
 
     test('1. Strona logowania ładuje się poprawnie', async ({ page }) => {
         await page.goto('/login', { waitUntil: 'networkidle' })
-        await expect(page).toHaveTitle(/ComPass/i)
+        await expect(page).toHaveTitle(/COMPASS/i)
 
         // Formularz widoczny
         await expect(page.locator(SEL.email)).toBeVisible({ timeout: 15_000 })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { Plus, CheckCircle2, XCircle, Download, Pencil, Ban, Paperclip, Loader2 } from 'lucide-react'
+import { Plus, CheckCircle2, XCircle, Download, Pencil, Ban, Paperclip, Loader2, Trophy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
     Dialog,
@@ -16,13 +16,21 @@ import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { cancelBonus, getBonusAttachmentSignedUrl } from '@/lib/actions/internal-bonus'
 import { AssignBonusForm } from './AssignBonusForm'
+import { AssignChampionsLeagueForm } from './AssignChampionsLeagueForm'
 import type {
     BonusCategory,
     BonusStatus,
     BonusWithUsers,
+    ChampionsLeagueRank,
     EligibleEmployeeForBonus,
+    Quarter,
 } from '@/lib/types/bonus'
-import { BONUS_MONTHS_PL, BONUS_CATEGORIES_PL } from '@/lib/types/bonus'
+import {
+    BONUS_MONTHS_PL,
+    BONUS_CATEGORIES_PL,
+    BONUS_QUARTERS_PL,
+    CHAMPIONS_LEAGUE_PLACE_SHORT_PL,
+} from '@/lib/types/bonus'
 
 type ViewerMode = 'admin' | 'manager' | 'finanse'
 
@@ -85,6 +93,14 @@ function periodLabel(year: number | null, month: number | null): string {
     return `${BONUS_MONTHS_PL[month - 1]} ${year}`
 }
 
+/** Phase 31 — period dla CL (period_month=NULL, period_quarter+place_rank present). */
+function periodLabelForBonus(b: BonusWithUsers): string {
+    if (b.category === 'champions_league' && b.period_year && b.period_quarter) {
+        return `${BONUS_QUARTERS_PL[b.period_quarter - 1]} ${b.period_year}`
+    }
+    return periodLabel(b.period_year, b.period_month)
+}
+
 function categoryBadge(category: BonusCategory) {
     const label = BONUS_CATEGORIES_PL[category]
     const className =
@@ -94,9 +110,13 @@ function categoryBadge(category: BonusCategory) {
               ? 'bg-primary/15 text-primary border-primary/30'
               : category === 'recruiter'
                 ? 'bg-warning/15 text-warning border-warning/30'
-                : 'bg-muted text-muted-foreground border-border'
+                : category === 'champions_league'
+                  ? 'bg-warning/15 text-warning border-warning/40'
+                  : 'bg-muted text-muted-foreground border-border'
     return (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>{label}</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>
+            {category === 'champions_league' ? '🏆 ' : ''}{label}
+        </span>
     )
 }
 
@@ -158,6 +178,13 @@ function categoryInlineDetails(bonus: BonusWithUsers): string | null {
         }
         case 'custom':
             return null
+        case 'champions_league': {
+            // Phase 31 — pokazujemy miejsce skróconym formatem (🥇 1.)
+            if (bonus.place_rank) {
+                return `${CHAMPIONS_LEAGUE_PLACE_SHORT_PL[bonus.place_rank as ChampionsLeagueRank]} miejsce`
+            }
+            return null
+        }
     }
 }
 
@@ -168,10 +195,12 @@ function exportToCsv(bonuses: BonusWithUsers[]): void {
             'Pracownik',
             'Email',
             'Manager',
+            'Kategoria',
             'Kwota',
             'Waluta',
             'Status',
-            'Miesiąc',
+            'Okres',
+            'Miejsce (CL)',
             'Uzasadnienie',
             'Utworzono',
             'Anulowano',
@@ -182,10 +211,12 @@ function exportToCsv(bonuses: BonusWithUsers[]): void {
             b.recipient_full_name ?? '',
             b.recipient_email,
             b.proposer_full_name ?? '',
+            BONUS_CATEGORIES_PL[b.category],
             String(Number(b.amount).toFixed(2)),
             b.currency,
             b.status,
-            periodLabel(b.period_year, b.period_month),
+            periodLabelForBonus(b),
+            b.place_rank ? String(b.place_rank) : '',
             b.reason.replace(/"/g, '""'),
             b.created_at,
             b.cancelled_at ?? '',
@@ -211,11 +242,14 @@ export function BonusesAdminClient({
     const [bonuses, setBonuses] = useState<BonusWithUsers[]>(initialBonuses)
     const [filterStatus, setFilterStatus] = useState<FilterStatus>('active')
     const [assignOpen, setAssignOpen] = useState(false)
+    const [assignClOpen, setAssignClOpen] = useState(false) // Phase 31 — Champions League
     const [editTarget, setEditTarget] = useState<BonusWithUsers | null>(null)
     const [cancelTarget, setCancelTarget] = useState<BonusWithUsers | null>(null)
 
     const canAssign = viewerMode === 'admin' || viewerMode === 'manager'
-    const canCancelAny = viewerMode === 'admin'
+    // Phase 32 — po przypisaniu premii (akceptacja managera) edytować/anulować
+    // może tylko administrator lub finanse. Manager przypisuje, ale potem nie zmienia.
+    const canManageAny = viewerMode === 'admin' || viewerMode === 'finanse'
 
     const filtered = useMemo(() => {
         if (filterStatus === 'all') return bonuses
@@ -258,21 +292,23 @@ export function BonusesAdminClient({
         <div className="space-y-4">
             {/* Summary stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-border bg-muted p-4">
+                <div className="rounded-lg border border-border bg-card p-4">
                     <div className="text-xs text-muted-foreground">Przypisane (suma)</div>
                     <div className="text-2xl font-bold text-success">
                         {totalAssigned.toFixed(2)} PLN
                     </div>
                 </div>
-                <div className="rounded-lg border border-border bg-muted p-4">
+                <div className="rounded-lg border border-border bg-card p-4">
                     <div className="text-xs text-muted-foreground">Anulowane (suma)</div>
                     <div className="text-2xl font-bold text-destructive">
                         {totalCancelled.toFixed(2)} PLN
                     </div>
                 </div>
-                <div className="rounded-lg border border-border bg-muted p-4">
+                <div className="rounded-lg border border-border bg-card p-4">
                     <div className="text-xs text-muted-foreground">Liczba premii</div>
-                    <div className="text-2xl font-bold">{bonuses.length}</div>
+                    {/* Match the active filter so the number agrees with the list below
+                        (was bonuses.length — confusing when filtering, Dominik Issue 7). */}
+                    <div className="text-2xl font-bold">{filtered.length}</div>
                 </div>
             </div>
 
@@ -285,8 +321,8 @@ export function BonusesAdminClient({
                             onClick={() => setFilterStatus(s)}
                             className={`px-3 py-1.5 rounded text-xs font-medium transition ${
                                 filterStatus === s
-                                    ? 'bg-accent text-foreground'
-                                    : 'bg-muted text-muted-foreground hover:bg-accent'
+                                    ? 'bg-muted text-foreground'
+                                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                             }`}
                         >
                             {s === 'active' && 'Aktywne'}
@@ -301,10 +337,21 @@ export function BonusesAdminClient({
                         CSV
                     </Button>
                     {canAssign && candidates.length > 0 && (
-                        <Button size="sm" onClick={() => setAssignOpen(true)}>
-                            <Plus className="h-3.5 w-3.5 mr-1.5" />
-                            Przypisz premię
-                        </Button>
+                        <>
+                            <Button size="sm" onClick={() => setAssignOpen(true)}>
+                                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                                Przypisz premię
+                            </Button>
+                            {/* Phase 31 — osobny button dla Champions League (kwartalnej). */}
+                            <Button
+                                size="sm"
+                                onClick={() => setAssignClOpen(true)}
+                                className="bg-warning/90 hover:bg-warning text-black"
+                            >
+                                <Trophy className="h-3.5 w-3.5 mr-1.5" />
+                                Champions League
+                            </Button>
+                        </>
                     )}
                 </div>
             </div>
@@ -317,16 +364,16 @@ export function BonusesAdminClient({
             ) : (
                 <div className="space-y-2">
                     {filtered.map((b) => {
-                        const canEditRow =
-                            b.status === 'assigned' &&
-                            (b.proposed_by === currentUserId || canCancelAny)
+                        // Phase 32 — edit/cancel locked to admin + finanse once assigned.
+                        // Managers assign but can no longer change the bonus afterwards.
+                        const canManageRow = canManageAny
+                        const canEditRow = b.status === 'assigned' && canManageRow
                         const canCancelRow =
-                            (b.status === 'assigned' || b.status === 'pending') &&
-                            (b.proposed_by === currentUserId || canCancelAny)
+                            (b.status === 'assigned' || b.status === 'pending') && canManageRow
                         return (
                             <div
                                 key={b.id}
-                                className="rounded-lg border border-border bg-muted p-3"
+                                className="rounded-lg border border-border bg-card p-3"
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 min-w-0">
@@ -340,7 +387,7 @@ export function BonusesAdminClient({
                                             {statusBadge(b.status)}
                                             {categoryBadge(b.category)}
                                             <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                                                {periodLabel(b.period_year, b.period_month)}
+                                                {periodLabelForBonus(b)}
                                             </span>
                                         </div>
                                         <div className="mt-1 text-sm">
@@ -423,8 +470,73 @@ export function BonusesAdminClient({
                 </DialogContent>
             </Dialog>
 
-            {/* Edit dialog — same accidental-close guard as the assign dialog. */}
-            {editTarget && (
+            {/* Phase 31 — osobny dialog Champions League (assign mode). */}
+            <Dialog open={assignClOpen} onOpenChange={setAssignClOpen}>
+                <DialogContent
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => e.preventDefault()}
+                >
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Trophy className="h-5 w-5 text-warning" />
+                            Przypisz Champions League
+                        </DialogTitle>
+                        <DialogDescription>
+                            Kwartalna premia rekrutacyjna. Pracownik dostanie email + powiadomienie.
+                            Domyślne kwoty: 🥇 5000 / 🥈 3000 / 🥉 2000 PLN (możesz nadpisać).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <AssignChampionsLeagueForm
+                        mode="assign"
+                        candidates={candidates}
+                        onSuccess={() => setAssignClOpen(false)}
+                        onCancel={() => setAssignClOpen(false)}
+                    />
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit dialog — same accidental-close guard as the assign dialog.
+                Phase 31: CL bonusy edytujemy w AssignChampionsLeagueForm (mode='edit'),
+                bo prefilled period_month=NULL i wymagamy period_quarter+place_rank. */}
+            {editTarget && editTarget.category === 'champions_league' && (
+                <Dialog open onOpenChange={(open) => !open && setEditTarget(null)}>
+                    <DialogContent
+                        onInteractOutside={(e) => e.preventDefault()}
+                        onEscapeKeyDown={(e) => e.preventDefault()}
+                    >
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <Trophy className="h-5 w-5 text-warning" />
+                                Edytuj Champions League
+                            </DialogTitle>
+                            <DialogDescription>
+                                Edytujesz kwotę, uzasadnienie lub notatkę. Miejsce, kwartał i odbiorca są niezmienne.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <AssignChampionsLeagueForm
+                            mode="edit"
+                            candidates={candidates}
+                            prefilled={{
+                                id: editTarget.id,
+                                amount: Number(editTarget.amount),
+                                currency: editTarget.currency,
+                                reason: editTarget.reason,
+                                notes: editTarget.notes,
+                                period_year: editTarget.period_year ?? new Date().getFullYear(),
+                                period_quarter: (editTarget.period_quarter ?? 1) as Quarter,
+                                place_rank: (editTarget.place_rank ?? 1) as ChampionsLeagueRank,
+                                recipient_full_name: editTarget.recipient_full_name,
+                            }}
+                            onSuccess={(updated) => {
+                                handleEdited(updated ? { ...editTarget, ...updated } : editTarget)
+                            }}
+                            onCancel={() => setEditTarget(null)}
+                        />
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {editTarget && editTarget.category !== 'champions_league' && (
                 <Dialog open onOpenChange={(open) => !open && setEditTarget(null)}>
                     <DialogContent
                         onInteractOutside={(e) => e.preventDefault()}
@@ -433,7 +545,7 @@ export function BonusesAdminClient({
                         <DialogHeader>
                             <DialogTitle>Edytuj premię</DialogTitle>
                             <DialogDescription>
-                                Pracownik dostanie powiadomienie o zmianach. Okres i odbiorca są niezmienne.
+                                Pracownik dostanie powiadomienie o zmianach. Odbiorca i kategoria są niezmienne.
                             </DialogDescription>
                         </DialogHeader>
                         <AssignBonusForm
@@ -452,10 +564,6 @@ export function BonusesAdminClient({
                                 recipient_full_name: editTarget.recipient_full_name,
                             }}
                             onSuccess={(updated) => {
-                                // Merge the freshly-saved row over the existing one so the list
-                                // reflects the new amount/reason/notes. Falling back to editTarget
-                                // (stale) would mask the persisted change. Enriched display fields
-                                // (names/email) come from editTarget; updated is the canonical row.
                                 handleEdited(updated ? { ...editTarget, ...updated } : editTarget)
                             }}
                             onCancel={() => setEditTarget(null)}
@@ -514,7 +622,7 @@ function CancelBonusDialog({ bonus, onOpenChange, onCancelled }: CancelDialogPro
                     <DialogDescription>
                         {bonus.recipient_full_name ?? bonus.recipient_email} —{' '}
                         {formatAmount(Number(bonus.amount), bonus.currency)} (
-                        {periodLabel(bonus.period_year, bonus.period_month)})
+                        {periodLabelForBonus(bonus)})
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-3">

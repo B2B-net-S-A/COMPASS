@@ -16,8 +16,10 @@ import {
     approveTimesheet,
     rejectTimesheet,
     unlockTimesheet,
+    ensureTeamTimesheet,
     type TimesheetWithEntriesAndUser,
 } from '@/lib/actions/internal-timesheet'
+import { isTimesheetPlaceholder } from '@/lib/hr/timesheet-roster'
 import { TimesheetPreviewDialog } from './TimesheetPreviewDialog'
 import { EmployeeProfileDialog } from './EmployeeProfileDialog'
 import { TimesheetCSVExportDialog } from './TimesheetCSVExportDialog'
@@ -26,6 +28,10 @@ interface Props {
     year: number
     month: number
     timesheets: TimesheetWithEntriesAndUser[]
+    /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
+    canUnlockApproved: boolean
+    /** Phase 33b — admin may enter > 8h/day (overtime override) inline in the preview dialog. */
+    isAdmin: boolean
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -35,7 +41,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
-export function TimesheetAdminList({ year, month, timesheets }: Props) {
+export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved, isAdmin }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
@@ -97,6 +103,26 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                 await unlockTimesheet(t.id)
                 toastSuccess('Odblokowano — pracownik może edytować')
                 router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            } finally {
+                setBusyId(null)
+            }
+        })
+    }
+
+    function openPreview(t: TimesheetWithEntriesAndUser) {
+        if (!isTimesheetPlaceholder(t)) {
+            setPreviewTarget(t)
+            return
+        }
+        // Phase 27g — no timesheet yet: create an empty draft on the employee's
+        // account, then open the editor so the approver can fill it on-behalf.
+        setBusyId(t.user_id)
+        startTransition(async () => {
+            try {
+                const real = await ensureTeamTimesheet(t.user_id, year, month)
+                setPreviewTarget(real)
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
@@ -167,16 +193,17 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                         <div className="space-y-3">
                             {timesheets.map((t) => {
                                 const status = STATUS_BADGE[t.status]
-                                const busy = busyId === t.id
+                                const placeholder = isTimesheetPlaceholder(t)
+                                const busy = busyId === t.id || busyId === t.user_id
                                 return (
                                     <div
-                                        key={t.id}
+                                        key={t.id || t.user_id}
                                         className="border rounded-lg p-4 flex flex-wrap items-start gap-3 justify-between hover:bg-muted/30 transition-colors cursor-pointer"
                                         onClick={(ev) => {
                                             // Avoid opening preview when user clicks on a button or link in actions.
                                             const target = ev.target as HTMLElement
                                             if (target.closest('button, a')) return
-                                            setPreviewTarget(t)
+                                            openPreview(t)
                                         }}
                                     >
                                         <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -190,14 +217,29 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                                     <span className="font-medium text-sm">
                                                         {t.user_full_name ?? t.user_email}
                                                     </span>
-                                                    <Badge variant="outline" className={status?.className}>
-                                                        {status?.label ?? t.status}
-                                                    </Badge>
+                                                    {placeholder ? (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="bg-info/10 text-info border-info/30"
+                                                        >
+                                                            Nierozpoczęty
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className={status?.className}>
+                                                            {status?.label ?? t.status}
+                                                        </Badge>
+                                                    )}
                                                 </div>
-                                                <p className="text-xs text-muted-foreground mt-0.5">
-                                                    {t.entries.length} wpisów, suma:{' '}
-                                                    <strong>{totalHours(t).toFixed(2)} h</strong>
-                                                </p>
+                                                {placeholder ? (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        Brak timesheetu — kliknij „Wypełnij”, aby uzupełnić za pracownika.
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        {t.entries.length} wpisów, suma:{' '}
+                                                        <strong>{totalHours(t).toFixed(2)} h</strong>
+                                                    </p>
+                                                )}
                                                 {t.rejection_note && (
                                                     <p className="text-xs italic mt-1 text-muted-foreground">
                                                         Powód odrzucenia: {t.rejection_note}
@@ -209,12 +251,16 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
-                                                onClick={() => setPreviewTarget(t)}
+                                                onClick={() => openPreview(t)}
                                                 disabled={pending}
-                                                title="Podgląd szczegółów (dni + opisy)"
+                                                title={placeholder ? 'Wypełnij timesheet za pracownika' : 'Podgląd szczegółów (dni + opisy)'}
                                             >
-                                                <Eye className="h-3.5 w-3.5 mr-1" />
-                                                Szczegóły
+                                                {busy && placeholder ? (
+                                                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                                                ) : (
+                                                    <Eye className="h-3.5 w-3.5 mr-1" />
+                                                )}
+                                                {placeholder ? 'Wypełnij' : 'Szczegóły'}
                                             </Button>
                                             <Button
                                                 size="sm"
@@ -263,16 +309,18 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
                                                             PDF
                                                         </Button>
                                                     </a>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() => handleUnlock(t)}
-                                                        disabled={pending}
-                                                        title="Cofnij do szkicu — pracownik będzie mógł edytować"
-                                                    >
-                                                        <Unlock className="h-3.5 w-3.5 mr-1" />
-                                                        Odblokuj
-                                                    </Button>
+                                                    {canUnlockApproved && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => handleUnlock(t)}
+                                                            disabled={pending}
+                                                            title="Cofnij do szkicu — pracownik będzie mógł edytować"
+                                                        >
+                                                            <Unlock className="h-3.5 w-3.5 mr-1" />
+                                                            Odblokuj
+                                                        </Button>
+                                                    )}
                                                 </>
                                             )}
                                             {t.status === 'rejected' && (
@@ -298,6 +346,8 @@ export function TimesheetAdminList({ year, month, timesheets }: Props) {
             <TimesheetPreviewDialog
                 timesheet={previewTarget}
                 open={!!previewTarget}
+                canUnlockApproved={canUnlockApproved}
+                isAdmin={isAdmin}
                 onOpenChange={(o) => {
                     if (!o) setPreviewTarget(null)
                 }}

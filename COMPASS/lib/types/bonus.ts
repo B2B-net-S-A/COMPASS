@@ -13,8 +13,8 @@
 
 export type BonusStatus = 'assigned' | 'pending' | 'paid' | 'cancelled'
 
-/** Phase 27b — bonus categories. Sales/Delivery Lead/Rekruter/Niestandardowa. */
-export type BonusCategory = 'sales' | 'delivery_lead' | 'recruiter' | 'custom'
+/** Phase 27b + 31 — bonus categories. Sales/Delivery Lead/Rekruter/Niestandardowa/Champions League. */
+export type BonusCategory = 'sales' | 'delivery_lead' | 'recruiter' | 'custom' | 'champions_league'
 
 export interface BonusAttachment {
     attachment_path: string | null
@@ -59,6 +59,9 @@ export interface BonusRow {
     attachment_filename: string | null
     attachment_size_bytes: number | null
     attachment_mime: string | null
+    // Phase 31 — champions league
+    place_rank: 1 | 2 | 3 | null
+    period_quarter: 1 | 2 | 3 | 4 | null
 }
 
 export interface BonusWithUsers extends BonusRow {
@@ -127,19 +130,43 @@ export interface AssignBonusInputCustom {
     custom_email_memo?: string | null
 }
 
-/** Phase 27b — discriminated union for assignBonus action. */
+/**
+ * Phase 31 — Champions League category input shape.
+ * Quarterly bonus (period_quarter zamiast period_month), miejsce 1/2/3.
+ * Default amounts (CHAMPIONS_LEAGUE_AMOUNTS): 1→5000, 2→3000, 3→2000 — override dozwolony.
+ */
+export interface AssignBonusInputChampionsLeague {
+    category: 'champions_league'
+    recipient_user_id: string
+    period_year: number
+    period_quarter: 1 | 2 | 3 | 4
+    place_rank: 1 | 2 | 3
+    amount: number
+    currency?: string
+    reason: string
+    notes?: string | null
+}
+
+/** Phase 27b + 31 — discriminated union for assignBonus action. */
 export type AssignBonusInput =
     | AssignBonusInputSales
     | AssignBonusInputDelivery
     | AssignBonusInputRecruiter
     | AssignBonusInputCustom
+    | AssignBonusInputChampionsLeague
 
-/** Phase 26 — edit existing assigned bonus (amount/reason/notes only; period+recipient immutable). */
+/**
+ * Phase 26 — edit existing assigned bonus (amount/reason/notes; recipient+category immutable).
+ * Phase 32 — finanse/admin może też skorygować miesiąc standardowej premii (period_year +
+ * period_month, oba razem). Champions League ma okres kwartalny i edytuje się osobnym formularzem.
+ */
 export interface UpdateBonusInput {
     id: string
     amount?: number
     reason?: string
     notes?: string | null
+    period_year?: number
+    period_month?: number
 }
 
 /** Phase 26 — dropdown candidate for AssignBonusForm. */
@@ -197,6 +224,7 @@ export const BONUS_CATEGORIES_PL: Record<BonusCategory, string> = {
     delivery_lead: 'Delivery Lead',
     recruiter: 'Rekruter',
     custom: 'Niestandardowa',
+    champions_league: 'Liga Mistrzów',
 }
 
 /** Phase 27b — recruiter bonus tiers (PLN/h margin → flat bonus in PLN). */
@@ -234,3 +262,53 @@ export const BONUS_ATTACHMENT_ALLOWED_MIME = [
 ] as const
 
 export const BONUS_CUSTOM_MEMO_MAX_LENGTH = 5000
+
+// ─── Phase 31 — Champions League (premia kwartalna, manualna) ─────────────
+
+export type ChampionsLeagueRank = 1 | 2 | 3
+export type Quarter = 1 | 2 | 3 | 4
+
+/** Phase 31 — domyślne kwoty per miejsce w PLN. Override dozwolony w form. */
+export const CHAMPIONS_LEAGUE_AMOUNTS: Record<ChampionsLeagueRank, number> = {
+    1: 5000,
+    2: 3000,
+    3: 2000,
+} as const
+
+export function championsLeagueAmountForPlace(rank: ChampionsLeagueRank): number {
+    return CHAMPIONS_LEAGUE_AMOUNTS[rank]
+}
+
+/** Phase 31 — labels z emoji medali dla UI. */
+export const CHAMPIONS_LEAGUE_PLACE_LABELS_PL: Record<ChampionsLeagueRank, string> = {
+    1: '🥇 1. miejsce',
+    2: '🥈 2. miejsce',
+    3: '🥉 3. miejsce',
+} as const
+
+export const CHAMPIONS_LEAGUE_PLACE_SHORT_PL: Record<ChampionsLeagueRank, string> = {
+    1: '🥇 1.',
+    2: '🥈 2.',
+    3: '🥉 3.',
+} as const
+
+export const BONUS_QUARTERS_PL = ['Q1', 'Q2', 'Q3', 'Q4'] as const
+
+/** Phase 31 — liczba kwartałów wstecz dozwolona przy assign. */
+export const CHAMPIONS_LEAGUE_MAX_QUARTERS_BACK = 4
+
+/**
+ * Phase 31 — pure helper: sprawdza czy (year, quarter) mieści się w dozwolonym oknie
+ * (current quarter + 4 wstecz). Walidacja klient + serwer.
+ */
+export function isQuarterInAllowedRange(year: number, quarter: Quarter, now: Date = new Date()): boolean {
+    const currentYear = now.getUTCFullYear()
+    const currentMonth = now.getUTCMonth() + 1 // 1-12
+    const currentQuarter = Math.ceil(currentMonth / 3) as Quarter
+
+    // Convert to absolute "quarter index" (year*4 + quarter)
+    const targetIdx = year * 4 + quarter
+    const currentIdx = currentYear * 4 + currentQuarter
+
+    return targetIdx <= currentIdx && targetIdx >= currentIdx - CHAMPIONS_LEAGUE_MAX_QUARTERS_BACK
+}

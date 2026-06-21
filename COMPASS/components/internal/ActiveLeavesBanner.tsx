@@ -1,9 +1,9 @@
 // Phase 25d — Global banner pokazujący aktywne urlopy + zastępców.
 // Server component. Pobiera listActiveLeaves() (scope: own team / manager).
-// Pokazuje top 3 urlopy + ukryte pozostałe jako collapsed count.
+// Pokazuje top 3 urlopy + pozostałe w rozwijalnym <details> (zero client-JS).
 
-import { listActiveLeaves } from '@/lib/actions/internal-leave'
-import { Plane, UserCheck } from 'lucide-react'
+import { listActiveLeaves, type ActiveLeaveRow } from '@/lib/actions/internal-leave'
+import { Plane, UserCheck, ChevronDown } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 
@@ -13,7 +13,49 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
     parental_leave: 'opieka',
     unpaid_leave: 'bezpłatny',
     training: 'szkolenie',
+    on_demand: 'na żądanie',
+    occasional: 'okolicznościowy',
+    childcare: 'opieka dz.',
+    care_leave: 'opiekuńczy',
+    force_majeure: 'siła wyższa',
+    maternity: 'macierzyński',
+    paternity: 'ojcowski',
+    childrearing: 'wychowawczy',
+    blood_donation: 'krwiodawstwo',
+    holiday_in_lieu: 'odbiór dnia',
     other: 'urlop',
+}
+
+function fmt(d: string): string {
+    return format(parseISO(d), 'd LLL', { locale: pl })
+}
+
+function LeaveItem({ leave }: { leave: ActiveLeaveRow }) {
+    return (
+        <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+            <span className="font-medium text-foreground">
+                {leave.user_full_name ?? leave.user_email}
+            </span>
+            <span className="text-[10px] text-info/80">
+                ({LEAVE_TYPE_LABEL[leave.leave_type] ?? 'urlop'})
+            </span>
+            <span>do {fmt(leave.end_date)}</span>
+            {leave.substitute_full_name && leave.substitute_email ? (
+                <span className="inline-flex items-center gap-1">
+                    <UserCheck className="h-3 w-3 text-success" />
+                    zastępuje:{' '}
+                    <a
+                        href={`mailto:${leave.substitute_email}`}
+                        className="font-medium text-foreground hover:underline"
+                    >
+                        {leave.substitute_full_name}
+                    </a>
+                </span>
+            ) : (
+                <span className="italic text-warning/80">brak zastępcy</span>
+            )}
+        </li>
+    )
 }
 
 export async function ActiveLeavesBanner() {
@@ -26,11 +68,7 @@ export async function ActiveLeavesBanner() {
     if (!leaves || leaves.length === 0) return null
 
     const visible = leaves.slice(0, 3)
-    const remaining = leaves.length - visible.length
-
-    function fmt(d: string): string {
-        return format(parseISO(d), 'd LLL', { locale: pl })
-    }
+    const hidden = leaves.slice(3)
 
     return (
         <div className="rounded-lg border border-info/30 bg-info/5 p-3 text-xs">
@@ -39,42 +77,26 @@ export async function ActiveLeavesBanner() {
                 Aktualnie na urlopie ({leaves.length})
             </div>
             <ul className="space-y-1">
-                {visible.map((l) => (
-                    <li
-                        key={l.id}
-                        className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground"
-                    >
-                        <span className="font-medium text-foreground">
-                            {l.user_full_name ?? l.user_email}
-                        </span>
-                        <span className="text-[10px] text-info/80">
-                            ({LEAVE_TYPE_LABEL[l.leave_type] ?? 'urlop'})
-                        </span>
-                        <span>do {fmt(l.end_date)}</span>
-                        {l.substitute_full_name && l.substitute_email && (
-                            <span className="inline-flex items-center gap-1">
-                                <UserCheck className="h-3 w-3 text-success" />
-                                zastępuje:{' '}
-                                <a
-                                    href={`mailto:${l.substitute_email}`}
-                                    className="font-medium text-foreground hover:underline"
-                                >
-                                    {l.substitute_full_name}
-                                </a>
-                            </span>
-                        )}
-                        {!l.substitute_full_name && (
-                            <span className="italic text-warning/80">
-                                brak zastępcy
-                            </span>
-                        )}
-                    </li>
+                {visible.map((leave) => (
+                    <LeaveItem key={leave.id} leave={leave} />
                 ))}
             </ul>
-            {remaining > 0 && (
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    + {remaining} {remaining === 1 ? 'kolejny urlop' : 'kolejnych urlopów'}
-                </p>
+            {hidden.length > 0 && (
+                <details className="group mt-1.5">
+                    <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-info/90 hover:text-info [&::-webkit-details-marker]:hidden">
+                        <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+                        <span className="group-open:hidden">
+                            Pokaż {hidden.length}{' '}
+                            {hidden.length === 1 ? 'kolejny urlop' : 'kolejnych urlopów'}
+                        </span>
+                        <span className="hidden group-open:inline">Ukryj</span>
+                    </summary>
+                    <ul className="mt-1 space-y-1">
+                        {hidden.map((leave) => (
+                            <LeaveItem key={leave.id} leave={leave} />
+                        ))}
+                    </ul>
+                </details>
             )}
         </div>
     )

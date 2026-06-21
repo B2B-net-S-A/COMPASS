@@ -65,15 +65,18 @@ export interface LeaveHistoryRow {
     decision_note: string | null
 }
 
-/** Phase 26 — bonus row in employee profile snapshot. */
+/** Phase 26 + 31 — bonus row in employee profile snapshot. */
 export interface BonusHistoryRow {
     id: string
     amount: number
     currency: string
     reason: string
     status: 'assigned' | 'pending' | 'paid' | 'cancelled'
+    category: 'sales' | 'delivery_lead' | 'recruiter' | 'custom' | 'champions_league'
     period_year: number | null
     period_month: number | null
+    period_quarter: 1 | 2 | 3 | 4 | null
+    place_rank: 1 | 2 | 3 | null
     created_at: string
     cancelled_at: string | null
     cancellation_reason: string | null
@@ -176,7 +179,7 @@ export async function getEmployeeProfile(
         admin
             .from('bonuses')
             .select(
-                'id, proposed_by, amount, currency, reason, status, period_year, period_month, created_at, cancelled_at, cancellation_reason',
+                'id, proposed_by, amount, currency, reason, status, category, period_year, period_month, period_quarter, place_rank, created_at, cancelled_at, cancellation_reason',
             )
             .eq('recipient_user_id', userId)
             .gte('created_at', `${earliestYear}-01-01`)
@@ -191,8 +194,11 @@ export async function getEmployeeProfile(
         currency: string
         reason: string
         status: 'assigned' | 'pending' | 'paid' | 'cancelled'
+        category: 'sales' | 'delivery_lead' | 'recruiter' | 'custom' | 'champions_league'
         period_year: number | null
         period_month: number | null
+        period_quarter: 1 | 2 | 3 | 4 | null
+        place_rank: 1 | 2 | 3 | null
         created_at: string
         cancelled_at: string | null
         cancellation_reason: string | null
@@ -214,8 +220,11 @@ export async function getEmployeeProfile(
         currency: b.currency,
         reason: b.reason,
         status: b.status,
+        category: b.category,
         period_year: b.period_year,
         period_month: b.period_month,
+        period_quarter: b.period_quarter,
+        place_rank: b.place_rank,
         created_at: b.created_at,
         cancelled_at: b.cancelled_at,
         cancellation_reason: b.cancellation_reason,

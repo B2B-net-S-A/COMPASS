@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import {
     type TimesheetWithEntries,
 } from '@/lib/actions/internal-timesheet'
 import { applyDefaultsToTimesheet } from '@/lib/actions/internal-timesheet-role-defaults'
+import { getTimesheetBlockedDates } from '@/lib/actions/internal-leave'
 import {
     clearAutoFilledTimesheet,
     suggestTimesheetEntriesFromClock,
@@ -47,6 +48,7 @@ export function TimesheetEditor({ timesheet }: Props) {
     const [editingEntry, setEditingEntry] = useState<TimesheetEntryRow | null>(null)
     const [creating, setCreating] = useState(false)
     const [confirm, ConfirmUI] = useConfirm()
+    const [blockedLeaveDates, setBlockedLeaveDates] = useState<string[]>([])
 
     const editable = timesheet.status === 'draft'
     const status = STATUS_BADGE[timesheet.status]
@@ -54,6 +56,23 @@ export function TimesheetEditor({ timesheet }: Props) {
     const ref = new Date(timesheet.year, timesheet.month - 1, 1)
     const minDate = format(startOfMonth(ref), 'yyyy-MM-dd')
     const maxDate = format(endOfMonth(ref), 'yyyy-MM-dd')
+
+    // Issue 4 + Phase 30b: dni urlopu blokują logowanie godzin server-side, ale błąd
+    // jest maskowany w prod. Pre-load dni blokujących (split-aware: płatny urlop z puli
+    // B2B/zlecenie NIE blokuje — ma auto-wpis godzin) żeby dialog ostrzegał czytelnie.
+    useEffect(() => {
+        let cancelled = false
+        getTimesheetBlockedDates(timesheet.year, timesheet.month)
+            .then((dates) => {
+                if (!cancelled) setBlockedLeaveDates(dates)
+            })
+            .catch(() => {
+                if (!cancelled) setBlockedLeaveDates([])
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [timesheet.year, timesheet.month])
 
     const totalHours = useMemo(
         () => timesheet.entries.reduce((sum, e) => sum + Number(e.hours), 0),
@@ -622,6 +641,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                     maxDate={maxDate}
                     saving={pending}
                     existingEntries={timesheet.entries}
+                    blockedLeaveDates={blockedLeaveDates}
                     onOpenChange={(o) => {
                         if (!o) {
                             setEditingEntry(null)

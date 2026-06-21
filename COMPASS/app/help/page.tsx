@@ -3,7 +3,7 @@ import { getLegalDocument } from '@/lib/actions/compliance'
 import { sanitizeHtml } from '@/lib/html/sanitize'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Centrum Pomocy | ComPass' }
+export const metadata = { title: 'Centrum Pomocy | COMPASS' }
 
 export default async function HelpPage() {
   const doc = await getLegalDocument('help')

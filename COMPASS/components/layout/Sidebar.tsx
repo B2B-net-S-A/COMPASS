@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n/context'
 import {
@@ -23,9 +23,12 @@ import {
     Users,
     ClipboardCheck,
     Plane,
-    Coins,
     Wallet,
     Briefcase,
+    UserPlus,
+    BarChart3,
+    MessagesSquare,
+    LogOut,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -62,6 +65,9 @@ interface SidebarProps {
     permissions?: Record<PermissionFeature, PermissionValue>
     forMobile?: boolean
     badges?: SidebarBadgeCounts
+    // Phase 36: gate the "Skrzynka administracja@" link to inbox handlers / admin
+    // (others get redirected away from /admin/inbox). Computed server-side in the layout.
+    isInboxHandler?: boolean
 }
 
 interface NavLink {
@@ -81,6 +87,7 @@ interface NavGroup {
 
 export function Sidebar({ role, user, permissions, forMobile = false, badges }: SidebarProps) {
     const pathname = usePathname()
+    const searchParams = useSearchParams()
     const { t } = useTranslation()
     const { brandName } = useTheme()
 
@@ -156,14 +163,13 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ? fullPlatformGroups
         : commonHrZoneGroups
 
-    // Admin extras — expanded as new admin pages ship per phase.
+    // Admin extras — platform administration only. Phase 34: the candidate inbox,
+    // compliance and news-composer links moved into the unified Talent Community group below.
     const adminGroup: NavGroup = {
         heading: t('group_admin'),
         links: [
             { name: t('nav_admin_learning'), href: '/admin/learning', icon: ShieldCheck, feature: 'learning' },
             { name: t('nav_admin_support'), href: '/admin/support', icon: Inbox, feature: null, badgeCount: badges?.adminTickets },
-            { name: t('nav_admin_inbox'), href: '/admin/inbox', icon: Mailbox, feature: null, badgeCount: badges?.adminInbox },
-            { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
             { name: t('nav_admin_incubator'), href: '/admin/incubator', icon: Sparkles, feature: null, badgeCount: badges?.adminPitches },
             { name: t('nav_admin_settings'), href: '/admin/settings', icon: Cog, feature: null },
         ],
@@ -194,6 +200,13 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                 icon: Wallet,
                 feature: null,
             },
+            // Phase 28 — Moje placementy (DL/Rekruter widzą własne umowy + prognozę premii).
+            {
+                name: 'Moje placementy',
+                href: '/internal/placements',
+                icon: Briefcase,
+                feature: null,
+            },
         ],
     }
 
@@ -204,26 +217,17 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    // Phase 19a/d: dedicated invoice-review group for Finanse role.
-    // Phase 26: invoice UI gated behind NEXT_PUBLIC_INVOICES_ENABLED. When off, finanse group is empty.
-    // Phase 27c: dodaj link "Stawki" dla finanse+admin (zawsze, niezależne od invoices flag).
+    // Phase 27i: the dedicated "Finanse" sidebar group was removed. Faktury, Premie,
+    // Stawki i Umowy and Klienci all live as tabs inside the Administracja HR hub now;
+    // finanse reaches them via the internalAdminGroup link (see groups assembly below).
+    // invoicesUiOn is still used by managerGroup.
     const invoicesUiOn = isInvoicesEnabled()
-    const financeGroup: NavGroup = {
-        heading: 'Finanse',
-        links: [
-            ...(invoicesUiOn
-                ? [{ name: 'Faktury do akceptacji', href: '/internal/admin?tab=invoices', icon: Users, feature: null as PermissionFeature | null }]
-                : []),
-            { name: 'Stawki pracowników', href: '/internal/admin/rates', icon: Coins, feature: null },
-            // Phase 27d — clients list management (admin + finanse).
-            { name: 'Klienci', href: '/internal/admin/clients', icon: Briefcase, feature: null },
-        ],
-    }
 
-    // Phase 20 + 26: Manager group — team timesheet (always) + invoice approvals (only when invoices UI enabled).
+    // Phase 20 + 26: Manager group — team leave + timesheet (always) + invoice approvals (only when invoices UI enabled).
     const managerGroup: NavGroup = {
         heading: 'Mój zespół',
         links: [
+            { name: 'Wnioski urlopowe zespołu', href: '/internal/admin?tab=leave-requests', icon: Plane, feature: null },
             { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets&scope=team', icon: Users, feature: null },
             ...(invoicesUiOn
                 ? [{ name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null }]
@@ -231,20 +235,46 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         ],
     }
 
-    // Phase 20: Talent Community Manager group — inbox + compliance + news composer.
-    const tcmGroup: NavGroup = {
-        heading: 'Talent Community',
+    // Phase 34 — unified "Talent Community" people-ops group for TCM + admin.
+    // Consolidates what were three separate groups (Talent Community / Lifecycle / Kontraktorzy)
+    // plus the candidate inbox, compliance and news-composer links that previously lived under
+    // Administracja. A single definition is now shared identically by both roles, ordered by the
+    // contractor journey / daily workflow: skrzynka → kontraktorzy (core) → onboarding pracowników → compliance → news.
+    // Phase 35 — Talent Community group = the 5 contractor-journey sections (deep-links to the
+    // Kontraktorzy hub tabs), then the cross-cutting TCM tools (Compliance, News composer).
+    // Phase 36 — the administracja@ inbox is now a first-class link (gated to inbox handlers),
+    // no longer mirrored as a read-only table inside "Sprawy otwarte". Employee onboarding/exit
+    // is a SEPARATE population in the standalone "Pracownicy wewnętrzni" group below.
+    // Phase 38 — Talent Community = the five contractor-lifecycle elements, all listed in the sidebar.
+    // Four deep-link to the Kontraktorzy hub tabs (Rozmowy / Onboarding / Exit / Kontraktorzy);
+    // Analityka is its own route. The administracja@ inbox/helpdesk and the News composer are NOT
+    // part of the contractor five — they live in a separate "Komunikacja" group below (kept reachable).
+    const ticketsBadge = (badges?.adminInbox ?? 0) + (badges?.adminTickets ?? 0)
+    const talentCommunityLinks: NavLink[] = [
+        { name: 'Rozmowy', href: '/internal/kontraktorzy?tab=rozmowy', icon: MessagesSquare, feature: null },
+        { name: 'Onboarding', href: '/internal/kontraktorzy?tab=onboarding', icon: UserPlus, feature: null },
+        { name: 'Exit', href: '/internal/kontraktorzy?tab=exit', icon: LogOut, feature: null },
+        { name: 'Kontraktorzy', href: '/internal/kontraktorzy?tab=kontraktorzy', icon: Users, feature: null },
+        { name: 'Analityka', href: '/internal/analityka', icon: BarChart3, feature: null },
+    ]
+    const talentCommunityGroup: NavGroup = { heading: 'Talent Community', links: talentCommunityLinks }
+
+    // Phase 38 — inbox/helpdesk + News composer kept reachable, just outside the contractor five.
+    const komunikacjaGroup: NavGroup = {
+        heading: 'Komunikacja',
         links: [
-            { name: 'Kolejka zgłoszeń', href: '/admin/inbox', icon: Inbox, feature: null, badgeCount: badges?.adminInbox },
-            { name: 'Compliance', href: '/admin/compliance', icon: ShieldCheck, feature: null },
-            { name: 'News composer', href: '/admin/news', icon: PenSquare, feature: null },
+            { name: 'Zgłoszenia', href: '/internal/zgloszenia', icon: Inbox, feature: null, badgeCount: ticketsBadge > 0 ? ticketsBadge : undefined },
+            { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
         ],
     }
 
-    // Phase 22 — Lifecycle hub for TCM, admin, and managers (managers see team scope).
-    // Sidebar link is rendered also for HR-zone employees so they can reach their own onboarding/exit form.
+    // Phase 22 / 34 — standalone Onboarding & Exit link for non-TCM/admin HR-zone roles
+    // (internal / finanse / manager) so they can still reach their own / their team's
+    // lifecycle forms. TCM + admin get this link inside talentCommunityGroup instead.
     const lifecycleGroup: NavGroup = {
-        heading: 'Lifecycle',
+        // Phase 36: renamed from "Lifecycle" so the population is unmistakable — this is the
+        // internal-employee onboarding/exit, distinct from the contractor journey above.
+        heading: 'Pracownicy wewnętrzni',
         links: [
             {
                 name: 'Onboarding & Exit',
@@ -259,12 +289,21 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     const groups: NavGroup[] = (() => {
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
-        if (isAdmin) out.push(internalAdminGroup, adminGroup)
-        // Phase 26: only push financeGroup if it has at least one link (invoices flag may hide all).
-        if (isFinance && financeGroup.links.length > 0) out.push(financeGroup)
+        // Phase 27i: finanse reaches the Administracja HR hub (invoices/bonuses/rates/clients tabs)
+        // via this link — the dedicated "Finanse" group was removed.
+        if (isAdmin || isFinance) out.push(internalAdminGroup)
         if (isManager) out.push(managerGroup)
-        if (isTalentCommunity) out.push(tcmGroup)
+        // Phase 38 — Talent Community = five contractor-lifecycle elements (TCM + admin), then the
+        // separate Komunikacja group (administracja@ inbox/helpdesk + News composer).
+        if (isTalentCommunity || isAdmin) {
+            out.push(talentCommunityGroup)
+            out.push(komunikacjaGroup)
+        }
+        // Internal-employee onboarding/exit (a DIFFERENT population from contractors) is reachable by
+        // the whole HR-zone now, including TCM + admin — its own "Pracownicy wewnętrzni" group.
         if (isHrZone) out.push(lifecycleGroup)
+        // Platform administration sits last (admin only).
+        if (isAdmin) out.push(adminGroup)
         return out
     })()
 
@@ -298,10 +337,16 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                             </div>
                             {visibleLinks.map((link) => {
                                 const Icon = link.icon
-                                const isActive = link.exactMatch
-                                    ? pathname === link.href
-                                    : pathname === link.href || pathname.startsWith(`${link.href}/`)
-                                const testId = `nav-${link.href.replace(/^\//, '').replace(/\//g, '-')}`
+                                // Phase 38 — tab deep-links (e.g. /internal/kontraktorzy?tab=onboarding) are
+                                // "active" only for the matching tab; default (no ?tab) maps to 'rozmowy'.
+                                const [linkPath, linkQuery] = link.href.split('?')
+                                const isActive = linkQuery
+                                    ? pathname === linkPath
+                                        && (searchParams.get('tab') ?? 'rozmowy') === new URLSearchParams(linkQuery).get('tab')
+                                    : link.exactMatch
+                                        ? pathname === link.href
+                                        : pathname === link.href || pathname.startsWith(`${link.href}/`)
+                                const testId = `nav-${link.href.replace(/^\//, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/-+$/, '')}`
 
                                 return (
                                     <Link
@@ -330,7 +375,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                 })}
             </nav>
             <div className="p-4 border-t border-sidebar-border text-xs text-center text-sidebar-muted/70">
-                ComPass by {brandName}
+                COMPASS by {brandName}
             </div>
         </div>
     )

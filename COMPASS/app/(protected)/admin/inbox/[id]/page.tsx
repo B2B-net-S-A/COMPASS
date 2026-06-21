@@ -10,6 +10,7 @@ import { InboxPriorityBadge } from '@/components/inbox/InboxPriorityBadge'
 import { SlaCountdownBadge } from '@/components/inbox/SlaCountdownBadge'
 import { getInboxTicketDetail } from '@/lib/actions/support-inbox'
 import { sanitizeHtml } from '@/lib/html/sanitize'
+import { TicketToTaskButton } from '@/components/inbox/TicketToTaskButton'
 
 function formatBytes(n: number): string {
     if (n < 1024) return `${n} B`
@@ -41,6 +42,19 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
     if (!result.success) notFound()
     const ticket = result.data
 
+    // Phase 34 — TCM/admin can spawn a tracked Talent Community task from this ticket.
+    const canCreateTask = profile?.role === 'admin' || profile?.role === 'talent_community'
+    let taskTcmProfiles: Array<{ id: string; fullName: string }> = []
+    let taskContractors: Array<{ id: string; full_name: string }> = []
+    if (canCreateTask) {
+        const [{ data: tcm }, { data: cs }] = await Promise.all([
+            supabase.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']).order('full_name'),
+            supabase.from('contractors').select('id, full_name').order('full_name'),
+        ])
+        taskTcmProfiles = ((tcm ?? []) as Array<{ id: string; full_name: string | null }>).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))
+        taskContractors = ((cs ?? []) as Array<{ id: string; full_name: string }>).map((c) => ({ id: c.id, full_name: c.full_name }))
+    }
+
     return (
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
             <div>
@@ -67,6 +81,16 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                             {' · '}Termin SLA: {new Date(ticket.meta.due_date).toLocaleString('pl-PL')}
                             {ticket.assignee_name && ` · Odpowiedzialna: ${ticket.assignee_name}`}
                         </p>
+                        {canCreateTask && (
+                            <div className="mt-3">
+                                <TicketToTaskButton
+                                    ticketId={ticket.id}
+                                    ticketSubject={ticket.subject}
+                                    tcmProfiles={taskTcmProfiles}
+                                    contractors={taskContractors}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -3,7 +3,7 @@
 // uruchomieniem feature'u (zob. plan implementacji, "Otwarte action items").
 
 export const metadata = {
-    title: 'Polityka monitoringu czasu pracy | ComPass',
+    title: 'Polityka monitoringu czasu pracy | COMPASS',
 }
 
 export default function WorkMonitoringPolicyPage() {
@@ -19,7 +19,7 @@ export default function WorkMonitoringPolicyPage() {
 
             <h2>1. Cel monitoringu</h2>
             <p>
-                Funkcja Smart Work Clock w ComPass służy wyłącznie do ewidencji czasu pracy zgodnie
+                Funkcja Smart Work Clock w COMPASS służy wyłącznie do ewidencji czasu pracy zgodnie
                 z art. 94⁴ Kodeksu Pracy. Pomiar opiera się na świadomej zgodzie pracownika
                 udzielonej przed pierwszym uruchomieniem zegara (art. 22³ §2 KP).
             </p>
@@ -94,7 +94,7 @@ export default function WorkMonitoringPolicyPage() {
                     <strong>Heartbeats (audit trail):</strong> 90 dni od zakończenia sesji.
                 </li>
                 <li>
-                    <strong>Audyt zmian:</strong> 5 lat zgodnie z polityką ComPass.
+                    <strong>Audyt zmian:</strong> 5 lat zgodnie z polityką COMPASS.
                 </li>
             </ul>
 

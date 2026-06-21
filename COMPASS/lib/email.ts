@@ -237,10 +237,20 @@ export async function sendBroadcastEmail(
 
 export const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
     vacation: 'Urlop wypoczynkowy',
+    on_demand: 'Urlop na żądanie',
+    occasional: 'Urlop okolicznościowy',
+    childcare: 'Opieka nad dzieckiem (art. 188)',
+    care_leave: 'Urlop opiekuńczy',
+    force_majeure: 'Siła wyższa',
     sick_leave: 'L4 / chorobowe',
-    parental_leave: 'Opieka rodzicielska',
+    maternity: 'Urlop macierzyński',
+    paternity: 'Urlop ojcowski',
+    parental_leave: 'Urlop rodzicielski',
+    childrearing: 'Urlop wychowawczy',
     unpaid_leave: 'Urlop bezpłatny',
-    training: 'Szkolenie',
+    blood_donation: 'Krwiodawstwo',
+    training: 'Urlop szkoleniowy',
+    holiday_in_lieu: 'Odbiór dnia za święto',
     other: 'Inne',
 }
 
@@ -323,16 +333,21 @@ export async function sendLeaveRequestSubmitted(
     startDate: string,
     endDate: string,
     note: string | null,
+    substituteName: string | null = null,
 ): Promise<{ success: boolean }> {
     if (recipientEmails.length === 0) return { success: true }
     const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
     const subject = `[COMPASS HR] Nowy wniosek urlopowy — ${requesterName}`
+    const substituteLine = substituteName
+        ? `<li><strong>Zastępca:</strong> ${substituteName} — zastępuje ${requesterName} na czas nieobecności</li>`
+        : `<li><strong>Zastępca:</strong> <span style="color: #9ca3af;">nie wskazano</span></li>`
     const bodyHtml = `
         <p style="color: #d1d5db; font-size: 14px;">${requesterName} złożył wniosek urlopowy do akceptacji:</p>
         <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
             <li><strong>Typ:</strong> ${typeLabel}</li>
             <li><strong>Od:</strong> ${startDate}</li>
             <li><strong>Do:</strong> ${endDate}</li>
+            ${substituteLine}
             ${note ? `<li><strong>Notatka:</strong> ${note}</li>` : ''}
         </ul>
         <p style="color: #d1d5db; font-size: 14px;">Zaakceptuj/odrzuć w panelu administracyjnym.</p>
@@ -1517,6 +1532,119 @@ export async function sendBonusUpdated(
         return { success: true }
     } catch (err) {
         logCompat.error('Bonus-updated email failed:', err)
+        return { success: false }
+    }
+}
+
+// ─── Phase 31 — Champions League (premia kwartalna, manualna) ─────────────
+
+const CHAMPIONS_LEAGUE_PLACE_LABELS_PL_EMAIL: Record<1 | 2 | 3, string> = {
+    1: '🥇 1. miejsce',
+    2: '🥈 2. miejsce',
+    3: '🥉 3. miejsce',
+}
+
+function formatQuarterLabelPl(year: number, quarter: 1 | 2 | 3 | 4): string {
+    return `Q${quarter} ${year}`
+}
+
+/**
+ * Phase 31 — Email do zwycięzcy Champions League.
+ * Accent złoty (#EAB308 — yellow-500) wyróżnia od standardowych premii Phase 26.
+ */
+export async function sendChampionsLeagueAssigned(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    periodYear: number,
+    periodQuarter: 1 | 2 | 3 | 4,
+    placeRank: 1 | 2 | 3,
+    reason: string,
+): Promise<{ success: boolean }> {
+    const quarterLabel = formatQuarterLabelPl(periodYear, periodQuarter)
+    const placeLabel = CHAMPIONS_LEAGUE_PLACE_LABELS_PL_EMAIL[placeRank]
+    const subject = `[COMPASS] 🏆 Champions League ${quarterLabel} — ${placeLabel}`
+    const accent = '#EAB308' // yellow-500 (trofeum/złoto)
+    const reasonEscaped = reason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Gratulacje <strong>${recipientName}</strong>! 🎉</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zająłeś <strong>${placeLabel}</strong> w Champions League za <strong>${quarterLabel}</strong>.
+            Nagroda: <strong style="color: #EAB308; font-size: 16px;">${amount.toFixed(2)} ${currency}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Uzasadnienie od ${proposerName}:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Premia jest już zatwierdzona — zobaczysz ją w panelu:
+            <a href="https://compass.dynaminds.pl/internal?tab=bonuses" style="color: #93c5fd;">Moje premie</a>.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Champions League', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend champions-league-assigned error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Champions-league-assigned email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 31 — Email do pracownika gdy admin/manager anuluje premię Champions League.
+ * Accent czerwony (#ef4444) sygnalizuje cancellation.
+ */
+export async function sendChampionsLeagueCancelled(
+    recipientEmail: string,
+    recipientName: string,
+    proposerName: string,
+    amount: number,
+    currency: string,
+    periodYear: number,
+    periodQuarter: 1 | 2 | 3 | 4,
+    placeRank: 1 | 2 | 3,
+    cancellationReason: string,
+): Promise<{ success: boolean }> {
+    const quarterLabel = formatQuarterLabelPl(periodYear, periodQuarter)
+    const placeLabel = CHAMPIONS_LEAGUE_PLACE_LABELS_PL_EMAIL[placeRank]
+    const subject = `[COMPASS] Anulowano premię Champions League ${quarterLabel} — ${placeLabel}`
+    const accent = '#ef4444'
+    const reasonEscaped = cancellationReason.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${proposerName} anulował przyznaną Ci premię Champions League za <strong>${quarterLabel}</strong>
+            (${placeLabel}, kwota ${amount.toFixed(2)} ${currency}).
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;"><strong>Powód:</strong> ${reasonEscaped}</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Jeśli masz pytania, skontaktuj się z ${proposerName}.
+        </p>
+    `
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            saveToSentItems: true,
+            html: wrapHrEmail({ tag: 'Anulowano premię', heading: subject, bodyHtml, accent }),
+        })
+        if (error) {
+            logCompat.error('Resend champions-league-cancelled error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Champions-league-cancelled email failed:', err)
         return { success: false }
     }
 }

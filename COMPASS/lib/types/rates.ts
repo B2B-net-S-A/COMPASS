@@ -4,6 +4,18 @@ import type { BonusCategory } from './bonus'
 
 export type RateCurrency = 'PLN' | 'EUR' | 'USD'
 
+/** Phase 27h — contract type. uop + zlecenie settle via payroll; b2b via invoices. */
+export type EmploymentType = 'uop' | 'b2b' | 'zlecenie'
+
+export const EMPLOYMENT_TYPE_LABELS_PL: Record<EmploymentType, string> = {
+    uop: 'UoP',
+    zlecenie: 'Zlecenie',
+    b2b: 'B2B',
+}
+
+/** Phase 27h — max horizon for a forward rate progression (2 years). */
+export const RATE_PROGRESSION_MAX_MONTHS = 24
+
 export interface UserRateRow {
     id: string
     user_id: string
@@ -44,6 +56,52 @@ export interface UserRateDirectoryRow {
     current_rate: number | null
     current_currency: RateCurrency | null
     current_effective_from: string | null
+    // Phase 27h — contract type + progression (forward rate schedule).
+    employment_type: EmploymentType | null
+    /** Count of future rate change-points (effective_from > current month). */
+    scheduled_changes_count: number
+    /** First upcoming scheduled change, if any. */
+    next_scheduled_from: string | null
+    next_scheduled_rate: number | null
+    /** Derived: true when at least one future change-point exists (progresywna). */
+    is_progressive: boolean
+}
+
+// ─── Phase 27h — rate progression (forward monthly change-points) ──────────
+
+/** A single forward change-point: rate effective from the 1st of a future month. */
+export interface RateProgressionEntry {
+    /** YYYY-MM-01, always 1st of month. */
+    effective_from: string
+    hourly_rate: number
+}
+
+/** Input for setRateProgression — a batch of ascending future change-points. */
+export interface SetRateProgressionInput {
+    user_id: string
+    currency?: RateCurrency
+    /** Ascending by effective_from; server dedupes to change-points and inserts atomically. */
+    entries: RateProgressionEntry[]
+    reason?: string | null
+}
+
+/** Input for copyRateProgression — copy a source user's forward schedule to a target. */
+export interface CopyProgressionInput {
+    from_user_id: string
+    to_user_id: string
+}
+
+export type SkippedCopyReason = 'past' | 'conflict' | 'no_change'
+
+export interface SkippedCopyEntry extends RateProgressionEntry {
+    reason: SkippedCopyReason
+}
+
+/** Result of building/applying a progression copy. */
+export interface CopyProgressionResult {
+    applied: RateProgressionEntry[]
+    skipped: SkippedCopyEntry[]
+    inserted_count: number
 }
 
 // ─── Payroll summary ──────────────────────────────────────────────────────
@@ -56,6 +114,23 @@ export interface PayrollBonusLine {
     category: BonusCategory
     reason: string
     created_at: string
+    // Phase 32 — full "za co" detail surfaced in payroll (finanse review).
+    notes: string | null
+    period_year: number | null
+    period_month: number | null
+    period_quarter: number | null
+    place_rank: number | null
+    client_name: string | null
+    sales_service_description: string | null
+    delivery_candidate_name: string | null
+    delivery_margin_amount: number | null
+    delivery_margin_percent: number | null
+    recruiter_candidate_name: string | null
+    recruiter_margin_per_hour: number | null
+    recruiter_calculated_tier: number | null
+    custom_email_memo: string | null
+    /** Who assigned/approved the bonus (manager/admin). */
+    proposed_by_name: string | null
 }
 
 /** Phase 27c — payroll summary per user per month. */
@@ -69,6 +144,9 @@ export interface PayrollSummary {
     month: number
     hours_total: number
     timesheet_status: 'approved' | 'submitted' | 'draft' | 'rejected' | 'missing'
+    /** Phase 32 — when + by whom the timesheet was approved (finanse payroll review). */
+    timesheet_approved_at: string | null
+    timesheet_approved_by_name: string | null
     rate: number | null
     rate_currency: RateCurrency | null
     /** hours_total × rate (in rate_currency), or null when no rate set. */
@@ -81,3 +159,38 @@ export interface PayrollSummary {
 }
 
 export const PAYROLL_MAX_RANGE_MONTHS = 24
+
+// ─── Phase 27i — contract documents (umowa + aneksy, per employee) ─────────
+
+export type ContractDocType = 'umowa' | 'aneks' | 'inne'
+
+export const CONTRACT_DOC_TYPE_LABELS_PL: Record<ContractDocType, string> = {
+    umowa: 'Umowa',
+    aneks: 'Aneks',
+    inne: 'Inne',
+}
+
+/** Allowed MIME types for contract uploads (PDF, common scans, Word). */
+export const CONTRACT_DOC_ALLOWED_MIME = [
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+] as const
+
+export const CONTRACT_DOC_MAX_BYTES = 10 * 1024 * 1024 // 10 MB
+
+export interface ContractDocument {
+    id: string
+    user_id: string
+    doc_type: ContractDocType
+    description: string | null
+    /** YYYY-MM-DD, signing date. */
+    signed_date: string | null
+    file_name: string
+    file_size_bytes: number | null
+    file_mime: string | null
+    uploaded_by: string
+    created_at: string
+}

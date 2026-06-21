@@ -19,6 +19,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
@@ -73,7 +76,7 @@ jobs:
         run: |
           response=$(curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true")
+            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}")
           echo "Response: $response"
           deployment_uuid=$(echo "$response" | jq -r '.deployments[0].deployment_uuid')
           if [ -z "$deployment_uuid" ] || [ "$deployment_uuid" = "null" ]; then
@@ -91,7 +94,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Wait for Coolify build + restart
-        run: sleep 90
+        run: sleep 60
 
       - name: Healthcheck (standard shape + version match)
         env:
@@ -102,10 +105,11 @@ jobs:
             exit 1
           fi
           EXPECTED_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          # Coolify build trwa typowo 5-7 min, plus restart ~30s. 32 retries × 15s
-          # = 8 min, plus initial 90s wait = ~9.5 min total window. Wcześniejszych
-          # 12 retries × 15s = 3 min za krótko → fałszywe "deploy failure" gdy
-          # build wciąż w toku ale aplikacja deploy'uje się poprawnie.
+          # Coolify build typowo 3-5 min (BuildKit cache mounts + ARG reorder
+          # + force_rebuild=f), max ~7-8 min na pierwszy build po dużej zmianie
+          # next.config / Dockerfile. Plus restart ~30s. 28 retries × 15s = 7 min,
+          # plus initial 60s wait = ~8 min total window — pokrywa worst-case
+          # cold-cache, ale -1.5 min vs poprzednie 32×15s + sleep 90 (9.5 min).
           #
           # Cloudflare path — testujemy real CF→origin route (jak Atlas).
           # Wcześniejsze PR #91/#92 dostawały 32×403 od Bot Fight Mode (ASN +
@@ -116,7 +120,7 @@ jobs:
           # — patrz ~/.claude/rules/observability.md §Cloudflare smoke-test
           # bypass. Drop --resolve + hardcoded origin IP, używamy standardu.
           UA="dynaminds-smoke-test/1.0 (+github-actions; compass)"
-          for i in $(seq 1 32); do
+          for i in $(seq 1 28); do
             response=$(curl -fsSL \
               -A "$UA" \
               "$APP_URL/api/health" 2>/tmp/curl_err || echo '')
@@ -129,17 +133,17 @@ jobs:
                   echo "✅ Pass: status=$status version=$version"
                   exit 0
                 fi
-                echo "Attempt $i/32: stale version (got $version_short, expected $EXPECTED_SHA), retrying in 15s..."
+                echo "Attempt $i/28: stale version (got $version_short, expected $EXPECTED_SHA), retrying in 15s..."
               else
-                echo "Attempt $i/32: status=$status, retrying in 15s..."
+                echo "Attempt $i/28: status=$status, retrying in 15s..."
               fi
             else
               # Surface curl's actual error so future silent failures are
               # diagnosable in 1 attempt instead of 32 (e.g. Cloudflare WAF
               # 403 on the runner IP, like Atlas hit — see Atlas PR #96).
-              echo "Attempt $i/32: no response — $(cat /tmp/curl_err 2>/dev/null | head -1), retrying in 15s..."
+              echo "Attempt $i/28: no response — $(cat /tmp/curl_err 2>/dev/null | head -1), retrying in 15s..."
             fi
             sleep 15
           done
-          echo "::error::Smoke test failed after 32 attempts (8 min)"
+          echo "::error::Smoke test failed after 28 attempts (7 min)"
           exit 1

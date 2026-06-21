@@ -304,6 +304,25 @@
       0 8px 25px -5px rgba(0, 0, 0, 0.4),
       0 0 0 1px rgba(255, 255, 255, 0.06);
   }
+
+  /* Native form controls (date picker indicator, <select> popups, scrollbars)
+     follow the active theme. Light-first: light is the default; .dark opts into
+     dark native controls. Without this the WebKit calendar icon can render with
+     the wrong contrast and become hard to see. */
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  input[type='month']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.9;
+  }
 }
 
 /* ===== MICRO-ANIMATIONS SYSTEM ===== */

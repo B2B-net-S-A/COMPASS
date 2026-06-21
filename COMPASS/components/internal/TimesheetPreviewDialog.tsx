@@ -22,8 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Check, X, Loader2, FileDown, Unlock, Clock, AlertTriangle, Pencil, Trash2, Plus } from 'lucide-react'
+import { Check, X, Loader2, FileDown, Unlock, Clock, AlertTriangle, Pencil, Trash2, Plus, Ban, CalendarOff } from 'lucide-react'
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -38,11 +37,21 @@ import {
     type TimesheetEntryRow,
     type TimesheetWithEntriesAndUser,
 } from '@/lib/actions/internal-timesheet'
+import {
+    cancelTeamLeave,
+    getTimesheetBlockedDates,
+    listLeavesForUserMonth,
+    type TeamLeaveRow,
+} from '@/lib/actions/internal-leave'
 import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 
 interface Props {
     timesheet: TimesheetWithEntriesAndUser | null
     open: boolean
+    /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
+    canUnlockApproved?: boolean
+    /** Phase 33b — admin may enter > 8h/day (overtime override) inline + edit/delete overtime rows. */
+    isAdmin?: boolean
     onOpenChange: (open: boolean) => void
     onRequestReject: (t: TimesheetWithEntriesAndUser) => void
 }
@@ -63,7 +72,27 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     },
 }
 
-export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onRequestReject }: Props) {
+const LEAVE_TYPE_LABEL: Record<string, string> = {
+    vacation: 'Urlop wypoczynkowy',
+    sick_leave: 'L4',
+    parental_leave: 'Opieka rodzicielska',
+    unpaid_leave: 'Urlop bezpłatny',
+    training: 'Szkolenie',
+    on_demand: 'Urlop na żądanie',
+    occasional: 'Urlop okolicznościowy',
+    childcare: 'Opieka nad dzieckiem (art. 188)',
+    care_leave: 'Urlop opiekuńczy',
+    force_majeure: 'Siła wyższa',
+    maternity: 'Urlop macierzyński',
+    paternity: 'Urlop ojcowski',
+    childrearing: 'Urlop wychowawczy',
+    blood_donation: 'Krwiodawstwo',
+    holiday_in_lieu: 'Odbiór dnia za święto',
+    other: 'Inne',
+}
+
+
+export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = true, isAdmin = false, onOpenChange, onRequestReject }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [confirm, ConfirmUI] = useConfirm()
@@ -76,12 +105,47 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
     const [editingEntry, setEditingEntry] = useState<TimesheetEntryRow | null>(null)
     const [creating, setCreating] = useState(false)
 
+    // Phase 27j / Issue 8 — the employee's leaves overlapping this month. Shown so
+    // the approver sees (and can cancel) leave that blocks logging hours, and so
+    // the entry dialog can pre-warn instead of hitting the prod-masked server error.
+    const [leaves, setLeaves] = useState<TeamLeaveRow[]>([])
+    const [blockedLeaveDates, setBlockedLeaveDates] = useState<string[]>([])
+    const [leavesLoadedId, setLeavesLoadedId] = useState<string | null>(null)
+    const [cancellingLeaveId, setCancellingLeaveId] = useState<string | null>(null)
+
     useEffect(() => {
         if (timesheet && timesheet.id !== loadedId) {
             setLocalEntries(timesheet.entries)
             setLoadedId(timesheet.id)
         }
     }, [timesheet, loadedId])
+
+    useEffect(() => {
+        if (!open || !timesheet || !timesheet.id || timesheet.id === leavesLoadedId) return
+        let cancelled = false
+        Promise.all([
+            listLeavesForUserMonth(timesheet.user_id, timesheet.year, timesheet.month),
+            // Phase 30b — split-aware: płatny urlop z puli (B2B/zlecenie) NIE blokuje.
+            getTimesheetBlockedDates(timesheet.year, timesheet.month, timesheet.user_id),
+        ])
+            .then(([data, blocked]) => {
+                if (!cancelled) {
+                    setLeaves(data)
+                    setBlockedLeaveDates(blocked)
+                    setLeavesLoadedId(timesheet.id)
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setLeaves([])
+                    setBlockedLeaveDates([])
+                    setLeavesLoadedId(timesheet.id)
+                }
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [open, timesheet, leavesLoadedId])
 
     if (!timesheet) return null
 
@@ -93,6 +157,29 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
     const ref = new Date(timesheet.year, timesheet.month - 1, 1)
     const minDate = format(startOfMonth(ref), 'yyyy-MM-dd')
     const maxDate = format(endOfMonth(ref), 'yyyy-MM-dd')
+
+    async function handleCancelLeave(leave: TeamLeaveRow) {
+        const ok = await confirm({
+            title: 'Anulować urlop',
+            description: `${LEAVE_TYPE_LABEL[leave.leave_type] ?? leave.leave_type} (${format(parseISO(leave.start_date), 'd LLL', { locale: pl })} – ${format(parseISO(leave.end_date), 'd LLL', { locale: pl })})? Pracownik dostanie powiadomienie.`,
+            confirmLabel: 'Anuluj urlop',
+            variant: 'destructive',
+        })
+        if (!ok) return
+        setCancellingLeaveId(leave.id)
+        startTransition(async () => {
+            try {
+                await cancelTeamLeave(leave.id)
+                setLeaves((prev) => prev.filter((l) => l.id !== leave.id))
+                toastSuccess('Urlop anulowany')
+                router.refresh()
+            } catch (e: unknown) {
+                toast.error(e instanceof Error ? e.message : 'Błąd')
+            } finally {
+                setCancellingLeaveId(null)
+            }
+        })
+    }
 
     function handleApprove() {
         if (!timesheet) return
@@ -127,6 +214,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
         hours: number
         project: string | null
         description: string
+        overtimeReason: string | null
     }) {
         if (!timesheet) return
         startTransition(async () => {
@@ -149,6 +237,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
         hours: number
         project: string | null
         description: string
+        overtimeReason: string | null
     }) {
         if (!editingEntry) return
         const id = editingEntry.id
@@ -160,6 +249,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                     hours: values.hours,
                     project: values.project,
                     description: values.description,
+                    overtimeReason: values.overtimeReason,
                 })
                 setLocalEntries((prev) =>
                     prev
@@ -236,7 +326,75 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                     </p>
                 )}
 
-                <ScrollArea className="flex-1 -mx-6 px-6">
+                {leaves.length > 0 && (
+                    <div className="rounded-md border border-warning/30 bg-warning/10 p-2.5 text-xs space-y-2">
+                        <p className="font-medium text-warning flex items-center gap-1.5">
+                            <CalendarOff className="h-3.5 w-3.5" />
+                            Urlopy w tym miesiącu — blokują logowanie godzin (poza płatnym urlopem z puli, który liczy się jak normalny dzień)
+                        </p>
+                        {leaves.map((l) => (
+                            <div
+                                key={l.id}
+                                className="flex items-center justify-between gap-2 flex-wrap"
+                            >
+                                <span className="text-warning/90 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    <span>
+                                        {LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type} ·{' '}
+                                        {format(parseISO(l.start_date), 'd LLL', { locale: pl })} –{' '}
+                                        {format(parseISO(l.end_date), 'd LLL', { locale: pl })}
+                                        {l.status === 'pending' && ' (oczekuje)'}
+                                    </span>
+                                    {/* Phase 30 — pill płatny/bezpłatny dla vacation pool. */}
+                                    {l.paid_days > 0 && (
+                                        <Badge
+                                            variant="outline"
+                                            className="text-[10px] bg-success/15 text-success border-success/30"
+                                        >
+                                            {l.paid_days} dni płatnych (z puli)
+                                        </Badge>
+                                    )}
+                                    {l.unpaid_days > 0 && (
+                                        <Badge
+                                            variant="outline"
+                                            className="text-[10px] bg-muted text-muted-foreground border-border"
+                                        >
+                                            {l.unpaid_days} dni bezpłatnych
+                                        </Badge>
+                                    )}
+                                </span>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-warning hover:text-warning/80"
+                                    onClick={() => handleCancelLeave(l)}
+                                    disabled={pending}
+                                >
+                                    {cancellingLeaveId === l.id ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Ban className="h-3 w-3 mr-1" />
+                                            Anuluj urlop
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        ))}
+                        <p className="text-[10px] text-warning/70">
+                            Edycja typu/dat urlopu w zakładce „Wpisz urlop pracownika".
+                        </p>
+                    </div>
+                )}
+
+                {/* Natywny scroll na elemencie flex-1 min-h-0 — NIE Radix ScrollArea.
+                    Radix ScrollArea ma wewnętrzny viewport z height:100%, który nie
+                    rozwiązuje się gdy DialogContent ma tylko max-height (nie definite
+                    height) → viewport rósł do pełnej wysokości treści i był przycinany
+                    bez scrolla. Plain overflow-y-auto na flex-bounded divie nie ma tego
+                    problemu (brak procentowej wysokości do rozwiązania) i adaptuje się do
+                    rozmiaru okna. Pasek stylowany na zawsze-widoczny (webkit), żeby od
+                    razu było widać, że jest więcej wpisów. */}
+                <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:hover:bg-muted-foreground/40">
                     {entries.length === 0 ? (
                         <p className="text-sm text-muted-foreground py-8 text-center">
                             Brak wpisów w timesheecie.
@@ -298,7 +456,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                                                 {e.is_overtime_override && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-primary">
                                                         <Clock className="h-3 w-3" />
-                                                        nadgodziny (panel admina)
+                                                        nadgodziny
                                                     </span>
                                                 )}
                                             </div>
@@ -308,7 +466,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                                         </td>
                                         {editable && (
                                             <td className="py-2 text-right whitespace-nowrap align-top">
-                                                {e.is_overtime_override ? (
+                                                {e.is_overtime_override && !isAdmin ? (
                                                     <span className="text-[10px] text-muted-foreground">
                                                         —
                                                     </span>
@@ -354,7 +512,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                             </tfoot>
                         </table>
                     )}
-                </ScrollArea>
+                </div>
 
                 <DialogFooter className="flex flex-wrap gap-2">
                     {editable && (
@@ -391,15 +549,17 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                     )}
                     {timesheet.status === 'approved' && (
                         <>
-                            <Button
-                                variant="ghost"
-                                onClick={handleUnlock}
-                                disabled={pending}
-                                title="Cofnij do szkicu — pracownik będzie mógł edytować"
-                            >
-                                <Unlock className="h-4 w-4 mr-1" />
-                                Odblokuj
-                            </Button>
+                            {canUnlockApproved && (
+                                <Button
+                                    variant="ghost"
+                                    onClick={handleUnlock}
+                                    disabled={pending}
+                                    title="Cofnij do szkicu — pracownik będzie mógł edytować"
+                                >
+                                    <Unlock className="h-4 w-4 mr-1" />
+                                    Odblokuj
+                                </Button>
+                            )}
                             <a
                                 href={`/internal/timesheet/${timesheet.year}/${timesheet.month}/pdf?user=${timesheet.user_id}`}
                                 target="_blank"
@@ -430,6 +590,8 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                 maxDate={maxDate}
                 saving={pending}
                 existingEntries={entries}
+                blockedLeaveDates={blockedLeaveDates}
+                allowOvertime={isAdmin}
                 onOpenChange={(o) => {
                     if (!o) {
                         setEditingEntry(null)

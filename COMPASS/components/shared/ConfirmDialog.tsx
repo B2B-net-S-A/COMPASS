@@ -44,7 +44,7 @@ export function ConfirmDialog({
             <AlertDialogContent className="bg-card border-border text-foreground">
                 <AlertDialogHeader>
                     <AlertDialogTitle className="text-foreground">{title}</AlertDialogTitle>
-                    <AlertDialogDescription className="text-muted-foreground">
+                    <AlertDialogDescription className="text-muted-foreground whitespace-pre-line">
                         {description}
                     </AlertDialogDescription>
                 </AlertDialogHeader>

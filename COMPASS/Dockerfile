@@ -1,8 +1,18 @@
+# syntax=docker/dockerfile:1
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 WORKDIR /app
 
+# Step 1: install deps FIRST so npm ci layer is cached when package*.json
+# is unchanged. ARGs that change every deploy (e.g. NEXT_PUBLIC_GIT_SHA)
+# would invalidate everything below them — declare them AFTER npm ci.
+COPY package.json package-lock.json* ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# Step 2: build-time ARGs (consumed by `next build` below). Putting them
+# here means deploy-time changes (new commit SHA) only invalidate the
+# `next build` layer, not the much heavier `npm ci` layer above.
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_APP_URL
@@ -18,14 +28,11 @@ ENV NEXT_PUBLIC_GIT_SHA=$NEXT_PUBLIC_GIT_SHA
 # Not exported as ENV so it never leaks into the runtime image.
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 
-COPY package.json package-lock.json* ./
-RUN npm ci
-
 COPY . .
-RUN npm run build
+RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 # Production stage (Next.js standalone)
-FROM node:20-alpine AS runner
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS runner
 
 WORKDIR /app
 

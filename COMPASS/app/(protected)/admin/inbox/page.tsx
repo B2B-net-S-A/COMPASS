@@ -65,7 +65,7 @@ export default async function AdminInboxPage() {
                 <div>
                     <div className="flex items-center gap-3">
                         <Inbox className="w-7 h-7 text-primary" />
-                        <h1 className="text-3xl font-bold tracking-tight">Moduł Obsługi Zgłoszeń</h1>
+                        <h1 className="text-3xl font-bold tracking-tight">Skrzynka administracja@</h1>
                     </div>
                     <p className="text-muted-foreground mt-1">
                         Tablica Kanban dla zgłoszeń z maila administracyjnego. SLA: P1 = 2 dni, P2 = 5 dni, P3 = 10 dni roboczych.

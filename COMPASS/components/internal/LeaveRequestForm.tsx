@@ -13,19 +13,49 @@ import { toastSuccess } from '@/lib/toast-success'
 import {
     createLeaveRequest,
     listEligibleSubstitutes,
+    previewLeaveSplit,
     uploadLeaveProof,
     type EligibleSubstitute,
+    type LeaveSplitPreview,
     type LeaveType,
 } from '@/lib/actions/internal-leave'
 
-const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean }> = [
+const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean; uopOnly?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'parental_leave', label: 'Opieka rodzicielska' },
-    { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
-    { value: 'other', label: 'Inne' },
+    // Phase 29: pozostałe typy poniżej są UoP-only (B2B/zlecenie mają tylko 'vacation').
+    { value: 'on_demand', label: 'Urlop na żądanie', uopOnly: true },
+    { value: 'occasional', label: 'Urlop okolicznościowy', needsDocs: true, uopOnly: true },
+    { value: 'childcare', label: 'Opieka nad dzieckiem (art. 188)', uopOnly: true },
+    { value: 'care_leave', label: 'Urlop opiekuńczy', uopOnly: true },
+    { value: 'force_majeure', label: 'Siła wyższa', uopOnly: true },
+    { value: 'sick_leave', label: 'L4 / chorobowe', needsDocs: true, uopOnly: true },
+    { value: 'maternity', label: 'Urlop macierzyński', uopOnly: true },
+    { value: 'paternity', label: 'Urlop ojcowski', uopOnly: true },
+    { value: 'parental_leave', label: 'Urlop rodzicielski', uopOnly: true },
+    { value: 'childrearing', label: 'Urlop wychowawczy', uopOnly: true },
+    { value: 'unpaid_leave', label: 'Urlop bezpłatny', uopOnly: true },
+    { value: 'blood_donation', label: 'Krwiodawstwo', uopOnly: true },
+    { value: 'training', label: 'Urlop szkoleniowy', uopOnly: true },
+    // Odbiór dnia za święto przypadające w dzień wolny (Kodeks pracy art. 130 §2).
+    { value: 'holiday_in_lieu', label: 'Odbiór dnia za święto', uopOnly: true },
+    { value: 'other', label: 'Inne', uopOnly: true },
 ]
 
-export function LeaveRequestForm() {
+interface LeaveRequestFormProps {
+    /**
+     * Czy zalogowany pracownik jest na UoP. Gdy true — widzi pełny katalog
+     * 16 typów statutowych. Gdy false (B2B/zlecenie) — tylko 'vacation'
+     * (Phase 29).
+     */
+    isUop?: boolean
+    /**
+     * Phase 30 — czy pracownik ma ustawioną pulę płatnych urlopów. Włącza
+     * live preview "X z puli + Y bezpłatne" dla vacation/on_demand.
+     */
+    hasPool?: boolean
+}
+
+export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveRequestFormProps) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [leaveType, setLeaveType] = useState<LeaveType>('vacation')
@@ -57,8 +87,36 @@ export function LeaveRequestForm() {
         }
     }, [])
 
+    // Phase 30 — live preview płatny/bezpłatny (debounce 350ms).
+    // Tylko gdy user ma pulę i typ to vacation/on_demand.
+    const [splitPreview, setSplitPreview] = useState<LeaveSplitPreview | null>(null)
+    const [previewLoading, setPreviewLoading] = useState(false)
+    const isPoolType = leaveType === 'vacation' || leaveType === 'on_demand'
+    useEffect(() => {
+        if (!hasPool || !isPoolType || !startDate || !endDate || endDate < startDate) {
+            setSplitPreview(null)
+            return
+        }
+        setPreviewLoading(true)
+        const handler = setTimeout(() => {
+            previewLeaveSplit({
+                startDate,
+                endDate,
+                halfDay: (startDate === endDate && halfDay) ? halfDay : null,
+                leaveType,
+            })
+                .then((p) => setSplitPreview(p))
+                .catch(() => setSplitPreview(null))
+                .finally(() => setPreviewLoading(false))
+        }, 350)
+        return () => {
+            clearTimeout(handler)
+            setPreviewLoading(false)
+        }
+    }, [hasPool, isPoolType, startDate, endDate, halfDay, leaveType])
+
     const showHalfDay = startDate && endDate && startDate === endDate
-    const showDocsField = leaveType === 'sick_leave'
+    const showDocsField = LEAVE_TYPES.find((t) => t.value === leaveType)?.needsDocs ?? false
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -135,7 +193,7 @@ export function LeaveRequestForm() {
                             value={leaveType}
                             onChange={(e) => setLeaveType(e.target.value as LeaveType)}
                         >
-                            {LEAVE_TYPES.map((t) => (
+                            {LEAVE_TYPES.filter((t) => !t.uopOnly || isUop).map((t) => (
                                 <option key={t.value} value={t.value}>
                                     {t.label}
                                 </option>
@@ -182,6 +240,11 @@ export function LeaveRequestForm() {
                                 <option value="afternoon">Druga połowa</option>
                             </select>
                         </div>
+                    )}
+
+                    {/* Phase 30 — live preview podziału płatny/bezpłatny dla pracownika z pulą. */}
+                    {hasPool && isPoolType && (splitPreview || previewLoading) && (
+                        <PoolSplitPreview preview={splitPreview} loading={previewLoading} />
                     )}
 
                     {showDocsField && (
@@ -306,5 +369,55 @@ export function LeaveRequestForm() {
                 </form>
             </CardContent>
         </Card>
+    )
+}
+
+// Phase 30 — banner pokazujący auto-split płatny/bezpłatny przy składaniu wniosku.
+function PoolSplitPreview({ preview, loading }: { preview: LeaveSplitPreview | null; loading: boolean }) {
+    if (loading) {
+        return (
+            <div className="rounded-md border border-border/10 bg-card/5 px-3 py-2 text-xs text-muted-foreground inline-flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Liczę pulę…
+            </div>
+        )
+    }
+    if (!preview || preview.workingDays === 0) return null
+
+    const { paid, unpaid, workingDays, remainingBefore, remainingAfter, entitlementDays } = preview
+    const allPaid = paid > 0 && unpaid === 0
+    const partial = paid > 0 && unpaid > 0
+    const allUnpaid = paid === 0 && unpaid > 0
+
+    const cls = allPaid
+        ? 'border-success/30 bg-success/5 text-success'
+        : partial
+            ? 'border-warning/30 bg-warning/5 text-warning'
+            : 'border-destructive/30 bg-destructive/5 text-destructive'
+
+    const icon = allPaid ? '✓' : partial ? '⚠' : '✗'
+
+    return (
+        <div className={`rounded-md border px-3 py-2 text-xs ${cls}`}>
+            <div className="font-medium">
+                {icon} Wniosek {workingDays} {workingDays === 1 ? 'dzień roboczy' : 'dni roboczych'}:{' '}
+                {paid > 0 && <span>{paid} płatnych (z puli)</span>}
+                {partial && <span> + </span>}
+                {unpaid > 0 && <span>{unpaid} bezpłatnych</span>}
+            </div>
+            <div className="mt-0.5 text-muted-foreground">
+                Pula {entitlementDays} dni · pozostało{' '}
+                <span className="text-foreground">{remainingBefore?.toFixed(1)}</span>
+                {remainingAfter != null && (
+                    <>
+                        {' → '}
+                        <span className={`${(remainingAfter ?? 0) <= 0 ? 'text-warning' : 'text-foreground'}`}>
+                            {remainingAfter.toFixed(1)} po złożeniu
+                        </span>
+                    </>
+                )}
+                {allUnpaid && ' (pula wyczerpana)'}
+            </div>
+        </div>
     )
 }

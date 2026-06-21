@@ -21,11 +21,14 @@ interface Props {
 }
 
 // L4 (sick_leave) celowo wykluczony — wpisuje pracownik z dokumentem.
-const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string }> = [
+// Phase 29: 'vacation' jest jedynym typem dostępnym dla B2B/zlecenie;
+// pozostałe (parental_leave, unpaid_leave, holiday_in_lieu, other) są UoP-only.
+const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; uopOnly?: boolean }> = [
     { value: 'vacation', label: 'Urlop wypoczynkowy' },
-    { value: 'parental_leave', label: 'Opieka rodzicielska' },
-    { value: 'unpaid_leave', label: 'Urlop bezpłatny' },
-    { value: 'other', label: 'Inne' },
+    { value: 'parental_leave', label: 'Opieka rodzicielska', uopOnly: true },
+    { value: 'unpaid_leave', label: 'Urlop bezpłatny', uopOnly: true },
+    { value: 'holiday_in_lieu', label: 'Odbiór dnia za święto', uopOnly: true },
+    { value: 'other', label: 'Inne', uopOnly: true },
 ]
 
 export function CreateLeaveOnBehalfForm({ candidates }: Props) {
@@ -49,6 +52,16 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
     const substituteCandidates = useMemo(
         () => candidates.filter((c) => c.id !== targetUserId),
         [candidates, targetUserId],
+    )
+
+    // "Odbiór dnia za święto" dostępny tylko gdy wybrany pracownik jest na UoP.
+    const targetIsUop = useMemo(
+        () => candidates.find((c) => c.id === targetUserId)?.employment_type === 'uop',
+        [candidates, targetUserId],
+    )
+    const leaveTypeOptions = useMemo(
+        () => LEAVE_TYPES.filter((t) => !t.uopOnly || targetIsUop),
+        [targetIsUop],
     )
 
     function resetForm() {
@@ -124,7 +137,18 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                             id="target_user"
                             className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             value={targetUserId}
-                            onChange={(e) => setTargetUserId(e.target.value)}
+                            onChange={(e) => {
+                                const newId = e.target.value
+                                setTargetUserId(newId)
+                                // Phase 29: jeśli nowy pracownik nie jest na UoP, a wybrany typ jest
+                                // UoP-only (parental_leave / unpaid_leave / holiday_in_lieu / other),
+                                // wróć do dozwolonego 'vacation'.
+                                const t = candidates.find((c) => c.id === newId)
+                                const isUopOnly = LEAVE_TYPES.find((lt) => lt.value === leaveType)?.uopOnly
+                                if (t?.employment_type !== 'uop' && isUopOnly) {
+                                    setLeaveType('vacation')
+                                }
+                            }}
                             required
                         >
                             <option value="">— wybierz pracownika —</option>
@@ -144,7 +168,7 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                             value={leaveType}
                             onChange={(e) => setLeaveType(e.target.value as LeaveType)}
                         >
-                            {LEAVE_TYPES.map((t) => (
+                            {leaveTypeOptions.map((t) => (
                                 <option key={t.value} value={t.value}>
                                     {t.label}
                                 </option>
@@ -152,6 +176,11 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                         </select>
                         <p className="text-[11px] text-muted-foreground">
                             L4 (zwolnienie lekarskie) musi wpisać pracownik z dołączonym skanem dokumentu.
+                            {targetIsUop
+                                ? ' Odbiór dnia za święto dostępny tylko dla pracowników na UoP.'
+                                : targetUserId
+                                    ? ' Pracownicy B2B / zlecenie mogą mieć wpisany tylko urlop wypoczynkowy.'
+                                    : ''}
                         </p>
                     </div>
 

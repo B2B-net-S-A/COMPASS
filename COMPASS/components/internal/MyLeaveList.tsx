@@ -23,6 +23,16 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
     parental_leave: 'Opieka rodzicielska',
     unpaid_leave: 'Urlop bezpłatny',
     training: 'Szkolenie',
+    on_demand: 'Urlop na żądanie',
+    occasional: 'Urlop okolicznościowy',
+    childcare: 'Opieka nad dzieckiem (art. 188)',
+    care_leave: 'Urlop opiekuńczy',
+    force_majeure: 'Siła wyższa',
+    maternity: 'Urlop macierzyński',
+    paternity: 'Urlop ojcowski',
+    childrearing: 'Urlop wychowawczy',
+    blood_donation: 'Krwiodawstwo',
+    holiday_in_lieu: 'Odbiór dnia za święto',
     other: 'Inne',
 }
 
@@ -101,6 +111,21 @@ export function MyLeaveList({ requests }: Props) {
                                         <p className="text-xs text-muted-foreground mt-1">
                                             {fmt(req.start_date)} – {fmt(req.end_date)}
                                         </p>
+                                        {/* Phase 30 — breakdown płatny/bezpłatny (vacation pool). */}
+                                        {((req.paid_days ?? 0) > 0 || (req.unpaid_days ?? 0) > 0) && (
+                                            <p className="text-xs mt-1 inline-flex items-center gap-2">
+                                                {(req.paid_days ?? 0) > 0 && (
+                                                    <span className="text-success">
+                                                        {req.paid_days} dni płatnych <span className="text-muted-foreground">(z puli)</span>
+                                                    </span>
+                                                )}
+                                                {(req.unpaid_days ?? 0) > 0 && (
+                                                    <span className="text-muted-foreground">
+                                                        {req.unpaid_days} dni bezpłatnych
+                                                    </span>
+                                                )}
+                                            </p>
+                                        )}
                                         {req.note && (
                                             <p className="text-xs mt-1 italic text-muted-foreground line-clamp-2">
                                                 „{req.note}"

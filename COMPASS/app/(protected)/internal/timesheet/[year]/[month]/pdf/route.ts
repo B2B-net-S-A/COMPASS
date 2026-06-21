@@ -26,14 +26,30 @@ export async function GET(
     const ctx = await requireInternalOrAdminAction().catch(() => null)
     if (!ctx) return new Response('Unauthorized', { status: 401 })
 
+    const admin = createServiceClient()
+
+    // Phase 32 — payroll download per person. Admin + finanse can download anyone's
+    // approved timesheet; a manager can download their own team's (manager_id link).
     const userParam = request.nextUrl.searchParams.get('user')
     let targetUserId = ctx.userId
     if (userParam && userParam !== ctx.userId) {
-        if (!ctx.isAdmin) return new Response('Forbidden', { status: 403 })
-        targetUserId = userParam
+        const isFinance = ctx.role === 'finanse'
+        if (ctx.isAdmin || isFinance) {
+            targetUserId = userParam
+        } else if (ctx.isManager) {
+            const { data: target } = await admin
+                .from('profiles')
+                .select('manager_id')
+                .eq('id', userParam)
+                .single<{ manager_id: string | null }>()
+            if (target?.manager_id !== ctx.userId) {
+                return new Response('Forbidden', { status: 403 })
+            }
+            targetUserId = userParam
+        } else {
+            return new Response('Forbidden', { status: 403 })
+        }
     }
-
-    const admin = createServiceClient()
     const { data: header } = await admin
         .from('timesheets')
         .select('id, user_id, year, month, status, pdf_hash, approved_at')

@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import {
     startTimer,
     stopActiveTimer,
@@ -41,6 +42,7 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
     const [project, setProject] = useState('')
     const [description, setDescription] = useState('')
     const [pending, startTransition] = useTransition()
+    const [confirm, ConfirmUI] = useConfirm()
 
     // Tick co 1s gdy timer aktywny
     useEffect(() => {
@@ -84,8 +86,12 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
         })
     }
 
-    const handleCancel = () => {
-        if (!window.confirm('Anulować timer? Czas zostanie utracony.')) return
+    const handleCancel = async () => {
+        const ok = await confirm({
+            description: 'Anulować timer? Czas zostanie utracony.',
+            variant: 'destructive',
+        })
+        if (!ok) return
         startTransition(async () => {
             try {
                 await cancelActiveTimer()
@@ -99,6 +105,7 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
 
     if (active) {
         return (
+            <>
             <Card className="bg-gradient-to-r from-success/10 to-success/5 border-success/30">
                 <CardContent className="p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <div className="flex items-center gap-3 flex-1">
@@ -114,7 +121,7 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
                         </div>
                     </div>
                     <div className="flex gap-2 shrink-0">
-                        <Button onClick={handleStop} disabled={pending} className="gap-2 bg-success hover:bg-success/90 text-success-foreground">
+                        <Button onClick={handleStop} disabled={pending} className="gap-2 bg-success hover:bg-success/90 text-white">
                             {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
                             Zatrzymaj
                         </Button>
@@ -124,11 +131,13 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
                     </div>
                 </CardContent>
             </Card>
+            <ConfirmUI />
+            </>
         )
     }
 
     return (
-        <Card className="bg-card border-border">
+        <Card className="bg-card/5 border-border/10">
             <CardContent className="p-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-primary" />

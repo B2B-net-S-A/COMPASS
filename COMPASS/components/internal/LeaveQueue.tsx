@@ -18,6 +18,7 @@ import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { approveLeaveRequest, rejectLeaveRequest, type PendingLeaveRow } from '@/lib/actions/internal-leave'
 
 interface Props {
@@ -30,6 +31,16 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
     parental_leave: 'Opieka rodzicielska',
     unpaid_leave: 'Urlop bezpłatny',
     training: 'Szkolenie',
+    on_demand: 'Urlop na żądanie',
+    occasional: 'Urlop okolicznościowy',
+    childcare: 'Opieka nad dzieckiem (art. 188)',
+    care_leave: 'Urlop opiekuńczy',
+    force_majeure: 'Siła wyższa',
+    maternity: 'Urlop macierzyński',
+    paternity: 'Urlop ojcowski',
+    childrearing: 'Urlop wychowawczy',
+    blood_donation: 'Krwiodawstwo',
+    holiday_in_lieu: 'Odbiór dnia za święto',
     other: 'Inne',
 }
 
@@ -43,6 +54,7 @@ export function LeaveQueue({ requests }: Props) {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [bulkRejectOpen, setBulkRejectOpen] = useState(false)
     const [bulkRejectReason, setBulkRejectReason] = useState('')
+    const [confirm, ConfirmUI] = useConfirm()
 
     const allSelected = requests.length > 0 && selectedIds.size === requests.length
     const someSelected = selectedIds.size > 0
@@ -59,9 +71,12 @@ export function LeaveQueue({ requests }: Props) {
         setSelectedIds(next)
     }
 
-    function handleBulkApprove() {
+    async function handleBulkApprove() {
         if (selectedIds.size === 0) return
-        if (!window.confirm(`Zaakceptować ${selectedIds.size} wnioski/-ów?`)) return
+        const ok = await confirm({
+            description: `Zaakceptować ${selectedIds.size} wnioski/-ów?`,
+        })
+        if (!ok) return
         const ids = Array.from(selectedIds)
         startTransition(async () => {
             let ok = 0
@@ -298,6 +313,8 @@ export function LeaveQueue({ requests }: Props) {
                                                         Custom Out of Office message
                                                     </p>
                                                 )}
+                                                {/* Phase 30 — pool snapshot dla B2B/zlecenie + UoP z pulą */}
+                                                <PoolBadge req={req} />
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
@@ -369,6 +386,8 @@ export function LeaveQueue({ requests }: Props) {
                 </DialogContent>
             </Dialog>
 
+            {/* (Phase 30 PoolBadge defined below) */}
+
             {/* H2.2: bulk reject dialog */}
             <Dialog
                 open={bulkRejectOpen}
@@ -406,6 +425,57 @@ export function LeaveQueue({ requests }: Props) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <ConfirmUI />
         </>
+    )
+}
+
+// Phase 30 — badge w queue: pula 2026 + breakdown ten wniosek. Renderuje się
+// tylko gdy wniosek dotyczy puli (vacation/on_demand) i są wartości paid/unpaid.
+function PoolBadge({ req }: { req: PendingLeaveRow }) {
+    const paid = req.paid_days ?? 0
+    const unpaid = req.unpaid_days ?? 0
+    if (paid === 0 && unpaid === 0) return null
+
+    const entitlement = req.pool_entitlement_days
+    const carried = req.pool_carried_over_days ?? 0
+    const usedInitial = req.pool_used_initial_days ?? 0
+    const alreadyBookedPaid = req.pool_already_booked_paid_days_in_year ?? 0
+    const year = req.start_date.slice(0, 4)
+
+    // Pula totalna i remaining przed akceptacją (już zawiera SUM(paid_days)
+    // zatwierdzonych w tym roku, więc nie wlicza tego pending request).
+    const hasPool = entitlement != null
+    const total = hasPool ? entitlement + carried - usedInitial : null
+    const remainingBefore = hasPool ? (total as number) - alreadyBookedPaid : null
+    const remainingAfter = hasPool && remainingBefore != null ? remainingBefore - paid : null
+
+    return (
+        <div className="text-[11px] mt-1.5 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            {/* Breakdown — zawsze gdy split ≠ 0/0 */}
+            <span>
+                {paid > 0 && <span className="text-success font-medium">{paid} płatnych</span>}
+                {paid > 0 && unpaid > 0 && <span className="text-muted-foreground"> + </span>}
+                {unpaid > 0 && <span className="text-muted-foreground">{unpaid} bezpłatnych</span>}
+            </span>
+            {hasPool && (
+                <span className="text-muted-foreground">
+                    · Pula {year}:{' '}
+                    <span className="text-foreground font-medium">
+                        {remainingBefore?.toFixed(1)}
+                    </span>
+                    /{total}
+                    {remainingAfter != null && (
+                        <>
+                            {' → po akceptacji '}
+                            <span className={`font-medium ${(remainingAfter ?? 0) <= 0 ? 'text-warning' : 'text-foreground'}`}>
+                                {remainingAfter.toFixed(1)}
+                            </span>
+                            /{total}
+                        </>
+                    )}
+                </span>
+            )}
+        </div>
     )
 }

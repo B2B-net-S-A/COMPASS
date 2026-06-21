@@ -136,7 +136,7 @@ export default async function ProtectedLayout({
 
         return (
             <ThemeProvider>
-                <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges}>
+                <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges} isInboxHandler={isInboxHandler}>
                     <LayoutPreferencesProvider>
                         {children}
                     </LayoutPreferencesProvider>

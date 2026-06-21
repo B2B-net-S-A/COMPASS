@@ -64,7 +64,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
             .eq('user_id', user.id)
             .eq('date', yesterdayDate)
             .maybeSingle<{ status: string }>()
-        const blockingStatuses = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave']
+        const blockingStatuses = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'holiday_in_lieu']
         if (attendance && blockingStatuses.includes(attendance.status)) {
             skipped++
             continue

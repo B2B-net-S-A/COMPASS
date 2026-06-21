@@ -35,6 +35,9 @@ export function EmployeeProfileDialog({
         default_location: 'onsite',
         employment_type: 'b2b',
         work_start_date: null,
+        leave_entitlement_days: null,
+        leave_carried_over_days: 0,
+        leave_used_initial_days: 0,
     })
 
     useEffect(() => {
@@ -48,6 +51,9 @@ export function EmployeeProfileDialog({
                     default_location: data.default_location ?? 'onsite',
                     employment_type: data.employment_type ?? 'b2b',
                     work_start_date: data.work_start_date ?? null,
+                    leave_entitlement_days: data.leave_entitlement_days ?? null,
+                    leave_carried_over_days: data.leave_carried_over_days ?? 0,
+                    leave_used_initial_days: data.leave_used_initial_days ?? 0,
                 })
             })
             .catch((e: unknown) => {
@@ -67,6 +73,9 @@ export function EmployeeProfileDialog({
                 default_location: fields.default_location ?? undefined,
                 employment_type: fields.employment_type ?? undefined,
                 work_start_date: fields.work_start_date,
+                leave_entitlement_days: fields.leave_entitlement_days,
+                leave_carried_over_days: fields.leave_carried_over_days,
+                leave_used_initial_days: fields.leave_used_initial_days,
             })
             toastSuccess(`Profil pracownika ${targetEmail} zaktualizowany`)
             onSuccess?.()
@@ -116,11 +125,15 @@ export function EmployeeProfileDialog({
                                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 value={fields.employment_type ?? 'b2b'}
                                 onChange={(e) =>
-                                    setFields({ ...fields, employment_type: e.target.value as 'uop' | 'b2b' })
+                                    setFields({
+                                        ...fields,
+                                        employment_type: e.target.value as 'uop' | 'b2b' | 'zlecenie',
+                                    })
                                 }
                             >
                                 <option value="b2b">B2B</option>
                                 <option value="uop">Umowa o pracę (UoP)</option>
+                                <option value="zlecenie">Zlecenie</option>
                             </select>
                         </div>
 
@@ -134,6 +147,92 @@ export function EmployeeProfileDialog({
                                     setFields({ ...fields, work_start_date: e.target.value || null })
                                 }
                             />
+                        </div>
+
+                        <div className="space-y-1.5 rounded-md border border-border p-3">
+                            <Label className="text-xs font-semibold">
+                                {fields.employment_type === 'uop'
+                                    ? 'Limit urlopu wypoczynkowego (UoP — Kodeks pracy)'
+                                    : 'Pula płatnych urlopów (B2B/zlecenie — z kontraktu, opcjonalna)'}
+                            </Label>
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="space-y-1">
+                                    <Label htmlFor="leave_entitlement" className="text-xs">
+                                        Wymiar (dni/rok)
+                                    </Label>
+                                    <Input
+                                        id="leave_entitlement"
+                                        type="number"
+                                        min="0"
+                                        max="366"
+                                        step="1"
+                                        placeholder={fields.employment_type === 'uop' ? 'np. 26' : 'puste = brak'}
+                                        value={fields.leave_entitlement_days ?? ''}
+                                        onChange={(e) =>
+                                            setFields({
+                                                ...fields,
+                                                leave_entitlement_days:
+                                                    e.target.value === '' ? null : Number(e.target.value),
+                                            })
+                                        }
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="leave_carried" className="text-xs">
+                                        Zaległy (dni)
+                                    </Label>
+                                    <Input
+                                        id="leave_carried"
+                                        type="number"
+                                        min="0"
+                                        max="366"
+                                        step="0.5"
+                                        value={fields.leave_carried_over_days}
+                                        onChange={(e) =>
+                                            setFields({
+                                                ...fields,
+                                                leave_carried_over_days: Number(e.target.value) || 0,
+                                            })
+                                        }
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="leave_used_initial" className="text-xs">
+                                        Już zużyte (start)
+                                    </Label>
+                                    <Input
+                                        id="leave_used_initial"
+                                        type="number"
+                                        min="0"
+                                        max="366"
+                                        step="0.5"
+                                        value={fields.leave_used_initial_days}
+                                        onChange={(e) =>
+                                            setFields({
+                                                ...fields,
+                                                leave_used_initial_days: Number(e.target.value) || 0,
+                                            })
+                                        }
+                                    />
+                                </div>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                                {fields.employment_type === 'uop' ? (
+                                    <>
+                                        Puste = brak limitu (nielimitowany). Pula liczy urlop wypoczynkowy + na żądanie.
+                                        Walidacja blokuje wnioski ponad wymiar + zaległy − już zużyte
+                                        (nadwyżkę pracownik zgłasza jako <strong>Urlop bezpłatny</strong>).
+                                    </>
+                                ) : (
+                                    <>
+                                        Puste = brak puli (cały urlop bezpłatny — sekcja u pracownika ukryta).
+                                        Z pulą: wniosek przekraczający pulę dostaje <strong>auto-split</strong>{' '}
+                                        (część płatna z puli + reszta bezpłatna w jednym wniosku).
+                                        &quot;Już zużyte&quot; = hybrydowy backfill (gdy włączasz pulę w trakcie roku,
+                                        wpisz ile dni pracownik już wykorzystał; zostaw 0 jeśli to początek roku).
+                                    </>
+                                )}
+                            </p>
                         </div>
                     </div>
                 )}

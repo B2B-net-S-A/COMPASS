@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { MarkdownView } from './MarkdownView'
 import {
     addLesson,
@@ -28,6 +29,7 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
     const [expandedId, setExpandedId] = useState<string | null>(initialLessons[0]?.id ?? null)
     const [isPending, startTransition] = useTransition()
     const [error, setError] = useState<string | null>(null)
+    const [confirm, ConfirmUI] = useConfirm()
 
     const refreshAfterChange = () => onChanged?.()
 
@@ -78,8 +80,12 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
         })
     }
 
-    const handleDeleteLesson = (lessonId: string) => {
-        if (!window.confirm('Usunąć tę lekcję? Operacja jest nieodwracalna.')) return
+    const handleDeleteLesson = async (lessonId: string) => {
+        const ok = await confirm({
+            description: 'Usunąć tę lekcję? Operacja jest nieodwracalna.',
+            variant: 'destructive',
+        })
+        if (!ok) return
         setError(null)
         startTransition(async () => {
             const res = await deleteLesson(lessonId)
@@ -178,6 +184,7 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
                     />
                 ))}
             </div>
+            <ConfirmUI />
         </div>
     )
 }

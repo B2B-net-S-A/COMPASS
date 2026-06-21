@@ -32,8 +32,14 @@ export type AuditAction =
     | 'TIMESHEET_ENTRY_ADDED_BY_APPROVER'
     | 'TIMESHEET_ENTRY_EDITED_BY_APPROVER'
     | 'TIMESHEET_ENTRY_DELETED_BY_APPROVER'
+    // Phase 27g — approver creates a team member's timesheet to fill on-behalf
+    | 'TIMESHEET_CREATED_BY_APPROVER'
     // H2.8 — tamper-evidence dla PDF approved timesheet
     | 'TIMESHEET_HASH_MISMATCH'
+    // Phase 30b — auto-wpis płatnego urlopu (z puli) do timesheet
+    | 'TIMESHEET_PAID_LEAVE_AUTOFILL'
+    // Phase 30c — usunięcie godzin pracy kolidujących z zatwierdzonym urlopem
+    | 'TIMESHEET_LEAVE_CONFLICT_REMOVED'
     // Phase 17 — Smart Work Clock
     | 'WORK_CLOCK_CONSENT_ACCEPTED'
     | 'WORK_CLOCK_CONSENT_REVOKED'
@@ -95,6 +101,18 @@ export type AuditAction =
     // Phase 26 — Bonus assigned workflow (auto-approved, no invoice link)
     | 'BONUS_ASSIGNED'
     | 'BONUS_UPDATED'
+    // Phase 31 — Champions League (kwartalna premia rekrutacyjna)
+    | 'CHAMPIONS_LEAGUE_ASSIGNED'
+    | 'CHAMPIONS_LEAGUE_UPDATED'
+    | 'CHAMPIONS_LEAGUE_CANCELLED'
+    // Phase 28 — Placementy (Excel import, eligibility, auto-bonus, TCM tickets)
+    | 'PLACEMENTS_IMPORTED'
+    | 'PLACEMENT_CANCELLED'
+    | 'PLACEMENT_HOURS_CONFIRMED'
+    | 'PLACEMENT_BONUSES_GENERATED'
+    | 'PLACEMENT_BONUS_CANCELLED'
+    | 'PLACEMENT_BONUS_DELETED'
+    | 'PLACEMENT_PERSON_ALIAS_SET'
     // Phase 24 — Timesheet UX (templates, role defaults, CSV export, preview, archive)
     | 'TIMESHEET_COPIED_FROM_PREVIOUS'
     | 'TIMESHEET_APPLIED_DEFAULT'
@@ -111,8 +129,13 @@ export type AuditAction =
     | 'LEAVE_OOF_SET'
     | 'LEAVE_OOF_FAILED'
     | 'LEAVE_OOF_DISABLED'
+    // Phase 25d — Compass detected user-set OOF and did NOT overwrite it
+    | 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
     // Phase 25b — Manager/admin wpisuje urlop w imieniu pracownika
     | 'LEAVE_CREATED_ON_BEHALF'
+    // Phase 27j — Manager/admin zarządza urlopem zespołu (edycja / anulowanie)
+    | 'LEAVE_UPDATED_BY_MANAGER'
+    | 'LEAVE_CANCELLED_BY_MANAGER'
     // Phase 25c — Lifecycle emails są opt-in (welcome / exit invitation / manager checklist)
     | 'ONBOARDING_WELCOME_EMAIL_SENT'
     | 'EXIT_INVITATION_EMAIL_SENT'
@@ -135,6 +158,42 @@ export type AuditAction =
     | 'CLIENT_CREATED'
     | 'CLIENT_UPDATED'
     | 'CLIENT_DELETED'
+    // Phase 27h — Contract type + rate progression
+    | 'EMPLOYMENT_TYPE_CHANGED'
+    | 'USER_RATE_PROGRESSION_SET'
+    | 'USER_RATE_PROGRESSION_COPIED'
+    // Phase 27i — Contract documents (umowa + aneksy)
+    | 'CONTRACT_DOCUMENT_UPLOADED'
+    | 'CONTRACT_DOCUMENT_DELETED'
+    // Phase 30b — Vacation pool edit from Rates panel (finanse + admin)
+    | 'USER_VACATION_POOL_UPDATED'
+    // Phase 33 — Kontraktorzy (TCM contractor care: log, interviews, client movements)
+    | 'CONTRACTOR_CREATED'
+    | 'CONTRACTOR_UPDATED'
+    | 'CONTRACTOR_CONVERSATION_ADDED'
+    | 'CONTRACTOR_CONVERSATION_UPDATED'
+    | 'CONTRACTOR_ONBOARDING_INTERVIEW_CREATED'
+    | 'CONTRACTOR_ONBOARDING_INTERVIEW_SAVED'
+    | 'CONTRACTOR_ONBOARDING_INTERVIEW_SUBMITTED'
+    | 'CONTRACTOR_ONBOARDING_INTERVIEW_REVIEWED'
+    | 'CONTRACTOR_EXIT_INTERVIEW_CREATED'
+    | 'CONTRACTOR_EXIT_INTERVIEW_SAVED'
+    | 'CONTRACTOR_EXIT_INTERVIEW_SUBMITTED'
+    | 'CONTRACTOR_EXIT_INTERVIEW_REVIEWED'
+    | 'CLIENT_DEPARTURE_RECORDED'
+    | 'CONTRACTORS_IMPORTED'
+    // Phase 34 — Talent Community department task list
+    | 'CONTRACTOR_TASK_CREATED'
+    | 'CONTRACTOR_TASK_UPDATED'
+    | 'CONTRACTOR_TASK_DELETED'
+    // Phase 38 — interview file uploads (Onboarding / Exit elements)
+    | 'CONTRACTOR_ONBOARDING_INTERVIEW_FILE_UPLOADED'
+    | 'CONTRACTOR_EXIT_INTERVIEW_FILE_UPLOADED'
+    | 'CONTRACTOR_INTERVIEW_FILE_REMOVED'
+    // Phase 39 — bench (consultants between projects)
+    | 'BENCH_ENTRY_ADDED'
+    | 'BENCH_ENTRY_UPDATED'
+    | 'BENCH_ENTRY_DISMISSED'
 
 export async function logAudit(
     userId: string | null,

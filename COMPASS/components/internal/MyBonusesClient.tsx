@@ -2,8 +2,18 @@
 
 import { useState } from 'react'
 import { CheckCircle2, XCircle, Paperclip, Loader2 } from 'lucide-react'
-import type { BonusCategory, BonusStatus, BonusWithUsers } from '@/lib/types/bonus'
-import { BONUS_MONTHS_PL, BONUS_CATEGORIES_PL } from '@/lib/types/bonus'
+import type {
+    BonusCategory,
+    BonusStatus,
+    BonusWithUsers,
+    ChampionsLeagueRank,
+} from '@/lib/types/bonus'
+import {
+    BONUS_MONTHS_PL,
+    BONUS_CATEGORIES_PL,
+    BONUS_QUARTERS_PL,
+    CHAMPIONS_LEAGUE_PLACE_LABELS_PL,
+} from '@/lib/types/bonus'
 import { getBonusAttachmentSignedUrl } from '@/lib/actions/internal-bonus'
 import { toast } from '@/lib/toast'
 
@@ -58,6 +68,14 @@ function formatDate(iso: string): string {
 function periodLabel(year: number | null, month: number | null): string {
     if (!year || !month) return '—'
     return `${BONUS_MONTHS_PL[month - 1]} ${year}`
+}
+
+/** Phase 31 — period dla CL: Q1 2026 zamiast styczeń 2026. */
+function periodLabelForBonus(b: BonusWithUsers): string {
+    if (b.category === 'champions_league' && b.period_year && b.period_quarter) {
+        return `${BONUS_QUARTERS_PL[b.period_quarter - 1]} ${b.period_year}`
+    }
+    return periodLabel(b.period_year, b.period_month)
 }
 
 export function MyBonusesClient({ initialBonuses }: Props) {
@@ -118,9 +136,13 @@ function categoryBadge(category: BonusCategory) {
               ? 'bg-primary/15 text-primary border-primary/30'
               : category === 'recruiter'
                 ? 'bg-warning/15 text-warning border-warning/30'
-                : 'bg-muted text-muted-foreground border-border'
+                : category === 'champions_league'
+                  ? 'bg-warning/15 text-warning border-warning/40'
+                  : 'bg-muted text-muted-foreground border-border'
     return (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>{label}</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>
+            {category === 'champions_league' ? '🏆 ' : ''}{label}
+        </span>
     )
 }
 
@@ -175,6 +197,14 @@ function BonusCategoryDetails({ bonus }: { bonus: BonusWithUsers }) {
                     {bonus.custom_email_memo}
                 </div>
             ) : null
+        case 'champions_league':
+            return bonus.place_rank ? (
+                <div className="text-xs">
+                    <span className="text-warning font-medium">
+                        {CHAMPIONS_LEAGUE_PLACE_LABELS_PL[bonus.place_rank as ChampionsLeagueRank]} w Champions League
+                    </span>
+                </div>
+            ) : null
     }
 }
 
@@ -207,7 +237,7 @@ function AttachmentLink({ bonus }: { bonus: BonusWithUsers }) {
 
 function BonusRow({ bonus }: { bonus: BonusWithUsers }) {
     return (
-        <div className="rounded-lg border border-border bg-muted p-3">
+        <div className="rounded-lg border border-border bg-card p-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -216,8 +246,8 @@ function BonusRow({ bonus }: { bonus: BonusWithUsers }) {
                         </span>
                         {statusBadge(bonus.status)}
                         {categoryBadge(bonus.category)}
-                        <span className="text-xs px-2 py-0.5 rounded bg-card text-muted-foreground">
-                            {periodLabel(bonus.period_year, bonus.period_month)}
+                        <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                            {periodLabelForBonus(bonus)}
                         </span>
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">{bonus.reason}</div>

@@ -37,6 +37,16 @@ const LEAVE_LABEL_PL: Record<string, string> = {
     parental_leave: 'Opieka',
     unpaid_leave: 'Bezpłatny',
     training: 'Szkolenie',
+    on_demand: 'Na żądanie',
+    occasional: 'Okolicznościowy',
+    childcare: 'Opieka dz.',
+    care_leave: 'Opiekuńczy',
+    force_majeure: 'Siła wyższa',
+    maternity: 'Macierzyński',
+    paternity: 'Ojcowski',
+    childrearing: 'Wychowawczy',
+    blood_donation: 'Krwiodawstwo',
+    holiday_in_lieu: 'Odbiór',
     other: 'Inne',
 }
 
@@ -229,7 +239,7 @@ function computeCellMeta(args: {
             bg: 'bg-muted/40 border-border/40',
             text: 'text-muted-foreground',
             label: 'Weekend',
-            tooltip: 'Weekend — kliknij aby nadpisać (np. delegacja)',
+            tooltip: 'Weekend — kliknij aby nadpisać (np. pracowałem w sobotę)',
             readOnly: false,
         }
     }
@@ -296,20 +306,17 @@ function statusCellMeta(
                 tooltip: 'Urlop bezpłatny' + noteSuffix,
                 readOnly: false,
             }
-        case 'business_trip':
+        // Phase 29 / Attendance STRICT: business_trip i training są typami w
+        // AttendanceStatus, ale nie są dostępne do wpisania przez dialog (pracownik
+        // wpisuje tylko swoją lokalizację). Defensive fallback dla legacy danych —
+        // w prod 0 takich rekordów, ale gdyby się pojawiły, lecą do default branch
+        // (statutory leave fallback) jako szare/teal tile.
+        case 'holiday_in_lieu':
             return {
                 bg: 'bg-primary/15 border-primary/40',
                 text: 'text-primary',
-                label: 'Delegacja' + noteSuffix,
-                tooltip: 'Wyjazd służbowy' + noteSuffix,
-                readOnly: false,
-            }
-        case 'training':
-            return {
-                bg: 'bg-info/15 border-info/40',
-                text: 'text-info',
-                label: 'Szkolenie' + noteSuffix,
-                tooltip: 'Szkolenie / konferencja' + noteSuffix,
+                label: 'Odbiór' + noteSuffix,
+                tooltip: 'Odbiór dnia za święto' + noteSuffix,
                 readOnly: false,
             }
         case 'other':
@@ -320,6 +327,19 @@ function statusCellMeta(
                 tooltip: 'Inny status' + noteSuffix,
                 readOnly: false,
             }
+        default: {
+            // Statutory leave types (Phase 27k) synced into attendance:
+            // on_demand, occasional, childcare, care_leave, force_majeure,
+            // maternity, paternity, childrearing, blood_donation.
+            const leaveLabel = LEAVE_LABEL_PL[status] ?? 'Urlop'
+            return {
+                bg: 'bg-success/15 border-success/40',
+                text: 'text-success',
+                label: leaveLabel + noteSuffix,
+                tooltip: leaveLabel + noteSuffix,
+                readOnly: false,
+            }
+        }
     }
 }
 
@@ -334,12 +354,6 @@ function Legend() {
             </Badge>
             <Badge variant="outline" className="bg-warning/20 text-warning border-warning/40">
                 Urlop
-            </Badge>
-            <Badge
-                variant="outline"
-                className="bg-primary/15 text-primary border-primary/40"
-            >
-                Delegacja
             </Badge>
             <Badge variant="outline" className="bg-muted text-muted-foreground">
                 Święto / weekend

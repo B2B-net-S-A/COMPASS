@@ -16,7 +16,7 @@ export function NdaAcceptModal({ open, onAccept, onClose }: NdaAcceptModalProps)
     if (!open) return null
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div
                 className="relative max-w-2xl w-full bg-card border border-border rounded-lg shadow-xl"
                 onClick={(e) => e.stopPropagation()}

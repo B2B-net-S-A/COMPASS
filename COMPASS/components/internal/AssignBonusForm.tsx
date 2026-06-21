@@ -88,7 +88,12 @@ function buildPeriodOptions(): PeriodOption[] {
     return options.reverse()
 }
 
-const CATEGORY_ICON: Record<BonusCategory, React.ComponentType<{ className?: string }>> = {
+// Phase 31 — AssignBonusForm obsługuje 4 standardowe kategorie. Champions League
+// ma osobny form (AssignChampionsLeagueForm) — tu wykluczamy go z typu CATEGORY_ICON
+// i z dropdown'a tabów (zobacz filter w renderze).
+type StandardBonusCategory = Exclude<BonusCategory, 'champions_league'>
+
+const CATEGORY_ICON: Record<StandardBonusCategory, React.ComponentType<{ className?: string }>> = {
     sales: Briefcase,
     delivery_lead: TrendingUp,
     recruiter: UserPlus,
@@ -170,7 +175,22 @@ export function AssignBonusForm({
     const router = useRouter()
     const [pending, startTransition] = useTransition()
 
-    const periodOptions = useMemo(() => buildPeriodOptions(), [])
+    const periodOptions = useMemo(() => {
+        const opts = buildPeriodOptions()
+        // Phase 32 — w trybie edycji zapewnij, że bieżący miesiąc premii jest na liście,
+        // nawet jeśli wypadł poza standardowe okno (ostatnie 12 mies. + bieżący).
+        if (
+            prefilled &&
+            !opts.some((o) => o.year === prefilled.period_year && o.month === prefilled.period_month)
+        ) {
+            opts.unshift({
+                year: prefilled.period_year,
+                month: prefilled.period_month,
+                label: `${BONUS_MONTHS_PL[prefilled.period_month - 1]} ${prefilled.period_year}`,
+            })
+        }
+        return opts
+    }, [prefilled])
     const defaultPeriodKey = useMemo(() => {
         if (prefilled) return `${prefilled.period_year}-${prefilled.period_month}`
         const now = new Date()
@@ -202,8 +222,12 @@ export function AssignBonusForm({
     const [reason, setReason] = useState<string>(initialDraft?.reason ?? prefilled?.reason ?? '')
     const [notes, setNotes] = useState<string>(initialDraft?.notes ?? prefilled?.notes ?? '')
 
-    // Phase 27b — category state (only for assign mode)
-    const [category, setCategory] = useState<BonusCategory>(initialDraft?.category ?? 'custom')
+    // Phase 27b — category state (only for assign mode). Phase 31: typu StandardBonusCategory
+    // (Exclude<BonusCategory, 'champions_league'>) — CL ma osobny form, więc tu nigdy nie zaistnieje.
+    const draftCategory = initialDraft?.category
+    const initialCategory: StandardBonusCategory =
+        draftCategory && draftCategory !== 'champions_league' ? draftCategory : 'custom'
+    const [category, setCategory] = useState<StandardBonusCategory>(initialCategory)
     // Phase 27d — shared client (sales/delivery/recruiter) + clients list
     const [clientName, setClientName] = useState<string>(initialDraft?.clientName ?? '')
     const [clientIsOther, setClientIsOther] = useState<boolean>(initialDraft?.clientIsOther ?? false)
@@ -234,7 +258,10 @@ export function AssignBonusForm({
     const [attachment, setAttachment] = useState<File | null>(null)
 
     const recipientLocked = isEdit || !!prefilledRecipientId
-    const periodLocked = isEdit
+    // Phase 32 — miesiąc edytowalny także po przypisaniu (finanse/admin koryguje błędny okres).
+    // AssignBonusForm obsługuje wyłącznie premie standardowe; Champions League (okres kwartalny)
+    // edytuje się osobnym formularzem, więc tu period zawsze dotyczy zwykłej premii miesięcznej.
+    const periodLocked = false
 
     const recipientName = useMemo(() => {
         if (prefilled?.recipient_full_name) return prefilled.recipient_full_name
@@ -498,7 +525,7 @@ export function AssignBonusForm({
         e.preventDefault()
 
         if (isEdit && prefilled) {
-            // Edit path: amount/reason/notes only (kategoria + period immutable per DB trigger).
+            // Edit path: amount/reason/notes + miesiąc (Phase 32). Kategoria i odbiorca immutable per DB trigger.
             const amountNum = Number(amount)
             if (!Number.isFinite(amountNum) || amountNum < BONUS_MIN_AMOUNT) {
                 toast.error(`Kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
@@ -513,6 +540,9 @@ export function AssignBonusForm({
                 toast.error(`Uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.`)
                 return
             }
+            const [editYearStr, editMonthStr] = periodKey.split('-')
+            const editPeriodYear = Number(editYearStr)
+            const editPeriodMonth = Number(editMonthStr)
             startTransition(async () => {
                 try {
                     const updated = await updateBonus({
@@ -520,6 +550,8 @@ export function AssignBonusForm({
                         amount: amountNum,
                         reason: reasonTrimmed,
                         notes: notes.trim() || null,
+                        period_year: editPeriodYear,
+                        period_month: editPeriodMonth,
                     })
                     toastSuccess('Premia zaktualizowana.')
                     router.refresh()
@@ -580,7 +612,10 @@ export function AssignBonusForm({
         <div>
             <Label>Kategoria premii</Label>
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {(Object.keys(BONUS_CATEGORIES_PL) as BonusCategory[]).map((cat) => {
+                {/* Phase 31 — pomiń champions_league; ma osobny form (AssignChampionsLeagueForm). */}
+                {(Object.keys(BONUS_CATEGORIES_PL) as BonusCategory[])
+                    .filter((cat): cat is StandardBonusCategory => cat !== 'champions_league')
+                    .map((cat) => {
                     const Icon = CATEGORY_ICON[cat]
                     const active = category === cat
                     return (

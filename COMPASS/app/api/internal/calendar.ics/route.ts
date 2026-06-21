@@ -136,9 +136,9 @@ export async function GET(request: NextRequest) {
     const ics = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//ComPass//HR Internal Calendar//PL',
+        'PRODID:-//COMPASS//HR Internal Calendar//PL',
         'CALSCALE:GREGORIAN',
-        `X-WR-CALNAME:ComPass — ${userLabel}`,
+        `X-WR-CALNAME:COMPASS — ${userLabel}`,
         'X-WR-TIMEZONE:Europe/Warsaw',
         ...events,
         'END:VCALENDAR',
@@ -160,6 +160,16 @@ const LEAVE_TYPE_PL: Record<string, string> = {
     parental_leave: 'Opieka rodzicielska',
     unpaid_leave: 'Urlop bezpłatny',
     training: 'Szkolenie',
+    on_demand: 'Urlop na żądanie',
+    occasional: 'Urlop okolicznościowy',
+    childcare: 'Opieka nad dzieckiem (art. 188)',
+    care_leave: 'Urlop opiekuńczy',
+    force_majeure: 'Siła wyższa',
+    maternity: 'Urlop macierzyński',
+    paternity: 'Urlop ojcowski',
+    childrearing: 'Urlop wychowawczy',
+    blood_donation: 'Krwiodawstwo',
+    holiday_in_lieu: 'Odbiór dnia za święto',
     other: 'Inne',
 }
 

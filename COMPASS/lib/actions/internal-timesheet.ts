@@ -16,7 +16,14 @@ import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
+import {
+    buildTimesheetRosterView,
+    type TimesheetRosterMember,
+} from '@/lib/hr/timesheet-roster'
 import { format } from 'date-fns'
+
+// Phase 27g — roles that keep a timesheet (HR zone). Consultants (IT) do not.
+const TIMESHEET_HR_ROLES = ['admin', 'internal', 'manager', 'finanse', 'talent_community'] as const
 
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 
@@ -74,7 +81,7 @@ export interface TimesheetWithEntriesAndUser extends TimesheetWithEntries {
     user_email: string
 }
 
-const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave']
+const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'holiday_in_lieu']
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -194,6 +201,12 @@ export interface AddEntryInput {
     hours: number
     project?: string | null
     description: string
+    /**
+     * Phase 33b — admin-only inline overtime. When hours > 8 the approver edit
+     * flow (admin only) records this as an overtime override; reason ≥5 chars is
+     * required. Ignored by the employee self-service flow (capped at 8h).
+     */
+    overtimeReason?: string | null
 }
 
 export async function addEntry(input: AddEntryInput): Promise<TimesheetEntryRow> {
@@ -418,6 +431,12 @@ export interface UpdateEntryInput {
     hours?: number
     project?: string | null
     description?: string
+    /**
+     * Phase 33b — admin-only inline overtime. When hours > 8 the approver edit
+     * flow (admin only) records this as an overtime override; reason ≥5 chars is
+     * required. Lowering hours back to ≤8 clears the override.
+     */
+    overtimeReason?: string | null
 }
 
 export async function updateEntry(input: UpdateEntryInput): Promise<void> {
@@ -718,6 +737,9 @@ export async function unlockTimesheet(timesheetId: string): Promise<void> {
     // Phase 27f: approver = admin OR manager-of-team (parytet z approve/reject),
     // żeby manager mógł cofnąć zaakceptowany/odrzucony timesheet swojego zespołu
     // do edycji bez angażowania admina.
+    // Phase 32: PO AKCEPCJI manager traci prawo odblokowania — zaakceptowany
+    // timesheet może cofnąć do edycji tylko administrator lub finanse, żeby
+    // finanse miały stabilny obraz do wypłaty ("nic się już nie zmieni").
     const ctx = await requireTimesheetApproverAction()
     const admin = createServiceClient()
 
@@ -727,6 +749,12 @@ export async function unlockTimesheet(timesheetId: string): Promise<void> {
         .eq('id', timesheetId)
         .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'status'>>()
     if (fetchErr || !header) throw new Error('Timesheet nie istnieje.')
+
+    if (header.status === 'approved' && !ctx.isAdmin && ctx.role !== 'finanse') {
+        throw new Error(
+            'Po akceptacji timesheet może odblokować tylko administrator lub finanse.',
+        )
+    }
 
     await assertApproverTeamScope(admin, ctx, header.user_id)
 
@@ -825,17 +853,70 @@ async function assertApproverDateNotBlocked(
     }
 }
 
+/** Override column patch returned by {@link resolveOvertimeColumns}. */
+interface OvertimeColumns {
+    is_overtime_override: boolean
+    override_reason: string | null
+    override_by: string | null
+    override_at: string | null
+}
+
+/**
+ * Phase 33b — resolve the overtime-override columns for an approver-entered
+ * `hours` value. Standard days (≤8h) clear any override. Days > 8h are an
+ * admin-only overtime override: capped at {@link OVERTIME_OVERRIDE_HOURS_MAX}
+ * and requiring a reason (≥{@link OVERTIME_REASON_MIN_LENGTH} chars), matching
+ * the dedicated overtime panel + the DB CHECK/trigger from Phase 27a.
+ */
+function resolveOvertimeColumns(
+    ctx: InternalAuthContext,
+    hours: number,
+    reason: string | null | undefined,
+): OvertimeColumns {
+    if (hours <= STANDARD_DAILY_HOURS_MAX) {
+        return {
+            is_overtime_override: false,
+            override_reason: null,
+            override_by: null,
+            override_at: null,
+        }
+    }
+    if (!ctx.isAdmin) {
+        throw new Error(
+            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny (>8h) może wpisać tylko administrator.`,
+        )
+    }
+    if (hours > OVERTIME_OVERRIDE_HOURS_MAX) {
+        throw new Error(`Maksymalnie ${OVERTIME_OVERRIDE_HOURS_MAX}h/dzień (nadgodziny).`)
+    }
+    const trimmed = (reason ?? '').trim()
+    if (trimmed.length < OVERTIME_REASON_MIN_LENGTH) {
+        throw new Error(
+            `Uzasadnienie nadgodzin musi mieć co najmniej ${OVERTIME_REASON_MIN_LENGTH} znaki.`,
+        )
+    }
+    if (trimmed.length > OVERTIME_REASON_MAX_LENGTH) {
+        throw new Error(`Uzasadnienie za długie (max ${OVERTIME_REASON_MAX_LENGTH} znaków).`)
+    }
+    return {
+        is_overtime_override: true,
+        override_reason: trimmed,
+        override_by: ctx.userId,
+        override_at: new Date().toISOString(),
+    }
+}
+
 export async function approverAddEntry(input: AddEntryInput): Promise<TimesheetEntryRow> {
     const ctx = await requireTimesheetApproverAction()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
         throw new Error('work_date musi być w formacie YYYY-MM-DD.')
     }
-    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
-        throw new Error(
-            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny wpisuje administrator z panelu nadgodzin.`,
-        )
+    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > OVERTIME_OVERRIDE_HOURS_MAX) {
+        throw new Error(`Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`)
     }
     if (!input.description?.trim()) throw new Error('Opis jest wymagany.')
+    // Phase 33b — >8h is an admin-only overtime override (reason required). ≤8h clears it.
+    const overtime = resolveOvertimeColumns(ctx, input.hours, input.overtimeReason)
 
     const admin = createServiceClient()
     const header = await loadApproverEditableTimesheet(admin, ctx, input.timesheetId)
@@ -849,6 +930,7 @@ export async function approverAddEntry(input: AddEntryInput): Promise<TimesheetE
             hours: input.hours,
             project: input.project?.trim() || null,
             description: input.description.trim(),
+            ...overtime,
         })
         .select('*')
         .single<TimesheetEntryRow>()
@@ -860,6 +942,8 @@ export async function approverAddEntry(input: AddEntryInput): Promise<TimesheetE
         entry_id: data.id,
         work_date: input.workDate,
         hours: input.hours,
+        is_overtime_override: overtime.is_overtime_override,
+        ...(overtime.is_overtime_override ? { override_reason: overtime.override_reason } : {}),
     })
     return data
 }
@@ -874,7 +958,9 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Time
         .eq('id', input.entryId)
         .single<{ id: string; timesheet_id: string; is_overtime_override: boolean }>()
     if (eErr || !entry) throw new Error('Wpis nie istnieje.')
-    if (entry.is_overtime_override) {
+    // Phase 33b — overtime rows are editable inline by admins; managers still
+    // route through the read-only flow (cannot touch overtime entries).
+    if (entry.is_overtime_override && !ctx.isAdmin) {
         throw new Error('Ten wpis to nadgodziny — edytuj go w panelu nadgodzin (administrator).')
     }
     const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)
@@ -887,12 +973,16 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Time
         updates.work_date = input.workDate
     }
     if (input.hours !== undefined) {
-        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
-            throw new Error(
-                `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny wpisuje administrator z panelu nadgodzin.`,
-            )
+        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > OVERTIME_OVERRIDE_HOURS_MAX) {
+            throw new Error(`Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`)
         }
         updates.hours = input.hours
+        // Phase 33b — >8h = admin-only overtime override (reason required); ≤8h clears it.
+        const overtime = resolveOvertimeColumns(ctx, input.hours, input.overtimeReason)
+        updates.is_overtime_override = overtime.is_overtime_override
+        updates.override_reason = overtime.override_reason
+        updates.override_by = overtime.override_by
+        updates.override_at = overtime.override_at
     }
     if (input.project !== undefined) updates.project = input.project?.trim() || null
     if (input.description !== undefined) {
@@ -945,7 +1035,8 @@ export async function approverDeleteEntry(entryId: string): Promise<void> {
             is_overtime_override: boolean
         }>()
     if (eErr || !entry) throw new Error('Wpis nie istnieje.')
-    if (entry.is_overtime_override) {
+    // Phase 33b — admins may delete overtime rows inline; managers cannot.
+    if (entry.is_overtime_override && !ctx.isAdmin) {
         throw new Error('Ten wpis to nadgodziny — usuń go w panelu nadgodzin (administrator).')
     }
     const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)
@@ -1282,14 +1373,14 @@ export async function listAllTimesheetsForMonth(
     const headers = (data ?? []) as Array<TimesheetHeader & { profiles: { full_name: string | null; email: string } | null }>
 
     // Fetch entries per timesheet (sequential for simplicity; small N)
-    const result: TimesheetWithEntriesAndUser[] = []
+    const existing: TimesheetWithEntriesAndUser[] = []
     for (const h of headers) {
         const { data: entries } = await admin
             .from('timesheet_entries')
             .select('*')
             .eq('timesheet_id', h.id)
             .order('work_date')
-        result.push({
+        existing.push({
             id: h.id,
             user_id: h.user_id,
             year: h.year,
@@ -1309,7 +1400,114 @@ export async function listAllTimesheetsForMonth(
             user_email: h.profiles?.email ?? '',
         })
     }
-    return result
+
+    // Phase 27g — show every team member, even those with no timesheet yet, so
+    // the approver can fill one on their behalf. Placeholder rows (id='') are
+    // materialized into a real draft by ensureTeamTimesheet() when opened.
+    const roster = await fetchTimesheetRoster(admin, ctx)
+    return buildTimesheetRosterView(existing, roster, year, month)
+}
+
+/**
+ * Phase 27g — team members eligible for an on-behalf timesheet.
+ *  - Admin: all active HR-zone employees (except self).
+ *  - Manager: direct reports only (profiles.manager_id = ctx.userId).
+ * Consultants (IT) keep no timesheet and are excluded; so are exited/offboarding.
+ */
+async function fetchTimesheetRoster(
+    admin: ServiceClient,
+    ctx: InternalAuthContext,
+): Promise<TimesheetRosterMember[]> {
+    let query = admin
+        .from('profiles')
+        .select('id, full_name, email, role, manager_id, employment_status')
+        .in('role', TIMESHEET_HR_ROLES)
+        .neq('id', ctx.userId)
+    if (!ctx.isAdmin) {
+        query = query.eq('manager_id', ctx.userId)
+    }
+    const { data, error } = await query
+    if (error) throw new Error(`Błąd pobierania zespołu: ${error.message}`)
+    return ((data ?? []) as unknown as Array<TimesheetRosterMember & { employment_status: string | null }>)
+        .filter((p) => p.employment_status !== 'exited' && p.employment_status !== 'offboarding')
+        .map(({ id, full_name, email }) => ({ id, full_name, email }))
+}
+
+/**
+ * Phase 27g — get-or-create a team member's timesheet so the approver can fill
+ * it on their behalf. Used when opening a placeholder row from the HR queue.
+ * Re-checks team scope server-side (admin pomija). The created row is a normal
+ * empty draft — the employee's own auto-fill-from-clock still triggers later
+ * (it keys on auto_filled_at, which stays null here).
+ */
+export async function ensureTeamTimesheet(
+    targetUserId: string,
+    year: number,
+    month: number,
+): Promise<TimesheetWithEntriesAndUser> {
+    const ctx = await requireTimesheetApproverAction()
+    validateYear(year)
+    validateMonth(month)
+    const admin = createServiceClient()
+    await assertApproverTeamScope(admin, ctx, targetUserId)
+
+    const contact = await fetchUserContact(targetUserId)
+
+    let header: TimesheetHeader | null = null
+    const { data: existing } = await admin
+        .from('timesheets')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .eq('year', year)
+        .eq('month', month)
+        .maybeSingle<TimesheetHeader>()
+    header = existing
+
+    if (!header) {
+        const insertRes = await admin
+            .from('timesheets')
+            .insert({ user_id: targetUserId, year, month })
+            .select('*')
+            .single<TimesheetHeader>()
+        if (insertRes.error || !insertRes.data) {
+            // UNIQUE(user_id, year, month) race (employee opened their tab at the
+            // same time) — re-fetch the row the other writer created.
+            const refetch = await admin
+                .from('timesheets')
+                .select('*')
+                .eq('user_id', targetUserId)
+                .eq('year', year)
+                .eq('month', month)
+                .single<TimesheetHeader>()
+            if (refetch.error || !refetch.data) {
+                throw new Error(
+                    `Błąd tworzenia timesheetu: ${insertRes.error?.message ?? 'unknown'}`,
+                )
+            }
+            header = refetch.data
+        } else {
+            header = insertRes.data
+            await logAudit(ctx.userId, 'TIMESHEET_CREATED_BY_APPROVER', {
+                timesheet_id: header.id,
+                target_user_id: targetUserId,
+                year,
+                month,
+            })
+        }
+    }
+
+    const { data: entries } = await admin
+        .from('timesheet_entries')
+        .select('*')
+        .eq('timesheet_id', header.id)
+        .order('work_date')
+
+    return {
+        ...header,
+        entries: ((entries ?? []) as unknown) as TimesheetEntryRow[],
+        user_full_name: contact?.full_name ?? null,
+        user_email: contact?.email ?? '',
+    }
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────

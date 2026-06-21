@@ -48,18 +48,31 @@ export function NotificationBell({ locale = 'pl' }: { locale?: 'pl' | 'en' }) {
     // Load notifications
     const loadNotifications = useCallback(async () => {
         setLoading(true)
-        const result = await getRecentNotifications(20, false)
-        if (result.success && result.notifications) {
-            setNotifications(result.notifications)
+        try {
+            // result może być undefined, gdy server action zawiedzie na poziomie
+            // frameworka (np. skew client/server bundla podczas deployu — bell
+            // pollinguje co 60s, więc trafia w to przy każdym redeployu). Wtedy
+            // zostawiamy poprzedni stan zamiast wywalać się na `.success`.
+            const result = await getRecentNotifications(20, false)
+            if (result?.success && result.notifications) {
+                setNotifications(result.notifications)
+            }
+        } catch {
+            // transient (deploy skew / network blip) — nie psujemy UI
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }, [])
 
     // Load unread count
     const loadUnreadCount = useCallback(async () => {
-        const result = await getUnreadNotificationCount()
-        if (result.success && result.count !== undefined) {
-            setUnreadCount(result.count)
+        try {
+            const result = await getUnreadNotificationCount()
+            if (result?.success && result.count !== undefined) {
+                setUnreadCount(result.count)
+            }
+        } catch {
+            // transient — zostaw poprzedni licznik
         }
     }, [])
 
