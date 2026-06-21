@@ -280,10 +280,10 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
 
     return (
         <div className={cn(
-            "border-r bg-card h-screen sticky top-0 left-0 overflow-y-auto transition-colors duration-300",
+            "border-r border-sidebar-border bg-sidebar text-sidebar-foreground h-screen sticky top-0 left-0 overflow-y-auto transition-colors duration-300",
             forMobile ? 'flex flex-col w-full' : 'hidden md:block md:w-64 lg:w-72',
         )}>
-            <div className="flex h-20 items-center px-6 border-b border-border gap-3">
+            <div className="flex h-20 items-center px-6 border-b border-sidebar-border gap-3">
                 <Logo size="md" />
             </div>
             <nav className="flex flex-col gap-2 p-4" data-testid="sidebar-nav">
@@ -293,7 +293,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
 
                     return (
                         <div key={group.heading} className="flex flex-col gap-1">
-                            <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                            <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
                                 {group.heading}
                             </div>
                             {visibleLinks.map((link) => {
@@ -309,10 +309,10 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                                         href={link.href}
                                         data-testid={testId}
                                         className={cn(
-                                            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:text-primary",
+                                            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                                             isActive
                                                 ? "bg-primary/10 text-primary"
-                                                : "text-muted-foreground hover:bg-muted"
+                                                : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                                         )}
                                     >
                                         <Icon className="h-4 w-4" />
@@ -329,7 +329,7 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                     )
                 })}
             </nav>
-            <div className="p-4 border-t border-border text-xs text-center text-muted-foreground/50">
+            <div className="p-4 border-t border-sidebar-border text-xs text-center text-sidebar-muted/70">
                 ComPass by {brandName}
             </div>
         </div>

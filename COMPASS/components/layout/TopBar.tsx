@@ -18,6 +18,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { Logo } from '@/components/common/Logo'
 import { Menu, Sun, Moon } from 'lucide-react'
 import { useTheme } from '@/lib/contexts/ThemeContext'
+import { ThemeMenu } from './ThemeMenu'
 
 interface TopBarProps {
     user?: {
@@ -75,6 +76,8 @@ export function TopBar({ user, onMenuToggle }: TopBarProps) {
                         <Sun className="w-4 h-4" />
                     )}
                 </Button>
+
+                <ThemeMenu />
 
                 <NotificationBell />
 
