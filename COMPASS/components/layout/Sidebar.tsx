@@ -25,10 +25,6 @@ import {
     Plane,
     Wallet,
     Briefcase,
-    UserPlus,
-    BarChart3,
-    MessagesSquare,
-    LogOut,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -250,20 +246,27 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
     // Analityka is its own route. The administracja@ inbox/helpdesk and the News composer are NOT
     // part of the contractor five — they live in a separate "Komunikacja" group below (kept reachable).
     const ticketsBadge = (badges?.adminInbox ?? 0) + (badges?.adminTickets ?? 0)
-    const talentCommunityLinks: NavLink[] = [
-        { name: 'Rozmowy', href: '/internal/kontraktorzy?tab=rozmowy', icon: MessagesSquare, feature: null },
-        { name: 'Onboarding', href: '/internal/kontraktorzy?tab=onboarding', icon: UserPlus, feature: null },
-        { name: 'Exit', href: '/internal/kontraktorzy?tab=exit', icon: LogOut, feature: null },
-        { name: 'Kontraktorzy', href: '/internal/kontraktorzy?tab=kontraktorzy', icon: Users, feature: null },
-        { name: 'Analityka', href: '/internal/analityka', icon: BarChart3, feature: null },
-    ]
-    const talentCommunityGroup: NavGroup = { heading: 'Talent Community', links: talentCommunityLinks }
+    // People Ops — zunifikowany moduł (Pulpit / Onboarding / Exit / Kontraktorzy / Sprawy / Analityka / Szablony).
+    // Zastąpił dawne osobne wejścia Talent Community + Zgłoszenia + Analityka (redirecty w page.tsx tych route'ów).
+    const peopleOpsGroup: NavGroup = {
+        heading: 'People Ops',
+        links: [
+            {
+                name: 'People Ops',
+                href: '/internal/people',
+                icon: LayoutDashboard,
+                feature: null,
+                exactMatch: true,
+                badgeCount: ticketsBadge > 0 ? ticketsBadge : undefined,
+            },
+        ],
+    }
 
     // Phase 38 — inbox/helpdesk + News composer kept reachable, just outside the contractor five.
+    // Zgłoszenia przeniesione do People Ops (zakładka Sprawy). Tu zostaje tylko News composer.
     const komunikacjaGroup: NavGroup = {
         heading: 'Komunikacja',
         links: [
-            { name: 'Zgłoszenia', href: '/internal/zgloszenia', icon: Inbox, feature: null, badgeCount: ticketsBadge > 0 ? ticketsBadge : undefined },
             { name: t('nav_admin_news'), href: '/admin/news', icon: PenSquare, feature: null },
         ],
     }
@@ -296,12 +299,12 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
         // Phase 38 — Talent Community = five contractor-lifecycle elements (TCM + admin), then the
         // separate Komunikacja group (administracja@ inbox/helpdesk + News composer).
         if (isTalentCommunity || isAdmin) {
-            out.push(talentCommunityGroup)
+            out.push(peopleOpsGroup)
             out.push(komunikacjaGroup)
         }
-        // Internal-employee onboarding/exit (a DIFFERENT population from contractors) is reachable by
-        // the whole HR-zone now, including TCM + admin — its own "Pracownicy wewnętrzni" group.
-        if (isHrZone) out.push(lifecycleGroup)
+        // Internal-employee onboarding/exit (DIFFERENT population from contractors) — osobny link tylko dla
+        // HR-zone BEZ TCM/admin (manager/internal/finanse). TCM+admin mają to w module People Ops.
+        if (isHrZone && !isTalentCommunity && !isAdmin) out.push(lifecycleGroup)
         // Platform administration sits last (admin only).
         if (isAdmin) out.push(adminGroup)
         return out
