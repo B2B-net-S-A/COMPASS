@@ -14,828 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      placement_person_aliases: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          id: string
-          profile_id: string
-          raw_name_norm: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          profile_id: string
-          raw_name_norm: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          profile_id?: string
-          raw_name_norm?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "placement_person_aliases_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placement_person_aliases_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      placements: {
-        Row: {
-          bonus_eligible_date: string
-          cancel_reason: string | null
-          cancelled_at: string | null
-          cancelled_by: string | null
-          client_name: string
-          consultant_name: string
-          cost_rate: number
-          created_at: string
-          delivery_lead_id: string
-          delivery_lead_raw: string
-          dl_bonus_amount: number
-          dl_bonus_id: string | null
-          hours_confirmed_at: string | null
-          hours_confirmed_by: string | null
-          id: string
-          imported_by: string | null
-          last_import_batch_id: string | null
-          margin_per_hour: number
-          monthly_margin: number
-          position: string | null
-          recruiter_bonus_amount: number
-          recruiter_bonus_id: string | null
-          recruiter_id: string
-          recruiter_raw: string
-          recruiter_tier: number
-          revenue_rate: number
-          signing_date: string | null
-          start_date: string
-          status: string
-          tcm_ticket_id: string | null
-          contractor_id: string | null
-          guarantee: string | null
-          note_am: string | null
-          note_billing: string | null
-          note_hr: string | null
-          order_number: string | null
-          order_term: string | null
-          updated_at: string
-        }
-        Insert: {
-          bonus_eligible_date: string
-          cancel_reason?: string | null
-          cancelled_at?: string | null
-          cancelled_by?: string | null
-          client_name: string
-          consultant_name: string
-          cost_rate: number
-          created_at?: string
-          delivery_lead_id: string
-          delivery_lead_raw: string
-          dl_bonus_amount: number
-          dl_bonus_id?: string | null
-          hours_confirmed_at?: string | null
-          hours_confirmed_by?: string | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          margin_per_hour: number
-          monthly_margin: number
-          position?: string | null
-          recruiter_bonus_amount: number
-          recruiter_bonus_id?: string | null
-          recruiter_id: string
-          recruiter_raw: string
-          recruiter_tier: number
-          revenue_rate: number
-          signing_date?: string | null
-          start_date: string
-          status?: string
-          tcm_ticket_id?: string | null
-          contractor_id?: string | null
-          guarantee?: string | null
-          note_am?: string | null
-          note_billing?: string | null
-          note_hr?: string | null
-          order_number?: string | null
-          order_term?: string | null
-          updated_at?: string
-        }
-        Update: {
-          bonus_eligible_date?: string
-          cancel_reason?: string | null
-          cancelled_at?: string | null
-          cancelled_by?: string | null
-          client_name?: string
-          consultant_name?: string
-          cost_rate?: number
-          created_at?: string
-          delivery_lead_id?: string
-          delivery_lead_raw?: string
-          dl_bonus_amount?: number
-          dl_bonus_id?: string | null
-          hours_confirmed_at?: string | null
-          hours_confirmed_by?: string | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          margin_per_hour?: number
-          monthly_margin?: number
-          position?: string | null
-          recruiter_bonus_amount?: number
-          recruiter_bonus_id?: string | null
-          recruiter_id?: string
-          recruiter_raw?: string
-          recruiter_tier?: number
-          revenue_rate?: number
-          signing_date?: string | null
-          start_date?: string
-          status?: string
-          tcm_ticket_id?: string | null
-          contractor_id?: string | null
-          guarantee?: string | null
-          note_am?: string | null
-          note_billing?: string | null
-          note_hr?: string | null
-          order_number?: string | null
-          order_term?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "placements_cancelled_by_fkey"
-            columns: ["cancelled_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placements_delivery_lead_id_fkey"
-            columns: ["delivery_lead_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placements_dl_bonus_id_fkey"
-            columns: ["dl_bonus_id"]
-            isOneToOne: false
-            referencedRelation: "bonuses"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placements_hours_confirmed_by_fkey"
-            columns: ["hours_confirmed_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placements_imported_by_fkey"
-            columns: ["imported_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placements_recruiter_bonus_id_fkey"
-            columns: ["recruiter_bonus_id"]
-            isOneToOne: false
-            referencedRelation: "bonuses"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placements_recruiter_id_fkey"
-            columns: ["recruiter_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "placements_tcm_ticket_id_fkey"
-            columns: ["tcm_ticket_id"]
-            isOneToOne: false
-            referencedRelation: "support_tickets"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      contractors: {
-        Row: {
-          created_at: string
-          current_client: string | null
-          current_position: string | null
-          email: string | null
-          full_name: string
-          id: string
-          imported_by: string | null
-          last_import_batch_id: string | null
-          notes: string | null
-          owner_tcm_id: string | null
-          phone: string | null
-          profile_id: string | null
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          current_client?: string | null
-          current_position?: string | null
-          email?: string | null
-          full_name: string
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          notes?: string | null
-          owner_tcm_id?: string | null
-          phone?: string | null
-          profile_id?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          current_client?: string | null
-          current_position?: string | null
-          email?: string | null
-          full_name?: string
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          notes?: string | null
-          owner_tcm_id?: string | null
-          phone?: string | null
-          profile_id?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      contractor_bench: {
-        Row: {
-          benefits: string
-          client_name: string | null
-          consultant_name: string
-          contractor_id: string | null
-          created_at: string
-          created_by: string | null
-          departure_date: string | null
-          departure_id: string | null
-          dismissed_at: string | null
-          id: string
-          notice_date: string | null
-          role: string | null
-          source: string
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          benefits?: string
-          client_name?: string | null
-          consultant_name: string
-          contractor_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          departure_date?: string | null
-          departure_id?: string | null
-          dismissed_at?: string | null
-          id?: string
-          notice_date?: string | null
-          role?: string | null
-          source?: string
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          benefits?: string
-          client_name?: string | null
-          consultant_name?: string
-          contractor_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          departure_date?: string | null
-          departure_id?: string | null
-          dismissed_at?: string | null
-          id?: string
-          notice_date?: string | null
-          role?: string | null
-          source?: string
-          status?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      contractor_tasks: {
-        Row: {
-          assigned_tcm_id: string | null
-          contractor_id: string | null
-          created_at: string
-          created_by: string | null
-          description: string | null
-          due_date: string | null
-          id: string
-          source_ticket_id: string | null
-          status: string
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          assigned_tcm_id?: string | null
-          contractor_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          due_date?: string | null
-          id?: string
-          source_ticket_id?: string | null
-          status?: string
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          assigned_tcm_id?: string | null
-          contractor_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          due_date?: string | null
-          id?: string
-          source_ticket_id?: string | null
-          status?: string
-          title?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      contractor_conversations: {
-        Row: {
-          category: string
-          client_snapshot: string | null
-          contractor_id: string
-          conversation_date: string
-          created_at: string
-          created_by: string | null
-          external_key: string | null
-          follow_up_date: string | null
-          id: string
-          imported_by: string | null
-          last_import_batch_id: string | null
-          note: string | null
-          placement_id: string | null
-          resolved_at: string | null
-          source: string
-          status: string
-          tcm_id: string | null
-          tcm_raw: string | null
-          updated_at: string
-        }
-        Insert: {
-          category?: string
-          client_snapshot?: string | null
-          contractor_id: string
-          conversation_date: string
-          created_at?: string
-          created_by?: string | null
-          external_key?: string | null
-          follow_up_date?: string | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          note?: string | null
-          placement_id?: string | null
-          resolved_at?: string | null
-          source?: string
-          status?: string
-          tcm_id?: string | null
-          tcm_raw?: string | null
-          updated_at?: string
-        }
-        Update: {
-          category?: string
-          client_snapshot?: string | null
-          contractor_id?: string
-          conversation_date?: string
-          created_at?: string
-          created_by?: string | null
-          external_key?: string | null
-          follow_up_date?: string | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          note?: string | null
-          placement_id?: string | null
-          resolved_at?: string | null
-          source?: string
-          status?: string
-          tcm_id?: string | null
-          tcm_raw?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      contractor_onboarding_interviews: {
-        Row: {
-          attachments: Json
-          client_manager_name: string | null
-          client_snapshot: string | null
-          contractor_id: string
-          created_at: string
-          created_by: string | null
-          cs_challenge: string | null
-          cs_client: string | null
-          cs_sector: string | null
-          cs_solution: string | null
-          cs_technologies: string | null
-          doubts_note: string | null
-          duties_note: string | null
-          equipment_note: string | null
-          first_day_note: string | null
-          id: string
-          manager_relation_note: string | null
-          missing_resolved_note: string | null
-          negative_surprise: string | null
-          placement_id: string | null
-          position_snapshot: string | null
-          positive_surprise: string | null
-          reviewed_at: string | null
-          reviewed_by: string | null
-          reviewer_note: string | null
-          scheduled_for: string | null
-          side_projects_interest: boolean | null
-          start_date: string | null
-          status: string
-          submitted_at: string | null
-          system_access_note: string | null
-          tcm_role_note: string | null
-          updated_at: string
-          work_note: string | null
-        }
-        Insert: {
-          attachments?: Json
-          client_manager_name?: string | null
-          client_snapshot?: string | null
-          contractor_id: string
-          created_at?: string
-          created_by?: string | null
-          cs_challenge?: string | null
-          cs_client?: string | null
-          cs_sector?: string | null
-          cs_solution?: string | null
-          cs_technologies?: string | null
-          doubts_note?: string | null
-          duties_note?: string | null
-          equipment_note?: string | null
-          first_day_note?: string | null
-          id?: string
-          manager_relation_note?: string | null
-          missing_resolved_note?: string | null
-          negative_surprise?: string | null
-          placement_id?: string | null
-          position_snapshot?: string | null
-          positive_surprise?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          reviewer_note?: string | null
-          scheduled_for?: string | null
-          side_projects_interest?: boolean | null
-          start_date?: string | null
-          status?: string
-          submitted_at?: string | null
-          system_access_note?: string | null
-          tcm_role_note?: string | null
-          updated_at?: string
-          work_note?: string | null
-        }
-        Update: {
-          attachments?: Json
-          client_manager_name?: string | null
-          client_snapshot?: string | null
-          contractor_id?: string
-          created_at?: string
-          created_by?: string | null
-          cs_challenge?: string | null
-          cs_client?: string | null
-          cs_sector?: string | null
-          cs_solution?: string | null
-          cs_technologies?: string | null
-          doubts_note?: string | null
-          duties_note?: string | null
-          equipment_note?: string | null
-          first_day_note?: string | null
-          id?: string
-          manager_relation_note?: string | null
-          missing_resolved_note?: string | null
-          negative_surprise?: string | null
-          placement_id?: string | null
-          position_snapshot?: string | null
-          positive_surprise?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          reviewer_note?: string | null
-          scheduled_for?: string | null
-          side_projects_interest?: boolean | null
-          start_date?: string | null
-          status?: string
-          submitted_at?: string | null
-          system_access_note?: string | null
-          tcm_role_note?: string | null
-          updated_at?: string
-          work_note?: string | null
-        }
-        Relationships: []
-      }
-      contractor_exit_interviews: {
-        Row: {
-          attachments: Json
-          can_extend_departure: boolean | null
-          can_retain_transfer: boolean | null
-          causes: string | null
-          client_snapshot: string | null
-          contractor_id: string
-          created_at: string
-          created_by: string | null
-          end_date: string | null
-          extend_departure_note: string | null
-          feedback_lessons: string | null
-          formal_reason: string | null
-          id: string
-          is_final: boolean | null
-          placement_id: string | null
-          position_snapshot: string | null
-          repair_potential: string | null
-          retain_transfer_note: string | null
-          reviewed_at: string | null
-          reviewed_by: string | null
-          reviewer_note: string | null
-          scheduled_for: string | null
-          start_date: string | null
-          status: string
-          submitted_at: string | null
-          updated_at: string
-        }
-        Insert: {
-          attachments?: Json
-          can_extend_departure?: boolean | null
-          can_retain_transfer?: boolean | null
-          causes?: string | null
-          client_snapshot?: string | null
-          contractor_id: string
-          created_at?: string
-          created_by?: string | null
-          end_date?: string | null
-          extend_departure_note?: string | null
-          feedback_lessons?: string | null
-          formal_reason?: string | null
-          id?: string
-          is_final?: boolean | null
-          placement_id?: string | null
-          position_snapshot?: string | null
-          repair_potential?: string | null
-          retain_transfer_note?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          reviewer_note?: string | null
-          scheduled_for?: string | null
-          start_date?: string | null
-          status?: string
-          submitted_at?: string | null
-          updated_at?: string
-        }
-        Update: {
-          attachments?: Json
-          can_extend_departure?: boolean | null
-          can_retain_transfer?: boolean | null
-          causes?: string | null
-          client_snapshot?: string | null
-          contractor_id?: string
-          created_at?: string
-          created_by?: string | null
-          end_date?: string | null
-          extend_departure_note?: string | null
-          feedback_lessons?: string | null
-          formal_reason?: string | null
-          id?: string
-          is_final?: boolean | null
-          placement_id?: string | null
-          position_snapshot?: string | null
-          repair_potential?: string | null
-          retain_transfer_note?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          reviewer_note?: string | null
-          scheduled_for?: string | null
-          start_date?: string | null
-          status?: string
-          submitted_at?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      client_entries: {
-        Row: {
-          client_name: string
-          consultant_name: string
-          contractor_id: string | null
-          cost_rate: number | null
-          created_at: string
-          delivery_lead_id: string | null
-          delivery_lead_raw: string | null
-          external_key: string | null
-          guarantee: string | null
-          id: string
-          imported_by: string | null
-          last_import_batch_id: string | null
-          monthly_margin: number | null
-          note_am: string | null
-          note_billing: string | null
-          note_hr: string | null
-          order_number: string | null
-          order_term: string | null
-          position: string | null
-          recruiter_id: string | null
-          recruiter_raw: string | null
-          revenue_rate: number | null
-          signing_date: string | null
-          source: string
-          start_date: string | null
-          updated_at: string
-        }
-        Insert: {
-          client_name: string
-          consultant_name: string
-          contractor_id?: string | null
-          cost_rate?: number | null
-          created_at?: string
-          delivery_lead_id?: string | null
-          delivery_lead_raw?: string | null
-          external_key?: string | null
-          guarantee?: string | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          monthly_margin?: number | null
-          note_am?: string | null
-          note_billing?: string | null
-          note_hr?: string | null
-          order_number?: string | null
-          order_term?: string | null
-          position?: string | null
-          recruiter_id?: string | null
-          recruiter_raw?: string | null
-          revenue_rate?: number | null
-          signing_date?: string | null
-          source?: string
-          start_date?: string | null
-          updated_at?: string
-        }
-        Update: {
-          client_name?: string
-          consultant_name?: string
-          contractor_id?: string | null
-          cost_rate?: number | null
-          created_at?: string
-          delivery_lead_id?: string | null
-          delivery_lead_raw?: string | null
-          external_key?: string | null
-          guarantee?: string | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          monthly_margin?: number | null
-          note_am?: string | null
-          note_billing?: string | null
-          note_hr?: string | null
-          order_number?: string | null
-          order_term?: string | null
-          position?: string | null
-          recruiter_id?: string | null
-          recruiter_raw?: string | null
-          revenue_rate?: number | null
-          signing_date?: string | null
-          source?: string
-          start_date?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      client_departures: {
-        Row: {
-          client_name: string
-          comment: string | null
-          consultant_name: string
-          contractor_id: string | null
-          cost_rate: number | null
-          created_at: string
-          created_by: string | null
-          departure_date: string | null
-          external_key: string | null
-          guarantee_ratio: number | null
-          id: string
-          imported_by: string | null
-          last_import_batch_id: string | null
-          last_notice_day: string | null
-          manager_raw: string | null
-          monthly_margin: number | null
-          note_am: string | null
-          note_hr: string | null
-          order_number: string | null
-          order_term: string | null
-          placement_id: string | null
-          position: string | null
-          reason: string | null
-          recruiter_id: string | null
-          recruiter_raw: string | null
-          replacement: boolean
-          revenue_rate: number | null
-          source: string
-          start_date: string | null
-          transferred: boolean
-          updated_at: string
-          who_resigned: string | null
-        }
-        Insert: {
-          client_name: string
-          comment?: string | null
-          consultant_name: string
-          contractor_id?: string | null
-          cost_rate?: number | null
-          created_at?: string
-          created_by?: string | null
-          departure_date?: string | null
-          external_key?: string | null
-          guarantee_ratio?: number | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          last_notice_day?: string | null
-          manager_raw?: string | null
-          monthly_margin?: number | null
-          note_am?: string | null
-          note_hr?: string | null
-          order_number?: string | null
-          order_term?: string | null
-          placement_id?: string | null
-          position?: string | null
-          reason?: string | null
-          recruiter_id?: string | null
-          recruiter_raw?: string | null
-          replacement?: boolean
-          revenue_rate?: number | null
-          source?: string
-          start_date?: string | null
-          transferred?: boolean
-          updated_at?: string
-          who_resigned?: string | null
-        }
-        Update: {
-          client_name?: string
-          comment?: string | null
-          consultant_name?: string
-          contractor_id?: string | null
-          cost_rate?: number | null
-          created_at?: string
-          created_by?: string | null
-          departure_date?: string | null
-          external_key?: string | null
-          guarantee_ratio?: number | null
-          id?: string
-          imported_by?: string | null
-          last_import_batch_id?: string | null
-          last_notice_day?: string | null
-          manager_raw?: string | null
-          monthly_margin?: number | null
-          note_am?: string | null
-          note_hr?: string | null
-          order_number?: string | null
-          order_term?: string | null
-          placement_id?: string | null
-          position?: string | null
-          reason?: string | null
-          recruiter_id?: string | null
-          recruiter_raw?: string | null
-          replacement?: boolean
-          revenue_rate?: number | null
-          source?: string
-          start_date?: string | null
-          transferred?: boolean
-          updated_at?: string
-          who_resigned?: string | null
-        }
-        Relationships: []
-      }
       admin_access_list: {
         Row: {
           added_by: string | null
@@ -987,58 +165,112 @@ export type Database = {
       bonuses: {
         Row: {
           amount: number
+          attachment_filename: string | null
+          attachment_mime: string | null
+          attachment_path: string | null
+          attachment_size_bytes: number | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
+          category: string
+          client_name: string | null
           created_at: string
           currency: string
+          custom_email_memo: string | null
+          delivery_candidate_name: string | null
+          delivery_consultant_id: string | null
+          delivery_margin_amount: number | null
+          delivery_margin_percent: number | null
           id: string
           linked_invoice_id: string | null
           notes: string | null
           paid_at: string | null
           period_month: number | null
+          period_quarter: number | null
           period_year: number | null
+          place_rank: number | null
           proposed_by: string
           reason: string
           recipient_user_id: string
+          recruiter_calculated_tier: number | null
+          recruiter_candidate_name: string | null
+          recruiter_margin_per_hour: number | null
+          sales_client_name: string | null
+          sales_service_description: string | null
           status: string
           updated_at: string
         }
         Insert: {
           amount: number
+          attachment_filename?: string | null
+          attachment_mime?: string | null
+          attachment_path?: string | null
+          attachment_size_bytes?: number | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          category?: string
+          client_name?: string | null
           created_at?: string
           currency?: string
+          custom_email_memo?: string | null
+          delivery_candidate_name?: string | null
+          delivery_consultant_id?: string | null
+          delivery_margin_amount?: number | null
+          delivery_margin_percent?: number | null
           id?: string
           linked_invoice_id?: string | null
           notes?: string | null
           paid_at?: string | null
           period_month?: number | null
+          period_quarter?: number | null
           period_year?: number | null
+          place_rank?: number | null
           proposed_by: string
           reason: string
           recipient_user_id: string
+          recruiter_calculated_tier?: number | null
+          recruiter_candidate_name?: string | null
+          recruiter_margin_per_hour?: number | null
+          sales_client_name?: string | null
+          sales_service_description?: string | null
           status?: string
           updated_at?: string
         }
         Update: {
           amount?: number
+          attachment_filename?: string | null
+          attachment_mime?: string | null
+          attachment_path?: string | null
+          attachment_size_bytes?: number | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          category?: string
+          client_name?: string | null
           created_at?: string
           currency?: string
+          custom_email_memo?: string | null
+          delivery_candidate_name?: string | null
+          delivery_consultant_id?: string | null
+          delivery_margin_amount?: number | null
+          delivery_margin_percent?: number | null
           id?: string
           linked_invoice_id?: string | null
           notes?: string | null
           paid_at?: string | null
           period_month?: number | null
+          period_quarter?: number | null
           period_year?: number | null
+          place_rank?: number | null
           proposed_by?: string
           reason?: string
           recipient_user_id?: string
+          recruiter_calculated_tier?: number | null
+          recruiter_candidate_name?: string | null
+          recruiter_margin_per_hour?: number | null
+          sales_client_name?: string | null
+          sales_service_description?: string | null
           status?: string
           updated_at?: string
         }
@@ -1046,6 +278,13 @@ export type Database = {
           {
             foreignKeyName: "bonuses_cancelled_by_fkey"
             columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bonuses_delivery_consultant_id_fkey"
+            columns: ["delivery_consultant_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1070,7 +309,296 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          }
+          },
+        ]
+      }
+      client_departures: {
+        Row: {
+          client_name: string
+          comment: string | null
+          consultant_name: string
+          contractor_id: string | null
+          cost_rate: number | null
+          created_at: string
+          created_by: string | null
+          departure_date: string | null
+          external_key: string | null
+          guarantee_ratio: number | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          last_notice_day: string | null
+          manager_raw: string | null
+          monthly_margin: number | null
+          note_am: string | null
+          note_hr: string | null
+          order_number: string | null
+          order_term: string | null
+          placement_id: string | null
+          position: string | null
+          reason: string | null
+          recruiter_id: string | null
+          recruiter_raw: string | null
+          replacement: boolean
+          revenue_rate: number | null
+          source: string
+          start_date: string | null
+          transferred: boolean
+          updated_at: string
+          who_resigned: string | null
+        }
+        Insert: {
+          client_name: string
+          comment?: string | null
+          consultant_name: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          external_key?: string | null
+          guarantee_ratio?: number | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          last_notice_day?: string | null
+          manager_raw?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          placement_id?: string | null
+          position?: string | null
+          reason?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          replacement?: boolean
+          revenue_rate?: number | null
+          source?: string
+          start_date?: string | null
+          transferred?: boolean
+          updated_at?: string
+          who_resigned?: string | null
+        }
+        Update: {
+          client_name?: string
+          comment?: string | null
+          consultant_name?: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          external_key?: string | null
+          guarantee_ratio?: number | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          last_notice_day?: string | null
+          manager_raw?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          placement_id?: string | null
+          position?: string | null
+          reason?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          replacement?: boolean
+          revenue_rate?: number | null
+          source?: string
+          start_date?: string | null
+          transferred?: boolean
+          updated_at?: string
+          who_resigned?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_departures_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_departures_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_departures_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_departures_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_departures_recruiter_id_fkey"
+            columns: ["recruiter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_entries: {
+        Row: {
+          client_name: string
+          consultant_name: string
+          contractor_id: string | null
+          cost_rate: number | null
+          created_at: string
+          delivery_lead_id: string | null
+          delivery_lead_raw: string | null
+          external_key: string | null
+          guarantee: string | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          monthly_margin: number | null
+          note_am: string | null
+          note_billing: string | null
+          note_hr: string | null
+          order_number: string | null
+          order_term: string | null
+          position: string | null
+          recruiter_id: string | null
+          recruiter_raw: string | null
+          revenue_rate: number | null
+          signing_date: string | null
+          source: string
+          start_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_name: string
+          consultant_name: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          delivery_lead_id?: string | null
+          delivery_lead_raw?: string | null
+          external_key?: string | null
+          guarantee?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          position?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          revenue_rate?: number | null
+          signing_date?: string | null
+          source?: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_name?: string
+          consultant_name?: string
+          contractor_id?: string | null
+          cost_rate?: number | null
+          created_at?: string
+          delivery_lead_id?: string | null
+          delivery_lead_raw?: string | null
+          external_key?: string | null
+          guarantee?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          monthly_margin?: number | null
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          position?: string | null
+          recruiter_id?: string | null
+          recruiter_raw?: string | null
+          revenue_rate?: number | null
+          signing_date?: string | null
+          source?: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_entries_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_entries_delivery_lead_id_fkey"
+            columns: ["delivery_lead_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_entries_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_entries_recruiter_id_fkey"
+            columns: ["recruiter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clients_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       compass_assist_knowledge: {
@@ -1081,7 +609,6 @@ export type Database = {
           embedding: string | null
           id: string
           is_active: boolean | null
-          metadata: Json | null
           source_id: string | null
           source_type: string | null
           tags: string[] | null
@@ -1095,7 +622,6 @@ export type Database = {
           embedding?: string | null
           id?: string
           is_active?: boolean | null
-          metadata?: Json | null
           source_id?: string | null
           source_type?: string | null
           tags?: string[] | null
@@ -1109,7 +635,6 @@ export type Database = {
           embedding?: string | null
           id?: string
           is_active?: boolean | null
-          metadata?: Json | null
           source_id?: string | null
           source_type?: string | null
           tags?: string[] | null
@@ -1150,6 +675,584 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      contractor_bench: {
+        Row: {
+          benefits: string
+          client_name: string | null
+          consultant_name: string
+          contractor_id: string | null
+          created_at: string
+          created_by: string | null
+          departure_date: string | null
+          departure_id: string | null
+          dismissed_at: string | null
+          id: string
+          notice_date: string | null
+          role: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          benefits?: string
+          client_name?: string | null
+          consultant_name: string
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          departure_id?: string | null
+          dismissed_at?: string | null
+          id?: string
+          notice_date?: string | null
+          role?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          benefits?: string
+          client_name?: string | null
+          consultant_name?: string
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          departure_id?: string | null
+          dismissed_at?: string | null
+          id?: string
+          notice_date?: string | null
+          role?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_bench_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_bench_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_bench_departure_id_fkey"
+            columns: ["departure_id"]
+            isOneToOne: false
+            referencedRelation: "client_departures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_conversations: {
+        Row: {
+          category: string
+          client_snapshot: string | null
+          contractor_id: string
+          conversation_date: string
+          created_at: string
+          created_by: string | null
+          external_key: string | null
+          follow_up_date: string | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          note: string | null
+          placement_id: string | null
+          resolved_at: string | null
+          source: string
+          status: string
+          tcm_id: string | null
+          tcm_raw: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          client_snapshot?: string | null
+          contractor_id: string
+          conversation_date: string
+          created_at?: string
+          created_by?: string | null
+          external_key?: string | null
+          follow_up_date?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          note?: string | null
+          placement_id?: string | null
+          resolved_at?: string | null
+          source?: string
+          status?: string
+          tcm_id?: string | null
+          tcm_raw?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          client_snapshot?: string | null
+          contractor_id?: string
+          conversation_date?: string
+          created_at?: string
+          created_by?: string | null
+          external_key?: string | null
+          follow_up_date?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          note?: string | null
+          placement_id?: string | null
+          resolved_at?: string | null
+          source?: string
+          status?: string
+          tcm_id?: string | null
+          tcm_raw?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_conversations_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_conversations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_conversations_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_conversations_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_conversations_tcm_id_fkey"
+            columns: ["tcm_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_exit_interviews: {
+        Row: {
+          attachments: Json
+          can_extend_departure: boolean | null
+          can_retain_transfer: boolean | null
+          causes: string | null
+          client_snapshot: string | null
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          end_date: string | null
+          extend_departure_note: string | null
+          feedback_lessons: string | null
+          formal_reason: string | null
+          id: string
+          is_final: boolean | null
+          placement_id: string | null
+          position_snapshot: string | null
+          repair_potential: string | null
+          retain_transfer_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          scheduled_for: string | null
+          start_date: string | null
+          status: string
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          attachments?: Json
+          can_extend_departure?: boolean | null
+          can_retain_transfer?: boolean | null
+          causes?: string | null
+          client_snapshot?: string | null
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string | null
+          extend_departure_note?: string | null
+          feedback_lessons?: string | null
+          formal_reason?: string | null
+          id?: string
+          is_final?: boolean | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          repair_potential?: string | null
+          retain_transfer_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attachments?: Json
+          can_extend_departure?: boolean | null
+          can_retain_transfer?: boolean | null
+          causes?: string | null
+          client_snapshot?: string | null
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string | null
+          extend_departure_note?: string | null
+          feedback_lessons?: string | null
+          formal_reason?: string | null
+          id?: string
+          is_final?: boolean | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          repair_potential?: string | null
+          retain_transfer_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_exit_interviews_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_exit_interviews_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_exit_interviews_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_exit_interviews_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_onboarding_interviews: {
+        Row: {
+          attachments: Json
+          client_manager_name: string | null
+          client_snapshot: string | null
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          cs_challenge: string | null
+          cs_client: string | null
+          cs_sector: string | null
+          cs_solution: string | null
+          cs_technologies: string | null
+          doubts_note: string | null
+          duties_note: string | null
+          equipment_note: string | null
+          first_day_note: string | null
+          id: string
+          manager_relation_note: string | null
+          missing_resolved_note: string | null
+          negative_surprise: string | null
+          placement_id: string | null
+          position_snapshot: string | null
+          positive_surprise: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          scheduled_for: string | null
+          side_projects_interest: boolean | null
+          start_date: string | null
+          status: string
+          submitted_at: string | null
+          system_access_note: string | null
+          tcm_role_note: string | null
+          updated_at: string
+          work_note: string | null
+        }
+        Insert: {
+          attachments?: Json
+          client_manager_name?: string | null
+          client_snapshot?: string | null
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          cs_challenge?: string | null
+          cs_client?: string | null
+          cs_sector?: string | null
+          cs_solution?: string | null
+          cs_technologies?: string | null
+          doubts_note?: string | null
+          duties_note?: string | null
+          equipment_note?: string | null
+          first_day_note?: string | null
+          id?: string
+          manager_relation_note?: string | null
+          missing_resolved_note?: string | null
+          negative_surprise?: string | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          positive_surprise?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          side_projects_interest?: boolean | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          system_access_note?: string | null
+          tcm_role_note?: string | null
+          updated_at?: string
+          work_note?: string | null
+        }
+        Update: {
+          attachments?: Json
+          client_manager_name?: string | null
+          client_snapshot?: string | null
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          cs_challenge?: string | null
+          cs_client?: string | null
+          cs_sector?: string | null
+          cs_solution?: string | null
+          cs_technologies?: string | null
+          doubts_note?: string | null
+          duties_note?: string | null
+          equipment_note?: string | null
+          first_day_note?: string | null
+          id?: string
+          manager_relation_note?: string | null
+          missing_resolved_note?: string | null
+          negative_surprise?: string | null
+          placement_id?: string | null
+          position_snapshot?: string | null
+          positive_surprise?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          side_projects_interest?: boolean | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          system_access_note?: string | null
+          tcm_role_note?: string | null
+          updated_at?: string
+          work_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_onboarding_interviews_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_onboarding_interviews_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_onboarding_interviews_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_onboarding_interviews_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_tasks: {
+        Row: {
+          assigned_tcm_id: string | null
+          contractor_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          source_ticket_id: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_tcm_id?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          source_ticket_id?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_tcm_id?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          source_ticket_id?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_tasks_assigned_tcm_id_fkey"
+            columns: ["assigned_tcm_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_tasks_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_tasks_source_ticket_id_fkey"
+            columns: ["source_ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractors: {
+        Row: {
+          created_at: string
+          current_client: string | null
+          current_position: string | null
+          email: string | null
+          full_name: string
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          notes: string | null
+          owner_tcm_id: string | null
+          phone: string | null
+          profile_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_client?: string | null
+          current_position?: string | null
+          email?: string | null
+          full_name: string
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          notes?: string | null
+          owner_tcm_id?: string | null
+          phone?: string | null
+          profile_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_client?: string | null
+          current_position?: string | null
+          email?: string | null
+          full_name?: string
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          notes?: string | null
+          owner_tcm_id?: string | null
+          phone?: string | null
+          profile_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractors_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractors_owner_tcm_id_fkey"
+            columns: ["owner_tcm_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractors_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       contracts: {
         Row: {
@@ -1907,6 +2010,351 @@ export type Database = {
           },
         ]
       }
+      exit_cases: {
+        Row: {
+          attachments: Json
+          cancelled_at: string | null
+          cancelled_by: string | null
+          cancelled_reason: string | null
+          client_snapshot: string | null
+          contractor_form: Json
+          created_at: string
+          created_by: string | null
+          department_snapshot: string | null
+          end_date: string | null
+          exit_reason: string | null
+          exit_reason_detail: string | null
+          id: string
+          is_anonymous: boolean
+          knowledge_transfer_notes: string | null
+          manager_snapshot: string | null
+          nps_score: number | null
+          person_id: string | null
+          person_type: string
+          placement_id: string | null
+          position_snapshot: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          role_snapshot: string | null
+          satisfaction_manager: number | null
+          satisfaction_projects: number | null
+          satisfaction_team: number | null
+          scheduled_for: string | null
+          start_date: string | null
+          status: string
+          submitted_at: string | null
+          tenure_months: number | null
+          updated_at: string
+          what_to_improve: string | null
+          what_worked: string | null
+          would_recommend: boolean | null
+        }
+        Insert: {
+          attachments?: Json
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          client_snapshot?: string | null
+          contractor_form?: Json
+          created_at?: string
+          created_by?: string | null
+          department_snapshot?: string | null
+          end_date?: string | null
+          exit_reason?: string | null
+          exit_reason_detail?: string | null
+          id?: string
+          is_anonymous?: boolean
+          knowledge_transfer_notes?: string | null
+          manager_snapshot?: string | null
+          nps_score?: number | null
+          person_id?: string | null
+          person_type: string
+          placement_id?: string | null
+          position_snapshot?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          role_snapshot?: string | null
+          satisfaction_manager?: number | null
+          satisfaction_projects?: number | null
+          satisfaction_team?: number | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          tenure_months?: number | null
+          updated_at?: string
+          what_to_improve?: string | null
+          what_worked?: string | null
+          would_recommend?: boolean | null
+        }
+        Update: {
+          attachments?: Json
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          client_snapshot?: string | null
+          contractor_form?: Json
+          created_at?: string
+          created_by?: string | null
+          department_snapshot?: string | null
+          end_date?: string | null
+          exit_reason?: string | null
+          exit_reason_detail?: string | null
+          id?: string
+          is_anonymous?: boolean
+          knowledge_transfer_notes?: string | null
+          manager_snapshot?: string | null
+          nps_score?: number | null
+          person_id?: string | null
+          person_type?: string
+          placement_id?: string | null
+          position_snapshot?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          role_snapshot?: string | null
+          satisfaction_manager?: number | null
+          satisfaction_projects?: number | null
+          satisfaction_team?: number | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          submitted_at?: string | null
+          tenure_months?: number | null
+          updated_at?: string
+          what_to_improve?: string | null
+          what_worked?: string | null
+          would_recommend?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exit_cases_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_cases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_cases_manager_snapshot_fkey"
+            columns: ["manager_snapshot"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_cases_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exit_interview_attachments: {
+        Row: {
+          file_hash: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          interview_id: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          file_hash?: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          id?: string
+          interview_id: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          file_hash?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          interview_id?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exit_interview_attachments_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "exit_interviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_interview_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exit_interviews: {
+        Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          department_snapshot: string | null
+          exit_reason: string | null
+          exit_reason_detail: string | null
+          id: string
+          invitation_sent_at: string | null
+          invitation_sent_by: string | null
+          is_anonymous: boolean
+          knowledge_transfer_notes: string | null
+          manager_checklist_sent_at: string | null
+          manager_checklist_sent_by: string | null
+          manager_snapshot: string | null
+          nps_score: number | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          role_snapshot: string
+          satisfaction_manager: number | null
+          satisfaction_projects: number | null
+          satisfaction_team: number | null
+          scheduled_for: string | null
+          status: string
+          submitted_at: string | null
+          tenure_months: number | null
+          updated_at: string
+          user_id: string | null
+          what_to_improve: string | null
+          what_worked: string | null
+          would_recommend: boolean | null
+        }
+        Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          department_snapshot?: string | null
+          exit_reason?: string | null
+          exit_reason_detail?: string | null
+          id?: string
+          invitation_sent_at?: string | null
+          invitation_sent_by?: string | null
+          is_anonymous?: boolean
+          knowledge_transfer_notes?: string | null
+          manager_checklist_sent_at?: string | null
+          manager_checklist_sent_by?: string | null
+          manager_snapshot?: string | null
+          nps_score?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          role_snapshot: string
+          satisfaction_manager?: number | null
+          satisfaction_projects?: number | null
+          satisfaction_team?: number | null
+          scheduled_for?: string | null
+          status?: string
+          submitted_at?: string | null
+          tenure_months?: number | null
+          updated_at?: string
+          user_id?: string | null
+          what_to_improve?: string | null
+          what_worked?: string | null
+          would_recommend?: boolean | null
+        }
+        Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          department_snapshot?: string | null
+          exit_reason?: string | null
+          exit_reason_detail?: string | null
+          id?: string
+          invitation_sent_at?: string | null
+          invitation_sent_by?: string | null
+          is_anonymous?: boolean
+          knowledge_transfer_notes?: string | null
+          manager_checklist_sent_at?: string | null
+          manager_checklist_sent_by?: string | null
+          manager_snapshot?: string | null
+          nps_score?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          role_snapshot?: string
+          satisfaction_manager?: number | null
+          satisfaction_projects?: number | null
+          satisfaction_team?: number | null
+          scheduled_for?: string | null
+          status?: string
+          submitted_at?: string | null
+          tenure_months?: number | null
+          updated_at?: string
+          user_id?: string | null
+          what_to_improve?: string | null
+          what_worked?: string | null
+          would_recommend?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exit_interviews_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_interviews_invitation_sent_by_fkey"
+            columns: ["invitation_sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_interviews_manager_checklist_sent_by_fkey"
+            columns: ["manager_checklist_sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_interviews_manager_snapshot_fkey"
+            columns: ["manager_snapshot"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_interviews_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exit_interviews_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       favorite_projects: {
         Row: {
           created_at: string
@@ -1938,6 +2386,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      inbox_sync_state: {
+        Row: {
+          group_id: string | null
+          last_appended: number
+          last_created: number
+          last_error: string | null
+          last_run_at: string | null
+          last_scanned: number
+          last_skipped: number
+          last_synced_at: string
+          mailbox: string
+          mailbox_kind: string
+          updated_at: string
+        }
+        Insert: {
+          group_id?: string | null
+          last_appended?: number
+          last_created?: number
+          last_error?: string | null
+          last_run_at?: string | null
+          last_scanned?: number
+          last_skipped?: number
+          last_synced_at: string
+          mailbox: string
+          mailbox_kind?: string
+          updated_at?: string
+        }
+        Update: {
+          group_id?: string | null
+          last_appended?: number
+          last_created?: number
+          last_error?: string | null
+          last_run_at?: string | null
+          last_scanned?: number
+          last_skipped?: number
+          last_synced_at?: string
+          mailbox?: string
+          mailbox_kind?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       incubator_applications: {
         Row: {
@@ -2343,56 +2833,99 @@ export type Database = {
       leave_requests: {
         Row: {
           created_at: string
+          created_by: string
+          created_on_behalf: boolean
           decided_at: string | null
           decided_by: string | null
           decision_note: string | null
           documentation_url: string | null
           end_date: string
+          graph_oof_set: boolean
+          graph_oof_set_at: string | null
+          graph_oof_skip_reason: string | null
+          graph_sync_error: string | null
           half_day: string | null
           id: string
           leave_type: string
           note: string | null
+          oof_external_message: string | null
+          oof_internal_message: string | null
           outlook_event_id: string | null
+          paid_days: number
+          source: string | null
           start_date: string
           status: string
+          substitute_id: string | null
+          unpaid_days: number
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          created_by: string
+          created_on_behalf?: boolean
           decided_at?: string | null
           decided_by?: string | null
           decision_note?: string | null
           documentation_url?: string | null
           end_date: string
+          graph_oof_set?: boolean
+          graph_oof_set_at?: string | null
+          graph_oof_skip_reason?: string | null
+          graph_sync_error?: string | null
           half_day?: string | null
           id?: string
           leave_type: string
           note?: string | null
+          oof_external_message?: string | null
+          oof_internal_message?: string | null
           outlook_event_id?: string | null
+          paid_days?: number
+          source?: string | null
           start_date: string
           status?: string
+          substitute_id?: string | null
+          unpaid_days?: number
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          created_by?: string
+          created_on_behalf?: boolean
           decided_at?: string | null
           decided_by?: string | null
           decision_note?: string | null
           documentation_url?: string | null
           end_date?: string
+          graph_oof_set?: boolean
+          graph_oof_set_at?: string | null
+          graph_oof_skip_reason?: string | null
+          graph_sync_error?: string | null
           half_day?: string | null
           id?: string
           leave_type?: string
           note?: string | null
+          oof_external_message?: string | null
+          oof_internal_message?: string | null
           outlook_event_id?: string | null
+          paid_days?: number
+          source?: string | null
           start_date?: string
           status?: string
+          substitute_id?: string | null
+          unpaid_days?: number
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "leave_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leave_requests_decided_by_fkey"
             columns: ["decided_by"]
@@ -2401,7 +2934,104 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "leave_requests_substitute_id_fkey"
+            columns: ["substitute_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "leave_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lifecycle_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lifecycle_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lifecycle_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lifecycle_notes: {
+        Row: {
+          author_id: string | null
+          category: string
+          content: string
+          created_at: string
+          id: string
+          is_private: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          category?: string
+          content: string
+          created_at?: string
+          id?: string
+          is_private?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          author_id?: string | null
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          is_private?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lifecycle_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lifecycle_notes_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -2741,6 +3371,731 @@ export type Database = {
         }
         Relationships: []
       }
+      offboarding_tasks: {
+        Row: {
+          category: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          id: string
+          is_required: boolean
+          notes: string | null
+          position: number
+          responsible_role: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_required?: boolean
+          notes?: string | null
+          position?: number
+          responsible_role?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_required?: boolean
+          notes?: string | null
+          position?: number
+          responsible_role?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offboarding_tasks_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offboarding_tasks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_cases: {
+        Row: {
+          attachments: Json
+          cancelled_at: string | null
+          cancelled_by: string | null
+          cancelled_reason: string | null
+          checkin_day1_at: string | null
+          checkin_day1_note: string | null
+          checkin_day1_score: number | null
+          checkin_day30_at: string | null
+          checkin_day30_note: string | null
+          checkin_day30_score: number | null
+          checkin_day7_at: string | null
+          checkin_day7_note: string | null
+          checkin_day7_score: number | null
+          client_snapshot: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          interview: Json
+          owner_id: string | null
+          person_id: string
+          person_type: string
+          placement_id: string | null
+          position_snapshot: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          scheduled_for: string | null
+          start_date: string | null
+          started_at: string | null
+          status: string
+          submitted_at: string | null
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attachments?: Json
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          checkin_day1_at?: string | null
+          checkin_day1_note?: string | null
+          checkin_day1_score?: number | null
+          checkin_day30_at?: string | null
+          checkin_day30_note?: string | null
+          checkin_day30_score?: number | null
+          checkin_day7_at?: string | null
+          checkin_day7_note?: string | null
+          checkin_day7_score?: number | null
+          client_snapshot?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          interview?: Json
+          owner_id?: string | null
+          person_id: string
+          person_type: string
+          placement_id?: string | null
+          position_snapshot?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          started_at?: string | null
+          status?: string
+          submitted_at?: string | null
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attachments?: Json
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          checkin_day1_at?: string | null
+          checkin_day1_note?: string | null
+          checkin_day1_score?: number | null
+          checkin_day30_at?: string | null
+          checkin_day30_note?: string | null
+          checkin_day30_score?: number | null
+          checkin_day7_at?: string | null
+          checkin_day7_note?: string | null
+          checkin_day7_score?: number | null
+          client_snapshot?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          interview?: Json
+          owner_id?: string | null
+          person_id?: string
+          person_type?: string
+          placement_id?: string | null
+          position_snapshot?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          scheduled_for?: string | null
+          start_date?: string | null
+          started_at?: string | null
+          status?: string
+          submitted_at?: string | null
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_cases_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_cases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_cases_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_cases_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_cases_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_progress: {
+        Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          checkin_day1_at: string | null
+          checkin_day1_note: string | null
+          checkin_day1_score: number | null
+          checkin_day30_at: string | null
+          checkin_day30_note: string | null
+          checkin_day30_score: number | null
+          checkin_day7_at: string | null
+          checkin_day7_note: string | null
+          checkin_day7_score: number | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          started_at: string
+          template_id: string
+          updated_at: string
+          user_id: string
+          welcome_email_sent_at: string | null
+          welcome_email_sent_by: string | null
+        }
+        Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          checkin_day1_at?: string | null
+          checkin_day1_note?: string | null
+          checkin_day1_score?: number | null
+          checkin_day30_at?: string | null
+          checkin_day30_note?: string | null
+          checkin_day30_score?: number | null
+          checkin_day7_at?: string | null
+          checkin_day7_note?: string | null
+          checkin_day7_score?: number | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          started_at?: string
+          template_id: string
+          updated_at?: string
+          user_id: string
+          welcome_email_sent_at?: string | null
+          welcome_email_sent_by?: string | null
+        }
+        Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          checkin_day1_at?: string | null
+          checkin_day1_note?: string | null
+          checkin_day1_score?: number | null
+          checkin_day30_at?: string | null
+          checkin_day30_note?: string | null
+          checkin_day30_score?: number | null
+          checkin_day7_at?: string | null
+          checkin_day7_note?: string | null
+          checkin_day7_score?: number | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          started_at?: string
+          template_id?: string
+          updated_at?: string
+          user_id?: string
+          welcome_email_sent_at?: string | null
+          welcome_email_sent_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_progress_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_progress_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_progress_welcome_email_sent_by_fkey"
+            columns: ["welcome_email_sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_tasks: {
+        Row: {
+          category: string
+          completed_at: string | null
+          completed_by: string | null
+          course_slug: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          file_hash: string | null
+          file_path: string | null
+          id: string
+          is_required: boolean
+          notes: string | null
+          position: number
+          progress_id: string
+          requires_file: boolean
+          responsible_role: string
+          template_item_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          completed_at?: string | null
+          completed_by?: string | null
+          course_slug?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          file_hash?: string | null
+          file_path?: string | null
+          id?: string
+          is_required?: boolean
+          notes?: string | null
+          position?: number
+          progress_id: string
+          requires_file?: boolean
+          responsible_role?: string
+          template_item_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          course_slug?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          file_hash?: string | null
+          file_path?: string | null
+          id?: string
+          is_required?: boolean
+          notes?: string | null
+          position?: number
+          progress_id?: string
+          requires_file?: boolean
+          responsible_role?: string
+          template_item_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_tasks_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_tasks_progress_id_fkey"
+            columns: ["progress_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_progress"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_tasks_template_item_id_fkey"
+            columns: ["template_item_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_template_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_template_items: {
+        Row: {
+          category: string
+          course_slug: string | null
+          created_at: string
+          description: string | null
+          due_offset_days: number
+          id: string
+          is_required: boolean
+          position: number
+          requires_file: boolean
+          responsible_role: string
+          template_id: string
+          title: string
+        }
+        Insert: {
+          category: string
+          course_slug?: string | null
+          created_at?: string
+          description?: string | null
+          due_offset_days?: number
+          id?: string
+          is_required?: boolean
+          position: number
+          requires_file?: boolean
+          responsible_role?: string
+          template_id: string
+          title: string
+        }
+        Update: {
+          category?: string
+          course_slug?: string | null
+          created_at?: string
+          description?: string | null
+          due_offset_days?: number
+          id?: string
+          is_required?: boolean
+          position?: number
+          requires_file?: boolean
+          responsible_role?: string
+          template_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_template_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_archived: boolean
+          is_default: boolean
+          name: string
+          target_role: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_archived?: boolean
+          is_default?: boolean
+          name: string
+          target_role: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_archived?: boolean
+          is_default?: boolean
+          name?: string
+          target_role?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      placement_person_aliases: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          profile_id: string
+          raw_name_norm: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          profile_id: string
+          raw_name_norm: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          profile_id?: string
+          raw_name_norm?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placement_person_aliases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placement_person_aliases_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      placements: {
+        Row: {
+          bonus_eligible_date: string
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          client_name: string
+          consultant_name: string
+          contractor_id: string | null
+          cost_rate: number
+          created_at: string
+          delivery_lead_id: string
+          delivery_lead_raw: string
+          dl_bonus_amount: number
+          dl_bonus_id: string | null
+          guarantee: string | null
+          hours_confirmed_at: string | null
+          hours_confirmed_by: string | null
+          id: string
+          imported_by: string | null
+          last_import_batch_id: string | null
+          margin_per_hour: number
+          monthly_margin: number
+          note_am: string | null
+          note_billing: string | null
+          note_hr: string | null
+          order_number: string | null
+          order_term: string | null
+          position: string | null
+          recruiter_bonus_amount: number
+          recruiter_bonus_id: string | null
+          recruiter_id: string
+          recruiter_raw: string
+          recruiter_tier: number
+          revenue_rate: number
+          signing_date: string | null
+          start_date: string
+          status: string
+          tcm_ticket_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          bonus_eligible_date: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          client_name: string
+          consultant_name: string
+          contractor_id?: string | null
+          cost_rate: number
+          created_at?: string
+          delivery_lead_id: string
+          delivery_lead_raw: string
+          dl_bonus_amount: number
+          dl_bonus_id?: string | null
+          guarantee?: string | null
+          hours_confirmed_at?: string | null
+          hours_confirmed_by?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          margin_per_hour: number
+          monthly_margin: number
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          position?: string | null
+          recruiter_bonus_amount: number
+          recruiter_bonus_id?: string | null
+          recruiter_id: string
+          recruiter_raw: string
+          recruiter_tier: number
+          revenue_rate: number
+          signing_date?: string | null
+          start_date: string
+          status?: string
+          tcm_ticket_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bonus_eligible_date?: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          client_name?: string
+          consultant_name?: string
+          contractor_id?: string | null
+          cost_rate?: number
+          created_at?: string
+          delivery_lead_id?: string
+          delivery_lead_raw?: string
+          dl_bonus_amount?: number
+          dl_bonus_id?: string | null
+          guarantee?: string | null
+          hours_confirmed_at?: string | null
+          hours_confirmed_by?: string | null
+          id?: string
+          imported_by?: string | null
+          last_import_batch_id?: string | null
+          margin_per_hour?: number
+          monthly_margin?: number
+          note_am?: string | null
+          note_billing?: string | null
+          note_hr?: string | null
+          order_number?: string | null
+          order_term?: string | null
+          position?: string | null
+          recruiter_bonus_amount?: number
+          recruiter_bonus_id?: string | null
+          recruiter_id?: string
+          recruiter_raw?: string
+          recruiter_tier?: number
+          revenue_rate?: number
+          signing_date?: string | null
+          start_date?: string
+          status?: string
+          tcm_ticket_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "placements_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_delivery_lead_id_fkey"
+            columns: ["delivery_lead_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_dl_bonus_id_fkey"
+            columns: ["dl_bonus_id"]
+            isOneToOne: false
+            referencedRelation: "bonuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_hours_confirmed_by_fkey"
+            columns: ["hours_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_recruiter_bonus_id_fkey"
+            columns: ["recruiter_bonus_id"]
+            isOneToOne: false
+            referencedRelation: "bonuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_recruiter_id_fkey"
+            columns: ["recruiter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "placements_tcm_ticket_id_fkey"
+            columns: ["tcm_ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           ambassador_status: string | null
@@ -2749,6 +4104,7 @@ export type Database = {
           avatar_source: string | null
           avatar_url: string | null
           bio: string | null
+          buddy_id: string | null
           certifications: Json | null
           clock_daily_summary_email: boolean
           created_at: string
@@ -2761,14 +4117,18 @@ export type Database = {
           education: Json | null
           email: string
           embedding: string | null
+          employment_status: string
           employment_type: string | null
           experience_level: string | null
           experience_years: number | null
+          external_notes: string | null
           fte_status: string | null
           full_name: string | null
           gdpr_consent: boolean | null
           github_url: string | null
+          hired_at: string | null
           id: string
+          is_external: boolean
           is_inbox_handler: boolean
           job_title: string | null
           languages: string[] | null
@@ -2776,6 +4136,9 @@ export type Database = {
           learning_streak_current: number
           learning_streak_last_date: string | null
           learning_streak_longest: number
+          leave_carried_over_days: number
+          leave_entitlement_days: number | null
+          leave_used_initial_days: number
           linkedin_url: string | null
           location: string | null
           loyalty_joined_at: string | null
@@ -2796,6 +4159,7 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role"] | null
           sales_support_status: string | null
           skills: string[] | null
+          termination_date: string | null
           verifier_status: string | null
           work_history: Json | null
           work_start_date: string | null
@@ -2807,6 +4171,7 @@ export type Database = {
           avatar_source?: string | null
           avatar_url?: string | null
           bio?: string | null
+          buddy_id?: string | null
           certifications?: Json | null
           clock_daily_summary_email?: boolean
           created_at?: string
@@ -2819,14 +4184,18 @@ export type Database = {
           education?: Json | null
           email: string
           embedding?: string | null
+          employment_status?: string
           employment_type?: string | null
           experience_level?: string | null
           experience_years?: number | null
+          external_notes?: string | null
           fte_status?: string | null
           full_name?: string | null
           gdpr_consent?: boolean | null
           github_url?: string | null
+          hired_at?: string | null
           id: string
+          is_external?: boolean
           is_inbox_handler?: boolean
           job_title?: string | null
           languages?: string[] | null
@@ -2834,6 +4203,9 @@ export type Database = {
           learning_streak_current?: number
           learning_streak_last_date?: string | null
           learning_streak_longest?: number
+          leave_carried_over_days?: number
+          leave_entitlement_days?: number | null
+          leave_used_initial_days?: number
           linkedin_url?: string | null
           location?: string | null
           loyalty_joined_at?: string | null
@@ -2854,6 +4226,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"] | null
           sales_support_status?: string | null
           skills?: string[] | null
+          termination_date?: string | null
           verifier_status?: string | null
           work_history?: Json | null
           work_start_date?: string | null
@@ -2865,6 +4238,7 @@ export type Database = {
           avatar_source?: string | null
           avatar_url?: string | null
           bio?: string | null
+          buddy_id?: string | null
           certifications?: Json | null
           clock_daily_summary_email?: boolean
           created_at?: string
@@ -2877,14 +4251,18 @@ export type Database = {
           education?: Json | null
           email?: string
           embedding?: string | null
+          employment_status?: string
           employment_type?: string | null
           experience_level?: string | null
           experience_years?: number | null
+          external_notes?: string | null
           fte_status?: string | null
           full_name?: string | null
           gdpr_consent?: boolean | null
           github_url?: string | null
+          hired_at?: string | null
           id?: string
+          is_external?: boolean
           is_inbox_handler?: boolean
           job_title?: string | null
           languages?: string[] | null
@@ -2892,6 +4270,9 @@ export type Database = {
           learning_streak_current?: number
           learning_streak_last_date?: string | null
           learning_streak_longest?: number
+          leave_carried_over_days?: number
+          leave_entitlement_days?: number | null
+          leave_used_initial_days?: number
           linkedin_url?: string | null
           location?: string | null
           loyalty_joined_at?: string | null
@@ -2912,11 +4293,19 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"] | null
           sales_support_status?: string | null
           skills?: string[] | null
+          termination_date?: string | null
           verifier_status?: string | null
           work_history?: Json | null
           work_start_date?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_buddy_id_fkey"
+            columns: ["buddy_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_manager_id_fkey"
             columns: ["manager_id"]
@@ -3015,6 +4404,63 @@ export type Database = {
           },
         ]
       }
+      support_article_attachments: {
+        Row: {
+          article_id: string
+          created_at: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          mime_type: string
+          sort_order: number
+          title: string
+          updated_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          article_id: string
+          created_at?: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id?: string
+          mime_type: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          article_id?: string
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_article_attachments_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "support_articles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_article_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       support_articles: {
         Row: {
           author_id: string
@@ -3074,6 +4520,7 @@ export type Database = {
           created_at: string
           icon: string
           id: string
+          is_active: boolean
           name_en: string
           name_pl: string
           slug: string
@@ -3083,6 +4530,7 @@ export type Database = {
           created_at?: string
           icon?: string
           id?: string
+          is_active?: boolean
           name_en: string
           name_pl: string
           slug: string
@@ -3092,6 +4540,7 @@ export type Database = {
           created_at?: string
           icon?: string
           id?: string
+          is_active?: boolean
           name_en?: string
           name_pl?: string
           slug?: string
@@ -3099,14 +4548,156 @@ export type Database = {
         }
         Relationships: []
       }
+      support_category_materials: {
+        Row: {
+          category_id: string
+          created_at: string
+          description: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          mime_type: string
+          sort_order: number
+          title: string
+          updated_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          description?: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          id?: string
+          mime_type: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          description?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_category_materials_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "support_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_category_materials_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_contractor_meta: {
+        Row: {
+          client_snapshot: string | null
+          contractor_id: string | null
+          conversation_category: string | null
+          created_at: string
+          due_date: string | null
+          follow_up_date: string | null
+          kind: string
+          linked_ticket_id: string | null
+          placement_id: string | null
+          source_conversation_id: string | null
+          source_task_id: string | null
+          tcm_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          client_snapshot?: string | null
+          contractor_id?: string | null
+          conversation_category?: string | null
+          created_at?: string
+          due_date?: string | null
+          follow_up_date?: string | null
+          kind: string
+          linked_ticket_id?: string | null
+          placement_id?: string | null
+          source_conversation_id?: string | null
+          source_task_id?: string | null
+          tcm_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          client_snapshot?: string | null
+          contractor_id?: string | null
+          conversation_category?: string | null
+          created_at?: string
+          due_date?: string | null
+          follow_up_date?: string | null
+          kind?: string
+          linked_ticket_id?: string | null
+          placement_id?: string | null
+          source_conversation_id?: string | null
+          source_task_id?: string | null
+          tcm_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_contractor_meta_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_contractor_meta_linked_ticket_id_fkey"
+            columns: ["linked_ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_contractor_meta_tcm_id_fkey"
+            columns: ["tcm_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_contractor_meta_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: true
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       support_inbox_meta: {
         Row: {
           consultant_id: string | null
           created_at: string
           due_date: string
+          email_body_html: string | null
+          email_body_text: string | null
           email_from: string | null
+          email_headers: Json | null
           email_received_at: string | null
+          email_skip_reason: string | null
           email_subject: string | null
+          external_conversation_id: string | null
           external_message_id: string | null
           priority_level: string
           source: string
@@ -3116,9 +4707,14 @@ export type Database = {
           consultant_id?: string | null
           created_at?: string
           due_date: string
+          email_body_html?: string | null
+          email_body_text?: string | null
           email_from?: string | null
+          email_headers?: Json | null
           email_received_at?: string | null
+          email_skip_reason?: string | null
           email_subject?: string | null
+          external_conversation_id?: string | null
           external_message_id?: string | null
           priority_level?: string
           source?: string
@@ -3128,9 +4724,14 @@ export type Database = {
           consultant_id?: string | null
           created_at?: string
           due_date?: string
+          email_body_html?: string | null
+          email_body_text?: string | null
           email_from?: string | null
+          email_headers?: Json | null
           email_received_at?: string | null
+          email_skip_reason?: string | null
           email_subject?: string | null
+          external_conversation_id?: string | null
           external_message_id?: string | null
           priority_level?: string
           source?: string
@@ -3558,6 +5159,10 @@ export type Database = {
           description: string
           hours: number
           id: string
+          is_overtime_override: boolean
+          override_at: string | null
+          override_by: string | null
+          override_reason: string | null
           project: string | null
           source: string
           timesheet_id: string
@@ -3573,6 +5178,10 @@ export type Database = {
           description: string
           hours: number
           id?: string
+          is_overtime_override?: boolean
+          override_at?: string | null
+          override_by?: string | null
+          override_reason?: string | null
           project?: string | null
           source?: string
           timesheet_id: string
@@ -3588,6 +5197,10 @@ export type Database = {
           description?: string
           hours?: number
           id?: string
+          is_overtime_override?: boolean
+          override_at?: string | null
+          override_by?: string | null
+          override_reason?: string | null
           project?: string | null
           source?: string
           timesheet_id?: string
@@ -3603,10 +5216,64 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "timesheet_entries_override_by_fkey"
+            columns: ["override_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "timesheet_entries_timesheet_id_fkey"
             columns: ["timesheet_id"]
             isOneToOne: false
             referencedRelation: "timesheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      timesheet_role_defaults: {
+        Row: {
+          applies_to_role: Database["public"]["Enums"]["user_role"] | null
+          created_at: string
+          created_by: string | null
+          default_description: string
+          id: string
+          is_active: boolean
+          label: string
+          project: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          applies_to_role?: Database["public"]["Enums"]["user_role"] | null
+          created_at?: string
+          created_by?: string | null
+          default_description: string
+          id?: string
+          is_active?: boolean
+          label: string
+          project?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          applies_to_role?: Database["public"]["Enums"]["user_role"] | null
+          created_at?: string
+          created_by?: string | null
+          default_description?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          project?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_role_defaults_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -3661,6 +5328,47 @@ export type Database = {
           },
           {
             foreignKeyName: "timesheet_timers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      timesheet_user_templates: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          name: string
+          project: string | null
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          name: string
+          project?: string | null
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          name?: string
+          project?: string | null
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_user_templates_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -3811,6 +5519,114 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_contract_documents: {
+        Row: {
+          created_at: string
+          description: string | null
+          doc_type: string
+          file_mime: string | null
+          file_name: string
+          file_path: string
+          file_size_bytes: number | null
+          id: string
+          signed_date: string | null
+          uploaded_by: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          doc_type?: string
+          file_mime?: string | null
+          file_name: string
+          file_path: string
+          file_size_bytes?: number | null
+          id?: string
+          signed_date?: string | null
+          uploaded_by: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          doc_type?: string
+          file_mime?: string | null
+          file_name?: string
+          file_path?: string
+          file_size_bytes?: number | null
+          id?: string
+          signed_date?: string | null
+          uploaded_by?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_contract_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_contract_documents_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_rates: {
+        Row: {
+          created_at: string
+          currency: string
+          effective_from: string
+          effective_to: string | null
+          hourly_rate: number
+          id: string
+          reason: string | null
+          set_by: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          effective_from: string
+          effective_to?: string | null
+          hourly_rate: number
+          id?: string
+          reason?: string | null
+          set_by: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          effective_from?: string
+          effective_to?: string | null
+          hourly_rate?: number
+          id?: string
+          reason?: string | null
+          set_by?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_rates_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_rates_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       verification_codes: {
         Row: {
@@ -4090,6 +5906,10 @@ export type Database = {
       }
     }
     Functions: {
+      admin_hard_delete_user: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
       admin_revoke_user_sessions: {
         Args: { target_user_id: string }
         Returns: undefined
@@ -4102,17 +5922,9 @@ export type Database = {
         Args: { p_course_id: string }
         Returns: string
       }
-      create_broadcast_conversation: {
-        Args: {
-          p_name: string
-          p_owner_id: string
-          p_participant_ids: string[]
-        }
-        Returns: string
-      }
-      create_direct_conversation: {
-        Args: { p_target_user_id: string; p_user_id: string }
-        Returns: string
+      can_propose_bonus_for: {
+        Args: { target_user_id: string }
+        Returns: boolean
       }
       create_notification: {
         Args: {
@@ -4137,11 +5949,25 @@ export type Database = {
           question_text: string
         }[]
       }
+      get_user_rate_for_month: {
+        Args: { p_month: number; p_user_id: string; p_year: number }
+        Returns: number
+      }
+      has_hr_zone_access: { Args: never; Returns: boolean }
+      has_lifecycle_access: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
+      is_buddy_of: { Args: { target_user_id: string }; Returns: boolean }
+      is_contractor_category: {
+        Args: { p_category_id: string }
+        Returns: boolean
+      }
       is_finanse_or_admin: { Args: never; Returns: boolean }
       is_inbox_category: { Args: { p_category_id: string }; Returns: boolean }
       is_inbox_handler: { Args: never; Returns: boolean }
       is_internal_or_admin: { Args: never; Returns: boolean }
+      is_manager: { Args: never; Returns: boolean }
+      is_manager_of: { Args: { target_user_id: string }; Returns: boolean }
+      is_talent_community: { Args: never; Returns: boolean }
       is_trainer_or_admin: { Args: never; Returns: boolean }
       match_assist_knowledge: {
         Args: {
@@ -4168,6 +5994,45 @@ export type Database = {
           course_id: string
           similarity: number
         }[]
+      }
+      next_month_first_day: { Args: never; Returns: string }
+      recruiter_bonus_for_margin: { Args: { margin: number }; Returns: number }
+      recruiter_tier_for_margin: { Args: { margin: number }; Returns: number }
+      resolve_role_default: {
+        Args: {
+          target_project: string
+          target_role: Database["public"]["Enums"]["user_role"]
+        }
+        Returns: {
+          applies_to_role: Database["public"]["Enums"]["user_role"]
+          default_description: string
+          id: string
+          label: string
+          project: string
+        }[]
+      }
+      set_user_rate_progression: {
+        Args: {
+          p_currency: string
+          p_entries: Json
+          p_reason: string
+          p_set_by: string
+          p_user_id: string
+        }
+        Returns: number
+      }
+      start_offboarding_for_user: {
+        Args: {
+          p_actor_id?: string
+          p_scheduled_for?: string
+          p_termination_date: string
+          p_user_id: string
+        }
+        Returns: string
+      }
+      start_onboarding_for_user: {
+        Args: { p_actor_id?: string; p_template_id?: string; p_user_id: string }
+        Returns: string
       }
       submit_quiz_attempt: {
         Args: { p_answers: Json; p_course_id: string }
