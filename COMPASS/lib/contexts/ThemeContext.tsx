@@ -44,8 +44,6 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
 
 const STORAGE_KEY = 'compass-theme'
 const MODE_STORAGE_KEY = 'compass-color-mode'
-const SOFT_STORAGE_KEY = 'compass-soft'
-const THEME_IDS: ThemeId[] = ['inframinds', 'qualrix', 'b2bnetwork']
 
 interface ThemeContextValue {
     theme: ThemeId
@@ -55,10 +53,6 @@ interface ThemeContextValue {
     colorMode: ColorMode
     setColorMode: (mode: ColorMode) => void
     toggleColorMode: () => void
-    /** Soft depth mode ([data-soft]) — default ON. */
-    soft: boolean
-    setSoft: (on: boolean) => void
-    toggleSoft: () => void
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -69,9 +63,6 @@ const ThemeContext = createContext<ThemeContextValue>({
     colorMode: 'light',
     setColorMode: () => {},
     toggleColorMode: () => {},
-    soft: true,
-    setSoft: () => {},
-    toggleSoft: () => {},
 })
 
 function buildFaviconSvg(color: string): string {
@@ -107,16 +98,9 @@ function applyColorMode(mode: ColorMode) {
     else root.classList.remove('dark')
 }
 
-function applySoft(on: boolean) {
-    const root = document.documentElement
-    if (on) root.setAttribute('data-soft', 'true')
-    else root.removeAttribute('data-soft')
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setThemeState] = useState<ThemeId>('inframinds')
     const [colorMode, setColorModeState] = useState<ColorMode>('light')
-    const [soft, setSoftState] = useState<boolean>(true)
 
     useEffect(() => {
         try {
@@ -130,11 +114,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
                 setColorModeState(storedMode)
                 applyColorMode(storedMode)
             }
-            // Soft depth mode defaults ON; only an explicit 'false' disables it.
-            const storedSoft = localStorage.getItem(SOFT_STORAGE_KEY)
-            const softOn = storedSoft !== 'false'
-            setSoftState(softOn)
-            applySoft(softOn)
         } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
         // Theme is a per-device UX preference (localStorage only; no DB sync).
     }, [])
@@ -160,28 +139,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         })
     }, [])
 
-    const setSoft = useCallback((on: boolean) => {
-        setSoftState(on)
-        applySoft(on)
-        try { localStorage.setItem(SOFT_STORAGE_KEY, on ? 'true' : 'false') } catch { /* noop */ }
-    }, [])
-
-    const toggleSoft = useCallback(() => {
-        setSoftState(prev => {
-            const next = !prev
-            applySoft(next)
-            try { localStorage.setItem(SOFT_STORAGE_KEY, next ? 'true' : 'false') } catch { /* noop */ }
-            return next
-        })
-    }, [])
-
     const themeConfig = THEMES[theme]
 
     return (
         <ThemeContext.Provider value={{
             theme, themeConfig, setTheme, brandName: themeConfig.brandName,
             colorMode, setColorMode, toggleColorMode,
-            soft, setSoft, toggleSoft,
         }}>
             {children}
         </ThemeContext.Provider>
