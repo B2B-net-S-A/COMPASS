@@ -90,7 +90,8 @@ export async function dispatchConversationToTicket(args: DispatchArgs): Promise<
         if (otherProfile) assigneeName = otherProfile.full_name || otherProfile.email || 'opiekunem'
 
         // Source of truth for "is this person my guardian, and which type?": consultant_assignments
-        const { data: assignment } = await supabase
+        // consultant_assignments is absent from the regenerated types; cast preserves behavior.
+        const { data: assignment } = await (supabase as any)
             .from('consultant_assignments')
             .select('assignment_type')
             .eq('consultant_id', user.id)

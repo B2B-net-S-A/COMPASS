@@ -211,9 +211,9 @@ export async function createNotification(params: {
                 p_type: params.type,
                 p_title_pl: params.titlePl,
                 p_title_en: params.titleEn,
-                p_body_pl: params.bodyPl || null,
-                p_body_en: params.bodyEn || null,
-                p_action_url: params.actionUrl || null,
+                p_body_pl: params.bodyPl || undefined,
+                p_body_en: params.bodyEn || undefined,
+                p_action_url: params.actionUrl || undefined,
                 p_priority: params.priority || 'normal'
             })
 

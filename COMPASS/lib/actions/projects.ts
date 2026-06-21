@@ -24,8 +24,9 @@ export async function deleteProject(projectId: string) {
     // delete z nullable input.
     const { projectId: validId } = parseOrThrow(deleteProjectInputSchema, { projectId })
 
-    // 1. Get project to check for file_url (to delete from storage)
-    const { data: project } = await supabase
+    // 1. Get project to check for file_url (to delete from storage). `file_url` is a legacy column
+    // absent from the regenerated types — cast preserves the storage-cleanup behavior.
+    const { data: project } = await (supabase as any)
         .from('projects')
         .select('file_url')
         .eq('id', validId)
@@ -68,16 +69,17 @@ export async function deleteProjects(projectIds: string[]) {
     // wysłaniem 100k IDs które mogłyby zatkać DB połączenie).
     const { projectIds: validIds } = parseOrThrow(deleteProjectsInputSchema, { projectIds })
 
-    // 1. Get projects to check for file_urls
-    const { data: projects } = await supabase
+    // 1. Get projects to check for file_urls. `file_url` is a legacy column absent from the
+    // regenerated types — cast preserves the storage-cleanup behavior.
+    const { data: projects } = await (supabase as any)
         .from('projects')
         .select('file_url')
         .in('id', validIds)
 
     // 2. Delete files from storage
-    const filesToDelete = projects
-        ?.map(p => p.file_url)
-        .filter((url): url is string => !!url) || []
+    const filesToDelete = (projects ?? [])
+        .map((p: { file_url: string | null }) => p.file_url)
+        .filter((url: string | null): url is string => !!url)
 
     if (filesToDelete.length > 0) {
         await supabase.storage
@@ -136,7 +138,11 @@ export async function getProjectMatchSummary(projectId: string): Promise<Record<
     const { data: project } = await supabase.from('projects').select('embedding').eq('id', projectId).single()
     if (!project?.embedding) return { total: 0, high: 0, medium: 0, low: 0 }
 
-    const { data: candidates, error } = await supabase.rpc('match_candidates', {
+    // NOTE: the candidate-matching feature is legacy ATS — the `match_candidates` RPC and the
+    // `match_results`/`candidates` tables were dropped with the ATS archive (migration
+    // 20260504000001). These casts preserve the (now gracefully-empty) behavior until the feature
+    // is either re-implemented or removed from the projects UI.
+    const { data: candidates, error } = await (supabase as any).rpc('match_candidates', {
         query_embedding: project.embedding,
         match_threshold: 0.3,
         match_count: 50
@@ -167,7 +173,8 @@ export async function getProjectMatches(projectId: string): Promise<ProjectMatch
     if (!project?.embedding) return []
 
     // 2. Call RPC match_candidates (Stage 1)
-    const { data: matches, error } = await supabase.rpc('match_candidates', {
+    // Legacy ATS matching (dropped RPC/tables) — cast preserves graceful-empty behavior.
+    const { data: matches, error } = await (supabase as any).rpc('match_candidates', {
         query_embedding: project.embedding,
         match_threshold: 0.3,
         match_count: 50
@@ -191,7 +198,7 @@ export async function getProjectMatches(projectId: string): Promise<ProjectMatch
         // 3a. Check for existing persisted results (Defensive)
         let persistedResults: { candidate_id: string; score: number; recommendation?: string; reasoning?: string }[] = []
         try {
-            const { data, error: dbErr } = await supabase
+            const { data, error: dbErr } = await (supabase as any)
                 .from('match_results')
                 .select('*')
                 .eq('project_id', projectId)
@@ -238,7 +245,8 @@ export async function getMyProjectMatch(projectId: string): Promise<ProjectMatch
     if (!user) return null
 
     // 1. Check for existing persisted result
-    const { data: existingMatch } = await supabase
+    // match_results is a dropped legacy ATS table — cast preserves graceful behavior.
+    const { data: existingMatch } = await (supabase as any)
         .from('match_results')
         .select('*')
         .eq('project_id', projectId)
@@ -259,7 +267,7 @@ export async function getMyProjectMatch(projectId: string): Promise<ProjectMatch
         id: profile.id,
         full_name: profile.full_name || 'Ja',
         avatar_url: profile.avatar_url || '',
-        job_title: profile.position || 'Konsultant',
+        job_title: (profile as { position?: string | null }).position || 'Konsultant',
         similarity: 0,
     }
 

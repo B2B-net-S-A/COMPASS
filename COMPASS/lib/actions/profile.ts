@@ -4,6 +4,7 @@ import { logCompat } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import type { TablesUpdate } from '@/lib/supabase/database.types'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 import { parseOrThrow } from '@/lib/validators/common'
 import {
@@ -52,7 +53,8 @@ export async function updateUserBio(bio: string) {
     const embedding = await generateEmbedding(validBio)
     const { error } = await supabase
         .from('profiles')
-        .update({ bio: validBio, embedding })
+        // embedding is number[] from the model; pgvector column is typed as string in the generated types
+        .update({ bio: validBio, embedding: embedding as unknown as string })
         .eq('id', user.id)
     if (error) throw new Error(error.message)
 
@@ -88,7 +90,7 @@ export async function updateProfileFull(
 
         const { error } = await supabase
             .from('profiles')
-            .update(updates)
+            .update(updates as unknown as TablesUpdate<'profiles'>)
             .eq('id', user.id)
 
         if (error) {
@@ -97,7 +99,7 @@ export async function updateProfileFull(
             if (looksLikeMissingColumn && updates.phone !== undefined) {
                 const { phone: _p, ...updatesWithoutPhone } = updates
                 logCompat.warn('[ProfileUpdate] Retrying without phone (column may be missing):', _p)
-                const retry = await supabase.from('profiles').update(updatesWithoutPhone).eq('id', user.id)
+                const retry = await supabase.from('profiles').update(updatesWithoutPhone as unknown as TablesUpdate<'profiles'>).eq('id', user.id)
                 if (retry.error) {
                     return { success: false, error: `Błąd zapisu: ${retry.error.message}` }
                 }

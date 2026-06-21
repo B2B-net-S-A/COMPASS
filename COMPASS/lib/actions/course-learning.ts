@@ -320,7 +320,7 @@ export async function submitQuizAttempt(
         })
         if (error) throw error
 
-        const result = data as QuizSubmissionResult
+        const result = data as unknown as QuizSubmissionResult
 
         revalidatePath('/learning/moje')
         revalidatePath('/league')

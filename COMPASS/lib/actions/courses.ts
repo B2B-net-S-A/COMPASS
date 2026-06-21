@@ -337,7 +337,7 @@ export async function getCourseDetail(slugOrId: string): Promise<ActionResult<Co
             ...course,
             author_name: (authorProfile as { full_name?: string } | null)?.full_name ?? null,
             author_avatar_url: (authorProfile as { avatar_url?: string } | null)?.avatar_url ?? null,
-            lessons: ((lessons ?? []) as CourseLesson[]).map((l) => ({
+            lessons: ((lessons ?? []) as unknown as CourseLesson[]).map((l) => ({
                 ...l,
                 attachments: Array.isArray(l.attachments) ? l.attachments : [],
             })),
@@ -391,7 +391,7 @@ export async function getCourseLessons(courseId: string): Promise<ActionResult<C
             .order('order_index', { ascending: true })
 
         if (error) throw error
-        const lessons = ((data ?? []) as CourseLesson[]).map((l) => ({
+        const lessons = ((data ?? []) as unknown as CourseLesson[]).map((l) => ({
             ...l,
             attachments: Array.isArray(l.attachments) ? l.attachments : [],
         }))
@@ -437,7 +437,7 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
                 content_md: input.content_md?.trim() || null,
                 video_url: input.video_url?.trim() || null,
                 estimated_minutes: input.estimated_minutes ?? null,
-                attachments: input.attachments ?? [],
+                attachments: (input.attachments ?? []) as unknown as import('@/lib/supabase/database.types').Json,
             })
             .select('id')
             .single()

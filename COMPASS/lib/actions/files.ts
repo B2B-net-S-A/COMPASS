@@ -364,8 +364,8 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
         // If it's just a candidate record (unlinked), we just update candidate.
         // Assuming candidateId IS the profile/user ID based on previous context.
 
-        // Update 'candidates' table
-        const { error: candidateError } = await supabase
+        // Update 'candidates' table — legacy ATS table absent from the regenerated types; cast preserves behavior.
+        const { error: candidateError } = await (supabase as any)
             .from('candidates')
             .update(candidateUpdate)
             .eq('id', candidateId)
@@ -449,13 +449,13 @@ ${sanitizedText.slice(0, 10000)}`,
         // We probably also want to update the 'profiles' table if it exists
         await supabase.from('profiles').update({
             bio: summary,
-            embedding,
+            embedding: embedding as unknown as string,
             skills: aiData.skills || [],
             previous_clients: aiData.previous_clients || [],
             experience_years: typeof aiData.experience_years === 'number' ? aiData.experience_years : null
         }).eq('id', candidateId)
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await (supabase as any)
             .from('candidates')
             .update(updateData)
             .eq('id', candidateId)

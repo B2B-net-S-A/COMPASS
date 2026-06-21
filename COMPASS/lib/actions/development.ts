@@ -81,7 +81,8 @@ export async function getSkillGaps(): Promise<ProjectsAnalysis> {
 
     if (userSkills.size === 0 && ['admin'].includes(profile?.role || '')) {
         // Admin doesn't have personal skills — use aggregate from candidates to show system works
-        const { data: sampleCandidate } = await supabase
+        // `candidates` is a legacy ATS table absent from the regenerated types; cast preserves behavior.
+        const { data: sampleCandidate } = await (supabase as any)
             .from('candidates')
             .select('skills')
             .not('skills', 'is', null)
@@ -99,7 +100,8 @@ export async function getSkillGaps(): Promise<ProjectsAnalysis> {
 
     if (profile?.embedding) {
         try {
-            const { data: projects } = await supabase.rpc('match_projects', {
+            // match_projects RPC is absent from the regenerated types; cast preserves behavior.
+            const { data: projects } = await (supabase as any).rpc('match_projects', {
                 query_embedding: profile.embedding,
                 match_threshold: 0.3,    // Lower threshold for more results
                 match_count: 20,

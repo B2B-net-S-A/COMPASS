@@ -163,8 +163,10 @@ export async function getOrCreateDirectConversation(targetUserId: string): Promi
         }
     }
 
-    // Create new via RPC (SECURITY DEFINER bypasses the INSERT...RETURNING + SELECT policy conflict)
-    const { data: newConvId, error: createError } = await supabase
+    // Create new via RPC (SECURITY DEFINER bypasses the INSERT...RETURNING + SELECT policy conflict).
+    // create_direct_conversation (migration 20260223_fix_communicator_rls_v2) is absent from the
+    // regenerated types — cast preserves behavior until the types are regenerated against prod.
+    const { data: newConvId, error: createError } = await (supabase as any)
         .rpc('create_direct_conversation', {
             p_user_id: user.id,
             p_target_user_id: targetUserId,
@@ -342,7 +344,8 @@ export async function createBroadcastGroup(name: string, participantIds: string[
         return { id: null, error: 'Only admins can create broadcast groups' }
     }
 
-    const { data: convId, error: convError } = await supabase
+    // create_broadcast_conversation RPC is absent from the regenerated types; cast preserves behavior.
+    const { data: convId, error: convError } = await (supabase as any)
         .rpc('create_broadcast_conversation', {
             p_owner_id: user.id,
             p_name: name,
@@ -369,7 +372,7 @@ export async function sendBroadcastToAll(
 
     // Only admin can send broadcasts
     const { data: myProfile } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).single()
-    if (!myProfile || !['admin'].includes(myProfile.role)) {
+    if (!myProfile || !['admin'].includes(myProfile.role ?? '')) {
         return { error: 'Tylko administrator może wysyłać ogłoszenia', recipientCount: 0 }
     }
 
@@ -385,7 +388,7 @@ export async function sendBroadcastToAll(
 
     // Create broadcast conversation via RPC
     const participantIds = allUsers.map(u => u.id)
-    const { data: convId, error: convError } = await supabase
+    const { data: convId, error: convError } = await (supabase as any)
         .rpc('create_broadcast_conversation', {
             p_owner_id: user.id,
             p_name: title,
@@ -449,7 +452,8 @@ export async function getUnreadGuardianMessages(): Promise<number> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return 0
 
-    const { data: assignments } = await supabase
+    // consultant_assignments is absent from the regenerated types; cast preserves behavior.
+    const { data: assignments } = await (supabase as any)
         .from('consultant_assignments')
         .select('assigned_to')
         .eq('consultant_id', user.id)

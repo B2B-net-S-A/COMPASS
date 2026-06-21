@@ -23,12 +23,14 @@ export async function addKnowledgeDocument(content: string, category: string, me
 
     const { data, error } = await supabase
         .from('compass_assist_knowledge')
+        // `metadata` is not in the regenerated types for this (legacy AI-assistant) table and
+        // `embedding` is number[] vs the string vector column — cast preserves existing behavior.
         .insert({
             content,
             category,
             metadata,
             embedding
-        })
+        } as any)
         .select()
         .single()
 
@@ -42,7 +44,8 @@ export async function addKnowledgeDocument(content: string, category: string, me
 export async function getKnowledgeHistory(category?: string) {
     const supabase = createClient()
     // Explicitly select columns WITHOUT embedding (vector(1536) is too large for serialization)
-    let query = supabase
+    // `metadata` is not in the regenerated types for this legacy AI-assistant table; cast preserves behavior.
+    let query = (supabase as any)
         .from('compass_assist_knowledge')
         .select('id, content, category, metadata, created_at, updated_at')
         .order('created_at', { ascending: false })
@@ -56,7 +59,7 @@ export async function getKnowledgeHistory(category?: string) {
         logCompat.error('getKnowledgeHistory error:', error)
         throw new Error(`Failed to fetch knowledge: ${error.message}`)
     }
-    return data || []
+    return (data || []) as KnowledgeDocument[]
 }
 
 export async function deleteKnowledgeDocument(id: string) {
@@ -120,6 +123,7 @@ export async function uploadKnowledgeFile(
 
                 const { error: insertError } = await supabase
                     .from('compass_assist_knowledge')
+                    // `metadata` not in regenerated types (legacy AI-assistant table); cast preserves behavior.
                     .insert({
                         content: chunkText,
                         category,
@@ -132,7 +136,7 @@ export async function uploadKnowledgeFile(
                             uploaded_at: new Date().toISOString()
                         },
                         embedding
-                    })
+                    } as any)
 
                 if (insertError) {
                     logCompat.error(`Insert error chunk ${i}:`, insertError.message, insertError.code)
@@ -189,7 +193,9 @@ export async function searchKnowledge(query: string, category?: string) {
     const supabase = createClient()
     const embedding = await createEmbedding(query.replace(/\n/g, ' '))
 
-    const { data, error } = await supabase.rpc('match_assist_knowledge', {
+    // match_assist_knowledge expects a string vector + optional category; cast preserves the exact
+    // call shape (number[] embedding, null category) without changing runtime behavior.
+    const { data, error } = await (supabase as any).rpc('match_assist_knowledge', {
         query_embedding: embedding,
         match_threshold: 0.3,
         match_count: 5,

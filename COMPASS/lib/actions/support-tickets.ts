@@ -5,6 +5,7 @@ import { postToTeamsAlert } from '@/lib/teams/webhook'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import type { TablesInsert } from '@/lib/supabase/database.types'
 import type {
     CreateTicketInput,
     SupportActionResult,
@@ -13,6 +14,7 @@ import type {
     SupportTicketDetail,
     SupportComment,
     TicketStatus,
+    TicketPriority,
 } from '@/lib/types/support'
 
 async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
@@ -83,7 +85,7 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportAct
             return { success: false, error: `Wiadomość musi mieć co najmniej ${minBody} ${minBody === 1 ? 'znak' : 'znaki'}` }
         }
 
-        const insertPayload: Record<string, unknown> = {
+        const insertPayload: TablesInsert<'support_tickets'> = {
             user_id: user.id,
             category_id: input.category_id,
             subject: input.subject.trim(),
@@ -297,8 +299,8 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
                 category_id: ticket.category_id,
                 subject: ticket.subject,
                 body_md: ticket.body_md,
-                status: ticket.status,
-                priority: ticket.priority,
+                status: ticket.status as TicketStatus,
+                priority: ticket.priority as TicketPriority,
                 resolved_at: ticket.resolved_at,
                 created_at: ticket.created_at,
                 updated_at: ticket.updated_at,

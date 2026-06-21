@@ -340,7 +340,8 @@ export async function getLoyaltyBreakdown(
             .order('created_at', { ascending: false })
 
         if (txError) throw txError
-        const transactions = allTx || []
+        // created_at is non-null in practice (DB default now()); coerce to satisfy strict typing
+        const transactions = (allTx || []).map(tx => ({ ...tx, created_at: tx.created_at ?? '' }))
 
         // Fetch rules for label/category mapping
         let rules: LoyaltyRule[] = []
@@ -527,7 +528,9 @@ export async function getAllConsultantsLoyalty(): Promise<AllConsultantsLoyaltyR
         const { data, error } = await supabase
             .from('profiles')
             .select('id, full_name, email, role, loyalty_points, loyalty_tier, loyalty_joined_at')
-            .in('role', ['consultant', 'b2b_consultant', 'contractor', 'candidate'])
+            // 'b2b_consultant'/'contractor'/'candidate' are legacy ATS roles no longer in the user_role enum;
+            // cast preserves the historical query (matches nothing in current prod, but harmless).
+            .in('role', ['consultant', 'b2b_consultant', 'contractor', 'candidate'] as unknown as ('consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community')[])
             .order('loyalty_points', { ascending: false })
 
         if (error) throw error
@@ -536,7 +539,7 @@ export async function getAllConsultantsLoyalty(): Promise<AllConsultantsLoyaltyR
             id: p.id,
             full_name: p.full_name,
             email: p.email,
-            role: p.role,
+            role: p.role ?? '',
             loyalty_points: p.loyalty_points || 0,
             loyalty_tier: p.loyalty_tier || DEFAULT_TIER,
             loyalty_joined_at: p.loyalty_joined_at || null,
@@ -915,13 +918,13 @@ export async function getLoyaltyHistoryV2(
         const { data, error, count } = await query
         if (error) throw error
 
-        const items: LoyaltyHistoryEntry[] = (data ?? []).map((t: { id: string; points: number; description: string; source_type: string; status: LoyaltyTxStatus; created_at: string }) => ({
+        const items: LoyaltyHistoryEntry[] = (data ?? []).map((t) => ({
             id: t.id,
             points: t.points,
             description: t.description,
             sourceType: t.source_type,
-            status: t.status ?? 'confirmed',
-            createdAt: t.created_at,
+            status: (t.status ?? 'confirmed') as LoyaltyTxStatus,
+            createdAt: t.created_at ?? '',
         }))
 
         return { success: true, data: { items, total: count ?? items.length } }

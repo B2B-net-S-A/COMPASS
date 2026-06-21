@@ -9,8 +9,8 @@ export async function cleanDuplicateCandidates() {
     try {
         const supabase = createClient()
 
-        // 1. Fetch all candidates
-        const { data: candidates, error } = await supabase
+        // 1. Fetch all candidates — legacy ATS table absent from regenerated types; cast preserves behavior.
+        const { data: candidates, error } = await (supabase as any)
             .from('candidates')
             .select('id, email, full_name, created_at, skills, bio, phone, avatar_url, cv_url')
             .order('created_at', { ascending: true })
@@ -61,12 +61,12 @@ export async function cleanDuplicateCandidates() {
 
         // 3. Apply Updates (Merge Skills)
         for (const update of updates) {
-            await supabase.from('candidates').update({ skills: update.skills }).eq('id', update.id)
+            await (supabase as any).from('candidates').update({ skills: update.skills }).eq('id', update.id)
         }
 
         // 4. Delete duplicates
         if (idsToDelete.length > 0) {
-            const { error: deleteError } = await supabase
+            const { error: deleteError } = await (supabase as any)
                 .from('candidates')
                 .delete()
                 .in('id', idsToDelete)
