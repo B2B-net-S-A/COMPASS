@@ -45,7 +45,7 @@ export function ProgressRing({
                     stroke="currentColor"
                     strokeWidth={strokeWidth}
                     fill="none"
-                    className="text-white/5"
+                    className="text-border"
                 />
                 {/* Progress arc */}
                 <circle

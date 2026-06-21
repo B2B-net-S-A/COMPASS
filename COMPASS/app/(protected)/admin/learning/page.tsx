@@ -54,13 +54,13 @@ export default async function AdminAkademiaPage() {
             </div>
 
             {error && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
                 </Card>
             )}
 
             {!error && items.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center space-y-3">
                         <ShieldCheck className="w-16 h-16 text-muted-foreground mx-auto" />
                         <h2 className="text-xl font-bold">Brak szkoleń do moderacji</h2>
@@ -72,18 +72,18 @@ export default async function AdminAkademiaPage() {
             {items.length > 0 && (
                 <div className="space-y-3">
                     {items.map((c) => (
-                        <Card key={c.id} className="bg-white/5 border-white/10 hover:border-amber-500/40 transition-colors">
+                        <Card key={c.id} className="bg-card border-border hover:border-warning/40 transition-colors">
                             <CardContent className="p-5">
                                 <div className="flex items-start justify-between gap-4 flex-wrap">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                            <Badge variant="outline" className="border-amber-500/30 text-amber-400 bg-amber-500/10 text-[10px]">
+                                            <Badge variant="outline" className="border-warning/30 text-warning bg-warning/10 text-[10px]">
                                                 W moderacji
                                             </Badge>
                                             <Badge variant="outline" className="text-[10px]">
                                                 {c.category}
                                             </Badge>
-                                            <Badge variant="outline" className="text-[10px] border-white/10">
+                                            <Badge variant="outline" className="text-[10px] border-border">
                                                 {c.level}
                                             </Badge>
                                         </div>
@@ -93,7 +93,7 @@ export default async function AdminAkademiaPage() {
                                         )}
                                         <div className="flex flex-wrap gap-1 mt-1">
                                             {c.tags.slice(0, 6).map((t) => (
-                                                <Badge key={t} className="bg-white/5 text-muted-foreground border-0 text-[9px] h-4 px-1">
+                                                <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1">
                                                     {t}
                                                 </Badge>
                                             ))}

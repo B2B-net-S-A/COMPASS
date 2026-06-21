@@ -244,7 +244,7 @@ export function UserManagementPanel() {
                 </Button>
             </div>
 
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 text-xs text-blue-200">
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-info/5 border border-info/20 text-xs text-info">
                 <Mail className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 <span>
                     Reset linki idą przez wbudowany SMTP Supabase (limit ≈2 emaile/godz.). Jeśli user pilnie
@@ -257,7 +257,7 @@ export function UserManagementPanel() {
                 <CardHeader className="space-y-3">
                     <div className="flex flex-wrap items-center gap-3 justify-between">
                         <CardTitle className="text-base flex items-center gap-2">
-                            <ShieldCheck className="h-4 w-4 text-slate-200" />
+                            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                             Użytkownicy ({total})
                         </CardTitle>
                         <div className="relative w-full sm:w-72">
@@ -311,7 +311,7 @@ export function UserManagementPanel() {
                                                         <p className="font-medium text-sm flex items-center gap-1.5">
                                                             {user.full_name || user.email.split('@')[0]}
                                                             {user.is_super_admin && (
-                                                                <Crown className="h-3.5 w-3.5 text-yellow-400" aria-label="Super Admin" />
+                                                                <Crown className="h-3.5 w-3.5 text-warning" aria-label="Super Admin" />
                                                             )}
                                                         </p>
                                                         <p className="text-xs text-muted-foreground">{user.email}</p>
@@ -341,15 +341,15 @@ export function UserManagementPanel() {
                                             </TableCell>
                                             <TableCell>
                                                 {user.is_banned ? (
-                                                    <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30">
+                                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
                                                         Zablokowany
                                                     </Badge>
                                                 ) : user.has_logged_in ? (
-                                                    <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30">
+                                                    <Badge variant="outline" className="bg-success/10 text-success border-success/30">
                                                         Aktywny
                                                     </Badge>
                                                 ) : (
-                                                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30">
+                                                    <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
                                                         Nie logował się
                                                     </Badge>
                                                 )}

@@ -191,10 +191,10 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-3xl font-bold text-white">Projekty</h1>
-                    <Badge variant="outline" className="text-gray-500">
+                    <h1 className="text-3xl font-bold text-foreground">Projekty</h1>
+                    <Badge variant="outline" className="text-muted-foreground">
                         {filteredProjects.length > 0
-                            ? <>Wyświetlanie <span className="text-slate-200 font-semibold">{Math.min((page - 1) * pageSize + 1, filteredProjects.length)}–{Math.min(page * pageSize, filteredProjects.length)}</span> z <span className="text-white font-semibold">{filteredProjects.length}</span>{projects.length !== filteredProjects.length && <span className="text-gray-500"> (ogółem: {projects.length})</span>}</>
+                            ? <>Wyświetlanie <span className="text-foreground font-semibold">{Math.min((page - 1) * pageSize + 1, filteredProjects.length)}–{Math.min(page * pageSize, filteredProjects.length)}</span> z <span className="text-foreground font-semibold">{filteredProjects.length}</span>{projects.length !== filteredProjects.length && <span className="text-muted-foreground"> (ogółem: {projects.length})</span>}</>
                             : `0 projektów`
                         }
                     </Badge>
@@ -206,7 +206,7 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
                             <Button
                                 variant="link"
                                 onClick={() => window.history.replaceState(null, '', window.location.pathname)} // Crude clear but works if we want link, or standard clear param
-                                className="text-xs text-muted-foreground hover:text-white mr-2 h-auto p-0"
+                                className="text-xs text-muted-foreground hover:text-foreground mr-2 h-auto p-0"
                             >
                                 Wyczyść filtry ✕
                             </Button>
@@ -217,14 +217,14 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
                         variant={showOnlyFavorites ? "default" : "outline"}
                         size="sm"
                         onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-                        className={showOnlyFavorites ? "bg-yellow-500 hover:bg-yellow-600 text-white" : "border-white/20 text-gray-400"}
+                        className={showOnlyFavorites ? "bg-warning hover:bg-warning/90 text-white" : "border-border text-muted-foreground"}
                     >
                         <Star className={cn("w-4 h-4 mr-2", showOnlyFavorites && "fill-white")} />
                         Ulubione ({favoriteIds.length})
                     </Button>
                     <ProjectSortSelect />
                     <Button variant="outline" size="sm" onClick={fetchProjects} disabled={loading}
-                        className="border-slate-200/50 text-slate-200 hover:bg-slate-200/10">
+                        className="border-border text-foreground hover:bg-muted">
                         <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                         Odśwież
                     </Button>
@@ -232,9 +232,9 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
             </div>
 
             {selectedProjects.size > 0 && (
-                <div className="sticky top-4 z-10 bg-secondary/90 backdrop-blur-sm border border-slate-200/30 p-4 rounded-lg flex justify-between items-center shadow-lg">
-                    <span className="text-white font-medium">Zaznaczono: {selectedProjects.size}</span>
-                    <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="bg-red-500 hover:bg-red-600 text-white">
+                <div className="sticky top-4 z-10 bg-secondary/90 backdrop-blur-sm border border-border p-4 rounded-lg flex justify-between items-center shadow-lg">
+                    <span className="text-foreground font-medium">Zaznaczono: {selectedProjects.size}</span>
+                    <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="bg-destructive hover:bg-destructive/90 text-white">
                         <Trash2 className="w-4 h-4 mr-2" /> Usuń zaznaczone
                     </Button>
                 </div>
@@ -250,12 +250,12 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
                             setSelectedProjects(new Set(filteredProjects.map(p => p.id)))
                         }
                     }}
-                    className="border-white/20 data-[state=checked]:bg-slate-200 data-[state=checked]:border-slate-200" />
-                <label htmlFor="select-all" className="text-sm text-gray-400 cursor-pointer select-none">Zaznacz widoczne</label>
+                    className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary" />
+                <label htmlFor="select-all" className="text-sm text-muted-foreground cursor-pointer select-none">Zaznacz widoczne</label>
             </div>
 
             {error && (
-                <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-md text-red-400 flex items-center gap-2">
+                <div className="bg-destructive/10 border border-destructive/50 p-4 rounded-md text-destructive flex items-center gap-2">
                     <AlertCircle className="w-5 h-5" />
                     <div><strong>Błąd:</strong> {error}</div>
                 </div>
@@ -300,12 +300,12 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
                         size="sm"
                         disabled={page <= 1}
                         onClick={() => setPage(p => p - 1)}
-                        className="border-white/10 text-gray-400 hover:text-white"
+                        className="border-border text-muted-foreground hover:text-foreground"
                     >
                         Poprzednia
                     </Button>
-                    <div className="text-sm text-gray-400 font-medium text-center">
-                        <span className="text-slate-200">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredProjects.length)}</span> z {filteredProjects.length}
+                    <div className="text-sm text-muted-foreground font-medium text-center">
+                        <span className="text-foreground">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredProjects.length)}</span> z {filteredProjects.length}
                         <span className="text-muted-foreground ml-2">(str. {page}/{totalPages})</span>
                     </div>
                     <Button
@@ -313,7 +313,7 @@ export function ProjectsListClient({ isAdmin = true }: ProjectsListClientProps) 
                         size="sm"
                         disabled={page >= totalPages}
                         onClick={() => setPage(p => p + 1)}
-                        className="border-white/10 text-gray-400 hover:text-white"
+                        className="border-border text-muted-foreground hover:text-foreground"
                     >
                         Następna
                     </Button>

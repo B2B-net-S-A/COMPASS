@@ -9,11 +9,11 @@ import type { CourseStatus } from '@/lib/types/learning'
 export const dynamic = 'force-dynamic'
 
 const STATUS_LABEL: Record<CourseStatus, { label: string; color: string }> = {
-    draft: { label: 'Szkic', color: 'border-white/20 text-muted-foreground bg-white/5' },
-    pending_review: { label: 'W moderacji', color: 'border-amber-500/30 text-amber-400 bg-amber-500/10' },
-    published: { label: 'Opublikowany', color: 'border-green-500/30 text-green-400 bg-green-500/10' },
-    archived: { label: 'Zarchiwizowany', color: 'border-white/10 text-muted-foreground bg-white/5' },
-    rejected: { label: 'Odrzucony', color: 'border-red-500/30 text-red-400 bg-red-500/10' },
+    draft: { label: 'Szkic', color: 'border-border text-muted-foreground bg-muted' },
+    pending_review: { label: 'W moderacji', color: 'border-warning/30 text-warning bg-warning/10' },
+    published: { label: 'Opublikowany', color: 'border-success/30 text-success bg-success/10' },
+    archived: { label: 'Zarchiwizowany', color: 'border-border text-muted-foreground bg-muted' },
+    rejected: { label: 'Odrzucony', color: 'border-destructive/30 text-destructive bg-destructive/10' },
 }
 
 export default async function MyCoursesPage() {
@@ -42,8 +42,8 @@ export default async function MyCoursesPage() {
             </div>
 
             {error && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
                 </Card>
             )}
 
@@ -70,7 +70,7 @@ export default async function MyCoursesPage() {
                     {courses.map((c) => {
                         const status = STATUS_LABEL[c.status]
                         return (
-                            <Card key={c.id} className="bg-white/5 border-white/10 hover:border-primary/30 transition-colors">
+                            <Card key={c.id} className="bg-card border-border hover:border-primary/30 transition-colors">
                                 <CardContent className="p-5">
                                     <div className="flex items-start justify-between gap-4 flex-wrap">
                                         <div className="flex-1 min-w-0">
@@ -87,14 +87,14 @@ export default async function MyCoursesPage() {
                                                 <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{c.description}</p>
                                             )}
                                             {c.status === 'rejected' && c.rejection_reason && (
-                                                <div className="flex items-start gap-2 p-2 rounded bg-red-500/5 border border-red-500/20 text-xs text-red-400 mt-2">
+                                                <div className="flex items-start gap-2 p-2 rounded bg-destructive/5 border border-destructive/20 text-xs text-destructive mt-2">
                                                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                                                     <span>Powód odrzucenia: {c.rejection_reason}</span>
                                                 </div>
                                             )}
                                             {c.status === 'published' && (
                                                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
-                                                    <CheckCircle2 className="w-3 h-3 text-green-400" />
+                                                    <CheckCircle2 className="w-3 h-3 text-success" />
                                                     <span>{c.enrollments_count} zapisów · {c.completions_count} ukończeń · ★ {c.avg_rating.toFixed(1)} ({c.ratings_count})</span>
                                                 </div>
                                             )}
@@ -115,7 +115,7 @@ export default async function MyCoursesPage() {
                                             </Link>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/5 text-[10px] text-muted-foreground">
+                                    <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border text-[10px] text-muted-foreground">
                                         <span className="inline-flex items-center gap-1">
                                             <Clock className="w-3 h-3" />
                                             Aktualizacja: {new Date(c.updated_at).toLocaleDateString('pl-PL')}

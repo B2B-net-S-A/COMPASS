@@ -178,13 +178,13 @@ export function TimesheetEntryDialog({
                                 className="min-h-[44px] text-base"
                             />
                             {hasConflict && (
-                                <p className="text-[11px] text-amber-400 mt-1">
+                                <p className="text-[11px] text-warning mt-1">
                                     ⚠ Ten dzień ma już {conflictingEntries.length}{' '}
                                     {conflictingEntries.length === 1 ? 'wpis' : 'wpisy'} ({conflictingTotalHours}h)
                                 </p>
                             )}
                             {isLeaveDay && (
-                                <p className="text-[11px] text-amber-400 mt-1">
+                                <p className="text-[11px] text-warning mt-1">
                                     ⚠ W tym dniu jest urlop / L4 — nie można logować godzin. Anuluj urlop albo wybierz inny dzień.
                                 </p>
                             )}
@@ -227,7 +227,7 @@ export function TimesheetEntryDialog({
                                 onChange={(e) => setOvertimeReason(e.target.value)}
                                 className="text-base"
                             />
-                            <p className="text-[10px] text-amber-400">
+                            <p className="text-[10px] text-warning">
                                 ⚠ Wpis powyżej 8h zostanie oznaczony jako nadgodziny (audytowane).
                             </p>
                         </div>

@@ -35,8 +35,8 @@ export default async function MyEnrollmentsPage() {
             </div>
 
             {error && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
                 </Card>
             )}
 
@@ -59,13 +59,13 @@ export default async function MyEnrollmentsPage() {
                 <section className="space-y-3">
                     <h2 className="text-lg font-semibold">W trakcie ({inProgress.length})</h2>
                     {inProgress.map((e) => (
-                        <Card key={e.enrollment_id} className="bg-white/5 border-white/10 hover:border-primary/30 transition-colors">
+                        <Card key={e.enrollment_id} className="bg-card border-border hover:border-primary/30 transition-colors">
                             <CardContent className="p-5">
                                 <div className="flex items-start justify-between gap-4 flex-wrap">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
                                             <Badge variant="outline" className="text-[10px]">{e.course.category}</Badge>
-                                            <Badge variant="outline" className="text-[10px] border-white/10">
+                                            <Badge variant="outline" className="text-[10px] border-border">
                                                 {LEVEL_LABEL[e.course.level] ?? e.course.level}
                                             </Badge>
                                         </div>
@@ -75,7 +75,7 @@ export default async function MyEnrollmentsPage() {
                                                 <span>Postęp lekcji</span>
                                                 <span>{e.completed_lessons.length}/{e.total_lessons} · {e.progress_percent}%</span>
                                             </div>
-                                            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                                            <div className="h-2 rounded-full bg-muted overflow-hidden">
                                                 <div className="h-full bg-primary transition-all" style={{ width: `${e.progress_percent}%` }} />
                                             </div>
                                         </div>
@@ -95,20 +95,20 @@ export default async function MyEnrollmentsPage() {
             {completed.length > 0 && (
                 <section className="space-y-3">
                     <h2 className="text-lg font-semibold flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-400" /> Ukończone ({completed.length})
+                        <CheckCircle2 className="w-5 h-5 text-success" /> Ukończone ({completed.length})
                     </h2>
                     {completed.map((e) => (
-                        <Card key={e.enrollment_id} className="bg-green-500/5 border-green-500/20">
+                        <Card key={e.enrollment_id} className="bg-success/5 border-success/20">
                             <CardContent className="p-5">
                                 <div className="flex items-start justify-between gap-4 flex-wrap">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <Badge variant="outline" className="border-green-500/30 text-green-400 bg-green-500/10 text-[10px]">
+                                            <Badge variant="outline" className="border-success/30 text-success bg-success/10 text-[10px]">
                                                 Ukończone
                                             </Badge>
                                             <Badge variant="outline" className="text-[10px]">{e.course.category}</Badge>
                                             {e.points_awarded && (
-                                                <Badge variant="outline" className="border-amber-500/30 text-amber-400 bg-amber-500/10 text-[10px]">
+                                                <Badge variant="outline" className="border-warning/30 text-warning bg-warning/10 text-[10px]">
                                                     <Star className="w-2.5 h-2.5 mr-0.5" /> +20 pkt
                                                 </Badge>
                                             )}
@@ -120,7 +120,7 @@ export default async function MyEnrollmentsPage() {
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         <a href={`/api/akademia/certificate?courseId=${e.course.id}`}>
-                                            <Button size="sm" className="gap-2 bg-amber-500 hover:bg-amber-600 text-white">
+                                            <Button size="sm" className="gap-2 bg-warning hover:bg-warning/90 text-warning-foreground">
                                                 <Award className="w-3.5 h-3.5" />
                                                 Certyfikat
                                             </Button>

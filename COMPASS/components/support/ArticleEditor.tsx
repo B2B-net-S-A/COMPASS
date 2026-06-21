@@ -59,9 +59,9 @@ export function ArticleEditor({ categories, initial }: ArticleEditorProps) {
 
     return (
         <div className="space-y-4">
-            {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>}
+            {error && <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>}
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
@@ -70,7 +70,7 @@ export function ArticleEditor({ categories, initial }: ArticleEditorProps) {
                                 value={categoryId}
                                 onChange={(e) => setCategoryId(e.target.value)}
                                 disabled={isPending}
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-md text-sm focus:outline-none focus:border-primary/50"
+                                className="w-full px-3 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:border-primary/50"
                             >
                                 {categories.map((c) => (
                                     <option key={c.id} value={c.id}>{c.name_pl}</option>
@@ -79,13 +79,13 @@ export function ArticleEditor({ categories, initial }: ArticleEditorProps) {
                         </div>
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">Status</label>
-                            <div className="px-3 py-2 bg-white/5 border border-white/10 rounded-md text-sm">
+                            <div className="px-3 py-2 bg-card border border-border rounded-md text-sm">
                                 {isPublished ? (
-                                    <span className="inline-flex items-center gap-1 text-emerald-400">
+                                    <span className="inline-flex items-center gap-1 text-success">
                                         <CheckCircle2 className="w-4 h-4" /> Opublikowany
                                     </span>
                                 ) : (
-                                    <span className="inline-flex items-center gap-1 text-amber-400">
+                                    <span className="inline-flex items-center gap-1 text-warning">
                                         <FileText className="w-4 h-4" /> Wersja robocza
                                     </span>
                                 )}

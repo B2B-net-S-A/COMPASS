@@ -81,9 +81,9 @@ export function AdminLeaveSyncIssues({ requests }: Props) {
     }
 
     return (
-        <Card className="border-amber-500/30 bg-amber-500/5">
+        <Card className="border-warning/30 bg-warning/5">
             <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2 text-amber-300">
+                <CardTitle className="text-base flex items-center gap-2 text-warning">
                     <AlertTriangle className="h-4 w-4" />
                     Synchronizacja Outlook nie powiodła się ({requests.length})
                 </CardTitle>
@@ -127,7 +127,7 @@ export function AdminLeaveSyncIssues({ requests }: Props) {
                                             </p>
                                         )}
                                         {req.graph_sync_error && (
-                                            <p className="text-[11px] mt-1 text-red-300 font-mono break-words">
+                                            <p className="text-[11px] mt-1 text-destructive font-mono break-words">
                                                 {req.graph_sync_error.slice(0, 200)}
                                             </p>
                                         )}

@@ -16,14 +16,19 @@ import { cn } from "@/lib/utils"
  */
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   hoverable?: boolean
+  /** When set, applies root padding (DS kit uses size="lg"). Omit to pad via CardContent. */
+  size?: "sm" | "md" | "lg"
 }
 
+const cardSizePadding = { sm: "p-4", md: "p-5", lg: "p-6" } as const
+
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, hoverable = false, ...props }, ref) => (
+  ({ className, hoverable = false, size, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
         "rounded-xl border bg-card text-card-foreground shadow",
+        size && cardSizePadding[size],
         hoverable && "card-hover",
         className
       )}

@@ -15,8 +15,8 @@ interface LoyaltyTierBadgeProps {
 const tierConfig: Record<LoyaltyTier, { label: string, color: string, icon: React.ComponentType<{ className?: string }>, bg: string }> = {
     bronze: {
         label: 'Bronze',
-        color: 'text-amber-700',
-        bg: 'bg-amber-100 border-amber-200',
+        color: 'text-tier-bronze',
+        bg: 'bg-tier-bronze/10 border-tier-bronze/20',
         icon: Shield
     },
     silver: {
@@ -27,8 +27,8 @@ const tierConfig: Record<LoyaltyTier, { label: string, color: string, icon: Reac
     },
     gold: {
         label: 'Gold',
-        color: 'text-yellow-500',
-        bg: 'bg-yellow-50 border-yellow-200',
+        color: 'text-warning',
+        bg: 'bg-warning/10 border-warning/20',
         icon: Crown
     },
     platinum: {

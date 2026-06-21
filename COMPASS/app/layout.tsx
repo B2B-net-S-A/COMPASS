@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 import { AmbientGlow } from "@/components/ui/AmbientGlow";
 import { Toaster } from "sonner";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+const inter = Inter({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-inter",
+  display: "swap",
 });
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+const poppins = Poppins({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-poppins",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -34,7 +35,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport = {
-  themeColor: "#3A8DFF",
+  themeColor: "#4f46e5",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
@@ -48,10 +49,10 @@ export default function RootLayout({
   return (
     <html lang="pl" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('compass-theme'),c={inframinds:'#3A8DFF',qualrix:'#10B981',b2bnetwork:'#f43a48'};if(t==='qualrix')document.documentElement.classList.add('theme-qualrix');else if(t==='b2bnetwork')document.documentElement.classList.add('theme-b2bnetwork');var col=c[t]||c.inframinds,s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"><polygon points="16,1 29.86,8.5 29.86,23.5 16,31 2.14,23.5 2.14,8.5" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="16" r="2.5" fill="'+col+'"/></svg>',l=document.querySelector('link[rel="icon"]');if(l)l.href='data:image/svg+xml,'+encodeURIComponent(s);}catch(e){}})()` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var d=document.documentElement,t=localStorage.getItem('compass-theme'),m=localStorage.getItem('compass-color-mode'),soft=localStorage.getItem('compass-soft'),dt=t==='qualrix'?'green':t==='b2bnetwork'?'rose':null,c={inframinds:'#4f46e5',qualrix:'#15803d',b2bnetwork:'#e11d48'};if(dt)d.setAttribute('data-theme',dt);if(m==='dark')d.classList.add('dark');if(soft!=='false')d.setAttribute('data-soft','true');var col=c[t]||c.inframinds,s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"><polygon points="16,1 29.86,8.5 29.86,23.5 16,31 2.14,23.5 2.14,8.5" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="16" r="2.5" fill="'+col+'"/></svg>',l=document.querySelector('link[rel="icon"]');if(l)l.href='data:image/svg+xml,'+encodeURIComponent(s);}catch(e){}})()` }} />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${poppins.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
         <AmbientGlow />

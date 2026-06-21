@@ -87,7 +87,7 @@ export default function OnboardingPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
-            <Card className="w-full max-w-2xl bg-card border-white/10 shadow-2xl">
+            <Card className="w-full max-w-2xl bg-card border-border shadow-2xl">
                 <CardHeader>
                     <div className="flex items-center gap-2 mb-2">
                         {step === 'upload' && (
@@ -112,7 +112,7 @@ export default function OnboardingPage() {
                         <div className="space-y-6">
                             <div className="space-y-2">
                                 <Label>Plik CV (PDF lub DOCX)</Label>
-                                <div className="border-2 border-dashed border-white/10 rounded-lg p-8 text-center hover:bg-white/5 cursor-pointer transition-colors">
+                                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:bg-muted cursor-pointer transition-colors">
                                     <Input
                                         type="file"
                                         accept=".pdf,.docx"
@@ -122,7 +122,7 @@ export default function OnboardingPage() {
                                     />
                                     <label htmlFor="cv-upload" className="cursor-pointer block">
                                         {cvFile ? (
-                                            <div className="flex items-center justify-center gap-2 text-green-400">
+                                            <div className="flex items-center justify-center gap-2 text-success">
                                                 <CheckCircle2 className="h-5 w-5" />
                                                 <span>{cvFile.name}</span>
                                             </div>
@@ -151,7 +151,7 @@ export default function OnboardingPage() {
                     {step === 'bio' && (
                         <div className="space-y-6">
                             {cvUploaded && (
-                                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm">
+                                <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-success text-sm">
                                     CV wgrane — możesz dopisać bio lub zostawić puste.
                                 </div>
                             )}
@@ -162,14 +162,14 @@ export default function OnboardingPage() {
                                     placeholder="Napisz kilka słów o swoim doświadczeniu..."
                                     value={bio}
                                     onChange={(e) => setBio(e.target.value)}
-                                    className="bg-white/5 min-h-[100px]"
+                                    className="bg-muted min-h-[100px]"
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     {cvUploaded ? 'Opcjonalne — bio z CV zostało już załadowane.' : 'Min. 10 znaków.'}
                                 </p>
                             </div>
 
-                            <div className="flex items-start gap-2 p-4 bg-white/5 rounded-lg">
+                            <div className="flex items-start gap-2 p-4 bg-muted rounded-lg">
                                 <Checkbox
                                     id="gdpr"
                                     checked={gdprConsent}

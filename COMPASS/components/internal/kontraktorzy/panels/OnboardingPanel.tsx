@@ -45,7 +45,7 @@ export function OnboardingPanel({ onboardingQueue, entries }: Props) {
                                     <td className="p-2">
                                         {o.interview_status
                                             ? <Badge variant="secondary">{INTERVIEW_STATUS_PL[o.interview_status]}</Badge>
-                                            : <span className="text-amber-600">do umówienia</span>}
+                                            : <span className="text-warning">do umówienia</span>}
                                     </td>
                                 </tr>
                             ))}

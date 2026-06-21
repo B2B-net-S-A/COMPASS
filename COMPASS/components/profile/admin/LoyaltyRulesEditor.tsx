@@ -103,7 +103,7 @@ export function LoyaltyRulesEditor() {
             </CardHeader>
             <CardContent>
                 {isMockData && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg text-sm text-yellow-500 mb-6">
+                    <div className="bg-warning/10 border border-warning/20 p-4 rounded-lg text-sm text-warning mb-6">
                         <strong>Uwaga:</strong> Tabela `loyalty_rules` nie została znaleziona w bazie danych.
                         Wyświetlamy wartości domyślne. Aby edytować, poproś administratora o uruchomienie migracji SQL.
                     </div>
@@ -158,7 +158,7 @@ export function LoyaltyRulesEditor() {
                                                 />
                                             </div>
                                         ) : (
-                                            <div className={`w-2 h-2 rounded-full mx-auto ${rule.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                            <div className={`w-2 h-2 rounded-full mx-auto ${rule.is_active ? 'bg-success' : 'bg-muted'}`} />
                                         )}
                                     </TableCell>
                                     <TableCell className="text-right">

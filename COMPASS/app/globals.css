@@ -2,325 +2,217 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* ── Shared keyframes (DYNAMINDS DS) ───────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
-  /* Interactive card hover — premium SaaS feel */
-  /* Usage: add "card-hover" class to any Card element */
-  .card-hover {
-    transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
-                box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform;
-  }
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 
-  .card-hover:hover {
-    transform: translateY(-2px) scale(1.015);
-    box-shadow:
-      0 8px 25px -5px rgba(0, 0, 0, 0.3),
-      0 0 0 1px rgba(255, 255, 255, 0.06);
-  }
+.animate-in { animation-fill-mode: both; }
+.fade-in { animation-name: fadeIn; }
+.animate-fadeIn { animation: fadeIn 200ms ease-out both; }
 
-  .card-hover:active {
-    transform: translateY(0) scale(1);
-    transition-duration: 80ms;
-  }
+@keyframes pulse-subtle {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.45); }
+  50%      { box-shadow: 0 0 0 4px hsl(var(--primary) / 0); }
+}
+.animate-pulse-subtle { animation: pulse-subtle 2.4s ease-in-out infinite; }
 
-  .light .card-hover:hover {
-    box-shadow:
-      0 8px 25px -5px rgba(0, 0, 0, 0.08),
-      0 0 0 1px rgba(0, 0, 0, 0.04);
-  }
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-subtle { animation: none; }
 }
 
 @layer base {
+  /* ===================================================================
+     DYNAMINDS DS — professional-SaaS color system (Linear / Vercel /
+     Notion direction). Chrome is a NEUTRAL cool slate; a single restrained
+     accent (indigo by default) is reserved for interactive elements.
+     `--accent` is a SUBTLE neutral (hover surfaces) — deliberately NOT equal
+     to `--primary`, so menu/dropdown/ghost hovers stay quiet instead of
+     flashing full accent. The sidebar is neutral and shared across all
+     palettes; only the active nav item carries the accent (via --primary).
+     Light-first: `:root` = light, `.dark` = opt-in. Client brand skins are
+     accent-only [data-theme] palettes. [data-soft] adds depth. (No kids mode.)
+     =================================================================== */
   :root {
-    /* COMPASS 2026 — DEEP PLUM + ELECTRIC BLUE PALETTE */
-    /* Background: Deep Plum #1D121B */
-    --background: 312 26% 9%;
-    /* Foreground: Light Plum Cream #F3EEF2 */
-    --foreground: 312 14% 95%;
-
-    /* Card: #241625 */
-    --card: 312 24% 11%;
-    --card-foreground: 312 14% 95%;
-
-    /* Popover: same as card */
-    --popover: 312 24% 11%;
-    --popover-foreground: 312 14% 95%;
-
-    /* Primary: Electric Blue #3A8DFF — CTA, AI, interactions */
-    --primary: 214 100% 61%;
+    --background: 0 0% 100%;
+    --foreground: 222 22% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 22% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 22% 11%;
+    --primary: 243 75% 56%;            /* indigo — white text ≈ 7.08:1 (AA) */
     --primary-foreground: 0 0% 100%;
-
-    /* Secondary: Plum surface #2A1A2A */
-    --secondary: 302 24% 13%;
-    --secondary-foreground: 312 14% 95%;
-
-    /* Muted: #3A2A38 */
-    --muted: 308 16% 19%;
-    /* Muted Foreground: #B9AFB6 */
-    --muted-foreground: 312 6% 71%;
-
-    /* Accent: Plum surface #2A1A2A */
-    --accent: 302 24% 13%;
-    --accent-foreground: 312 14% 95%;
-
-    /* Destructive: #B43C4D */
-    --destructive: 352 50% 47%;
+    --secondary: 220 16% 95%;
+    --secondary-foreground: 222 20% 20%;
+    --muted: 220 16% 96%;
+    --muted-foreground: 215 16% 40%;   /* on white ≈ 6.08:1 (AA) */
+    --accent: 220 16% 93%;             /* SUBTLE neutral hover — NOT primary */
+    --accent-foreground: 222 20% 20%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-
-    /* Border: #3A2A38 */
-    --border: 308 16% 19%;
-    --input: 302 24% 13%;
-    /* Ring: Electric Blue #3A8DFF */
-    --ring: 214 100% 61%;
-
-    /* Extended palette */
-    --burgundy: 350 67% 33%;        /* #8B1A2B — admin/power/risk */
-    --burgundy-light: 352 50% 47%;  /* #B43C4D */
-    --success: 157 56% 46%;         /* #2DBE88 */
-    --warning: 40 60% 55%;          /* #D6A542 */
-    --tech: 214 100% 61%;           /* #3A8DFF */
-
+    --border: 220 16% 90%;
+    --input: 220 16% 90%;
+    --ring: 243 75% 56%;
     --radius: 0.5rem;
 
-    --chart-1: 214 100% 61%;
-    --chart-2: 157 56% 46%;
-    --chart-3: 352 50% 47%;
-    --chart-4: 40 60% 55%;
-    --chart-5: 302 24% 50%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 190 80% 38%;               /* teal — info states */
+    --info-foreground: 0 0% 100%;
 
-    --risk-low: 142 76% 36%;
+    /* Sidebar — neutral slate panel, shared by every palette. */
+    --sidebar: 220 20% 97%;
+    --sidebar-foreground: 222 20% 22%;
+    --sidebar-muted: 215 14% 42%;
+    --sidebar-border: 220 16% 88%;
+    /* Sidebar interactive states follow the neutral accent/ring automatically. */
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-ring: var(--ring);
+
+    /* Categorical chart ramp — neutral, shared across all accent palettes. */
+    --chart-1: 243 75% 56%;            /* indigo (primary family) */
+    --chart-2: 190 80% 42%;            /* teal */
+    --chart-3: 38 92% 50%;             /* amber */
+    --chart-4: 346 77% 55%;            /* rose */
+    --chart-5: 263 70% 55%;            /* violet */
+
+    /* Loyalty tier metallics — fixed, palette-independent. */
+    --tier-bronze: 30 58% 50%;         /* #CD7F32 */
+    --tier-silver: 0 0% 75%;           /* #C0C0C0 */
+    --tier-platinum: 280 71% 83%;      /* #E5B4F3 */
+
+    /* Legacy Compass tokens (kept until the color sweep removes references). */
+    --burgundy: 350 67% 40%;
+    --burgundy-light: 352 60% 52%;
+    --tech: 243 75% 56%;
+    --risk-low: 142 72% 34%;
     --risk-medium: 38 92% 50%;
     --risk-high: 0 84% 60%;
   }
 
   .dark {
-    --background: 312 26% 9%;
-    --foreground: 312 14% 95%;
-    --card: 312 24% 11%;
-    --card-foreground: 312 14% 95%;
-    --popover: 312 24% 11%;
-    --popover-foreground: 312 14% 95%;
-    --primary: 214 100% 61%;
+    --background: 222 24% 6%;          /* deep graphite-navy, not pure black */
+    --foreground: 210 20% 96%;
+    --card: 222 20% 9%;                /* elevation: lighter than background */
+    --card-foreground: 210 20% 96%;
+    --popover: 222 20% 9%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 243 76% 60%;            /* indigo — white text ≈ 5.94:1 (AA) */
     --primary-foreground: 0 0% 100%;
-    --secondary: 302 24% 13%;
-    --secondary-foreground: 312 14% 95%;
-    --muted: 308 16% 19%;
-    --muted-foreground: 312 6% 71%;
-    --accent: 302 24% 13%;
-    --accent-foreground: 312 14% 95%;
-    --destructive: 352 50% 47%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 308 16% 19%;
-    --input: 302 24% 13%;
-    --ring: 214 100% 61%;
-    --burgundy: 350 67% 33%;
-    --burgundy-light: 352 50% 47%;
-    --success: 157 56% 46%;
-    --warning: 40 60% 55%;
-    --tech: 214 100% 61%;
+    --secondary: 222 18% 15%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 222 18% 15%;
+    --muted-foreground: 215 16% 60%;   /* on bg ≈ 6.46:1 (AA) */
+    --accent: 222 16% 17%;             /* SUBTLE neutral elevation — NOT primary */
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 16% 17%;
+    --input: 222 16% 17%;
+    --ring: 243 76% 60%;
+
+    --success: 142 69% 48%;
+    --success-foreground: 144 60% 10%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 38 80% 10%;
+    --info: 190 75% 55%;
+    --info-foreground: 190 60% 10%;
+
+    --sidebar: 222 22% 7%;
+    --sidebar-foreground: 210 18% 90%;
+    --sidebar-muted: 215 14% 58%;
+    --sidebar-border: 222 16% 15%;
+
+    /* Chart ramp — lifted lightness for contrast on the 6%-L dark canvas. */
+    --chart-1: 243 76% 65%;
+    --chart-2: 190 75% 55%;
+    --chart-3: 38 92% 60%;
+    --chart-4: 346 80% 64%;
+    --chart-5: 263 70% 67%;
+
+    --tier-bronze: 30 58% 56%;
+    --tier-silver: 0 0% 78%;
+    --tier-platinum: 280 71% 80%;
+
+    --burgundy: 350 70% 58%;
+    --burgundy-light: 352 72% 66%;
+    --tech: 243 76% 65%;
+    --risk-low: 142 69% 48%;
+    --risk-medium: 38 92% 60%;
+    --risk-high: 0 78% 62%;
   }
 
-  /* ═══════════════════════════════════════════════════════════════
-     THEME: QUALRIX — Emerald Green on Neutral Black
-     ═══════════════════════════════════════════════════════════════ */
-  .theme-qualrix {
-    --background: 240 20% 4%;
-    --foreground: 210 40% 98%;
-    --card: 240 17% 6%;
-    --card-foreground: 210 40% 98%;
-    --popover: 240 17% 6%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 160 84% 39%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 14% 10%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 240 10% 14%;
-    --muted-foreground: 215 16% 60%;
-    --accent: 240 14% 10%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 240 10% 14%;
-    --input: 240 14% 10%;
-    --ring: 160 84% 39%;
-    --burgundy: 160 84% 30%;
-    --burgundy-light: 160 72% 45%;
-    --success: 160 84% 39%;
-    --warning: 38 92% 50%;
-    --tech: 217 91% 60%;
+  /* ===================================================================
+     Color palettes — selectable per user via [data-theme] on <html>.
+     Chrome + sidebar are NEUTRAL and shared (defined in :root / .dark);
+     each palette overrides ONLY the accent: --primary, --primary-foreground,
+     --ring. Defined for light ([data-theme]) and dark (.dark[data-theme]).
+     "indigo" is the default (inframinds) and lives in :root / .dark (no block).
+     Compass client skins map: qualrix → green, b2bnetwork → rose.
+     All solid-button pairs verified ≥ 4.5:1 (WCAG AA, normal text).
+     =================================================================== */
 
-    --chart-1: 160 84% 39%;
-    --chart-2: 217 91% 60%;
-    --chart-3: 0 72% 51%;
-    --chart-4: 38 92% 50%;
-    --chart-5: 280 60% 55%;
+  /* ---- VIOLET ---- */
+  [data-theme="violet"]        { --primary: 263 70% 50%; --primary-foreground: 0 0% 100%; --ring: 263 70% 50%; }
+  .dark[data-theme="violet"]   { --primary: 263 70% 66%; --primary-foreground: 263 45% 12%; --ring: 263 70% 66%; }
 
-    --risk-low: 160 84% 39%;
-    --risk-medium: 38 92% 50%;
-    --risk-high: 0 72% 51%;
+  /* ---- BLUE ---- */
+  [data-theme="blue"]          { --primary: 221 83% 53%; --primary-foreground: 0 0% 100%; --ring: 221 83% 53%; }
+  .dark[data-theme="blue"]     { --primary: 217 91% 62%; --primary-foreground: 222 47% 11%; --ring: 217 91% 62%; }
+
+  /* ---- GREEN ---- (qualrix; 30%L light so white text clears AA) */
+  [data-theme="green"]         { --primary: 142 72% 30%; --primary-foreground: 0 0% 100%; --ring: 142 72% 30%; }
+  .dark[data-theme="green"]    { --primary: 142 69% 48%; --primary-foreground: 144 60% 10%; --ring: 142 69% 48%; }
+
+  /* ---- ORANGE ---- (vivid orange + dark text clears AA ≈ 6.76:1 in both modes) */
+  [data-theme="orange"]        { --primary: 25 95% 55%;  --primary-foreground: 22 60% 10%; --ring: 25 95% 55%; }
+  .dark[data-theme="orange"]   { --primary: 25 95% 57%;  --primary-foreground: 22 60% 10%; --ring: 25 95% 57%; }
+
+  /* ---- ROSE ---- (b2bnetwork) */
+  [data-theme="rose"]          { --primary: 346 77% 48%; --primary-foreground: 0 0% 100%; --ring: 346 77% 48%; }
+  .dark[data-theme="rose"]     { --primary: 346 84% 61%; --primary-foreground: 343 60% 12%; --ring: 346 84% 61%; }
+
+  /* ---- GRAPHITE (near-neutral, monochrome accent) ---- */
+  [data-theme="graphite"]      { --primary: 222 16% 26%; --primary-foreground: 0 0% 100%; --ring: 222 16% 26%; }
+  .dark[data-theme="graphite"] { --primary: 220 14% 84%; --primary-foreground: 222 18% 12%; --ring: 220 14% 84%; }
+
+  /* ===================================================================
+     SOFT UI ("Wyraźny") — depth mode via [data-soft="true"] on <html>.
+     Works WITH every accent palette (never touches --primary/--ring). Light
+     mode tints the page canvas a soft slate so white cards visibly "sit" on
+     it; dark mode lifts cards further off the background. Corners get rounder
+     via --radius; the decorative layer below adds card borders + soft shadows.
+     Default ON; "Klasyczny" in the picker removes the attribute → flat look.
+     =================================================================== */
+  html[data-soft="true"] {
+    --background: 220 25% 96%;         /* soft slate canvas — cards stand out */
+    --border: 220 15% 86%;             /* slightly stronger separation lines */
+    --input: 220 15% 86%;
+    --radius: 0.75rem;                 /* 12px → gently rounder controls/cards */
   }
 
-  /* ═══════════════════════════════════════════════════════════════
-     THEME: B2BNETWORK — Red Coral on Deep Navy
-     Brand colors: #f43a48 (red), #142136 (navy), #1890d7 (sky blue)
-     ═══════════════════════════════════════════════════════════════ */
-  .theme-b2bnetwork {
-    --background: 218 47% 14%;
-    --foreground: 210 40% 97%;
-    --card: 218 42% 17%;
-    --card-foreground: 210 40% 97%;
-    --popover: 218 42% 17%;
-    --popover-foreground: 210 40% 97%;
-    --primary: 355 90% 59%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 218 35% 20%;
-    --secondary-foreground: 210 40% 97%;
-    --muted: 218 28% 24%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 218 35% 20%;
-    --accent-foreground: 210 40% 97%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 218 28% 24%;
-    --input: 218 35% 20%;
-    --ring: 355 90% 59%;
-    --burgundy: 355 90% 50%;
-    --burgundy-light: 355 78% 65%;
-    --success: 142 76% 36%;
-    --warning: 38 92% 50%;
-    --tech: 201 80% 47%;
-
-    --chart-1: 355 90% 59%;
-    --chart-2: 201 80% 47%;
-    --chart-3: 142 76% 36%;
-    --chart-4: 38 92% 50%;
-    --chart-5: 262 60% 55%;
-
-    --risk-low: 142 76% 36%;
-    --risk-medium: 38 92% 50%;
-    --risk-high: 0 84% 60%;
+  html.dark[data-soft="true"] {
+    /* Re-assert the dark canvas: the light `html[data-soft]` block above has
+       higher specificity than `.dark`, so without this dark+soft would inherit
+       the light 96%-L background. Dark soft keeps the deep canvas and instead
+       lifts cards (below) so they stand off the background. */
+    --background: 222 24% 6%;
+    --card: 222 20% 11%;               /* stronger elevation step vs bg 6% */
+    --popover: 222 20% 11%;
+    --border: 222 15% 21%;
+    --input: 222 15% 21%;
+    --radius: 0.75rem;
   }
 
-  /* ═══════════════════════════════════════════════════════════════
-     LIGHT MODE VARIANTS
-     ═══════════════════════════════════════════════════════════════ */
-  .light {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 214 100% 50%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 210 40% 10%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 210 40% 10%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 214 100% 50%;
-    --burgundy: 350 67% 33%;
-    --burgundy-light: 352 50% 47%;
-    --success: 157 56% 46%;
-    --warning: 40 60% 55%;
-    --tech: 214 100% 50%;
-
-    --chart-1: 214 100% 50%;
-    --chart-2: 157 56% 40%;
-    --chart-3: 352 50% 47%;
-    --chart-4: 40 60% 50%;
-    --chart-5: 302 40% 45%;
-
-    --risk-low: 142 76% 36%;
-    --risk-medium: 38 92% 50%;
-    --risk-high: 0 84% 60%;
-  }
-
-  .theme-qualrix.light {
-    --background: 0 0% 100%;
-    --foreground: 240 20% 6%;
-    --card: 0 0% 99%;
-    --card-foreground: 240 20% 6%;
-    --popover: 0 0% 99%;
-    --popover-foreground: 240 20% 6%;
-    --primary: 160 84% 39%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 160 20% 96%;
-    --secondary-foreground: 240 14% 10%;
-    --muted: 160 20% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 160 20% 96%;
-    --accent-foreground: 240 14% 10%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 160 20% 90%;
-    --input: 160 20% 90%;
-    --ring: 160 84% 39%;
-    --burgundy: 160 84% 30%;
-    --burgundy-light: 160 72% 45%;
-    --success: 160 84% 39%;
-    --warning: 38 92% 50%;
-    --tech: 217 91% 55%;
-
-    --chart-1: 160 84% 35%;
-    --chart-2: 217 91% 50%;
-    --chart-3: 0 72% 51%;
-    --chart-4: 38 92% 50%;
-    --chart-5: 280 60% 50%;
-
-    --risk-low: 160 84% 39%;
-    --risk-medium: 38 92% 50%;
-    --risk-high: 0 72% 51%;
-  }
-
-  .theme-b2bnetwork.light {
-    --background: 0 0% 100%;
-    --foreground: 218 47% 14%;
-    --card: 0 0% 99%;
-    --card-foreground: 218 47% 14%;
-    --popover: 0 0% 99%;
-    --popover-foreground: 218 47% 14%;
-    --primary: 355 90% 59%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 355 20% 96%;
-    --secondary-foreground: 218 35% 20%;
-    --muted: 218 20% 96%;
-    --muted-foreground: 215 20% 47%;
-    --accent: 355 20% 96%;
-    --accent-foreground: 218 35% 20%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 218 20% 90%;
-    --input: 218 20% 90%;
-    --ring: 355 90% 59%;
-    --burgundy: 355 90% 50%;
-    --burgundy-light: 355 78% 65%;
-    --success: 142 76% 36%;
-    --warning: 38 92% 50%;
-    --tech: 201 80% 47%;
-
-    --chart-1: 355 90% 55%;
-    --chart-2: 201 80% 45%;
-    --chart-3: 142 76% 36%;
-    --chart-4: 38 92% 50%;
-    --chart-5: 262 60% 50%;
-
-    --risk-low: 142 76% 36%;
-    --risk-medium: 38 92% 50%;
-    --risk-high: 0 84% 60%;
-  }
-}
-
-@layer base {
   * {
     @apply border-border;
   }
@@ -330,15 +222,98 @@
     transition: background-color 0.3s ease, color 0.2s ease;
   }
 
-  /* Native form controls (date picker indicator, <select> popups, scrollbars)
-     follow the active theme. Dark is the default; .light themes opt back to
-     light. Without this the WebKit calendar icon renders dark-on-dark and is
-     practically invisible on our dark backgrounds (Dominik report, Issue 1). */
-  :root {
-    color-scheme: dark;
+  h1 { @apply text-2xl font-semibold tracking-tight text-foreground; }
+  h2 { @apply text-xl font-semibold tracking-tight text-foreground; }
+  h3 { @apply text-base font-semibold tracking-tight text-foreground; }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
-  .light {
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="date"],
+  input[type="datetime-local"],
+  select,
+  textarea {
+    @apply text-sm;
+  }
+}
+
+/* ====================================================================
+   SOFT UI ("Wyraźny") — decorative depth layer (unlayered on purpose, so
+   these beat Tailwind utilities like shadow-sm). Scoped to [data-soft],
+   inert in the classic flat theme. Inputs/selects/textareas are excluded —
+   they already pop as white-on-tinted canvas and keep their own border states.
+   ==================================================================== */
+[data-soft="true"] .bg-card:where(:not(input):not(textarea):not(select)) {
+  border-width: 1px;
+  box-shadow:
+    0 1px 2px 0 hsl(222 30% 12% / 0.05),
+    0 8px 24px -16px hsl(222 30% 12% / 0.16);
+}
+.dark[data-soft="true"] .bg-card:where(:not(input):not(textarea):not(select)) {
+  box-shadow:
+    0 1px 2px 0 hsl(0 0% 0% / 0.35),
+    0 10px 28px -18px hsl(0 0% 0% / 0.6);
+}
+
+/* The fixed-radius corner classes don't follow --radius — bump common card
+   corners so sections feel consistently rounder. */
+[data-soft="true"] .rounded-xl  { border-radius: 1rem; }
+[data-soft="true"] .rounded-2xl { border-radius: 1.25rem; }
+
+/* Gentle tactile press on buttons. */
+[data-soft="true"] button:active { transform: translateY(0.5px); }
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Interactive card hover — premium SaaS feel (light-first; .dark deepens). */
+  .card-hover {
+    transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+  }
+
+  .card-hover:hover {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow:
+      0 8px 25px -5px rgba(0, 0, 0, 0.08),
+      0 0 0 1px rgba(0, 0, 0, 0.04);
+  }
+
+  .card-hover:active {
+    transform: translateY(0) scale(1);
+    transition-duration: 80ms;
+  }
+
+  .dark .card-hover:hover {
+    box-shadow:
+      0 8px 25px -5px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  /* Native form controls (date picker indicator, <select> popups, scrollbars)
+     follow the active theme. Light-first: light is the default; .dark opts into
+     dark native controls. Without this the WebKit calendar icon can render with
+     the wrong contrast and become hard to see. */
+  :root {
     color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
   }
 
   input[type='date']::-webkit-calendar-picker-indicator,
@@ -404,29 +379,8 @@
   animation: check-scale-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* ===== LOGIN PAGE — COMPASS Alive ===== */
+/* ===== LOGIN PAGE micro-animations (token-based; replaced in Wave 2) ===== */
 
-/* 1. Animated gradient mesh background */
-@keyframes login-mesh-drift {
-  0%   { transform: translate(0, 0) rotate(0deg); }
-  33%  { transform: translate(30px, -20px) rotate(1deg); }
-  66%  { transform: translate(-20px, 15px) rotate(-1deg); }
-  100% { transform: translate(15px, -10px) rotate(0.5deg); }
-}
-
-.login-bg-mesh {
-  position: fixed;
-  inset: -50%;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 600px 600px at 20% 30%, rgba(58, 141, 255, 0.12) 0%, transparent 70%),
-    radial-gradient(ellipse 500px 500px at 80% 70%, rgba(46, 26, 43, 0.25) 0%, transparent 70%),
-    radial-gradient(ellipse 700px 400px at 50% 50%, rgba(58, 141, 255, 0.06) 0%, transparent 70%);
-  animation: login-mesh-drift 12s ease-in-out infinite alternate;
-}
-
-/* 2. Card fade-in + slide-up */
 @keyframes login-card-enter {
   0%   { opacity: 0; transform: translateY(30px) scale(0.98); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -436,7 +390,6 @@
   animation: login-card-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* 4. Enhanced focus glow on inputs */
 .login-input-glow:focus {
   border-color: hsl(var(--primary)) !important;
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15), 0 0 20px hsl(var(--primary) / 0.1);
@@ -447,7 +400,6 @@
   box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.15);
 }
 
-/* 5. Shake animation */
 @keyframes login-card-shake {
   0%, 100% { transform: translateX(0); }
   10%, 50%, 90% { transform: translateX(-6px); }
@@ -458,19 +410,17 @@
   animation: login-card-shake 0.45s cubic-bezier(.36,.07,.19,.97) both;
 }
 
-/* 7. Progress bar */
 .login-progress-bar {
   position: absolute;
   top: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, hsl(var(--primary)), #2A5DB8);
+  background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));
   border-radius: 0 3px 3px 0;
   transition: width 0.4s ease-out, opacity 0.3s ease;
   z-index: 10;
 }
 
-/* 7. Loading status pulse */
 @keyframes login-status-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
@@ -480,7 +430,6 @@
   animation: login-status-pulse 1.5s ease-in-out infinite;
 }
 
-/* 6. Error message entrance */
 @keyframes login-msg-enter {
   0%   { opacity: 0; transform: translateY(-8px); }
   100% { opacity: 1; transform: translateY(0); }
@@ -490,7 +439,6 @@
   animation: login-msg-enter 0.3s ease-out;
 }
 
-/* 8. Success overlay */
 @keyframes login-success-scale {
   0%   { transform: scale(0.5); opacity: 0; }
   50%  { transform: scale(1.1); }
@@ -541,16 +489,4 @@
 
 .login-card-fade-out {
   animation: login-card-fade-out 0.4s ease-out forwards;
-}
-
-/* Light mode: softer login background mesh */
-.light .login-bg-mesh {
-  background:
-    radial-gradient(ellipse 600px 600px at 20% 30%, rgba(58, 141, 255, 0.06) 0%, transparent 70%),
-    radial-gradient(ellipse 500px 500px at 80% 70%, rgba(200, 200, 220, 0.12) 0%, transparent 70%),
-    radial-gradient(ellipse 700px 400px at 50% 50%, rgba(58, 141, 255, 0.04) 0%, transparent 70%);
-}
-
-.light .login-progress-bar {
-  background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));
 }

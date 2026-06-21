@@ -57,18 +57,18 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-    draft: { label: 'Szkic', className: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
+    draft: { label: 'Szkic', className: 'bg-muted text-muted-foreground border-border' },
     submitted: {
         label: 'Oczekuje',
-        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
     },
     approved: {
         label: 'Zaakceptowany',
-        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+        className: 'bg-success/15 text-success border-success/30',
     },
     rejected: {
         label: 'Odrzucony',
-        className: 'bg-red-500/15 text-red-300 border-red-500/30',
+        className: 'bg-destructive/15 text-destructive border-destructive/30',
     },
 }
 
@@ -314,7 +314,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                 </DialogHeader>
 
                 {timesheet.rejection_note && (
-                    <div className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                         <strong>Poprzedni powód odrzucenia:</strong> {timesheet.rejection_note}
                     </div>
                 )}
@@ -327,8 +327,8 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                 )}
 
                 {leaves.length > 0 && (
-                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs space-y-2">
-                        <p className="font-medium text-amber-200 flex items-center gap-1.5">
+                    <div className="rounded-md border border-warning/30 bg-warning/10 p-2.5 text-xs space-y-2">
+                        <p className="font-medium text-warning flex items-center gap-1.5">
                             <CalendarOff className="h-3.5 w-3.5" />
                             Urlopy w tym miesiącu — blokują logowanie godzin (poza płatnym urlopem z puli, który liczy się jak normalny dzień)
                         </p>
@@ -337,7 +337,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                 key={l.id}
                                 className="flex items-center justify-between gap-2 flex-wrap"
                             >
-                                <span className="text-amber-100/90 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className="text-warning/90 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
                                     <span>
                                         {LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type} ·{' '}
                                         {format(parseISO(l.start_date), 'd LLL', { locale: pl })} –{' '}
@@ -348,7 +348,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                     {l.paid_days > 0 && (
                                         <Badge
                                             variant="outline"
-                                            className="text-[10px] bg-green-500/15 text-green-300 border-green-500/30"
+                                            className="text-[10px] bg-success/15 text-success border-success/30"
                                         >
                                             {l.paid_days} dni płatnych (z puli)
                                         </Badge>
@@ -356,7 +356,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                     {l.unpaid_days > 0 && (
                                         <Badge
                                             variant="outline"
-                                            className="text-[10px] bg-gray-500/15 text-gray-300 border-gray-500/30"
+                                            className="text-[10px] bg-muted text-muted-foreground border-border"
                                         >
                                             {l.unpaid_days} dni bezpłatnych
                                         </Badge>
@@ -365,7 +365,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                 <Button
                                     size="sm"
                                     variant="ghost"
-                                    className="h-7 text-amber-200 hover:text-amber-100"
+                                    className="h-7 text-warning hover:text-warning/80"
                                     onClick={() => handleCancelLeave(l)}
                                     disabled={pending}
                                 >
@@ -380,7 +380,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                 </Button>
                             </div>
                         ))}
-                        <p className="text-[10px] text-amber-100/70">
+                        <p className="text-[10px] text-warning/70">
                             Edycja typu/dat urlopu w zakładce „Wpisz urlop pracownika".
                         </p>
                     </div>
@@ -437,7 +437,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                             <div className="flex flex-wrap gap-1 mt-1">
                                                 {(e.source === 'clock_suggested' ||
                                                     e.source === 'clock_accepted') && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-blue-300">
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-info">
                                                         <Clock className="h-3 w-3" />
                                                         z zegara
                                                         {e.tracked_hours != null && (
@@ -448,13 +448,13 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                                     </span>
                                                 )}
                                                 {e.correction_required && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-300">
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-warning">
                                                         <AlertTriangle className="h-3 w-3" />
                                                         wymaga korekty
                                                     </span>
                                                 )}
                                                 {e.is_overtime_override && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-purple-300">
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-primary">
                                                         <Clock className="h-3 w-3" />
                                                         nadgodziny
                                                     </span>

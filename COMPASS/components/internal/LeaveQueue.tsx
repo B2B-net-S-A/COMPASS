@@ -210,8 +210,8 @@ export function LeaveQueue({ requests }: Props) {
                     )}
                 </CardHeader>
                 {someSelected && (
-                    <div className="px-6 pb-3 flex flex-wrap gap-2 items-center bg-amber-500/5 border-y border-amber-500/20">
-                        <span className="text-xs font-medium text-amber-300">
+                    <div className="px-6 pb-3 flex flex-wrap gap-2 items-center bg-warning/5 border-y border-warning/20">
+                        <span className="text-xs font-medium text-warning">
                             Akcje masowe ({selectedIds.size}):
                         </span>
                         <Button size="sm" onClick={handleBulkApprove} disabled={pending} className="gap-1">
@@ -247,7 +247,7 @@ export function LeaveQueue({ requests }: Props) {
                                     <div
                                         key={req.id}
                                         className={`border rounded-lg p-4 flex flex-wrap items-start justify-between gap-3 ${
-                                            checked ? 'border-amber-500/40 bg-amber-500/5' : ''
+                                            checked ? 'border-warning/40 bg-warning/5' : ''
                                         }`}
                                     >
                                         <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -308,7 +308,7 @@ export function LeaveQueue({ requests }: Props) {
                                                 )}
                                                 {/* Phase 25d — custom OOF preview */}
                                                 {(req.oof_internal_message || req.oof_external_message) && (
-                                                    <p className="text-[10px] text-blue-300 mt-1 inline-flex items-center gap-1">
+                                                    <p className="text-[10px] text-info mt-1 inline-flex items-center gap-1">
                                                         <Mail className="h-3 w-3" />
                                                         Custom Out of Office message
                                                     </p>
@@ -454,7 +454,7 @@ function PoolBadge({ req }: { req: PendingLeaveRow }) {
         <div className="text-[11px] mt-1.5 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
             {/* Breakdown — zawsze gdy split ≠ 0/0 */}
             <span>
-                {paid > 0 && <span className="text-green-300 font-medium">{paid} płatnych</span>}
+                {paid > 0 && <span className="text-success font-medium">{paid} płatnych</span>}
                 {paid > 0 && unpaid > 0 && <span className="text-muted-foreground"> + </span>}
                 {unpaid > 0 && <span className="text-muted-foreground">{unpaid} bezpłatnych</span>}
             </span>
@@ -468,7 +468,7 @@ function PoolBadge({ req }: { req: PendingLeaveRow }) {
                     {remainingAfter != null && (
                         <>
                             {' → po akceptacji '}
-                            <span className={`font-medium ${(remainingAfter ?? 0) <= 0 ? 'text-amber-300' : 'text-foreground'}`}>
+                            <span className={`font-medium ${(remainingAfter ?? 0) <= 0 ? 'text-warning' : 'text-foreground'}`}>
                                 {remainingAfter.toFixed(1)}
                             </span>
                             /{total}

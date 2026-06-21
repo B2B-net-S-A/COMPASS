@@ -36,13 +36,13 @@ export default async function MyPitchesPage() {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && items.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center space-y-3">
                         <Lightbulb className="w-16 h-16 text-muted-foreground mx-auto" />
                         <p className="text-muted-foreground">Brak pitchów. Zgłoś swój pierwszy pomysł.</p>
@@ -58,7 +58,7 @@ export default async function MyPitchesPage() {
             {items.length > 0 && (
                 <div className="space-y-3">
                     {items.map((p) => (
-                        <Card key={p.id} className="bg-white/5 border-white/10">
+                        <Card key={p.id} className="bg-card border-border">
                             <CardContent className="p-5 space-y-3">
                                 <div className="flex items-start justify-between gap-3 flex-wrap">
                                     <div className="flex-1 min-w-0">
@@ -77,8 +77,8 @@ export default async function MyPitchesPage() {
                                 <PitchTimeline status={p.status} />
 
                                 {p.review_notes_md && (
-                                    <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-sm">
-                                        <p className="text-[10px] uppercase tracking-wider text-amber-400 mb-1">Notatka recenzenta:</p>
+                                    <div className="p-3 rounded-lg bg-warning/5 border border-warning/20 text-sm">
+                                        <p className="text-[10px] uppercase tracking-wider text-warning mb-1">Notatka recenzenta:</p>
                                         <p className="whitespace-pre-wrap text-muted-foreground">{p.review_notes_md}</p>
                                     </div>
                                 )}

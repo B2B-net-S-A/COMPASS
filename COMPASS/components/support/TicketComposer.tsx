@@ -79,9 +79,9 @@ export function TicketComposer({
     if (isChat) {
         return (
             <form onSubmit={handleSubmit} className="space-y-4">
-                {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>}
+                {error && <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>}
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-5 space-y-4">
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">
@@ -113,19 +113,19 @@ export function TicketComposer({
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>}
+            {error && <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>}
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs text-muted-foreground mb-1 block">Kategoria <span className="text-red-400">*</span></label>
+                            <label className="text-xs text-muted-foreground mb-1 block">Kategoria <span className="text-destructive">*</span></label>
                             <select
                                 value={categoryId}
                                 onChange={(e) => setCategoryId(e.target.value)}
                                 disabled={isPending}
                                 required
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-md text-sm focus:outline-none focus:border-primary/50"
+                                className="w-full px-3 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:border-primary/50"
                             >
                                 {categories.map((c) => (
                                     <option key={c.id} value={c.id}>{c.name_pl}</option>
@@ -138,7 +138,7 @@ export function TicketComposer({
                                 value={priority}
                                 onChange={(e) => setPriority(e.target.value as TicketPriority)}
                                 disabled={isPending}
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-md text-sm focus:outline-none focus:border-primary/50"
+                                className="w-full px-3 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:border-primary/50"
                             >
                                 {PRIORITIES.map((p) => (
                                     <option key={p} value={p}>{TICKET_PRIORITY_LABEL[p]}</option>
@@ -148,7 +148,7 @@ export function TicketComposer({
                     </div>
 
                     <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Tytuł <span className="text-red-400">*</span></label>
+                        <label className="text-xs text-muted-foreground mb-1 block">Tytuł <span className="text-destructive">*</span></label>
                         <Input
                             value={subject}
                             onChange={(e) => setSubject(e.target.value)}
@@ -160,7 +160,7 @@ export function TicketComposer({
                     </div>
 
                     <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Opis <span className="text-red-400">*</span></label>
+                        <label className="text-xs text-muted-foreground mb-1 block">Opis <span className="text-destructive">*</span></label>
                         <Textarea
                             value={body}
                             onChange={(e) => setBody(e.target.value)}

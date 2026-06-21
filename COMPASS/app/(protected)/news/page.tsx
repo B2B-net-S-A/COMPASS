@@ -19,13 +19,13 @@ export default async function NewsPage() {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && result.data.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center space-y-3">
                         <Newspaper className="w-16 h-16 text-muted-foreground mx-auto" />
                         <p className="text-muted-foreground">Brak ogłoszeń. Wróć tu wkrótce.</p>

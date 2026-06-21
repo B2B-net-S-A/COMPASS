@@ -3,7 +3,7 @@ import { ProjectsListClient } from "@/components/admin/ProjectsListClient"
 
 export default function AdminProjectsPage() {
     return (
-        <Suspense fallback={<div className="text-center py-12 text-white">Ładowanie...</div>}>
+        <Suspense fallback={<div className="text-center py-12 text-foreground">Ładowanie...</div>}>
             <ProjectsListClient isAdmin={true} />
         </Suspense>
     )

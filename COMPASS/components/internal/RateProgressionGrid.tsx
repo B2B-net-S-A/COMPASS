@@ -140,13 +140,13 @@ export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSa
             </div>
 
             {hasLocked && (
-                <p className="text-[11px] text-amber-400">
+                <p className="text-[11px] text-warning">
                     Miesiące do {latestScheduled} są już zaplanowane i zablokowane (dozwolone tylko dopisywanie
                     kolejnych).
                 </p>
             )}
 
-            <div className="max-h-[40vh] overflow-y-auto rounded-lg border border-white/10">
+            <div className="max-h-[40vh] overflow-y-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                     <tbody>
                         {months.map((m) => {

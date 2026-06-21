@@ -64,16 +64,16 @@ export function SetPasswordDialog({ open, onOpenChange, targetUserId, targetEmai
 
     return (
         <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o) }}>
-            <DialogContent className="bg-[var(--color-bg-primary,#1a1a2e)] border-white/10 text-white">
+            <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Ustaw nowe hasło</DialogTitle>
-                    <DialogDescription className="text-gray-400">
-                        Wymusisz nowe hasło dla <span className="text-white font-mono">{targetEmail}</span>.
+                    <DialogDescription className="text-muted-foreground">
+                        Wymusisz nowe hasło dla <span className="text-foreground font-mono">{targetEmail}</span>.
                         Wszystkie aktywne sesje zostaną zakończone.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="flex items-start gap-2 p-3 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
+                <div className="flex items-start gap-2 p-3 rounded-md bg-warning/10 border border-warning/30 text-xs text-warning">
                     <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                     <span>
                         User zostanie wylogowany ze wszystkich urządzeń. Akcja zapisze się w audit logu.
@@ -112,7 +112,7 @@ export function SetPasswordDialog({ open, onOpenChange, targetUserId, targetEmai
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
                             Anuluj
                         </Button>
-                        <Button type="submit" disabled={submitting} className="bg-red-600 hover:bg-red-700 text-white">
+                        <Button type="submit" disabled={submitting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
                             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Ustaw hasło
                         </Button>

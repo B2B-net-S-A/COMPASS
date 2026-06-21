@@ -13,11 +13,11 @@ import type { CourseStatus } from '@/lib/types/learning'
 export const dynamic = 'force-dynamic'
 
 const STATUS_LABEL: Record<CourseStatus, { label: string; color: string }> = {
-    draft: { label: 'Szkic', color: 'border-white/20 text-muted-foreground bg-white/5' },
-    pending_review: { label: 'W moderacji', color: 'border-amber-500/30 text-amber-400 bg-amber-500/10' },
-    published: { label: 'Opublikowany', color: 'border-green-500/30 text-green-400 bg-green-500/10' },
-    archived: { label: 'Zarchiwizowany', color: 'border-white/10 text-muted-foreground bg-white/5' },
-    rejected: { label: 'Odrzucony', color: 'border-red-500/30 text-red-400 bg-red-500/10' },
+    draft: { label: 'Szkic', color: 'border-border text-muted-foreground bg-muted' },
+    pending_review: { label: 'W moderacji', color: 'border-warning/30 text-warning bg-warning/10' },
+    published: { label: 'Opublikowany', color: 'border-success/30 text-success bg-success/10' },
+    archived: { label: 'Zarchiwizowany', color: 'border-border text-muted-foreground bg-muted' },
+    rejected: { label: 'Odrzucony', color: 'border-destructive/30 text-destructive bg-destructive/10' },
 }
 
 interface PageProps {

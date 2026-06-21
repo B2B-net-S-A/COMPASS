@@ -63,7 +63,7 @@ export function DigestPreview() {
     }
 
     return (
-        <Card className="bg-white/5 border-white/10">
+        <Card className="bg-card border-border">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                     <Mail className="w-5 h-5 text-primary" />
@@ -79,7 +79,7 @@ export function DigestPreview() {
                         placeholder="00000000-0000-0000-0000-000000000000"
                         value={userId}
                         onChange={(e) => setUserId(e.target.value)}
-                        className="bg-black/30 border-white/10 font-mono text-sm"
+                        className="bg-card border-border font-mono text-sm"
                         data-testid="digest-user-id-input"
                     />
                 </div>
@@ -89,7 +89,7 @@ export function DigestPreview() {
                         onClick={() => callApi(false)}
                         disabled={loading}
                         variant="outline"
-                        className="border-white/20"
+                        className="border-border"
                         data-testid="digest-preview-btn"
                     >
                         {loading && !withEmail ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Pobieram...</> : <><FileText className="w-4 h-4 mr-2" /> Podgląd</>}
@@ -105,14 +105,14 @@ export function DigestPreview() {
                 </div>
 
                 {error && (
-                    <div className="p-3 rounded-lg border bg-red-500/10 border-red-500/30 text-red-400 text-sm">
+                    <div className="p-3 rounded-lg border bg-destructive/10 border-destructive/30 text-destructive text-sm">
                         {error}
                     </div>
                 )}
 
                 {data?.success && (
                     <div className="space-y-3">
-                        <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
+                        <div className="p-3 rounded-lg bg-success/10 border border-success/30 text-success text-sm">
                             ✓ {data.itemCount === 0 ? 'Brak nowych powiadomień (digest pusty — nic nie zostanie wysłane)' : `Digest zawiera ${data.itemCount} ${data.itemCount === 1 ? 'powiadomienie' : 'powiadomień'}.`}
                             {withEmail && data.html && ' Email wysłany.'}
                         </div>
@@ -120,10 +120,10 @@ export function DigestPreview() {
                         {data.digest && data.digest.length > 0 && (
                             <div className="space-y-2">
                                 <Label>Zawartość:</Label>
-                                <ul className="space-y-1 text-xs text-gray-300 bg-black/30 p-3 rounded-lg max-h-60 overflow-y-auto">
+                                <ul className="space-y-1 text-xs text-muted-foreground bg-card p-3 rounded-lg max-h-60 overflow-y-auto">
                                     {data.digest.map((item, i) => (
-                                        <li key={i} className="border-b border-white/5 last:border-0 pb-1">
-                                            <span className="font-semibold text-white">{item.title}</span> — <span>{item.body}</span>
+                                        <li key={i} className="border-b border-border last:border-0 pb-1">
+                                            <span className="font-semibold text-foreground">{item.title}</span> — <span>{item.body}</span>
                                             <span className="text-muted-foreground ml-2">({new Date(item.created_at).toLocaleString('pl-PL')})</span>
                                         </li>
                                     ))}
@@ -136,7 +136,7 @@ export function DigestPreview() {
                                 <Label>Podgląd HTML:</Label>
                                 <iframe
                                     srcDoc={data.html}
-                                    className="w-full h-96 border border-white/10 rounded-lg bg-white"
+                                    className="w-full h-96 border border-border rounded-lg bg-white"
                                     title="Digest HTML preview"
                                 />
                             </div>

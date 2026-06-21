@@ -13,11 +13,11 @@ export function HubActionButtons() {
     return (
         <>
             <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => setOnboardingOpen(true)} className="bg-cyan-500 hover:bg-cyan-600">
+                <Button onClick={() => setOnboardingOpen(true)} className="bg-primary hover:bg-primary/90">
                     <UserPlus className="h-4 w-4 mr-2" />
                     Nowy onboarding
                 </Button>
-                <Button onClick={() => setExitOpen(true)} variant="outline" className="border-amber-400/50 text-amber-400 hover:bg-amber-400/10">
+                <Button onClick={() => setExitOpen(true)} variant="outline" className="border-warning/50 text-warning hover:bg-warning/10">
                     <LogOut className="h-4 w-4 mr-2" />
                     Zaplanuj exit interview
                 </Button>

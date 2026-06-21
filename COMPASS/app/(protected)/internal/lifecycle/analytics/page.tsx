@@ -25,7 +25,7 @@ export default async function LifecycleAnalyticsPage() {
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <BarChart3 className="h-7 w-7 text-green-400" />
+                        <BarChart3 className="h-7 w-7 text-success" />
                         Lifecycle Analytics
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -44,7 +44,7 @@ export default async function LifecycleAnalyticsPage() {
                     label="Średni czas onboardingu"
                     value={analytics.avgOnboardingDays !== null ? `${Math.round(analytics.avgOnboardingDays)} dni` : '—'}
                 />
-                <Stat label="Overdue zadania" value={analytics.overdueTasks} accent="text-red-400" />
+                <Stat label="Overdue zadania" value={analytics.overdueTasks} accent="text-destructive" />
             </section>
 
             <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -97,10 +97,10 @@ export default async function LifecycleAnalyticsPage() {
                                         <span
                                             className={
                                                 r.retention_rate >= 0.9
-                                                    ? 'text-green-400'
+                                                    ? 'text-success'
                                                     : r.retention_rate >= 0.75
-                                                        ? 'text-amber-400'
-                                                        : 'text-red-400'
+                                                        ? 'text-warning'
+                                                        : 'text-destructive'
                                             }
                                         >
                                             {Math.round(r.retention_rate * 100)}%

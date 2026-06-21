@@ -28,7 +28,7 @@ export function LoyaltyProgressBar({ currentPoints, nextTierPoints, className }:
                 {/* Milestone Marker (Optional visual flare) */}
                 <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 hidden">
                     <div className="bg-background border border-border rounded-full p-0.5 shadow-sm">
-                        <Zap className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                        <Zap className="w-3 h-3 text-warning fill-warning" />
                     </div>
                 </div>
             </div>

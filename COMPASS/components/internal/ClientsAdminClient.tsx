@@ -140,7 +140,7 @@ export function ClientsAdminClient({ initialClients }: Props) {
             </div>
 
             {/* List */}
-            <div className="rounded-lg border border-white/10 divide-y divide-border/30">
+            <div className="rounded-lg border border-border/10 divide-y divide-border/30">
                 {filtered.length === 0 ? (
                     <p className="p-6 text-center text-sm text-muted-foreground">Brak klientów.</p>
                 ) : (
@@ -186,7 +186,7 @@ export function ClientsAdminClient({ initialClients }: Props) {
                                         {c.name}
                                     </span>
                                     {!c.is_active && (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded border border-gray-500/30 bg-gray-500/10 text-gray-400">
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded border border-muted-foreground/30 bg-muted text-muted-foreground">
                                             nieaktywny
                                         </span>
                                     )}
@@ -214,7 +214,7 @@ export function ClientsAdminClient({ initialClients }: Props) {
                                     <Button
                                         size="sm"
                                         variant="ghost"
-                                        className="h-7 w-7 p-0 text-red-400 hover:text-red-300"
+                                        className="h-7 w-7 p-0 text-destructive hover:text-destructive/80"
                                         onClick={() => handleDelete(c)}
                                         disabled={pending}
                                     >

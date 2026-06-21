@@ -31,7 +31,7 @@ export default async function OnboardingQueuePage() {
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <UserPlus className="h-7 w-7 text-cyan-400" />
+                        <UserPlus className="h-7 w-7 text-info" />
                         Kolejka onboardingu
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{queue.length} aktywnych procesów</p>
@@ -75,7 +75,7 @@ export default async function OnboardingQueuePage() {
                                         <td className="p-3">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-24 h-2 bg-muted rounded overflow-hidden">
-                                                    <div className="h-full bg-cyan-400" style={{ width: `${pct}%` }} />
+                                                    <div className="h-full bg-info" style={{ width: `${pct}%` }} />
                                                 </div>
                                                 <span className="text-xs text-muted-foreground">
                                                     {r.tasks_completed}/{r.tasks_total}
@@ -84,12 +84,12 @@ export default async function OnboardingQueuePage() {
                                         </td>
                                         <td className="p-3">
                                             {r.tasks_overdue > 0 ? (
-                                                <span className="inline-flex items-center gap-1 text-xs text-red-400">
+                                                <span className="inline-flex items-center gap-1 text-xs text-destructive">
                                                     <AlertCircle className="h-3 w-3" />
                                                     {r.tasks_overdue} overdue
                                                 </span>
                                             ) : (
-                                                <span className="text-xs text-green-400">OK</span>
+                                                <span className="text-xs text-success">OK</span>
                                             )}
                                         </td>
                                     </tr>

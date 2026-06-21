@@ -46,10 +46,10 @@ describe('<ConfirmDialog />', () => {
         expect(onCancel).toHaveBeenCalledTimes(1)
     })
 
-    it('confirm button has destructive (red) class when variant=destructive', () => {
+    it('confirm button has destructive class when variant=destructive', () => {
         render(<ConfirmDialog {...baseProps} open={true} variant="destructive" />)
         const btn = screen.getByRole('button', { name: 'Usuń' })
-        expect(btn.className).toMatch(/bg-red/)
+        expect(btn.className).toMatch(/bg-destructive/)
     })
 
     it('confirm button does NOT have destructive class for default variant', () => {

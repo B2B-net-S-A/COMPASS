@@ -45,9 +45,9 @@ export function DownloadList({ items, emptyText }: Props) {
 
     return (
         <div className="space-y-2">
-            {error && <div className="text-xs text-red-400">{error}</div>}
+            {error && <div className="text-xs text-destructive">{error}</div>}
             {items.map((it) => (
-                <div key={it.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-white/5 border border-white/10 hover:border-primary/30 transition-colors">
+                <div key={it.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-card border border-border hover:border-primary/30 transition-colors">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                         <FileText className="w-5 h-5 text-primary mt-0.5 shrink-0" />
                         <div className="flex-1 min-w-0">

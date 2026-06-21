@@ -33,7 +33,7 @@ export default function UpdatePasswordPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
-            <Card className="w-full max-w-md border-white/10 bg-black/50 backdrop-blur-xl">
+            <Card className="w-full max-w-md border-border bg-card backdrop-blur-xl">
                 <CardHeader>
                     <CardTitle>Nowe hasło</CardTitle>
                     <CardDescription>Wprowadź nowe hasło do swojego konta.</CardDescription>
@@ -48,7 +48,7 @@ export default function UpdatePasswordPage() {
                                 onChange={(e) => setPassword(e.target.value)}
                                 minLength={6}
                                 required
-                                className="bg-white/5 border-white/10"
+                                className="bg-card border-border"
                             />
                         </div>
                         <Button type="submit" disabled={loading} className="w-full">

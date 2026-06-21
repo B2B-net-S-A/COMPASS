@@ -24,7 +24,7 @@ interface Props {
 function statusBadge(status: BonusStatus) {
     if (status === 'assigned') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Przypisana
             </span>
@@ -32,7 +32,7 @@ function statusBadge(status: BonusStatus) {
     }
     if (status === 'cancelled') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
                 <XCircle className="h-3.5 w-3.5" />
                 Anulowana
             </span>
@@ -40,14 +40,14 @@ function statusBadge(status: BonusStatus) {
     }
     if (status === 'paid') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-400">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-info">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Wypłacona (legacy)
             </span>
         )
     }
     return (
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-500">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-warning">
             Oczekuje (legacy)
         </span>
     )
@@ -121,7 +121,7 @@ export function MyBonusesClient({ initialBonuses }: Props) {
 
 function EmptyHint({ text }: { text: string }) {
     return (
-        <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-6 text-center text-muted-foreground text-sm">
+        <div className="rounded-lg border border-dashed border-border bg-muted p-6 text-center text-muted-foreground text-sm">
             {text}
         </div>
     )
@@ -131,14 +131,14 @@ function categoryBadge(category: BonusCategory) {
     const label = BONUS_CATEGORIES_PL[category]
     const className =
         category === 'sales'
-            ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+            ? 'bg-info/15 text-info border-info/30'
             : category === 'delivery_lead'
-              ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+              ? 'bg-primary/15 text-primary border-primary/30'
               : category === 'recruiter'
-                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                ? 'bg-warning/15 text-warning border-warning/30'
                 : category === 'champions_league'
-                  ? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/40'
-                  : 'bg-gray-500/15 text-gray-300 border-gray-500/30'
+                  ? 'bg-warning/15 text-warning border-warning/40'
+                  : 'bg-muted text-muted-foreground border-border'
     return (
         <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>
             {category === 'champions_league' ? '🏆 ' : ''}{label}
@@ -200,7 +200,7 @@ function BonusCategoryDetails({ bonus }: { bonus: BonusWithUsers }) {
         case 'champions_league':
             return bonus.place_rank ? (
                 <div className="text-xs">
-                    <span className="text-yellow-300 font-medium">
+                    <span className="text-warning font-medium">
                         {CHAMPIONS_LEAGUE_PLACE_LABELS_PL[bonus.place_rank as ChampionsLeagueRank]} w Champions League
                     </span>
                 </div>
@@ -227,7 +227,7 @@ function AttachmentLink({ bonus }: { bonus: BonusWithUsers }) {
             type="button"
             onClick={openAttachment}
             disabled={loading}
-            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+            className="inline-flex items-center gap-1 text-xs text-info hover:text-info/80"
         >
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
             {bonus.attachment_filename ?? 'Załącznik'}
@@ -237,16 +237,16 @@ function AttachmentLink({ bonus }: { bonus: BonusWithUsers }) {
 
 function BonusRow({ bonus }: { bonus: BonusWithUsers }) {
     return (
-        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+        <div className="rounded-lg border border-border bg-card p-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold text-foreground">
                             {formatAmount(Number(bonus.amount), bonus.currency)}
                         </span>
                         {statusBadge(bonus.status)}
                         {categoryBadge(bonus.category)}
-                        <span className="text-xs px-2 py-0.5 rounded bg-white/5 text-muted-foreground">
+                        <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
                             {periodLabelForBonus(bonus)}
                         </span>
                     </div>
@@ -263,7 +263,7 @@ function BonusRow({ bonus }: { bonus: BonusWithUsers }) {
                         <span>Przypisana przez: {bonus.proposer_full_name ?? '—'}</span>
                         <span>Otrzymano: {formatDate(bonus.created_at)}</span>
                         {bonus.cancellation_reason && (
-                            <span className="text-red-400">Powód anul.: {bonus.cancellation_reason}</span>
+                            <span className="text-destructive">Powód anul.: {bonus.cancellation_reason}</span>
                         )}
                     </div>
                 </div>

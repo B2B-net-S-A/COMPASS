@@ -119,7 +119,7 @@ export function AdminMembersPanel() {
         <div className="space-y-6">
             <div className="flex flex-col gap-2">
                 <h3 className="text-lg font-medium flex items-center gap-2">
-                    <Crown className="h-5 w-5 text-yellow-500" />
+                    <Crown className="h-5 w-5 text-warning" />
                     Zarządzanie Administratorami
                 </h3>
                 <p className="text-sm text-muted-foreground">
@@ -129,10 +129,10 @@ export function AdminMembersPanel() {
             </div>
 
             {/* Super Admins info */}
-            <Card className="border-yellow-500/20 bg-yellow-500/5">
+            <Card className="border-warning/20 bg-warning/5">
                 <CardHeader className="pb-3">
                     <CardTitle className="text-sm flex items-center gap-2">
-                        <Crown className="h-4 w-4 text-yellow-500" />
+                        <Crown className="h-4 w-4 text-warning" />
                         Super Administratorzy (hardcoded)
                     </CardTitle>
                     <CardDescription className="text-xs">
@@ -142,7 +142,7 @@ export function AdminMembersPanel() {
                 <CardContent>
                     <div className="flex flex-wrap gap-2">
                         {superAdminEmails.map(email => (
-                            <Badge key={email} variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30">
+                            <Badge key={email} variant="outline" className="bg-warning/10 text-warning border-warning/30">
                                 <Crown className="h-3 w-3 mr-1" />
                                 {email}
                             </Badge>
@@ -182,7 +182,7 @@ export function AdminMembersPanel() {
             <Card>
                 <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
-                        <Shield className="h-4 w-4 text-slate-200" />
+                        <Shield className="h-4 w-4 text-muted-foreground" />
                         Administratorzy ({members.length})
                     </CardTitle>
                     <CardDescription>
@@ -225,8 +225,8 @@ export function AdminMembersPanel() {
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={member.has_logged_in
-                                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                                                : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                                                ? 'bg-success/10 text-success border-success/30'
+                                                : 'bg-warning/10 text-warning border-warning/30'
                                             }>
                                                 {member.has_logged_in ? 'Aktywny' : 'Nie logował się'}
                                             </Badge>
@@ -255,7 +255,7 @@ export function AdminMembersPanel() {
             </Card>
 
             {/* Explanation */}
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/20 border border-white/5 text-xs text-muted-foreground">
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/20 border border-border text-xs text-muted-foreground">
                 <Shield className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 <span>
                     <strong>Super Admin</strong> (hardcoded) = pełny dostęp + zarządzanie Administratorami. &nbsp;

@@ -110,3 +110,10 @@ APK-COMPASS/supabase 2/
 # ============================================================
 .claude/scheduled_tasks.lock
 .claude/*.lock
+.claude/worktrees/
+
+# ============================================================
+# Stale local duplicates / stray artifacts (never commit)
+# ============================================================
+/APK-COMPASS/
+/package-lock.json

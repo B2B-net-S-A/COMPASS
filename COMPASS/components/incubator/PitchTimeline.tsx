@@ -17,7 +17,7 @@ const STAGE_LABEL: Record<PitchStatus, string> = {
 export function PitchTimeline({ status }: { status: PitchStatus }) {
     if (status === 'rejected') {
         return (
-            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-destructive/10 border border-destructive/30 text-destructive text-sm">
                 <X className="w-4 h-4" /> Odrzucone
             </div>
         )
@@ -35,15 +35,15 @@ export function PitchTimeline({ status }: { status: PitchStatus }) {
                         <div
                             className={cn(
                                 'flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border',
-                                completed && 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+                                completed && 'bg-success/10 border-success/30 text-success',
                                 current && 'bg-primary/15 border-primary text-primary font-semibold',
-                                !completed && !current && 'bg-white/5 border-white/10 text-muted-foreground',
+                                !completed && !current && 'bg-card border-border text-muted-foreground',
                             )}
                         >
                             {completed ? <Check className="w-3 h-3" /> : current ? <Clock className="w-3 h-3" /> : null}
                             <span>{STAGE_LABEL[stage]}</span>
                         </div>
-                        {idx < STAGES.length - 1 && <div className="w-3 h-px bg-white/10" />}
+                        {idx < STAGES.length - 1 && <div className="w-3 h-px bg-border" />}
                     </div>
                 )
             })}

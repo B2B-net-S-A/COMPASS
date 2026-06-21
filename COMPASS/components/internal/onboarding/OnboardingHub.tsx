@@ -76,7 +76,7 @@ export function OnboardingHub({ employeeOnboarding, contractorOnboarding, contra
                                             <td className="p-2 font-medium">{r.full_name ?? r.email}</td>
                                             <td className="p-2">
                                                 {r.tasks_completed} / {r.tasks_total}
-                                                {r.tasks_overdue > 0 && <span className="ml-2 text-red-500">• {r.tasks_overdue} po terminie</span>}
+                                                {r.tasks_overdue > 0 && <span className="ml-2 text-destructive">• {r.tasks_overdue} po terminie</span>}
                                             </td>
                                             <td className="p-2 text-muted-foreground">{new Date(r.started_at).toLocaleDateString('pl-PL')}</td>
                                             <td className="p-2 text-right">

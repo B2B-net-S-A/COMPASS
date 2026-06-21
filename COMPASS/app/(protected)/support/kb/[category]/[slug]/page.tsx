@@ -42,7 +42,7 @@ export default async function ArticleDetailPage({ params }: PageProps) {
                         </Badge>
                     )}
                     {!article.published_at && (
-                        <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400">
+                        <Badge variant="outline" className="text-[10px] border-warning/30 text-warning">
                             Wersja robocza
                         </Badge>
                     )}
@@ -54,7 +54,7 @@ export default async function ArticleDetailPage({ params }: PageProps) {
                 {article.excerpt && <p className="text-muted-foreground mt-2">{article.excerpt}</p>}
             </div>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-6">
                     <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">
                         {article.content_md}
@@ -71,7 +71,7 @@ export default async function ArticleDetailPage({ params }: PageProps) {
                 </section>
             )}
 
-            <div className="flex justify-between text-xs text-muted-foreground border-t border-white/5 pt-4">
+            <div className="flex justify-between text-xs text-muted-foreground border-t border-border pt-4">
                 <span>Aktualizacja: {new Date(article.updated_at).toLocaleString('pl-PL')}</span>
             </div>
         </article>

@@ -305,7 +305,7 @@ export function PayrollClient({
                             className="h-4 w-4 rounded border-border"
                         />
                         <span className="inline-flex items-center gap-1">
-                            <Lock className="h-3.5 w-3.5 text-green-400" />
+                            <Lock className="h-3.5 w-3.5 text-success" />
                             Tylko zatwierdzone (gotowe do wypłaty)
                         </span>
                         <span className="text-xs text-muted-foreground">
@@ -383,13 +383,13 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
 
             <BonusDetailList bonuses={summary.bonuses} />
 
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+            <div className="rounded-lg border border-border bg-card p-4 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Suma całkowita</span>
                 <span className="text-2xl font-bold">
                     {summary.grand_total != null
                         ? formatMoney(summary.grand_total, summary.rate_currency)
                         : (
-                              <span className="text-amber-400 flex items-center gap-1 text-base">
+                              <span className="text-warning flex items-center gap-1 text-base">
                                   <AlertCircle className="h-4 w-4" />
                                   Mieszane waluty — patrz tabela
                               </span>
@@ -398,7 +398,7 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
             </div>
 
             {summary.timesheet_status !== 'approved' && (
-                <p className="text-xs text-amber-400">
+                <p className="text-xs text-warning">
                     Status timesheet: {TIMESHEET_STATUS_PL[summary.timesheet_status]}. Kwota
                     podstawowa zostanie sfinalizowana po akceptacji.
                 </p>
@@ -411,7 +411,7 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
 function BonusDetailList({ bonuses }: { bonuses: PayrollBonusLine[] }) {
     if (bonuses.length === 0) {
         return (
-            <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-4 text-center text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border bg-muted p-4 text-center text-sm text-muted-foreground">
                 Brak premii w tym miesiącu.
             </div>
         )
@@ -419,9 +419,9 @@ function BonusDetailList({ bonuses }: { bonuses: PayrollBonusLine[] }) {
     return (
         <div className="space-y-2">
             {bonuses.map((b) => (
-                <div key={b.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div key={b.id} className="rounded-lg border border-border bg-card p-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-[11px] px-1.5 py-0.5 rounded border border-white/15 text-muted-foreground">
+                        <span className="text-[11px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">
                             {b.category === 'champions_league' ? '🏆 ' : ''}
                             {BONUS_CATEGORIES_PL[b.category]}
                         </span>
@@ -469,13 +469,13 @@ function SummaryTable({
 
     if (summaries.length === 0) {
         return (
-            <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-8 text-center text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border bg-muted p-8 text-center text-muted-foreground">
                 {emptyText}
             </div>
         )
     }
     return (
-        <div className="rounded-lg border border-white/10 overflow-x-auto">
+        <div className="rounded-lg border border-border overflow-x-auto">
             <table className="w-full text-sm">
                 <thead className="border-b border-border/40 text-xs text-muted-foreground sticky top-0 bg-background">
                     <tr>
@@ -577,12 +577,12 @@ function FragmentRows({
                     {s.grand_total != null ? (
                         formatMoney(s.grand_total, s.rate_currency)
                     ) : (
-                        <span className="text-amber-400 text-[11px]">mieszane</span>
+                        <span className="text-warning text-[11px]">mieszane</span>
                     )}
                 </td>
                 <td className="p-2">
                     {isApproved ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
                             <Lock className="h-3 w-3" />
                             Zatwierdzony
                         </span>
@@ -611,13 +611,13 @@ function FragmentRows({
                 </td>
             </tr>
             {isOpen && hasDetail && (
-                <tr className="border-b border-border/20 bg-white/[0.03]">
+                <tr className="border-b border-border/20 bg-muted/40">
                     <td />
                     <td colSpan={9} className="p-3">
                         <div className="space-y-3">
                             {isApproved && (
                                 <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                                     Timesheet zatwierdzony
                                     {s.timesheet_approved_by_name && (
                                         <> przez <strong>{s.timesheet_approved_by_name}</strong></>
@@ -625,7 +625,7 @@ function FragmentRows({
                                     {s.timesheet_approved_at && (
                                         <> · {formatDateTime(s.timesheet_approved_at)}</>
                                     )}
-                                    <span className="text-green-400/80">
+                                    <span className="text-success/80">
                                         — zablokowany dla managera, gotowy do wypłaty
                                     </span>
                                 </div>
@@ -646,7 +646,7 @@ function FragmentRows({
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
     return (
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
             <div className="text-xs text-muted-foreground">{label}</div>
             <div className="text-2xl font-bold">{value}</div>
             {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}

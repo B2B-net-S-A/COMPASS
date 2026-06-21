@@ -17,7 +17,7 @@ export default async function TemplatesListPage() {
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <FileText className="h-7 w-7 text-cyan-400" />
+                        <FileText className="h-7 w-7 text-info" />
                         Szablony onboardingu
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -51,7 +51,7 @@ export default async function TemplatesListPage() {
                                         <div className="flex items-center gap-2">
                                             <span className="font-semibold">{t.name}</span>
                                             {t.is_default && (
-                                                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                                                <Star className="h-4 w-4 fill-warning text-warning" />
                                             )}
                                         </div>
                                         <div className="text-xs text-muted-foreground mt-1">{roleLabelPl(t.target_role)}</div>

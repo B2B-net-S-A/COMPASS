@@ -35,10 +35,10 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-    draft: { label: 'Szkic', className: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
-    submitted: { label: 'Oczekuje', className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30' },
-    approved: { label: 'Zaakceptowany', className: 'bg-green-500/15 text-green-300 border-green-500/30' },
-    rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    draft: { label: 'Szkic', className: 'bg-muted text-muted-foreground border-border' },
+    submitted: { label: 'Oczekuje', className: 'bg-warning/15 text-warning border-warning/30' },
+    approved: { label: 'Zaakceptowany', className: 'bg-success/15 text-success border-success/30' },
+    rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
 export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved, isAdmin }: Props) {
@@ -220,7 +220,7 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
                                                     {placeholder ? (
                                                         <Badge
                                                             variant="outline"
-                                                            className="bg-blue-500/10 text-blue-300 border-blue-500/30"
+                                                            className="bg-info/10 text-info border-info/30"
                                                         >
                                                             Nierozpoczęty
                                                         </Badge>

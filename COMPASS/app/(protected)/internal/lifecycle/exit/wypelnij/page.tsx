@@ -12,7 +12,7 @@ export default async function ExitInfoPage() {
     return (
         <div className="container mx-auto p-6 max-w-2xl">
             <div className="rounded-lg border bg-card p-8 text-center">
-                <LogOut className="h-12 w-12 mx-auto mb-3 text-amber-400" />
+                <LogOut className="h-12 w-12 mx-auto mb-3 text-warning" />
                 {interview ? (
                     <>
                         <h2 className="font-semibold mb-2">Offboarding w toku</h2>

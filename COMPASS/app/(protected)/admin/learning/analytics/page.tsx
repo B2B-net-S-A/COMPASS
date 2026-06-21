@@ -23,8 +23,8 @@ export default async function AdminLmsAnalyticsPage() {
                 <Link href="/admin/learning" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1">
                     <ArrowLeft className="w-4 h-4" /> Wróć
                 </Link>
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error ?? 'Brak danych'}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error ?? 'Brak danych'}</CardContent>
                 </Card>
             </div>
         )
@@ -48,7 +48,7 @@ export default async function AdminLmsAnalyticsPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
                             <BookOpen className="w-5 h-5 text-primary" />
@@ -61,23 +61,23 @@ export default async function AdminLmsAnalyticsPage() {
                 </Card>
 
                 {data.total_pending_review > 0 && (
-                    <Card className="bg-amber-500/5 border-amber-500/20">
+                    <Card className="bg-warning/5 border-warning/20">
                         <CardContent className="p-4 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
-                                <Inbox className="w-5 h-5 text-amber-400" />
+                            <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
+                                <Inbox className="w-5 h-5 text-warning" />
                             </div>
                             <div>
-                                <p className="text-xs uppercase tracking-wide text-amber-300">W moderacji</p>
+                                <p className="text-xs uppercase tracking-wide text-warning">W moderacji</p>
                                 <p className="text-2xl font-bold">{data.total_pending_review}</p>
                             </div>
                         </CardContent>
                     </Card>
                 )}
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                            <Users className="w-5 h-5 text-blue-400" />
+                        <div className="w-10 h-10 rounded-full bg-info/20 flex items-center justify-center">
+                            <Users className="w-5 h-5 text-info" />
                         </div>
                         <div>
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">Zapisów</p>
@@ -86,10 +86,10 @@ export default async function AdminLmsAnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                            <CheckCircle2 className="w-5 h-5 text-green-400" />
+                        <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
+                            <CheckCircle2 className="w-5 h-5 text-success" />
                         </div>
                         <div>
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">% ukończenia</p>
@@ -98,10 +98,10 @@ export default async function AdminLmsAnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
-                            <Star className="w-5 h-5 text-amber-400" />
+                        <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
+                            <Star className="w-5 h-5 text-warning" />
                         </div>
                         <div>
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">Śr. ocena</p>
@@ -125,7 +125,7 @@ export default async function AdminLmsAnalyticsPage() {
                                     <span className="w-16 text-muted-foreground tabular-nums">
                                         {formatMonth(m.month)}
                                     </span>
-                                    <div className="flex-1 h-5 bg-white/5 rounded overflow-hidden relative">
+                                    <div className="flex-1 h-5 bg-muted rounded overflow-hidden relative">
                                         <div
                                             className="h-full bg-primary transition-all"
                                             style={{ width: `${(m.count / maxMonthCount) * 100}%` }}
@@ -163,7 +163,7 @@ export default async function AdminLmsAnalyticsPage() {
                                 </thead>
                                 <tbody>
                                     {data.top_courses.map((c, idx) => (
-                                        <tr key={c.course_id} className="border-b last:border-b-0 hover:bg-white/5">
+                                        <tr key={c.course_id} className="border-b last:border-b-0 hover:bg-muted">
                                             <td className="py-2 pr-3 text-muted-foreground tabular-nums">{idx + 1}</td>
                                             <td className="py-2 pr-3 font-medium">{c.title}</td>
                                             <td className="py-2 pr-3 text-right tabular-nums">{c.enrollments}</td>

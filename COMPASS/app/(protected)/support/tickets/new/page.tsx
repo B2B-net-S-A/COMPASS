@@ -68,8 +68,8 @@ export default async function NewTicketPage({ searchParams }: NewTicketPageProps
             </div>
 
             {!categoriesResult.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">Nie udało się załadować kategorii: {categoriesResult.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">Nie udało się załadować kategorii: {categoriesResult.error}</CardContent>
                 </Card>
             )}
 

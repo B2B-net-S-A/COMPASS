@@ -15,7 +15,7 @@ export default async function NewTemplatePage() {
                     ← Wszystkie szablony
                 </Link>
                 <h1 className="text-2xl font-bold flex items-center gap-2 mt-1">
-                    <FilePlus className="h-7 w-7 text-cyan-400" />
+                    <FilePlus className="h-7 w-7 text-info" />
                     Nowy szablon onboardingu
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">

@@ -41,17 +41,17 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
     return (
         <AlertDialog open={open} onOpenChange={onOpenChange}>
-            <AlertDialogContent className="bg-[var(--color-bg-primary,#1a1a2e)] border-white/10 text-white">
+            <AlertDialogContent className="bg-card border-border text-foreground">
                 <AlertDialogHeader>
-                    <AlertDialogTitle className="text-white">{title}</AlertDialogTitle>
-                    <AlertDialogDescription className="text-gray-400 whitespace-pre-line">
+                    <AlertDialogTitle className="text-foreground">{title}</AlertDialogTitle>
+                    <AlertDialogDescription className="text-muted-foreground whitespace-pre-line">
                         {description}
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel
                         onClick={onCancel}
-                        className="border-white/20 text-gray-300 hover:bg-white/5 hover:text-white bg-transparent"
+                        className="border-border text-muted-foreground hover:bg-muted hover:text-foreground bg-transparent"
                     >
                         {cancelLabel}
                     </AlertDialogCancel>
@@ -59,7 +59,7 @@ export function ConfirmDialog({
                         onClick={onConfirm}
                         className={cn(
                             variant === 'destructive'
-                                ? 'bg-red-600 hover:bg-red-700 text-white'
+                                ? 'bg-destructive hover:bg-destructive/90 text-white'
                                 : 'bg-primary hover:bg-primary/90 text-white'
                         )}
                     >

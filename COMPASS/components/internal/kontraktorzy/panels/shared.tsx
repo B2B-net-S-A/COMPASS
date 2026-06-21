@@ -19,9 +19,9 @@ export function Kpi({
     accent?: 'amber' | 'green' | 'red'
 }) {
     const accentCls =
-        accent === 'amber' ? 'text-amber-600'
-        : accent === 'green' ? 'text-emerald-600'
-        : accent === 'red' ? 'text-red-600'
+        accent === 'amber' ? 'text-warning'
+        : accent === 'green' ? 'text-success'
+        : accent === 'red' ? 'text-destructive'
         : 'text-foreground'
     return (
         <div className="rounded-lg border bg-card p-4">

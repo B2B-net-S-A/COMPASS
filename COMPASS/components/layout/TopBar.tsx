@@ -16,7 +16,9 @@ import { useRouter } from 'next/navigation'
 import { useTranslation } from '@/lib/i18n/context'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { Logo } from '@/components/common/Logo'
-import { Menu } from 'lucide-react'
+import { Menu, Sun, Moon } from 'lucide-react'
+import { useTheme } from '@/lib/contexts/ThemeContext'
+import { ThemeMenu } from './ThemeMenu'
 
 interface TopBarProps {
     user?: {
@@ -31,6 +33,7 @@ export function TopBar({ user, onMenuToggle }: TopBarProps) {
     const router = useRouter()
     const supabase = createClient()
     const { t } = useTranslation()
+    const { colorMode, toggleColorMode } = useTheme()
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
@@ -60,6 +63,22 @@ export function TopBar({ user, onMenuToggle }: TopBarProps) {
             <div className="hidden md:block" />
 
             <div className="flex items-center gap-3">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleColorMode}
+                    aria-label="Przełącz tryb jasny/ciemny"
+                    className="h-9 w-9"
+                >
+                    {colorMode === 'light' ? (
+                        <Moon className="w-4 h-4" />
+                    ) : (
+                        <Sun className="w-4 h-4" />
+                    )}
+                </Button>
+
+                <ThemeMenu />
+
                 <NotificationBell />
 
                 <DropdownMenu>

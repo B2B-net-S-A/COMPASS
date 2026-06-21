@@ -149,7 +149,7 @@ export function EmployeeProfileDialog({
                             />
                         </div>
 
-                        <div className="space-y-1.5 rounded-md border border-white/10 p-3">
+                        <div className="space-y-1.5 rounded-md border border-border p-3">
                             <Label className="text-xs font-semibold">
                                 {fields.employment_type === 'uop'
                                     ? 'Limit urlopu wypoczynkowego (UoP — Kodeks pracy)'

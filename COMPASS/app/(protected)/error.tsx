@@ -27,8 +27,8 @@ export default function Error({
                     Wystąpił błąd podczas ładowania tej strony. Spróbuj odświeżyć.
                 </p>
                 {process.env.NODE_ENV === 'development' && (
-                    <div className="mt-4 p-4 bg-slate-950 rounded-lg border border-red-500/20 text-left w-full max-w-lg overflow-auto">
-                        <code className="text-xs text-red-400 font-mono break-all">
+                    <div className="mt-4 p-4 bg-card rounded-lg border border-destructive/20 text-left w-full max-w-lg overflow-auto">
+                        <code className="text-xs text-destructive font-mono break-all">
                             {error.message}
                         </code>
                     </div>

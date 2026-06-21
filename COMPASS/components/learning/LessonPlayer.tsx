@@ -89,7 +89,7 @@ export function LessonPlayer({
             {lesson.video_url && <EmbedVideo url={lesson.video_url} title={lesson.title} />}
 
             {lesson.content_md && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card/5 border-border">
                     <CardContent className="p-6">
                         <MarkdownView content={lesson.content_md} />
                     </CardContent>
@@ -97,7 +97,7 @@ export function LessonPlayer({
             )}
 
             {!lesson.content_md && !lesson.video_url && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card/5 border-border">
                     <CardContent className="p-6 text-sm text-muted-foreground italic">
                         Lekcja nie ma jeszcze treści.
                     </CardContent>
@@ -105,14 +105,14 @@ export function LessonPlayer({
             )}
 
             {lesson.attachments.length > 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card/5 border-border">
                     <CardContent className="p-5 space-y-2">
                         <h3 className="text-sm font-semibold mb-2">Załączniki</h3>
                         {lesson.attachments.map((att, i) => (
                             <a
                                 key={`${att.storage_path}-${i}`}
                                 href={`/api/learning/attachment?path=${encodeURIComponent(att.storage_path)}`}
-                                className="flex items-center gap-2 p-2 rounded bg-white/5 border border-white/10 hover:border-primary/30 transition-colors text-sm"
+                                className="flex items-center gap-2 p-2 rounded bg-card/5 border border-border hover:border-primary/30 transition-colors text-sm"
                             >
                                 <FileText className="w-4 h-4 text-muted-foreground" />
                                 <span className="flex-1">{att.name}</span>
@@ -124,11 +124,11 @@ export function LessonPlayer({
             )}
 
             {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>
             )}
 
             {/* Mark complete + nav */}
-            <div className="flex items-center justify-between gap-2 flex-wrap pt-4 border-t border-white/10">
+            <div className="flex items-center justify-between gap-2 flex-wrap pt-4 border-t border-border">
                 <Button
                     onClick={handleMarkComplete}
                     disabled={isCompleted || isPending}
@@ -138,7 +138,7 @@ export function LessonPlayer({
                     {isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : isCompleted ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-400" />
+                        <CheckCircle2 className="w-4 h-4 text-success" />
                     ) : (
                         <Circle className="w-4 h-4" />
                     )}
@@ -162,7 +162,7 @@ export function LessonPlayer({
                     )}
                     {isLastLesson && quizAvailable && allCompleted && (
                         <Link href={`/learning/${courseSlug}/quiz`}>
-                            <Button size="sm" className="gap-2 bg-green-600 hover:bg-green-700">
+                            <Button size="sm" className="gap-2 bg-success hover:bg-success/90">
                                 Przejdź do quizu <ArrowRight className="w-4 h-4" />
                             </Button>
                         </Link>

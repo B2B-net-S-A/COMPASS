@@ -31,23 +31,23 @@ export function LoyaltyWidget({ points, tier }: LoyaltyWidgetProps) {
                     {tierInfo.label} Member
                 </h3>
 
-                <div className="flex items-center gap-1.5 text-xs text-slate-600 mb-4">
-                    <Sparkles className="w-3 h-3 text-yellow-500" />
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
+                    <Sparkles className="w-3 h-3 text-warning" />
                     <span>{points} punktów lojalnościowych</span>
                 </div>
 
                 <div className="w-full space-y-1.5">
-                    <div className="flex justify-between text-[10px] text-slate-600 uppercase font-semibold">
+                    <div className="flex justify-between text-[10px] text-muted-foreground uppercase font-semibold">
                         <span>{tierName}</span>
                         <span>{nextTier}</span>
                     </div>
-                    <Progress value={currentProgress} className="h-1.5 bg-black/20" />
+                    <Progress value={currentProgress} className="h-1.5 bg-muted" />
                     {tierInfo.next ? (
-                        <p className="text-xs text-slate-600 text-right">
-                            Brakuje <span className="text-white font-mono">{pointsToNext}</span> pkt
+                        <p className="text-xs text-muted-foreground text-right">
+                            Brakuje <span className="text-foreground font-mono">{pointsToNext}</span> pkt
                         </p>
                     ) : (
-                        <p className="text-xs text-slate-600 text-right">
+                        <p className="text-xs text-muted-foreground text-right">
                             Najwyższy poziom!
                         </p>
                     )}

@@ -108,7 +108,7 @@ export function InterviewFileCell({ kind, contractorId, attachments, entry, onCh
                         type="button"
                         onClick={() => remove(a.path)}
                         disabled={busy}
-                        className="text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                        className="text-muted-foreground hover:text-destructive disabled:opacity-50"
                         title="Usuń plik"
                     >
                         <X className="h-3 w-3" />

@@ -71,7 +71,7 @@ export function ClockTimelineView({ date }: Props) {
     if (error) {
         return (
             <Card>
-                <CardContent className="py-6 text-sm text-red-300">
+                <CardContent className="py-6 text-sm text-destructive">
                     Błąd pobierania timeline: {error}
                 </CardContent>
             </Card>
@@ -108,7 +108,7 @@ export function ClockTimelineView({ date }: Props) {
         <Card>
             <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-blue-400" />
+                    <Sparkles className="h-4 w-4 text-info" />
                     Timeline aktywności — {date}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
@@ -119,7 +119,7 @@ export function ClockTimelineView({ date }: Props) {
             </CardHeader>
             <CardContent className="space-y-3">
                 {/* Horizontal bar */}
-                <div className="relative h-10 bg-zinc-900/60 rounded overflow-hidden border border-zinc-800">
+                <div className="relative h-10 bg-muted/60 rounded overflow-hidden border border-border">
                     {blocks.map((b, i) => {
                         const startMs = new Date(b.start).getTime()
                         const endMs = new Date(b.end).getTime()

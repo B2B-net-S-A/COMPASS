@@ -22,10 +22,10 @@ const STATUS_LABEL: Record<string, string> = {
 }
 const STATUS_COLOR: Record<string, string> = {
     pending: 'bg-muted text-muted-foreground',
-    onboarding: 'bg-cyan-500/20 text-cyan-300',
-    active: 'bg-green-500/20 text-green-300',
-    offboarding: 'bg-amber-500/20 text-amber-300',
-    exited: 'bg-red-500/20 text-red-300',
+    onboarding: 'bg-info/20 text-info',
+    active: 'bg-success/20 text-success',
+    offboarding: 'bg-warning/20 text-warning',
+    exited: 'bg-destructive/20 text-destructive',
 }
 
 interface Props {
@@ -77,7 +77,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
             {/* Action bar */}
             <div className="flex flex-wrap items-center gap-2 justify-between">
                 <div className="flex flex-wrap items-center gap-2">
-                    <Button onClick={() => setExternalOpen(true)} variant="outline" className="border-amber-400/50">
+                    <Button onClick={() => setExternalOpen(true)} variant="outline" className="border-warning/50">
                         <ExternalLink className="h-4 w-4 mr-2" />
                         Dodaj external pracownika
                     </Button>
@@ -148,7 +148,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                         <div className="font-medium flex items-center gap-2">
                                             {e.full_name ?? e.email}
                                             {e.is_external && (
-                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase tracking-wide">
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning uppercase tracking-wide">
                                                     external
                                                 </span>
                                             )}
@@ -166,10 +166,10 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                     </td>
                                     <td className="p-3 text-xs">
                                         {e.has_active_onboarding && (
-                                            <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">onboarding</span>
+                                            <span className="px-2 py-0.5 rounded bg-info/20 text-info">onboarding</span>
                                         )}
                                         {e.has_active_exit_interview && (
-                                            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 ml-1">exit</span>
+                                            <span className="px-2 py-0.5 rounded bg-warning/20 text-warning ml-1">exit</span>
                                         )}
                                     </td>
                                     <td className="p-3 text-right relative">
@@ -188,7 +188,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                                         onClick={() => { setActiveMenu(null); setStartOnboardingFor(e) }}
                                                         className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
                                                     >
-                                                        <UserPlus className="h-4 w-4 text-cyan-400" />
+                                                        <UserPlus className="h-4 w-4 text-info" />
                                                         Uruchom onboarding
                                                     </button>
                                                 )}
@@ -198,7 +198,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                                         onClick={() => setActiveMenu(null)}
                                                         className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
                                                     >
-                                                        <FileText className="h-4 w-4 text-cyan-400" />
+                                                        <FileText className="h-4 w-4 text-info" />
                                                         Otwórz aktywny onboarding
                                                     </Link>
                                                 )}
@@ -208,7 +208,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                                         onClick={() => { setActiveMenu(null); setScheduleExitFor(e) }}
                                                         className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2"
                                                     >
-                                                        <LogOut className="h-4 w-4 text-amber-400" />
+                                                        <LogOut className="h-4 w-4 text-warning" />
                                                         Zaplanuj exit interview
                                                     </button>
                                                 )}

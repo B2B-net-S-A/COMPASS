@@ -18,12 +18,12 @@ interface Props {
 }
 
 const CLOSED_REASON_LABEL: Record<string, { label: string; className: string }> = {
-    manual: { label: 'Ręczne zamknięcie', className: 'bg-blue-500/15 text-blue-300 border-blue-500/30' },
-    idle_timeout: { label: 'Auto: bezczynność', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
-    daily_cutoff: { label: 'Auto: koniec doby', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
-    sleep_detected: { label: 'Auto: uśpienie', className: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
-    taken_over: { label: 'Przejęta', className: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30' },
-    admin_close: { label: 'Zamknięta przez admina', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    manual: { label: 'Ręczne zamknięcie', className: 'bg-info/15 text-info border-info/30' },
+    idle_timeout: { label: 'Auto: bezczynność', className: 'bg-warning/15 text-warning border-warning/30' },
+    daily_cutoff: { label: 'Auto: koniec doby', className: 'bg-warning/15 text-warning border-warning/30' },
+    sleep_detected: { label: 'Auto: uśpienie', className: 'bg-warning/15 text-warning border-warning/30' },
+    taken_over: { label: 'Przejęta', className: 'bg-muted/15 text-muted-foreground border-muted/30' },
+    admin_close: { label: 'Zamknięta przez admina', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
 function formatHm(seconds: number): string {
@@ -69,20 +69,20 @@ export async function ClockPanel({ year, month }: Props) {
         <section className="space-y-4">
             <div>
                 <h2 className="text-xl font-semibold flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-blue-400" />
+                    <Clock className="h-5 w-5 text-info" />
                     Zegar pracy
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
                     Zarejestrowane sesje pracy. Możesz wypełnić timesheet propozycjami z
                     trackingu — zob.{' '}
-                    <Link href="/internal?tab=timesheet" className="text-blue-400 underline">
+                    <Link href="/internal?tab=timesheet" className="text-info underline">
                         sekcja Timesheet
                     </Link>
                     .{' '}
                     <Link
                         href="/privacy/work-monitoring"
                         target="_blank"
-                        className="inline-flex items-center gap-1 text-blue-400 underline"
+                        className="inline-flex items-center gap-1 text-info underline"
                     >
                         <ShieldCheck className="h-3 w-3" />
                         Polityka monitoringu
@@ -195,7 +195,7 @@ export async function ClockPanel({ year, month }: Props) {
                                         const reason = s.closed_reason
                                             ? CLOSED_REASON_LABEL[s.closed_reason] ?? {
                                                   label: s.closed_reason,
-                                                  className: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+                                                  className: 'bg-muted/15 text-muted-foreground border-muted/30',
                                               }
                                             : null
                                         return (
@@ -207,7 +207,7 @@ export async function ClockPanel({ year, month }: Props) {
                                                     {s.ended_at ? (
                                                         formatDateTime(s.ended_at)
                                                     ) : (
-                                                        <Badge className="bg-green-500/15 text-green-300 border-green-500/30">
+                                                        <Badge className="bg-success/15 text-success border-success/30">
                                                             Aktywna
                                                         </Badge>
                                                     )}

@@ -12,11 +12,11 @@ import { TICKET_STATUS_LABEL, type InboxTicketWithMeta, type TicketStatus } from
 const COLUMN_ORDER: TicketStatus[] = ['open', 'in_progress', 'waiting_user', 'resolved', 'closed']
 
 const COLUMN_BG: Record<TicketStatus, string> = {
-    open: 'bg-emerald-500/5 border-emerald-500/20',
-    in_progress: 'bg-blue-500/5 border-blue-500/20',
-    waiting_user: 'bg-amber-500/5 border-amber-500/20',
-    resolved: 'bg-cyan-500/5 border-cyan-500/20',
-    closed: 'bg-white/5 border-white/10',
+    open: 'bg-success/5 border-success/20',
+    in_progress: 'bg-info/5 border-info/20',
+    waiting_user: 'bg-warning/5 border-warning/20',
+    resolved: 'bg-info/5 border-info/20',
+    closed: 'bg-card border-border',
 }
 
 interface KanbanBoardProps {
@@ -79,7 +79,7 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
                                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">
                                     {TICKET_STATUS_LABEL[status]}
                                 </h3>
-                                <span className="text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded bg-white/5 flex-shrink-0">
+                                <span className="text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted flex-shrink-0">
                                     {items.length}
                                 </span>
                             </div>

@@ -95,10 +95,10 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                 </div>
             </div>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-3">
                     {ticket.meta.email_from && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground border-b border-white/5 pb-2 flex-wrap">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground border-b border-border pb-2 flex-wrap">
                             <Mail className="w-3.5 h-3.5" />
                             <span>Od: {ticket.meta.email_from}</span>
                             {ticket.meta.email_received_at && (
@@ -129,7 +129,7 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
             </Card>
 
             {ticket.attachments.length > 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-5">
                         <div className="flex items-center gap-2 text-sm font-medium mb-3">
                             <Paperclip className="w-4 h-4" />
@@ -157,7 +157,7 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                 </Card>
             )}
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5">
                     <TicketChat
                         ticketId={ticket.id}

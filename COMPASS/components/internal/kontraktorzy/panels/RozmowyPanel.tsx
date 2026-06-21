@@ -79,7 +79,7 @@ export function RozmowyPanel({ conversations, tcmProfiles, contractorsLite, onSa
                                             </div>
                                         </td>
                                         <td className="p-2"><span className={cn('inline-block rounded border px-2 py-0.5 text-xs', CONVERSATION_STATUS_BADGE[r.latest.status])}>{CONVERSATION_STATUS_PL[r.latest.status]}</span></td>
-                                        <td className={cn('p-2 whitespace-nowrap', overdue && 'font-medium text-red-600')}>{r.earliest_follow_up ?? '—'}</td>
+                                        <td className={cn('p-2 whitespace-nowrap', overdue && 'font-medium text-destructive')}>{r.earliest_follow_up ?? '—'}</td>
                                         <td className="p-2 text-right">
                                             <ConversationDialog contractors={contractorsLite} tcmProfiles={tcmProfiles} presetContractorId={r.contractor_id} onSaved={onSaved} triggerLabel="Rozmowa" triggerVariant="outline" />
                                         </td>

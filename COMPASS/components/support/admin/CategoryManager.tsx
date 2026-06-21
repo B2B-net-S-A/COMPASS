@@ -110,7 +110,7 @@ export function CategoryManager({ initialCategories, articleCounts, materialsByC
     return (
         <div className="space-y-4">
             {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>
             )}
 
             <div className="flex justify-end">
@@ -133,7 +133,7 @@ export function CategoryManager({ initialCategories, articleCounts, materialsByC
 
             <div className="space-y-2">
                 {categories.map((cat, index) => (
-                    <Card key={cat.id} className={`bg-white/5 border-white/10 ${!cat.is_active ? 'opacity-60' : ''}`}>
+                    <Card key={cat.id} className={`bg-card border-border ${!cat.is_active ? 'opacity-60' : ''}`}>
                         <CardContent className="p-4">
                             {editingId === cat.id ? (
                                 <CategoryEditForm
@@ -151,7 +151,7 @@ export function CategoryManager({ initialCategories, articleCounts, materialsByC
                                             <h3 className="font-semibold">{cat.name_pl}</h3>
                                             <Badge variant="outline" className="text-[10px]">{cat.slug}</Badge>
                                             {!cat.is_active && (
-                                                <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400">
+                                                <Badge variant="outline" className="text-[10px] border-warning/30 text-warning">
                                                     Ukryta
                                                 </Badge>
                                             )}
@@ -209,7 +209,7 @@ export function CategoryManager({ initialCategories, articleCounts, materialsByC
                                             variant="ghost"
                                             onClick={() => handleDelete(cat)}
                                             disabled={isPending}
-                                            className="text-red-400 hover:text-red-300"
+                                            className="text-destructive hover:text-destructive/80"
                                             title="Usuń"
                                         >
                                             <Trash2 className="w-4 h-4" />
@@ -233,7 +233,7 @@ export function CategoryManager({ initialCategories, articleCounts, materialsByC
             </div>
 
             {categories.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center text-muted-foreground">
                         Brak kategorii.
                     </CardContent>
@@ -269,7 +269,7 @@ function CategoryEditForm({
 
     return (
         <div className="space-y-3">
-            {error && <div className="text-xs text-red-400">{error}</div>}
+            {error && <div className="text-xs text-destructive">{error}</div>}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Nazwa PL *</label>
@@ -325,7 +325,7 @@ function CategoryCreateForm({
     return (
         <Card className="bg-primary/5 border-primary/30">
             <CardContent className="p-4 space-y-3">
-                {error && <div className="text-xs text-red-400">{error}</div>}
+                {error && <div className="text-xs text-destructive">{error}</div>}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div>
                         <label className="text-xs text-muted-foreground mb-1 block">Slug *</label>
@@ -414,17 +414,17 @@ function MaterialsPanel({
     void refreshList // for future use
 
     return (
-        <div className="mt-4 pt-4 border-t border-white/10 space-y-3">
+        <div className="mt-4 pt-4 border-t border-border space-y-3">
             <h4 className="text-sm font-semibold flex items-center gap-2">
                 <FileUp className="w-4 h-4 text-primary" /> Materiały do pobrania
             </h4>
 
-            {error && <div className="text-xs text-red-400">{error}</div>}
+            {error && <div className="text-xs text-destructive">{error}</div>}
 
             {materials.length > 0 ? (
                 <div className="space-y-1">
                     {materials.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-white/5 border border-white/10">
+                        <div key={m.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-card border border-border">
                             <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium truncate">{m.title}</div>
                                 <div className="text-[10px] text-muted-foreground">
@@ -436,7 +436,7 @@ function MaterialsPanel({
                                 variant="ghost"
                                 onClick={() => remove(m.id)}
                                 disabled={isPending}
-                                className="text-red-400 hover:text-red-300"
+                                className="text-destructive hover:text-destructive/80"
                             >
                                 <Trash2 className="w-4 h-4" />
                             </Button>
@@ -447,7 +447,7 @@ function MaterialsPanel({
                 <p className="text-xs text-muted-foreground">Brak materiałów. Dodaj pierwszy poniżej.</p>
             )}
 
-            <div className="space-y-2 p-3 rounded-md bg-white/5 border border-dashed border-white/10">
+            <div className="space-y-2 p-3 rounded-md bg-card border border-dashed border-border">
                 <Input
                     placeholder="Tytuł materiału (np. Regulamin Multisport)"
                     value={title}

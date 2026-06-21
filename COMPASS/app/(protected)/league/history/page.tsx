@@ -47,11 +47,11 @@ export default async function HistoryPage({ searchParams }: PageProps) {
             </div>
 
             {/* Status filter chips */}
-            <div className="flex flex-wrap gap-2 pb-2 border-b border-white/5">
+            <div className="flex flex-wrap gap-2 pb-2 border-b border-border">
                 <Link href="/league/history">
                     <Badge
                         className={`cursor-pointer text-xs h-7 px-3 transition-colors ${
-                            !status ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                            !status ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                         }`}
                     >
                         Wszystkie
@@ -60,7 +60,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                 <Link href="/league/history?status=confirmed">
                     <Badge
                         className={`cursor-pointer text-xs h-7 px-3 transition-colors ${
-                            status === 'confirmed' ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                            status === 'confirmed' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                         }`}
                     >
                         Zatwierdzone
@@ -69,7 +69,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                 <Link href="/league/history?status=pending">
                     <Badge
                         className={`cursor-pointer text-xs h-7 px-3 transition-colors ${
-                            status === 'pending' ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                            status === 'pending' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                         }`}
                     >
                         Oczekujące
@@ -78,7 +78,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                 <Link href="/league/history?status=reversed">
                     <Badge
                         className={`cursor-pointer text-xs h-7 px-3 transition-colors ${
-                            status === 'reversed' ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                            status === 'reversed' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                         }`}
                     >
                         Cofnięte
@@ -87,13 +87,13 @@ export default async function HistoryPage({ searchParams }: PageProps) {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-base">
                             {total} {total === 1 ? 'transakcja' : 'transakcji'}
@@ -115,12 +115,12 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                 <div className="flex justify-between gap-2">
                     {offset > 0 ? (
                         <Link href={`/league/history${status ? `?status=${status}&` : '?'}offset=${Math.max(0, offset - limit)}`}>
-                            <Badge className="cursor-pointer h-8 px-3 bg-white/5 border border-white/10 hover:border-primary/40">← Poprzednia</Badge>
+                            <Badge className="cursor-pointer h-8 px-3 bg-muted border border-border hover:border-primary/40">← Poprzednia</Badge>
                         </Link>
                     ) : <div />}
                     {hasMore && (
                         <Link href={`/league/history${status ? `?status=${status}&` : '?'}offset=${offset + limit}`}>
-                            <Badge className="cursor-pointer h-8 px-3 bg-white/5 border border-white/10 hover:border-primary/40">Następna →</Badge>
+                            <Badge className="cursor-pointer h-8 px-3 bg-muted border border-border hover:border-primary/40">Następna →</Badge>
                         </Link>
                     )}
                 </div>

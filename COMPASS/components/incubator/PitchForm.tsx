@@ -64,12 +64,12 @@ export function PitchForm() {
             />
 
             <form onSubmit={handleSubmit} className="space-y-4">
-                {error && <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{error}</div>}
+                {error && <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>}
 
                 {!ndaTimestamp ? (
-                    <Card className="bg-amber-500/5 border-amber-500/30">
+                    <Card className="bg-warning/5 border-warning/30">
                         <CardContent className="p-5 flex items-start gap-3">
-                            <Shield className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+                            <Shield className="w-6 h-6 text-warning shrink-0 mt-0.5" />
                             <div className="flex-1 space-y-2">
                                 <h3 className="font-semibold">Wymagana akceptacja oświadczenia poufności</h3>
                                 <p className="text-sm text-muted-foreground">
@@ -82,16 +82,16 @@ export function PitchForm() {
                         </CardContent>
                     </Card>
                 ) : (
-                    <Card className="bg-emerald-500/5 border-emerald-500/30">
+                    <Card className="bg-success/5 border-success/30">
                         <CardContent className="p-3 flex items-center gap-2 text-sm">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            <CheckCircle2 className="w-4 h-4 text-success" />
                             <span>Oświadczenie zaakceptowane: {new Date(ndaTimestamp).toLocaleString('pl-PL')}</span>
-                            <Badge variant="outline" className="ml-auto text-[10px] border-emerald-500/30 text-emerald-400">OK</Badge>
+                            <Badge variant="outline" className="ml-auto text-[10px] border-success/30 text-success">OK</Badge>
                         </CardContent>
                     </Card>
                 )}
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-5 space-y-4">
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">Tytuł pomysłu *</label>

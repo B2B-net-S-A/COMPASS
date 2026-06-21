@@ -60,13 +60,13 @@ export default async function RecommendedPage() {
             )}
 
             {error && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
                 </Card>
             )}
 
             {!error && items.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center space-y-3">
                         <Sparkles className="w-16 h-16 text-muted-foreground mx-auto" />
                         <h2 className="text-xl font-bold">Brak rekomendacji na razie</h2>
@@ -89,11 +89,11 @@ export default async function RecommendedPage() {
                         const c = rec.course
                         return (
                             <Link key={c.id} href={`/learning/${c.slug}`} className="block group">
-                                <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors h-full">
+                                <Card className="bg-card border-border hover:border-primary/40 transition-colors h-full">
                                     <CardContent className="p-5 space-y-3">
                                         <div className="flex items-start justify-between gap-2">
                                             <Badge variant="outline" className="text-[10px]">{c.category}</Badge>
-                                            <Badge variant="outline" className="text-[10px] border-white/10">
+                                            <Badge variant="outline" className="text-[10px] border-border">
                                                 {LEVEL_LABEL[c.level] ?? c.level}
                                             </Badge>
                                         </div>
@@ -112,15 +112,15 @@ export default async function RecommendedPage() {
 
                                         <div className="flex flex-wrap gap-1">
                                             {c.tags.slice(0, 4).map((t) => (
-                                                <Badge key={t} className="bg-white/5 text-muted-foreground border-0 text-[9px] h-4 px-1">
+                                                <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1">
                                                     {t}
                                                 </Badge>
                                             ))}
                                         </div>
 
-                                        <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-white/5">
+                                        <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
                                             <span className="inline-flex items-center gap-1">
-                                                <Star className="w-3 h-3 text-amber-400" />
+                                                <Star className="w-3 h-3 text-warning" />
                                                 {c.ratings_count > 0 ? c.avg_rating.toFixed(1) : '—'}
                                             </span>
                                             <span className="inline-flex items-center gap-1">

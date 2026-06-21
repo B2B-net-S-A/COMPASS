@@ -67,12 +67,12 @@ export function FavoriteButton({
                 'transition-all duration-300 relative',
                 variant === 'box' ? (
                     isFavorite
-                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/30 shadow-[0_0_15px_-5px_rgba(234,179,8,0.4)]'
-                        : 'bg-white/5 border-white/10 text-slate-600 hover:bg-white/10 hover:text-white hover:border-white/30'
+                        ? 'bg-warning/20 border-warning/50 text-warning hover:bg-warning/30 shadow-[0_0_15px_-5px_rgba(234,179,8,0.4)]'
+                        : 'bg-muted border-border text-muted-foreground hover:bg-muted hover:text-foreground hover:border-border'
                 ) : (
                     isFavorite
-                        ? 'text-yellow-400 hover:text-yellow-500'
-                        : 'text-muted-foreground hover:text-yellow-400'
+                        ? 'text-warning hover:text-warning'
+                        : 'text-muted-foreground hover:text-warning'
                 ),
                 className
             )}
@@ -82,7 +82,7 @@ export function FavoriteButton({
                 className={cn(
                     iconSize,
                     'transition-all duration-300',
-                    isFavorite ? 'fill-yellow-400 text-yellow-400' : 'fill-transparent',
+                    isFavorite ? 'fill-warning text-warning' : 'fill-transparent',
                     isPending && 'animate-pulse opacity-70'
                 )}
             />

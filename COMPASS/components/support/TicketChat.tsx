@@ -67,7 +67,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
         <div className="space-y-4">
             <div className="space-y-3">
                 {comments.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground border border-dashed border-white/10 rounded-lg">
+                    <div className="p-4 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
                         Brak odpowiedzi. Dodaj komentarz aby kontynuować rozmowę.
                     </div>
                 ) : (
@@ -77,7 +77,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
                         return (
                             <div key={c.id} className={cn('flex gap-3', isMine && 'flex-row-reverse')}>
                                 <Avatar className="h-8 w-8 shrink-0">
-                                    <AvatarFallback className="text-[10px] bg-white/5">{initials}</AvatarFallback>
+                                    <AvatarFallback className="text-[10px] bg-card">{initials}</AvatarFallback>
                                 </Avatar>
                                 <div className={cn('flex-1 max-w-[75%]', isMine && 'text-right')}>
                                     <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
@@ -85,7 +85,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
                                         <span>·</span>
                                         <span>{new Date(c.created_at).toLocaleString('pl-PL')}</span>
                                         {c.is_internal && (
-                                            <span className="inline-flex items-center gap-1 text-amber-400">
+                                            <span className="inline-flex items-center gap-1 text-warning">
                                                 <Lock className="w-3 h-3" /> wewnętrzny
                                             </span>
                                         )}
@@ -93,8 +93,8 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
                                     <div
                                         className={cn(
                                             'inline-block p-3 rounded-lg whitespace-pre-wrap text-sm break-words',
-                                            isMine ? 'bg-primary/10 border border-primary/20' : 'bg-white/5 border border-white/10',
-                                            c.is_internal && 'border-amber-500/30 bg-amber-500/5',
+                                            isMine ? 'bg-primary/10 border border-primary/20' : 'bg-card border border-border',
+                                            c.is_internal && 'border-warning/30 bg-warning/5',
                                         )}
                                     >
                                         {c.body_md}
@@ -107,8 +107,8 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
             </div>
 
             {canReply && currentStatus !== 'closed' && (
-                <form onSubmit={handleSend} className="space-y-3 pt-3 border-t border-white/5">
-                    {error && <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400">{error}</div>}
+                <form onSubmit={handleSend} className="space-y-3 pt-3 border-t border-border">
+                    {error && <div className="p-2 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive">{error}</div>}
 
                     <Textarea
                         value={body}
@@ -126,7 +126,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
                                         type="checkbox"
                                         checked={internal}
                                         onChange={(e) => setInternal(e.target.checked)}
-                                        className="accent-amber-500"
+                                        className="accent-warning"
                                     />
                                     Wewnętrzny komentarz (niewidoczny dla zgłaszającego)
                                 </label>
@@ -141,7 +141,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
             )}
 
             {canChangeStatus && (
-                <div className="pt-3 border-t border-white/5">
+                <div className="pt-3 border-t border-border">
                     <p className="text-xs text-muted-foreground mb-2">Zmień status:</p>
                     <div className="flex flex-wrap gap-2">
                         {STATUS_FLOW.filter((s) => s !== currentStatus).map((s) => (

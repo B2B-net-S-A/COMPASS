@@ -72,7 +72,7 @@ export function EditLifecycleProfileDialog({ open, onOpenChange, employee }: Pro
                     <DialogDescription>
                         Pracownik: <strong>{employee.full_name ?? employee.email}</strong>
                         {isExternal && (
-                            <span className="ml-2 inline-block px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs">
+                            <span className="ml-2 inline-block px-2 py-0.5 rounded bg-warning/20 text-warning text-xs">
                                 external
                             </span>
                         )}

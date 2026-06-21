@@ -108,7 +108,7 @@ export function ManageVacationPoolDialog({ targetUserId, targetName, targetEmail
                     </div>
                 ) : (
                     <div className="space-y-3 py-2">
-                        <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs">
+                        <div className="rounded-md border border-border/10 bg-card/5 px-3 py-2 text-xs">
                             <span className="text-muted-foreground">Typ umowy:</span>{' '}
                             <span className="font-medium">
                                 {fields.employment_type === 'uop'
@@ -187,9 +187,9 @@ export function ManageVacationPoolDialog({ targetUserId, targetName, targetEmail
                         </div>
 
                         {available != null && (
-                            <div className="rounded-md border border-green-500/30 bg-green-500/5 px-3 py-2 text-xs">
+                            <div className="rounded-md border border-success/30 bg-success/5 px-3 py-2 text-xs">
                                 <span className="text-muted-foreground">Dostępne w {new Date().getFullYear()}:</span>{' '}
-                                <span className="font-medium text-green-300">{available}</span>
+                                <span className="font-medium text-success">{available}</span>
                                 <span className="text-muted-foreground">
                                     {' '}dni (przed odjęciem już zatwierdzonych wniosków w tym roku)
                                 </span>

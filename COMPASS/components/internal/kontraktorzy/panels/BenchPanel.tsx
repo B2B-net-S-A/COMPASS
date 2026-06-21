@@ -22,9 +22,9 @@ import { ContractorLink } from './shared'
 const cellSelectCls = 'h-8 w-full rounded-md border border-input bg-background px-2 text-xs'
 
 const BENEFITS_BADGE: Record<BenchBenefits, string> = {
-    aktywne: 'text-emerald-600',
+    aktywne: 'text-success',
     nieaktywne: 'text-muted-foreground',
-    do_wygaszenia: 'text-amber-600',
+    do_wygaszenia: 'text-warning',
 }
 
 function BenchRow({ b, onSaved }: { b: BenchItem; onSaved: () => void }) {

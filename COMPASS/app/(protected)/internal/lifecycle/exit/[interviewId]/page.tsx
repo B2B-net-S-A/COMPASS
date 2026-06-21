@@ -89,8 +89,8 @@ export default async function ExitInterviewReviewPage({ params }: { params: { in
             )}
 
             {i.status === 'scheduled' && (
-                <section className="rounded-lg border border-dashed border-red-400/30 p-4">
-                    <h3 className="font-semibold text-sm mb-2 text-red-400">Strefa niebezpieczna</h3>
+                <section className="rounded-lg border border-dashed border-destructive/30 p-4">
+                    <h3 className="font-semibold text-sm mb-2 text-destructive">Strefa niebezpieczna</h3>
                     <p className="text-xs text-muted-foreground mb-3">
                         Anuluj jeśli pracownik jednak zostaje — przywróci status active i usunie offboarding tasks.
                     </p>

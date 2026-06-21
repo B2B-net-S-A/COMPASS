@@ -72,20 +72,20 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
                 </div>
 
                 {error && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-start gap-2">
+                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                         {error}
                     </div>
                 )}
                 {success && (
-                    <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400 flex items-center gap-2">
+                    <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4" /> {success}
                     </div>
                 )}
 
                 {!showReject && (
                     <div className="flex gap-2">
-                        <Button onClick={handleApprove} disabled={isPending} className="gap-2 bg-green-600 hover:bg-green-700">
+                        <Button onClick={handleApprove} disabled={isPending} className="gap-2 bg-success hover:bg-success/90">
                             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                             Zatwierdź i opublikuj
                         </Button>

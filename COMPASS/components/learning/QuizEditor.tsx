@@ -141,20 +141,20 @@ export function QuizEditor({ courseId, initialQuestions, onChanged }: QuizEditor
             </div>
 
             {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-start gap-2">
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     {error}
                 </div>
             )}
             {success && (
-                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400 flex items-center gap-2">
+                <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex items-center gap-2">
                     <Check className="w-4 h-4" /> {success}
                 </div>
             )}
 
             <div className="space-y-3">
                 {draft.map((q, qIdx) => (
-                    <Card key={qIdx} className="bg-white/5 border-white/10">
+                    <Card key={qIdx} className="bg-card border-border">
                         <CardContent className="p-4 space-y-3">
                             <div className="flex items-start gap-3">
                                 <Badge variant="outline" className="mt-1.5 text-[10px]">
@@ -175,7 +175,7 @@ export function QuizEditor({ courseId, initialQuestions, onChanged }: QuizEditor
                                     size="sm"
                                     onClick={() => handleRemoveQuestion(qIdx)}
                                     disabled={isPending || draft.length <= QUIZ_MIN_QUESTIONS}
-                                    className="h-8 w-8 p-0 text-red-400 hover:text-red-500 hover:bg-red-500/10 mt-1"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 mt-1"
                                     title="Usuń pytanie"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -190,7 +190,7 @@ export function QuizEditor({ courseId, initialQuestions, onChanged }: QuizEditor
                                     <div
                                         key={oIdx}
                                         className={`flex items-center gap-2 p-2 rounded border ${
-                                            o.is_correct ? 'bg-green-500/10 border-green-500/30' : 'bg-white/5 border-white/10'
+                                            o.is_correct ? 'bg-success/10 border-success/30' : 'bg-card border-border'
                                         }`}
                                     >
                                         <button
@@ -198,11 +198,11 @@ export function QuizEditor({ courseId, initialQuestions, onChanged }: QuizEditor
                                             onClick={() => setOptionCorrect(qIdx, oIdx)}
                                             disabled={isPending}
                                             className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                                o.is_correct ? 'border-green-500 bg-green-500/20' : 'border-white/20 hover:border-white/40'
+                                                o.is_correct ? 'border-success bg-success/20' : 'border-border hover:border-border/60'
                                             }`}
                                             title={o.is_correct ? 'Poprawna odpowiedź' : 'Zaznacz jako poprawną'}
                                         >
-                                            {o.is_correct && <Check className="w-3 h-3 text-green-400" />}
+                                            {o.is_correct && <Check className="w-3 h-3 text-success" />}
                                         </button>
                                         <Badge variant="outline" className="text-[10px] w-7 justify-center">
                                             {OPTION_LABELS[oIdx]}

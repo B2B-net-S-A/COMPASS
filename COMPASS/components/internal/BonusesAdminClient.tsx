@@ -46,7 +46,7 @@ type FilterStatus = BonusStatus | 'all' | 'active'
 function statusBadge(status: BonusStatus) {
     if (status === 'assigned') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Przypisana
             </span>
@@ -54,7 +54,7 @@ function statusBadge(status: BonusStatus) {
     }
     if (status === 'cancelled') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
                 <XCircle className="h-3.5 w-3.5" />
                 Anulowana
             </span>
@@ -63,14 +63,14 @@ function statusBadge(status: BonusStatus) {
     // Legacy statuses (pending/paid) — should not appear in new flow, but render defensively.
     if (status === 'paid') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-400">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-info">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Wypłacona (legacy)
             </span>
         )
     }
     return (
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-500">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-warning">
             Oczekuje (legacy)
         </span>
     )
@@ -105,14 +105,14 @@ function categoryBadge(category: BonusCategory) {
     const label = BONUS_CATEGORIES_PL[category]
     const className =
         category === 'sales'
-            ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+            ? 'bg-info/15 text-info border-info/30'
             : category === 'delivery_lead'
-              ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+              ? 'bg-primary/15 text-primary border-primary/30'
               : category === 'recruiter'
-                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                ? 'bg-warning/15 text-warning border-warning/30'
                 : category === 'champions_league'
-                  ? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/40'
-                  : 'bg-gray-500/15 text-gray-300 border-gray-500/30'
+                  ? 'bg-warning/15 text-warning border-warning/40'
+                  : 'bg-muted text-muted-foreground border-border'
     return (
         <span className={`text-[10px] px-1.5 py-0.5 rounded border ${className}`}>
             {category === 'champions_league' ? '🏆 ' : ''}{label}
@@ -139,7 +139,7 @@ function AttachmentButton({ bonus }: { bonus: BonusWithUsers }) {
             type="button"
             onClick={open}
             disabled={loading}
-            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+            className="inline-flex items-center gap-1 text-xs text-info hover:text-info/80"
         >
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
             {bonus.attachment_filename ?? 'Załącznik'}
@@ -292,19 +292,19 @@ export function BonusesAdminClient({
         <div className="space-y-4">
             {/* Summary stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="rounded-lg border border-border bg-card p-4">
                     <div className="text-xs text-muted-foreground">Przypisane (suma)</div>
-                    <div className="text-2xl font-bold text-green-400">
+                    <div className="text-2xl font-bold text-success">
                         {totalAssigned.toFixed(2)} PLN
                     </div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="rounded-lg border border-border bg-card p-4">
                     <div className="text-xs text-muted-foreground">Anulowane (suma)</div>
-                    <div className="text-2xl font-bold text-red-400">
+                    <div className="text-2xl font-bold text-destructive">
                         {totalCancelled.toFixed(2)} PLN
                     </div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="rounded-lg border border-border bg-card p-4">
                     <div className="text-xs text-muted-foreground">Liczba premii</div>
                     {/* Match the active filter so the number agrees with the list below
                         (was bonuses.length — confusing when filtering, Dominik Issue 7). */}
@@ -321,8 +321,8 @@ export function BonusesAdminClient({
                             onClick={() => setFilterStatus(s)}
                             className={`px-3 py-1.5 rounded text-xs font-medium transition ${
                                 filterStatus === s
-                                    ? 'bg-white/15 text-white'
-                                    : 'bg-white/5 text-muted-foreground hover:bg-white/10'
+                                    ? 'bg-muted text-foreground'
+                                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                             }`}
                         >
                             {s === 'active' && 'Aktywne'}
@@ -346,7 +346,7 @@ export function BonusesAdminClient({
                             <Button
                                 size="sm"
                                 onClick={() => setAssignClOpen(true)}
-                                className="bg-yellow-500/90 hover:bg-yellow-500 text-black"
+                                className="bg-warning/90 hover:bg-warning text-black"
                             >
                                 <Trophy className="h-3.5 w-3.5 mr-1.5" />
                                 Champions League
@@ -358,7 +358,7 @@ export function BonusesAdminClient({
 
             {/* Bonus list */}
             {filtered.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-8 text-center text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-border bg-muted p-8 text-center text-muted-foreground">
                     Brak premii w tym filtrze.
                 </div>
             ) : (
@@ -373,7 +373,7 @@ export function BonusesAdminClient({
                         return (
                             <div
                                 key={b.id}
-                                className="rounded-lg border border-white/10 bg-white/5 p-3"
+                                className="rounded-lg border border-border bg-card p-3"
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 min-w-0">
@@ -386,12 +386,12 @@ export function BonusesAdminClient({
                                             </span>
                                             {statusBadge(b.status)}
                                             {categoryBadge(b.category)}
-                                            <span className="text-xs px-2 py-0.5 rounded bg-white/5 text-muted-foreground">
+                                            <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
                                                 {periodLabelForBonus(b)}
                                             </span>
                                         </div>
                                         <div className="mt-1 text-sm">
-                                            <span className="font-semibold text-white">
+                                            <span className="font-semibold text-foreground">
                                                 {formatAmount(Number(b.amount), b.currency)}
                                             </span>
                                             <span className="text-muted-foreground"> — {b.reason}</span>
@@ -411,7 +411,7 @@ export function BonusesAdminClient({
                                             <span>Manager: {b.proposer_full_name ?? '—'}</span>
                                             <span>Utworzono: {formatDate(b.created_at)}</span>
                                             {b.cancellation_reason && (
-                                                <span className="text-red-400">
+                                                <span className="text-destructive">
                                                     Anul.: {b.cancellation_reason}
                                                 </span>
                                             )}
@@ -478,7 +478,7 @@ export function BonusesAdminClient({
                 >
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Trophy className="h-5 w-5 text-yellow-400" />
+                            <Trophy className="h-5 w-5 text-warning" />
                             Przypisz Champions League
                         </DialogTitle>
                         <DialogDescription>
@@ -506,7 +506,7 @@ export function BonusesAdminClient({
                     >
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2">
-                                <Trophy className="h-5 w-5 text-yellow-400" />
+                                <Trophy className="h-5 w-5 text-warning" />
                                 Edytuj Champions League
                             </DialogTitle>
                             <DialogDescription>
@@ -635,7 +635,7 @@ function CancelBonusDialog({ bonus, onOpenChange, onCancelled }: CancelDialogPro
                             placeholder="np. omyłkowo przypisana"
                             rows={3}
                             maxLength={500}
-                            className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm"
                             required
                         />
                     </div>

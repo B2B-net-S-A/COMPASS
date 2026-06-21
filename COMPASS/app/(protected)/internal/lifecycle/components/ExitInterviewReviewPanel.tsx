@@ -87,7 +87,7 @@ export function ExitInterviewReviewPanel({ interview }: Props) {
             )}
 
             {interview.status === 'submitted' && (
-                <div className="rounded-lg border-2 border-cyan-400/30 bg-cyan-400/5 p-4 space-y-3">
+                <div className="rounded-lg border-2 border-info/30 bg-info/5 p-4 space-y-3">
                     <label className="block text-sm font-medium">Notatka TCM (opcjonalna)</label>
                     <textarea
                         className="w-full rounded border bg-background px-3 py-2 text-sm"

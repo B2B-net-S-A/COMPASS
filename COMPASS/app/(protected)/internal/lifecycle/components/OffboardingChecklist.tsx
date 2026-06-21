@@ -78,11 +78,11 @@ export function OffboardingChecklist({ tasks, currentUserId, currentUserRole, em
                             <div className="flex items-start gap-3">
                                 <div className="pt-0.5">
                                     {completed ? (
-                                        <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                        <div className="h-5 w-5 rounded-full bg-success flex items-center justify-center">
                                             <Check className="h-3 w-3 text-white" />
                                         </div>
                                     ) : (
-                                        <div className={`h-5 w-5 rounded-full border-2 ${overdue ? 'border-red-400' : 'border-muted-foreground'}`} />
+                                        <div className={`h-5 w-5 rounded-full border-2 ${overdue ? 'border-destructive' : 'border-muted-foreground'}`} />
                                     )}
                                 </div>
                                 <div className="flex-1">
@@ -100,7 +100,7 @@ export function OffboardingChecklist({ tasks, currentUserId, currentUserRole, em
                                         <span className="text-muted-foreground">
                                             {RESPONSIBLE_LABEL[task.responsible_role]}
                                             {task.due_date && (
-                                                <> • {overdue ? <span className="text-red-400">Termin: </span> : 'Termin: '}{new Date(task.due_date).toLocaleDateString('pl-PL')}</>
+                                                <> • {overdue ? <span className="text-destructive">Termin: </span> : 'Termin: '}{new Date(task.due_date).toLocaleDateString('pl-PL')}</>
                                             )}
                                         </span>
                                     </div>

@@ -36,10 +36,10 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-    draft: { label: 'Szkic', className: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
-    submitted: { label: 'Oczekuje akceptacji', className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30' },
-    approved: { label: 'Zaakceptowany', className: 'bg-green-500/15 text-green-300 border-green-500/30' },
-    rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    draft: { label: 'Szkic', className: 'bg-muted text-muted-foreground border-muted-foreground/30' },
+    submitted: { label: 'Oczekuje akceptacji', className: 'bg-warning/15 text-warning border-warning/30' },
+    approved: { label: 'Zaakceptowany', className: 'bg-success/15 text-success border-success/30' },
+    rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
 export function TimesheetEditor({ timesheet }: Props) {
@@ -331,7 +331,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                         Suma: <strong>{totalHours.toFixed(2)} h</strong> / {timesheet.entries.length} wpisów
                     </p>
                     {wasAutoFilled && (
-                        <div className="mt-2 inline-flex items-center gap-2 text-xs bg-blue-500/10 border border-blue-500/30 text-blue-200 rounded px-3 py-1.5">
+                        <div className="mt-2 inline-flex items-center gap-2 text-xs bg-info/10 border border-info/30 text-info rounded px-3 py-1.5">
                             <Sparkles className="h-3.5 w-3.5" />
                             <span>
                                 Draft gotowy z trackingu — przejrzyj, edytuj jeśli trzeba i złóż.
@@ -339,7 +339,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                             <button
                                 onClick={handleClearAutoFill}
                                 disabled={pending}
-                                className="text-blue-300 hover:text-blue-100 underline ml-1"
+                                className="text-info hover:text-info/80 underline ml-1"
                             >
                                 Wyczyść auto-fill
                             </button>
@@ -378,9 +378,9 @@ export function TimesheetEditor({ timesheet }: Props) {
                 {/* H2.7: po reject status auto wraca do 'draft' z rejection_note,
                     user widzi powód i może natychmiast edytować + wysłać ponownie. */}
                 {timesheet.status === 'draft' && timesheet.rejection_note && (
-                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                         <strong>Odrzucony przez admina:</strong> {timesheet.rejection_note}
-                        <p className="text-xs mt-1 text-red-300/80">
+                        <p className="text-xs mt-1 text-destructive/80">
                             Popraw wpisy zgodnie z uwagami i wyślij timesheet ponownie. Po następnym
                             wysłaniu komunikat zniknie.
                         </p>
@@ -388,22 +388,22 @@ export function TimesheetEditor({ timesheet }: Props) {
                 )}
                 {/* Stary status 'rejected' (jeśli kiedyś wystąpi w danych historycznych) */}
                 {timesheet.status === 'rejected' && timesheet.rejection_note && (
-                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                         <strong>Odrzucony przez admina:</strong> {timesheet.rejection_note}
-                        <p className="text-xs mt-1 text-red-300/80">
+                        <p className="text-xs mt-1 text-destructive/80">
                             Skontaktuj się z adminem, aby odblokować edycję.
                         </p>
                     </div>
                 )}
 
                 {timesheet.status === 'submitted' && (
-                    <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+                    <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
                         Timesheet czeka na akceptację admina. W tym statusie nie można edytować wpisów.
                     </div>
                 )}
 
                 {timesheet.status === 'approved' && (
-                    <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-200">
+                    <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
                         Timesheet zaakceptowany. Hash dokumentu: <code className="text-[10px]">{timesheet.pdf_hash?.slice(0, 12)}…</code>
                     </div>
                 )}
@@ -502,7 +502,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                                             <span className="line-clamp-2">{e.description}</span>
                                             {(e.source === 'clock_suggested' || e.source === 'clock_accepted') && (
                                                 <span
-                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-blue-300"
+                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-info"
                                                     title={
                                                         e.tracked_hours != null
                                                             ? `Z trackingu: ${Number(e.tracked_hours).toFixed(2)}h`
@@ -515,7 +515,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                                             )}
                                             {e.correction_required && (
                                                 <span
-                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-amber-300"
+                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-warning"
                                                     title={
                                                         e.tracked_hours != null
                                                             ? `Różnica vs tracking: ${(Number(e.hours) - Number(e.tracked_hours)).toFixed(2)}h`

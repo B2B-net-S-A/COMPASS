@@ -28,10 +28,10 @@ export function ProjectSortSelect() {
 
     return (
         <Select defaultValue={currentSort} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-[180px] bg-secondary/20 border-white/10 text-white">
+            <SelectTrigger className="w-[180px] bg-secondary/20 border-border text-foreground">
                 <SelectValue placeholder="Sortuj według" />
             </SelectTrigger>
-            <SelectContent className="bg-[#1a1a2e] border-white/10 text-white">
+            <SelectContent className="bg-card border-border text-foreground">
                 <SelectItem value="newest">Najnowsze</SelectItem>
                 <SelectItem value="oldest">Najstarsze</SelectItem>
                 <SelectItem value="title_asc">Tytuł (A-Z)</SelectItem>

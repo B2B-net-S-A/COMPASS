@@ -37,7 +37,7 @@ export default async function AdminProjectDetailPage({ params }: PageProps) {
                 </div>
             </div>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-muted border-border">
                 <CardContent className="p-6">
                     <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">
                         {project.description_md}
@@ -45,7 +45,7 @@ export default async function AdminProjectDetailPage({ params }: PageProps) {
                 </CardContent>
             </Card>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-muted border-border">
                 <CardContent className="p-5 space-y-3">
                     <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-primary" />
@@ -57,7 +57,7 @@ export default async function AdminProjectDetailPage({ params }: PageProps) {
                     ) : (
                         <div className="space-y-3">
                             {applications.map((a) => (
-                                <Card key={a.id} className="bg-card border-white/10">
+                                <Card key={a.id} className="bg-card border-border">
                                     <CardContent className="p-4 space-y-2">
                                         <div className="flex items-center justify-between gap-2 flex-wrap">
                                             <div>
@@ -70,7 +70,7 @@ export default async function AdminProjectDetailPage({ params }: PageProps) {
                                                 {APPLICATION_STATUS_LABEL[a.status]}
                                             </Badge>
                                         </div>
-                                        <div className="text-sm whitespace-pre-wrap p-3 rounded-md bg-white/5 border border-white/10">
+                                        <div className="text-sm whitespace-pre-wrap p-3 rounded-md bg-muted border border-border">
                                             {a.motivation_md}
                                         </div>
                                         <ApplicationStatusButtons applicationId={a.id} currentStatus={a.status} />

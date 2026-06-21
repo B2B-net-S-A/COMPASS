@@ -61,13 +61,13 @@ export function BroadcastComposer({ isOpen, onOpenChange, onSuccess }: Broadcast
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-lg bg-zinc-950 border-white/10 text-white">
+            <DialogContent className="sm:max-w-lg bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle className="text-xl flex items-center gap-2">
-                        <Megaphone className="w-5 h-5 text-amber-400" />
+                        <Megaphone className="w-5 h-5 text-warning" />
                         Nowe ogłoszenie
                     </DialogTitle>
-                    <DialogDescription className="text-slate-600">
+                    <DialogDescription className="text-muted-foreground">
                         Wyślij wiadomość do wszystkich użytkowników systemu COMPASS.
                     </DialogDescription>
                 </DialogHeader>
@@ -79,7 +79,7 @@ export function BroadcastComposer({ isOpen, onOpenChange, onSuccess }: Broadcast
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="np. Zmiana regulaminu, Nowy projekt, Informacja..."
-                            className="bg-white/5 border-white/10"
+                            className="bg-muted border-border"
                             maxLength={120}
                         />
                     </div>
@@ -90,32 +90,32 @@ export function BroadcastComposer({ isOpen, onOpenChange, onSuccess }: Broadcast
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
                             placeholder="Napisz treść ogłoszenia..."
-                            className="bg-white/5 border-white/10 min-h-[120px]"
+                            className="bg-muted border-border min-h-[120px]"
                             maxLength={2000}
                         />
-                        <p className="text-[10px] text-slate-600 text-right">{content.length}/2000</p>
+                        <p className="text-[10px] text-muted-foreground text-right">{content.length}/2000</p>
                     </div>
 
-                    <div className="flex items-start space-x-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                    <div className="flex items-start space-x-3 p-4 rounded-lg bg-warning/5 border border-warning/20">
                         <Checkbox
                             id="send_email"
                             checked={sendEmail}
                             onCheckedChange={(val) => setSendEmail(val === true)}
                         />
                         <div className="grid gap-1 leading-none">
-                            <label htmlFor="send_email" className="text-sm font-medium text-slate-300 cursor-pointer flex items-center gap-2">
-                                <Mail className="w-4 h-4 text-amber-400" />
+                            <label htmlFor="send_email" className="text-sm font-medium text-muted-foreground cursor-pointer flex items-center gap-2">
+                                <Mail className="w-4 h-4 text-warning" />
                                 Wyślij również email do wszystkich użytkowników
                             </label>
-                            <p className="text-[10px] text-slate-600">
+                            <p className="text-[10px] text-muted-foreground">
                                 Każdy użytkownik otrzyma kopię ogłoszenia na swój adres email.
                             </p>
                         </div>
                     </div>
 
-                    <div className="p-3 rounded-lg bg-white/5 border border-white/5 flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
-                        <p className="text-[10px] text-slate-600 leading-relaxed">
+                    <div className="p-3 rounded-lg bg-muted border border-border flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
                             Ogłoszenie będzie widoczne dla wszystkich zarejestrowanych użytkowników w zakładce Wiadomości.
                             Użytkownicy nie mogą odpowiadać na ogłoszenia.
                         </p>
@@ -127,14 +127,14 @@ export function BroadcastComposer({ isOpen, onOpenChange, onSuccess }: Broadcast
                         variant="outline"
                         onClick={() => onOpenChange(false)}
                         disabled={isPending}
-                        className="border-white/10"
+                        className="border-border"
                     >
                         Anuluj
                     </Button>
                     <Button
                         onClick={handleSubmit}
                         disabled={isPending || !title.trim() || !content.trim()}
-                        className="bg-amber-600 hover:bg-amber-500 gap-2"
+                        className="bg-warning hover:bg-warning/90 gap-2"
                     >
                         {isPending ? (
                             <><Loader2 className="w-4 h-4 animate-spin" /> Wysyłanie...</>

@@ -33,7 +33,7 @@ export default async function AdminKbPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                     {superAdmin && (
                         <Link href="/admin/support/kb/categories">
-                            <Button variant="outline" className="gap-2 border-yellow-500/30 text-yellow-400/90 hover:text-yellow-300">
+                            <Button variant="outline" className="gap-2 border-warning/30 text-warning/90 hover:text-warning">
                                 <Crown className="w-4 h-4" />
                                 <Settings className="w-4 h-4" />
                                 Zakładki + materiały
@@ -49,13 +49,13 @@ export default async function AdminKbPage() {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && articles.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center space-y-3">
                         <BookOpen className="w-16 h-16 text-muted-foreground mx-auto" />
                         <p className="text-muted-foreground">Brak artykułów. Dodaj pierwszy.</p>
@@ -67,18 +67,18 @@ export default async function AdminKbPage() {
                 <div className="space-y-2">
                     {articles.map((a) => (
                         <Link key={a.id} href={`/admin/support/kb/${a.slug}/edit`} className="block group">
-                            <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                            <Card className="bg-card border-border hover:border-primary/40 transition-colors">
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between gap-3 flex-wrap">
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                 <Badge variant="outline" className="text-[10px]">{a.category_name_pl}</Badge>
                                                 {a.published_at ? (
-                                                    <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                                                    <Badge variant="outline" className="text-[10px] border-success/30 text-success bg-success/10">
                                                         Opublikowane
                                                     </Badge>
                                                 ) : (
-                                                    <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400">
+                                                    <Badge variant="outline" className="text-[10px] border-warning/30 text-warning">
                                                         Wersja robocza
                                                     </Badge>
                                                 )}

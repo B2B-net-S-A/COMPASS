@@ -36,13 +36,13 @@ function LeaveItem({ leave }: { leave: ActiveLeaveRow }) {
             <span className="font-medium text-foreground">
                 {leave.user_full_name ?? leave.user_email}
             </span>
-            <span className="text-[10px] text-blue-300/80">
+            <span className="text-[10px] text-info/80">
                 ({LEAVE_TYPE_LABEL[leave.leave_type] ?? 'urlop'})
             </span>
             <span>do {fmt(leave.end_date)}</span>
             {leave.substitute_full_name && leave.substitute_email ? (
                 <span className="inline-flex items-center gap-1">
-                    <UserCheck className="h-3 w-3 text-green-400" />
+                    <UserCheck className="h-3 w-3 text-success" />
                     zastępuje:{' '}
                     <a
                         href={`mailto:${leave.substitute_email}`}
@@ -52,7 +52,7 @@ function LeaveItem({ leave }: { leave: ActiveLeaveRow }) {
                     </a>
                 </span>
             ) : (
-                <span className="italic text-amber-300/80">brak zastępcy</span>
+                <span className="italic text-warning/80">brak zastępcy</span>
             )}
         </li>
     )
@@ -71,8 +71,8 @@ export async function ActiveLeavesBanner() {
     const hidden = leaves.slice(3)
 
     return (
-        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs">
-            <div className="flex items-center gap-1.5 text-blue-300 font-medium mb-2">
+        <div className="rounded-lg border border-info/30 bg-info/5 p-3 text-xs">
+            <div className="flex items-center gap-1.5 text-info font-medium mb-2">
                 <Plane className="h-4 w-4" />
                 Aktualnie na urlopie ({leaves.length})
             </div>
@@ -83,7 +83,7 @@ export async function ActiveLeavesBanner() {
             </ul>
             {hidden.length > 0 && (
                 <details className="group mt-1.5">
-                    <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-blue-300/90 hover:text-blue-200 [&::-webkit-details-marker]:hidden">
+                    <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-[11px] text-info/90 hover:text-info [&::-webkit-details-marker]:hidden">
                         <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
                         <span className="group-open:hidden">
                             Pokaż {hidden.length}{' '}

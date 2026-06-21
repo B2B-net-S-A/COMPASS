@@ -119,7 +119,7 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <ExternalLink className="h-5 w-5 text-amber-400" />
+                        <ExternalLink className="h-5 w-5 text-warning" />
                         Dodaj external pracownika
                     </DialogTitle>
                     <DialogDescription>
@@ -273,7 +273,7 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
                         )}
                     </div>
 
-                    <div className="rounded border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-muted-foreground">
+                    <div className="rounded border border-warning/30 bg-warning/5 p-3 text-xs text-muted-foreground">
                         <strong>Uwaga:</strong> external pracownik nie loguje się do Compass.
                         Nie dostanie push-notifikacji ani nie zobaczy swojej checklist&apos;a.
                         TCM oznacza taski w jego imieniu. <strong>Emaile NIE są wysyłane automatycznie</strong> — tylko gdy zaznaczysz checkbox powyżej lub klikniesz &quot;Wyślij email&quot; na karcie onboardingu.

@@ -4,9 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader } from '@/components/ui/card'
 import { AlertCircle, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
-import { Logo } from '@/components/common/Logo'
+import { AuthShell } from '@/components/blocks/AuthShell'
 import Link from 'next/link'
 import { login, signup, signInWithMicrosoft } from './actions'
 
@@ -154,15 +153,12 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-background px-4 relative overflow-hidden">
-            {/* 1. Animated gradient mesh background */}
-            <div className="login-bg-mesh" />
-
-            <Card
-                ref={cardRef}
-                className={`w-full max-w-md bg-card relative z-10 login-card-enter ${shaking ? 'login-card-shake' : ''}`}
-            >
-                {/* 7. Progress bar */}
+        <AuthShell
+            heading="Witaj ponownie"
+            subtitle={isSignUp ? 'Utwórz nowe konto' : 'Zaloguj się do panelu konsultanta'}
+        >
+            <div ref={cardRef} className={`login-card-enter ${shaking ? 'login-card-shake' : ''}`}>
+                {/* Progress bar */}
                 {loading && (
                     <div
                         className="login-progress-bar"
@@ -170,25 +166,25 @@ export default function LoginPage() {
                     />
                 )}
 
-                {/* 8. Success overlay */}
+                {/* Success overlay */}
                 {showSuccessOverlay && (
-                    <div className="absolute inset-0 bg-card z-20 flex flex-col items-center justify-center rounded-lg">
-                        <div className="login-success-anim">
+                    <div className="absolute inset-0 bg-card z-20 flex flex-col items-center justify-center">
+                        <div className="login-success-anim text-primary">
                             <svg width="64" height="64" viewBox="0 0 52 52">
                                 <circle
                                     className="login-success-circle"
                                     cx="26" cy="26" r="25"
-                                    fill="none" stroke="#3A8DFF" strokeWidth="2"
+                                    fill="none" stroke="currentColor" strokeWidth="2"
                                 />
                                 <path
                                     className="login-success-check"
-                                    fill="none" stroke="#3A8DFF" strokeWidth="3"
+                                    fill="none" stroke="currentColor" strokeWidth="3"
                                     strokeLinecap="round" strokeLinejoin="round"
                                     d="M14.1 27.2l7.1 7.2 16.7-16.8"
                                 />
                             </svg>
                         </div>
-                        <p className="text-lg font-semibold mt-4 login-success-text">
+                        <p className="text-lg font-semibold mt-4 login-success-text text-foreground">
                             Witaj z powrotem!
                         </p>
                         <p className="text-sm text-muted-foreground mt-1 login-success-subtext">
@@ -197,18 +193,7 @@ export default function LoginPage() {
                     </div>
                 )}
 
-                <CardHeader className="space-y-1">
-                    <div className="mb-8 flex flex-col items-center">
-                        <Logo size="xl" className="mb-6" />
-                        <h1 className="text-2xl font-bold text-white">Witaj ponownie</h1>
-                        <p className="text-muted-foreground mt-2">Zaloguj się do swojego konta</p>
-                    </div>
-                    <CardDescription className="text-center">
-                        {isSignUp ? 'Utwórz nowe konto' : 'Zaloguj się do panelu konsultanta'}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <form action={handleSubmit} className="space-y-4">
+                <form action={handleSubmit} className="space-y-4">
                             {/* Email field */}
                             <div className="space-y-2">
                                 <Label htmlFor="email">Email</Label>
@@ -389,22 +374,19 @@ export default function LoginPage() {
                                 </>
                             )}
                         </form>
-                </CardContent>
-                <CardFooter className="flex flex-col space-y-2 text-center text-xs text-muted-foreground">
+
+                <div className="mt-6 space-y-3 text-center text-xs text-muted-foreground">
                     {/* Self-signup disabled — nowe konta wyłącznie przez admin invite (/admin/settings/users). */}
                     <p>Nie masz jeszcze konta? Skontaktuj się z administratorem.</p>
-                </CardFooter>
-                <div className="text-center pb-4 space-y-2">
-                    <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground/60">
+                    <div className="flex items-center justify-center gap-3 text-muted-foreground/70">
                         <a href="/privacy-policy" target={isDesktop ? '_blank' : undefined} rel={isDesktop ? 'noopener noreferrer' : undefined} className="hover:text-primary transition-colors">Polityka prywatności</a>
                         <span>·</span>
                         <a href="/terms" target={isDesktop ? '_blank' : undefined} rel={isDesktop ? 'noopener noreferrer' : undefined} className="hover:text-primary transition-colors">Regulamin</a>
                         <span>·</span>
                         <a href="/help" target={isDesktop ? '_blank' : undefined} rel={isDesktop ? 'noopener noreferrer' : undefined} className="hover:text-primary transition-colors">Pomoc</a>
                     </div>
-                    <p className="text-xs text-muted-foreground/40">COMPASS</p>
                 </div>
-            </Card>
-        </div>
+            </div>
+        </AuthShell>
     )
 }

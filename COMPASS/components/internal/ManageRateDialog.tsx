@@ -315,10 +315,10 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
                         </p>
 
                         {preview && (preview.applied.length > 0 || preview.skipped.length > 0) && (
-                            <div className="rounded-lg border border-white/10 p-3 space-y-2 text-xs">
+                            <div className="rounded-lg border border-border p-3 space-y-2 text-xs">
                                 {preview.applied.length > 0 && (
                                     <div>
-                                        <div className="font-medium text-emerald-400 mb-1">
+                                        <div className="font-medium text-success mb-1">
                                             Do zastosowania ({preview.applied.length}):
                                         </div>
                                         <ul className="space-y-0.5">
@@ -332,7 +332,7 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
                                 )}
                                 {preview.skipped.length > 0 && (
                                     <div>
-                                        <div className="font-medium text-amber-400 mb-1">
+                                        <div className="font-medium text-warning mb-1">
                                             Pominięte ({preview.skipped.length}):
                                         </div>
                                         <ul className="space-y-0.5">

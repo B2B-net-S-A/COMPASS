@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils'
 import { getSlaStatus, type SlaStatus } from '@/lib/utils/sla'
 
 const SLA_CLASSES: Record<SlaStatus, string> = {
-    green: 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10',
-    yellow: 'border-amber-500/30 text-amber-400 bg-amber-500/10',
-    red: 'border-red-500/30 text-red-400 bg-red-500/10',
+    green: 'border-success/30 text-success bg-success/10',
+    yellow: 'border-warning/30 text-warning bg-warning/10',
+    red: 'border-destructive/30 text-destructive bg-destructive/10',
 }
 
 function formatRelative(due: Date, now: Date): string {

@@ -62,8 +62,8 @@ const EDITABLE_LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string }> =
 ]
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-    pending: { label: 'Oczekuje', className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30' },
-    approved: { label: 'Zaakceptowany', className: 'bg-green-500/15 text-green-300 border-green-500/30' },
+    pending: { label: 'Oczekuje', className: 'bg-warning/15 text-warning border-warning/30' },
+    approved: { label: 'Zaakceptowany', className: 'bg-success/15 text-success border-success/30' },
 }
 
 function fmt(d: string): string {

@@ -30,14 +30,14 @@ interface NotificationsPageClientProps {
 }
 
 const typeConfig: Record<string, { icon: typeof Bell; color: string; label: string }> = {
-    contract_ending: { icon: Briefcase, color: 'text-amber-400', label: 'Kontrakt' },
-    health_score_low: { icon: AlertTriangle, color: 'text-red-400', label: 'Health Score' },
+    contract_ending: { icon: Briefcase, color: 'text-warning', label: 'Kontrakt' },
+    health_score_low: { icon: AlertTriangle, color: 'text-destructive', label: 'Health Score' },
     new_project_match: { icon: Briefcase, color: 'text-primary', label: 'Nowy projekt' },
-    loyalty_tier_up: { icon: Trophy, color: 'text-yellow-400', label: 'Lojalność' },
+    loyalty_tier_up: { icon: Trophy, color: 'text-warning', label: 'Lojalność' },
     referral_update: { icon: Users, color: 'text-pink-400', label: 'Polecenie' },
-    document_uploaded: { icon: FileText, color: 'text-slate-200', label: 'Dokument' },
+    document_uploaded: { icon: FileText, color: 'text-muted-foreground', label: 'Dokument' },
     system_announcement: { icon: Megaphone, color: 'text-primary', label: 'System' },
-    payment_received: { icon: CreditCard, color: 'text-green-400', label: 'Płatność' },
+    payment_received: { icon: CreditCard, color: 'text-success', label: 'Płatność' },
 }
 
 export function NotificationsPageClient({ notifications: initial }: NotificationsPageClientProps) {
@@ -103,7 +103,7 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="text-slate-600 hover:text-white"
+                        className="text-muted-foreground hover:text-foreground"
                         onClick={() => router.back()}
                     >
                         <ArrowLeft className="w-5 h-5" />
@@ -113,10 +113,10 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                             <Bell className="w-6 h-6" />
                             Powiadomienia
                             {unreadCount > 0 && (
-                                <Badge className="bg-red-500 text-white text-xs">{unreadCount}</Badge>
+                                <Badge className="bg-destructive text-destructive-foreground text-xs">{unreadCount}</Badge>
                             )}
                         </h1>
-                        <p className="text-sm text-slate-600 mt-0.5">
+                        <p className="text-sm text-muted-foreground mt-0.5">
                             {notifications.length} powiadomień łącznie
                         </p>
                     </div>
@@ -126,7 +126,7 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                     <Button
                         variant="outline"
                         size="sm"
-                        className="border-white/10 text-slate-300 hover:text-white"
+                        className="border-border text-muted-foreground hover:text-foreground"
                         onClick={handleMarkAllAsRead}
                         disabled={loading}
                     >
@@ -144,8 +144,8 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                         variant={filter === f ? 'default' : 'ghost'}
                         size="sm"
                         className={filter === f
-                            ? 'bg-white/10 text-white'
-                            : 'text-slate-600 hover:text-white'
+                            ? 'bg-muted text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
                         }
                         onClick={() => setFilter(f)}
                     >
@@ -158,11 +158,11 @@ export function NotificationsPageClient({ notifications: initial }: Notification
 
             {/* List */}
             {filtered.length === 0 ? (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                        <Bell className="w-12 h-12 text-slate-600 mb-4" />
-                        <h3 className="text-lg font-semibold text-slate-300">Brak powiadomień</h3>
-                        <p className="text-sm text-slate-600 mt-1">
+                        <Bell className="w-12 h-12 text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-semibold text-foreground">Brak powiadomień</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
                             {filter === 'unread'
                                 ? 'Wszystkie powiadomienia zostały przeczytane.'
                                 : 'Nie masz jeszcze żadnych powiadomień.'}
@@ -172,13 +172,13 @@ export function NotificationsPageClient({ notifications: initial }: Notification
             ) : (
                 <div className="space-y-2">
                     {filtered.map(notification => {
-                        const config = typeConfig[notification.type] || { icon: Bell, color: 'text-slate-600', label: notification.type }
+                        const config = typeConfig[notification.type] || { icon: Bell, color: 'text-muted-foreground', label: notification.type }
                         const Icon = config.icon
 
                         return (
                             <Card
                                 key={notification.id}
-                                className={`group bg-white/5 border-white/10 hover:bg-white/[0.08] transition-colors ${
+                                className={`group bg-card border-border hover:bg-muted transition-colors ${
                                     !notification.is_read ? 'border-l-2 border-l-primary' : ''
                                 }`}
                             >
@@ -192,29 +192,29 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="flex-1 min-w-0">
-                                                <p className={`text-sm leading-tight ${!notification.is_read ? 'font-semibold text-white' : 'text-slate-300'}`}>
+                                                <p className={`text-sm leading-tight ${!notification.is_read ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
                                                     {notification.title_pl}
                                                 </p>
                                                 {notification.body_pl && (
-                                                    <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+                                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                                                         {notification.body_pl}
                                                     </p>
                                                 )}
                                                 <div className="flex items-center gap-3 mt-2">
-                                                    <span className="text-[10px] text-slate-600 flex items-center gap-1">
+                                                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                                                         <Clock className="w-3 h-3" />
                                                         {formatDate(notification.created_at)}
                                                     </span>
-                                                    <Badge variant="outline" className="text-[10px] border-white/10 text-slate-600 px-1.5 py-0">
+                                                    <Badge variant="outline" className="text-[10px] border-border text-muted-foreground px-1.5 py-0">
                                                         {config.label}
                                                     </Badge>
                                                     {notification.priority === 'urgent' && (
-                                                        <Badge className="bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0">
+                                                        <Badge className="bg-destructive/20 text-destructive text-[10px] px-1.5 py-0">
                                                             Pilne
                                                         </Badge>
                                                     )}
                                                     {notification.priority === 'high' && (
-                                                        <Badge className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0">
+                                                        <Badge className="bg-warning/20 text-warning text-[10px] px-1.5 py-0">
                                                             Ważne
                                                         </Badge>
                                                     )}
@@ -227,7 +227,7 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-7 w-7 text-slate-600 hover:text-green-400 hover:bg-green-400/10"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-success hover:bg-success/10"
                                                         onClick={() => handleMarkAsRead(notification.id)}
                                                         title="Oznacz jako przeczytane"
                                                     >
@@ -237,7 +237,7 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-7 w-7 text-slate-600 hover:text-red-400 hover:bg-red-400/10"
+                                                    className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                                     onClick={() => handleDelete(notification.id)}
                                                     title="Usuń"
                                                 >

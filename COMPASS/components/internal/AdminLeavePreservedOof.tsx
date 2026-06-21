@@ -46,9 +46,9 @@ export function AdminLeavePreservedOof({ requests }: Props) {
     if (requests.length === 0) return null
 
     return (
-        <Card className="border-blue-500/30 bg-blue-500/5">
+        <Card className="border-info/30 bg-info/5">
             <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2 text-blue-300">
+                <CardTitle className="text-base flex items-center gap-2 text-info">
                     <Info className="h-4 w-4" />
                     OOF pominięty — pracownik ma własny auto-reply ({requests.length})
                 </CardTitle>

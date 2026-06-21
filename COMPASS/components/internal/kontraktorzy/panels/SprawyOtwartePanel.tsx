@@ -60,7 +60,7 @@ export function SprawyOtwartePanel({ conversations, tasks, tcmProfiles, contract
                                         <td className="p-2">{c.client_snapshot ?? '—'}</td>
                                         <td className="p-2">{CONVERSATION_CATEGORY_PL[c.category]}</td>
                                         <td className="p-2"><span className={cn('inline-block rounded border px-2 py-0.5 text-xs', CONVERSATION_STATUS_BADGE[c.status])}>{CONVERSATION_STATUS_PL[c.status]}</span></td>
-                                        <td className={cn('p-2 whitespace-nowrap', overdue && 'font-medium text-red-600')}>{c.follow_up_date ?? '—'}</td>
+                                        <td className={cn('p-2 whitespace-nowrap', overdue && 'font-medium text-destructive')}>{c.follow_up_date ?? '—'}</td>
                                         <td className="p-2 max-w-md text-muted-foreground">{c.note ?? '—'}</td>
                                     </tr>
                                 )

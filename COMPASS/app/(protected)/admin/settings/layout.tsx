@@ -98,7 +98,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                                                         ? "bg-muted hover:bg-muted"
                                                         : "transparent",
                                                     "justify-start",
-                                                    item.superAdminOnly && "text-yellow-400/80"
+                                                    item.superAdminOnly && "text-warning/80"
                                                 )}
                                             >
                                                 <item.icon className="h-4 w-4" />

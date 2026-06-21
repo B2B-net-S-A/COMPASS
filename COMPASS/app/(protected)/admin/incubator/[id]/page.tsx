@@ -49,7 +49,7 @@ export default async function PitchDetailAdminPage({ params }: PageProps) {
 
             <PitchTimeline status={p.status} />
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-6">
                     <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">
                         {p.description_md}
@@ -58,7 +58,7 @@ export default async function PitchDetailAdminPage({ params }: PageProps) {
             </Card>
 
             {p.attachment_urls && p.attachment_urls.length > 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-5">
                         <h3 className="font-semibold mb-2">Załączniki</h3>
                         <ul className="space-y-1">

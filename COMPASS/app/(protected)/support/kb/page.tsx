@@ -46,7 +46,7 @@ export default async function KnowledgeBasePage() {
                     const materials = materialCounts[c.id] ?? 0
                     return (
                         <Link key={c.id} href={`/support/kb/${c.slug}`} className="block group">
-                            <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors h-full">
+                            <Card className="bg-card border-border hover:border-primary/40 transition-colors h-full">
                                 <CardContent className="p-5 flex items-center justify-between">
                                     <div>
                                         <h3 className="font-semibold group-hover:text-primary">{c.name_pl}</h3>
@@ -73,7 +73,7 @@ export default async function KnowledgeBasePage() {
                     <h2 className="text-lg font-semibold">Najnowsze artykuły</h2>
                     {articles.slice(0, 10).map((a) => (
                         <Link key={a.id} href={`/support/kb/${a.category_slug}/${a.slug}`} className="block group">
-                            <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                            <Card className="bg-card border-border hover:border-primary/40 transition-colors">
                                 <CardContent className="p-4">
                                     <div className="flex items-center gap-2 mb-1">
                                         <Badge variant="outline" className="text-[10px]">{a.category_name_pl}</Badge>
@@ -93,7 +93,7 @@ export default async function KnowledgeBasePage() {
             )}
 
             {articles.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center">
                         <BookOpen className="w-16 h-16 text-muted-foreground mx-auto mb-3" />
                         <p className="text-muted-foreground">Baza wiedzy jest jeszcze pusta. Admin zacznie ją wypełniać w najbliższym czasie.</p>

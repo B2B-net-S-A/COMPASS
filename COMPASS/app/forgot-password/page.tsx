@@ -3,10 +3,11 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { AuthShell } from '@/components/blocks/AuthShell'
 import { toast } from 'sonner'
 import { toastSuccess } from '@/lib/toast-success'
-import { Loader2, ArrowLeft } from 'lucide-react'
+import { Loader2, ArrowLeft, MailCheck } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ForgotPasswordPage() {
@@ -35,57 +36,45 @@ export default function ForgotPasswordPage() {
 
     if (submitted) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-background p-4">
-                <Card className="w-full max-w-md border-white/10 bg-black/50 backdrop-blur-xl">
-                    <CardHeader>
-                        <CardTitle>Sprawdź email</CardTitle>
-                        <CardDescription>
-                            Wysłaliśmy link do resetowania hasła na adres {email}.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Button asChild variant="outline" className="w-full">
-                            <Link href="/login">Powrót do logowania</Link>
-                        </Button>
-                    </CardContent>
-                </Card>
-            </div>
+            <AuthShell heading="Sprawdź email" subtitle={`Wysłaliśmy link do resetowania hasła na adres ${email}.`}>
+                <div className="flex flex-col items-center gap-4">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <MailCheck className="h-6 w-6" />
+                    </span>
+                    <Button asChild variant="outline" className="w-full">
+                        <Link href="/login">Powrót do logowania</Link>
+                    </Button>
+                </div>
+            </AuthShell>
         )
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background p-4">
-            <Card className="w-full max-w-md border-white/10 bg-black/50 backdrop-blur-xl">
-                <CardHeader>
-                    <CardTitle>Reset hasła</CardTitle>
-                    <CardDescription>Wpisz email powiązany z Twoim kontem.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="space-y-2">
-                            <Input
-                                type="email"
-                                placeholder="name@example.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                required
-                                className="bg-white/5 border-white/10"
-                            />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <Button type="submit" disabled={loading} className="w-full">
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Wyślij link
-                            </Button>
-                            <Button asChild variant="ghost" className="w-full">
-                                <Link href="/login">
-                                    <ArrowLeft className="mr-2 h-4 w-4" /> Powrót
-                                </Link>
-                            </Button>
-                        </div>
-                    </form>
-                </CardContent>
-            </Card>
-        </div>
+        <AuthShell heading="Reset hasła" subtitle="Wpisz email powiązany z Twoim kontem.">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                        id="email"
+                        type="email"
+                        placeholder="name@b2bnetwork.pl"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                    />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <Button type="submit" disabled={loading} className="w-full">
+                        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Wyślij link
+                    </Button>
+                    <Button asChild variant="ghost" className="w-full">
+                        <Link href="/login">
+                            <ArrowLeft className="mr-2 h-4 w-4" /> Powrót
+                        </Link>
+                    </Button>
+                </div>
+            </form>
+        </AuthShell>
     )
 }

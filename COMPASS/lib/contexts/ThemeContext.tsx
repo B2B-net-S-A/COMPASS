@@ -1,15 +1,16 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 export type ThemeId = 'inframinds' | 'qualrix' | 'b2bnetwork'
+export type ColorMode = 'dark' | 'light'
 
 export interface ThemeConfig {
     id: ThemeId
     label: string
     brandName: string
-    className: string
+    /** Accent palette applied via [data-theme] on <html>. undefined = indigo default. */
+    dataTheme?: 'green' | 'rose'
     preview: {
         bg: string
         primary: string
@@ -22,26 +23,28 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
         id: 'inframinds',
         label: 'B2Bnetwork',
         brandName: 'B2Bnetwork',
-        className: '',
-        preview: { bg: '#1D121B', primary: '#3A8DFF', card: '#241625' },
+        dataTheme: undefined,
+        preview: { bg: '#ffffff', primary: '#4f46e5', card: '#f8fafc' },
     },
     qualrix: {
         id: 'qualrix',
         label: 'Qualrix',
         brandName: 'Qualrix',
-        className: 'theme-qualrix',
-        preview: { bg: '#0A0A14', primary: '#10B981', card: '#101018' },
+        dataTheme: 'green',
+        preview: { bg: '#ffffff', primary: '#15803d', card: '#f8fafc' },
     },
     b2bnetwork: {
         id: 'b2bnetwork',
         label: 'B2Bnetwork',
         brandName: 'B2Bnetwork',
-        className: 'theme-b2bnetwork',
-        preview: { bg: '#142136', primary: '#f43a48', card: '#1C2D45' },
+        dataTheme: 'rose',
+        preview: { bg: '#ffffff', primary: '#e11d48', card: '#f8fafc' },
     },
 }
 
 const STORAGE_KEY = 'compass-theme'
+const MODE_STORAGE_KEY = 'compass-color-mode'
+const SOFT_STORAGE_KEY = 'compass-soft'
 const THEME_IDS: ThemeId[] = ['inframinds', 'qualrix', 'b2bnetwork']
 
 interface ThemeContextValue {
@@ -49,6 +52,13 @@ interface ThemeContextValue {
     themeConfig: ThemeConfig
     setTheme: (id: ThemeId) => void
     brandName: string
+    colorMode: ColorMode
+    setColorMode: (mode: ColorMode) => void
+    toggleColorMode: () => void
+    /** Soft depth mode ([data-soft]) — default ON. */
+    soft: boolean
+    setSoft: (on: boolean) => void
+    toggleSoft: () => void
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -56,6 +66,12 @@ const ThemeContext = createContext<ThemeContextValue>({
     themeConfig: THEMES.inframinds,
     setTheme: () => {},
     brandName: 'B2Bnetwork',
+    colorMode: 'light',
+    setColorMode: () => {},
+    toggleColorMode: () => {},
+    soft: true,
+    setSoft: () => {},
+    toggleSoft: () => {},
 })
 
 function buildFaviconSvg(color: string): string {
@@ -75,39 +91,88 @@ function applyFavicon(color: string) {
     link.href = url
 }
 
-function applyThemeClass(themeId: ThemeId) {
+/** Accent palette via [data-theme] attribute (chrome stays neutral, shared). */
+function applyTheme(themeId: ThemeId) {
     const root = document.documentElement
-    THEME_IDS.forEach(id => {
-        const cls = THEMES[id].className
-        if (cls) root.classList.remove(cls)
-    })
-    const cls = THEMES[themeId].className
-    if (cls) root.classList.add(cls)
+    const dt = THEMES[themeId].dataTheme
+    if (dt) root.setAttribute('data-theme', dt)
+    else root.removeAttribute('data-theme')
     applyFavicon(THEMES[themeId].preview.primary)
+}
+
+/** Light-first: dark is opt-in via the .dark class. */
+function applyColorMode(mode: ColorMode) {
+    const root = document.documentElement
+    if (mode === 'dark') root.classList.add('dark')
+    else root.classList.remove('dark')
+}
+
+function applySoft(on: boolean) {
+    const root = document.documentElement
+    if (on) root.setAttribute('data-soft', 'true')
+    else root.removeAttribute('data-soft')
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setThemeState] = useState<ThemeId>('inframinds')
+    const [colorMode, setColorModeState] = useState<ColorMode>('light')
+    const [soft, setSoftState] = useState<boolean>(true)
 
     useEffect(() => {
         try {
             const stored = localStorage.getItem(STORAGE_KEY) as ThemeId | null
             if (stored && THEMES[stored]) {
                 setThemeState(stored)
-                applyThemeClass(stored)
+                applyTheme(stored)
             }
+            const storedMode = localStorage.getItem(MODE_STORAGE_KEY) as ColorMode | null
+            if (storedMode === 'light' || storedMode === 'dark') {
+                setColorModeState(storedMode)
+                applyColorMode(storedMode)
+            }
+            // Soft depth mode defaults ON; only an explicit 'false' disables it.
+            const storedSoft = localStorage.getItem(SOFT_STORAGE_KEY)
+            const softOn = storedSoft !== 'false'
+            setSoftState(softOn)
+            applySoft(softOn)
         } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
-
-        // Phase 18.7: usunąłem DB sync — kolumna `theme` nie istnieje w
-        // profiles. Theme to UX preference per-device (localStorage wystarcza),
-        // sync DB był martwy kod (failuje w runtime od czasu cleanup profiles
-        // schema).
+        // Theme is a per-device UX preference (localStorage only; no DB sync).
     }, [])
 
     const setTheme = useCallback((id: ThemeId) => {
         setThemeState(id)
-        applyThemeClass(id)
-        try { localStorage.setItem(STORAGE_KEY, id) } catch { /* localStorage unavailable: private mode / quota exceeded — noop OK */ }
+        applyTheme(id)
+        try { localStorage.setItem(STORAGE_KEY, id) } catch { /* noop */ }
+    }, [])
+
+    const setColorMode = useCallback((mode: ColorMode) => {
+        setColorModeState(mode)
+        applyColorMode(mode)
+        try { localStorage.setItem(MODE_STORAGE_KEY, mode) } catch { /* noop */ }
+    }, [])
+
+    const toggleColorMode = useCallback(() => {
+        setColorModeState(prev => {
+            const next = prev === 'dark' ? 'light' : 'dark'
+            applyColorMode(next)
+            try { localStorage.setItem(MODE_STORAGE_KEY, next) } catch { /* noop */ }
+            return next
+        })
+    }, [])
+
+    const setSoft = useCallback((on: boolean) => {
+        setSoftState(on)
+        applySoft(on)
+        try { localStorage.setItem(SOFT_STORAGE_KEY, on ? 'true' : 'false') } catch { /* noop */ }
+    }, [])
+
+    const toggleSoft = useCallback(() => {
+        setSoftState(prev => {
+            const next = !prev
+            applySoft(next)
+            try { localStorage.setItem(SOFT_STORAGE_KEY, next ? 'true' : 'false') } catch { /* noop */ }
+            return next
+        })
     }, [])
 
     const themeConfig = THEMES[theme]
@@ -115,6 +180,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return (
         <ThemeContext.Provider value={{
             theme, themeConfig, setTheme, brandName: themeConfig.brandName,
+            colorMode, setColorMode, toggleColorMode,
+            soft, setSoft, toggleSoft,
         }}>
             {children}
         </ThemeContext.Provider>

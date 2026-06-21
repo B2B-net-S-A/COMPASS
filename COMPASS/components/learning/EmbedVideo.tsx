@@ -86,7 +86,7 @@ export function EmbedVideo({ url, title }: EmbedVideoProps) {
 
     if (!parsed) {
         return (
-            <div className="aspect-video w-full rounded-lg bg-white/5 border border-white/10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <div className="aspect-video w-full rounded-lg bg-muted border border-border flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
                 <Video className="w-8 h-8" />
                 <p>Nieobsługiwany format URL: {url}</p>
                 <p className="text-xs text-muted-foreground/70">
@@ -101,7 +101,7 @@ export function EmbedVideo({ url, title }: EmbedVideoProps) {
 
     if (parsed.type === 'native_file') {
         return (
-            <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/10 bg-black">
+            <div className="aspect-video w-full rounded-lg overflow-hidden border border-border bg-black">
                 <video src={parsed.embedUrl} controls className="w-full h-full" preload="metadata">
                     Twoja przeglądarka nie wspiera tagu video.
                 </video>
@@ -110,7 +110,7 @@ export function EmbedVideo({ url, title }: EmbedVideoProps) {
     }
 
     return (
-        <div className="aspect-video w-full rounded-lg overflow-hidden border border-white/10 bg-black">
+        <div className="aspect-video w-full rounded-lg overflow-hidden border border-border bg-black">
             <iframe
                 src={parsed.embedUrl}
                 title={title ?? 'Wideo lekcji'}

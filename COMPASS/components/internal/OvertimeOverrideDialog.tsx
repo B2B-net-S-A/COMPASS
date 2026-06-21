@@ -171,7 +171,7 @@ export function OvertimeOverrideDialog({
                     </div>
                 ) : entries.length === 0 ? (
                     <div className="py-8 flex flex-col items-center gap-3 text-center">
-                        <AlertCircle className="h-8 w-8 text-amber-400" />
+                        <AlertCircle className="h-8 w-8 text-warning" />
                         <p className="text-sm text-muted-foreground">
                             Brak wpisów dla {year}-{String(month).padStart(2, '0')}. Pracownik musi
                             najpierw dodać dzień jako 8h, dopiero potem admin może go zwiększyć.
@@ -212,8 +212,8 @@ export function OvertimeOverrideDialog({
                         </div>
 
                         {selectedEntry?.is_overtime_override && (
-                            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-1">
-                                <p className="font-medium text-amber-300">
+                            <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-xs space-y-1">
+                                <p className="font-medium text-warning">
                                     Ten dzień ma już override.
                                 </p>
                                 {selectedEntry.override_by_name && (
@@ -285,7 +285,7 @@ export function OvertimeOverrideDialog({
                                     variant="outline"
                                     onClick={handleClear}
                                     disabled={!canClear}
-                                    className="w-full sm:w-auto min-h-[44px] border-amber-500/30"
+                                    className="w-full sm:w-auto min-h-[44px] border-warning/30"
                                 >
                                     <RotateCcw className="h-4 w-4 mr-1.5" />
                                     Cofnij override

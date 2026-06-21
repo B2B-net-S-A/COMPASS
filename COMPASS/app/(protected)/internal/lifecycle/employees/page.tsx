@@ -15,7 +15,7 @@ export default async function EmployeesDirectoryPage() {
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Users className="h-7 w-7 text-cyan-400" />
+                        <Users className="h-7 w-7 text-info" />
                         Pracownicy
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">

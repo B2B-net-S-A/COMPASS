@@ -32,7 +32,7 @@ export function LeaveStatsWidget({ balance }: Props) {
                             {balance.has_limit ? (
                                 <p
                                     className={`text-2xl font-bold mt-1 ${
-                                        (balance.remaining_days ?? 0) < 0 ? 'text-red-400' : ''
+                                        (balance.remaining_days ?? 0) < 0 ? 'text-destructive' : ''
                                     }`}
                                 >
                                     {balance.remaining_days}
@@ -71,16 +71,16 @@ export function LeaveStatsWidget({ balance }: Props) {
                 {(balance.pending_approved_future_days > 0 || balance.pending_request_days > 0) && (
                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         {balance.pending_approved_future_days > 0 && (
-                            <div className="flex items-start gap-2 p-2 rounded bg-amber-500/5 border border-amber-500/20">
-                                <CalendarCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <div className="flex items-start gap-2 p-2 rounded bg-warning/5 border border-warning/20">
+                                <CalendarCheck className="w-4 h-4 text-warning shrink-0 mt-0.5" />
                                 <div>
-                                    <div className="font-semibold text-amber-300">{balance.pending_approved_future_days} dni</div>
+                                    <div className="font-semibold text-warning">{balance.pending_approved_future_days} dni</div>
                                     <div className="text-muted-foreground text-[10px]">zatwierdzone na przyszłość</div>
                                 </div>
                             </div>
                         )}
                         {balance.pending_request_days > 0 && (
-                            <div className="flex items-start gap-2 p-2 rounded bg-white/5 border border-white/10">
+                            <div className="flex items-start gap-2 p-2 rounded bg-muted border border-border">
                                 <CalendarClock className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
                                 <div>
                                     <div className="font-semibold">{balance.pending_request_days} dni</div>

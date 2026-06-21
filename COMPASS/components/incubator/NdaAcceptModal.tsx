@@ -16,9 +16,9 @@ export function NdaAcceptModal({ open, onAccept, onClose }: NdaAcceptModalProps)
     if (!open) return null
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div
-                className="relative max-w-2xl w-full bg-card border border-white/10 rounded-lg shadow-xl"
+                className="relative max-w-2xl w-full bg-card border border-border rounded-lg shadow-xl"
                 onClick={(e) => e.stopPropagation()}
             >
                 <button
@@ -32,11 +32,11 @@ export function NdaAcceptModal({ open, onAccept, onClose }: NdaAcceptModalProps)
 
                 <div className="p-6 space-y-4">
                     <div className="flex items-center gap-3">
-                        <Shield className="w-7 h-7 text-amber-400" />
+                        <Shield className="w-7 h-7 text-warning" />
                         <h2 className="text-xl font-bold">Oświadczenie poufności</h2>
                     </div>
 
-                    <div className="max-h-72 overflow-y-auto p-4 bg-white/5 border border-white/10 rounded-lg text-sm text-muted-foreground whitespace-pre-wrap">
+                    <div className="max-h-72 overflow-y-auto p-4 bg-muted border border-border rounded-lg text-sm text-muted-foreground whitespace-pre-wrap">
                         {NDA_TEXT}
                     </div>
 

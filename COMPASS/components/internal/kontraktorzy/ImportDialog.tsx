@@ -121,7 +121,7 @@ export function ImportDialog({ kind, onImported }: { kind: Kind; onImported: () 
                     {preview && (
                         <div className="space-y-4">
                             <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                                Wczytano: <span className="font-semibold text-emerald-700">{preview.validRows}</span> wierszy
+                                Wczytano: <span className="font-semibold text-success">{preview.validRows}</span> wierszy
                                 {' '}/ przeskanowano: {preview.scannedRows}
                                 {preview.skippedBlankRows > 0 && <> · pominięto pustych: {preview.skippedBlankRows}</>}
                                 <div className="mt-1 text-muted-foreground">
@@ -132,7 +132,7 @@ export function ImportDialog({ kind, onImported }: { kind: Kind; onImported: () 
                             </div>
 
                             {preview.warnings.length > 0 && (
-                                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                                <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
                                     <div className="mb-2 flex items-center gap-2 font-medium">
                                         <AlertTriangle className="h-4 w-4" /> Uwagi ({preview.warnings.length})
                                     </div>

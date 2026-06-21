@@ -206,7 +206,7 @@ export function AssignChampionsLeagueForm({
             <div className="space-y-1.5">
                 <Label htmlFor="cl-recipient">Pracownik</Label>
                 {isEdit ? (
-                    <div className="rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-muted-foreground">
+                    <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
                         {recipientLabel}
                         <span className="ml-2 text-xs">(nie można zmienić)</span>
                     </div>
@@ -216,7 +216,7 @@ export function AssignChampionsLeagueForm({
                         value={recipientId}
                         onChange={(e) => setRecipientId(e.target.value)}
                         required
-                        className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm"
                     >
                         <option value="">— wybierz —</option>
                         {candidates.map((c) => (
@@ -232,7 +232,7 @@ export function AssignChampionsLeagueForm({
             <div className="space-y-1.5">
                 <Label htmlFor="cl-quarter">Kwartał</Label>
                 {isEdit ? (
-                    <div className="rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-muted-foreground">
+                    <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
                         {BONUS_QUARTERS_PL[periodQuarter - 1]} {periodYear}
                         <span className="ml-2 text-xs">(nie można zmienić)</span>
                     </div>
@@ -241,7 +241,7 @@ export function AssignChampionsLeagueForm({
                         id="cl-quarter"
                         value={`${periodYear}-${periodQuarter}`}
                         onChange={(e) => handleQuarterChange(e.target.value)}
-                        className="w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm"
+                        className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm"
                     >
                         {quarterOptions.map((o) => (
                             <option key={`${o.year}-${o.quarter}`} value={`${o.year}-${o.quarter}`}>
@@ -256,7 +256,7 @@ export function AssignChampionsLeagueForm({
             <div className="space-y-1.5">
                 <Label>Miejsce</Label>
                 {isEdit ? (
-                    <div className="rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-muted-foreground">
+                    <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
                         {CHAMPIONS_LEAGUE_PLACE_LABELS_PL[placeRank]}
                         <span className="ml-2 text-xs">(nie można zmienić)</span>
                     </div>
@@ -271,8 +271,8 @@ export function AssignChampionsLeagueForm({
                                     onClick={() => setPlaceRank(rank)}
                                     className={`rounded-md border px-3 py-2 text-sm transition ${
                                         active
-                                            ? 'border-yellow-500/60 bg-yellow-500/15 text-yellow-200'
-                                            : 'border-white/15 bg-black/30 text-muted-foreground hover:border-white/30'
+                                            ? 'border-warning/60 bg-warning/15 text-warning'
+                                            : 'border-border bg-muted text-muted-foreground hover:border-border'
                                     }`}
                                 >
                                     <div className="text-lg">{CHAMPIONS_LEAGUE_PLACE_LABELS_PL[rank].split(' ')[0]}</div>
@@ -303,7 +303,7 @@ export function AssignChampionsLeagueForm({
                     required
                 />
                 {!isEdit && Number(amount) !== championsLeagueAmountForPlace(placeRank) && (
-                    <p className="text-xs text-yellow-400">
+                    <p className="text-xs text-warning">
                         ⚠ Nadpisałeś domyślną kwotę ({championsLeagueAmountForPlace(placeRank)} PLN dla {placeRank}. miejsca).
                     </p>
                 )}
@@ -342,7 +342,7 @@ export function AssignChampionsLeagueForm({
                         Wstecz
                     </Button>
                 )}
-                <Button type="submit" disabled={pending} className="bg-yellow-500/90 hover:bg-yellow-500 text-black">
+                <Button type="submit" disabled={pending} className="bg-warning/90 hover:bg-warning text-black">
                     {pending ? (
                         <>
                             <Loader2 className="h-3 w-3 animate-spin mr-1.5" />

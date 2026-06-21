@@ -33,13 +33,13 @@ export default async function LearningPathsPage() {
             </div>
 
             {error && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
                 </Card>
             )}
 
             {paths.length === 0 && !error && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-muted border-border">
                     <CardContent className="p-12 text-center space-y-3">
                         <Map className="w-16 h-16 text-muted-foreground mx-auto" />
                         <h2 className="text-xl font-bold">Brak opublikowanych ścieżek</h2>
@@ -51,7 +51,7 @@ export default async function LearningPathsPage() {
             <div className="grid gap-4 md:grid-cols-2">
                 {paths.map((p) => (
                     <Link key={p.id} href={`/learning/paths/${p.slug}`}>
-                        <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors h-full">
+                        <Card className="bg-muted border-border hover:border-primary/40 transition-colors h-full">
                             <CardContent className="p-5 space-y-3">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <Badge variant="outline" className="text-[10px]">{LEVEL_LABEL[p.level]}</Badge>
@@ -85,7 +85,7 @@ export default async function LearningPathsPage() {
                                             <span>Postęp</span>
                                             <span>{p.progress_percent}%</span>
                                         </div>
-                                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                                             <div className="h-full bg-primary" style={{ width: `${p.progress_percent}%` }} />
                                         </div>
                                     </div>

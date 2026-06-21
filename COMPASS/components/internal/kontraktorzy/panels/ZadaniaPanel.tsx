@@ -117,7 +117,7 @@ export function ZadaniaPanel({ tasks, tcmProfiles, contractorsLite, onSaved }: P
                                         </span>
                                     </td>
                                     <td className="p-2">{t.assigned_tcm_name ?? '—'}</td>
-                                    <td className={cn('p-2 whitespace-nowrap', overdue && 'font-medium text-red-600')}>{t.due_date ?? '—'}</td>
+                                    <td className={cn('p-2 whitespace-nowrap', overdue && 'font-medium text-destructive')}>{t.due_date ?? '—'}</td>
                                     <td className="p-2 text-xs">
                                         {t.contractor_name && <div>{t.contractor_name}</div>}
                                         {t.source_ticket_id && (
@@ -132,7 +132,7 @@ export function ZadaniaPanel({ tasks, tcmProfiles, contractorsLite, onSaved }: P
                                             <Button size="sm" variant="ghost" disabled={busyId === t.id} onClick={() => setStatus(t.id, 'done')}>✓ Zrobione</Button>
                                         )}
                                         <TaskDialog tcmProfiles={tcmProfiles} contractors={contractorsLite} existing={t} onSaved={onSaved} triggerVariant="ghost" triggerLabel="Edytuj" />
-                                        <Button size="sm" variant="ghost" disabled={busyId === t.id} onClick={() => remove(t.id)} className="text-red-600">Usuń</Button>
+                                        <Button size="sm" variant="ghost" disabled={busyId === t.id} onClick={() => remove(t.id)} className="text-destructive">Usuń</Button>
                                     </td>
                                 </tr>
                             )

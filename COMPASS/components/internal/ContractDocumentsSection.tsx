@@ -128,13 +128,13 @@ export function ContractDocumentsSection({ userId }: Props) {
             ) : docs.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Brak dokumentów.</p>
             ) : (
-                <div className="rounded-lg border border-white/10 divide-y divide-border/20">
+                <div className="rounded-lg border border-border divide-y divide-border/20">
                     {docs.map((d) => (
                         <div key={d.id} className="flex items-center gap-2 p-2 text-sm">
                             <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <span className="inline-block rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium">
+                                    <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium">
                                         {CONTRACT_DOC_TYPE_LABELS_PL[d.doc_type]}
                                     </span>
                                     <span className="truncate font-medium">{d.file_name}</span>
@@ -163,7 +163,7 @@ export function ContractDocumentsSection({ userId }: Props) {
                                 type="button"
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 px-2 text-red-400 hover:text-red-300"
+                                className="h-7 px-2 text-destructive hover:text-destructive/80"
                                 disabled={busyId === d.id}
                                 onClick={() => handleDelete(d.id)}
                             >
@@ -175,7 +175,7 @@ export function ContractDocumentsSection({ userId }: Props) {
             )}
 
             {/* Upload form */}
-            <div className="rounded-lg border border-white/10 p-3 space-y-2">
+            <div className="rounded-lg border border-border p-3 space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                     <div>
                         <Label htmlFor="doc-type" className="text-xs">
@@ -232,7 +232,7 @@ export function ContractDocumentsSection({ userId }: Props) {
                         accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                         disabled={uploading}
-                        className="mt-1 block w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-xs"
+                        className="mt-1 block w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
                     />
                 </div>
                 <div className="flex justify-end">

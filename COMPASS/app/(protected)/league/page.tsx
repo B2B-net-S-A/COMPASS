@@ -18,8 +18,8 @@ export default async function LeaguePage() {
     if (!overviewRes.success) {
         return (
             <div className="p-6 md:p-8 max-w-4xl mx-auto">
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-6 text-sm text-red-400">
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-6 text-sm text-destructive">
                         Nie udało się załadować danych League: {overviewRes.error}
                     </CardContent>
                 </Card>
@@ -89,7 +89,7 @@ export default async function LeaguePage() {
                             </div>
 
                             <div className="grid grid-cols-2 gap-3 max-w-md">
-                                <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                <div className="p-3 rounded-lg bg-card border border-border">
                                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Do następnego poziomu</p>
                                     <p className="text-xl font-bold tabular-nums mt-0.5">
                                         {overview.next_tier
@@ -97,11 +97,11 @@ export default async function LeaguePage() {
                                             : 'Max'}
                                     </p>
                                 </div>
-                                <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                                    <p className="text-[10px] uppercase tracking-wider text-amber-400 inline-flex items-center gap-1">
+                                <div className="p-3 rounded-lg bg-warning/5 border border-warning/20">
+                                    <p className="text-[10px] uppercase tracking-wider text-warning inline-flex items-center gap-1">
                                         <Sparkles className="w-2.5 h-2.5" /> W trakcie (pending)
                                     </p>
-                                    <p className="text-xl font-bold tabular-nums mt-0.5 text-amber-400">
+                                    <p className="text-xl font-bold tabular-nums mt-0.5 text-warning">
                                         {overview.pending_points.toLocaleString('pl-PL')} pkt
                                     </p>
                                 </div>
@@ -117,7 +117,7 @@ export default async function LeaguePage() {
                 </CardContent>
             </Card>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                         <HistoryIcon className="w-4 h-4" /> Ostatnie transakcje
@@ -141,7 +141,7 @@ export default async function LeaguePage() {
 
             <div className="grid md:grid-cols-2 gap-3">
                 <Link href="/league/leaderboard">
-                    <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors cursor-pointer h-full">
+                    <Card className="bg-card border-border hover:border-primary/40 transition-colors cursor-pointer h-full">
                         <CardContent className="p-5 flex items-center gap-3">
                             <Users className="w-8 h-8 text-primary shrink-0" />
                             <div>
@@ -152,7 +152,7 @@ export default async function LeaguePage() {
                     </Card>
                 </Link>
                 <Link href="/learning">
-                    <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors cursor-pointer h-full">
+                    <Card className="bg-card border-border hover:border-primary/40 transition-colors cursor-pointer h-full">
                         <CardContent className="p-5 flex items-center gap-3">
                             <Badge variant="outline" className="text-xl px-2 py-1 font-mono">+30</Badge>
                             <div>

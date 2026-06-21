@@ -44,47 +44,47 @@ interface Props {
 }
 
 const TS_STATUS: Record<string, { label: string; className: string }> = {
-    draft: { label: 'Szkic', className: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
+    draft: { label: 'Szkic', className: 'bg-muted text-muted-foreground border-border' },
     submitted: {
         label: 'Oczekuje',
-        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
     },
     approved: {
         label: 'Zaakceptowany',
-        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+        className: 'bg-success/15 text-success border-success/30',
     },
-    rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
 const INVOICE_STATUS: Record<string, { label: string; className: string }> = {
     submitted: {
         label: 'Złożona',
-        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
     },
     manager_approved: {
         label: 'Manager OK',
-        className: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+        className: 'bg-info/15 text-info border-info/30',
     },
     approved: {
         label: 'Zaakceptowana',
-        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+        className: 'bg-success/15 text-success border-success/30',
     },
-    rejected: { label: 'Odrzucona', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    rejected: { label: 'Odrzucona', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
 const LEAVE_STATUS: Record<string, { label: string; className: string }> = {
     pending: {
         label: 'Oczekuje',
-        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
     },
     approved: {
         label: 'Zaakceptowany',
-        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+        className: 'bg-success/15 text-success border-success/30',
     },
-    rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
     cancelled: {
         label: 'Anulowany',
-        className: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
+        className: 'bg-muted text-muted-foreground border-border',
     },
 }
 
@@ -110,19 +110,19 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 const BONUS_STATUS: Record<string, { label: string; className: string }> = {
     assigned: {
         label: 'Przypisana',
-        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+        className: 'bg-success/15 text-success border-success/30',
     },
     paid: {
         label: 'Wypłacona (legacy)',
-        className: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+        className: 'bg-info/15 text-info border-info/30',
     },
     pending: {
         label: 'Oczekuje (legacy)',
-        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
     },
     cancelled: {
         label: 'Anulowana',
-        className: 'bg-red-500/15 text-red-300 border-red-500/30',
+        className: 'bg-destructive/15 text-destructive border-destructive/30',
     },
 }
 
@@ -468,7 +468,7 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                                                 </span>
                                                             )}
                                                             {inv.rejection_reason && (
-                                                                <p className="text-[10px] text-red-300 mt-0.5">
+                                                                <p className="text-[10px] text-destructive mt-0.5">
                                                                     <AlertCircle className="inline h-3 w-3 mr-0.5" />
                                                                     {inv.rejection_reason.slice(0, 40)}
                                                                 </p>
@@ -600,11 +600,11 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                     ) : (
                                         <>
                                             <div className="grid grid-cols-3 gap-2">
-                                                <div className="rounded-md border border-white/10 bg-white/5 p-2">
+                                                <div className="rounded-md border border-border bg-muted p-2">
                                                     <div className="text-[10px] text-muted-foreground">Godziny</div>
                                                     <div className="text-lg font-bold">{payrollSummary.hours_total.toFixed(2)} h</div>
                                                 </div>
-                                                <div className="rounded-md border border-white/10 bg-white/5 p-2">
+                                                <div className="rounded-md border border-border bg-muted p-2">
                                                     <div className="text-[10px] text-muted-foreground">Stawka</div>
                                                     <div className="text-lg font-bold">
                                                         {payrollSummary.rate != null
@@ -612,7 +612,7 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                                             : '—'}
                                                     </div>
                                                 </div>
-                                                <div className="rounded-md border border-white/10 bg-white/5 p-2">
+                                                <div className="rounded-md border border-border bg-muted p-2">
                                                     <div className="text-[10px] text-muted-foreground">Podstawowa</div>
                                                     <div className="text-lg font-bold">
                                                         {payrollSummary.base_amount != null
@@ -643,13 +643,13 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                                     </tbody>
                                                 </table>
                                             )}
-                                            <div className="rounded-md border border-white/10 bg-white/5 p-3 flex items-center justify-between">
+                                            <div className="rounded-md border border-border bg-muted p-3 flex items-center justify-between">
                                                 <span className="text-xs text-muted-foreground">Suma całkowita</span>
                                                 <span className="text-xl font-bold">
                                                     {payrollSummary.grand_total != null
                                                         ? `${payrollSummary.grand_total.toFixed(2)} ${payrollSummary.rate_currency}`
                                                         : (
-                                                              <span className="text-amber-400 text-sm">mieszane waluty</span>
+                                                              <span className="text-warning text-sm">mieszane waluty</span>
                                                           )}
                                                 </span>
                                             </div>
@@ -701,7 +701,7 @@ export function EmployeeProfileDialog({ userId, open, onOpenChange, onExportCSV 
                                                         <td className="py-2 pr-2 text-xs max-w-[280px]">
                                                             {b.reason}
                                                             {b.cancellation_reason && (
-                                                                <p className="text-[10px] text-red-300 mt-0.5">
+                                                                <p className="text-[10px] text-destructive mt-0.5">
                                                                     Anul.: {b.cancellation_reason.slice(0, 60)}
                                                                 </p>
                                                             )}

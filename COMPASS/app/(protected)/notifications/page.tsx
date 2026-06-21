@@ -12,7 +12,7 @@ export default async function NotificationsPage() {
     const result = await getRecentNotifications(50, false) // All recent, read + unread
 
     return (
-        <div className="min-h-screen bg-black text-white p-4 md:p-8 max-w-4xl mx-auto">
+        <div className="min-h-screen bg-card text-foreground p-4 md:p-8 max-w-4xl mx-auto">
             <NotificationsPageClient
                 notifications={result.success && result.notifications ? result.notifications : []}
             />

@@ -45,7 +45,7 @@ interface CellInfo {
 // Szczegółowe typy urlopu (L4, opiekuńczy, okolicznościowy itd.) są widoczne
 // w "Wnioskach urlopowych" (/internal?tab=leaves) — tutaj świadomie konsolidujemy
 // żeby koledzy w zespole nie widzieli rodzaju nieobecności (privacy by default).
-const OOO_BG = 'bg-amber-500/40'
+const OOO_BG = 'bg-warning/40'
 const OOO_LABEL = 'X'
 const OOO_TITLE = 'Out of Office'
 
@@ -200,7 +200,7 @@ export function VacationCalendar({ data, role, status, todayIso }: Props) {
         if (statusFilter !== 'ooo') {
             const att = attIdx.get(key)
             if (att?.status === 'active' && att.location === 'remote') {
-                return { bg: 'bg-blue-500/40', label: 'Z', title: 'Praca zdalna' }
+                return { bg: 'bg-info/40', label: 'Z', title: 'Praca zdalna' }
             }
         }
         return { bg: '', label: '', title: '' }
@@ -360,10 +360,10 @@ export function VacationCalendar({ data, role, status, todayIso }: Props) {
 
                 <div className="mt-6 flex flex-wrap gap-2 text-[10px] items-center">
                     {statusFilter !== 'remote' && (
-                        <Badge className="bg-amber-500/40 text-amber-100 border-transparent">X — Out of Office</Badge>
+                        <Badge className="bg-warning/40 text-warning-foreground border-transparent">X — Out of Office</Badge>
                     )}
                     {statusFilter !== 'ooo' && (
-                        <Badge className="bg-blue-500/40 text-blue-100 border-transparent">Z — Zdalnie</Badge>
+                        <Badge className="bg-info/40 text-info-foreground border-transparent">Z — Zdalnie</Badge>
                     )}
                     <Badge variant="outline" className="bg-muted text-muted-foreground">
                         Święto / weekend

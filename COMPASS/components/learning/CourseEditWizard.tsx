@@ -57,7 +57,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
 
     return (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-            <TabsList className="grid grid-cols-4 bg-white/5 border border-white/10 p-1 rounded-xl h-auto">
+            <TabsList className="grid grid-cols-4 bg-muted border border-border p-1 rounded-xl h-auto">
                 <TabsTrigger value="meta" className="data-[state=active]:bg-burgundy data-[state=active]:text-white text-xs sm:text-sm py-2.5 rounded-lg gap-1.5">
                     <FileText className="w-4 h-4 hidden sm:block" /> 1. Meta
                 </TabsTrigger>
@@ -67,15 +67,15 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                 <TabsTrigger value="quiz" className="data-[state=active]:bg-burgundy data-[state=active]:text-white text-xs sm:text-sm py-2.5 rounded-lg gap-1.5">
                     <ListChecks className="w-4 h-4 hidden sm:block" /> 3. Quiz ({quizCount})
                 </TabsTrigger>
-                <TabsTrigger value="publish" className="data-[state=active]:bg-green-600 data-[state=active]:text-white text-xs sm:text-sm py-2.5 rounded-lg gap-1.5">
+                <TabsTrigger value="publish" className="data-[state=active]:bg-success data-[state=active]:text-white text-xs sm:text-sm py-2.5 rounded-lg gap-1.5">
                     <Upload className="w-4 h-4 hidden sm:block" /> 4. Publikacja
                 </TabsTrigger>
             </TabsList>
 
             <TabsContent value="meta" className="mt-6">
                 {isLocked ? (
-                    <Card className="bg-amber-500/5 border-amber-500/20">
-                        <CardContent className="p-6 text-sm text-amber-300 flex items-start gap-2">
+                    <Card className="bg-warning/5 border-warning/20">
+                        <CardContent className="p-6 text-sm text-warning flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                             Edycja meta jest zablokowana w aktualnym statusie ({course.status}).
                         </CardContent>
@@ -91,8 +91,8 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
 
             <TabsContent value="lessons" className="mt-6">
                 {isLocked ? (
-                    <Card className="bg-amber-500/5 border-amber-500/20">
-                        <CardContent className="p-6 text-sm text-amber-300 flex items-start gap-2">
+                    <Card className="bg-warning/5 border-warning/20">
+                        <CardContent className="p-6 text-sm text-warning flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                             Edycja lekcji zablokowana ({course.status}).
                         </CardContent>
@@ -108,8 +108,8 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
 
             <TabsContent value="quiz" className="mt-6">
                 {isLocked ? (
-                    <Card className="bg-amber-500/5 border-amber-500/20">
-                        <CardContent className="p-6 text-sm text-amber-300 flex items-start gap-2">
+                    <Card className="bg-warning/5 border-warning/20">
+                        <CardContent className="p-6 text-sm text-warning flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                             Edycja quizu zablokowana ({course.status}).
                         </CardContent>
@@ -124,7 +124,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
             </TabsContent>
 
             <TabsContent value="publish" className="mt-6 space-y-4">
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-6 space-y-4">
                         <h3 className="text-lg font-semibold">Lista kontrolna przed publikacją</h3>
                         <ul className="space-y-2 text-sm">
@@ -143,32 +143,32 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                         </ul>
 
                         {course.status === 'pending_review' && (
-                            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300 flex items-start gap-2">
+                            <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-sm text-warning flex items-start gap-2">
                                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                                 Szkolenie czeka na moderację. Edycja zablokowana do czasu odpowiedzi moderatora.
                             </div>
                         )}
                         {course.status === 'rejected' && course.rejection_reason && (
-                            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+                            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
                                 <strong>Powód odrzucenia:</strong> {course.rejection_reason}
                                 <br />
                                 Wprowadź zmiany i wyślij ponownie.
                             </div>
                         )}
                         {course.status === 'published' && (
-                            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400">
+                            <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success">
                                 Szkolenie jest opublikowane i widoczne w katalogu.
                             </div>
                         )}
 
                         {submitError && (
-                            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-start gap-2">
+                            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                                 {submitError}
                             </div>
                         )}
                         {submitSuccess && (
-                            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400 flex items-center gap-2">
+                            <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success flex items-center gap-2">
                                 <CheckCircle2 className="w-4 h-4" /> {submitSuccess}
                             </div>
                         )}
@@ -211,10 +211,10 @@ function ChecklistItem({ done, label }: { done: boolean; label: string }) {
         <li className="flex items-center gap-2">
             <span
                 className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                    done ? 'bg-green-500/20 border border-green-500/40' : 'bg-white/5 border border-white/10'
+                    done ? 'bg-success/20 border border-success/40' : 'bg-muted border border-border'
                 }`}
             >
-                {done && <CheckCircle2 className="w-3 h-3 text-green-400" />}
+                {done && <CheckCircle2 className="w-3 h-3 text-success" />}
             </span>
             <span className={done ? 'text-foreground' : 'text-muted-foreground'}>{label}</span>
         </li>

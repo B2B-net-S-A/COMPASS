@@ -32,13 +32,13 @@ export default async function AdminNewsPage() {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && items.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardContent className="p-12 text-center space-y-3">
                         <Newspaper className="w-16 h-16 text-muted-foreground mx-auto" />
                         <p className="text-muted-foreground">Brak postów. Stwórz pierwszy.</p>
@@ -50,22 +50,22 @@ export default async function AdminNewsPage() {
                 <div className="space-y-2">
                     {items.map((p) => (
                         <Link key={p.id} href={`/admin/news/${p.slug}/edit`} className="block group">
-                            <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                            <Card className="bg-card border-border hover:border-primary/40 transition-colors">
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between gap-3 flex-wrap">
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                 {p.pinned && (
-                                                    <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10 inline-flex items-center gap-1">
+                                                    <Badge variant="outline" className="text-[10px] border-warning/30 text-warning bg-warning/10 inline-flex items-center gap-1">
                                                         <Pin className="w-2.5 h-2.5" /> Pinned
                                                     </Badge>
                                                 )}
                                                 {p.published_at ? (
-                                                    <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10 inline-flex items-center gap-1">
+                                                    <Badge variant="outline" className="text-[10px] border-success/30 text-success bg-success/10 inline-flex items-center gap-1">
                                                         <CheckCircle2 className="w-2.5 h-2.5" /> Opublikowane
                                                     </Badge>
                                                 ) : (
-                                                    <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 inline-flex items-center gap-1">
+                                                    <Badge variant="outline" className="text-[10px] border-warning/30 text-warning inline-flex items-center gap-1">
                                                         <FileText className="w-2.5 h-2.5" /> Draft
                                                     </Badge>
                                                 )}

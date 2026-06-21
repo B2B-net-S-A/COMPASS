@@ -376,7 +376,7 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
 function PoolSplitPreview({ preview, loading }: { preview: LeaveSplitPreview | null; loading: boolean }) {
     if (loading) {
         return (
-            <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-muted-foreground inline-flex items-center gap-2">
+            <div className="rounded-md border border-border/10 bg-card/5 px-3 py-2 text-xs text-muted-foreground inline-flex items-center gap-2">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Liczę pulę…
             </div>
@@ -390,10 +390,10 @@ function PoolSplitPreview({ preview, loading }: { preview: LeaveSplitPreview | n
     const allUnpaid = paid === 0 && unpaid > 0
 
     const cls = allPaid
-        ? 'border-green-500/30 bg-green-500/5 text-green-300'
+        ? 'border-success/30 bg-success/5 text-success'
         : partial
-            ? 'border-amber-500/30 bg-amber-500/5 text-amber-300'
-            : 'border-red-500/30 bg-red-500/5 text-red-300'
+            ? 'border-warning/30 bg-warning/5 text-warning'
+            : 'border-destructive/30 bg-destructive/5 text-destructive'
 
     const icon = allPaid ? '✓' : partial ? '⚠' : '✗'
 
@@ -411,7 +411,7 @@ function PoolSplitPreview({ preview, loading }: { preview: LeaveSplitPreview | n
                 {remainingAfter != null && (
                     <>
                         {' → '}
-                        <span className={`${(remainingAfter ?? 0) <= 0 ? 'text-amber-300' : 'text-foreground'}`}>
+                        <span className={`${(remainingAfter ?? 0) <= 0 ? 'text-warning' : 'text-foreground'}`}>
                             {remainingAfter.toFixed(1)} po złożeniu
                         </span>
                     </>

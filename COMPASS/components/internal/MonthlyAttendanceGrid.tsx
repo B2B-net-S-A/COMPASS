@@ -224,8 +224,8 @@ function computeCellMeta(args: {
     }
     if (args.leave) {
         return {
-            bg: 'bg-yellow-500/15 border-yellow-500/40',
-            text: 'text-yellow-200',
+            bg: 'bg-warning/15 border-warning/40',
+            text: 'text-warning',
             label: LEAVE_LABEL_PL[args.leave.leave_type] ?? 'Urlop',
             tooltip: 'Auto-status z zaakceptowanego wniosku urlopowego',
             readOnly: true,
@@ -260,32 +260,32 @@ function statusCellMeta(
         case 'active':
             if (location === 'remote') {
                 return {
-                    bg: 'bg-blue-500/15 border-blue-500/40',
-                    text: 'text-blue-200',
+                    bg: 'bg-info/15 border-info/40',
+                    text: 'text-info',
                     label: defaultPrefix + 'Remote' + noteSuffix,
                     tooltip: tooltipPrefix + 'Praca zdalna' + noteSuffix,
                     readOnly: false,
                 }
             }
             return {
-                bg: 'bg-green-500/15 border-green-500/40',
-                text: 'text-green-200',
+                bg: 'bg-success/15 border-success/40',
+                text: 'text-success',
                 label: defaultPrefix + 'Biuro' + noteSuffix,
                 tooltip: tooltipPrefix + 'W biurze' + noteSuffix,
                 readOnly: false,
             }
         case 'vacation':
             return {
-                bg: 'bg-yellow-500/20 border-yellow-500/40',
-                text: 'text-yellow-200',
+                bg: 'bg-warning/20 border-warning/40',
+                text: 'text-warning',
                 label: 'Urlop' + noteSuffix,
                 tooltip: 'Urlop wypoczynkowy' + noteSuffix,
                 readOnly: false,
             }
         case 'sick_leave':
             return {
-                bg: 'bg-red-500/15 border-red-500/40',
-                text: 'text-red-200',
+                bg: 'bg-destructive/15 border-destructive/40',
+                text: 'text-destructive',
                 label: 'L4' + noteSuffix,
                 tooltip: 'Zwolnienie lekarskie' + noteSuffix,
                 readOnly: false,
@@ -300,8 +300,8 @@ function statusCellMeta(
             }
         case 'unpaid_leave':
             return {
-                bg: 'bg-gray-500/15 border-gray-500/40',
-                text: 'text-gray-300',
+                bg: 'bg-muted border-border',
+                text: 'text-muted-foreground',
                 label: 'Bezpłatny' + noteSuffix,
                 tooltip: 'Urlop bezpłatny' + noteSuffix,
                 readOnly: false,
@@ -313,16 +313,16 @@ function statusCellMeta(
         // (statutory leave fallback) jako szare/teal tile.
         case 'holiday_in_lieu':
             return {
-                bg: 'bg-indigo-500/15 border-indigo-500/40',
-                text: 'text-indigo-200',
+                bg: 'bg-primary/15 border-primary/40',
+                text: 'text-primary',
                 label: 'Odbiór' + noteSuffix,
                 tooltip: 'Odbiór dnia za święto' + noteSuffix,
                 readOnly: false,
             }
         case 'other':
             return {
-                bg: 'bg-orange-500/15 border-orange-500/40',
-                text: 'text-orange-200',
+                bg: 'bg-warning/15 border-warning/40',
+                text: 'text-warning',
                 label: 'Inne' + noteSuffix,
                 tooltip: 'Inny status' + noteSuffix,
                 readOnly: false,
@@ -333,8 +333,8 @@ function statusCellMeta(
             // maternity, paternity, childrearing, blood_donation.
             const leaveLabel = LEAVE_LABEL_PL[status] ?? 'Urlop'
             return {
-                bg: 'bg-teal-500/15 border-teal-500/40',
-                text: 'text-teal-200',
+                bg: 'bg-success/15 border-success/40',
+                text: 'text-success',
                 label: leaveLabel + noteSuffix,
                 tooltip: leaveLabel + noteSuffix,
                 readOnly: false,
@@ -346,13 +346,13 @@ function statusCellMeta(
 function Legend() {
     return (
         <div className="mt-6 flex flex-wrap gap-2 text-[10px]">
-            <Badge variant="outline" className="bg-green-500/15 text-green-200 border-green-500/40">
+            <Badge variant="outline" className="bg-success/15 text-success border-success/40">
                 Biuro
             </Badge>
-            <Badge variant="outline" className="bg-blue-500/15 text-blue-200 border-blue-500/40">
+            <Badge variant="outline" className="bg-info/15 text-info border-info/40">
                 Remote
             </Badge>
-            <Badge variant="outline" className="bg-yellow-500/20 text-yellow-200 border-yellow-500/40">
+            <Badge variant="outline" className="bg-warning/20 text-warning border-warning/40">
                 Urlop
             </Badge>
             <Badge variant="outline" className="bg-muted text-muted-foreground">

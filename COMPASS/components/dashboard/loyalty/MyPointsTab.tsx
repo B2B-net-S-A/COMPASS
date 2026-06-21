@@ -13,10 +13,10 @@ import { LoyaltyTransactionList } from './LoyaltyTransactionList'
 import { LoyaltyCategoryBreakdown } from './LoyaltyCategoryBreakdown'
 
 const TIER_COLORS: Record<string, string> = {
-    bronze: 'text-[#CD7F32]',
-    silver: 'text-[#C0C0C0]',
-    gold: 'text-amber-500',
-    platinum: 'text-[#E5B4F3]',
+    bronze: 'text-tier-bronze',
+    silver: 'text-tier-silver',
+    gold: 'text-warning',
+    platinum: 'text-tier-platinum',
 }
 
 interface Props {
@@ -63,7 +63,7 @@ export function MyPointsTab({ targetUserId, showUnearned = true }: Props) {
     }
 
     const { summary, byCategory, timeline, recentTransactions, transactionsPagination } = data
-    const tierColor = TIER_COLORS[summary.currentTier] || 'text-amber-500'
+    const tierColor = TIER_COLORS[summary.currentTier] || 'text-warning'
 
     const memberMonths = summary.memberSince
         ? Math.max(1, Math.round((Date.now() - new Date(summary.memberSince).getTime()) / (1000 * 60 * 60 * 24 * 30)))
@@ -87,7 +87,7 @@ export function MyPointsTab({ targetUserId, showUnearned = true }: Props) {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Tier</CardTitle>
-                        <Trophy className="h-4 w-4 text-amber-500" />
+                        <Trophy className="h-4 w-4 text-warning" />
                     </CardHeader>
                     <CardContent>
                         <div className={`text-2xl font-bold ${tierColor}`}>{summary.currentTier.toUpperCase()}</div>

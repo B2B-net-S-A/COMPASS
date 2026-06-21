@@ -17,17 +17,17 @@ export function MarkdownView({ content, className }: MarkdownViewProps) {
     return (
         <div
             className={cn(
-                'prose prose-invert prose-sm max-w-none',
+                'prose prose-sm max-w-none',
                 'prose-headings:text-foreground prose-headings:font-bold',
                 'prose-p:text-foreground/90 prose-li:text-foreground/90',
                 'prose-strong:text-foreground prose-em:text-foreground/80',
                 'prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80',
-                'prose-code:text-amber-400 prose-code:bg-white/5 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none',
-                'prose-pre:bg-black/40 prose-pre:border prose-pre:border-white/10',
+                'prose-code:text-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none',
+                'prose-pre:bg-muted prose-pre:border prose-pre:border-border',
                 'prose-blockquote:border-l-primary prose-blockquote:text-foreground/80',
-                'prose-table:border prose-table:border-white/10',
-                'prose-th:bg-white/5 prose-th:text-foreground prose-th:p-2 prose-th:border prose-th:border-white/10',
-                'prose-td:p-2 prose-td:border prose-td:border-white/10 prose-td:text-foreground/90',
+                'prose-table:border prose-table:border-border',
+                'prose-th:bg-muted prose-th:text-foreground prose-th:p-2 prose-th:border prose-th:border-border',
+                'prose-td:p-2 prose-td:border prose-td:border-border prose-td:text-foreground/90',
                 className,
             )}
         >
