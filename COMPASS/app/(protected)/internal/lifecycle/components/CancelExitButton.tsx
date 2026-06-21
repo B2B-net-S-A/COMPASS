@@ -40,7 +40,7 @@ export function CancelExitButton({ interviewId }: Props) {
                 size="sm"
                 onClick={() => setOpen(true)}
                 disabled={isPending}
-                className="text-red-400 border-red-400/30 hover:bg-red-400/10"
+                className="text-destructive border-destructive/30 hover:bg-destructive/10"
             >
                 <X className="h-4 w-4 mr-2" />
                 Anuluj exit
@@ -72,7 +72,7 @@ export function CancelExitButton({ interviewId }: Props) {
                         <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
                             Wróć
                         </Button>
-                        <Button onClick={handleCancel} disabled={isPending} className="bg-red-500 hover:bg-red-600">
+                        <Button onClick={handleCancel} disabled={isPending} className="bg-destructive hover:bg-destructive/90">
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <X className="h-4 w-4 mr-2" />}
                             Potwierdź anulowanie
                         </Button>

@@ -821,7 +821,7 @@ export function AssignBonusForm({
     const formBody = (
         <form onSubmit={handleSubmit} className="space-y-4">
             {draftRestored && (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                <div className="flex items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
                     <span>Przywrócono niewysłane dane z poprzedniej próby.</span>
                     <button
                         type="button"

@@ -24,7 +24,7 @@ interface Props {
 function statusBadge(status: InvoiceRow['status']) {
     if (status === 'approved') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Zaakceptowana
             </span>
@@ -32,14 +32,14 @@ function statusBadge(status: InvoiceRow['status']) {
     }
     if (status === 'rejected') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
                 <XCircle className="h-3.5 w-3.5" />
                 Odrzucona
             </span>
         )
     }
     return (
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-500">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-warning">
             <AlertCircle className="h-3.5 w-3.5" />
             Oczekuje
         </span>
@@ -98,7 +98,7 @@ export function InvoicesUserPanel({ initialInvoices, eligiblePeriods }: Props) {
             </div>
 
             {submitDisabled && (
-                <div className="rounded-md border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm text-yellow-200">
+                <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
                     Brak zatwierdzonych timesheetów. Wystaw faktury możesz dopiero po akceptacji timesheet'u za dany okres.
                 </div>
             )}
@@ -171,15 +171,15 @@ function RejectedBanner({ invoices, onPick }: { invoices: InvoiceRow[]; onPick: 
             {rejected.map((inv) => (
                 <div
                     key={inv.id}
-                    className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm"
+                    className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm"
                 >
                     <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
-                            <p className="font-medium text-red-200">
+                            <p className="font-medium text-destructive">
                                 Faktura odrzucona: {inv.invoice_number} ({formatPeriod(inv.period_year, inv.period_month)})
                             </p>
                             {inv.rejection_reason && (
-                                <p className="text-red-200/80">
+                                <p className="text-destructive/80">
                                     <strong>Powód:</strong> {inv.rejection_reason}
                                 </p>
                             )}

@@ -118,7 +118,7 @@ export function MonitoringConsentDialog({ open, onOpenChange, onAccepted }: Prop
                         <Link
                             href="/privacy/work-monitoring"
                             target="_blank"
-                            className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 underline"
+                            className="inline-flex items-center gap-1 text-info hover:text-info/80 underline"
                         >
                             Pełna polityka monitoringu czasu pracy
                             <ExternalLink className="h-3 w-3" />
@@ -126,7 +126,7 @@ export function MonitoringConsentDialog({ open, onOpenChange, onAccepted }: Prop
                     </p>
                 </div>
 
-                <div className="flex items-start gap-2 pt-3 border-t border-zinc-800">
+                <div className="flex items-start gap-2 pt-3 border-t border-border">
                     <Checkbox
                         id="route-tracking-checkbox"
                         checked={routeTrackingOptIn}

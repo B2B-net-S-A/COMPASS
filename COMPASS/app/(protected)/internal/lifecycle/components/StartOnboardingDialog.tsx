@@ -224,7 +224,7 @@ export function StartOnboardingDialog({ open, onOpenChange }: Props) {
                                 </div>
                             </label>
 
-                            <div className="rounded border border-cyan-400/30 bg-cyan-400/5 p-3 text-xs text-muted-foreground">
+                            <div className="rounded border border-info/30 bg-info/5 p-3 text-xs text-muted-foreground">
                                 Po kliknięciu &quot;Uruchom&quot;:
                                 <ul className="list-disc list-inside mt-1 space-y-0.5">
                                     <li>Status pracownika zmieni się na <strong>onboarding</strong></li>

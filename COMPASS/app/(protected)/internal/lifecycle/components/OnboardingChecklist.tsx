@@ -104,11 +104,11 @@ export function OnboardingChecklist({
                                     <div className="flex items-start gap-3">
                                         <div className="pt-0.5">
                                             {completed ? (
-                                                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                                <div className="h-5 w-5 rounded-full bg-success flex items-center justify-center">
                                                     <Check className="h-3 w-3 text-white" />
                                                 </div>
                                             ) : (
-                                                <div className={`h-5 w-5 rounded-full border-2 ${overdue ? 'border-red-400' : 'border-muted-foreground'}`} />
+                                                <div className={`h-5 w-5 rounded-full border-2 ${overdue ? 'border-destructive' : 'border-muted-foreground'}`} />
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0">
@@ -126,7 +126,7 @@ export function OnboardingChecklist({
                                                     {RESPONSIBLE_LABEL[task.responsible_role]}
                                                 </span>
                                                 {task.due_date && (
-                                                    <span className={overdue ? 'text-red-400' : 'text-muted-foreground'}>
+                                                    <span className={overdue ? 'text-destructive' : 'text-muted-foreground'}>
                                                         • Termin: {new Date(task.due_date).toLocaleDateString('pl-PL')}
                                                     </span>
                                                 )}
@@ -134,7 +134,7 @@ export function OnboardingChecklist({
                                                     <Link
                                                         href={`/learning/${task.course_slug}`}
                                                         target="_blank"
-                                                        className="inline-flex items-center gap-1 text-cyan-400 hover:underline"
+                                                        className="inline-flex items-center gap-1 text-info hover:underline"
                                                     >
                                                         <GraduationCap className="h-3 w-3" /> Kurs Akademii
                                                     </Link>

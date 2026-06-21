@@ -17,9 +17,9 @@ const CATEGORY_LABEL: Record<LifecycleNote['category'], string> = {
 
 const CATEGORY_COLOR: Record<LifecycleNote['category'], string> = {
     general: 'bg-muted text-muted-foreground',
-    onboarding: 'bg-cyan-500/20 text-cyan-300',
-    exit: 'bg-amber-500/20 text-amber-300',
-    flag: 'bg-red-500/20 text-red-300',
+    onboarding: 'bg-info/20 text-info',
+    exit: 'bg-warning/20 text-warning',
+    flag: 'bg-destructive/20 text-destructive',
 }
 
 interface Props {
@@ -160,7 +160,7 @@ export function LifecycleNotesPanel({ userId, defaultCategory = 'general' }: Pro
                                             {CATEGORY_LABEL[n.category]}
                                         </span>
                                         {n.is_private && (
-                                            <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary">
                                                 Prywatna
                                             </span>
                                         )}
@@ -175,7 +175,7 @@ export function LifecycleNotesPanel({ userId, defaultCategory = 'general' }: Pro
                                     variant="ghost"
                                     onClick={() => handleDelete(n.id)}
                                     disabled={isPending}
-                                    className="text-red-400 hover:bg-red-400/10"
+                                    className="text-destructive hover:bg-destructive/10"
                                 >
                                     <Trash2 className="h-3 w-3" />
                                 </Button>

@@ -14,15 +14,15 @@ const EVENT_LABEL: Record<LifecycleEvent['event_type'], string> = {
 }
 
 const EVENT_COLOR: Record<LifecycleEvent['event_type'], string> = {
-    hired: 'text-cyan-400',
-    onboarding_started: 'text-cyan-400',
-    onboarding_completed: 'text-green-400',
-    role_changed: 'text-amber-400',
-    manager_changed: 'text-amber-400',
-    buddy_assigned: 'text-cyan-400',
-    offboarding_started: 'text-amber-400',
-    exit_interview_completed: 'text-amber-400',
-    exited: 'text-red-400',
+    hired: 'text-info',
+    onboarding_started: 'text-info',
+    onboarding_completed: 'text-success',
+    role_changed: 'text-warning',
+    manager_changed: 'text-warning',
+    buddy_assigned: 'text-info',
+    offboarding_started: 'text-warning',
+    exit_interview_completed: 'text-warning',
+    exited: 'text-destructive',
 }
 
 export function LifecycleTimelinePanel({ events }: { events: LifecycleEvent[] }) {

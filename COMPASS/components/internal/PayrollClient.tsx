@@ -237,13 +237,13 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
 
             <BonusTable bonuses={summary.bonuses} />
 
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+            <div className="rounded-lg border border-border bg-card p-4 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Suma całkowita</span>
                 <span className="text-2xl font-bold">
                     {summary.grand_total != null
                         ? formatMoney(summary.grand_total, summary.rate_currency)
                         : (
-                              <span className="text-amber-400 flex items-center gap-1 text-base">
+                              <span className="text-warning flex items-center gap-1 text-base">
                                   <AlertCircle className="h-4 w-4" />
                                   Mieszane waluty — patrz tabela
                               </span>
@@ -252,7 +252,7 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
             </div>
 
             {summary.timesheet_status !== 'approved' && (
-                <p className="text-xs text-amber-400">
+                <p className="text-xs text-warning">
                     Status timesheet: {summary.timesheet_status}. Kwota podstawowa zostanie sfinalizowana po akceptacji.
                 </p>
             )}
@@ -263,13 +263,13 @@ function MineSummaryView({ summary }: { summary: PayrollSummary }) {
 function BonusTable({ bonuses }: { bonuses: PayrollSummary['bonuses'] }) {
     if (bonuses.length === 0) {
         return (
-            <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-4 text-center text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border bg-card p-4 text-center text-sm text-muted-foreground">
                 Brak premii w tym miesiącu.
             </div>
         )
     }
     return (
-        <div className="rounded-lg border border-white/10">
+        <div className="rounded-lg border border-border">
             <table className="w-full text-sm">
                 <thead className="border-b border-border/40 text-xs text-muted-foreground">
                     <tr>
@@ -297,13 +297,13 @@ function BonusTable({ bonuses }: { bonuses: PayrollSummary['bonuses'] }) {
 function SummaryTable({ summaries, emptyText }: { summaries: PayrollSummary[]; emptyText: string }) {
     if (summaries.length === 0) {
         return (
-            <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-8 text-center text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-muted-foreground">
                 {emptyText}
             </div>
         )
     }
     return (
-        <div className="rounded-lg border border-white/10 overflow-x-auto">
+        <div className="rounded-lg border border-border overflow-x-auto">
             <table className="w-full text-sm">
                 <thead className="border-b border-border/40 text-xs text-muted-foreground sticky top-0 bg-background">
                     <tr>
@@ -347,7 +347,7 @@ function SummaryTable({ summaries, emptyText }: { summaries: PayrollSummary[]; e
                                     {s.grand_total != null
                                         ? formatMoney(s.grand_total, s.rate_currency)
                                         : (
-                                              <span className="text-amber-400 text-[11px]">mieszane</span>
+                                              <span className="text-warning text-[11px]">mieszane</span>
                                           )}
                                 </td>
                                 <td className="p-2 text-xs text-muted-foreground">{s.timesheet_status}</td>
@@ -362,7 +362,7 @@ function SummaryTable({ summaries, emptyText }: { summaries: PayrollSummary[]; e
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
     return (
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
             <div className="text-xs text-muted-foreground">{label}</div>
             <div className="text-2xl font-bold">{value}</div>
             {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}

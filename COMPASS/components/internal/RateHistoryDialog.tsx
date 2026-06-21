@@ -67,8 +67,8 @@ export function RateHistoryDialog({ userId, userName, onOpenChange }: Props) {
                                     key={r.id}
                                     className={`rounded-lg border p-3 ${
                                         isActive
-                                            ? 'border-green-500/30 bg-green-500/5'
-                                            : 'border-white/10 bg-white/5'
+                                            ? 'border-success/30 bg-success/5'
+                                            : 'border-border bg-muted'
                                     }`}
                                 >
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -76,7 +76,7 @@ export function RateHistoryDialog({ userId, userName, onOpenChange }: Props) {
                                             {Number(r.hourly_rate).toFixed(2)} {r.currency}/h
                                         </span>
                                         {isActive && (
-                                            <span className="text-[10px] px-1.5 py-0.5 rounded border border-green-500/30 bg-green-500/10 text-green-300">
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded border border-success/30 bg-success/10 text-success">
                                                 Aktywna
                                             </span>
                                         )}

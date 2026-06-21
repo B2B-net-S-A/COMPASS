@@ -33,8 +33,8 @@ export async function ActiveLeavesBanner() {
     }
 
     return (
-        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs">
-            <div className="flex items-center gap-1.5 text-blue-300 font-medium mb-2">
+        <div className="rounded-lg border border-info/30 bg-info/5 p-3 text-xs">
+            <div className="flex items-center gap-1.5 text-info font-medium mb-2">
                 <Plane className="h-4 w-4" />
                 Aktualnie na urlopie ({leaves.length})
             </div>
@@ -47,13 +47,13 @@ export async function ActiveLeavesBanner() {
                         <span className="font-medium text-foreground">
                             {l.user_full_name ?? l.user_email}
                         </span>
-                        <span className="text-[10px] text-blue-300/80">
+                        <span className="text-[10px] text-info/80">
                             ({LEAVE_TYPE_LABEL[l.leave_type] ?? 'urlop'})
                         </span>
                         <span>do {fmt(l.end_date)}</span>
                         {l.substitute_full_name && l.substitute_email && (
                             <span className="inline-flex items-center gap-1">
-                                <UserCheck className="h-3 w-3 text-green-400" />
+                                <UserCheck className="h-3 w-3 text-success" />
                                 zastępuje:{' '}
                                 <a
                                     href={`mailto:${l.substitute_email}`}
@@ -64,7 +64,7 @@ export async function ActiveLeavesBanner() {
                             </span>
                         )}
                         {!l.substitute_full_name && (
-                            <span className="italic text-amber-300/80">
+                            <span className="italic text-warning/80">
                                 brak zastępcy
                             </span>
                         )}

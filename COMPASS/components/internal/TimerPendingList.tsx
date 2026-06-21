@@ -56,7 +56,7 @@ export function TimerPendingList({ timers, timesheetId, hideIfEmpty = false }: P
                     timers.map((t) => (
                         <div
                             key={t.id}
-                            className="flex flex-wrap items-center gap-3 p-2 border border-white/10 rounded text-sm"
+                            className="flex flex-wrap items-center gap-3 p-2 border border-border rounded text-sm"
                         >
                             <div className="flex-1 min-w-0">
                                 <p className="font-medium tabular-nums">

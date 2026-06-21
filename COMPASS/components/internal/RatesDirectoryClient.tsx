@@ -71,15 +71,15 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
         <div className="space-y-4">
             {/* Stats + filters */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="rounded-lg border border-border bg-card p-3">
                     <div className="text-xs text-muted-foreground">Pracownicy z stawką</div>
                     <div className="text-xl font-bold">{withRate}</div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="rounded-lg border border-border bg-card p-3">
                     <div className="text-xs text-muted-foreground">Bez stawki</div>
-                    <div className="text-xl font-bold text-amber-400">{withoutRate}</div>
+                    <div className="text-xl font-bold text-warning">{withoutRate}</div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="rounded-lg border border-border bg-card p-3">
                     <div className="text-xs text-muted-foreground">Razem</div>
                     <div className="text-xl font-bold">{filtered.length}</div>
                 </div>
@@ -108,7 +108,7 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
             </div>
 
             {/* Table */}
-            <div className="rounded-lg border border-white/10 overflow-x-auto">
+            <div className="rounded-lg border border-border overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className="border-b border-border/40 text-xs text-muted-foreground sticky top-0 bg-background">
                         <tr>
@@ -135,7 +135,7 @@ export function RatesDirectoryClient({ initialDirectory }: Props) {
                                     {r.current_rate != null ? (
                                         `${r.current_rate.toFixed(2)} ${r.current_currency}/h`
                                     ) : (
-                                        <span className="text-amber-400 text-xs">brak</span>
+                                        <span className="text-warning text-xs">brak</span>
                                     )}
                                 </td>
                                 <td className="p-2 text-xs">

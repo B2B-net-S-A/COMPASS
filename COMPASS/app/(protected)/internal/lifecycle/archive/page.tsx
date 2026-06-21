@@ -70,12 +70,12 @@ export default async function ArchivePage() {
                                         </td>
                                         <td className="p-3 text-xs">
                                             {c.completed_at ? (
-                                                <span className="inline-flex items-center gap-1 text-green-400">
+                                                <span className="inline-flex items-center gap-1 text-success">
                                                     <CheckCircle2 className="h-3 w-3" />
                                                     Ukończony
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex items-center gap-1 text-red-400">
+                                                <span className="inline-flex items-center gap-1 text-destructive">
                                                     <XCircle className="h-3 w-3" />
                                                     Anulowany
                                                     {c.cancellation_reason && (

@@ -48,18 +48,18 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-    draft: { label: 'Szkic', className: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
+    draft: { label: 'Szkic', className: 'bg-muted text-muted-foreground border-border' },
     submitted: {
         label: 'Oczekuje',
-        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
     },
     approved: {
         label: 'Zaakceptowany',
-        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+        className: 'bg-success/15 text-success border-success/30',
     },
     rejected: {
         label: 'Odrzucony',
-        className: 'bg-red-500/15 text-red-300 border-red-500/30',
+        className: 'bg-destructive/15 text-destructive border-destructive/30',
     },
 }
 
@@ -224,7 +224,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                 </DialogHeader>
 
                 {timesheet.rejection_note && (
-                    <div className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                         <strong>Poprzedni powód odrzucenia:</strong> {timesheet.rejection_note}
                     </div>
                 )}
@@ -279,7 +279,7 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                                             <div className="flex flex-wrap gap-1 mt-1">
                                                 {(e.source === 'clock_suggested' ||
                                                     e.source === 'clock_accepted') && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-blue-300">
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-info">
                                                         <Clock className="h-3 w-3" />
                                                         z zegara
                                                         {e.tracked_hours != null && (
@@ -290,13 +290,13 @@ export function TimesheetPreviewDialog({ timesheet, open, onOpenChange, onReques
                                                     </span>
                                                 )}
                                                 {e.correction_required && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-300">
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-warning">
                                                         <AlertTriangle className="h-3 w-3" />
                                                         wymaga korekty
                                                     </span>
                                                 )}
                                                 {e.is_overtime_override && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-purple-300">
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-primary">
                                                         <Clock className="h-3 w-3" />
                                                         nadgodziny (panel admina)
                                                     </span>

@@ -181,7 +181,7 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                                                         size="sm"
                                                         variant="ghost"
                                                         onClick={() => setArchiveTarget(e)}
-                                                        className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                                        className="h-7 px-2 text-warning hover:text-warning hover:bg-warning/10"
                                                         title="Archiwizuj — uruchom offboarding + exit interview"
                                                     >
                                                         <Archive className="h-3.5 w-3.5" />
@@ -274,7 +274,7 @@ function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchivePr
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle className="flex items-center gap-2">
-                        <Archive className="h-4 w-4 text-amber-600" />
+                        <Archive className="h-4 w-4 text-warning" />
                         Archiwizuj pracownika
                     </AlertDialogTitle>
                     <AlertDialogDescription asChild>
@@ -356,7 +356,7 @@ function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchivePr
                             handleConfirm()
                         }}
                         disabled={isPending || !terminationDate}
-                        className="bg-amber-600 hover:bg-amber-700 text-white"
+                        className="bg-warning hover:bg-warning/90 text-warning-foreground"
                     >
                         {isPending ? (
                             <>

@@ -77,7 +77,7 @@ export function AdminClockReviewActions({
             <Button
                 size="sm"
                 variant="outline"
-                className="h-8 text-green-300 border-green-500/30 hover:bg-green-500/10"
+                className="h-8 text-success border-success/30 hover:bg-success/10"
                 onClick={() => setApproveOpen(true)}
                 disabled={pending}
             >
@@ -87,7 +87,7 @@ export function AdminClockReviewActions({
             <Button
                 size="sm"
                 variant="outline"
-                className="h-8 text-red-300 border-red-500/30 hover:bg-red-500/10"
+                className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10"
                 onClick={() => setRejectOpen(true)}
                 disabled={pending}
             >
@@ -146,7 +146,7 @@ export function AdminClockReviewActions({
                     </DialogHeader>
                     <div className="space-y-2">
                         <Label htmlFor="reject-note">
-                            Uzasadnienie <span className="text-red-400">*</span>
+                            Uzasadnienie <span className="text-destructive">*</span>
                         </Label>
                         <Textarea
                             id="reject-note"

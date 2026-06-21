@@ -104,7 +104,7 @@ export function BuddyAssignmentDialog({ open, onOpenChange, employeeId, employee
                     </div>
 
                     {currentBuddyId && currentBuddyName && (
-                        <div className="flex items-center justify-between rounded border border-cyan-400/30 bg-cyan-400/5 p-3 text-sm">
+                        <div className="flex items-center justify-between rounded border border-info/30 bg-info/5 p-3 text-sm">
                             <span>Aktualny buddy: <strong>{currentBuddyName}</strong></span>
                             <Button size="sm" variant="ghost" onClick={handleUnassign} disabled={isPending}>
                                 <X className="h-4 w-4 mr-1" />

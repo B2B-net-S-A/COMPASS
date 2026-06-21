@@ -27,10 +27,10 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-    pending: { label: 'Oczekuje', className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30' },
-    approved: { label: 'Zaakceptowany', className: 'bg-green-500/15 text-green-300 border-green-500/30' },
-    rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
-    cancelled: { label: 'Anulowany', className: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
+    pending: { label: 'Oczekuje', className: 'bg-warning/15 text-warning border-warning/30' },
+    approved: { label: 'Zaakceptowany', className: 'bg-success/15 text-success border-success/30' },
+    rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
+    cancelled: { label: 'Anulowany', className: 'bg-muted text-muted-foreground border-border' },
 }
 
 export function MyLeaveList({ requests }: Props) {
@@ -131,15 +131,15 @@ export function MyLeaveList({ requests }: Props) {
                                             <p className="text-xs mt-1 inline-flex items-center gap-1">
                                                 {req.graph_oof_set ? (
                                                     <>
-                                                        <MailCheck className="h-3 w-3 text-green-400" />
-                                                        <span className="text-green-300">
+                                                        <MailCheck className="h-3 w-3 text-success" />
+                                                        <span className="text-success">
                                                             Out of Office ustawione w Outlook
                                                         </span>
                                                     </>
                                                 ) : req.graph_sync_error ? (
                                                     <>
-                                                        <AlertTriangle className="h-3 w-3 text-amber-400" />
-                                                        <span className="text-amber-300">
+                                                        <AlertTriangle className="h-3 w-3 text-warning" />
+                                                        <span className="text-warning">
                                                             Synchronizacja Outlook nie powiodła się — admin może ponowić
                                                         </span>
                                                     </>

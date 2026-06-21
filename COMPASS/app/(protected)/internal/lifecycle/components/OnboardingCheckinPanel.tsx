@@ -90,7 +90,7 @@ export function OnboardingCheckinPanel({ progress, startedAt }: Props) {
                                                 onClick={() => setScore(n)}
                                                 className={`w-10 h-10 rounded border-2 transition ${
                                                     score === n
-                                                        ? 'border-cyan-400 bg-cyan-400/10 text-cyan-400'
+                                                        ? 'border-info bg-info/10 text-info'
                                                         : 'border-muted hover:border-muted-foreground'
                                                 }`}
                                             >

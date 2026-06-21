@@ -174,7 +174,7 @@ export function WorkClockButton() {
                     <Button
                         size="lg"
                         variant="secondary"
-                        className="shadow-xl bg-amber-600/20 border border-amber-500/30 text-amber-200 hover:bg-amber-600/30"
+                        className="shadow-xl bg-warning/20 border border-warning/30 text-warning hover:bg-warning/30"
                         onClick={() => setConsentDialogOpen(true)}
                     >
                         <Clock className="h-4 w-4 mr-2" />
@@ -199,7 +199,7 @@ export function WorkClockButton() {
                 <div className="fixed bottom-6 right-6 z-40">
                     <Button
                         size="lg"
-                        className="shadow-xl bg-green-600 hover:bg-green-700 text-white"
+                        className="shadow-xl bg-success hover:bg-success/90 text-white"
                         onClick={handleStart}
                     >
                         <Play className="h-4 w-4 mr-2" />
@@ -246,22 +246,22 @@ export function WorkClockButton() {
             : 'Pracujesz'
 
     const accent = isPaused
-        ? 'bg-purple-600 hover:bg-purple-700'
+        ? 'bg-primary hover:bg-primary/90'
         : clock.state === 'idle'
-          ? 'bg-amber-600 hover:bg-amber-700'
+          ? 'bg-warning hover:bg-warning/90'
           : clock.state === 'paused_hidden'
-            ? 'bg-slate-600 hover:bg-slate-700'
-            : 'bg-blue-600 hover:bg-blue-700'
+            ? 'bg-muted hover:bg-muted/90'
+            : 'bg-info hover:bg-info/90'
 
     return (
         <>
             <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2">
-                <div className="bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg px-4 py-3 shadow-xl">
+                <div className="bg-card/95 backdrop-blur border border-border rounded-lg px-4 py-3 shadow-xl">
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                         {stateLabel}
                         {clock.mediaActive && (
                             <span
-                                className="inline-flex items-center gap-1 text-[10px] text-green-300 border border-green-500/30 bg-green-500/10 rounded px-1 py-0.5"
+                                className="inline-flex items-center gap-1 text-[10px] text-success border border-success/30 bg-success/10 rounded px-1 py-0.5"
                                 title="Wykryto aktywny call — próg idle wydłużony do 60 min"
                             >
                                 <Phone className="h-2.5 w-2.5" />
@@ -290,7 +290,7 @@ export function WorkClockButton() {
                                 <Button
                                     size="lg"
                                     variant="outline"
-                                    className="shadow-xl bg-zinc-900/95 border-zinc-700 text-zinc-100 hover:bg-zinc-800"
+                                    className="shadow-xl bg-card/95 border-border text-foreground hover:bg-muted"
                                 >
                                     <Coffee className="h-4 w-4 mr-2" />
                                     Pauza

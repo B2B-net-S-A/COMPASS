@@ -189,7 +189,7 @@ export function RoleDefaultsManager({ initialDefaults }: Props) {
                                             {!d.is_active && (
                                                 <Badge
                                                     variant="outline"
-                                                    className="text-xs bg-gray-500/15 text-gray-300 border-gray-500/30"
+                                                    className="text-xs bg-muted text-muted-foreground border-border"
                                                 >
                                                     Wyłączony
                                                 </Badge>

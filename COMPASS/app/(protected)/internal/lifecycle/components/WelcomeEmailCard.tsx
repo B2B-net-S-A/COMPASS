@@ -58,7 +58,7 @@ export function WelcomeEmailCard({ progressId, employeeName, employeeEmail, sent
                     </div>
                 </div>
                 {wasSent && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-400/10 px-2 py-0.5 text-[11px] text-green-500">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[11px] text-success">
                         <Check className="h-3 w-3" /> Wysłany
                     </span>
                 )}

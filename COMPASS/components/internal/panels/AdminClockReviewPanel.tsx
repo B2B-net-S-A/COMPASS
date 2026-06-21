@@ -20,7 +20,7 @@ export async function AdminClockReviewPanel({ year, month }: Props) {
         <section className="space-y-4">
             <div>
                 <h2 className="text-xl font-semibold flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-400" />
+                    <AlertTriangle className="h-5 w-5 text-warning" />
                     Korekty godzin pracy
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -73,7 +73,7 @@ export async function AdminClockReviewPanel({ year, month }: Props) {
                                             <td className="py-2 pr-2 text-right font-mono text-xs">
                                                 {e.hours.toFixed(2)} h
                                                 {e.hours > 13 && (
-                                                    <span className="ml-1 text-[10px] text-red-300">
+                                                    <span className="ml-1 text-[10px] text-destructive">
                                                         ⚠ KP
                                                     </span>
                                                 )}
@@ -91,8 +91,8 @@ export async function AdminClockReviewPanel({ year, month }: Props) {
                                                         variant="outline"
                                                         className={
                                                             Math.abs(e.declared_minus_tracked) > 2
-                                                                ? 'bg-red-500/15 text-red-300 border-red-500/30'
-                                                                : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                                                ? 'bg-destructive/15 text-destructive border-destructive/30'
+                                                                : 'bg-warning/15 text-warning border-warning/30'
                                                         }
                                                     >
                                                         {e.declared_minus_tracked > 0 ? '+' : ''}

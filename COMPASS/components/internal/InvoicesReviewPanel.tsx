@@ -33,7 +33,7 @@ interface Props {
 function statusBadge(status: InvoiceStatus) {
     if (status === 'approved') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Zaakceptowana
             </span>
@@ -41,7 +41,7 @@ function statusBadge(status: InvoiceStatus) {
     }
     if (status === 'manager_approved') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-info">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Etap 1 OK — czeka na finanse
             </span>
@@ -49,14 +49,14 @@ function statusBadge(status: InvoiceStatus) {
     }
     if (status === 'rejected') {
         return (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
                 <XCircle className="h-3.5 w-3.5" />
                 Odrzucona
             </span>
         )
     }
     return (
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-yellow-500">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-warning">
             <AlertCircle className="h-3.5 w-3.5" />
             Oczekuje
         </span>
@@ -282,7 +282,7 @@ function InvoiceReviewRow({
                                 <p className="text-xs uppercase text-muted-foreground mb-1">
                                     Komentarz managera (etap 1)
                                 </p>
-                                <p className="text-blue-300">{invoice.manager_review_note}</p>
+                                <p className="text-info">{invoice.manager_review_note}</p>
                             </div>
                         )}
                         {invoice.rejection_reason && (
@@ -290,7 +290,7 @@ function InvoiceReviewRow({
                                 <p className="text-xs uppercase text-muted-foreground mb-1">
                                     Powód odrzucenia ({invoice.rejected_by_stage === 'manager' ? 'manager' : 'finanse'})
                                 </p>
-                                <p className="text-red-300">{invoice.rejection_reason}</p>
+                                <p className="text-destructive">{invoice.rejection_reason}</p>
                             </div>
                         )}
                     </div>

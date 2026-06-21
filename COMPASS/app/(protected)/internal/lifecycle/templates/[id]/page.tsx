@@ -27,9 +27,9 @@ export default async function TemplateDetailPage({ params }: { params: { id: str
                     ← Wszystkie szablony
                 </Link>
                 <h1 className="text-2xl font-bold flex items-center gap-2 mt-1">
-                    <FileText className="h-7 w-7 text-cyan-400" />
+                    <FileText className="h-7 w-7 text-info" />
                     {template.name}
-                    {template.is_default && <Star className="h-5 w-5 fill-amber-400 text-amber-400" />}
+                    {template.is_default && <Star className="h-5 w-5 fill-warning text-warning" />}
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">
                     Dla: {roleLabelPl(template.target_role)}

@@ -131,7 +131,7 @@ export function TimesheetEntryDialog({
                                 className="min-h-[44px] text-base"
                             />
                             {hasConflict && (
-                                <p className="text-[11px] text-amber-400 mt-1">
+                                <p className="text-[11px] text-warning mt-1">
                                     ⚠ Ten dzień ma już {conflictingEntries.length}{' '}
                                     {conflictingEntries.length === 1 ? 'wpis' : 'wpisy'} ({conflictingTotalHours}h)
                                 </p>

@@ -11,16 +11,16 @@ import { MyTimesheetCSVButton } from '@/components/internal/MyTimesheetCSVButton
 export const dynamic = 'force-dynamic'
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-    draft: { label: 'Szkic', className: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
+    draft: { label: 'Szkic', className: 'bg-muted/15 text-muted-foreground border-border/30' },
     submitted: {
         label: 'Oczekuje',
-        className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
     },
     approved: {
         label: 'Zaakceptowany',
-        className: 'bg-green-500/15 text-green-300 border-green-500/30',
+        className: 'bg-success/15 text-success border-success/30',
     },
-    rejected: { label: 'Odrzucony', className: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
 export default async function TimesheetArchivePage() {
@@ -106,7 +106,7 @@ export default async function TimesheetArchivePage() {
                                                     </Badge>
                                                 )}
                                                 {row.rejection_note && (
-                                                    <p className="text-[10px] text-red-300/80 italic mt-0.5">
+                                                    <p className="text-[10px] text-destructive/80 italic mt-0.5">
                                                         {row.rejection_note.slice(0, 60)}
                                                     </p>
                                                 )}

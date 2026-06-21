@@ -104,7 +104,7 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <LogOut className="h-5 w-5 text-amber-400" />
+                        <LogOut className="h-5 w-5 text-warning" />
                         Zaplanuj offboarding
                     </DialogTitle>
                     <DialogDescription>
@@ -206,7 +206,7 @@ export function ScheduleExitDialog({ open, onOpenChange }: Props) {
                                 </label>
                             </div>
 
-                            <div className="rounded border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-muted-foreground">
+                            <div className="rounded border border-warning/30 bg-warning/5 p-3 text-xs text-muted-foreground">
                                 Po kliknięciu &quot;Zaplanuj&quot;:
                                 <ul className="list-disc list-inside mt-1 space-y-0.5">
                                     <li>Status pracownika: <strong>active → offboarding</strong></li>

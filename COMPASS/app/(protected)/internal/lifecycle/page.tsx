@@ -58,7 +58,7 @@ export default async function LifecycleHubPage() {
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <ClipboardList className="h-7 w-7 text-cyan-400" />
+                        <ClipboardList className="h-7 w-7 text-info" />
                         Lifecycle — Onboarding & Exit
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -101,25 +101,25 @@ export default async function LifecycleHubPage() {
                     icon={<UserPlus className="h-5 w-5" />}
                     label="Aktywne onboardingi"
                     value={analytics.activeOnboardings}
-                    color="text-cyan-400"
+                    color="text-info"
                 />
                 <KpiCard
                     icon={<LogOut className="h-5 w-5" />}
                     label="Pending exit interviews"
                     value={analytics.pendingExitInterviews}
-                    color="text-amber-400"
+                    color="text-warning"
                 />
                 <KpiCard
                     icon={<AlertCircle className="h-5 w-5" />}
                     label="Overdue zadania"
                     value={analytics.overdueTasks}
-                    color="text-red-400"
+                    color="text-destructive"
                 />
                 <KpiCard
                     icon={<TrendingUp className="h-5 w-5" />}
                     label="Onboarding completion (90d)"
                     value={analytics.completedOnboardings}
-                    color="text-green-400"
+                    color="text-success"
                 />
             </section>
 
@@ -132,7 +132,7 @@ export default async function LifecycleHubPage() {
                         <div className="text-xs uppercase text-muted-foreground">Kolejka</div>
                         <div className="text-lg font-semibold">Onboarding ({recentOnboardings.length})</div>
                     </div>
-                    <UserPlus className="h-6 w-6 text-cyan-400" />
+                    <UserPlus className="h-6 w-6 text-info" />
                 </Link>
                 <Link
                     href="/internal/lifecycle/exit"
@@ -142,7 +142,7 @@ export default async function LifecycleHubPage() {
                         <div className="text-xs uppercase text-muted-foreground">Kolejka</div>
                         <div className="text-lg font-semibold">Exit interview ({pendingExits.length})</div>
                     </div>
-                    <LogOut className="h-6 w-6 text-amber-400" />
+                    <LogOut className="h-6 w-6 text-warning" />
                 </Link>
                 <Link
                     href="/internal/lifecycle/analytics"
@@ -152,7 +152,7 @@ export default async function LifecycleHubPage() {
                         <div className="text-xs uppercase text-muted-foreground">Wykresy</div>
                         <div className="text-lg font-semibold">Analytics</div>
                     </div>
-                    <BarChart3 className="h-6 w-6 text-green-400" />
+                    <BarChart3 className="h-6 w-6 text-success" />
                 </Link>
             </section>
 
@@ -171,7 +171,7 @@ export default async function LifecycleHubPage() {
                                     <div className="text-xs text-muted-foreground">
                                         {r.tasks_completed} / {r.tasks_total} zadań
                                         {r.tasks_overdue > 0 && (
-                                            <span className="text-red-400 ml-2">• {r.tasks_overdue} overdue</span>
+                                            <span className="text-destructive ml-2">• {r.tasks_overdue} overdue</span>
                                         )}
                                     </div>
                                 </div>
@@ -183,10 +183,10 @@ export default async function LifecycleHubPage() {
             )}
 
             {sidebarCount.activeOwnOnboarding && (
-                <section className="rounded-lg border-2 border-cyan-400/30 bg-cyan-400/5 p-4">
+                <section className="rounded-lg border-2 border-info/30 bg-info/5 p-4">
                     <p className="text-sm">
                         <strong>Masz aktywny własny onboarding.</strong>{' '}
-                        <Link href="/internal/lifecycle/onboarding" className="underline text-cyan-400">
+                        <Link href="/internal/lifecycle/onboarding" className="underline text-info">
                             Otwórz swój checklist →
                         </Link>
                     </p>
@@ -232,7 +232,7 @@ async function ManagerLifecycleView() {
                                 <div className="text-xs text-muted-foreground">{r.tasks_completed} / {r.tasks_total} zadań</div>
                             </div>
                             {r.tasks_overdue > 0 && (
-                                <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300">{r.tasks_overdue} overdue</span>
+                                <span className="text-xs px-2 py-1 rounded bg-destructive/20 text-destructive">{r.tasks_overdue} overdue</span>
                             )}
                         </Link>
                     ))}

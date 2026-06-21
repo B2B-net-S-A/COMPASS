@@ -87,7 +87,7 @@ export function NewTemplateForm() {
                 />
             </div>
 
-            <div className="rounded-md border border-amber-400/30 bg-amber-400/5 p-3">
+            <div className="rounded-md border border-warning/30 bg-warning/5 p-3">
                 <label className="flex items-center gap-2 text-sm">
                     <input
                         type="checkbox"

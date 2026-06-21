@@ -33,12 +33,12 @@ const LEAVE_LABEL_PL: Record<string, string> = {
 }
 
 const LEAVE_BG: Record<string, string> = {
-    vacation: 'bg-yellow-500/40',
-    sick_leave: 'bg-red-500/40',
+    vacation: 'bg-warning/40',
+    sick_leave: 'bg-destructive/40',
     parental_leave: 'bg-pink-500/40',
-    unpaid_leave: 'bg-gray-500/40',
-    training: 'bg-cyan-500/40',
-    other: 'bg-orange-500/40',
+    unpaid_leave: 'bg-muted/40',
+    training: 'bg-info/40',
+    other: 'bg-warning/40',
 }
 
 export function VacationCalendar({ data, filter }: Props) {
@@ -117,17 +117,17 @@ export function VacationCalendar({ data, filter }: Props) {
         const leave = leaveIdx.get(key)
         if (leave) {
             return {
-                bg: LEAVE_BG[leave.leave_type] ?? 'bg-yellow-500/40',
+                bg: LEAVE_BG[leave.leave_type] ?? 'bg-warning/40',
                 label: LEAVE_LABEL_PL[leave.leave_type]?.[0] ?? 'U',
                 title: LEAVE_LABEL_PL[leave.leave_type] ?? 'Urlop',
             }
         }
         const att = attIdx.get(key)
         if (att?.status === 'business_trip') {
-            return { bg: 'bg-purple-500/40', label: 'D', title: 'Delegacja' }
+            return { bg: 'bg-primary/40', label: 'D', title: 'Delegacja' }
         }
         if (att?.status === 'training') {
-            return { bg: 'bg-cyan-500/40', label: 'S', title: 'Szkolenie' }
+            return { bg: 'bg-info/40', label: 'S', title: 'Szkolenie' }
         }
         return { bg: '', label: '', title: '' }
     }
@@ -250,11 +250,11 @@ export function VacationCalendar({ data, filter }: Props) {
                 )}
 
                 <div className="mt-6 flex flex-wrap gap-2 text-[10px]">
-                    <Badge className="bg-yellow-500/40 text-yellow-100 border-transparent">U — Urlop</Badge>
-                    <Badge className="bg-red-500/40 text-red-100 border-transparent">L — L4</Badge>
+                    <Badge className="bg-warning/40 text-warning-foreground border-transparent">U — Urlop</Badge>
+                    <Badge className="bg-destructive/40 text-destructive-foreground border-transparent">L — L4</Badge>
                     <Badge className="bg-pink-500/40 text-pink-100 border-transparent">O — Opieka</Badge>
-                    <Badge className="bg-purple-500/40 text-purple-100 border-transparent">D — Delegacja</Badge>
-                    <Badge className="bg-cyan-500/40 text-cyan-100 border-transparent">S — Szkolenie</Badge>
+                    <Badge className="bg-primary/40 text-primary-foreground border-transparent">D — Delegacja</Badge>
+                    <Badge className="bg-info/40 text-info-foreground border-transparent">S — Szkolenie</Badge>
                     <Badge variant="outline" className="bg-muted text-muted-foreground">
                         Święto / weekend
                     </Badge>

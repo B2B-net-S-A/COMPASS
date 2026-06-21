@@ -76,8 +76,8 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
             </header>
 
             {isCancelled && (
-                <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-4">
-                    <p className="text-sm font-medium text-amber-300">
+                <div className="rounded-lg border border-warning/40 bg-warning/10 p-4">
+                    <p className="text-sm font-medium text-warning">
                         Ten onboarding został anulowany{' '}
                         {detail.progress.cancelled_at && new Date(detail.progress.cancelled_at).toLocaleDateString('pl-PL')}.
                     </p>
@@ -144,7 +144,7 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
             )}
 
             {canCompleteOnboarding && requiredCompleted === requiredTasks && !detail.progress.completed_at && (
-                <section className="rounded-lg border-2 border-green-400/30 bg-green-400/5 p-4">
+                <section className="rounded-lg border-2 border-success/30 bg-success/5 p-4">
                     <p className="text-sm mb-2">
                         Wszystkie {requiredTasks} wymaganych zadań ukończonych. Możesz zamknąć onboarding pracownika.
                     </p>
@@ -153,8 +153,8 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
             )}
 
             {isLifecycleAdmin && !detail.progress.completed_at && !isCancelled && (
-                <section className="rounded-lg border border-dashed border-red-400/30 p-4">
-                    <h3 className="font-semibold text-sm mb-2 text-red-400">Strefa niebezpieczna</h3>
+                <section className="rounded-lg border border-dashed border-destructive/30 p-4">
+                    <h3 className="font-semibold text-sm mb-2 text-destructive">Strefa niebezpieczna</h3>
                     <p className="text-xs text-muted-foreground mb-3">
                         Anuluj jeśli onboarding był pomyłką. Restart skasuje postęp i utworzy nowy onboarding z tym samym (lub innym) szablonem.
                     </p>

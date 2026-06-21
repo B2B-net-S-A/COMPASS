@@ -41,7 +41,7 @@ export default async function OffboardingDetailPage({ params }: { params: { user
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <LogOut className="h-7 w-7 text-amber-400" />
+                        <LogOut className="h-7 w-7 text-warning" />
                         Offboarding — {profile.full_name ?? profile.email}
                     </h1>
                     <p className="text-sm text-muted-foreground">
@@ -71,7 +71,7 @@ export default async function OffboardingDetailPage({ params }: { params: { user
                 && requiredCompleted === requiredTotal
                 && profile.employment_status === 'offboarding'
                 && (
-                    <section className="rounded-lg border-2 border-amber-400/30 bg-amber-400/5 p-4">
+                    <section className="rounded-lg border-2 border-warning/30 bg-warning/5 p-4">
                         <p className="text-sm mb-2">
                             Wszystkie {requiredTotal} wymaganych zadań offboardingu ukończonych. Możesz oznaczyć pracownika jako exited.
                         </p>

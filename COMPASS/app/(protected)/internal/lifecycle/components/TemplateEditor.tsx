@@ -185,7 +185,7 @@ export function TemplateEditor({ template, items: initialItems }: Props) {
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                         Zapisz metadane
                     </Button>
-                    <Button onClick={handleDeleteTemplate} disabled={isPending} variant="outline" size="sm" className="text-red-400 border-red-400/30 hover:bg-red-400/10">
+                    <Button onClick={handleDeleteTemplate} disabled={isPending} variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
                         <Trash2 className="h-4 w-4 mr-2" />
                         Usuń szablon
                     </Button>
@@ -258,9 +258,9 @@ export function TemplateEditor({ template, items: initialItems }: Props) {
                                             <span className="text-muted-foreground">
                                                 {RESPONSIBLE_LABEL[item.responsible_role]} • +{item.due_offset_days}d
                                             </span>
-                                            {item.requires_file && <span className="text-cyan-400">📎 plik</span>}
+                                            {item.requires_file && <span className="text-info">📎 plik</span>}
                                             {item.course_slug && (
-                                                <Link href={`/learning/${item.course_slug}`} className="text-cyan-400 hover:underline">
+                                                <Link href={`/learning/${item.course_slug}`} className="text-info hover:underline">
                                                     🎓 {item.course_slug}
                                                 </Link>
                                             )}
@@ -275,7 +275,7 @@ export function TemplateEditor({ template, items: initialItems }: Props) {
                                             variant="outline"
                                             onClick={() => handleDeleteItem(item.id, item.title)}
                                             disabled={isPending}
-                                            className="text-red-400 border-red-400/30 hover:bg-red-400/10"
+                                            className="text-destructive border-destructive/30 hover:bg-destructive/10"
                                         >
                                             <Trash2 className="h-3 w-3" />
                                         </Button>

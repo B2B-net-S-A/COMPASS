@@ -197,11 +197,11 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                     )}
 
                     {isPastLeave && (
-                        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-                            <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
+                            <AlertTriangle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
                             <div className="space-y-1">
-                                <p className="font-medium text-amber-200">Urlop zakończony</p>
-                                <p className="text-xs text-amber-100/80">
+                                <p className="font-medium text-warning">Urlop zakończony</p>
+                                <p className="text-xs text-warning/80">
                                     Outlook OOF i email do zastępcy NIE zostaną wysłane — nie ma sensu ustawiać
                                     auto-reply na okres, który już minął. Zarejestrujemy wpis w systemie,
                                     przeliczymy obecności i wyślemy email + push do pracownika.
@@ -211,11 +211,11 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                     )}
 
                     {!isPastLeave && endDate !== '' && (
-                        <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm">
-                            <Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                        <div className="flex items-start gap-2 rounded-md border border-info/30 bg-info/10 p-3 text-sm">
+                            <Info className="w-4 h-4 text-info mt-0.5 flex-shrink-0" />
                             <div className="space-y-1">
-                                <p className="font-medium text-blue-200">Urlop ongoing / future</p>
-                                <p className="text-xs text-blue-100/80">
+                                <p className="font-medium text-info">Urlop ongoing / future</p>
+                                <p className="text-xs text-info/80">
                                     Po zapisie ustawimy automatycznie Out of Office w Outlooku pracownika
                                     i utworzymy wydarzenie w jego kalendarzu. Jeśli wybierzesz zastępcę —
                                     dostanie email z informacją.

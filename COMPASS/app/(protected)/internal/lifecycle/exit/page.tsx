@@ -23,7 +23,7 @@ export default async function ExitInterviewQueuePage() {
             <header className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <LogOut className="h-7 w-7 text-amber-400" />
+                        <LogOut className="h-7 w-7 text-warning" />
                         Exit interview — do review
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{interviews.length} wypełnionych ankiet</p>

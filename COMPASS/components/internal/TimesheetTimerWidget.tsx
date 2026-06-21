@@ -99,14 +99,14 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
 
     if (active) {
         return (
-            <Card className="bg-gradient-to-r from-green-500/10 to-emerald-500/5 border-green-500/30">
+            <Card className="bg-gradient-to-r from-success/10 to-success/5 border-success/30">
                 <CardContent className="p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <div className="flex items-center gap-3 flex-1">
-                        <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center shrink-0 animate-pulse">
-                            <Clock className="w-6 h-6 text-green-400" />
+                        <div className="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center shrink-0 animate-pulse">
+                            <Clock className="w-6 h-6 text-success" />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-xs uppercase tracking-wide text-green-300 font-medium">Timer aktywny</p>
+                            <p className="text-xs uppercase tracking-wide text-success font-medium">Timer aktywny</p>
                             <p className="text-3xl font-bold tabular-nums">{formatDuration(elapsedMs)}</p>
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                                 {active.project ?? 'Bez projektu'} · {active.description}
@@ -114,7 +114,7 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
                         </div>
                     </div>
                     <div className="flex gap-2 shrink-0">
-                        <Button onClick={handleStop} disabled={pending} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
+                        <Button onClick={handleStop} disabled={pending} className="gap-2 bg-success hover:bg-success/90 text-success-foreground">
                             {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
                             Zatrzymaj
                         </Button>
@@ -128,7 +128,7 @@ export function TimesheetTimerWidget({ initialActive }: Props) {
     }
 
     return (
-        <Card className="bg-white/5 border-white/10">
+        <Card className="bg-card border-border">
             <CardContent className="p-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-primary" />
