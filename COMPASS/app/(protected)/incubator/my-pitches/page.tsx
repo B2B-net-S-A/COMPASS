@@ -58,7 +58,7 @@ export default async function MyPitchesPage() {
             {items.length > 0 && (
                 <div className="space-y-3">
                     {items.map((p) => (
-                        <Card key={p.id} className="bg-white/5 border-white/10">
+                        <Card key={p.id} className="bg-card border-border">
                             <CardContent className="p-5 space-y-3">
                                 <div className="flex items-start justify-between gap-3 flex-wrap">
                                     <div className="flex-1 min-w-0">
