@@ -141,7 +141,7 @@ export default async function HomePage() {
                                         </span>
                                     )}
                                     {overview.pending_points > 0 && (
-                                        <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10 inline-flex items-center gap-1">
+                                        <Badge variant="outline" className="text-[10px] border-warning/30 text-warning bg-warning/10 inline-flex items-center gap-1">
                                             <Sparkles className="w-2.5 h-2.5" />
                                             +{overview.pending_points} pkt w trakcie
                                         </Badge>
@@ -187,7 +187,7 @@ export default async function HomePage() {
                                         <p className="text-xs uppercase tracking-wide text-primary font-medium mb-0.5">Wróć do nauki</p>
                                         <p className="text-sm font-semibold truncate">{recentlyActive.course.title}</p>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <div className="h-1 flex-1 rounded-full bg-white/5 overflow-hidden max-w-[200px]">
+                                            <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden max-w-[200px]">
                                                 <div className="h-full bg-primary" style={{ width: `${recentlyActive.progress_percent}%` }} />
                                             </div>
                                             <span className="text-[10px] text-muted-foreground tabular-nums">{recentlyActive.progress_percent}%</span>
@@ -213,10 +213,10 @@ export default async function HomePage() {
             {isAdmin && (adminOpenTickets.length > 0 || adminPendingPitches.length > 0) && (
                 <div className="grid gap-4 md:grid-cols-2">
                     {adminOpenTickets.length > 0 && (
-                        <Card className="bg-amber-500/5 border-amber-500/20">
+                        <Card className="bg-warning/5 border-warning/20">
                             <CardHeader className="flex flex-row items-center justify-between pb-3">
                                 <CardTitle className="text-sm flex items-center gap-2">
-                                    <Inbox className="w-4 h-4 text-amber-400" />
+                                    <Inbox className="w-4 h-4 text-warning" />
                                     Otwarte tickety ({adminOpenTickets.length})
                                 </CardTitle>
                                 <Link href="/admin/support">
@@ -228,7 +228,7 @@ export default async function HomePage() {
                             <CardContent className="space-y-1.5 pt-0">
                                 {adminOpenTickets.slice(0, 3).map((t) => (
                                     <Link key={t.id} href={`/support/tickets/${t.id}`} className="block">
-                                        <div className="flex items-center gap-2 p-2 rounded hover:bg-amber-500/10 transition-colors">
+                                        <div className="flex items-center gap-2 p-2 rounded hover:bg-warning/10 transition-colors">
                                             <TicketStatusBadge status={t.status} />
                                             <span className="text-xs truncate flex-1">{t.subject}</span>
                                         </div>
@@ -238,10 +238,10 @@ export default async function HomePage() {
                         </Card>
                     )}
                     {adminPendingPitches.length > 0 && (
-                        <Card className="bg-purple-500/5 border-purple-500/20">
+                        <Card className="bg-primary/5 border-primary/20">
                             <CardHeader className="flex flex-row items-center justify-between pb-3">
                                 <CardTitle className="text-sm flex items-center gap-2">
-                                    <ShieldCheck className="w-4 h-4 text-purple-400" />
+                                    <ShieldCheck className="w-4 h-4 text-primary" />
                                     Pitche do oceny ({adminPendingPitches.length})
                                 </CardTitle>
                                 <Link href="/admin/incubator">
@@ -253,7 +253,7 @@ export default async function HomePage() {
                             <CardContent className="space-y-1.5 pt-0">
                                 {adminPendingPitches.slice(0, 3).map((p) => (
                                     <Link key={p.id} href={`/admin/incubator/${p.id}`} className="block">
-                                        <div className="flex items-center gap-2 p-2 rounded hover:bg-purple-500/10 transition-colors">
+                                        <div className="flex items-center gap-2 p-2 rounded hover:bg-primary/10 transition-colors">
                                             <Badge variant="outline" className="text-[10px]">{PITCH_STATUS_LABEL[p.status]}</Badge>
                                             <span className="text-xs truncate flex-1">{p.title}</span>
                                         </div>
@@ -267,7 +267,7 @@ export default async function HomePage() {
 
             <div className="grid gap-4 md:grid-cols-2">
                 {!learningHidden && (
-                    <Card className="bg-white/5 border-white/10">
+                    <Card className="bg-card border-border">
                         <CardHeader className="flex flex-row items-center justify-between pb-3">
                             <CardTitle className="text-base flex items-center gap-2">
                                 <GraduationCap className="w-5 h-5 text-primary" />
@@ -281,7 +281,7 @@ export default async function HomePage() {
                         </CardHeader>
                         <CardContent className="space-y-2 pt-0">
                             {inProgress.length === 0 ? (
-                                <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-white/10 rounded">
+                                <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-border rounded">
                                     Brak aktywnych szkoleń.{' '}
                                     <Link href="/learning" className="text-primary hover:underline">Przeglądaj katalog</Link>
                                 </div>
@@ -290,13 +290,13 @@ export default async function HomePage() {
                                     <Link
                                         key={e.enrollment_id}
                                         href={`/learning/${e.course.slug}/lekcja/${e.last_accessed_lesson_id ?? 'first'}`}
-                                        className="block p-3 rounded-md bg-card hover:bg-white/5 border border-white/5 hover:border-primary/30 transition-colors"
+                                        className="block p-3 rounded-md bg-card hover:bg-muted border border-border hover:border-primary/30 transition-colors"
                                     >
                                         <div className="flex items-center justify-between gap-2 mb-1">
                                             <p className="text-sm font-medium truncate flex-1">{e.course.title}</p>
                                             <span className="text-[10px] text-muted-foreground tabular-nums">{e.progress_percent}%</span>
                                         </div>
-                                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                                             <div className="h-full bg-primary" style={{ width: `${e.progress_percent}%` }} />
                                         </div>
                                         {e.last_accessed_at && (
@@ -311,7 +311,7 @@ export default async function HomePage() {
                     </Card>
                 )}
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <CardTitle className="text-base flex items-center gap-2">
                             <Newspaper className="w-5 h-5 text-primary" />
@@ -330,7 +330,7 @@ export default async function HomePage() {
                     </CardHeader>
                     <CardContent className="space-y-2 pt-0">
                         {recentNews.length === 0 ? (
-                            <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-white/10 rounded">
+                            <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-border rounded">
                                 Brak nowych ogłoszeń.
                             </div>
                         ) : (
@@ -338,7 +338,7 @@ export default async function HomePage() {
                                 <Link
                                     key={n.id}
                                     href={`/news/${n.slug}`}
-                                    className="block p-3 rounded-md bg-card hover:bg-white/5 border border-white/5 hover:border-primary/30 transition-colors"
+                                    className="block p-3 rounded-md bg-card hover:bg-muted border border-border hover:border-primary/30 transition-colors"
                                 >
                                     <div className="flex items-center justify-between gap-2 mb-1">
                                         <p className="text-sm font-medium truncate flex-1">{n.title}</p>
@@ -357,7 +357,7 @@ export default async function HomePage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <CardTitle className="text-base flex items-center gap-2">
                             <LifeBuoy className="w-5 h-5 text-primary" />
@@ -371,7 +371,7 @@ export default async function HomePage() {
                     </CardHeader>
                     <CardContent className="space-y-2 pt-0">
                         {openTickets.length === 0 ? (
-                            <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-white/10 rounded">
+                            <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-border rounded">
                                 Brak otwartych ticketów.{' '}
                                 <Link href="/support/tickets/new" className="text-primary hover:underline">Zgłoś problem</Link>
                             </div>
@@ -380,7 +380,7 @@ export default async function HomePage() {
                                 <Link
                                     key={t.id}
                                     href={`/support/tickets/${t.id}`}
-                                    className="block p-3 rounded-md bg-card hover:bg-white/5 border border-white/5 hover:border-primary/30 transition-colors"
+                                    className="block p-3 rounded-md bg-card hover:bg-muted border border-border hover:border-primary/30 transition-colors"
                                 >
                                     <div className="flex items-center gap-2 mb-1">
                                         <TicketStatusBadge status={t.status} />
@@ -392,7 +392,7 @@ export default async function HomePage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-card border-border">
                     <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <CardTitle className="text-base flex items-center gap-2">
                             <Lightbulb className="w-5 h-5 text-primary" />
@@ -406,7 +406,7 @@ export default async function HomePage() {
                     </CardHeader>
                     <CardContent className="space-y-2 pt-0">
                         {activePitches.length === 0 ? (
-                            <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-white/10 rounded">
+                            <div className="p-3 text-sm text-muted-foreground text-center border border-dashed border-border rounded">
                                 Brak pitchów.{' '}
                                 <Link href="/incubator/submit-idea" className="text-primary hover:underline">Zgłoś pomysł</Link>
                                 {' '}lub{' '}
@@ -416,7 +416,7 @@ export default async function HomePage() {
                             activePitches.map((p) => (
                                 <div
                                     key={p.id}
-                                    className="block p-3 rounded-md bg-card border border-white/5"
+                                    className="block p-3 rounded-md bg-card border border-border"
                                 >
                                     <div className="flex items-center gap-2 mb-1">
                                         <Badge variant="outline" className="text-[10px]">{PITCH_STATUS_LABEL[p.status]}</Badge>

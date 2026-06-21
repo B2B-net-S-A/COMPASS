@@ -39,25 +39,25 @@ export function LearningStreakWidget({ current, longest, lastDate }: LearningStr
         <Card
             className={
                 isHot
-                    ? 'bg-gradient-to-br from-orange-500/10 to-red-500/10 border-orange-500/30'
+                    ? 'bg-gradient-to-br from-warning/10 to-warning/10 border-warning/30'
                     : isActive
-                      ? 'bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20'
-                      : 'bg-white/5 border-white/10'
+                      ? 'bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20'
+                      : 'bg-card border-border'
             }
         >
             <CardContent className="p-4 flex items-center gap-3">
                 <div
                     className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
                         isHot
-                            ? 'bg-orange-500/20'
+                            ? 'bg-warning/20'
                             : isActive
-                              ? 'bg-amber-500/20'
-                              : 'bg-white/5'
+                              ? 'bg-warning/20'
+                              : 'bg-muted'
                     }`}
                 >
                     <Flame
                         className={`w-6 h-6 ${
-                            isHot ? 'text-orange-400' : isActive ? 'text-amber-400' : 'text-muted-foreground'
+                            isHot ? 'text-warning' : isActive ? 'text-warning' : 'text-muted-foreground'
                         }`}
                     />
                 </div>
@@ -66,7 +66,7 @@ export function LearningStreakWidget({ current, longest, lastDate }: LearningStr
                         Passa nauki
                     </p>
                     <div className="flex items-baseline gap-2 mt-0.5">
-                        <span className={`text-2xl font-bold tabular-nums ${isHot ? 'text-orange-400' : ''}`}>
+                        <span className={`text-2xl font-bold tabular-nums ${isHot ? 'text-warning' : ''}`}>
                             {bigNumber}
                         </span>
                         <span className="text-xs text-muted-foreground truncate">{subText}</span>

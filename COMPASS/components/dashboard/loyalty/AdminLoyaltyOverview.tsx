@@ -24,10 +24,10 @@ import type { ConsultantLoyaltyRow, LoyaltyStats } from '@/lib/actions/loyalty'
 import { MyPointsTab } from './MyPointsTab'
 
 const TIER_COLORS: Record<string, string> = {
-    bronze: 'bg-[#CD7F32]/10 text-[#CD7F32] border-[#CD7F32]/30',
-    silver: 'bg-[#C0C0C0]/10 text-[#C0C0C0] border-[#C0C0C0]/30',
-    gold: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-    platinum: 'bg-[#E5B4F3]/10 text-[#E5B4F3] border-[#E5B4F3]/30',
+    bronze: 'bg-tier-bronze/10 text-tier-bronze border-tier-bronze/30',
+    silver: 'bg-tier-silver/10 text-tier-silver border-tier-silver/30',
+    gold: 'bg-warning/10 text-warning border-warning/30',
+    platinum: 'bg-tier-platinum/10 text-tier-platinum border-tier-platinum/30',
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -159,7 +159,7 @@ export function AdminLoyaltyOverview() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Rozklad tierow</CardTitle>
-                            <Trophy className="h-4 w-4 text-amber-500" />
+                            <Trophy className="h-4 w-4 text-warning" />
                         </CardHeader>
                         <CardContent>
                             <div className="flex flex-wrap gap-1.5">
@@ -181,7 +181,7 @@ export function AdminLoyaltyOverview() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Top Performer</CardTitle>
-                            <Crown className="h-4 w-4 text-amber-500" />
+                            <Crown className="h-4 w-4 text-warning" />
                         </CardHeader>
                         <CardContent>
                             {stats.topPerformer ? (
