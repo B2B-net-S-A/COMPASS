@@ -37,7 +37,7 @@
      flashing full accent. The sidebar is neutral and shared across all
      palettes; only the active nav item carries the accent (via --primary).
      Light-first: `:root` = light, `.dark` = opt-in. Client brand skins are
-     accent-only [data-theme] palettes. [data-soft] adds depth. (No kids mode.)
+     accent-only [data-theme] palettes. (No kids mode.)
      =================================================================== */
   :root {
     --background: 0 0% 100%;
@@ -185,34 +185,6 @@
   [data-theme="graphite"]      { --primary: 222 16% 26%; --primary-foreground: 0 0% 100%; --ring: 222 16% 26%; }
   .dark[data-theme="graphite"] { --primary: 220 14% 84%; --primary-foreground: 222 18% 12%; --ring: 220 14% 84%; }
 
-  /* ===================================================================
-     SOFT UI ("Wyraźny") — depth mode via [data-soft="true"] on <html>.
-     Works WITH every accent palette (never touches --primary/--ring). Light
-     mode tints the page canvas a soft slate so white cards visibly "sit" on
-     it; dark mode lifts cards further off the background. Corners get rounder
-     via --radius; the decorative layer below adds card borders + soft shadows.
-     Default ON; "Klasyczny" in the picker removes the attribute → flat look.
-     =================================================================== */
-  html[data-soft="true"] {
-    --background: 220 25% 96%;         /* soft slate canvas — cards stand out */
-    --border: 220 15% 86%;             /* slightly stronger separation lines */
-    --input: 220 15% 86%;
-    --radius: 0.75rem;                 /* 12px → gently rounder controls/cards */
-  }
-
-  html.dark[data-soft="true"] {
-    /* Re-assert the dark canvas: the light `html[data-soft]` block above has
-       higher specificity than `.dark`, so without this dark+soft would inherit
-       the light 96%-L background. Dark soft keeps the deep canvas and instead
-       lifts cards (below) so they stand off the background. */
-    --background: 222 24% 6%;
-    --card: 222 20% 11%;               /* stronger elevation step vs bg 6% */
-    --popover: 222 20% 11%;
-    --border: 222 15% 21%;
-    --input: 222 15% 21%;
-    --radius: 0.75rem;
-  }
-
   * {
     @apply border-border;
   }
@@ -248,32 +220,6 @@
     @apply text-sm;
   }
 }
-
-/* ====================================================================
-   SOFT UI ("Wyraźny") — decorative depth layer (unlayered on purpose, so
-   these beat Tailwind utilities like shadow-sm). Scoped to [data-soft],
-   inert in the classic flat theme. Inputs/selects/textareas are excluded —
-   they already pop as white-on-tinted canvas and keep their own border states.
-   ==================================================================== */
-[data-soft="true"] .bg-card:where(:not(input):not(textarea):not(select)) {
-  border-width: 1px;
-  box-shadow:
-    0 1px 2px 0 hsl(222 30% 12% / 0.05),
-    0 8px 24px -16px hsl(222 30% 12% / 0.16);
-}
-.dark[data-soft="true"] .bg-card:where(:not(input):not(textarea):not(select)) {
-  box-shadow:
-    0 1px 2px 0 hsl(0 0% 0% / 0.35),
-    0 10px 28px -18px hsl(0 0% 0% / 0.6);
-}
-
-/* The fixed-radius corner classes don't follow --radius — bump common card
-   corners so sections feel consistently rounder. */
-[data-soft="true"] .rounded-xl  { border-radius: 1rem; }
-[data-soft="true"] .rounded-2xl { border-radius: 1.25rem; }
-
-/* Gentle tactile press on buttons. */
-[data-soft="true"] button:active { transform: translateY(0.5px); }
 
 @layer utilities {
   .text-balance {

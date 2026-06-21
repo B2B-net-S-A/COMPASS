@@ -8,7 +8,6 @@ import {
     DropdownMenuLabel,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
-    DropdownMenuCheckboxItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -22,11 +21,11 @@ const ACCENTS: { id: ThemeId; label: string }[] = [
 
 /**
  * Theme controls: color mode (light/dark), accent palette (client skins mapped
- * to indigo/green/rose via [data-theme]) and the soft depth mode ([data-soft]).
+ * to indigo/green/rose via [data-theme]).
  * Chrome stays neutral slate across all accents.
  */
 export function ThemeMenu() {
-    const { theme, setTheme, colorMode, setColorMode, soft, setSoft } = useTheme()
+    const { theme, setTheme, colorMode, setColorMode } = useTheme()
 
     return (
         <DropdownMenu>
@@ -63,11 +62,6 @@ export function ThemeMenu() {
                         </DropdownMenuRadioItem>
                     ))}
                 </DropdownMenuRadioGroup>
-
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem checked={soft} onCheckedChange={setSoft}>
-                    Tryb miękki (głębia)
-                </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
         </DropdownMenu>
     )
