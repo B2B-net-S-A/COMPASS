@@ -55,17 +55,17 @@ export function ArticleAttachmentsEditor({ articleId, initialAttachments, canEdi
     if (!canEdit && attachments.length === 0) return null
 
     return (
-        <div className="space-y-3 p-4 rounded-lg bg-white/5 border border-white/10">
+        <div className="space-y-3 p-4 rounded-lg bg-card border border-border">
             <h3 className="text-sm font-semibold flex items-center gap-2">
                 <Paperclip className="w-4 h-4 text-primary" /> Załączniki ({attachments.length})
             </h3>
 
-            {error && <div className="text-xs text-red-400">{error}</div>}
+            {error && <div className="text-xs text-destructive">{error}</div>}
 
             {attachments.length > 0 ? (
                 <div className="space-y-1">
                     {attachments.map((a) => (
-                        <div key={a.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-white/5 border border-white/10">
+                        <div key={a.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-card border border-border">
                             <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium truncate">{a.title}</div>
                                 <div className="text-[10px] text-muted-foreground">
@@ -78,7 +78,7 @@ export function ArticleAttachmentsEditor({ articleId, initialAttachments, canEdi
                                     variant="ghost"
                                     onClick={() => remove(a.id)}
                                     disabled={isPending}
-                                    className="text-red-400 hover:text-red-300"
+                                    className="text-destructive hover:text-destructive/80"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -91,7 +91,7 @@ export function ArticleAttachmentsEditor({ articleId, initialAttachments, canEdi
             )}
 
             {canEdit && (
-                <div className="space-y-2 p-3 rounded-md bg-white/5 border border-dashed border-white/10">
+                <div className="space-y-2 p-3 rounded-md bg-card border border-dashed border-border">
                     <Input
                         placeholder="Tytuł załącznika"
                         value={title}

@@ -43,8 +43,8 @@ export default async function SupportChatPage() {
                     <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Nowa rozmowa</h2>
                 </div>
                 {categories.length === 0 ? (
-                    <Card className="bg-red-500/5 border-red-500/20">
-                        <CardContent className="p-4 text-sm text-red-400">
+                    <Card className="bg-destructive/5 border-destructive/20">
+                        <CardContent className="p-4 text-sm text-destructive">
                             Nie udało się załadować kategorii. Spróbuj odświeżyć stronę.
                         </CardContent>
                     </Card>
@@ -56,7 +56,7 @@ export default async function SupportChatPage() {
                                 href={`/support/tickets/new?chat=${c.slug}`}
                                 className="block group"
                             >
-                                <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                                <Card className="h-full bg-card border-border hover:border-primary/40 transition-colors">
                                     <CardContent className="p-4 flex flex-col items-start gap-2">
                                         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                                             <MessageSquarePlus className="w-4 h-4 text-primary" />
@@ -81,7 +81,7 @@ export default async function SupportChatPage() {
                     </h2>
                 </div>
                 {activeThreads.length === 0 ? (
-                    <Card className="bg-white/5 border-white/10 border-dashed">
+                    <Card className="bg-card border-border border-dashed">
                         <CardContent className="p-5 text-sm text-muted-foreground">
                             Nie masz jeszcze żadnych aktywnych rozmów. Zacznij od wybrania tematu powyżej.
                         </CardContent>
@@ -94,14 +94,14 @@ export default async function SupportChatPage() {
                                 href={`/support/tickets/${t.id}`}
                                 className="block group"
                             >
-                                <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                                <Card className="bg-card border-border hover:border-primary/40 transition-colors">
                                     <CardContent className="p-4 flex items-center gap-4">
                                         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                                             <MessageCircle className="w-4 h-4 text-primary" />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 text-xs text-muted-foreground/80 mb-0.5">
-                                                <span className="px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-[10px]">{t.category_name_pl}</span>
+                                                <span className="px-1.5 py-0.5 rounded border border-border bg-muted text-[10px]">{t.category_name_pl}</span>
                                                 <span>·</span>
                                                 <span>{TICKET_STATUS_LABEL[t.status]}</span>
                                                 <span>·</span>

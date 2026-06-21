@@ -81,8 +81,8 @@ export default async function AdminInboxPage() {
             </div>
 
             {!ticketsRes.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{ticketsRes.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{ticketsRes.error}</CardContent>
                 </Card>
             )}
 
@@ -90,15 +90,15 @@ export default async function AdminInboxPage() {
                 <Card
                     className={
                         sync.last_error
-                            ? 'bg-amber-500/5 border-amber-500/30'
-                            : 'bg-emerald-500/5 border-emerald-500/20'
+                            ? 'bg-warning/5 border-warning/30'
+                            : 'bg-success/5 border-success/20'
                     }
                 >
                     <CardContent className="p-3 text-xs flex items-start gap-2 flex-wrap">
                         {sync.last_error ? (
-                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
                         ) : (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
                         )}
                         <div className="flex-1 space-y-0.5">
                             <div className="font-medium">
@@ -116,7 +116,7 @@ export default async function AdminInboxPage() {
                                 {' · '}pominięte: {sync.last_skipped}
                             </div>
                             {sync.last_error && (
-                                <div className="text-amber-300">Błąd: {sync.last_error}</div>
+                                <div className="text-warning">Błąd: {sync.last_error}</div>
                             )}
                         </div>
                     </CardContent>

@@ -116,7 +116,7 @@ export function ConsultantTypeahead({
                                 setIsOpen(false)
                                 setQuery('')
                             }}
-                            className="w-full text-left px-3 py-2 hover:bg-white/5 text-sm flex items-center gap-2 border-b border-white/5 last:border-0"
+                            className="w-full text-left px-3 py-2 hover:bg-muted text-sm flex items-center gap-2 border-b border-border last:border-0"
                         >
                             <User className="w-3.5 h-3.5 text-muted-foreground" />
                             <span className="font-medium">{r.full_name ?? '(bez nazwy)'}</span>

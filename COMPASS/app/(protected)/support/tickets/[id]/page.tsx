@@ -51,13 +51,13 @@ export default async function TicketDetailPage({ params }: PageProps) {
                 </div>
             </div>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5">
                     <p className="whitespace-pre-wrap text-sm">{ticket.body_md}</p>
                 </CardContent>
             </Card>
 
-            <Card className="bg-white/5 border-white/10">
+            <Card className="bg-card border-border">
                 <CardContent className="p-5">
                     <TicketChat
                         ticketId={ticket.id}

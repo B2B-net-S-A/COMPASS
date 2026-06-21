@@ -4,18 +4,18 @@ import { TICKET_STATUS_LABEL, TICKET_PRIORITY_LABEL } from '@/lib/types/support'
 import { cn } from '@/lib/utils'
 
 const STATUS_CLASSES: Record<TicketStatus, string> = {
-    open: 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10',
-    in_progress: 'border-blue-500/30 text-blue-400 bg-blue-500/10',
-    waiting_user: 'border-amber-500/30 text-amber-400 bg-amber-500/10',
-    resolved: 'border-cyan-500/30 text-cyan-400 bg-cyan-500/10',
-    closed: 'border-white/10 text-muted-foreground bg-white/5',
+    open: 'border-success/30 text-success bg-success/10',
+    in_progress: 'border-info/30 text-info bg-info/10',
+    waiting_user: 'border-warning/30 text-warning bg-warning/10',
+    resolved: 'border-info/30 text-info bg-info/10',
+    closed: 'border-border text-muted-foreground bg-muted',
 }
 
 const PRIORITY_CLASSES: Record<TicketPriority, string> = {
-    low: 'border-white/10 text-muted-foreground bg-white/5',
-    normal: 'border-white/10 text-muted-foreground bg-white/5',
-    high: 'border-amber-500/30 text-amber-400 bg-amber-500/10',
-    urgent: 'border-red-500/30 text-red-400 bg-red-500/10',
+    low: 'border-border text-muted-foreground bg-muted',
+    normal: 'border-border text-muted-foreground bg-muted',
+    high: 'border-warning/30 text-warning bg-warning/10',
+    urgent: 'border-destructive/30 text-destructive bg-destructive/10',
 }
 
 export function TicketStatusBadge({ status, className }: { status: TicketStatus; className?: string }) {

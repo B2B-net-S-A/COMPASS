@@ -17,7 +17,7 @@ export default function SupportLandingPage() {
 
             <div className="grid gap-4 md:grid-cols-2">
                 <Link href="/support/contacts" className="block group">
-                    <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                    <Card className="h-full bg-card border-border hover:border-primary/40 transition-colors">
                         <CardHeader>
                             <Users className="w-7 h-7 text-primary mb-2" />
                             <CardTitle className="text-lg group-hover:text-primary">Pogadaj z opiekunem</CardTitle>
@@ -27,7 +27,7 @@ export default function SupportLandingPage() {
                 </Link>
 
                 <Link href="/support/tickets/new" className="block group">
-                    <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                    <Card className="h-full bg-card border-border hover:border-primary/40 transition-colors">
                         <CardHeader>
                             <Plus className="w-7 h-7 text-primary mb-2" />
                             <CardTitle className="text-lg group-hover:text-primary">Zgłoś problem</CardTitle>
@@ -37,7 +37,7 @@ export default function SupportLandingPage() {
                 </Link>
 
                 <Link href="/support/kb" className="block group">
-                    <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                    <Card className="h-full bg-card border-border hover:border-primary/40 transition-colors">
                         <CardHeader>
                             <BookOpen className="w-7 h-7 text-primary mb-2" />
                             <CardTitle className="text-lg group-hover:text-primary">Baza wiedzy</CardTitle>
@@ -47,7 +47,7 @@ export default function SupportLandingPage() {
                 </Link>
 
                 <Link href="/support/tickets" className="block group">
-                    <Card className="h-full bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                    <Card className="h-full bg-card border-border hover:border-primary/40 transition-colors">
                         <CardHeader>
                             <MessageCircleQuestion className="w-7 h-7 text-primary mb-2" />
                             <CardTitle className="text-lg group-hover:text-primary">Moje tickety</CardTitle>

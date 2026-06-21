@@ -48,13 +48,13 @@ export default async function KbCategoriesAdminPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Zarządzanie zakładkami</h1>
                 </div>
                 <p className="text-muted-foreground mt-1 flex items-center gap-2">
-                    <Crown className="w-4 h-4 text-yellow-400/80" />
+                    <Crown className="w-4 h-4 text-warning/80" />
                     <span>Super Admin — kategorie KB + materiały do pobrania.</span>
                 </p>
             </div>
 
             {!categoriesRes.success && (
-                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+                <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
                     {categoriesRes.error}
                 </div>
             )}

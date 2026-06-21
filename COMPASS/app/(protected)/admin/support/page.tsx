@@ -39,7 +39,7 @@ export default async function AdminSupportPage({ searchParams }: PageProps) {
                 </Link>
             </div>
 
-            <div className="flex flex-wrap gap-2 pb-2 border-b border-white/5">
+            <div className="flex flex-wrap gap-2 pb-2 border-b border-border">
                 {[
                     { value: 'open' as const, label: 'Otwarte' },
                     { value: 'in_progress' as const, label: 'W trakcie' },
@@ -50,7 +50,7 @@ export default async function AdminSupportPage({ searchParams }: PageProps) {
                     <Link key={opt.label} href={`/admin/support?status=${opt.value}`}>
                         <Badge
                             className={`cursor-pointer text-xs h-7 px-3 transition-colors ${
-                                status === opt.value ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground border border-white/10 hover:border-primary/40'
+                                status === opt.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
                             }`}
                         >
                             {opt.label}
@@ -60,13 +60,13 @@ export default async function AdminSupportPage({ searchParams }: PageProps) {
             </div>
 
             {!result.success && (
-                <Card className="bg-red-500/5 border-red-500/20">
-                    <CardContent className="p-4 text-sm text-red-400">{result.error}</CardContent>
+                <Card className="bg-destructive/5 border-destructive/20">
+                    <CardContent className="p-4 text-sm text-destructive">{result.error}</CardContent>
                 </Card>
             )}
 
             {result.success && result.data.items.length === 0 && (
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-muted border-border">
                     <CardContent className="p-12 text-center text-muted-foreground">
                         Brak ticketów w stanie {status}.
                     </CardContent>
@@ -77,7 +77,7 @@ export default async function AdminSupportPage({ searchParams }: PageProps) {
                 <div className="space-y-2">
                     {result.data.items.map((t) => (
                         <Link key={t.id} href={`/support/tickets/${t.id}`} className="block group">
-                            <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                            <Card className="bg-muted border-border hover:border-primary/40 transition-colors">
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between gap-3 flex-wrap">
                                         <div className="flex-1 min-w-0">

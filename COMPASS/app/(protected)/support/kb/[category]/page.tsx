@@ -51,7 +51,7 @@ export default async function KbCategoryPage({ params }: PageProps) {
             <section className="space-y-3">
                 {materials.length > 0 && <h2 className="text-lg font-semibold">Artykuły</h2>}
                 {articles.length === 0 && materials.length === 0 ? (
-                    <Card className="bg-white/5 border-white/10">
+                    <Card className="bg-card border-border">
                         <CardContent className="p-8 text-center text-sm text-muted-foreground">
                             Brak artykułów i materiałów w tej kategorii.
                         </CardContent>
@@ -60,7 +60,7 @@ export default async function KbCategoryPage({ params }: PageProps) {
                     <div className="space-y-2">
                         {articles.map((a) => (
                             <Link key={a.id} href={`/support/kb/${category.slug}/${a.slug}`} className="block group">
-                                <Card className="bg-white/5 border-white/10 hover:border-primary/40 transition-colors">
+                                <Card className="bg-card border-border hover:border-primary/40 transition-colors">
                                     <CardContent className="p-4">
                                         <h3 className="font-semibold group-hover:text-primary">{a.title}</h3>
                                         {a.excerpt && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{a.excerpt}</p>}

@@ -36,7 +36,7 @@ export function KanbanCard({ ticket, isDragging }: KanbanCardProps) {
         <Card
             onMouseDown={onMouseDown}
             onMouseUp={onMouseUp}
-            className={`bg-white/5 border-white/10 hover:border-primary/40 transition-colors p-3 space-y-2 cursor-pointer select-none ${
+            className={`bg-card border-border hover:border-primary/40 transition-colors p-3 space-y-2 cursor-pointer select-none ${
                 isDragging ? 'border-primary/60 shadow-lg shadow-primary/10' : ''
             }`}
         >
@@ -50,7 +50,7 @@ export function KanbanCard({ ticket, isDragging }: KanbanCardProps) {
                 {ticket.meta.source === 'email' && (
                     <span
                         title="Zaimportowane automatycznie z administracja@b2bnetwork.pl"
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-300 border border-sky-500/20"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info border border-info/20"
                     >
                         <Mail className="w-3 h-3" />
                         email
