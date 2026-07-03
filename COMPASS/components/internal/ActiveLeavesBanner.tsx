@@ -7,25 +7,6 @@ import { Plane, UserCheck, ChevronDown } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 
-const LEAVE_TYPE_LABEL: Record<string, string> = {
-    vacation: 'urlop',
-    sick_leave: 'L4',
-    parental_leave: 'opieka',
-    unpaid_leave: 'bezpłatny',
-    training: 'szkolenie',
-    on_demand: 'na żądanie',
-    occasional: 'okolicznościowy',
-    childcare: 'opieka dz.',
-    care_leave: 'opiekuńczy',
-    force_majeure: 'siła wyższa',
-    maternity: 'macierzyński',
-    paternity: 'ojcowski',
-    childrearing: 'wychowawczy',
-    blood_donation: 'krwiodawstwo',
-    holiday_in_lieu: 'odbiór dnia',
-    other: 'urlop',
-}
-
 function fmt(d: string): string {
     return format(parseISO(d), 'd LLL', { locale: pl })
 }
@@ -35,9 +16,6 @@ function LeaveItem({ leave }: { leave: ActiveLeaveRow }) {
         <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
             <span className="font-medium text-foreground">
                 {leave.user_full_name ?? leave.user_email}
-            </span>
-            <span className="text-[10px] text-info/80">
-                ({LEAVE_TYPE_LABEL[leave.leave_type] ?? 'urlop'})
             </span>
             <span>do {fmt(leave.end_date)}</span>
             {leave.substitute_full_name && leave.substitute_email ? (
