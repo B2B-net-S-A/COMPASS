@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Mail, User } from 'lucide-react'
+import { Mail, User, Building2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { InboxPriorityBadge } from './InboxPriorityBadge'
 import { SlaCountdownBadge } from './SlaCountdownBadge'
@@ -67,6 +67,12 @@ export function KanbanCard({ ticket, isDragging }: KanbanCardProps) {
                     <div className="flex items-center gap-1.5">
                         <User className="w-3 h-3" />
                         <span>{ticket.consultant_name}</span>
+                    </div>
+                )}
+                {ticket.client_name && (
+                    <div className="flex items-center gap-1.5 truncate">
+                        <Building2 className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{ticket.client_name}</span>
                     </div>
                 )}
                 {ticket.meta.email_from && (

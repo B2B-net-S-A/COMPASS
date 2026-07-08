@@ -4687,7 +4687,11 @@ export type Database = {
       }
       support_inbox_meta: {
         Row: {
+          client_name: string | null
           consultant_id: string | null
+          consultant_name: string | null
+          consultant_phone: string | null
+          contractor_id: string | null
           created_at: string
           due_date: string
           email_body_html: string | null
@@ -4704,7 +4708,11 @@ export type Database = {
           ticket_id: string
         }
         Insert: {
+          client_name?: string | null
           consultant_id?: string | null
+          consultant_name?: string | null
+          consultant_phone?: string | null
+          contractor_id?: string | null
           created_at?: string
           due_date: string
           email_body_html?: string | null
@@ -4721,7 +4729,11 @@ export type Database = {
           ticket_id: string
         }
         Update: {
+          client_name?: string | null
           consultant_id?: string | null
+          consultant_name?: string | null
+          consultant_phone?: string | null
+          contractor_id?: string | null
           created_at?: string
           due_date?: string
           email_body_html?: string | null
@@ -4743,6 +4755,13 @@ export type Database = {
             columns: ["consultant_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_inbox_meta_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
             referencedColumns: ["id"]
           },
           {

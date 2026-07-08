@@ -7,6 +7,12 @@ vi.mock('@/lib/supabase/server', () => ({
     createClient: () => currentClient,
 }))
 
+// Phase 40 — searchConsultants + phone write-back use the service client; back it
+// with the same mock instance so it shares the `contractors` fixture table.
+vi.mock('@/lib/supabase/admin', () => ({
+    createServiceClient: () => currentClient,
+}))
+
 vi.mock('next/cache', () => ({
     revalidatePath: vi.fn(),
 }))
@@ -27,6 +33,7 @@ const baseTables = (overrides: Partial<{
     support_inbox_meta: Array<Record<string, unknown>>
     support_ticket_comments: Array<Record<string, unknown>>
     notifications: Array<Record<string, unknown>>
+    contractors: Array<Record<string, unknown>>
 }> = {}) => ({
     profiles: overrides.profiles ?? [
         { id: 'handler1', email: 'blazej@b2bnetwork.pl', full_name: 'Błażej', role: 'consultant', is_inbox_handler: true },
@@ -34,6 +41,12 @@ const baseTables = (overrides: Partial<{
         { id: 'cons1', email: 'jan@example.com', full_name: 'Jan Kowalski', role: 'consultant', is_inbox_handler: false },
         { id: 'cons2', email: 'anna@example.com', full_name: 'Anna Nowak', role: 'consultant', is_inbox_handler: false },
         { id: 'ext1', email: 'someone@example.com', full_name: 'Someone Else', role: 'consultant', is_inbox_handler: false },
+    ],
+    // Phase 40 — the consultant typeahead searches the contractors directory.
+    contractors: overrides.contractors ?? [
+        { id: 'k1', full_name: 'Jan Kowalski', phone: null, current_client: 'Nordea', current_position: 'Senior Dev' },
+        { id: 'k2', full_name: 'Anna Nowak', phone: '+48 600 100 200', current_client: 'VeloBank', current_position: null },
+        { id: 'k3', full_name: 'Piotr Zieliński', phone: null, current_client: 'Xperi', current_position: 'QA' },
     ],
     support_categories: overrides.support_categories ?? [
         { id: 'cat-neg', slug: 'inbox_negocjacje', name_pl: 'Negocjacje umowy', name_en: 'Contract negotiation', sort_order: 100 },
@@ -119,6 +132,60 @@ describe('createInboxTicket', () => {
         expect(meta?.source).toBe('manual_paste')
     })
 
+    it('persists consultant fields and writes a learned phone back to the contractor', async () => {
+        const client = setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables(),
+        })
+        const { createInboxTicket } = await import('../support-inbox')
+        const res = await createInboxTicket({
+            category_id: 'cat-adm',
+            subject: 'Sprawa konsultanta',
+            body_md: 'Opis sprawy wystarczająco długi',
+            priority_level: 'P3',
+            consultant_name: 'Jan Kowalski',
+            consultant_phone: '+48 601 202 303',
+            client_name: 'Nordea',
+            contractor_id: 'k1',
+        })
+        expect(res.success).toBe(true)
+        if (!res.success) return
+        const metaRows = client._tables.support_inbox_meta as Array<Record<string, unknown>>
+        const meta = metaRows.find(m => m.ticket_id === res.data.ticketId)
+        expect(meta?.consultant_name).toBe('Jan Kowalski')
+        expect(meta?.consultant_phone).toBe('+48 601 202 303')
+        expect(meta?.client_name).toBe('Nordea')
+        expect(meta?.contractor_id).toBe('k1')
+        // k1 had no phone → learned from the ticket
+        const contractors = client._tables.contractors as Array<Record<string, unknown>>
+        expect(contractors.find(c => c.id === 'k1')?.phone).toBe('+48 601 202 303')
+    })
+
+    it('allows a manual consultant with no contractor link (no write-back)', async () => {
+        const client = setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables(),
+        })
+        const { createInboxTicket } = await import('../support-inbox')
+        const res = await createInboxTicket({
+            category_id: 'cat-adm',
+            subject: 'Sprawa ręczna',
+            body_md: 'Opis sprawy wystarczająco długi',
+            priority_level: 'P3',
+            consultant_name: 'Ktoś Spoza Bazy',
+            consultant_phone: '+48 700 800 900',
+        })
+        expect(res.success).toBe(true)
+        if (!res.success) return
+        const metaRows = client._tables.support_inbox_meta as Array<Record<string, unknown>>
+        const meta = metaRows.find(m => m.ticket_id === res.data.ticketId)
+        expect(meta?.consultant_name).toBe('Ktoś Spoza Bazy')
+        expect(meta?.contractor_id).toBeNull()
+        // no contractor was linked → directory untouched
+        const contractors = client._tables.contractors as Array<Record<string, unknown>>
+        expect(contractors.every(c => c.phone !== '+48 700 800 900')).toBe(true)
+    })
+
     it('rejects too-short subject', async () => {
         setupClient({
             user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
@@ -188,19 +255,31 @@ describe('searchConsultants', () => {
         if (res.success) expect(res.data).toEqual([])
     })
 
-    it('finds consultants by partial name match (role=consultant only)', async () => {
+    it('rejects non-handler caller', async () => {
+        setupClient({
+            user: { id: 'ext1', email: 'someone@example.com' },
+            tables: baseTables(),
+        })
+        const { searchConsultants } = await import('../support-inbox')
+        const res = await searchConsultants('jan')
+        expect(res.success).toBe(false)
+    })
+
+    it('finds contractors by partial name and returns phone + client', async () => {
         setupClient({
             user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
             tables: baseTables(),
         })
         const { searchConsultants } = await import('../support-inbox')
-        const res = await searchConsultants('jan')
+        const res = await searchConsultants('nowak')
         expect(res.success).toBe(true)
         if (!res.success) return
-        const hasJan = res.data.some(p => p.id === 'cons1')
-        expect(hasJan).toBe(true)
-        // Admin is role='admin' so must NOT appear in consultant search
-        expect(res.data.some(p => p.id === 'admin1')).toBe(false)
+        const anna = res.data.find(c => c.id === 'k2')
+        expect(anna).toBeDefined()
+        expect(anna?.current_client).toBe('VeloBank')
+        expect(anna?.phone).toBe('+48 600 100 200')
+        // Piotr does not match 'nowak'
+        expect(res.data.some(c => c.id === 'k3')).toBe(false)
     })
 })
 

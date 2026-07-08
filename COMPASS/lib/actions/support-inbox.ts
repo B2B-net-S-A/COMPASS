@@ -4,9 +4,11 @@ import { logCompat } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { computeDueDate } from '@/lib/utils/sla'
 import {
     INBOX_CATEGORY_SLUGS,
+    type ConsultantSearchResult,
     type CreateInboxTicketInput,
     type InboxSummary,
     type InboxTicketWithMeta,
@@ -153,7 +155,9 @@ export async function listInboxTickets(filter?: {
                 assignee_name: t.assignee_id ? (profileMap.get(t.assignee_id) ?? null) : null,
                 comment_count: 0,
                 meta,
-                consultant_name: meta.consultant_id ? (consultantMap.get(meta.consultant_id) ?? null) : null,
+                consultant_name: meta.consultant_name ?? (meta.consultant_id ? (consultantMap.get(meta.consultant_id) ?? null) : null),
+                consultant_phone: meta.consultant_phone ?? null,
+                client_name: meta.client_name ?? null,
             }
             grouped[t.status].push(item)
         }
@@ -274,7 +278,9 @@ export async function getInboxTicketDetail(
                 assignee_name: ticket.assignee_id ? (profileMap.get(ticket.assignee_id) ?? null) : null,
                 comment_count: comments.length,
                 meta: meta as SupportInboxMeta,
-                consultant_name: meta.consultant_id ? (profileMap.get(meta.consultant_id) ?? null) : null,
+                consultant_name: meta.consultant_name ?? (meta.consultant_id ? (profileMap.get(meta.consultant_id) ?? null) : null),
+                consultant_phone: meta.consultant_phone ?? null,
+                client_name: meta.client_name ?? null,
                 comments,
                 can_reply: true,
                 can_change_status: true,
@@ -322,6 +328,12 @@ export async function createInboxTicket(
         const fromDate = input.email_received_at ? new Date(input.email_received_at) : new Date()
         const dueDate = computeDueDate(input.priority_level, fromDate)
 
+        // Phase 40 — normalise consultant fields (all optional; manual entry allowed).
+        const consultantName = input.consultant_name?.trim() || null
+        const consultantPhone = input.consultant_phone?.trim() || null
+        const clientName = input.client_name?.trim() || null
+        const contractorId = input.contractor_id || null
+
         // Step 1: insert into support_tickets
         const { data: ticket, error: ticketErr } = await supabase
             .from('support_tickets')
@@ -346,6 +358,10 @@ export async function createInboxTicket(
             source: input.source ?? 'manual_paste',
             external_message_id: input.external_message_id ?? null,
             consultant_id: input.consultant_id ?? null,
+            consultant_name: consultantName,
+            consultant_phone: consultantPhone,
+            client_name: clientName,
+            contractor_id: contractorId,
             priority_level: input.priority_level,
             due_date: dueDate.toISOString(),
             email_from: input.email_from ?? null,
@@ -355,6 +371,29 @@ export async function createInboxTicket(
         if (metaErr) {
             await supabase.from('support_tickets').delete().eq('id', ticket.id)
             return { success: false, error: metaErr.message }
+        }
+
+        // Phase 40 — the consultant list "learns" phone numbers: when a matched
+        // contractor is linked and a phone was provided, persist it back to the
+        // directory so future tickets auto-fill it. Best-effort — never blocks the
+        // ticket. Uses a service client (contractors is admin/TCM-gated by RLS).
+        if (contractorId && consultantPhone) {
+            try {
+                const service = createServiceClient()
+                const { data: existing } = await service
+                    .from('contractors')
+                    .select('phone')
+                    .eq('id', contractorId)
+                    .single()
+                if (existing && (existing.phone ?? '') !== consultantPhone) {
+                    await service
+                        .from('contractors')
+                        .update({ phone: consultantPhone })
+                        .eq('id', contractorId)
+                }
+            } catch (e) {
+                logCompat.warn('[createInboxTicket] contractor phone write-back failed:', e)
+            }
         }
 
         // Step 3: notify assignee if different from creator
@@ -519,7 +558,15 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
     }
 }
 
-export async function searchConsultants(query: string): Promise<SupportActionResult<ProfileLite[]>> {
+/**
+ * Phase 40 — search the contractors directory (~588 people, Phase 33) for the
+ * "Podpięty konsultant" typeahead. The old implementation searched
+ * profiles(role='consultant') — only 3 internal accounts, which is why linking
+ * a real consultant never worked. Uses a service client because contractors is
+ * gated by has_lifecycle_access() (admin/TCM) and inbox handlers may not qualify;
+ * the isCallerHandler guard above keeps this restricted to handlers.
+ */
+export async function searchConsultants(query: string): Promise<SupportActionResult<ConsultantSearchResult[]>> {
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -531,17 +578,17 @@ export async function searchConsultants(query: string): Promise<SupportActionRes
         const trimmed = query.trim()
         if (trimmed.length < 2) return { success: true, data: [] }
 
-        const pattern = `%${trimmed.replace(/%/g, '\\%')}%`
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('id, full_name, email')
-            .eq('role', 'consultant')
-            .or(`full_name.ilike.${pattern},email.ilike.${pattern}`)
+        const service = createServiceClient()
+        const pattern = `%${trimmed.replace(/[%_]/g, (m) => `\\${m}`)}%`
+        const { data, error } = await service
+            .from('contractors')
+            .select('id, full_name, phone, current_client, current_position')
+            .ilike('full_name', pattern)
             .order('full_name', { ascending: true })
             .limit(15)
 
         if (error) throw error
-        return { success: true, data: (data ?? []) as ProfileLite[] }
+        return { success: true, data: (data ?? []) as ConsultantSearchResult[] }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd wyszukiwania konsultantów'
         logCompat.error('[searchConsultants]', error)
