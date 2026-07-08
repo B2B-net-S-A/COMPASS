@@ -24,7 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { ConsultantTypeahead } from './ConsultantTypeahead'
+import { ConsultantTypeahead, type ConsultantSelection } from './ConsultantTypeahead'
 import { createInboxTicket } from '@/lib/actions/support-inbox'
 import {
     INBOX_PRIORITY_LABEL,
@@ -38,12 +38,6 @@ interface CategoryOption {
 }
 
 interface HandlerOption {
-    id: string
-    full_name: string | null
-    email: string
-}
-
-interface ConsultantOption {
     id: string
     full_name: string | null
     email: string
@@ -69,8 +63,19 @@ export function NewInboxTicketDialog({
     const [emailFrom, setEmailFrom] = useState('')
     const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? '')
     const [priorityLevel, setPriorityLevel] = useState<InboxPriorityLevel>('P3')
-    const [consultant, setConsultant] = useState<ConsultantOption | null>(null)
+    const [consultant, setConsultant] = useState<ConsultantSelection | null>(null)
+    const [consultantPhone, setConsultantPhone] = useState('')
+    const [clientName, setClientName] = useState('')
     const [assigneeId, setAssigneeId] = useState<string>(currentUserId)
+
+    // Selecting a directory consultant auto-fills phone + client; both stay editable.
+    const handleConsultantChange = (sel: ConsultantSelection | null) => {
+        setConsultant(sel)
+        if (sel) {
+            setConsultantPhone(sel.phone ?? '')
+            setClientName(sel.current_client ?? '')
+        }
+    }
 
     const reset = () => {
         setSubject('')
@@ -79,6 +84,8 @@ export function NewInboxTicketDialog({
         setCategoryId(categories[0]?.id ?? '')
         setPriorityLevel('P3')
         setConsultant(null)
+        setConsultantPhone('')
+        setClientName('')
         setAssigneeId(currentUserId)
     }
 
@@ -102,7 +109,10 @@ export function NewInboxTicketDialog({
                 subject: subject.trim(),
                 body_md: bodyMd.trim(),
                 priority_level: priorityLevel,
-                consultant_id: consultant?.id,
+                consultant_name: consultant?.full_name || undefined,
+                consultant_phone: consultantPhone.trim() || undefined,
+                client_name: clientName.trim() || undefined,
+                contractor_id: consultant?.id ?? undefined,
                 assignee_id: assigneeId,
                 email_from: emailFrom.trim() || undefined,
             })
@@ -213,7 +223,35 @@ export function NewInboxTicketDialog({
 
                     <div className="space-y-2">
                         <Label>Podpięty konsultant (opcjonalnie)</Label>
-                        <ConsultantTypeahead value={consultant} onChange={setConsultant} />
+                        <ConsultantTypeahead value={consultant} onChange={handleConsultantChange} />
+                        <p className="text-xs text-muted-foreground">
+                            Szukaj w bazie konsultantów — po wybraniu telefon i klient uzupełnią się automatycznie. Brak w bazie? Wpisz ręcznie.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="consultant-phone">Telefon konsultanta</Label>
+                            <Input
+                                id="consultant-phone"
+                                type="tel"
+                                value={consultantPhone}
+                                onChange={(e) => setConsultantPhone(e.target.value)}
+                                placeholder="np. +48 600 000 000"
+                                maxLength={40}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="client-name">Klient</Label>
+                            <Input
+                                id="client-name"
+                                value={clientName}
+                                onChange={(e) => setClientName(e.target.value)}
+                                placeholder="np. Nordea"
+                                maxLength={120}
+                            />
+                        </div>
                     </div>
 
                     <div className="space-y-2">

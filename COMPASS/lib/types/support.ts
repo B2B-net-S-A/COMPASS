@@ -138,7 +138,16 @@ export interface SupportInboxMeta {
     external_message_id: string | null
     /** Phase 26b — Graph conversationId used to thread replies into one ticket. */
     external_conversation_id?: string | null
+    /** Legacy profiles(role='consultant') link — kept for back-compat, no longer written. */
     consultant_id: string | null
+    /** Phase 40 — consultant the ticket concerns (matched contractor or manual free-text). */
+    consultant_name: string | null
+    /** Phase 40 — consultant phone (auto-filled from contractor or entered manually). */
+    consultant_phone: string | null
+    /** Phase 40 — client (auto-filled from contractor.current_client or entered manually). */
+    client_name: string | null
+    /** Phase 40 — contractors directory link when matched; NULL for manual entries. */
+    contractor_id: string | null
     priority_level: InboxPriorityLevel
     due_date: string
     email_from: string | null
@@ -155,6 +164,10 @@ export interface SupportInboxMeta {
 export interface InboxTicketWithMeta extends SupportTicketWithMeta {
     meta: SupportInboxMeta
     consultant_name: string | null
+    /** Phase 40 — consultant phone snapshot, surfaced on the card + detail view. */
+    consultant_phone: string | null
+    /** Phase 40 — client name, surfaced on the card + detail view. */
+    client_name: string | null
 }
 
 export interface CreateInboxTicketInput {
@@ -162,12 +175,31 @@ export interface CreateInboxTicketInput {
     subject: string
     body_md: string
     priority_level: InboxPriorityLevel
+    /** Phase 40 — consultant fields (directory-backed or manual). */
+    consultant_name?: string
+    consultant_phone?: string
+    client_name?: string
+    /** Set when the consultant was matched against the contractors directory. */
+    contractor_id?: string
+    /** @deprecated legacy profiles link — no longer used by the form. */
     consultant_id?: string
     assignee_id?: string
     email_from?: string
     email_received_at?: string
     external_message_id?: string
     source?: InboxSource
+}
+
+/**
+ * Phase 40 — a consultant/candidate suggestion from the contractors directory,
+ * used by the "Podpięty konsultant" typeahead. Manual entries carry `id = null`.
+ */
+export interface ConsultantSearchResult {
+    id: string
+    full_name: string
+    phone: string | null
+    current_client: string | null
+    current_position: string | null
 }
 
 export const SLA_DAYS: Record<InboxPriorityLevel, number> = { P1: 2, P2: 5, P3: 10 }

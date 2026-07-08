@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { Inbox, Mail, Paperclip, User as UserIcon } from 'lucide-react'
+import { Inbox, Mail, Paperclip, Phone, Building2, User as UserIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/server'
@@ -109,10 +109,26 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                             )}
                         </div>
                     )}
-                    {ticket.consultant_name && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <UserIcon className="w-3.5 h-3.5" />
-                            <span>Konsultant: {ticket.consultant_name}</span>
+                    {(ticket.consultant_name || ticket.consultant_phone || ticket.client_name) && (
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            {ticket.consultant_name && (
+                                <span className="flex items-center gap-2">
+                                    <UserIcon className="w-3.5 h-3.5" />
+                                    Konsultant: {ticket.consultant_name}
+                                </span>
+                            )}
+                            {ticket.consultant_phone && (
+                                <a href={`tel:${ticket.consultant_phone}`} className="flex items-center gap-2 hover:text-foreground">
+                                    <Phone className="w-3.5 h-3.5" />
+                                    {ticket.consultant_phone}
+                                </a>
+                            )}
+                            {ticket.client_name && (
+                                <span className="flex items-center gap-2">
+                                    <Building2 className="w-3.5 h-3.5" />
+                                    Klient: {ticket.client_name}
+                                </span>
+                            )}
                         </div>
                     )}
                     {ticket.meta.source === 'email' && ticket.meta.email_body_html ? (

@@ -7,12 +7,10 @@
 import { useRouter } from 'next/navigation'
 import { OnboardingEntriesPanel } from '@/components/internal/kontraktorzy/panels/OnboardingEntriesPanel'
 import { ExitPanel } from '@/components/internal/kontraktorzy/panels/ExitPanel'
-import { RozmowyPanel } from '@/components/internal/kontraktorzy/panels/RozmowyPanel'
 import type {
     OnboardingEntryItem,
     ExitDepartureItem,
     BenchItem,
-    ConversationListItem,
 } from '@/lib/types/contractor'
 
 export function OnboardingEntriesSection({ entries }: { entries: OnboardingEntryItem[] }) {
@@ -23,24 +21,4 @@ export function OnboardingEntriesSection({ entries }: { entries: OnboardingEntry
 export function ExitSection({ bench, departures }: { bench: BenchItem[]; departures: ExitDepartureItem[] }) {
     const router = useRouter()
     return <ExitPanel bench={bench} departures={departures} onSaved={() => router.refresh()} />
-}
-
-export function RozmowySection({
-    conversations,
-    tcmProfiles,
-    contractorsLite,
-}: {
-    conversations: ConversationListItem[]
-    tcmProfiles: Array<{ id: string; fullName: string }>
-    contractorsLite: Array<{ id: string; full_name: string }>
-}) {
-    const router = useRouter()
-    return (
-        <RozmowyPanel
-            conversations={conversations}
-            tcmProfiles={tcmProfiles}
-            contractorsLite={contractorsLite}
-            onSaved={() => router.refresh()}
-        />
-    )
 }
