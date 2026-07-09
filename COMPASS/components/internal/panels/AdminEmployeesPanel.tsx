@@ -8,7 +8,7 @@ export async function AdminEmployeesPanel() {
     const { data } = await admin
         .from('profiles')
         .select(
-            'id, full_name, email, avatar_url, role, default_location, employment_type, work_start_date, manager_id',
+            'id, full_name, email, avatar_url, role, default_location, employment_type, work_start_date, manager_id, employment_status',
         )
         .in('role', ['admin', 'internal', 'finanse', 'manager', 'talent_community'])
         .order('full_name')
@@ -33,6 +33,7 @@ export async function AdminEmployeesPanel() {
         employment_type: 'uop' | 'b2b' | null
         work_start_date: string | null
         manager_id: string | null
+        employment_status: string | null
     }>).slice().sort((a, b) => {
         const ra = ROLE_DISPLAY_ORDER[a.role] ?? 99
         const rb = ROLE_DISPLAY_ORDER[b.role] ?? 99
