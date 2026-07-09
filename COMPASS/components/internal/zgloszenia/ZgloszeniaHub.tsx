@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { KanbanBoard } from '@/components/inbox/KanbanBoard'
+import { NewInboxTicketDialog } from '@/components/inbox/NewInboxTicketDialog'
 import { RetencjaPanel } from '@/components/internal/kontraktorzy/panels/RetencjaPanel'
 import { TicketStatusBadge, TicketPriorityBadge } from '@/components/support/TicketStatusBadge'
 import type { InboxTicketWithMeta, TicketStatus, SupportTicketWithMeta } from '@/lib/types/support'
@@ -19,11 +20,16 @@ interface Props {
     contractors: ContractorListItem[]
     tcmProfiles: Array<{ id: string; fullName: string }>
     contractorsLite: Array<{ id: string; full_name: string }>
+    /** Inbox categories + handlers for the "Dodaj sprawę" dialog (empty when caller isn't a handler). */
+    categories: Array<{ id: string; slug: string; name_pl: string }>
+    handlers: Array<{ id: string; full_name: string | null; email: string }>
+    currentUserId: string
 }
 
-export function ZgloszeniaHub({ inboxColumns, helpdesk, conversations, contractors, tcmProfiles, contractorsLite }: Props) {
+export function ZgloszeniaHub({ inboxColumns, helpdesk, conversations, contractors, tcmProfiles, contractorsLite, categories, handlers, currentUserId }: Props) {
     const router = useRouter()
     const inboxCount = Object.values(inboxColumns).reduce((n, arr) => n + arr.length, 0)
+    const canAddCase = handlers.length > 0 && categories.length > 0 && currentUserId !== ''
 
     return (
         <div className="space-y-6">
@@ -42,6 +48,16 @@ export function ZgloszeniaHub({ inboxColumns, helpdesk, conversations, contracto
                 </TabsList>
 
                 <TabsContent value="skrzynka">
+                    {canAddCase && (
+                        <div className="mb-4 flex justify-end">
+                            <NewInboxTicketDialog
+                                categories={categories}
+                                handlers={handlers}
+                                currentUserId={currentUserId}
+                                triggerLabel="Dodaj sprawę"
+                            />
+                        </div>
+                    )}
                     <KanbanBoard initialColumns={inboxColumns} />
                 </TabsContent>
 
