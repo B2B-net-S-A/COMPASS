@@ -37,6 +37,7 @@ export interface EmployeeRow {
     manager_id: string | null
     manager_full_name: string | null
     manager_email: string | null
+    employment_status: string | null
 }
 
 interface Props {
@@ -47,20 +48,56 @@ interface Props {
 const ROLE_FILTERS = ['all', 'admin', 'manager', 'finanse', 'talent_community', 'internal'] as const
 type RoleFilter = (typeof ROLE_FILTERS)[number]
 
+// Aktywni = wszyscy poza tymi, którzy odeszli (exited). Offboarding = wciąż
+// zatrudniony (na wypowiedzeniu), więc liczy się jako aktywny.
+const STATUS_FILTERS = ['active', 'inactive', 'all'] as const
+type StatusFilter = (typeof STATUS_FILTERS)[number]
+const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
+    active: 'Aktywni',
+    inactive: 'Nieaktywni',
+    all: 'Wszyscy',
+}
+function isInactive(e: EmployeeRow): boolean {
+    return e.employment_status === 'exited'
+}
+
+// Badge statusu w wierszu — pokazywany tylko dla statusów != 'active'.
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+    onboarding: { label: 'Onboarding', className: 'border-primary/40 text-primary' },
+    offboarding: { label: 'Offboarding', className: 'border-warning/50 text-warning' },
+    exited: { label: 'Odszedł', className: 'border-destructive/40 text-destructive' },
+    pending: { label: 'Zaproszony', className: 'border-border text-muted-foreground' },
+}
+
 export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates }: Props) {
     const [employees, setEmployees] = useState<EmployeeRow[]>(initialEmployees)
     const [filter, setFilter] = useState<RoleFilter>('all')
+    // Domyślnie pokazujemy tylko aktywnych — byli pracownicy (exited) chowają się
+    // pod „Nieaktywni", żeby archiwizacja realnie znikała z listy.
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
     const [editTarget, setEditTarget] = useState<EmployeeRow | null>(null)
     const [archiveTarget, setArchiveTarget] = useState<EmployeeRow | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<EmployeeRow | null>(null)
 
-    const filtered = filter === 'all' ? employees : employees.filter((e) => e.role === filter)
+    const byStatus =
+        statusFilter === 'all'
+            ? employees
+            : employees.filter((e) => (statusFilter === 'inactive' ? isInactive(e) : !isInactive(e)))
+    const filtered = filter === 'all' ? byStatus : byStatus.filter((e) => e.role === filter)
 
-    // Licznik per rola — gdy 27 wierszy 'internal' dominuje, bez licznika
-    // można nie zauważyć że na liście są też manager/finanse/talent_community.
+    // Licznik per rola — liczony na zbiorze po filtrze statusu, żeby liczby
+    // przy chipach ról zgadzały się z tym, co realnie widać na liście.
     const countByRole: Record<string, number> = {}
-    for (const e of employees) {
+    for (const e of byStatus) {
         countByRole[e.role] = (countByRole[e.role] ?? 0) + 1
+    }
+
+    // Liczniki statusu — na pełnym zbiorze (niezależnie od filtra roli).
+    const activeCount = employees.filter((e) => !isInactive(e)).length
+    const statusCount: Record<StatusFilter, number> = {
+        active: activeCount,
+        inactive: employees.length - activeCount,
+        all: employees.length,
     }
 
     function onUpdated(updated: EmployeeRow) {
@@ -69,8 +106,15 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
     }
 
     function onArchived() {
-        // Employee stays on list (role unchanged) — full removal happens after
-        // offboarding tasks done + Mark as exited in /internal/lifecycle.
+        // Employee stays on list — archiving only starts offboarding (status →
+        // 'offboarding', wciąż zatrudniony). Pełne usunięcie (→ 'exited', trafia
+        // pod „Nieaktywni") następuje po „Oznacz jako exited" w /internal/lifecycle.
+        if (archiveTarget) {
+            const id = archiveTarget.id
+            setEmployees((prev) =>
+                prev.map((e) => (e.id === id ? { ...e, employment_status: 'offboarding' } : e)),
+            )
+        }
         setArchiveTarget(null)
     }
 
@@ -95,9 +139,27 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs uppercase text-muted-foreground">Filtr:</span>
+                <span className="text-xs uppercase text-muted-foreground">Status:</span>
+                {STATUS_FILTERS.map((s) => (
+                    <button
+                        key={s}
+                        type="button"
+                        onClick={() => setStatusFilter(s)}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            statusFilter === s
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                        }`}
+                    >
+                        {STATUS_FILTER_LABEL[s]} <span className="opacity-70">({statusCount[s]})</span>
+                    </button>
+                ))}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs uppercase text-muted-foreground">Rola:</span>
                 {ROLE_FILTERS.map((f) => {
-                    const count = f === 'all' ? employees.length : countByRole[f] ?? 0
+                    const count = f === 'all' ? byStatus.length : countByRole[f] ?? 0
                     return (
                         <button
                             key={f}
@@ -162,9 +224,20 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                                                 </div>
                                             </td>
                                             <td className="py-2 pr-2">
-                                                <Badge variant="outline" className="text-[10px]">
-                                                    {roleLabelPl(e.role)}
-                                                </Badge>
+                                                <div className="flex flex-col items-start gap-1">
+                                                    <Badge variant="outline" className="text-[10px]">
+                                                        {roleLabelPl(e.role)}
+                                                    </Badge>
+                                                    {e.employment_status &&
+                                                        STATUS_BADGE[e.employment_status] && (
+                                                            <Badge
+                                                                variant="outline"
+                                                                className={`text-[10px] ${STATUS_BADGE[e.employment_status].className}`}
+                                                            >
+                                                                {STATUS_BADGE[e.employment_status].label}
+                                                            </Badge>
+                                                        )}
+                                                </div>
                                             </td>
                                             <td className="py-2 pr-2 text-xs">
                                                 {e.manager_full_name ?? e.manager_email ?? (
