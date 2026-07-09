@@ -47,12 +47,15 @@ interface NewInboxTicketDialogProps {
     categories: CategoryOption[]
     handlers: HandlerOption[]
     currentUserId: string
+    /** Trigger button label — defaults to "Nowe zgłoszenie" (e.g. "Dodaj sprawę" on People Ops). */
+    triggerLabel?: string
 }
 
 export function NewInboxTicketDialog({
     categories,
     handlers,
     currentUserId,
+    triggerLabel = 'Nowe zgłoszenie',
 }: NewInboxTicketDialogProps) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
@@ -138,7 +141,7 @@ export function NewInboxTicketDialog({
             <DialogTrigger asChild>
                 <Button className="gap-2">
                     <Plus className="w-4 h-4" />
-                    Nowe zgłoszenie
+                    {triggerLabel}
                 </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
