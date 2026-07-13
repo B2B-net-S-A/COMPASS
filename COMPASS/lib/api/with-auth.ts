@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
-import { logger } from '@/lib/logger'
 import type { DbRole } from '@/lib/types/role'
+import { hasValidCronBearer } from '@/lib/api/cron-auth'
 
 // Phase 18.7: ujednolicony auth wrapper dla API routes (/api/**).
 // Wcześniej każdy z 22 routes miał własny boilerplate:
 //   - getUser() + role check
-//   - cron: CRON_SECRET header/query parsing
+//   - cron: CRON_SECRET Bearer header parsing
 // Z czego cron pattern miał subtelne różnice — niektóre logowały warning,
 // niektóre nie, niektóre nie miały timing-safe comparison.
 
@@ -17,15 +17,12 @@ type CronHandler = (request: NextRequest, ctx: { admin: ReturnType<typeof create
 
 /**
  * Wrap cron handler:
- *   - Wymaga `Authorization: Bearer <CRON_SECRET>` header (preferred)
- *   - Fallback: `?secret=<CRON_SECRET>` query param (deprecated, loguje warning)
+ *   - Wymaga `Authorization: Bearer <CRON_SECRET>` header
+ *   - Query-string credentials are always rejected
  *   - 503 jeśli CRON_SECRET nie skonfigurowany
  *   - 401 jeśli secret nie pasuje
  *   - Przekazuje `admin` (service_role client) do handlera
- *
- * Timing-safe comparison NIE jest implementowane bo CRON_SECRET to high-entropy
- * random string (32+ bytes), nie predictable (timing attacks praktycznie
- * niemożliwe). Standard string-equality wystarczy.
+ *   - Porównuje token w stałym czasie dla sekretów o tej samej długości
  */
 export function withCronAuth(handler: CronHandler) {
     return async (request: NextRequest): Promise<Response> => {
@@ -34,21 +31,8 @@ export function withCronAuth(handler: CronHandler) {
             return NextResponse.json({ error: 'Not configured' }, { status: 503 })
         }
 
-        const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-        const url = new URL(request.url)
-        const querySecret = url.searchParams.get('secret')
-        const provided = headerSecret || querySecret
-
-        if (!provided || provided !== cronSecret) {
+        if (!hasValidCronBearer(request, cronSecret)) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-
-        if (!headerSecret && querySecret) {
-            logger.warn({
-                event: 'cron.auth.query_param_fallback',
-                path: url.pathname,
-                msg: 'CRON_SECRET passed via query param — migrate caller to Authorization: Bearer header',
-            })
         }
 
         const admin = createServiceClient()

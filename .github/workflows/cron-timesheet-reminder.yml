@@ -29,6 +29,7 @@ jobs:
           fi
           echo "Calling $APP_URL/api/cron/timesheet-reminder"
           curl -fsSL --retry 3 --retry-delay 10 \
-            "$APP_URL/api/cron/timesheet-reminder?secret=$CRON_SECRET" | tee /tmp/result.json
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/timesheet-reminder" | tee /tmp/result.json
           echo
           echo "✅ Reminder cron completed."
