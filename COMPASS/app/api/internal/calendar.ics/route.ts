@@ -34,10 +34,11 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = createServiceClient()
+    const tokenHash = hashCalendarFeedToken(token)
     const { data: tokenRow, error: tokenError } = await admin
         .from('calendar_feed_tokens')
         .select('user_id')
-        .eq('token_hash', hashCalendarFeedToken(token))
+        .eq('token_hash', tokenHash)
         .is('revoked_at', null)
         .maybeSingle()
 
@@ -73,14 +74,6 @@ export async function GET(request: NextRequest) {
         return calendarError('Unauthorized', 401)
     }
 
-    const { error: tokenTouchError } = await admin
-        .from('calendar_feed_tokens')
-        .update({ last_used_at: new Date().toISOString() })
-        .eq('user_id', profile.id)
-    if (tokenTouchError) {
-        return calendarError('Service unavailable', 503)
-    }
-
     const today = new Date()
     const yearStart = `${today.getFullYear()}-01-01`
     const nextYearEnd = `${today.getFullYear() + 1}-12-31`
@@ -108,6 +101,24 @@ export async function GET(request: NextRequest) {
 
     if (leavesRes.error || timesheetEntriesRes.error || holidaysRes.error) {
         return calendarError('Service unavailable', 503)
+    }
+
+    // Re-check the exact hash at the end of the read. If a user rotated or
+    // revoked the token while the feed was being assembled, the old request
+    // must not receive the calendar and must not touch the replacement token.
+    const { data: touchedToken, error: tokenTouchError } = await admin
+        .from('calendar_feed_tokens')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('user_id', profile.id)
+        .eq('token_hash', tokenHash)
+        .is('revoked_at', null)
+        .select('user_id')
+        .maybeSingle()
+    if (tokenTouchError) {
+        return calendarError('Service unavailable', 503)
+    }
+    if (!touchedToken) {
+        return calendarError('Unauthorized', 401)
     }
 
     const events: string[] = []

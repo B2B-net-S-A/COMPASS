@@ -20,11 +20,40 @@ to authenticated
 using ((select auth.uid()) is not null);
 
 revoke all privileges on table public.profiles from anon;
-grant select, insert, update on table public.profiles to authenticated;
+-- Profile rows are provisioned by the auth.users trigger. Keeping the legacy
+-- self-INSERT policy would let an authenticated auth user without a profile
+-- choose privileged values (including role='admin') for their first row.
+drop policy if exists "Users can insert their own profile." on public.profiles;
+revoke insert, delete on table public.profiles from authenticated;
+grant select, update on table public.profiles to authenticated;
 grant select, insert, update, delete on table public.profiles to service_role;
 
 comment on policy "profiles_select_authenticated_p0" on public.profiles is
   'Temporary C0 compatibility policy. Remove in C2 after all cross-user reads use profile_directory or guarded server actions.';
+
+-- Auth signup is the only profile provisioning path. Do not copy avatar or
+-- consent flags from user-editable raw_user_meta_data: avatars go through the
+-- validated upload action and legally relevant consent lives in the append-
+-- only um_user_consents ledger.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  insert into public.profiles (id, email, full_name)
+  values (
+    new.id,
+    new.email,
+    left(nullif(btrim(new.raw_user_meta_data ->> 'full_name'), ''), 200)
+  );
+  return new;
+end;
+$function$;
+
+revoke all on function public.handle_new_user()
+  from public, anon, authenticated;
 
 -- -------------------------------------------------------------------------
 -- 2. Defense in depth: an authenticated user cannot change privileged fields
@@ -43,6 +72,7 @@ declare
   protected_columns constant text[] := array[
     'id',
     'email',
+    'created_at',
     'role',
     'avatar_url',
     'avatar_source',
@@ -50,6 +80,9 @@ declare
     'embedding',
     'gdpr_consent',
     'current_status',
+    'default_location',
+    'experience_level',
+    'profile_completion_percent',
     'project_sentiment',
     'verifier_status',
     'ambassador_status',
