@@ -1,5 +1,5 @@
-import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
+import { hasValidCronBearer } from '@/lib/api/cron-auth'
 import { createServiceClient } from '@/lib/supabase/admin'
 
 const MIGRATION_SQL = `
@@ -101,17 +101,10 @@ export async function GET(request: Request) {
   if (!process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Not configured' }, { status: 503 })
   }
-  // Prefer Authorization: Bearer <secret> header — query strings end up in CF
-  // / proxy / Sentry trace logs, leaking the secret. Fall back to ?secret= for
-  // legacy callers but log a deprecation warning to drive migration.
-  const headerSecret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  const querySecret = new URL(request.url).searchParams.get('secret')
-  const provided = headerSecret || querySecret
-  if (!provided || provided !== process.env.CRON_SECRET) {
+  // Query strings end up in CF / proxy / Sentry logs, so this privileged
+  // service-role endpoint accepts credentials only in the Bearer header.
+  if (!hasValidCronBearer(request, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  if (!headerSecret && querySecret) {
-    logCompat.warn('[migrate-compliance] secret in query param — migrate caller to Authorization: Bearer header (query strings appear in proxy/Sentry/CF logs)')
   }
 
   let supabase

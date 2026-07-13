@@ -13,12 +13,9 @@ export const dynamic = 'force-dynamic'
  *   - 25-go każdego miesiąca: ?phase=warning  → reminder o terminie (5. dnia next month)
  *   - 5-go każdego miesiąca:  ?phase=final    → ostatnia szansa za POPRZEDNI miesiąc
  *
- * Auth (preferred — secret NOT logged in CF/proxy/Sentry traces):
+ * Auth (required — secret NOT logged in CF/proxy/Sentry traces):
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/timesheet-reminder?phase=warning" \
  *        -H "Authorization: Bearer $CRON_SECRET"
- *
- * Legacy (query-based, deprecated):
- *   curl -X GET "https://compass.dynaminds.pl/api/cron/timesheet-reminder?secret=$SECRET&phase=warning"
  *
  * Auto-detect (gdy brak ?phase): day < 15 → final (poprzedni miesiąc), inaczej warning (bieżący).
  * Można też explicit ?year=&month= dla manual testing.
