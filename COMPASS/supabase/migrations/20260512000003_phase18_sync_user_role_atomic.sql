@@ -12,6 +12,8 @@
 -- SECURITY DEFINER żeby działało niezależnie od RLS na profiles.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS public.sync_user_role(uuid, text);
+
 CREATE OR REPLACE FUNCTION public.sync_user_role(
     p_user_id uuid,
     p_email text,
@@ -57,7 +59,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.sync_user_role IS
+COMMENT ON FUNCTION public.sync_user_role(uuid, text, boolean) IS
     'Phase 18.3. Atomic role-sync (SELECT admin_access_list + UPDATE profiles w jednej funkcji). Eliminuje race condition między 3 callerami login flow.';
 
 REVOKE EXECUTE ON FUNCTION public.sync_user_role(uuid, text, boolean) FROM PUBLIC, anon;

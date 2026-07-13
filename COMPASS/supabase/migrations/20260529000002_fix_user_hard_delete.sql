@@ -54,7 +54,7 @@ SECURITY DEFINER
 SET search_path = public, auth, pg_catalog
 AS $fn$
 DECLARE
-  v_blockers text[] := '{}';
+  v_blockers text[] := ARRAY[]::text[];
   v_n        integer;
 BEGIN
   IF p_user_id IS NULL THEN
@@ -68,70 +68,70 @@ BEGIN
   -- Financial / business (ON DELETE RESTRICT — would hard-block the FK):
   SELECT count(*) INTO v_n FROM user_rates
     WHERE user_id = p_user_id OR set_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s stawek', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s stawek', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM bonuses
     WHERE recipient_user_id = p_user_id OR proposed_by = p_user_id
        OR cancelled_by = p_user_id OR delivery_consultant_id = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s premii', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s premii', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM placements
     WHERE recruiter_id = p_user_id OR delivery_lead_id = p_user_id
        OR imported_by = p_user_id OR cancelled_by = p_user_id
        OR hours_confirmed_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s placementów', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s placementów', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM invoices
     WHERE user_id = p_user_id OR reviewed_by = p_user_id
        OR manager_reviewed_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s faktur', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s faktur', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM incubator_pitches
     WHERE submitter_id = p_user_id OR reviewer_id = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s zgłoszeń do inkubatora', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s zgłoszeń do inkubatora', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM incubator_projects WHERE owner_id = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s projektów inkubatora', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s projektów inkubatora', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM learning_paths WHERE author_id = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s ścieżek nauki', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s ścieżek nauki', v_n)); END IF;
 
   SELECT (SELECT count(*) FROM support_article_attachments WHERE uploaded_by = p_user_id)
        + (SELECT count(*) FROM support_category_materials  WHERE uploaded_by = p_user_id)
     INTO v_n;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s materiałów wsparcia', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s materiałów wsparcia', v_n)); END IF;
 
   -- Content / communication (ON DELETE NO ACTION — would hard-block the FK):
   SELECT count(*) INTO v_n FROM news_posts WHERE author_id = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s aktualności', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s aktualności', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM support_articles WHERE author_id = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s artykułów wsparcia', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s artykułów wsparcia', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM courses WHERE reviewed_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s recenzji kursów', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s recenzji kursów', v_n)); END IF;
 
   SELECT (SELECT count(*) FROM conversations WHERE owner_id = p_user_id)
        + (SELECT count(*) FROM messages       WHERE sender_id = p_user_id)
     INTO v_n;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s wiadomości/konwersacji', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s wiadomości/konwersacji', v_n)); END IF;
 
   SELECT (SELECT count(*) FROM document_versions      WHERE uploaded_by = p_user_id)
        + (SELECT count(*) FROM user_contract_documents WHERE uploaded_by = p_user_id)
     INTO v_n;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s dokumentów', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s dokumentów', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM tasks WHERE created_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s zadań', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s zadań', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM system_settings WHERE updated_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s zmian ustawień', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s zmian ustawień', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM contracts WHERE created_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s utworzonych kontraktów', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s utworzonych kontraktów', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM admin_access_list WHERE added_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s wpisów listy adminów', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s wpisów listy adminów', v_n)); END IF;
 
   -- HR admin-actions (ON DELETE SET NULL on tables with append-only / stage
   -- triggers — the SET NULL → UPDATE would trip the trigger during cascade):
@@ -139,19 +139,19 @@ BEGIN
     WHERE user_id = p_user_id OR reviewed_by = p_user_id
        OR invitation_sent_by = p_user_id OR manager_checklist_sent_by = p_user_id
        OR cancelled_by = p_user_id OR manager_snapshot = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s wywiadów exit', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s wywiadów exit', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM timesheets WHERE approved_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s zaakceptowanych timesheetów', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s zaakceptowanych timesheetów', v_n)); END IF;
 
   SELECT count(*) INTO v_n FROM timesheet_entries
     WHERE override_by = p_user_id OR correction_decided_by = p_user_id;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s nadpisań timesheetów', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s nadpisań timesheetów', v_n)); END IF;
 
   SELECT (SELECT count(*) FROM onboarding_tasks  WHERE completed_by = p_user_id)
        + (SELECT count(*) FROM offboarding_tasks WHERE completed_by = p_user_id)
     INTO v_n;
-  IF v_n > 0 THEN v_blockers := v_blockers || format('%s ukończonych zadań HR (dla innych)', v_n); END IF;
+  IF v_n > 0 THEN v_blockers := array_append(v_blockers, format('%s ukończonych zadań HR (dla innych)', v_n)); END IF;
 
   IF array_length(v_blockers, 1) > 0 THEN
     RAISE EXCEPTION

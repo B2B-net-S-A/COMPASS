@@ -1,0 +1,14 @@
+-- DISABLED DURING MIGRATION RECONCILIATION (2026-07-13).
+--
+-- The historical migration created a production-shaped auth user with a
+-- deterministic password and role metadata. Keeping the SQL payload in the
+-- working tree would preserve an exploitable credential, even though the file
+-- extension prevents Supabase CLI from applying it.
+--
+-- The original blob remains available in Git history for incident-response
+-- evidence. Never restore or apply it. Any account created by that historical
+-- migration must be located, disabled and have all sessions revoked before this
+-- reconciliation can be approved for production.
+--
+-- This tombstone intentionally contains no email address, password, password
+-- hash or INSERT statement.
