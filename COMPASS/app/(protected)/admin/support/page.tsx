@@ -10,10 +10,11 @@ import type { TicketStatus } from '@/lib/types/support'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    searchParams: { status?: string }
+    searchParams: Promise<{ status?: string }>
 }
 
-export default async function AdminSupportPage({ searchParams }: PageProps) {
+export default async function AdminSupportPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const validStatuses: TicketStatus[] = ['open', 'in_progress', 'waiting_user', 'resolved', 'closed']
     const status = validStatuses.includes(searchParams.status as TicketStatus) ? (searchParams.status as TicketStatus) : 'open'
 

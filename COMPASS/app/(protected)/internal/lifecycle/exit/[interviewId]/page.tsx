@@ -11,7 +11,8 @@ import type { ExitInterview } from '@/lib/types/lifecycle'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ExitInterviewReviewPage({ params }: { params: { interviewId: string } }) {
+export default async function ExitInterviewReviewPage(props: { params: Promise<{ interviewId: string }> }) {
+    const params = await props.params;
     await requireLifecycleManagerAction() // TCM/admin only
 
     const supabase = createClient()

@@ -1,14 +1,16 @@
-import { logCompat } from '@/lib/logger'
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { cookies, type UnsafeUnwrappedCookies } from 'next/headers'
 import { createMockSupabaseClient, getBypassEmail, isSupabaseConfigured, BYPASS_USER } from './mock-client'
 import type { Database } from './database.types'
 
 export function createClient() {
     try {
-        const cookieStore = cookies()
         const bypassEmail = getBypassEmail()
         if (!isSupabaseConfigured()) {
+            // Emergency local mode must keep a synchronous factory for legacy
+            // callers. Production never enters this branch; configured
+            // Supabase uses the fully async cookie adapter below.
+            const cookieStore = cookies() as unknown as UnsafeUnwrappedCookies
             const cookieEmail = cookieStore.get('emergency_auth_user')?.value
             if (bypassEmail && cookieEmail === bypassEmail) {
                 return createMockSupabaseClient(BYPASS_USER as any)
@@ -16,20 +18,10 @@ export function createClient() {
             return createMockSupabaseClient()
         }
 
-        const emergencyUser = cookieStore.get('emergency_auth_user')?.value
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL
         const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
         if (!url || !key) {
-            return createMockSupabaseClient(bypassEmail && emergencyUser === bypassEmail ? (BYPASS_USER as any) : undefined)
-        }
-
-        // ─── Bypass cookie cleanup ──────────────────────────────────────
-        // When Supabase is configured, ignore the emergency bypass cookie.
-        // Users should log in with real credentials so auth.uid() works
-        // correctly with RLS policies. The bypass was only needed when
-        // Supabase wasn't configured.
-        if (emergencyUser) {
-            logCompat.info('[SERVER] Bypass cookie detected but Supabase is configured — ignoring bypass, using normal auth flow.')
+            return createMockSupabaseClient()
         }
 
         // ─── Normal authenticated flow ─────────────────────────────────
@@ -39,11 +31,12 @@ export function createClient() {
         key,
         {
             cookies: {
-                getAll() {
-                    return cookieStore.getAll()
+                async getAll() {
+                    return (await cookies()).getAll()
                 },
-                setAll(cookiesToSet) {
+                async setAll(cookiesToSet) {
                     try {
+                        const cookieStore = await cookies()
                         cookiesToSet.forEach(({ name, value, options }) =>
                             cookieStore.set(name, value, options)
                         )

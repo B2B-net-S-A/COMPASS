@@ -1,7 +1,7 @@
 // Phase 17 — DB-bound helpers shared across the internal-clock server actions.
 //
-// Not a 'use server' module — exports include sync helpers (captureRequestMetadata)
-// and named types that wouldn't be allowed in a server-action module. The
+// Not a 'use server' module — exports include helpers and named types that
+// wouldn't be allowed in a server-action module. The
 // sub-action files in this directory import from here.
 
 import { createServiceClient } from '@/lib/supabase/admin'
@@ -61,9 +61,9 @@ export async function recomputeActiveSeconds(admin: AdminClient, sessionId: stri
     }
 }
 
-export function captureRequestMetadata(): { ip: string | null; ua: string | null } {
+export async function captureRequestMetadata(): Promise<{ ip: string | null; ua: string | null }> {
     try {
-        const h = headers()
+        const h = await headers()
         const ip =
             h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || null
         const ua = h.get('user-agent')

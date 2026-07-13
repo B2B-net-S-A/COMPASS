@@ -8,7 +8,8 @@ import { TemplateEditor } from '../../components/TemplateEditor'
 
 export const dynamic = 'force-dynamic'
 
-export default async function TemplateDetailPage({ params }: { params: { id: string } }) {
+export default async function TemplateDetailPage(props: { params: Promise<{ id: string }> }) {
+    const params = await props.params;
     await requireLifecycleManagerAction()
 
     let data

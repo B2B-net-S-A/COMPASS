@@ -23,10 +23,11 @@ function formatDuration(min: number | null): string {
 }
 
 interface PageProps {
-    params: { slug: string }
+    params: Promise<{ slug: string }>
 }
 
-export default async function CourseDetailPage({ params }: PageProps) {
+export default async function CourseDetailPage(props: PageProps) {
+    const params = await props.params;
     const result = await getCourseDetail(params.slug)
     if (!result.success) notFound()
     const course = result.data

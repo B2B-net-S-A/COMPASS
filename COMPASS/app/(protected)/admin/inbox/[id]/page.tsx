@@ -21,10 +21,11 @@ function formatBytes(n: number): string {
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
-export default async function InboxTicketDetailPage({ params }: PageProps) {
+export default async function InboxTicketDetailPage(props: PageProps) {
+    const params = await props.params;
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')

@@ -40,7 +40,7 @@ export async function acceptMonitoringConsent(termsVersion: string): Promise<voi
             `Nieprawidłowa wersja regulaminu (oczekiwano ${WORK_MONITORING_TERMS_VERSION}).`,
         )
     }
-    const { ip, ua } = captureRequestMetadata()
+    const { ip, ua } = await captureRequestMetadata()
     const supabase = createClient()
     const { error } = await supabase.from('work_clock_consents').upsert(
         {

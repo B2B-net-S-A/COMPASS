@@ -11,10 +11,11 @@ import { getTicketDetail } from '@/lib/actions/support-tickets'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
-export default async function TicketDetailPage({ params }: PageProps) {
+export default async function TicketDetailPage(props: PageProps) {
+    const params = await props.params;
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) notFound()

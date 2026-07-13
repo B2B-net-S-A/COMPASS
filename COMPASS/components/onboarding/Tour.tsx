@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import type { EventData } from 'react-joyride'
 import { setOnboardingTourDone } from '@/lib/actions/onboarding'
 
 // react-joyride is browser-only; load on client
-const Joyride = dynamic(() => import('react-joyride').then((m) => m.default), { ssr: false })
+const Joyride = dynamic(() => import('react-joyride').then((m) => m.Joyride), { ssr: false })
 
 interface TourProps {
     initialDone: boolean
@@ -28,7 +29,7 @@ export function Tour({ initialDone }: TourProps) {
         {
             target: '[data-testid="nav-home"]',
             content: 'Pulpit — szybki widok wszystkich 5 paneli platformy.',
-            disableBeacon: true,
+            skipBeacon: true,
         },
         {
             target: '[data-testid="nav-learning"]',
@@ -57,26 +58,25 @@ export function Tour({ initialDone }: TourProps) {
             steps={steps}
             run={run}
             continuous
-            showProgress
-            showSkipButton
-            disableOverlayClose
             locale={{
                 back: 'Wstecz',
                 close: 'Zamknij',
                 last: 'Skończ',
                 next: 'Dalej',
+                nextWithProgress: 'Dalej ({current} z {total})',
                 skip: 'Pomiń',
             }}
-            styles={{
-                options: {
-                    primaryColor: 'hsl(var(--primary))',
-                    zIndex: 9999,
-                    textColor: 'hsl(var(--foreground))',
-                    backgroundColor: 'hsl(var(--card))',
-                    arrowColor: 'hsl(var(--card))',
-                },
+            options={{
+                buttons: ['back', 'close', 'primary', 'skip'],
+                overlayClickAction: false,
+                showProgress: true,
+                primaryColor: 'hsl(var(--primary))',
+                zIndex: 9999,
+                textColor: 'hsl(var(--foreground))',
+                backgroundColor: 'hsl(var(--card))',
+                arrowColor: 'hsl(var(--card))',
             }}
-            callback={(data) => {
+            onEvent={(data: EventData) => {
                 if (data.status === 'finished' || data.status === 'skipped') {
                     setRun(false)
                     setOnboardingTourDone().catch(() => {})

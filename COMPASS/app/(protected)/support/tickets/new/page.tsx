@@ -7,7 +7,7 @@ import { listSupportCategories } from '@/lib/actions/support-tickets'
 export const dynamic = 'force-dynamic'
 
 interface NewTicketPageProps {
-    searchParams: { category?: string; prefill?: string; chat?: string }
+    searchParams: Promise<{ category?: string; prefill?: string; chat?: string }>
 }
 
 interface DispatchPrefill {
@@ -28,7 +28,8 @@ function decodePrefill(token: string | undefined): DispatchPrefill | null {
     }
 }
 
-export default async function NewTicketPage({ searchParams }: NewTicketPageProps) {
+export default async function NewTicketPage(props: NewTicketPageProps) {
+    const searchParams = await props.searchParams;
     const categoriesResult = await listSupportCategories()
     const categories = categoriesResult.success ? categoriesResult.data : []
 

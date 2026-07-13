@@ -10,10 +10,11 @@ import type { PitchStatus } from '@/lib/types/incubator'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    searchParams: { status?: string }
+    searchParams: Promise<{ status?: string }>
 }
 
-export default async function AdminIncubatorPage({ searchParams }: PageProps) {
+export default async function AdminIncubatorPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const validStatuses: PitchStatus[] = ['draft', 'submitted', 'under_review', 'in_negotiation', 'accepted', 'rejected']
     const status = validStatuses.includes(searchParams.status as PitchStatus) ? (searchParams.status as PitchStatus) : undefined
 
