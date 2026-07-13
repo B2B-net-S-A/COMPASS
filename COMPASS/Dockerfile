@@ -17,16 +17,23 @@ ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_SENTRY_DSN
-ARG NEXT_PUBLIC_GIT_SHA
+ARG GIT_SHA
+ARG BUILT_AT
 ARG SENTRY_AUTH_TOKEN
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-ENV NEXT_PUBLIC_GIT_SHA=$NEXT_PUBLIC_GIT_SHA
+ENV NEXT_PUBLIC_GIT_SHA=$GIT_SHA
+ENV GIT_SHA=$GIT_SHA
+ENV BUILT_AT=$BUILT_AT
 # SENTRY_AUTH_TOKEN is consumed by withSentryConfig at build time only.
 # Not exported as ENV so it never leaks into the runtime image.
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
+
+# A production image is invalid unless it can identify the exact source and
+# build timestamp. This also prevents an accidental `unknown` release.
+RUN node -e "const { GIT_SHA, BUILT_AT } = process.env; if (!/^[0-9a-f]{40}$/.test(GIT_SHA ?? '') || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/.test(BUILT_AT ?? '') || Number.isNaN(Date.parse(BUILT_AT))) process.exit(1)"
 
 COPY . .
 RUN --mount=type=cache,target=/app/.next/cache npm run build
@@ -36,8 +43,8 @@ FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb836
 
 WORKDIR /app
 
-ARG GIT_SHA=unknown
-ARG BUILT_AT=unknown
+ARG GIT_SHA
+ARG BUILT_AT
 ENV GIT_SHA=$GIT_SHA
 ENV BUILT_AT=$BUILT_AT
 
@@ -59,6 +66,6 @@ ENV PORT=10000
 ENV HOSTNAME="0.0.0.0"
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT:-10000}/api/health" || exit 1
+    CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT:-10000}/api/livez" || exit 1
 
 CMD ["node", "server.js"]

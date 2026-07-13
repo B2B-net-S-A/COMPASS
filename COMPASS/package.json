@@ -13,6 +13,7 @@
     "test": "vitest run && playwright test",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "test:release": "node --test scripts/__tests__/*.test.mjs",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:smoke": "playwright test e2e/01-smoke.spec.ts",
