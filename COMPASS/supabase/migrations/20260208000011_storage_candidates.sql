@@ -1,4 +1,5 @@
 -- Allow Admins to upload to 'candidates' folder in 'documents' bucket
+drop policy if exists "Admins can upload Candidates CVs" on storage.objects;
 create policy "Admins can upload Candidates CVs" on storage.objects for
 insert to authenticated with check (
         bucket_id = 'documents'

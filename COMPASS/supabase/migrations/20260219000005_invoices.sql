@@ -32,6 +32,12 @@ CREATE INDEX IF NOT EXISTS idx_invoices_created ON invoices(created_at DESC);
 -- RLS
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Consultants can view own invoices" ON invoices;
+DROP POLICY IF EXISTS "Consultants can insert own invoices" ON invoices;
+DROP POLICY IF EXISTS "Consultants can update own submitted invoices" ON invoices;
+DROP POLICY IF EXISTS "Admins can view all invoices" ON invoices;
+DROP POLICY IF EXISTS "Admins can update all invoices" ON invoices;
+
 -- Konsultant widzi tylko swoje faktury
 CREATE POLICY "Consultants can view own invoices"
     ON invoices FOR SELECT

@@ -1,0 +1,10 @@
+-- DISABLED DURING MIGRATION RECONCILIATION (2026-07-13).
+--
+-- This duplicate migration created a public chat-attachments bucket and
+-- policies that allowed every authenticated user to read every object. The
+-- executable payload is intentionally removed so an accidental extension
+-- change cannot make it runnable.
+--
+-- The original blob remains in Git history for incident analysis. Never
+-- restore or apply it; chat attachments require participant-scoped access and
+-- a private bucket.

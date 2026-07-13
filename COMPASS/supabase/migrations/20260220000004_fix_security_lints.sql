@@ -4,6 +4,7 @@
 -- 1. Extension in Public
 -- Moves extensions out of the public schema into a dedicated 'extensions' schema
 CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS "unaccent" WITH SCHEMA public;
 ALTER EXTENSION "vector"
 SET SCHEMA extensions;
 ALTER EXTENSION "unaccent"
@@ -35,24 +36,8 @@ CREATE POLICY "Admins can modify admin_access_list" ON public.admin_access_list 
             AND role IN ('admin', 'administrator', 'centrala')
     )
 );
--- match_results
-DROP POLICY IF EXISTS "Allow authenticated users to insert/update matches" ON public.match_results;
-CREATE POLICY "Users can manage their own matches" ON public.match_results FOR ALL TO authenticated USING (auth.uid() = candidate_id) WITH CHECK (auth.uid() = candidate_id);
-CREATE POLICY "Admins can manage all matches" ON public.match_results FOR ALL TO authenticated USING (
-    EXISTS (
-        SELECT 1
-        FROM profiles
-        WHERE id = auth.uid()
-            AND role IN ('admin', 'administrator', 'centrala')
-    )
-) WITH CHECK (
-    EXISTS (
-        SELECT 1
-        FROM profiles
-        WHERE id = auth.uid()
-            AND role IN ('admin', 'administrator', 'centrala')
-    )
-);
+-- match_results was a manually-created legacy ATS table and is absent on a
+-- fresh, repository-only schema. Its policies are intentionally omitted.
 -- 3. Function Search Path Mutable
 -- Dynamically sets the search_path for all user-defined functions in the public schema
 -- to prevent search_path manipulation vulnerabilities. We include 'extensions' schema 

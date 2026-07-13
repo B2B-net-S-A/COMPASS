@@ -57,6 +57,54 @@ jobs:
           NEXT_PUBLIC_APP_URL: https://placeholder.example.com
         run: npm run build
 
+  database-replay:
+    name: Fresh database replay + pgTAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: secret-scan
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # The reconciliation checker compares every historical source with
+          # the locked pre-reconciliation commit.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+        with:
+          version: 2.109.1
+
+      - name: Assert migration filename and credential invariants
+        run: npm --prefix COMPASS run db:migrations:check
+
+      - name: Replay all migrations on fresh PostgreSQL
+        run: |
+          supabase db start --workdir COMPASS
+          supabase db reset --workdir COMPASS --local --no-seed
+
+      - name: Run migration reconciliation pgTAP
+        run: >-
+          supabase test db --workdir COMPASS --local
+          COMPASS/supabase/tests/migration_reconciliation.sql
+
+      - name: Lint reconstructed schemas
+        run: >-
+          supabase db lint --workdir COMPASS --local
+          --schema public,compass_legacy --level warning --fail-on error
+
+      - name: Block Security Advisor errors
+        run: >-
+          supabase db advisors --workdir COMPASS --local
+          --type security --level error --fail-on error
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --workdir COMPASS --no-backup || true
+
   security-scan:
     name: Trivy + hadolint (report-only)
     runs-on: ubuntu-latest

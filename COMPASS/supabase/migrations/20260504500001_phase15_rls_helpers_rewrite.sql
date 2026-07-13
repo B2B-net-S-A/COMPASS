@@ -4,7 +4,7 @@
 --
 -- Drops 60+ public + 4 storage policies that compared profiles.role TEXT directly
 -- and recreates them using BOOLEAN-returning helpers (no enum dependency).
--- Also drops 15 zombie policies on compass_legacy schema (RLS already disabled).
+-- Also drops zombie policies on the locked compass_legacy schema.
 -- Patches public.get_quiz_for_attempt to use is_admin() instead of inline IN-list.
 --
 -- After this migration, NO public RLS policy references profiles.role directly,
@@ -46,8 +46,11 @@ BEGIN
     FROM course_quiz_questions q WHERE q.course_id = p_course_id ORDER BY q.order_index;
 END; $$;
 
--- 3. Drop zombie policies on compass_legacy (RLS already disabled by Phase 1 migration)
+-- 3. Drop zombie policies on compass_legacy (client grants revoked; RLS enabled)
 DROP POLICY IF EXISTS "Admins can manage candidates" ON compass_legacy.candidates;
+DROP POLICY IF EXISTS "Users can insert own candidate" ON compass_legacy.candidates;
+DROP POLICY IF EXISTS "Users can update own candidate" ON compass_legacy.candidates;
+DROP POLICY IF EXISTS "Users can view own candidate" ON compass_legacy.candidates;
 DROP POLICY IF EXISTS "Users can insert own referrals" ON compass_legacy.centrala_referrals;
 DROP POLICY IF EXISTS "Users can view own referrals" ON compass_legacy.centrala_referrals;
 DROP POLICY IF EXISTS "Admins can update referral status" ON compass_legacy.centrala_referrals;
@@ -65,6 +68,8 @@ DROP POLICY IF EXISTS "Admins manage rate_verifications" ON compass_legacy.rate_
 
 -- 4. Public schema admin checks → is_admin() helper
 DROP POLICY IF EXISTS "Super admins can manage admin access list" ON admin_access_list;
+DROP POLICY IF EXISTS "Authenticated users can read admin_access_list" ON admin_access_list;
+DROP POLICY IF EXISTS "Users can read own admin access entry" ON admin_access_list;
 CREATE POLICY "Super admins can manage admin access list" ON admin_access_list FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
 DROP POLICY IF EXISTS "Admins can view all ai logs" ON ai_assistant_logs;
@@ -181,12 +186,16 @@ DROP POLICY IF EXISTS "admin_view_all_invoices" ON invoices;
 CREATE POLICY "admin_view_all_invoices" ON invoices FOR SELECT TO authenticated USING (is_admin());
 
 DROP POLICY IF EXISTS "Admins write loyalty_rules" ON loyalty_rules;
+DROP POLICY IF EXISTS "Enable write access for admins" ON loyalty_rules;
 CREATE POLICY "Admins write loyalty_rules" ON loyalty_rules FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
 DROP POLICY IF EXISTS "Admins can manage all notifications" ON notifications;
 CREATE POLICY "Admins can manage all notifications" ON notifications FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
 DROP POLICY IF EXISTS "Admins can manage projects" ON projects;
+DROP POLICY IF EXISTS "Admins can insert projects" ON projects;
+DROP POLICY IF EXISTS "Admins can update projects" ON projects;
+DROP POLICY IF EXISTS "Admins can delete projects" ON projects;
 CREATE POLICY "Admins can manage projects" ON projects FOR ALL TO authenticated USING (is_admin());
 
 DROP POLICY IF EXISTS "Admins manage role_permissions" ON role_permissions;
@@ -198,7 +207,9 @@ CREATE POLICY "admin_manage_system_settings" ON system_settings FOR ALL TO authe
 DROP POLICY IF EXISTS "Admins manage all boards" ON task_boards;
 CREATE POLICY "Admins manage all boards" ON task_boards FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 DROP POLICY IF EXISTS "Users view own or shared boards" ON task_boards;
-CREATE POLICY "Users view own or shared boards" ON task_boards FOR SELECT TO authenticated USING (auth.uid() = owner_id OR is_shared = true OR is_admin());
+CREATE POLICY "Users view own or shared boards" ON task_boards FOR SELECT TO authenticated USING (
+  auth.uid() = owner_id OR visibility IN ('team', 'public') OR is_admin()
+);
 
 DROP POLICY IF EXISTS "Admins manage legal documents" ON um_legal_documents;
 CREATE POLICY "Admins manage legal documents" ON um_legal_documents FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
@@ -221,5 +232,43 @@ DROP POLICY IF EXISTS "Admins can upload Project Specs" ON storage.objects;
 CREATE POLICY "Admins can upload Project Specs" ON storage.objects FOR INSERT TO authenticated WITH CHECK (
     bucket_id = 'documents' AND (storage.foldername(name))[1] = 'specs' AND is_admin()
 );
+
+-- Remove every remaining legacy policy whose parsed expression still embeds
+-- public.profiles.role. Earlier migrations used many inconsistent names, so a
+-- static list silently left duplicates behind and blocked the enum cast.
+DO $$
+DECLARE
+  policy_row RECORD;
+BEGIN
+  FOR policy_row IN
+    SELECT schemaname, tablename, policyname
+    FROM pg_policies
+    WHERE COALESCE(qual, '') LIKE '%profiles.role%'
+       OR COALESCE(with_check, '') LIKE '%profiles.role%'
+  LOOP
+    EXECUTE format(
+      'DROP POLICY %I ON %I.%I',
+      policy_row.policyname,
+      policy_row.schemaname,
+      policy_row.tablename
+    );
+  END LOOP;
+END
+$$;
+
+-- Policies above are now expressed only through the stable helper. These four
+-- capabilities had no equivalent helper-based replacement in the legacy set.
+CREATE POLICY "Admins can insert audit logs v2" ON audit_logs
+  FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Admins can manage loyalty transactions v2" ON loyalty_transactions
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "Admins can insert verification codes v2" ON verification_codes
+  FOR INSERT TO authenticated WITH CHECK (is_admin());
+CREATE POLICY "Admins can upload public docs v2" ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (
+    bucket_id = 'documents'
+    AND (storage.foldername(name))[1] = 'public'
+    AND is_admin()
+  );
 
 COMMIT;

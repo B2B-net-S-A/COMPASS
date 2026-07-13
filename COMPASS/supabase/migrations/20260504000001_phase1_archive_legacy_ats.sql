@@ -44,7 +44,14 @@ BEGIN
     END IF;
 END $$;
 
--- Disable RLS on archive (no app reads it; only DBA via service role for audit).
+-- Keep the archive inaccessible to browser roles. The original migration
+-- disabled RLS while leaving policies behind, which Supabase correctly flags
+-- as a security error. `compass_legacy` is not an exposed Data API schema, but
+-- explicit grants plus RLS provide defence in depth if that configuration ever
+-- changes. Only service_role/DBA may access the archive.
+REVOKE ALL ON SCHEMA compass_legacy FROM PUBLIC, anon, authenticated;
+GRANT USAGE ON SCHEMA compass_legacy TO service_role;
+
 DO $$
 DECLARE
     t TEXT;
@@ -53,9 +60,14 @@ BEGIN
         SELECT table_name FROM information_schema.tables
         WHERE table_schema = 'compass_legacy'
     LOOP
-        EXECUTE format('ALTER TABLE compass_legacy.%I DISABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('ALTER TABLE compass_legacy.%I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('REVOKE ALL ON TABLE compass_legacy.%I FROM PUBLIC, anon, authenticated', t);
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE compass_legacy.%I TO service_role', t);
     END LOOP;
 END $$;
+
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA compass_legacy FROM PUBLIC, anon, authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA compass_legacy TO service_role;
 
 -- Drop legacy candidate-sync functions (no app caller after Phase 1.0).
 DROP FUNCTION IF EXISTS sync_candidate_to_profile() CASCADE;
