@@ -5,6 +5,7 @@ This runbook covers the repository-side release foundation. It does not authoriz
 ## What the gate guarantees
 
 - `quality-gate` is the single branch-protection check aggregating the existing secret scan, application checks, security scan, standards drift job, and an immutable Docker build.
+- Docker CI renders the real App Router `/login` page and verifies that an anonymous request to `/internal` redirects to `/login`; `/api/livez` alone is not accepted as framework-migration evidence.
 - Coolify receives a full 40-character `git_commit_sha`, which is read back before deployment.
 - `GIT_SHA` and `BUILT_AT` are written as build-time and runtime variables before the source build starts.
 - The concrete Coolify deployment UUID is polled; a completed deployment with another commit fails.
@@ -27,11 +28,12 @@ The workflow uses two team-scoped Coolify tokens so no mutation credential needs
 4. Create the GitHub Environment `production`, configure required reviewers, and move all production secrets into it.
 5. Add the two Coolify tokens and `COOLIFY_APP_UUID` as environment secrets. Add separate `STAGING_COOLIFY_URL`, `PRODUCTION_COOLIFY_URL`, and `APP_URL` variables. Keep `SENTRY_AUTH_TOKEN` only in the Coolify build vault; Compose passes it as a BuildKit secret rather than an image argument or environment layer.
 6. Set `ROLLBACK_FLOOR_SHA` only after the migration reconciliation identifies the oldest safe release. The release script refuses to mutate Coolify when the floor or current full SHA is missing.
-7. The tracked lock, local release tooling, and tokenless validation actions are pinned to engineering standard `2026.07.1` at `713eea21c2c390b8829c5be7ef5559d98bab2746`; upgrades require review and lock regeneration. No central-repository PAT is used.
-8. Security scans are blocking. On 2026-07-13 the complete `npm audit` reported 1 HIGH dependency (`next@14.2.35`), while Trivy found 5 HIGH findings in the final image, all in that Next.js version, and 0 CRITICAL/0 secrets. The quality gate intentionally remains red until Next.js is upgraded. Do not add raw ignores; any temporary exception also needs a fail-closed audit filter plus a reviewed exception with an owner and expiry of at most 30 days.
-9. Connect the staging environment, production snapshot, and expand-only migration job before this production workflow. The generated reusable release workflow already treats staging and production as separate Coolify hosts; wire a COMPASS caller with both URLs before activation. The production-only foundation remains disabled until that caller exists. Automatic rollback uses only the exact previous SHA observed before mutation and refuses a target outside the approved ancestry window.
-10. Run the exact-SHA flow against staging, perform a rollback drill, and archive the evidence.
-11. Only after steps 1–10, set the repository variable `COMPASS_RELEASE_GATE_ENABLED=true`.
+7. The tracked lock, local release tooling, and tokenless validation actions are pinned to engineering standard `2026.07.1` at `5f5808c228b756024816850103b0436b765a80b3`; upgrades require review and lock regeneration. No central-repository PAT is used.
+8. Security scans are blocking. The 2026-07-13 upgrade to Next.js 15.5.20 removed the previous 1 HIGH dependency finding and all 5 HIGH final-image findings: `npm audit --audit-level=high` and Trivy HIGH/CRITICAL now pass without ignores or exceptions. Any future temporary exception still requires a fail-closed audit filter plus a reviewed owner and expiry of at most 30 days.
+9. The Next.js 15 App Router requires React 19. Before release, confirm the lockfile and final image contain Next 15.5.20, React/React DOM 19.2.7 and React type packages 19.2.x; a manifest-only bump is insufficient.
+10. Connect the staging environment, production snapshot, and expand-only migration job before this production workflow. The generated reusable release workflow already treats staging and production as separate Coolify hosts; wire a COMPASS caller with both URLs before activation. The production-only foundation remains disabled until that caller exists. Automatic rollback uses only the exact previous SHA observed before mutation and refuses a target outside the approved ancestry window.
+11. On staging, run the existing authenticated Playwright flow in addition to the anonymous Docker smoke, then perform an exact-SHA rollback drill and archive the evidence.
+12. Only after steps 1–11, set the repository variable `COMPASS_RELEASE_GATE_ENABLED=true`.
 
 Until the final variable is set, automatic and manual production jobs remain skipped.
 

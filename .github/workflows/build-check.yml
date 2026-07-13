@@ -146,6 +146,20 @@ jobs:
           failure-threshold: '10'
           success-threshold: '1'
 
+      - name: Smoke App Router pages
+        run: |
+          curl --fail --silent --show-error --max-time 10 \
+            --output /tmp/compass-login.html \
+            http://127.0.0.1:10000/login
+          grep --fixed-strings --quiet '<title>COMPASS' /tmp/compass-login.html
+
+          curl --silent --show-error --max-time 10 \
+            --dump-header /tmp/compass-protected.headers \
+            --output /dev/null \
+            http://127.0.0.1:10000/internal
+          grep --extended-regexp --quiet '^HTTP/[0-9.]+ 307 ' /tmp/compass-protected.headers
+          grep --ignore-case --extended-regexp --quiet '^location: /login\r?$' /tmp/compass-protected.headers
+
       - name: Trivy final image scan (vulnerabilities + secrets)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
