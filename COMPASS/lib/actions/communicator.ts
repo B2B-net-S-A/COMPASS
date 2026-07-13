@@ -2,7 +2,15 @@
 
 import { logCompat } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { randomUUID } from 'node:crypto'
+import {
+    CHAT_ATTACHMENT_EXTENSIONS,
+    CHAT_ATTACHMENT_MAX_BYTES,
+    safeAttachmentName,
+    type ChatAttachmentMime,
+} from '@/lib/chat/attachments'
 
 // Types
 export type ConversationType = 'direct' | 'broadcast'
@@ -76,22 +84,26 @@ export async function getConversations(): Promise<{ data: Conversation[], error:
         // Fetch other participant (for direct) or owner (for broadcast)
         const { data: participants } = await supabase
             .from('conversation_participants')
-            .select(`
-                user_id,
-                role,
-                profile:profiles (
-                    full_name,
-                    avatar_url
-                )
-            `)
+            .select('user_id, role')
             .eq('conversation_id', conv.id)
 
+        const otherIds = (participants ?? [])
+            .filter((p) => p.user_id !== user.id)
+            .map((p) => p.user_id)
+        const { data: directory } = otherIds.length > 0
+            ? await supabase
+                .from('profile_directory')
+                .select('id, full_name, avatar_url')
+                .in('id', otherIds)
+            : { data: [] }
+        const directoryById = new Map((directory ?? []).map((entry) => [entry.id, entry]))
+
         // Filter out self for direct chats
-        const otherParticipants = participants?.filter((p: any) => p.user_id !== user.id).map((p: any) => ({
+        const otherParticipants = participants?.filter((p) => p.user_id !== user.id).map((p) => ({
             user_id: p.user_id,
-            role: p.role,
-            full_name: p.profile?.full_name,
-            avatar_url: p.profile?.avatar_url
+            role: p.role as ParticipantRole,
+            full_name: directoryById.get(p.user_id)?.full_name ?? undefined,
+            avatar_url: directoryById.get(p.user_id)?.avatar_url ?? undefined,
         })) || []
 
         populatedConversations.push({
@@ -126,7 +138,8 @@ export async function getOrCreateDirectConversation(targetUserId: string): Promi
     if (!user) return { id: null, error: 'Brak autoryzacji' }
 
     const { data: myProfile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-    const { data: targetProfile } = await supabase.from('profiles').select('role').eq('id', targetUserId).single()
+    const admin = createServiceClient()
+    const { data: targetProfile } = await admin.from('profiles').select('role').eq('id', targetUserId).single()
 
     if (!myProfile || !targetProfile) return { id: null, error: 'Nie znaleziono profilu' }
 
@@ -186,6 +199,14 @@ export async function getMessages(conversationId: string): Promise<{ data: any[]
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { data: [], error: 'Brak autoryzacji' }
 
+    const { data: membership } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    if (!membership) return { data: [], error: 'Brak dostępu do rozmowy' }
+
     const { data: messages, error } = await supabase
         .from('messages')
         .select(`
@@ -195,10 +216,10 @@ export async function getMessages(conversationId: string): Promise<{ data: any[]
             sender_id,
             type,
             attachment_url,
-            sender:profiles (
-                full_name,
-                avatar_url
-            )
+            attachment_path,
+            attachment_name,
+            attachment_mime,
+            attachment_size
         `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true }) // Older first
@@ -208,7 +229,118 @@ export async function getMessages(conversationId: string): Promise<{ data: any[]
         return { data: [], error: error.message }
     }
 
-    return { data: messages, error: null }
+    const senderIds = Array.from(new Set((messages ?? []).map((message) => message.sender_id)))
+    const { data: directory } = senderIds.length > 0
+        ? await supabase
+            .from('profile_directory')
+            .select('id, full_name, avatar_url')
+            .in('id', senderIds)
+        : { data: [] }
+    const directoryById = new Map((directory ?? []).map((entry) => [entry.id, entry]))
+    const admin = createServiceClient()
+    const securedMessages = await Promise.all((messages ?? []).map(async (message: any) => {
+        const sender = directoryById.get(message.sender_id) ?? null
+        if (!message.attachment_path) {
+            // Unknown legacy URLs are deliberately withheld and queued for
+            // operator review by the expand migration.
+            return { ...message, sender, attachment_url: null }
+        }
+
+        const { data: signed } = await admin.storage
+            .from('chat-attachments')
+            .createSignedUrl(message.attachment_path, 60)
+        return { ...message, sender, attachment_url: signed?.signedUrl ?? null }
+    }))
+
+    return { data: securedMessages, error: null }
+}
+
+export async function sendMessageWithAttachment(
+    conversationId: string,
+    content: string,
+    formData: FormData,
+): Promise<{ error: string | null }> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Brak autoryzacji' }
+
+    const { data: membership } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    if (!membership) return { error: 'Brak dostępu do rozmowy' }
+
+    const file = formData.get('file')
+    if (!(file instanceof File)) return { error: 'Nie wybrano pliku.' }
+    if (file.size < 1 || file.size > CHAT_ATTACHMENT_MAX_BYTES) {
+        return { error: 'Plik jest pusty albo przekracza limit 10 MB.' }
+    }
+
+    const mime = file.type as ChatAttachmentMime
+    const extension = CHAT_ATTACHMENT_EXTENSIONS[mime]
+    if (!extension) return { error: 'Dozwolone są JPG, PNG, WEBP, PDF i TXT.' }
+
+    let name: string
+    try {
+        name = safeAttachmentName(file.name)
+    } catch (error) {
+        return { error: error instanceof Error ? error.message : 'Nieprawidłowa nazwa pliku.' }
+    }
+    const path = `${conversationId}/${user.id}/${randomUUID()}.${extension}`
+    const admin = createServiceClient()
+    const { error: uploadError } = await admin.storage
+        .from('chat-attachments')
+        .upload(path, file, {
+            contentType: mime,
+            upsert: false,
+            cacheControl: '60',
+        })
+    if (uploadError) {
+        logCompat.error('Chat attachment upload failed:', { conversationId, userId: user.id, code: uploadError.name })
+        return { error: 'Nie udało się przesłać załącznika.' }
+    }
+
+    const type = mime.startsWith('image/') ? 'image' : 'file'
+    const messageContent = content.trim() || name
+    const { error: messageError } = await supabase
+        .from('messages')
+        .insert({
+            conversation_id: conversationId,
+            sender_id: user.id,
+            content: messageContent,
+            type,
+            attachment_url: null,
+            attachment_path: path,
+            attachment_name: name,
+            attachment_mime: mime,
+            attachment_size: file.size,
+        })
+
+    if (messageError) {
+        const { error: cleanupError } = await admin.storage
+            .from('chat-attachments')
+            .remove([path])
+        if (cleanupError) {
+            logCompat.error('Orphan chat attachment cleanup failed:', {
+                conversationId,
+                userId: user.id,
+                path,
+                code: cleanupError.name,
+            })
+        }
+        logCompat.error('Send attachment message error:', messageError)
+        return { error: 'Nie udało się wysłać załącznika.' }
+    }
+
+    await supabase
+        .from('conversations')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', conversationId)
+
+    revalidatePath('/messages')
+    return { error: null }
 }
 
 /**
@@ -217,12 +349,18 @@ export async function getMessages(conversationId: string): Promise<{ data: any[]
 export async function sendMessage(
     conversationId: string,
     content: string,
-    type: 'text' | 'image' | 'file' = 'text',
-    attachmentUrl?: string
 ): Promise<{ error: string | null }> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Brak autoryzacji' }
+
+    const { data: membership } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    if (!membership) return { error: 'Brak dostępu do rozmowy' }
 
     const { error } = await supabase
         .from('messages')
@@ -230,8 +368,12 @@ export async function sendMessage(
             conversation_id: conversationId,
             sender_id: user.id,
             content,
-            type,
-            attachment_url: attachmentUrl
+            type: 'text',
+            attachment_url: null,
+            attachment_path: null,
+            attachment_name: null,
+            attachment_mime: null,
+            attachment_size: null,
         })
 
     if (error) {
@@ -276,17 +418,13 @@ export async function getAllUsersToMessage(): Promise<{ data: any[], error: stri
     const { data: myProfile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     if (!myProfile) return { data: [], error: 'Nie znaleziono profilu' }
 
-    let queryBuilder = supabase
-        .from('profiles')
-        .select('id, full_name, email, avatar_url, role')
+    const queryBuilder = supabase
+        .from('profile_directory')
+        .select('id, full_name, avatar_url, job_title, department')
         .neq('id', user.id)
         .not('full_name', 'is', null)
         .order('full_name')
         .limit(50)
-
-    if (myProfile.role === 'consultant') {
-        queryBuilder = queryBuilder.neq('role', 'consultant')
-    }
 
     const { data, error } = await queryBuilder
 
@@ -295,7 +433,21 @@ export async function getAllUsersToMessage(): Promise<{ data: any[], error: stri
         return { data: [], error: error.message }
     }
 
-    return { data: data || [], error: null }
+    let visibleDirectory = data || []
+    if (myProfile.role === 'consultant' && visibleDirectory.length > 0) {
+        // Role is used only as an authorization filter on the server. It is
+        // deliberately not returned by the safe directory response.
+        const admin = createServiceClient()
+        const { data: consultantProfiles } = await admin
+            .from('profiles')
+            .select('id')
+            .in('id', visibleDirectory.map((entry) => entry.id))
+            .eq('role', 'consultant')
+        const blockedIds = new Set((consultantProfiles ?? []).map((entry) => entry.id))
+        visibleDirectory = visibleDirectory.filter((entry) => !blockedIds.has(entry.id))
+    }
+
+    return { data: visibleDirectory, error: null }
 }
 
 /**
@@ -309,17 +461,20 @@ export async function searchUsersToMessage(query: string): Promise<{ data: any[]
     const { data: myProfile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     if (!myProfile) return { data: [], error: 'Nie znaleziono profilu' }
 
-    let queryBuilder = supabase
-        .from('profiles')
-        .select('id, full_name, email, avatar_url, role')
-        .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
+    const safeQuery = query
+        .trim()
+        .normalize('NFKC')
+        .replace(/[^A-Za-z0-9\u00C0-\u024F\s-]/g, '')
+        .slice(0, 100)
+    if (safeQuery.length < 2) return { data: [], error: null }
+
+    const queryBuilder = supabase
+        .from('profile_directory')
+        .select('id, full_name, avatar_url, job_title, department')
+        .or(`full_name.ilike.%${safeQuery}%,job_title.ilike.%${safeQuery}%,department.ilike.%${safeQuery}%`)
         .neq('id', user.id)
         .order('full_name')
         .limit(20)
-
-    if (myProfile.role === 'consultant') {
-        queryBuilder = queryBuilder.neq('role', 'consultant')
-    }
 
     const { data, error } = await queryBuilder
 
@@ -328,7 +483,19 @@ export async function searchUsersToMessage(query: string): Promise<{ data: any[]
         return { data: [], error: error.message }
     }
 
-    return { data: data || [], error: null }
+    let visibleDirectory = data || []
+    if (myProfile.role === 'consultant' && visibleDirectory.length > 0) {
+        const admin = createServiceClient()
+        const { data: consultantProfiles } = await admin
+            .from('profiles')
+            .select('id')
+            .in('id', visibleDirectory.map((entry) => entry.id))
+            .eq('role', 'consultant')
+        const blockedIds = new Set((consultantProfiles ?? []).map((entry) => entry.id))
+        visibleDirectory = visibleDirectory.filter((entry) => !blockedIds.has(entry.id))
+    }
+
+    return { data: visibleDirectory, error: null }
 }
 
 /**
@@ -377,7 +544,8 @@ export async function sendBroadcastToAll(
     }
 
     // Get all users (except sender)
-    const { data: allUsers, error: usersError } = await supabase
+    const admin = createServiceClient()
+    const { data: allUsers, error: usersError } = await admin
         .from('profiles')
         .select('id, email')
         .neq('id', user.id)

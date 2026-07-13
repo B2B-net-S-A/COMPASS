@@ -4,6 +4,8 @@ import { Bell } from 'lucide-react'
 import { LeaderboardOptOut } from './LeaderboardOptOut'
 import { PushSubscribeToggle } from '@/components/notifications/PushSubscribeToggle'
 import { isFeatureComingSoon } from '@/lib/types/permissions'
+import { getCalendarFeedStatus } from '@/lib/actions/calendar-feed'
+import { CalendarFeedSettings } from './CalendarFeedSettings'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +22,7 @@ export default async function UserSettingsPage() {
         const p = profile as { leaderboard_opt_out?: boolean } | null
         optOut = p?.leaderboard_opt_out ?? false
     }
+    const calendarFeed = await getCalendarFeedStatus()
 
     return (
         <div className="space-y-6 max-w-2xl p-6">
@@ -44,6 +47,10 @@ export default async function UserSettingsPage() {
                     <PushSubscribeToggle />
                 </CardContent>
             </Card>
+
+            {calendarFeed.eligible && (
+                <CalendarFeedSettings initialActive={calendarFeed.active} />
+            )}
 
             {!isFeatureComingSoon('league') && (
                 <LeaderboardOptOut initialOptOut={optOut} />

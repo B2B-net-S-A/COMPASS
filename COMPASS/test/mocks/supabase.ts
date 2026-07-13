@@ -42,7 +42,13 @@ export interface MockSupabaseConfig {
     user?: MockSupabaseUser | null
     tables?: TableData
     rpcs?: Record<string, (args: Record<string, unknown>) => unknown>
-    storage?: Record<string, { upload?: ReturnType<typeof vi.fn>; download?: ReturnType<typeof vi.fn>; getPublicUrl?: ReturnType<typeof vi.fn> }>
+    storage?: Record<string, {
+        upload?: ReturnType<typeof vi.fn>
+        download?: ReturnType<typeof vi.fn>
+        remove?: ReturnType<typeof vi.fn>
+        createSignedUrl?: ReturnType<typeof vi.fn>
+        getPublicUrl?: ReturnType<typeof vi.fn>
+    }>
 }
 
 const cloneRow = (r: Row): Row => JSON.parse(JSON.stringify(r))
@@ -268,6 +274,8 @@ export function createMockSupabaseClient(config: MockSupabaseConfig = {}) {
             return {
                 upload: b.upload ?? vi.fn(async () => ({ data: { path: 'mock-path' }, error: null })),
                 download: b.download ?? vi.fn(async () => ({ data: new Blob(['mock']), error: null })),
+                remove: b.remove ?? vi.fn(async () => ({ data: [], error: null })),
+                createSignedUrl: b.createSignedUrl ?? vi.fn(async (path: string) => ({ data: { signedUrl: `https://mock/${bucket}/signed/${path}` }, error: null })),
                 getPublicUrl: b.getPublicUrl ?? vi.fn(() => ({ data: { publicUrl: `https://mock/${bucket}/path` } })),
             }
         }),

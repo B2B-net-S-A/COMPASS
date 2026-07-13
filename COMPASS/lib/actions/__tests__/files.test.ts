@@ -8,6 +8,10 @@ vi.mock('@/lib/supabase/server', () => ({
     createClient: () => currentClient,
 }))
 
+vi.mock('@/lib/supabase/admin', () => ({
+    createServiceClient: () => currentClient,
+}))
+
 vi.mock('@/lib/ai/embeddings', () => ({
     generateEmbedding: vi.fn(async (text: string) => deterministicEmbedding(text)),
 }))
