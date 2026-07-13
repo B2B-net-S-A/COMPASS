@@ -121,7 +121,13 @@ describe('sendMessage', () => {
         })
         const { sendMessageWithAttachment } = await import('../communicator')
         const formData = new FormData()
-        formData.set('file', new File(['png'], 'screen.png', { type: 'image/png' }))
+        formData.set('file', new File([
+            new Uint8Array([
+                0x89, 0x50, 0x4e, 0x47,
+                0x0d, 0x0a, 0x1a, 0x0a,
+                0x00, 0x00, 0x00, 0x00,
+            ]),
+        ], 'screen.png', { type: 'image/png' }))
         const result = await sendMessageWithAttachment('conv1', 'check this out', formData)
         expect(result.error).toBeNull()
         expect(upload).toHaveBeenCalledOnce()
@@ -130,6 +136,32 @@ describe('sendMessage', () => {
         expect(msg.attachment_url).toBeNull()
         expect(msg.attachment_path).toMatch(/^conv1\/u1\/[0-9a-f-]{36}\.png$/)
         expect(msg.attachment_mime).toBe('image/png')
+    })
+
+    it('rejects content that is disguised with an allowed MIME', async () => {
+        const upload = vi.fn(async () => ({ data: { path: 'stored' }, error: null }))
+        setup({
+            user: { id: 'u1', email: 'c@x.com' },
+            tables: {
+                messages: [],
+                conversations: [{ id: 'conv1' }],
+                conversation_participants: [{ conversation_id: 'conv1', user_id: 'u1' }],
+            },
+            storage: { 'chat-attachments': { upload } },
+        })
+        const { sendMessageWithAttachment } = await import('../communicator')
+        const formData = new FormData()
+        formData.set('file', new File(
+            ['<svg onload="alert(1)"></svg>'],
+            'screen.png',
+            { type: 'image/png' },
+        ))
+
+        const result = await sendMessageWithAttachment('conv1', '', formData)
+
+        expect(result.error).toMatch(/zawartość pliku/i)
+        expect(upload).not.toHaveBeenCalled()
+        expect(currentClient._tables.messages).toHaveLength(0)
     })
 
     it('rejects an attachment from a non-participant before upload', async () => {

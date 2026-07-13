@@ -8,6 +8,8 @@ import { randomUUID } from 'node:crypto'
 import {
     CHAT_ATTACHMENT_EXTENSIONS,
     CHAT_ATTACHMENT_MAX_BYTES,
+    assertChatAttachmentSignature,
+    isSafeStoredChatAttachmentPath,
     safeAttachmentName,
     type ChatAttachmentMime,
 } from '@/lib/chat/attachments'
@@ -240,7 +242,15 @@ export async function getMessages(conversationId: string): Promise<{ data: any[]
     const admin = createServiceClient()
     const securedMessages = await Promise.all((messages ?? []).map(async (message: any) => {
         const sender = directoryById.get(message.sender_id) ?? null
-        if (!message.attachment_path) {
+        if (
+            !message.attachment_path
+            || !isSafeStoredChatAttachmentPath(
+                message.attachment_path,
+                conversationId,
+                message.sender_id,
+                message.attachment_mime,
+            )
+        ) {
             // Unknown legacy URLs are deliberately withheld and queued for
             // operator review by the expand migration.
             return { ...message, sender, attachment_url: null }
@@ -281,6 +291,19 @@ export async function sendMessageWithAttachment(
     const mime = file.type as ChatAttachmentMime
     const extension = CHAT_ATTACHMENT_EXTENSIONS[mime]
     if (!extension) return { error: 'Dozwolone są JPG, PNG, WEBP, PDF i TXT.' }
+
+    try {
+        const inspectionBytes = new Uint8Array(
+            await file.slice(0, mime === 'text/plain' ? 8192 : 16).arrayBuffer(),
+        )
+        assertChatAttachmentSignature(inspectionBytes, mime)
+    } catch (error) {
+        return {
+            error: error instanceof Error
+                ? error.message
+                : 'Zawartość pliku nie zgadza się z deklarowanym typem.',
+        }
+    }
 
     let name: string
     try {
