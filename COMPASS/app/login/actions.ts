@@ -102,7 +102,7 @@ export async function login(formData: FormData) {
     const bypassAllowed = process.env.NODE_ENV !== 'production'
         && (!isSupabaseConfigured() || process.env.ALLOW_BYPASS_LOGIN === 'true')
     if (BYPASS_EMAIL && email === BYPASS_EMAIL && bypassAllowed) {
-        const cookieStore = cookies()
+        const cookieStore = await cookies()
         cookieStore.set('emergency_auth_user', BYPASS_EMAIL, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
@@ -147,7 +147,7 @@ export async function login(formData: FormData) {
 
     // 5a. Set onboarding cookie
     if (profile?.onboarding_completed || role !== 'consultant') {
-        cookies().set('onboarding_done', 'true', {
+        (await cookies()).set('onboarding_done', 'true', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',

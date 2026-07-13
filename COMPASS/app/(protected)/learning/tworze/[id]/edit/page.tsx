@@ -21,10 +21,11 @@ const STATUS_LABEL: Record<CourseStatus, { label: string; color: string }> = {
 }
 
 interface PageProps {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
-export default async function EditCoursePage({ params }: PageProps) {
+export default async function EditCoursePage(props: PageProps) {
+    const params = await props.params;
     const detailResult = await getCourseDetail(params.id)
     if (!detailResult.success) {
         notFound()

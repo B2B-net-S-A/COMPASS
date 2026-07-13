@@ -14,7 +14,8 @@ const LEVEL_LABEL: Record<string, string> = {
     advanced: 'Zaawansowany',
 }
 
-export default async function LearningPathDetailPage({ params }: { params: { slug: string } }) {
+export default async function LearningPathDetailPage(props: { params: Promise<{ slug: string }> }) {
+    const params = await props.params;
     const result = await getLearningPathDetail(params.slug)
     if (!result.success || !result.data) notFound()
     const path = result.data

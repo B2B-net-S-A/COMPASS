@@ -10,10 +10,11 @@ import { PROJECT_STATUS_LABEL, APPLICATION_STATUS_LABEL } from '@/lib/types/incu
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { slug: string }
+    params: Promise<{ slug: string }>
 }
 
-export default async function ProjectDetailPage({ params }: PageProps) {
+export default async function ProjectDetailPage(props: PageProps) {
+    const params = await props.params;
     const result = await getProjectBySlug(params.slug)
     if (!result.success) notFound()
     const p = result.data

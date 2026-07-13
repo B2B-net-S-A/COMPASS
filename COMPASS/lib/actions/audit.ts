@@ -202,7 +202,7 @@ export async function logAudit(
 ) {
     try {
         const supabase = createClient()
-        const headerStore = headers()
+        const headerStore = await headers()
         const ip = headerStore.get('x-forwarded-for') || 'unknown'
 
         const { error } = await supabase.from('audit_logs').insert({

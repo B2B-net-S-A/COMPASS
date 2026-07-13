@@ -12,10 +12,11 @@ import { isSuperAdmin } from '@/lib/auth/super-admins'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { slug: string }
+    params: Promise<{ slug: string }>
 }
 
-export default async function EditArticlePage({ params }: PageProps) {
+export default async function EditArticlePage(props: PageProps) {
+    const params = await props.params;
     const articleRes = await getArticleBySlug(params.slug)
     if (!articleRes.success) notFound()
     const article = articleRes.data

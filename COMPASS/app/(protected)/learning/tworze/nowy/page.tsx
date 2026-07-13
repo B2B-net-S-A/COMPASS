@@ -6,13 +6,14 @@ import { NewCourseClient } from './NewCourseClient'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    searchParams: { type?: string }
+    searchParams: Promise<{ type?: string }>
 }
 
 // Phase 1.4 (2026-05-04): wizard accepts ?type=company to default the form to a company course.
 // Server-side role check determines whether company-type selector is enabled in the form
 // (admin/trainer only — consultants get a silent downgrade in createCourse if they bypass UI).
-export default async function NewCoursePage({ searchParams }: PageProps) {
+export default async function NewCoursePage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     let role = 'consultant'

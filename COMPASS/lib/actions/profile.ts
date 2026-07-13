@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import type { TablesUpdate } from '@/lib/supabase/database.types'
@@ -133,8 +134,8 @@ export async function getConsultantProfile360(consultantId: string) {
 }
 
 export async function completeOnboarding() {
-    const { cookies } = await import('next/headers')
-    cookies().set('onboarding_done', 'true', {
+    const cookieStore = await cookies()
+    cookieStore.set('onboarding_done', 'true', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',

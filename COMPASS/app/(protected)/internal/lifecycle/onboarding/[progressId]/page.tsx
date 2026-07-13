@@ -16,7 +16,8 @@ import { WelcomeEmailCard } from '../../components/WelcomeEmailCard'
 
 export const dynamic = 'force-dynamic'
 
-export default async function OnboardingDetailPage({ params }: { params: { progressId: string } }) {
+export default async function OnboardingDetailPage(props: { params: Promise<{ progressId: string }> }) {
+    const params = await props.params;
     const ctx = await requireLifecycleHubLayout()
 
     let detail
