@@ -24,5 +24,9 @@ describe('health contract', () => {
             version: 'c'.repeat(40),
             deployedAt: 'not-a-date',
         })).toBe(false)
+        expect(hasValidReleaseMetadata({
+            version: 'c'.repeat(40),
+            deployedAt: '2026-02-31T10:20:30Z',
+        })).toBe(false)
     })
 })

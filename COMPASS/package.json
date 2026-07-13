@@ -99,5 +99,14 @@
     "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^4.1.5"
+  },
+  "overrides": {
+    "@next/eslint-plugin-next": {
+      "glob": "10.5.0"
+    },
+    "rollup": "3.30.0",
+    "tmp": "0.2.7",
+    "undici": "7.28.0",
+    "ws": "8.21.0"
   }
 }

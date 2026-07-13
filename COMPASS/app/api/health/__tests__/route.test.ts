@@ -32,9 +32,9 @@ describe('GET /api/health', () => {
             version: 'a'.repeat(40),
             deployedAt: '2026-04-29T12:00:00Z',
             checks: {
-                database: 'healthy',
-                supabase: 'healthy',
-                release: 'healthy',
+                database: { status: 'healthy', critical: true },
+                supabase: { status: 'healthy', critical: true },
+                release: { status: 'healthy', critical: true },
             },
         })
         expect(response.headers.get('cache-control')).toBe('no-store, max-age=0')
@@ -46,8 +46,8 @@ describe('GET /api/health', () => {
         const body = await response.json()
         expect(response.status).toBe(503)
         expect(body.status).toBe('unhealthy')
-        expect(body.checks.database).toBe('unhealthy')
-        expect(body.checks.supabase).toBe('unhealthy')
+        expect(body.checks.database.status).toBe('unhealthy')
+        expect(body.checks.supabase).toEqual(body.checks.database)
     })
 
     it('fails closed when the database probe is rejected', async () => {
@@ -56,7 +56,7 @@ describe('GET /api/health', () => {
         const body = await response.json()
         expect(response.status).toBe(503)
         expect(body.status).toBe('unhealthy')
-        expect(body.checks.database).toBe('unhealthy')
+        expect(body.checks.database.status).toBe('unhealthy')
     })
 
     it('returns unhealthy when fetch throws (network error or timeout)', async () => {
@@ -64,7 +64,7 @@ describe('GET /api/health', () => {
         const response = await GET()
         const body = await response.json()
         expect(response.status).toBe(503)
-        expect(body.checks.database).toBe('unhealthy')
+        expect(body.checks.database.status).toBe('unhealthy')
     })
 
     it('returns unhealthy when the private database credential is missing', async () => {
@@ -72,7 +72,7 @@ describe('GET /api/health', () => {
         const response = await GET()
         const body = await response.json()
         expect(response.status).toBe(503)
-        expect(body.checks.database).toBe('unhealthy')
+        expect(body.checks.database.status).toBe('unhealthy')
     })
 
     it('fails readiness when exact release metadata is missing', async () => {
@@ -84,7 +84,7 @@ describe('GET /api/health', () => {
         expect(response.status).toBe(503)
         expect(body.version).toBe('unknown')
         expect(body.deployedAt).toBe('unknown')
-        expect(body.checks.release).toBe('unhealthy')
+        expect(body.checks.release).toEqual({ status: 'unhealthy', critical: true })
     })
 
     it('queries a known table with the server-only key and never caches the probe', async () => {

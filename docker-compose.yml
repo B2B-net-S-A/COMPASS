@@ -12,15 +12,17 @@ services:
         GIT_SHA: ${GIT_SHA:?GIT_SHA must be a full 40-character commit SHA}
         BUILT_AT: ${BUILT_AT:?BUILT_AT must be an ISO-8601 UTC timestamp}
         # Sentry build-time args. DSN is public (browser bundle); auth token is
-        # build-only and stripped before runtime image. Both come from Coolify
-        # env vault with is_buildtime=true.
+        # supplied separately as a BuildKit secret below.
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
-        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+      secrets:
+        - SENTRY_AUTH_TOKEN
     image: compass-app:${GIT_SHA:?GIT_SHA must be a full 40-character commit SHA}
     container_name: compass-app
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-10000}:10000"
+    # Traefik reaches the service on the Compose network; do not publish a host
+    # port in production and accidentally bypass the edge proxy.
+    expose:
+      - "10000"
     environment:
       NODE_ENV: production
       PORT: 10000
@@ -57,7 +59,7 @@ services:
   # in the env vault. Once GRAFANA_LOKI_* are set, flip the profile and
   # logs start flowing.
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy@sha256:4f6ddc56ffdcf8a6316748fc5162972e20cb301523cac1bb4a31957df733ae9b
     container_name: compass-alloy
     restart: unless-stopped
     command:
@@ -77,3 +79,7 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+secrets:
+  SENTRY_AUTH_TOKEN:
+    environment: SENTRY_AUTH_TOKEN

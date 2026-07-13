@@ -1,6 +1,12 @@
 export type DependencyStatus = 'healthy' | 'unhealthy'
 export type ReadinessStatus = 'healthy' | 'degraded' | 'unhealthy'
 
+export interface DependencyCheck {
+    status: DependencyStatus
+    latencyMs?: number
+    critical?: boolean
+}
+
 export const NO_STORE_HEADERS = {
     'Cache-Control': 'no-store, max-age=0',
     Pragma: 'no-cache',
@@ -27,7 +33,9 @@ export function hasValidReleaseMetadata(metadata: ReleaseMetadata): boolean {
     if (!FULL_GIT_SHA.test(metadata.version)) return false
     if (!UTC_TIMESTAMP.test(metadata.deployedAt)) return false
 
-    return !Number.isNaN(Date.parse(metadata.deployedAt))
+    const parsed = new Date(metadata.deployedAt)
+    return !Number.isNaN(parsed.getTime())
+        && parsed.toISOString() === metadata.deployedAt.replace(/Z$/, '.000Z')
 }
 
 export function deriveReadinessStatus(

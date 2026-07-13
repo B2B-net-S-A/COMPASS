@@ -41,6 +41,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Dependency audit (HIGH/CRITICAL)
+        run: npm audit --audit-level=high
+
       - name: ESLint (next lint)
         run: npm run lint
 
@@ -111,29 +114,26 @@ jobs:
         run: supabase stop --workdir COMPASS --no-backup || true
 
   security-scan:
-    name: Trivy + hadolint (report-only)
+    name: Hadolint + Trivy security evidence
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      # Report-only first pass — flip continue-on-error:false / exit-code:'1' after triaging findings.
       - name: Hadolint
         uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
         with:
           dockerfile: COMPASS/Dockerfile
           failure-threshold: warning
-        continue-on-error: true
-      - name: Trivy filesystem scan (deps + Dockerfile misconfig)
+      - name: Trivy filesystem misconfiguration scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
-          scanners: vuln,misconfig
+          scanners: misconfig
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
           skip-dirs: .claude,node_modules
-          exit-code: '0'
+          exit-code: '1'
 
   standards-drift:
     name: Standards drift
@@ -142,33 +142,14 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
-
-      - name: Read pinned standards manifest
-        id: standards
-        run: |
-          echo "mode=$(jq -r '.mode' .github/standards/manifest.json)" >> "$GITHUB_OUTPUT"
-          echo "repository=$(jq -r '.sourceRepository' .github/standards/manifest.json)" >> "$GITHUB_OUTPUT"
-          echo "ref=$(jq -r '.sourceRef // ""' .github/standards/manifest.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout pinned central standards
-        if: steps.standards.outputs.mode == 'enforced'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          repository: ${{ steps.standards.outputs.repository }}
-          ref: ${{ steps.standards.outputs.ref }}
-          token: ${{ secrets.ENGINEERING_STANDARDS_READ_TOKEN }}
-          path: .engineering-standards
           persist-credentials: false
 
-      - name: Compare generated baseline
-        env:
-          REPO_ROOT: ${{ github.workspace }}
-          STANDARDS_DIR: ${{ steps.standards.outputs.mode == 'enforced' && format('{0}/.engineering-standards', github.workspace) || '' }}
-        run: node COMPASS/scripts/check-standards-drift.mjs
+      - name: Validate immutable standard, action pins, and exceptions
+        uses: artur-t-96/engineering-standards/.github/actions/validate-consumer@713eea21c2c390b8829c5be7ef5559d98bab2746
+        with:
+          expected-ref: 713eea21c2c390b8829c5be7ef5559d98bab2746
+          consumer-root: .
 
   docker-build-smoke:
     name: Docker build smoke
@@ -193,6 +174,38 @@ jobs:
             --tag "compass-ci:$GIT_SHA" \
             --file COMPASS/Dockerfile \
             COMPASS
+
+      - name: Start final image for process smoke
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: >-
+          docker run --detach --rm
+          --name compass-ci-livez
+          --publish 127.0.0.1:10000:10000
+          "compass-ci:$GIT_SHA"
+
+      - name: Validate shared livez contract
+        uses: artur-t-96/engineering-standards/.github/actions/validate-health@713eea21c2c390b8829c5be7ef5559d98bab2746
+        with:
+          url: http://127.0.0.1:10000/api/livez
+          kind: livez
+          expected-sha: ${{ github.sha }}
+          samples: '10'
+          interval: '2'
+          failure-threshold: '10'
+          success-threshold: '1'
+
+      - name: Trivy final image scan (vulnerabilities + secrets)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: compass-ci:${{ github.sha }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Stop process-smoke container
+        if: always()
+        run: docker rm --force compass-ci-livez
 
   quality-gate:
     name: quality-gate
