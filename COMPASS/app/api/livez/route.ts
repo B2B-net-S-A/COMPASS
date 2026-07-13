@@ -4,10 +4,11 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export function GET() {
+    const { version } = getReleaseMetadata()
     return Response.json(
         {
             status: 'alive',
-            ...getReleaseMetadata(),
+            version,
         },
         { headers: NO_STORE_HEADERS },
     )

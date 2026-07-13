@@ -12,8 +12,11 @@ export const runtime = 'nodejs'
 export async function GET() {
     const metadata = getReleaseMetadata()
     const database = await checkDatabase()
-    const release = hasValidReleaseMetadata(metadata) ? 'healthy' : 'unhealthy'
-    const status = deriveReadinessStatus([database, release])
+    const release = {
+        status: hasValidReleaseMetadata(metadata) ? 'healthy' as const : 'unhealthy' as const,
+        critical: true,
+    }
+    const status = deriveReadinessStatus([database.status, release.status])
 
     return Response.json(
         {

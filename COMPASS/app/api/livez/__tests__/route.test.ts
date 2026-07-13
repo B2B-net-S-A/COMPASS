@@ -8,7 +8,7 @@ describe('GET /api/livez', () => {
         process.env = { ...originalEnv }
     })
 
-    it('reports only process liveness and immutable release metadata', async () => {
+    it('reports only process liveness and immutable release SHA', async () => {
         process.env.GIT_SHA = 'b'.repeat(40)
         process.env.BUILT_AT = '2026-07-13T10:20:30Z'
 
@@ -19,7 +19,6 @@ describe('GET /api/livez', () => {
         expect(await response.json()).toEqual({
             status: 'alive',
             version: 'b'.repeat(40),
-            deployedAt: '2026-07-13T10:20:30Z',
         })
     })
 
@@ -33,7 +32,6 @@ describe('GET /api/livez', () => {
         expect(await response.json()).toMatchObject({
             status: 'alive',
             version: 'unknown',
-            deployedAt: 'unknown',
         })
     })
 })

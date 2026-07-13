@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
@@ -9,6 +10,14 @@ const TERMINAL_SUCCESS = new Set(['finished', 'success', 'completed'])
 const TERMINAL_FAILURE = new Set(['failed', 'cancelled', 'cancelled-by-user', 'error'])
 
 const defaultSleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+export class ReleaseFailure extends Error {
+    constructor(message, manifest, cause) {
+        super(message, { cause })
+        this.name = 'ReleaseFailure'
+        this.releaseManifest = manifest
+    }
+}
 
 function required(env, key) {
     const value = env[key]?.trim()
@@ -34,13 +43,50 @@ function normalizedHttpsUrl(value, key) {
     return url.toString().replace(/\/$/, '')
 }
 
+function utcSeconds(value) {
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) throw new Error('Release clock returned an invalid date')
+    return new Date(Math.floor(date.getTime() / 1_000) * 1_000)
+        .toISOString()
+        .replace('.000Z', 'Z')
+}
+
+function gitIsAncestor(ancestor, descendant) {
+    const result = spawnSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], {
+        stdio: 'ignore',
+    })
+    if (result.error) throw new Error(`Cannot validate rollback ancestry: ${result.error.message}`)
+    return result.status === 0
+}
+
+export function assertRollbackAllowed(config, previousSha, isAncestor = gitIsAncestor) {
+    if (!FULL_GIT_SHA.test(previousSha ?? '')) {
+        throw new Error('Current production SHA is missing or invalid; refusing to deploy without a rollback target')
+    }
+    if (!config.rollbackFloor) {
+        throw new Error('ROLLBACK_FLOOR_SHA is required before the release gate can be activated')
+    }
+    if (previousSha === config.targetSha) {
+        throw new Error('Target SHA is already configured in production')
+    }
+    if (!isAncestor(config.rollbackFloor, previousSha)) {
+        throw new Error('Current production SHA is older than or unrelated to the approved rollback floor')
+    }
+    if (!isAncestor(previousSha, config.targetSha)) {
+        throw new Error('Current production SHA is not an ancestor of the release candidate')
+    }
+}
+
 export function parseReleaseConfig(env = process.env) {
     const targetSha = required(env, 'TARGET_SHA')
     const deployedAt = required(env, 'BUILT_AT')
     const appUuid = required(env, 'COOLIFY_APP_UUID')
 
     if (!FULL_GIT_SHA.test(targetSha)) throw new Error('TARGET_SHA must be a full lowercase 40-character Git SHA')
-    if (!UTC_TIMESTAMP.test(deployedAt) || Number.isNaN(Date.parse(deployedAt))) {
+    const parsedDeployedAt = new Date(deployedAt)
+    if (!UTC_TIMESTAMP.test(deployedAt)
+        || Number.isNaN(parsedDeployedAt.getTime())
+        || parsedDeployedAt.toISOString() !== deployedAt.replace(/Z$/, '.000Z')) {
         throw new Error('BUILT_AT must be a valid ISO-8601 UTC timestamp without milliseconds')
     }
     if (!/^[a-zA-Z0-9-]+$/.test(appUuid)) throw new Error('COOLIFY_APP_UUID has an invalid format')
@@ -97,8 +143,9 @@ async function requestJson(config, deps, {
     let lastError
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        let response
         try {
-            const response = await deps.fetchImpl(coolifyUrl(config, path), {
+            response = await deps.fetchImpl(coolifyUrl(config, path), {
                 method,
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -109,19 +156,21 @@ async function requestJson(config, deps, {
                 redirect: 'error',
                 signal: AbortSignal.timeout(30_000),
             })
-
-            if (expected.includes(response.status)) return await readJsonResponse(response)
-
-            if ((response.status === 429 || response.status >= 500) && attempt < attempts) {
-                await deps.sleep(1_000 * (2 ** (attempt - 1)))
-                continue
-            }
-            throw new Error(`Coolify ${method} ${path} returned HTTP ${response.status}`)
         } catch (error) {
             lastError = error
             if (attempt >= attempts) break
             await deps.sleep(1_000 * (2 ** (attempt - 1)))
+            continue
         }
+
+        if (expected.includes(response.status)) return await readJsonResponse(response)
+
+        lastError = new Error(`Coolify ${method} ${path.split('?')[0]} returned HTTP ${response.status}`)
+        if ((response.status === 429 || response.status >= 500) && attempt < attempts) {
+            await deps.sleep(1_000 * (2 ** (attempt - 1)))
+            continue
+        }
+        break
     }
 
     throw lastError instanceof Error ? lastError : new Error(`Coolify ${method} ${path} failed`)
@@ -144,7 +193,7 @@ async function updateReleaseEnvironment(config, deps, key, value) {
     })
 }
 
-async function waitForDeployment(config, deps, deploymentUuid) {
+async function waitForDeployment(config, deps, deploymentUuid, expectedSha) {
     const maxPolls = Math.max(1, Math.ceil(config.deploymentTimeoutMs / Math.max(1, config.deploymentPollMs)))
 
     for (let poll = 0; poll < maxPolls; poll += 1) {
@@ -156,7 +205,7 @@ async function waitForDeployment(config, deps, deploymentUuid) {
 
         if (TERMINAL_FAILURE.has(status)) throw new Error(`Coolify deployment ended with status ${status}`)
         if (TERMINAL_SUCCESS.has(status)) {
-            if (deployment?.commit !== config.targetSha) {
+            if (deployment?.commit !== expectedSha) {
                 throw new Error('Coolify completed a deployment for a different commit')
             }
             return deployment
@@ -168,7 +217,7 @@ async function waitForDeployment(config, deps, deploymentUuid) {
     throw new Error('Timed out while waiting for Coolify deployment')
 }
 
-async function getReadiness(config, deps) {
+async function getReadiness(config, deps, expectedRelease) {
     try {
         const response = await deps.fetchImpl(`${config.appUrl}/api/health`, {
             method: 'GET',
@@ -182,23 +231,35 @@ async function getReadiness(config, deps) {
         })
         if (response.status !== 200) return false
         const body = await readJsonResponse(response)
+        const cacheControl = response.headers.get('cache-control') ?? ''
+        const checks = body?.checks
+        const checksAreValid = checks
+            && typeof checks === 'object'
+            && !Array.isArray(checks)
+            && Object.values(checks).every((check) => check
+                && typeof check === 'object'
+                && !Array.isArray(check)
+                && ['healthy', 'degraded', 'unhealthy'].includes(check.status))
 
         return (body?.status === 'healthy' || body?.status === 'degraded')
-            && body?.version === config.targetSha
-            && body?.deployedAt === config.deployedAt
-            && body?.checks?.database === 'healthy'
+            && body?.version === expectedRelease.sha
+            && body?.deployedAt === expectedRelease.deployedAt
+            && checksAreValid
+            && checks.database?.status === 'healthy'
+            && checks.release?.status === 'healthy'
+            && cacheControl.toLowerCase().includes('no-store')
     } catch {
         return false
     }
 }
 
-async function waitForReadiness(config, deps) {
+async function waitForReadiness(config, deps, expectedRelease) {
     if (config.readinessSuccesses < 1) throw new Error('READINESS_SUCCESSES must be at least 1')
     const maxPolls = Math.max(1, Math.ceil(config.readinessTimeoutMs / Math.max(1, config.readinessPollMs)))
     let consecutiveSuccesses = 0
 
     for (let poll = 0; poll < maxPolls; poll += 1) {
-        if (await getReadiness(config, deps)) {
+        if (await getReadiness(config, deps, expectedRelease)) {
             consecutiveSuccesses += 1
             if (consecutiveSuccesses >= config.readinessSuccesses) return
         } else {
@@ -211,14 +272,14 @@ async function waitForReadiness(config, deps) {
     throw new Error('Readiness did not reach the required consecutive healthy state')
 }
 
-async function monitorRelease(config, deps) {
+async function monitorRelease(config, deps, expectedRelease) {
     if (config.monitorDurationMs === 0) return
     const checks = Math.max(1, Math.ceil(config.monitorDurationMs / Math.max(1, config.monitorPollMs)))
     let consecutiveFailures = 0
 
     for (let check = 0; check < checks; check += 1) {
         await deps.sleep(config.monitorPollMs)
-        if (await getReadiness(config, deps)) {
+        if (await getReadiness(config, deps, expectedRelease)) {
             consecutiveFailures = 0
         } else {
             consecutiveFailures += 1
@@ -229,37 +290,34 @@ async function monitorRelease(config, deps) {
     }
 }
 
-export async function executeRelease(config, injected = {}) {
-    const deps = {
-        fetchImpl: injected.fetchImpl ?? fetch,
-        sleep: injected.sleep ?? defaultSleep,
-        now: injected.now ?? (() => new Date()),
-    }
-
-    const before = await requestJson(config, deps, {
+async function readApplicationSha(config, deps) {
+    const application = await requestJson(config, deps, {
         path: `/applications/${config.appUuid}`,
         token: config.readToken,
     })
-    const previousSha = FULL_GIT_SHA.test(before?.git_commit_sha ?? '') ? before.git_commit_sha : null
+    const sha = application?.git_commit_sha
+    return FULL_GIT_SHA.test(sha ?? '') ? sha : null
+}
+
+async function setApplicationSha(config, deps, expectedCurrentSha, nextSha) {
+    const currentSha = await readApplicationSha(config, deps)
+    if (currentSha !== expectedCurrentSha) {
+        throw new Error('Coolify application SHA changed concurrently; refusing to overwrite it')
+    }
 
     await requestJson(config, deps, {
         method: 'PATCH',
         path: `/applications/${config.appUuid}`,
         token: config.mutationToken,
-        body: { git_commit_sha: config.targetSha },
+        body: { git_commit_sha: nextSha },
     })
 
-    const after = await requestJson(config, deps, {
-        path: `/applications/${config.appUuid}`,
-        token: config.readToken,
-    })
-    if (after?.git_commit_sha !== config.targetSha) {
+    if (await readApplicationSha(config, deps) !== nextSha) {
         throw new Error('Coolify did not persist the requested git_commit_sha')
     }
+}
 
-    await updateReleaseEnvironment(config, deps, 'GIT_SHA', config.targetSha)
-    await updateReleaseEnvironment(config, deps, 'BUILT_AT', config.deployedAt)
-
+async function triggerDeployment(config, deps) {
     // The deploy endpoint is intentionally not retried: a lost response may
     // still have queued work, and retrying could create a duplicate deployment.
     const trigger = await requestJson(config, deps, {
@@ -271,22 +329,114 @@ export async function executeRelease(config, injected = {}) {
     if (!deploymentUuid || typeof deploymentUuid !== 'string') {
         throw new Error('Coolify did not return a deployment UUID')
     }
+    return deploymentUuid
+}
 
-    await waitForDeployment(config, deps, deploymentUuid)
-    await waitForReadiness(config, deps)
-    await monitorRelease(config, deps)
+async function deployExactRelease(config, deps, {
+    sha,
+    deployedAt,
+    expectedCurrentSha,
+    monitor,
+}) {
+    await setApplicationSha(config, deps, expectedCurrentSha, sha)
+    await updateReleaseEnvironment(config, deps, 'GIT_SHA', sha)
+    await updateReleaseEnvironment(config, deps, 'BUILT_AT', deployedAt)
 
+    const deploymentUuid = await triggerDeployment(config, deps)
+    await waitForDeployment(config, deps, deploymentUuid, sha)
+    await waitForReadiness(config, deps, { sha, deployedAt })
+    if (monitor) await monitorRelease(config, deps, { sha, deployedAt })
+    return deploymentUuid
+}
+
+function releaseManifest(config, deps, previousSha, values) {
     return {
         schemaVersion: 1,
         applicationUuid: config.appUuid,
         sha: config.targetSha,
         deployedAt: config.deployedAt,
-        verifiedAt: deps.now().toISOString(),
+        verifiedAt: utcSeconds(deps.now()).replace('.000Z', 'Z'),
         migrationHead: config.migrationHead,
         previousSha,
         oldestSafeRollback: config.rollbackFloor,
-        deploymentUuid,
+        deploymentUuid: values.deploymentUuid ?? null,
+        outcome: values.outcome,
+        rollbackToSha: values.rollbackToSha ?? null,
+        rollbackDeploymentUuid: values.rollbackDeploymentUuid ?? null,
     }
+}
+
+export async function executeRelease(config, injected = {}) {
+    const deps = {
+        fetchImpl: injected.fetchImpl ?? fetch,
+        sleep: injected.sleep ?? defaultSleep,
+        now: injected.now ?? (() => new Date()),
+        isAncestor: injected.isAncestor ?? gitIsAncestor,
+    }
+
+    const previousSha = await readApplicationSha(config, deps)
+    assertRollbackAllowed(config, previousSha, deps.isAncestor)
+
+    let deploymentUuid = null
+    try {
+        deploymentUuid = await deployExactRelease(config, deps, {
+            sha: config.targetSha,
+            deployedAt: config.deployedAt,
+            expectedCurrentSha: previousSha,
+            monitor: true,
+        })
+    } catch (releaseError) {
+        const currentSha = await readApplicationSha(config, deps)
+        if (currentSha === previousSha) throw releaseError
+        if (currentSha !== config.targetSha) {
+            throw new ReleaseFailure(
+                'Release failed and automatic rollback was refused because Coolify changed concurrently',
+                releaseManifest(config, deps, previousSha, {
+                    deploymentUuid,
+                    outcome: 'failed',
+                }),
+                releaseError,
+            )
+        }
+
+        const rollbackAt = utcSeconds(deps.now())
+        let rollbackDeploymentUuid = null
+        try {
+            rollbackDeploymentUuid = await deployExactRelease(config, deps, {
+                sha: previousSha,
+                deployedAt: rollbackAt,
+                expectedCurrentSha: config.targetSha,
+                monitor: false,
+            })
+        } catch (rollbackError) {
+            throw new ReleaseFailure(
+                `Release failed and automatic rollback also failed: ${rollbackError.message}`,
+                releaseManifest(config, deps, previousSha, {
+                    deploymentUuid,
+                    outcome: 'failed',
+                    rollbackToSha: previousSha,
+                    rollbackDeploymentUuid,
+                }),
+                releaseError,
+            )
+        }
+
+        throw new ReleaseFailure(
+            `Release failed and was automatically rolled back: ${releaseError.message}`,
+            releaseManifest(config, deps, previousSha, {
+                deploymentUuid,
+                outcome: 'rolled_back',
+                rollbackToSha: previousSha,
+                rollbackDeploymentUuid,
+            }),
+            releaseError,
+        )
+    }
+
+    return releaseManifest(config, deps, previousSha, {
+        deploymentUuid,
+        outcome: 'succeeded',
+    })
 }
 
 async function main() {
@@ -296,6 +446,10 @@ async function main() {
         writeFileSync(config.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
         process.stdout.write(`Verified COMPASS release ${manifest.sha} (${manifest.deploymentUuid})\n`)
     } catch (error) {
+        if (error instanceof ReleaseFailure) {
+            const manifestPath = process.env.RELEASE_MANIFEST_PATH?.trim() || 'release-manifest.json'
+            writeFileSync(manifestPath, `${JSON.stringify(error.releaseManifest, null, 2)}\n`, { mode: 0o600 })
+        }
         const message = error instanceof Error ? error.message : 'Unknown release error'
         process.stderr.write(`Release failed: ${message}\n`)
         process.exitCode = 1

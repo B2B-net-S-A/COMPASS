@@ -60,8 +60,8 @@ test('GET /api/health returns database-backed readiness and exact release metada
     expect(['healthy', 'degraded']).toContain(body.status)
     expect(body.version).toMatch(/^[0-9a-f]{40}$/)
     expect(body.deployedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-    expect(body.checks.database).toBe('healthy')
-    expect(body.checks.supabase).toBe(body.checks.database)
+    expect(body.checks.database.status).toBe('healthy')
+    expect(body.checks.supabase).toEqual(body.checks.database)
 })
 
 test('GET /api/livez reports process liveness without checking dependencies', async ({ request }) => {

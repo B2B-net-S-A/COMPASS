@@ -7,13 +7,13 @@ run-name: Deploy COMPASS ${{ github.event.workflow_run.head_sha || inputs.target
 #
 # Required GitHub Environment: production (configure required reviewers).
 # Required secrets in that environment:
-#   COOLIFY_URL         e.g. https://coolify-compass.dynaminds.pl
 #   COOLIFY_TOKEN       team-scoped token with write + deploy only
 #   COOLIFY_READ_TOKEN  separate team-scoped read-only token
 #   COOLIFY_APP_UUID    application UUID
 # Required variables:
+#   STAGING_COOLIFY_URL    e.g. https://coolify-staging.dynaminds.pl
+#   PRODUCTION_COOLIFY_URL e.g. https://coolify-compass.dynaminds.pl
 #   APP_URL             e.g. https://compass.dynaminds.pl
-# Optional variables:
 #   ROLLBACK_FLOOR_SHA  oldest explicitly approved rollback SHA
 # Activation variable (must be set deliberately after the runbook is complete):
 #   COMPASS_RELEASE_GATE_ENABLED=true
@@ -32,7 +32,7 @@ on:
 
 permissions:
   contents: read
-  checks: read
+  actions: read
 
 concurrency:
   group: deploy-production
@@ -41,9 +41,17 @@ concurrency:
 jobs:
   release:
     name: Deploy exact SHA
-    if: ${{ vars.COMPASS_RELEASE_GATE_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    if: >-
+      ${{ vars.COMPASS_RELEASE_GATE_ENABLED == 'true' &&
+          (github.event_name == 'workflow_dispatch' ||
+           (github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.event == 'push' &&
+            github.event.workflow_run.head_branch == 'main' &&
+            github.event.workflow_run.head_repository.full_name == github.repository)) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Includes the worst-case target deployment plus a complete rollback and
+    # rollback-readiness verification. A shorter timeout can kill the safety path.
+    timeout-minutes: 75
     environment: production
     steps:
       - name: Resolve immutable release metadata
@@ -68,7 +76,21 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ steps.release.outputs.target_sha }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify release commit belongs to protected main
+        env:
+          TARGET_SHA: ${{ steps.release.outputs.target_sha }}
+        run: |
+          if ! git show-ref --verify --quiet refs/remotes/origin/main; then
+            echo "::error::Full-history checkout did not contain origin/main"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$TARGET_SHA" origin/main; then
+            echo "::error::Target SHA is not reachable from protected main"
+            exit 1
+          fi
 
       - name: Verify quality-gate for a manual release
         if: github.event_name == 'workflow_dispatch'
@@ -81,10 +103,11 @@ jobs:
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$REPOSITORY/commits/$TARGET_SHA/check-runs?per_page=100")
-          passed=$(echo "$response" | jq '[.check_runs[] | select(.name == "quality-gate" and .conclusion == "success")] | length')
+            "https://api.github.com/repos/$REPOSITORY/actions/workflows/build-check.yml/runs?branch=main&status=completed&head_sha=$TARGET_SHA&per_page=100")
+          passed=$(echo "$response" | jq --arg sha "$TARGET_SHA" \
+            '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push" and .conclusion == "success")] | length')
           if [ "$passed" -lt 1 ]; then
-            echo "::error::The selected SHA has no successful quality-gate check"
+            echo "::error::The selected SHA has no successful main-branch Build check workflow"
             exit 1
           fi
 
@@ -100,7 +123,7 @@ jobs:
 
       - name: Deploy and verify exact SHA through Coolify
         env:
-          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_URL: ${{ vars.PRODUCTION_COOLIFY_URL }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
           COOLIFY_READ_TOKEN: ${{ secrets.COOLIFY_READ_TOKEN }}
           COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
@@ -113,6 +136,7 @@ jobs:
         run: node COMPASS/scripts/coolify-release.mjs
 
       - name: Archive release manifest
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-manifest-${{ steps.release.outputs.target_sha }}
