@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "mode": "scaffold",
+  "sourceRepository": "artur-t-96/engineering-standards",
+  "sourceRef": null,
+  "files": [
+    {
+      "source": "generated/compass/AGENTS.md",
+      "target": "AGENTS.md"
+    }
+  ]
+}

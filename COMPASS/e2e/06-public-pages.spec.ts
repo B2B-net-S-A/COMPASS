@@ -52,12 +52,25 @@ test('GET /support returns 200', async ({ page }) => {
     expect(response?.status()).toBe(200)
 })
 
-test('GET /api/health returns {status: "ok"}', async ({ request }) => {
+test('GET /api/health returns database-backed readiness and exact release metadata', async ({ request }) => {
     const response = await request.get('/api/health')
     expect(response.status()).toBe(200)
+    expect(response.headers()['cache-control']).toContain('no-store')
     const body = await response.json()
-    expect(body.status).toBe('ok')
-    expect(typeof body.uptime).toBe('number')
+    expect(['healthy', 'degraded']).toContain(body.status)
+    expect(body.version).toMatch(/^[0-9a-f]{40}$/)
+    expect(body.deployedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(body.checks.database).toBe('healthy')
+    expect(body.checks.supabase).toBe(body.checks.database)
+})
+
+test('GET /api/livez reports process liveness without checking dependencies', async ({ request }) => {
+    const response = await request.get('/api/livez')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['cache-control']).toContain('no-store')
+    const body = await response.json()
+    expect(body.status).toBe('alive')
+    expect(body.version).toMatch(/^[0-9a-f]{40}$/)
 })
 
 test('GET /nonexistent-page-12345 returns 404 (or proper not-found)', async ({ page }) => {

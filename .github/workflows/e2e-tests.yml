@@ -2,7 +2,7 @@ name: E2E tests (Playwright)
 
 on:
   workflow_run:
-    workflows: ["Deploy to Hetzner"]
+    workflows: ["Deploy"]
     types:
       - completed
   workflow_dispatch:
@@ -14,12 +14,15 @@ jobs:
   playwright:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (vars.COMPASS_RELEASE_GATE_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success') }}
     defaults:
       run:
         working-directory: ./COMPASS
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -33,7 +36,7 @@ jobs:
 
       - name: Run Playwright smoke tests
         env:
-          BASE_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          BASE_URL: ${{ vars.APP_URL || secrets.NEXT_PUBLIC_APP_URL }}
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
         run: npx playwright test
