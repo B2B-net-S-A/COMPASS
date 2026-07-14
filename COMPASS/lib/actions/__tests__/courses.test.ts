@@ -322,6 +322,7 @@ describe('getCourseDetail', () => {
                     },
                 ],
                 profiles: [{ id: 'u-author', full_name: 'Author A.', avatar_url: null }],
+                profile_directory: [{ id: 'u-author', full_name: 'Author A.', avatar_url: null }],
                 course_lessons: [
                     { id: 'l1', course_id: 'c1', order_index: 0, title: 'Lekcja 1', content_md: '# Hello', video_url: null, attachments: [], estimated_minutes: 15 },
                 ],

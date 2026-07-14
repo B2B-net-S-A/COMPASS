@@ -5,10 +5,11 @@ import { TimesheetEditor } from '@/components/internal/TimesheetEditor'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { year: string; month: string }
+    params: Promise<{ year: string; month: string }>
 }
 
-export default async function TimesheetMonthPage({ params }: PageProps) {
+export default async function TimesheetMonthPage(props: PageProps) {
+    const params = await props.params;
     const year = Number(params.year)
     const month = Number(params.month)
     if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {

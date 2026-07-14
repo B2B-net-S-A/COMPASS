@@ -4,6 +4,7 @@ import { logCompat } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type {
     ApplicationStatus,
     CreatePitchInput,
@@ -98,7 +99,8 @@ export async function submitPitch(input: CreatePitchInput): Promise<IncubatorAct
         if (error) throw error
 
         // Notify all admins
-        const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+        const service = createServiceClient()
+        const { data: admins } = await service.from('profiles').select('id').eq('role', 'admin')
         await notify(
             supabase,
             ((admins ?? []) as Array<{ id: string }>).map((p) => p.id),
@@ -120,7 +122,7 @@ export async function submitPitch(input: CreatePitchInput): Promise<IncubatorAct
 async function enrichPitches(supabase: ReturnType<typeof createClient>, pitches: IncubatorPitch[]): Promise<IncubatorPitchListItem[]> {
     if (pitches.length === 0) return []
     const userIds = Array.from(new Set([...pitches.map((p) => p.submitter_id), ...pitches.map((p) => p.reviewer_id).filter((x): x is string => !!x)]))
-    const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds)
+    const { data: profiles } = await supabase.from('profile_directory').select('id, full_name').in('id', userIds)
     const map = new Map(((profiles ?? []) as Array<{ id: string; full_name: string | null }>).map((p) => [p.id, p.full_name]))
     return pitches.map((p) => ({
         ...p,
@@ -373,7 +375,8 @@ export async function applyToProject(projectId: string, motivation: string): Pro
         if (error) throw error
 
         const { data: project } = await supabase.from('incubator_projects').select('title').eq('id', projectId).single()
-        const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+        const service = createServiceClient()
+        const { data: admins } = await service.from('profiles').select('id').eq('role', 'admin')
         await notify(
             supabase,
             ((admins ?? []) as Array<{ id: string }>).map((p) => p.id),
@@ -406,7 +409,7 @@ export async function listApplicationsForProject(projectId: string): Promise<Inc
 
         const applicantIds = ((apps ?? []) as Array<IncubatorApplication>).map((a) => a.applicant_id)
         const { data: profiles } = applicantIds.length > 0
-            ? await supabase.from('profiles').select('id, full_name').in('id', applicantIds)
+            ? await supabase.from('profile_directory').select('id, full_name').in('id', applicantIds)
             : { data: [] }
         const map = new Map(((profiles ?? []) as Array<{ id: string; full_name: string | null }>).map((p) => [p.id, p.full_name]))
 

@@ -8,8 +8,9 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(
     _request: NextRequest,
-    { params }: { params: { year: string; month: string } },
+    props: { params: Promise<{ year: string; month: string }> }
 ) {
+    const params = await props.params;
     const year = Number(params.year)
     const month = Number(params.month)
     if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {

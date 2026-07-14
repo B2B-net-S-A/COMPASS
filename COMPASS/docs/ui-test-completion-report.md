@@ -106,7 +106,7 @@
 - ✅ **API routes (priorytet 4) — 3/4:**
   - [health/route.test.ts](../app/api/health/__tests__/route.test.ts) — status / uptime / runtime config
   - [digest/route.test.ts](../app/api/digest/__tests__/route.test.ts) — userId required, getDigestHtml gating, error 500 fallback
-  - [migrate-compliance/route.test.ts](../app/api/migrate-compliance/__tests__/route.test.ts) — CRON_SECRET gate (401), missing config (500), case-sensitivity
+  - [migrate-compliance/route.test.ts](../app/api/migrate-compliance/__tests__/route.test.ts) — CRON_SECRET gate (401), missing CRON_SECRET (503), missing Supabase config (500), case-sensitivity
   - 🟡 process-cv-batch — pominięty (duża integracja: parsers + Voyage + Anthropic + Supabase storage). Zostawiony do iteracji 2.
 
 ### Faza 2 — Eval harness
@@ -152,7 +152,7 @@
 ### Faza 7 — Bug fixing
 
 - ✅ Bug #001 naprawiony — hint pod email field na signup form: *"Rejestracja dostępna tylko dla email z domeny @b2bnetwork.pl."* ([app/login/page.tsx:217](../app/login/page.tsx))
-- 🟡 Bugi #003 / #004 / #005 / #007 — wymagają **wywołania `GET /api/migrate-compliance?secret=$CRON_SECRET`** żeby wstawić seed dokumentów do `um_legal_documents`. To **CRITICAL** — bez nich akceptacje regulaminów są prawnie nieskuteczne. Powinno być uruchomione natychmiast.
+- 🟡 Bugi #003 / #004 / #005 / #007 — wymagają **wywołania `GET /api/migrate-compliance` z nagłówkiem `Authorization: Bearer $CRON_SECRET`** żeby wstawić seed dokumentów do `um_legal_documents`. To **CRITICAL** — bez nich akceptacje regulaminów są prawnie nieskuteczne. Powinno być uruchomione natychmiast.
 
 ### Faza 8 — Verification
 
@@ -201,7 +201,7 @@ npx tsx scripts/setup-test-users.ts    # tworzy/promuje 4 test accounts (idempot
 npx tsx scripts/cleanup-test-users.ts  # usuwa wszystkie e2e+%@b2bnetwork.pl
 
 # Migracja compliance (FIX dla #003-#005)
-curl -X GET "https://compass.dynaminds.pl/api/migrate-compliance?secret=$CRON_SECRET"
+curl -X GET -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/migrate-compliance"
 ```
 
 ---
@@ -259,7 +259,7 @@ curl -X GET "https://compass.dynaminds.pl/api/migrate-compliance?secret=$CRON_SE
 | #006 | MEDIUM | 404 maskowane przez consent gate | OTWARTY |
 | #007 | HIGH | Consent UI pozwala akceptować pustki | OTWARTY (powiązany z #003-#005) |
 
-**Działanie natychmiastowe:** uruchomić `GET /api/migrate-compliance?secret=$CRON_SECRET` — to załatwi #003 + #004 + #005 + #007 jednym wywołaniem.
+**Działanie natychmiastowe:** uruchomić `GET /api/migrate-compliance` z nagłówkiem `Authorization: Bearer $CRON_SECRET` — to załatwi #003 + #004 + #005 + #007 jednym wywołaniem.
 
 ---
 

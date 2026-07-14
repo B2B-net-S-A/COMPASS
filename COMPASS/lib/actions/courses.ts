@@ -253,7 +253,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
         const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
         if (authorIds.length > 0) {
             const { data: profiles } = await supabase
-                .from('profiles')
+                .from('profile_directory')
                 .select('id, full_name, avatar_url')
                 .in('id', authorIds)
             for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>) {
@@ -301,7 +301,7 @@ export async function getCourseDetail(slugOrId: string): Promise<ActionResult<Co
 
         // Author profile in a separate query (no embed → testable)
         const { data: authorProfile } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('full_name, avatar_url')
             .eq('id', course.author_id)
             .maybeSingle()

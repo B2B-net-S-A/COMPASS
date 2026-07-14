@@ -4,6 +4,7 @@ import { Inbox, Mail, Paperclip, Phone, Building2, User as UserIcon } from 'luci
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { TicketStatusBadge } from '@/components/support/TicketStatusBadge'
 import { TicketChat } from '@/components/support/TicketChat'
 import { InboxPriorityBadge } from '@/components/inbox/InboxPriorityBadge'
@@ -21,10 +22,11 @@ function formatBytes(n: number): string {
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
-export default async function InboxTicketDetailPage({ params }: PageProps) {
+export default async function InboxTicketDetailPage(props: PageProps) {
+    const params = await props.params;
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
@@ -47,9 +49,12 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
     let taskTcmProfiles: Array<{ id: string; fullName: string }> = []
     let taskContractors: Array<{ id: string; full_name: string }> = []
     if (canCreateTask) {
+        // The role-filtered TCM roster is protected profile data. Resolve it
+        // only after the caller's own role passed the guard above.
+        const service = createServiceClient()
         const [{ data: tcm }, { data: cs }] = await Promise.all([
-            supabase.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']).order('full_name'),
-            supabase.from('contractors').select('id, full_name').order('full_name'),
+            service.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']).order('full_name'),
+            service.from('contractors').select('id, full_name').order('full_name'),
         ])
         taskTcmProfiles = ((tcm ?? []) as Array<{ id: string; full_name: string | null }>).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))
         taskContractors = ((cs ?? []) as Array<{ id: string; full_name: string }>).map((c) => ({ id: c.id, full_name: c.full_name }))

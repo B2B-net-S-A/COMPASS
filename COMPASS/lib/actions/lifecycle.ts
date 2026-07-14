@@ -24,6 +24,7 @@ import type {
     ExitInterview,
     LifecycleAnalytics,
     LifecycleEvent,
+    LifecycleEventType,
     LifecycleSidebarCount,
     OffboardingTask,
     OnboardingDetail,
@@ -74,6 +75,33 @@ async function fetchManagerContact(managerId: string): Promise<{ email: string; 
         .single()
     if (error || !data) return null
     return data
+}
+
+/**
+ * Append to the employee lifecycle timeline through the only runtime write
+ * path exposed by the database. The RPC is service-role-only and validates
+ * that actorId belongs to an admin or Talent Community Manager. Keeping this
+ * helper in the guarded server-action module prevents browser clients from
+ * manufacturing audit history.
+ */
+async function recordLifecycleEvent(input: {
+    userId: string
+    eventType: LifecycleEventType
+    actorId: string
+    metadata?: Record<string, unknown>
+}): Promise<void> {
+    const supabase = createServiceClient()
+    const { error } = await supabase.rpc('record_lifecycle_event', {
+        p_user_id: input.userId,
+        p_event_type: input.eventType,
+        p_actor_id: input.actorId,
+        p_metadata: input.metadata ?? {},
+    })
+
+    if (error) {
+        logCompat.error('recordLifecycleEvent RPC error:', error)
+        throw new Error('Nie udało się zapisać historii lifecycle.')
+    }
 }
 
 // ─── Templates (TCM/admin CRUD) ─────────────────────────────────────────────
@@ -593,11 +621,11 @@ export async function assignBuddy(userId: string, buddyId: string | null): Promi
     if (error) throw new Error('Nie udało się przypisać buddy.')
 
     if (buddyId) {
-        await supabase.from('lifecycle_events').insert({
-            user_id: userId,
-            event_type: 'buddy_assigned',
+        await recordLifecycleEvent({
+            userId,
+            eventType: 'buddy_assigned',
             metadata: { buddy_id: buddyId },
-            created_by: ctx.userId,
+            actorId: ctx.userId,
         })
         await logAudit(ctx.userId, 'BUDDY_ASSIGNED', { user_id: userId, buddy_id: buddyId })
     } else {
@@ -696,7 +724,11 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
         .order('position', { ascending: true })
     if (tasksErr) throw new Error('Nie udało się pobrać zadań.')
 
-    const { data: employee, error: empErr } = await supabase
+    // The progress row above is the authorization boundary enforced by RLS.
+    // Hydrate sensitive HR profile fields only after that row was visible;
+    // C2 will make direct cross-user profile reads unavailable to the session.
+    const service = createServiceClient()
+    const { data: employee, error: empErr } = await service
         .from('profiles')
         .select('id, full_name, email, role, hired_at, buddy_id, manager_id, employment_status')
         .eq('id', progress.user_id)
@@ -706,7 +738,7 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
     let buddy = null
     if (employee.buddy_id) {
         const { data: buddyRow } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name')
             .eq('id', employee.buddy_id)
             .single()
@@ -716,7 +748,7 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
     let manager = null
     if (employee.manager_id) {
         const { data: managerRow } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name')
             .eq('id', employee.manager_id)
             .single()
@@ -896,11 +928,11 @@ export async function completeOnboarding(progressId: string): Promise<void> {
 
     await supabase.from('profiles').update({ employment_status: 'active' }).eq('id', progress.user_id)
 
-    await supabase.from('lifecycle_events').insert({
-        user_id: progress.user_id,
-        event_type: 'onboarding_completed',
+    await recordLifecycleEvent({
+        userId: progress.user_id,
+        eventType: 'onboarding_completed',
         metadata: { progress_id: progressId, completed_at: completedAt },
-        created_by: ctx.userId,
+        actorId: ctx.userId,
     })
 
     await logAudit(ctx.userId, 'ONBOARDING_COMPLETED', { progress_id: progressId, user_id: progress.user_id })
@@ -1228,11 +1260,11 @@ export async function markEmployeeExited(userId: string): Promise<void> {
 
     await supabase.from('profiles').update({ employment_status: 'exited' }).eq('id', userId)
 
-    await supabase.from('lifecycle_events').insert({
-        user_id: userId,
-        event_type: 'exited',
+    await recordLifecycleEvent({
+        userId,
+        eventType: 'exited',
         metadata: { open_required_tasks: openTasks ?? 0 },
-        created_by: ctx.userId,
+        actorId: ctx.userId,
     })
 
     await logAudit(ctx.userId, 'EMPLOYEE_EXITED', { user_id: userId, open_required_tasks: openTasks ?? 0 })
@@ -1574,11 +1606,11 @@ export async function cancelOnboarding(progressId: string, reason: string | null
         .eq('id', progress.user_id)
         .eq('employment_status', 'onboarding')
 
-    await supabase.from('lifecycle_events').insert({
-        user_id: progress.user_id,
-        event_type: 'onboarding_started', // re-use, with metadata.cancelled flag
+    await recordLifecycleEvent({
+        userId: progress.user_id,
+        eventType: 'onboarding_started', // re-use, with metadata.cancelled flag
         metadata: { cancelled: true, progress_id: progressId, reason },
-        created_by: ctx.userId,
+        actorId: ctx.userId,
     })
 
     await logAudit(ctx.userId, 'ONBOARDING_CANCELLED', { progress_id: progressId, user_id: progress.user_id, reason })
@@ -1712,19 +1744,19 @@ export async function updateLifecycleProfile(input: UpdateLifecycleProfileInput)
 
     // Special-case: manager_id change should be logged as MANAGER_ASSIGNED event in timeline
     if (input.managerId !== undefined) {
-        await supabase.from('lifecycle_events').insert({
-            user_id: input.userId,
-            event_type: 'manager_changed',
+        await recordLifecycleEvent({
+            userId: input.userId,
+            eventType: 'manager_changed',
             metadata: { new_manager_id: input.managerId },
-            created_by: ctx.userId,
+            actorId: ctx.userId,
         })
     }
     if (input.role !== undefined) {
-        await supabase.from('lifecycle_events').insert({
-            user_id: input.userId,
-            event_type: 'role_changed',
+        await recordLifecycleEvent({
+            userId: input.userId,
+            eventType: 'role_changed',
             metadata: { new_role: input.role },
-            created_by: ctx.userId,
+            actorId: ctx.userId,
         })
     }
 }
@@ -1820,11 +1852,11 @@ export async function createExternalEmployee(input: CreateExternalEmployeeInput)
     }
 
     // Log hired event in timeline
-    await supabase.from('lifecycle_events').insert({
-        user_id: userId,
-        event_type: 'hired',
+    await recordLifecycleEvent({
+        userId,
+        eventType: 'hired',
         metadata: { is_external: true, role: input.role, hired_at: input.hiredAt },
-        created_by: ctx.userId,
+        actorId: ctx.userId,
     })
 
     await logAudit(ctx.userId, 'EXTERNAL_EMPLOYEE_CREATED', {

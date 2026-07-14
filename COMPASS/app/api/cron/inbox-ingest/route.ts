@@ -1,8 +1,7 @@
 // Phase 26b — Inbox email ingest cron.
 //
 // Schedule (Coolify): */5 * * * *  (every 5 minutes)
-// Auth (preferred):   Authorization: Bearer $CRON_SECRET
-// Legacy:             ?secret=$CRON_SECRET (logs deprecation warning)
+// Auth (required):    Authorization: Bearer $CRON_SECRET
 //
 // Side-effects per tick:
 //   - Reads new messages from administracja@b2bnetwork.pl since cursor

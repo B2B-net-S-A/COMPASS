@@ -11,22 +11,33 @@ import type { ExitInterview } from '@/lib/types/lifecycle'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ExitInterviewReviewPage({ params }: { params: { interviewId: string } }) {
+export default async function ExitInterviewReviewPage(props: { params: Promise<{ interviewId: string }> }) {
+    const params = await props.params;
     await requireLifecycleManagerAction() // TCM/admin only
 
     const supabase = createClient()
     const { data: interview, error } = await supabase
         .from('exit_interviews')
-        .select('*, user:profiles!user_id(full_name, email)')
+        .select('*')
         .eq('id', params.interviewId)
         .single()
 
     if (error || !interview) notFound()
 
-    const i = interview as ExitInterview & { user: { full_name: string | null; email: string | null } | null }
+    const adminClient = createLifecycleAdminClient()
+    const { data: employeeProfile } = interview.user_id
+        ? await adminClient
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', interview.user_id)
+            .maybeSingle()
+        : { data: null }
+    const i = {
+        ...(interview as ExitInterview),
+        user: employeeProfile ?? null,
+    } as ExitInterview & { user: { full_name: string | null; email: string | null } | null }
 
     // Phase 25c: prefetch manager + actor names for ExitEmailsCard
-    const adminClient = createLifecycleAdminClient()
     let managerInfo: { full_name: string | null; email: string | null; manager_id: string | null } | null = null
     let managerProfile: { full_name: string | null; email: string | null } | null = null
     if (i.user_id) {

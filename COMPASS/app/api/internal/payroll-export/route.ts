@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 /**
  * H3.5: Payroll JSON export — strukturyzowane dane do payroll/Centrali.
  *
- * GET /api/internal/payroll-export?secret=$CRON_SECRET&year=2026&month=5
+ * GET /api/internal/payroll-export?year=2026&month=5
  *   - Wymaga CRON_SECRET (auth)
  *   - Zwraca JSON z agregatami per pracownik dla danego miesiąca:
  *       - approved timesheet hours
@@ -16,7 +16,8 @@ export const dynamic = 'force-dynamic'
  *       - payroll-ready summary
  *
  * Cron użycie (Coolify):
- *   curl -X GET "https://compass.dynaminds.pl/api/internal/payroll-export?secret=$CRON_SECRET&year=2026&month=5" \
+ *   curl -X GET "https://compass.dynaminds.pl/api/internal/payroll-export?year=2026&month=5" \
+ *     -H "Authorization: Bearer $CRON_SECRET" \
  *     -o /tmp/payroll-2026-05.json
  *
  * Format:

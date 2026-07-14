@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { createLifecycleClient as createClient } from '@/lib/supabase/lifecycle-client'
+import { createLifecycleAdminClient, createLifecycleClient } from '@/lib/supabase/lifecycle-client'
 import { requireLifecycleHubLayout } from '@/lib/auth/internal-guard'
 import { listOffboardingTasks, getLifecycleTimeline } from '@/lib/actions/lifecycle'
 import { canManageLifecycle } from '@/lib/types/role'
@@ -11,21 +11,25 @@ import { LogOut } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-export default async function OffboardingDetailPage({ params }: { params: { userId: string } }) {
+export default async function OffboardingDetailPage(props: { params: Promise<{ userId: string }> }) {
+    const params = await props.params;
     const ctx = await requireLifecycleHubLayout()
 
-    const supabase = createClient()
-    const { data: profile, error } = await supabase
+    const session = createLifecycleClient()
+    const { data: isManagerOfEmployee } = await session.rpc('is_manager_of', {
+        target_user_id: params.userId,
+    })
+    const isAuthorized = canManageLifecycle(ctx.role) || isManagerOfEmployee
+    if (!isAuthorized) notFound()
+
+    const admin = createLifecycleAdminClient()
+    const { data: profile, error } = await admin
         .from('profiles')
         .select('id, full_name, email, role, employment_status, termination_date, manager_id')
         .eq('id', params.userId)
         .single()
 
     if (error || !profile) notFound()
-
-    const isManagerOfEmployee = profile.manager_id === ctx.userId
-    const isAuthorized = canManageLifecycle(ctx.role) || isManagerOfEmployee
-    if (!isAuthorized) notFound()
 
     const [tasks, timeline] = await Promise.all([
         listOffboardingTasks(profile.id),

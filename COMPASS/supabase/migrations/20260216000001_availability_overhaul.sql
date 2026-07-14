@@ -66,6 +66,8 @@ END $$;
 -- However, candidates table had a check constraint: 'new', 'contacted', 'interview', 'hired', 'rejected'.
 -- Wait, the profile page uses 'open', 'busy', 'unavailable'.
 -- Let's synchronize the allowed statuses.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS current_status TEXT DEFAULT 'open';
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS current_status TEXT DEFAULT 'new';
 ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_current_status_check;
 ALTER TABLE profiles
 ADD CONSTRAINT profiles_current_status_check CHECK (

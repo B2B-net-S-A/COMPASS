@@ -8,6 +8,7 @@ import {
     getConversations,
     getMessages,
     sendMessage,
+    sendMessageWithAttachment,
     markAsRead,
     searchUsersToMessage,
     getAllUsersToMessage,
@@ -58,6 +59,7 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
     const [messages, setMessages] = useState<any[]>([])
     const [newMessage, setNewMessage] = useState('')
+    const [pendingAttachment, setPendingAttachment] = useState<File | null>(null)
     const [loading, setLoading] = useState(true)
     const [loadingMessages, setLoadingMessages] = useState(false)
     const [sending, setSending] = useState(false)
@@ -73,6 +75,7 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
     const [loadingUsers, setLoadingUsers] = useState(false)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const attachmentInputRef = useRef<HTMLInputElement>(null)
     const supabase = createClient()
 
     // Split conversations into broadcasts and directs
@@ -96,10 +99,14 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                 event: 'INSERT',
                 schema: 'public',
                 table: 'messages'
-            }, (payload) => {
-                // If message is for active conversation, add it
+            }, async (payload) => {
+                // Re-fetch through the guarded server action so private
+                // attachments receive a short-lived signed URL.
                 if (payload.new && (payload.new as any).conversation_id === activeConversationId) {
-                    setMessages(prev => [...prev, payload.new])
+                    const conversationId = activeConversationId
+                    if (!conversationId) return
+                    const { data } = await getMessages(conversationId)
+                    if (data) setMessages(data)
                     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
                 }
                 // Refresh conversation list
@@ -110,7 +117,7 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [currentUser.id])
+    }, [currentUser.id, activeConversationId])
 
     // Load messages when conversation changes
     useEffect(() => {
@@ -177,8 +184,8 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
         const q = searchQuery.toLowerCase()
         const filtered = allUsers.filter(u =>
             u.full_name?.toLowerCase().includes(q) ||
-            u.email?.toLowerCase().includes(q) ||
-            u.role?.toLowerCase().includes(q)
+            u.job_title?.toLowerCase().includes(q) ||
+            u.department?.toLowerCase().includes(q)
         )
         setSearchResults(filtered)
 
@@ -232,16 +239,59 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
     }
 
     const handleSend = async () => {
-        if (!newMessage.trim() || !activeConversationId) return
+        if ((!newMessage.trim() && !pendingAttachment) || !activeConversationId) return
         setSending(true)
-        const { error } = await sendMessage(activeConversationId, newMessage.trim())
+        let error: string | null
+        if (pendingAttachment) {
+            const formData = new FormData()
+            formData.set('file', pendingAttachment)
+            const result = await sendMessageWithAttachment(
+                activeConversationId,
+                newMessage.trim(),
+                formData,
+            )
+            error = result.error
+        } else {
+            const result = await sendMessage(activeConversationId, newMessage.trim())
+            error = result.error
+        }
         if (error) {
             toast.error(error)
         } else {
             setNewMessage('')
+            setPendingAttachment(null)
+            if (attachmentInputRef.current) attachmentInputRef.current.value = ''
             // Optimistic: message will arrive via realtime
         }
         setSending(false)
+    }
+
+    const handleAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        if (!file) return
+        const allowedTypes = new Set([
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'application/pdf',
+            'text/plain',
+        ])
+        if (!allowedTypes.has(file.type)) {
+            toast.error('Dozwolone są JPG, PNG, WEBP, PDF i TXT.')
+            event.target.value = ''
+            return
+        }
+        if (file.size < 1 || file.size > 10 * 1024 * 1024) {
+            toast.error('Plik jest pusty albo przekracza limit 10 MB.')
+            event.target.value = ''
+            return
+        }
+        setPendingAttachment(file)
+    }
+
+    const clearAttachment = () => {
+        setPendingAttachment(null)
+        if (attachmentInputRef.current) attachmentInputRef.current.value = ''
     }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -332,12 +382,6 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                 )
                             }
 
-                            const ROLE_LABELS: Record<string, string> = {
-                                administrator: 'Administrator',
-                                centrala: 'Centrala',
-                                consultant: 'Konsultant',
-                            }
-
                             return usersToShow.map(user => (
                                 <button
                                     key={user.id}
@@ -347,15 +391,15 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                     <Avatar className="w-8 h-8">
                                         <AvatarImage src={user.avatar_url} />
                                         <AvatarFallback className="bg-muted text-muted-foreground text-xs">
-                                            {(user.full_name || user.email || '?').charAt(0).toUpperCase()}
+                                            {(user.full_name || '?').charAt(0).toUpperCase()}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-foreground truncate">
-                                            {user.full_name || user.email}
+                                            {user.full_name || 'Użytkownik'}
                                         </div>
                                         <div className="text-[10px] text-muted-foreground">
-                                            {ROLE_LABELS[user.role] || user.role}
+                                            {[user.job_title, user.department].filter(Boolean).join(' · ') || 'Profil firmowy'}
                                         </div>
                                     </div>
                                 </button>
@@ -562,7 +606,42 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                         {/* Input */}
                         {canSendInActive ? (
                             <div className="p-4 border-t border-border bg-muted">
+                                {pendingAttachment && (
+                                    <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs">
+                                        <span className="min-w-0 truncate">
+                                            📎 {pendingAttachment.name} ({Math.ceil(pendingAttachment.size / 1024)} KB)
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={clearAttachment}
+                                            className="shrink-0 text-muted-foreground hover:text-foreground"
+                                            aria-label="Usuń wybrany załącznik"
+                                            disabled={sending}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                )}
                                 <div className="flex gap-2">
+                                    <input
+                                        ref={attachmentInputRef}
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"
+                                        onChange={handleAttachmentChange}
+                                        className="hidden"
+                                        disabled={sending}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={() => attachmentInputRef.current?.click()}
+                                        disabled={sending}
+                                        aria-label="Dodaj załącznik"
+                                        title="Dodaj JPG, PNG, WEBP, PDF lub TXT (maks. 10 MB)"
+                                    >
+                                        <Paperclip className="h-4 w-4" />
+                                    </Button>
                                     <Input
                                         value={newMessage}
                                         onChange={(e) => setNewMessage(e.target.value)}
@@ -573,7 +652,7 @@ export function MessagesPageClient({ currentUser, isAdmin }: MessagesPageClientP
                                     />
                                     <Button
                                         onClick={handleSend}
-                                        disabled={!newMessage.trim() || sending}
+                                        disabled={(!newMessage.trim() && !pendingAttachment) || sending}
                                         className="bg-burgundy hover:bg-primary/90 px-4"
                                     >
                                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

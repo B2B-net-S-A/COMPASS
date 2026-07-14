@@ -11,10 +11,11 @@ import { DownloadList } from '@/components/support/DownloadList'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { category: string; slug: string }
+    params: Promise<{ category: string; slug: string }>
 }
 
-export default async function ArticleDetailPage({ params }: PageProps) {
+export default async function ArticleDetailPage(props: PageProps) {
+    const params = await props.params;
     const articleRes = await getArticleBySlug(params.slug)
     if (!articleRes.success) notFound()
     const article = articleRes.data

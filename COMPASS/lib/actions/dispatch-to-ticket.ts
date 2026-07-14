@@ -83,11 +83,11 @@ export async function dispatchConversationToTicket(args: DispatchArgs): Promise<
 
     if (otherUserId) {
         const { data: otherProfile } = await supabase
-            .from('profiles')
-            .select('full_name, email')
+            .from('profile_directory')
+            .select('full_name')
             .eq('id', otherUserId)
             .single()
-        if (otherProfile) assigneeName = otherProfile.full_name || otherProfile.email || 'opiekunem'
+        if (otherProfile) assigneeName = otherProfile.full_name || 'opiekunem'
 
         // Source of truth for "is this person my guardian, and which type?": consultant_assignments
         // consultant_assignments is absent from the regenerated types; cast preserves behavior.

@@ -3,7 +3,9 @@
 import { logCompat } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type { TablesUpdate } from '@/lib/supabase/database.types'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 import { parseOrThrow } from '@/lib/validators/common'
@@ -11,104 +13,56 @@ import {
     consultantIdSchema,
     profileUpdateInputSchema,
     updateUserBioInputSchema,
+    type ProfileUpdateInput,
 } from '@/lib/validators/profile'
 
 // Phase 1.0 (2026-05-04): extracted from legacy lib/actions/matching.ts.
 // Drops candidate-syncing logic (candidates table is archived to compass_legacy).
 // Keeps profile CRUD that the consultant onboarding/profile UI still needs.
 
-export interface ProfileUpdateData {
-    bio?: string
-    experience_years?: number
-    current_status?: string
-    capacity_percentage?: number
-    project_sentiment?: string[]
-    verifier_status?: string
-    ambassador_status?: string
-    sales_support_status?: string
-    previous_clients?: string[]
-    available_from?: string | null
-    fte_status?: string | null
-    max_monthly_hours?: number
-    gdpr_consent?: boolean
-    full_name?: string
-    phone?: string
-    embedding?: number[]
-    skills?: string[]
-    avatar_url?: string
-    cv_url?: string
-    tech_stack?: Record<string, unknown>[]
-    certifications?: Record<string, unknown>[]
-    work_preferences?: Record<string, unknown>
-}
+export type ProfileUpdateData = ProfileUpdateInput
 
 export async function updateUserBio(bio: string) {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Not authenticated')
-
-    // Phase 18.4: Zod walidacja długości bio (max 5000).
     const { bio: validBio } = parseOrThrow(updateUserBioInputSchema, { bio })
-
-    const embedding = await generateEmbedding(validBio)
-    const { error } = await supabase
-        .from('profiles')
-        // embedding is number[] from the model; pgvector column is typed as string in the generated types
-        .update({ bio: validBio, embedding: embedding as unknown as string })
-        .eq('id', user.id)
-    if (error) throw new Error(error.message)
-
+    const result = await updateOwnProfile({ bio: validBio })
+    if (!result.success) throw new Error(result.error)
     return { success: true }
 }
 
-export async function updateProfileFull(
+export async function updateOwnProfile(
     data: ProfileUpdateData,
 ): Promise<{ success: true; warning?: string } | { success: false; error: string }> {
     try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const session = createClient()
+        const { data: { user } } = await session.auth.getUser()
         if (!user) return { success: false, error: 'Nie jesteś zalogowany.' }
 
-        // Phase 18.4: Zod walidacja każdego pola + odrzucenie sensitive fields
-        // (role, email, embedding, loyalty_*, onboarding_*). Nawet jeśli atakujący
-        // wyśle `{ role: 'admin' }` w request body, ten field jest dropowany przed
-        // dotarciem do .update().
         const parsed = parseOrThrow(profileUpdateInputSchema, data)
-        const updates: ProfileUpdateData = { ...parsed }
+        const updates = { ...parsed } as unknown as TablesUpdate<'profiles'>
 
         if (updates.available_from === '') {
             updates.available_from = null
         }
 
-        if (data.bio) {
+        if (parsed.bio !== undefined) {
             try {
-                updates.embedding = await generateEmbedding(data.bio)
+                updates.embedding = await generateEmbedding(parsed.bio) as unknown as string
             } catch (e) {
                 logCompat.warn('[ProfileUpdate] Failed to generate embedding:', e)
             }
         }
 
-        const { error } = await supabase
+        // The service client is used only after getUser() and with an immutable
+        // target id. This keeps profiles client writes removable in C2.
+        const admin = createServiceClient()
+        const { error } = await admin
             .from('profiles')
-            .update(updates as unknown as TablesUpdate<'profiles'>)
+            .update(updates)
             .eq('id', user.id)
 
         if (error) {
-            const msg = (error as { message?: string }).message?.toLowerCase() ?? ''
-            const looksLikeMissingColumn = msg.includes('column') && (msg.includes('phone') || msg.includes('does not exist') || msg.includes('undefined'))
-            if (looksLikeMissingColumn && updates.phone !== undefined) {
-                const { phone: _p, ...updatesWithoutPhone } = updates
-                logCompat.warn('[ProfileUpdate] Retrying without phone (column may be missing):', _p)
-                const retry = await supabase.from('profiles').update(updatesWithoutPhone as unknown as TablesUpdate<'profiles'>).eq('id', user.id)
-                if (retry.error) {
-                    return { success: false, error: `Błąd zapisu: ${retry.error.message}` }
-                }
-                revalidatePath('/home')
-                revalidatePath('/profile')
-                revalidatePath('/settings')
-                return { success: true, warning: 'Imię i nazwisko zapisane. Numer telefonu nie został zapisany — w bazie brakuje kolumny "phone".' }
-            }
-            return { success: false, error: `Błąd zapisu do bazy: ${error.message}` }
+            logCompat.error('[ProfileUpdate] Database update failed:', { code: error.code, userId: user.id })
+            return { success: false, error: 'Nie udało się zapisać profilu.' }
         }
 
         revalidatePath('/home')
@@ -122,18 +76,13 @@ export async function updateProfileFull(
     }
 }
 
+/** Compatibility name for the single existing onboarding caller. */
+export async function updateProfileFull(data: ProfileUpdateData) {
+    return updateOwnProfile(data)
+}
+
 export async function deleteMyProfile() {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Not authenticated')
-
-    const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', user.id)
-    if (error) throw new Error(`Failed to delete profile: ${error.message}`)
-
-    return { success: true }
+    throw new Error('Usunięcie konta wymaga zweryfikowanej procedury administracyjnej.')
 }
 
 export async function getMyProfile() {
@@ -141,7 +90,8 @@ export async function getMyProfile() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
 
-    const { data: profile } = await supabase
+    const admin = createServiceClient()
+    const { data: profile } = await admin
         .from('profiles')
         .select('*')
         .eq('id', user.id)
@@ -169,7 +119,8 @@ export async function getConsultantProfile360(consultantId: string) {
 
     const selectCols = 'id, full_name, email, avatar_url, phone, bio, skills, tech_stack, certifications, work_preferences, admin_notes, current_status, loyalty_tier, loyalty_points, experience_years, created_at'
 
-    const { data: profile } = await supabase
+    const admin = createServiceClient()
+    const { data: profile } = await admin
         .from('profiles')
         .select(selectCols)
         .eq('id', validId)
@@ -183,8 +134,8 @@ export async function getConsultantProfile360(consultantId: string) {
 }
 
 export async function completeOnboarding() {
-    const { cookies } = await import('next/headers')
-    cookies().set('onboarding_done', 'true', {
+    const cookieStore = await cookies()
+    cookieStore.set('onboarding_done', 'true', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -195,7 +146,8 @@ export async function completeOnboarding() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-        await supabase.from('profiles').update({ onboarding_completed: true }).eq('id', user.id)
+        const admin = createServiceClient()
+        await admin.from('profiles').update({ onboarding_completed: true }).eq('id', user.id)
     }
 
     return { success: true }

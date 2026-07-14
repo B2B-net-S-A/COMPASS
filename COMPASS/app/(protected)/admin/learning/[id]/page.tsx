@@ -14,10 +14,11 @@ import {
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
-export default async function AdminCourseReviewPage({ params }: PageProps) {
+export default async function AdminCourseReviewPage(props: PageProps) {
+    const params = await props.params;
     const detailResult = await getCourseDetail(params.id)
     if (!detailResult.success) notFound()
     const course = detailResult.data

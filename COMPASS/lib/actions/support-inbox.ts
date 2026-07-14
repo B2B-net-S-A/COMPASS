@@ -103,7 +103,7 @@ export async function listInboxTickets(filter?: {
 
         const [{ data: metas }, { data: profiles }, { data: categories }] = await Promise.all([
             supabase.from('support_inbox_meta').select('*').in('ticket_id', ticketIds),
-            supabase.from('profiles').select('id, full_name').in('id', userIds),
+            supabase.from('profile_directory').select('id, full_name').in('id', userIds),
             supabase.from('support_categories').select('id, slug, name_pl').in('id', inboxCategoryIds),
         ])
 
@@ -114,7 +114,7 @@ export async function listInboxTickets(filter?: {
             new Set(((metas ?? []) as SupportInboxMeta[]).map((m) => m.consultant_id).filter((x): x is string => !!x))
         )
         const { data: consultantProfiles } = consultantIds.length > 0
-            ? await supabase.from('profiles').select('id, full_name').in('id', consultantIds)
+            ? await supabase.from('profile_directory').select('id, full_name').in('id', consultantIds)
             : { data: [] as Array<{ id: string; full_name: string | null }> }
         const consultantMap = new Map(
             (consultantProfiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name])
@@ -205,7 +205,7 @@ export async function getInboxTicketDetail(
 
         const userIds = Array.from(new Set([ticket.user_id, ticket.assignee_id, meta.consultant_id].filter((x): x is string => !!x)))
         const [{ data: profiles }, { data: category }, { data: rawComments }] = await Promise.all([
-            supabase.from('profiles').select('id, full_name').in('id', userIds),
+            supabase.from('profile_directory').select('id, full_name').in('id', userIds),
             supabase.from('support_categories').select('id, slug, name_pl').eq('id', ticket.category_id).single(),
             supabase.from('support_ticket_comments').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true }),
         ])
@@ -215,7 +215,7 @@ export async function getInboxTicketDetail(
 
         const commentAuthorIds = Array.from(new Set(((rawComments ?? []) as Array<{ author_id: string }>).map((c) => c.author_id)))
         const { data: commentProfiles } = commentAuthorIds.length > 0
-            ? await supabase.from('profiles').select('id, full_name').in('id', commentAuthorIds)
+            ? await supabase.from('profile_directory').select('id, full_name').in('id', commentAuthorIds)
             : { data: [] as Array<{ id: string; full_name: string | null }> }
         const commentProfileMap = new Map(
             (commentProfiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name])
@@ -538,7 +538,12 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 
-        const { data, error } = await supabase
+        // Cross-user role/email data is never read through the caller-scoped
+        // Data API. The caller has already passed the handler guard above;
+        // only then may the server-only service client hydrate this protected
+        // operational roster.
+        const service = createServiceClient()
+        const { data, error } = await service
             .from('profiles')
             .select('id, full_name, email, role, is_inbox_handler')
             .or('role.eq.admin,is_inbox_handler.eq.true')

@@ -21,6 +21,9 @@ import {
 import type { PublicHolidayDate } from '@/lib/hr/working-days'
 import { computeMissingRuns, oofScheduledToDates, type OofDateRange } from './oof-dates'
 import { logger } from '@/lib/logger'
+import type { createServiceClient } from '@/lib/supabase/admin'
+
+type ServiceClient = ReturnType<typeof createServiceClient>
 
 const COMPASS_OOF_MARKER = 'compass-managed-oof-v1'
 const HR_ROLES = ['internal', 'manager', 'finanse', 'talent_community', 'admin'] as const
@@ -58,8 +61,7 @@ interface ProfileRow {
  * Service-role client (bypasses RLS). Soft-fail per user — one bad mailbox never
  * aborts the whole run; problems land in `stats.errors`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats> {
+export async function reconcileOutlookOof(admin: ServiceClient): Promise<OofReconcileStats> {
     const stats: OofReconcileStats = {
         scanned: 0,
         activeOof: 0,

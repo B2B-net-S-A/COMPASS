@@ -70,7 +70,7 @@ export async function listCourseQuestions(
         // Pull profile names
         const userIds = Array.from(new Set(rows.map((r) => r.user_id)))
         const { data: profiles } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name, avatar_url')
             .in('id', userIds)
         const profileMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
@@ -124,7 +124,7 @@ export async function listAnswersForQuestion(
 
         const userIds = Array.from(new Set(rows.map((r) => r.user_id)))
         const { data: profiles } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name, avatar_url')
             .in('id', userIds)
         const profileMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()

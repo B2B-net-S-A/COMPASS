@@ -7,10 +7,11 @@ import { getNewsPostBySlug } from '@/lib/actions/news'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { slug: string }
+    params: Promise<{ slug: string }>
 }
 
-export default async function EditPostPage({ params }: PageProps) {
+export default async function EditPostPage(props: PageProps) {
+    const params = await props.params;
     const result = await getNewsPostBySlug(params.slug)
     if (!result.success) notFound()
 

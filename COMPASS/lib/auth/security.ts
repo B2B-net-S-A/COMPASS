@@ -15,7 +15,7 @@ import {
 // (anyone could enumerate email addresses by polling failed-attempt counts).
 export async function checkRateLimit(email: string): Promise<{ allowed: boolean; remaining: number }> {
     const supabase = createServiceClient()
-    const headerStore = headers()
+    const headerStore = await headers()
     void headerStore.get('x-forwarded-for') // reserved for future ip-based limit
 
     const timeWindow = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString()
@@ -46,7 +46,7 @@ export async function checkRateLimit(email: string): Promise<{ allowed: boolean;
 
 export async function logLoginAttempt(email: string, success: boolean) {
     const supabase = createServiceClient()
-    const headerStore = headers()
+    const headerStore = await headers()
     const ip = headerStore.get('x-forwarded-for') || 'unknown'
 
     const { error } = await supabase.from('login_attempts').insert({

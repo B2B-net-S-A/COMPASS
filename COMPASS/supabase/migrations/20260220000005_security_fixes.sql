@@ -87,54 +87,8 @@ CREATE POLICY "Admins and centrala can insert audit logs"
     )
   );
 
--- ─── 1c. match_results — restrict to admins + owner ─────────────────────────
--- Problem: Any authenticated user can read/modify ALL match results
--- Fix: Users see only their own matches; admins see all
-
-DROP POLICY IF EXISTS "Allow authenticated users to insert/update matches" ON public.match_results;
-
--- Select: own matches or admin
-CREATE POLICY "Users can read own match_results"
-  ON public.match_results
-  FOR SELECT
-  USING (
-    EXISTS (SELECT 1 FROM public.candidates c WHERE c.id = candidate_id AND c.user_id = auth.uid())
-    OR EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role IN ('administrator', 'centrala')
-    )
-  );
-
--- Insert: own matches or admin
-CREATE POLICY "Users can insert own match_results"
-  ON public.match_results
-  FOR INSERT
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.candidates c WHERE c.id = candidate_id AND c.user_id = auth.uid())
-    OR EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role IN ('administrator', 'centrala')
-    )
-  );
-
--- Update: own matches or admin
-CREATE POLICY "Users can update own match_results"
-  ON public.match_results
-  FOR UPDATE
-  USING (
-    EXISTS (SELECT 1 FROM public.candidates c WHERE c.id = candidate_id AND c.user_id = auth.uid())
-    OR EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role IN ('administrator', 'centrala')
-    )
-  )
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.candidates c WHERE c.id = candidate_id AND c.user_id = auth.uid())
-    OR EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role IN ('administrator', 'centrala')
-    )
-  );
+-- match_results was a manually-created legacy ATS table and is absent on a
+-- fresh, repository-only schema. Its policies are intentionally omitted.
 
 -- ─── 1d. verification_codes — restrict INSERT to own codes ──────────────────
 -- Problem: Any authenticated user can insert verification codes for anyone

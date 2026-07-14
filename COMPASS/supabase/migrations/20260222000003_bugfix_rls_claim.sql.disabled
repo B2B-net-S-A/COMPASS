@@ -1,0 +1,9 @@
+-- DISABLED DURING MIGRATION RECONCILIATION (2026-07-13).
+--
+-- The historical policy allowed any authenticated user to claim an
+-- unassigned candidate. Its executable payload is intentionally removed so an
+-- accidental extension change cannot make it runnable.
+--
+-- The original blob remains in Git history for incident analysis. Never
+-- restore or apply it; candidate assignment must go through an authorized,
+-- audited server action.

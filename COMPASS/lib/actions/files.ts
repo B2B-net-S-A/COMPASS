@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 import { revalidatePath } from 'next/cache'
 import { chatJSON } from '@/lib/ai/llm'
@@ -10,6 +11,15 @@ import { chatJSON } from '@/lib/ai/llm'
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024
 const MAX_CV_SIZE = 20 * 1024 * 1024
 const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024
+const AVATAR_EXTENSIONS: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+}
+const CV_EXTENSIONS: Record<string, string> = {
+    'application/pdf': 'pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+}
 
 function assertFileSize(file: File, maxBytes: number, label: string) {
     if (file.size > maxBytes) {
@@ -17,16 +27,37 @@ function assertFileSize(file: File, maxBytes: number, label: string) {
     }
 }
 
+function extensionFor(file: File, allowed: Record<string, string>, label: string): string {
+    const extension = allowed[file.type]
+    if (!extension) throw new Error(`${label}: niedozwolony typ pliku`)
+    return extension
+}
+
+async function requireAdminFileAction() {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Nie jesteś zalogowany')
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+    if (profile?.role !== 'admin') throw new Error('Niewystarczające uprawnienia')
+
+    return { supabase }
+}
+
 export async function uploadAvatar(formData: FormData) {
     const file = formData.get('file') as File
     if (!file) throw new Error('No file')
     assertFileSize(file, MAX_AVATAR_SIZE, 'Awatar')
+    const fileExt = extensionFor(file, AVATAR_EXTENSIONS, 'Awatar')
 
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Nie jesteś zalogowany')
 
-    const fileExt = file.name.split('.').pop()
     const filePath = `profiles/${user.id}-${Date.now()}.${fileExt}`
 
     const { error } = await supabase.storage
@@ -42,12 +73,19 @@ export async function uploadAvatar(formData: FormData) {
         .from('avatars')
         .getPublicUrl(filePath)
 
-    await supabase
+    const admin = createServiceClient()
+    const { error: profileError } = await admin
         .from('profiles')
         // Mark source as manual so m365 photo sync (lib/m365/people-sync.ts)
         // doesn't clobber this on next SSO login / weekly cron.
         .update({ avatar_url: publicUrl, avatar_source: 'manual' })
         .eq('id', user.id)
+
+    if (profileError) {
+        await supabase.storage.from('avatars').remove([filePath])
+        logCompat.error('Avatar profile update failed:', { code: profileError.code, userId: user.id })
+        throw new Error('Nie udało się zapisać awatara')
+    }
 
     revalidatePath('/profile')
     return { success: true, url: publicUrl }
@@ -57,6 +95,7 @@ export async function uploadCV(formData: FormData) {
     const file = formData.get('file') as File
     if (!file) throw new Error('Nie wybrano pliku')
     assertFileSize(file, MAX_CV_SIZE, 'CV')
+    const fileExt = extensionFor(file, CV_EXTENSIONS, 'CV')
 
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -64,7 +103,6 @@ export async function uploadCV(formData: FormData) {
 
     try {
         // 1. Upload file
-        const fileExt = file.name.split('.').pop()
         const filePath = `cvs/${user.id}/${Date.now()}.${fileExt}`
 
         const { error: uploadError } = await supabase.storage
@@ -117,7 +155,8 @@ export async function uploadCV(formData: FormData) {
             updateData.avatar_source = 'manual'
         }
 
-        const { error: updateError } = await supabase
+        const admin = createServiceClient()
+        const { error: updateError } = await admin
             .from('profiles')
             .update(updateData)
             .eq('id', user.id)
@@ -226,7 +265,8 @@ ${sanitizedText.slice(0, 10000)}`,
             experience_years: typeof aiData.experience_years === 'number' ? aiData.experience_years : (manualData?.experience || 0)
         }
 
-        const { error: updateError } = await supabase
+        const admin = createServiceClient()
+        const { error: updateError } = await admin
             .from('profiles')
             .update(updateData)
             .eq('id', user.id)
@@ -265,8 +305,14 @@ export async function uploadReferralCV(formData: FormData) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, error: 'Nie jesteś zalogowany' }
 
+    let fileExt: string
     try {
-        const fileExt = file.name.split('.').pop()
+        fileExt = extensionFor(file, CV_EXTENSIONS, 'CV')
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Niedozwolony typ pliku' }
+    }
+
+    try {
         const filePath = `referrals/${user.id}/${Date.now()}.${fileExt}`
 
         const { error: uploadError } = await supabase.storage
@@ -291,14 +337,13 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
     const file = formData.get('file') as File
     if (!file) throw new Error('Nie wybrano pliku')
     assertFileSize(file, MAX_CV_SIZE, 'CV')
+    const fileExt = extensionFor(file, CV_EXTENSIONS, 'CV')
 
-    const supabase = createClient()
-    // Verify admin access here if roles are implemented
-    // For now, assuming if they can call this, they are authorized or middleware handles it
+    const { supabase } = await requireAdminFileAction()
+    const service = createServiceClient()
 
     try {
         // 1. Upload file to candidate's folder
-        const fileExt = file.name.split('.').pop()
         const filePath = `cvs/${candidateId}/${Date.now()}.${fileExt}`
 
         const { error: uploadError } = await supabase.storage
@@ -373,7 +418,7 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
         if (candidateError) throw new Error('Failed to update candidate record: ' + candidateError.message)
 
         // Try to update 'profiles' table too, just in case they are linked
-        await supabase.from('profiles').update(profileUpdate).eq('id', candidateId)
+        await service.from('profiles').update(profileUpdate).eq('id', candidateId)
 
 
         // 4. Trigger AI Analysis automatically
@@ -392,7 +437,8 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
 }
 
 export async function adminGenerateProfileFromCV(candidateId: string, cvUrl: string) {
-    const supabase = createClient()
+    const { supabase } = await requireAdminFileAction()
+    const service = createServiceClient()
 
     try {
         // 1. Download file
@@ -447,7 +493,7 @@ ${sanitizedText.slice(0, 10000)}`,
         }
 
         // We probably also want to update the 'profiles' table if it exists
-        await supabase.from('profiles').update({
+        await service.from('profiles').update({
             bio: summary,
             embedding: embedding as unknown as string,
             skills: aiData.skills || [],

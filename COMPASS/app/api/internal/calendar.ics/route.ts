@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/admin'
+import {
+    hashCalendarFeedToken,
+    isCalendarFeedToken,
+    isLegacyCalendarUserId,
+} from '@/lib/calendar/feed-token'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * H3.4: ICS calendar feed dla pracownika wewnętrznego.
  *
- * Endpoint: GET /api/internal/calendar.ics?token=<user_id>
- * (W przyszłości: token = signed JWT z user_id + scope. Na MVP: user_id direct,
- * dane zwracane są user-own only.)
+ * Endpoint: GET /api/internal/calendar.ics?token=<opaque-256-bit-token>
  *
  * Subskrypcja w Google Calendar/Outlook:
- *   webcal://compass.dynaminds.pl/api/internal/calendar.ics?token=<user_id>
+ *   webcal://compass.dynaminds.pl/api/internal/calendar.ics?token=<opaque-token>
  *
  * Zawiera:
  *  - Zatwierdzone urlopy (vacation, sick_leave, parental, unpaid, training, other) z bieżącego i następnego roku
@@ -21,18 +24,54 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
     const token = request.nextUrl.searchParams.get('token')
     if (!token) {
-        return new NextResponse('Missing token', { status: 400 })
+        return calendarError('Unauthorized', 401)
+    }
+    if (isLegacyCalendarUserId(token)) {
+        return calendarError('Gone', 410)
+    }
+    if (!isCalendarFeedToken(token)) {
+        return calendarError('Unauthorized', 401)
     }
 
     const admin = createServiceClient()
-    const { data: profile } = await admin
-        .from('profiles')
-        .select('id, full_name, email, role')
-        .eq('id', token)
-        .single<{ id: string; full_name: string | null; email: string; role: string }>()
+    const tokenHash = hashCalendarFeedToken(token)
+    const { data: tokenRow, error: tokenError } = await admin
+        .from('calendar_feed_tokens')
+        .select('user_id')
+        .eq('token_hash', tokenHash)
+        .is('revoked_at', null)
+        .maybeSingle()
 
-    if (!profile || !['internal', 'admin'].includes(profile.role)) {
-        return new NextResponse('Invalid token', { status: 401 })
+    if (tokenError) {
+        return calendarError('Service unavailable', 503)
+    }
+    if (!tokenRow) {
+        return calendarError('Unauthorized', 401)
+    }
+
+    const { data: profile, error: profileError } = await admin
+        .from('profiles')
+        .select('id, full_name, email, role, employment_status, is_external')
+        .eq('id', tokenRow.user_id)
+        .maybeSingle<{
+            id: string
+            full_name: string | null
+            email: string
+            role: string
+            employment_status: string
+            is_external: boolean
+        }>()
+
+    if (profileError) {
+        return calendarError('Service unavailable', 503)
+    }
+    if (
+        !profile
+        || !['internal', 'admin', 'finanse', 'manager', 'talent_community'].includes(profile.role)
+        || !['active', 'onboarding'].includes(profile.employment_status)
+        || profile.is_external
+    ) {
+        return calendarError('Unauthorized', 401)
     }
 
     const today = new Date()
@@ -59,6 +98,28 @@ export async function GET(request: NextRequest) {
             .gte('date', yearStart)
             .lte('date', nextYearEnd),
     ])
+
+    if (leavesRes.error || timesheetEntriesRes.error || holidaysRes.error) {
+        return calendarError('Service unavailable', 503)
+    }
+
+    // Re-check the exact hash at the end of the read. If a user rotated or
+    // revoked the token while the feed was being assembled, the old request
+    // must not receive the calendar and must not touch the replacement token.
+    const { data: touchedToken, error: tokenTouchError } = await admin
+        .from('calendar_feed_tokens')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('user_id', profile.id)
+        .eq('token_hash', tokenHash)
+        .is('revoked_at', null)
+        .select('user_id')
+        .maybeSingle()
+    if (tokenTouchError) {
+        return calendarError('Service unavailable', 503)
+    }
+    if (!touchedToken) {
+        return calendarError('Unauthorized', 401)
+    }
 
     const events: string[] = []
     const dtstamp = formatICSDate(new Date())
@@ -149,7 +210,18 @@ export async function GET(request: NextRequest) {
         headers: {
             'Content-Type': 'text/calendar; charset=utf-8',
             'Content-Disposition': 'inline; filename="compass.ics"',
-            'Cache-Control': 'private, max-age=900', // 15 min
+            'Cache-Control': 'private, no-store',
+        },
+    })
+}
+
+function calendarError(message: string, status: 401 | 410 | 503): NextResponse {
+    return new NextResponse(message, {
+        status,
+        headers: {
+            'Cache-Control': 'private, no-store',
+            ...(status === 401 ? { 'WWW-Authenticate': 'Bearer' } : {}),
+            ...(status === 503 ? { 'Retry-After': '5' } : {}),
         },
     })
 }

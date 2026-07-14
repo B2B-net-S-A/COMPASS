@@ -16,12 +16,9 @@ export const dynamic = 'force-dynamic'
  *
  * Trigger: Coolify cron daily at 04:00 UTC.
  *
- * Auth (preferred — secret NOT logged in CF/proxy/Sentry traces):
+ * Auth (required — secret NOT logged in CF/proxy/Sentry traces):
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff" \
  *        -H "Authorization: Bearer $CRON_SECRET"
- *
- * Legacy query-based fallback (deprecated, withCronAuth loguje warning):
- *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff?secret=$CRON_SECRET"
  */
 export const GET = withCronAuth(async (_request, { admin }) => {
     const cutoffTs = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString()

@@ -34,7 +34,7 @@ const TABS: ReadonlyArray<HubTab> = ALL_TABS.filter(
 const VALID_TAB_IDS = TABS.map((t) => t.id)
 
 interface PageProps {
-    searchParams?: {
+    searchParams?: Promise<{
         tab?: string
         year?: string
         month?: string
@@ -43,7 +43,7 @@ interface PageProps {
         filter?: string
         role?: string
         status?: string
-    }
+    }>
 }
 
 function parseInt(value: string | undefined): number | undefined {
@@ -63,7 +63,8 @@ function parseStatus(value: string | undefined): CalendarStatusFilter {
     return value === 'ooo' || value === 'remote' ? value : 'all'
 }
 
-export default async function InternalHubPage({ searchParams }: PageProps) {
+export default async function InternalHubPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const tab = VALID_TAB_IDS.includes(searchParams?.tab ?? '')
         ? (searchParams!.tab as string)
         : 'attendance'

@@ -27,17 +27,21 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.clearAllMocks()
+    delete process.env.CRON_SECRET
 })
 
-function makeRequest(secret: string | null): Request {
-    const url = secret ? `https://compass.test/api/migrate-compliance?secret=${secret}` : 'https://compass.test/api/migrate-compliance'
-    return new Request(url)
+function makeRequest(opts: { bearer?: string; querySecret?: string } = {}): Request {
+    const url = new URL('https://compass.test/api/migrate-compliance')
+    if (opts.querySecret) url.searchParams.set('secret', opts.querySecret)
+    const headers = new Headers()
+    if (opts.bearer) headers.set('authorization', `Bearer ${opts.bearer}`)
+    return new Request(url, { headers })
 }
 
 describe('GET /api/migrate-compliance', () => {
-    it('returns 401 when secret query param is missing', async () => {
+    it('returns 401 when Bearer header is missing', async () => {
         const { GET } = await import('../route')
-        const response = await GET(makeRequest(null))
+        const response = await GET(makeRequest())
         expect(response.status).toBe(401)
         const body = await response.json()
         expect(body.error).toMatch(/Unauthorized/i)
@@ -45,8 +49,21 @@ describe('GET /api/migrate-compliance', () => {
 
     it('returns 401 when secret does not match CRON_SECRET', async () => {
         const { GET } = await import('../route')
-        const response = await GET(makeRequest('wrong-secret'))
+        const response = await GET(makeRequest({ bearer: 'wrong-secret' }))
         expect(response.status).toBe(401)
+    })
+
+    it('returns 401 when a valid secret is passed only in the query string', async () => {
+        const { GET } = await import('../route')
+        const response = await GET(makeRequest({ querySecret: 'super-secret' }))
+        expect(response.status).toBe(401)
+    })
+
+    it('returns 503 when CRON_SECRET is not configured', async () => {
+        delete process.env.CRON_SECRET
+        const { GET } = await import('../route')
+        const response = await GET(makeRequest({ bearer: 'super-secret' }))
+        expect(response.status).toBe(503)
     })
 
     it('returns 500 when SUPABASE config is missing', async () => {
@@ -54,7 +71,7 @@ describe('GET /api/migrate-compliance', () => {
         delete process.env.NEXT_PUBLIC_SUPABASE_URL
         delete process.env.SUPABASE_SERVICE_ROLE_KEY
         const { GET } = await import('../route')
-        const response = await GET(makeRequest('super-secret'))
+        const response = await GET(makeRequest({ bearer: 'super-secret' }))
         expect(response.status).toBe(500)
         const body = await response.json()
         expect(body.error).toMatch(/Missing Supabase config/i)
@@ -65,7 +82,7 @@ describe('GET /api/migrate-compliance', () => {
     it('uses CRON_SECRET from environment for the comparison (case-sensitive)', async () => {
         process.env.CRON_SECRET = 'CaseSensitiveSecret'
         const { GET } = await import('../route')
-        const wrong = await GET(makeRequest('casesensitivesecret'))
+        const wrong = await GET(makeRequest({ bearer: 'casesensitivesecret' }))
         expect(wrong.status).toBe(401)
         // (We don't assert success path here — full DB seeding requires a real Postgres.)
     })

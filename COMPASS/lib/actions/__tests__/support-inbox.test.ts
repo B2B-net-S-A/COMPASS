@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createMockSupabaseClient, type MockSupabase, type MockSupabaseConfig } from '@/test/mocks/supabase'
 
 let currentClient: MockSupabase
@@ -17,6 +17,13 @@ vi.mock('next/cache', () => ({
     revalidatePath: vi.fn(),
 }))
 
+// Next.js 15's first server-action module transform is noticeably more
+// expensive in a cold Vitest worker. Warm it outside an individual test's
+// 10-second timeout; all assertions below still exercise the real exports.
+beforeAll(async () => {
+    await import('../support-inbox')
+}, 30_000)
+
 function setupClient(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)
     return currentClient
@@ -28,38 +35,49 @@ afterEach(() => {
 
 const baseTables = (overrides: Partial<{
     profiles: Array<Record<string, unknown>>
+    profile_directory: Array<Record<string, unknown>>
     support_categories: Array<Record<string, unknown>>
     support_tickets: Array<Record<string, unknown>>
     support_inbox_meta: Array<Record<string, unknown>>
     support_ticket_comments: Array<Record<string, unknown>>
     notifications: Array<Record<string, unknown>>
     contractors: Array<Record<string, unknown>>
-}> = {}) => ({
-    profiles: overrides.profiles ?? [
+}> = {}) => {
+    const profiles = overrides.profiles ?? [
         { id: 'handler1', email: 'blazej@b2bnetwork.pl', full_name: 'Błażej', role: 'consultant', is_inbox_handler: true },
         { id: 'admin1', email: 'admin@b2bnetwork.pl', full_name: 'Admin', role: 'admin', is_inbox_handler: false },
         { id: 'cons1', email: 'jan@example.com', full_name: 'Jan Kowalski', role: 'consultant', is_inbox_handler: false },
         { id: 'cons2', email: 'anna@example.com', full_name: 'Anna Nowak', role: 'consultant', is_inbox_handler: false },
         { id: 'ext1', email: 'someone@example.com', full_name: 'Someone Else', role: 'consultant', is_inbox_handler: false },
-    ],
-    // Phase 40 — the consultant typeahead searches the contractors directory.
-    contractors: overrides.contractors ?? [
-        { id: 'k1', full_name: 'Jan Kowalski', phone: null, current_client: 'Nordea', current_position: 'Senior Dev' },
-        { id: 'k2', full_name: 'Anna Nowak', phone: '+48 600 100 200', current_client: 'VeloBank', current_position: null },
-        { id: 'k3', full_name: 'Piotr Zieliński', phone: null, current_client: 'Xperi', current_position: 'QA' },
-    ],
-    support_categories: overrides.support_categories ?? [
-        { id: 'cat-neg', slug: 'inbox_negocjacje', name_pl: 'Negocjacje umowy', name_en: 'Contract negotiation', sort_order: 100 },
-        { id: 'cat-wyp', slug: 'inbox_wypowiedzenie', name_pl: 'Wypowiedzenie', name_en: 'Termination', sort_order: 101 },
-        { id: 'cat-adm', slug: 'inbox_administracja', name_pl: 'Administracja', name_en: 'Administration', sort_order: 102 },
-        { id: 'cat-inn', slug: 'inbox_inne', name_pl: 'Inne (inbox)', name_en: 'Other (inbox)', sort_order: 103 },
-        { id: 'cat-hr', slug: 'hr', name_pl: 'HR', name_en: 'HR', sort_order: 1 },
-    ],
-    support_tickets: overrides.support_tickets ?? [],
-    support_inbox_meta: overrides.support_inbox_meta ?? [],
-    support_ticket_comments: overrides.support_ticket_comments ?? [],
-    notifications: overrides.notifications ?? [],
-})
+    ]
+    return {
+        profiles,
+        profile_directory: overrides.profile_directory ?? profiles.map(({ id, full_name, avatar_url, job_title, department }) => ({
+            id,
+            full_name,
+            avatar_url: avatar_url ?? null,
+            job_title: job_title ?? null,
+            department: department ?? null,
+        })),
+        // Phase 40 — the consultant typeahead searches the contractors directory.
+        contractors: overrides.contractors ?? [
+            { id: 'k1', full_name: 'Jan Kowalski', phone: null, current_client: 'Nordea', current_position: 'Senior Dev' },
+            { id: 'k2', full_name: 'Anna Nowak', phone: '+48 600 100 200', current_client: 'VeloBank', current_position: null },
+            { id: 'k3', full_name: 'Piotr Zieliński', phone: null, current_client: 'Xperi', current_position: 'QA' },
+        ],
+        support_categories: overrides.support_categories ?? [
+            { id: 'cat-neg', slug: 'inbox_negocjacje', name_pl: 'Negocjacje umowy', name_en: 'Contract negotiation', sort_order: 100 },
+            { id: 'cat-wyp', slug: 'inbox_wypowiedzenie', name_pl: 'Wypowiedzenie', name_en: 'Termination', sort_order: 101 },
+            { id: 'cat-adm', slug: 'inbox_administracja', name_pl: 'Administracja', name_en: 'Administration', sort_order: 102 },
+            { id: 'cat-inn', slug: 'inbox_inne', name_pl: 'Inne (inbox)', name_en: 'Other (inbox)', sort_order: 103 },
+            { id: 'cat-hr', slug: 'hr', name_pl: 'HR', name_en: 'HR', sort_order: 1 },
+        ],
+        support_tickets: overrides.support_tickets ?? [],
+        support_inbox_meta: overrides.support_inbox_meta ?? [],
+        support_ticket_comments: overrides.support_ticket_comments ?? [],
+        notifications: overrides.notifications ?? [],
+    }
+}
 
 describe('createInboxTicket', () => {
     it('rejects unauthenticated user', async () => {

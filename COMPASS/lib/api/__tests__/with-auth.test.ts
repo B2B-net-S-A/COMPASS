@@ -74,14 +74,27 @@ describe('withCronAuth', () => {
         expect(handler).toHaveBeenCalledOnce()
     })
 
-    it('accepts query param fallback', async () => {
+    it('rejects a valid secret passed only in the query string', async () => {
         process.env.CRON_SECRET = 'topsecret'
         const handler = vi.fn(async () => new Response('ok'))
         const res = await withCronAuth(handler)(
             mockRequest({ url: 'https://example.com/api/cron/test?secret=topsecret' }),
         )
-        expect(res.status).toBe(200)
-        expect(handler).toHaveBeenCalledOnce()
+        expect(res.status).toBe(401)
+        expect(handler).not.toHaveBeenCalled()
+    })
+
+    it.each([
+        'topsecret',
+        'Basic topsecret',
+        'Bearer',
+        'Bearer topsecret extra',
+    ])('rejects malformed Authorization header: %s', async (auth) => {
+        process.env.CRON_SECRET = 'topsecret'
+        const handler = vi.fn(async () => new Response('ok'))
+        const res = await withCronAuth(handler)(mockRequest({ auth }))
+        expect(res.status).toBe(401)
+        expect(handler).not.toHaveBeenCalled()
     })
 
     it('passes service_role client to handler', async () => {

@@ -11,10 +11,11 @@ import { PITCH_STATUS_LABEL } from '@/lib/types/incubator'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
-export default async function PitchDetailAdminPage({ params }: PageProps) {
+export default async function PitchDetailAdminPage(props: PageProps) {
+    const params = await props.params;
     const result = await getPitchById(params.id)
     if (!result.success) notFound()
     const p = result.data

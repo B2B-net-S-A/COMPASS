@@ -47,7 +47,7 @@ export async function getReviewQueue(): Promise<ActionResult<CourseListItem[]>> 
         const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
         if (authorIds.length > 0) {
             const { data: profiles } = await supabase
-                .from('profiles')
+                .from('profile_directory')
                 .select('id, full_name, avatar_url')
                 .in('id', authorIds)
             for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>) {

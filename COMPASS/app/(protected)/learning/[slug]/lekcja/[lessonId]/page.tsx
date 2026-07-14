@@ -8,10 +8,11 @@ import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { slug: string; lessonId: string }
+    params: Promise<{ slug: string; lessonId: string }>
 }
 
-export default async function LessonPage({ params }: PageProps) {
+export default async function LessonPage(props: PageProps) {
+    const params = await props.params;
     const detailResult = await getCourseDetail(params.slug)
     if (!detailResult.success) notFound()
     const course = detailResult.data

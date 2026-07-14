@@ -4,6 +4,7 @@ import { logCompat } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type {
     CreateNewsPostInput,
     NewsActionResult,
@@ -45,7 +46,7 @@ async function enrichPosts(
     const authorIds = Array.from(new Set(posts.map((p) => p.author_id)))
 
     const [{ data: profiles }, { data: reactions }, { data: reads }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name').in('id', authorIds),
+        supabase.from('profile_directory').select('id, full_name').in('id', authorIds),
         supabase.from('news_reactions').select('post_id, user_id, kind').in('post_id', postIds),
         supabase.from('news_post_reads').select('post_id').in('post_id', postIds).eq('user_id', currentUserId),
     ])
@@ -181,7 +182,8 @@ export async function createNewsPost(input: CreateNewsPostInput): Promise<NewsAc
         // Notify all matching consultants on publish (no-op if draft)
         if (input.publish) {
             const targetRoles = audience ?? ['consultant', 'admin']
-            const { data: targets } = await supabase.from('profiles').select('id').in('role', targetRoles as unknown as ('consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community')[])
+            const service = createServiceClient()
+            const { data: targets } = await service.from('profiles').select('id').in('role', targetRoles as unknown as ('consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community')[])
             const ids = ((targets ?? []) as Array<{ id: string }>).map((p) => p.id)
             if (ids.length > 0) {
                 const rows = ids.map((uid) => ({

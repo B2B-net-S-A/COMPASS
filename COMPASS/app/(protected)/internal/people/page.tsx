@@ -24,14 +24,15 @@ const TABS: ReadonlyArray<HubTab> = [
 const VALID_TAB_IDS = TABS.map((t) => t.id)
 
 interface PageProps {
-    searchParams?: {
+    searchParams?: Promise<{
         tab?: string
         year?: string
         month?: string
-    }
+    }>
 }
 
-export default async function PeopleOpsPage({ searchParams }: PageProps) {
+export default async function PeopleOpsPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     await requireTalentCommunityOrAdminLayout()
 
     const tab = VALID_TAB_IDS.includes(searchParams?.tab ?? '') ? (searchParams!.tab as string) : 'pulpit'

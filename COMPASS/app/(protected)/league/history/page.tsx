@@ -8,10 +8,11 @@ import { getLoyaltyHistoryV2, type LoyaltyTxStatus } from '@/lib/actions/loyalty
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    searchParams: { status?: string; offset?: string }
+    searchParams: Promise<{ status?: string; offset?: string }>
 }
 
-export default async function HistoryPage({ searchParams }: PageProps) {
+export default async function HistoryPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const validStatuses: LoyaltyTxStatus[] = ['pending', 'confirmed', 'reversed']
     const status = validStatuses.includes(searchParams.status as LoyaltyTxStatus) ? (searchParams.status as LoyaltyTxStatus) : undefined
     const offset = Math.max(0, parseInt(searchParams.offset ?? '0', 10) || 0)
