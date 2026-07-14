@@ -7,6 +7,7 @@ import test from 'node:test'
 import {
     buildInventory,
     compareWithBaseline,
+    regenerateManifest,
     validateGuardEvidence,
 } from '../check-profile-access-boundary.mjs'
 
@@ -199,4 +200,23 @@ test('requires getUser authentication to fail closed before service access', asy
         }
     `)
     assert.deepEqual(await validateGuardEvidence(root, baseline), [])
+})
+
+test('manifest regeneration preserves guard evidence and fails closed without it', () => {
+    const guardEvidence = {
+        'app/fixture.ts': {
+            guardedAction: ['requireAdminAction'],
+        },
+    }
+    const regenerated = regenerateManifest([], { guard_evidence: guardEvidence })
+
+    assert.deepEqual(regenerated.guard_evidence, guardEvidence)
+    assert.throws(
+        () => regenerateManifest([], {}),
+        /refusing to regenerate profile access baseline without non-empty guard_evidence/,
+    )
+    assert.throws(
+        () => regenerateManifest([], { guard_evidence: {} }),
+        /refusing to regenerate profile access baseline without non-empty guard_evidence/,
+    )
 })

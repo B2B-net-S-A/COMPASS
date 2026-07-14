@@ -610,7 +610,7 @@ function summary(entries) {
     }, {})
 }
 
-function buildManifest(entries) {
+function buildManifest(entries, guardEvidence) {
     const files = {}
     for (const entry of entries) {
         files[entry.path] ??= {}
@@ -621,6 +621,7 @@ function buildManifest(entries) {
         schema_version: 1,
         generated_from: 'TypeScript AST; fingerprints are enforced and removals are allowed',
         summary: summary(entries),
+        guard_evidence: guardEvidence,
         files,
         c2_blockers: entries
             .filter((entry) => entry.classification.startsWith('legacy_cross_user'))
@@ -636,11 +637,45 @@ function buildManifest(entries) {
     }
 }
 
+export function regenerateManifest(entries, baseline) {
+    const guardEvidence = baseline?.guard_evidence
+    const evidenceEntries = guardEvidence && typeof guardEvidence === 'object' && !Array.isArray(guardEvidence)
+        ? Object.entries(guardEvidence)
+        : []
+    const valid = evidenceEntries.length > 0 && evidenceEntries.every(([, requiredFunctions]) => (
+        requiredFunctions
+        && typeof requiredFunctions === 'object'
+        && !Array.isArray(requiredFunctions)
+        && Object.keys(requiredFunctions).length > 0
+        && Object.values(requiredFunctions).every((markers) => (
+            Array.isArray(markers)
+            && markers.length > 0
+            && markers.every((marker) => typeof marker === 'string' && marker.length > 0)
+        ))
+    ))
+    if (!valid) {
+        throw new Error('refusing to regenerate profile access baseline without non-empty guard_evidence')
+    }
+    return buildManifest(entries, guardEvidence)
+}
+
 async function main() {
     const root = process.cwd()
     const inventory = await buildInventory(root)
     if (process.argv.includes('--manifest')) {
-        process.stdout.write(`${JSON.stringify(buildManifest(inventory), null, 2)}\n`)
+        const baseline = JSON.parse(await readFile(path.join(root, MANIFEST_PATH), 'utf8'))
+        const guardFailures = await validateGuardEvidence(root, baseline)
+        if (guardFailures.length > 0) {
+            for (const failure of guardFailures) process.stderr.write(`profile access boundary: ${failure}\n`)
+            process.exitCode = 1
+            return
+        }
+        try {
+            process.stdout.write(`${JSON.stringify(regenerateManifest(inventory, baseline), null, 2)}\n`)
+        } catch (error) {
+            process.stderr.write(`profile access boundary: ${error.message}\n`)
+            process.exitCode = 1
+        }
         return
     }
     if (process.argv.includes('--report')) {
