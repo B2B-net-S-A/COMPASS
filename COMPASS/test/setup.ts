@@ -1,6 +1,11 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, vi } from 'vitest'
 
+// Next.js resolves this marker at build time. Unit tests run outside the
+// Next compiler, so expose an inert module while keeping the production
+// server-only boundary intact.
+vi.mock('server-only', () => ({}))
+
 beforeEach(() => {
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
     process.env.VOYAGE_API_KEY = 'test-voyage-key'

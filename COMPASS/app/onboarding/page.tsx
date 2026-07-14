@@ -66,7 +66,6 @@ export default function OnboardingPage() {
         try {
             const result = await updateProfileFull({
                 bio: bio || undefined,
-                gdpr_consent: true,
             })
             if (result.success === false) {
                 toast.error(result.error || 'Błąd zapisu')
