@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -30,6 +31,9 @@ jobs:
         working-directory: ./COMPASS
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -49,11 +53,21 @@ jobs:
       - name: TypeScript typecheck
         run: npx tsc --noEmit
 
-      - name: Vitest unit tests
-        run: npm run test:unit
-
       - name: Release tooling tests
         run: npm run test:release
+
+      - name: Run full Vitest suite and generate deterministic complete LCOV
+        run: ./scripts/ci/changed-coverage
+
+      - name: Enforce changed-lines coverage and total ratchet
+        env:
+          COVERAGE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: >-
+          python3 ../.standards/tools/check_coverage.py
+          --repo-root ..
+          --lcov COMPASS/coverage/lcov.info
+          --ratchet .standards/coverage-ratchet.json
+          --base-sha "$COVERAGE_BASE_SHA"
 
       - name: Next build (placeholder env)
         env:
@@ -145,9 +159,9 @@ jobs:
           persist-credentials: false
 
       - name: Validate immutable standard, action pins, and exceptions
-        uses: artur-t-96/engineering-standards/.github/actions/validate-consumer@5f5808c228b756024816850103b0436b765a80b3
+        uses: artur-t-96/engineering-standards/.github/actions/validate-consumer@b9bd87651d97b8e617541d6a3e3274bfa877edd3
         with:
-          expected-ref: 5f5808c228b756024816850103b0436b765a80b3
+          expected-ref: b9bd87651d97b8e617541d6a3e3274bfa877edd3
           consumer-root: .
 
   docker-build-smoke:
@@ -184,7 +198,7 @@ jobs:
           "compass-ci:$GIT_SHA"
 
       - name: Validate shared livez contract
-        uses: artur-t-96/engineering-standards/.github/actions/validate-health@5f5808c228b756024816850103b0436b765a80b3
+        uses: artur-t-96/engineering-standards/.github/actions/validate-health@b9bd87651d97b8e617541d6a3e3274bfa877edd3
         with:
           url: http://127.0.0.1:10000/api/livez
           kind: livez

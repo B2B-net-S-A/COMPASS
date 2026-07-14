@@ -27,20 +27,26 @@ export default defineConfig({
         ],
         coverage: {
             provider: 'v8',
-            reporter: ['text', 'html', 'json-summary', 'lcov'],
-            include: ['lib/**/*.ts', 'app/api/**/*.ts'],
-            exclude: [
-                'lib/**/*.d.ts',
-                'lib/supabase/mock-client.ts',
-                'lib/**/__tests__/**',
-                'app/api/**/__tests__/**',
+            clean: true,
+            reportsDirectory: 'coverage',
+            reporter: ['text', 'lcov'],
+            // Vitest 4 includes untested files matched by `include` whenever
+            // the complete suite runs. Keeping every application source root
+            // explicit makes missing changed files fail closed in the shared
+            // LCOV checker without relying on the removed `coverage.all` flag.
+            include: [
+                'app/**/*.{js,jsx,ts,tsx}',
+                'components/**/*.{js,jsx,ts,tsx}',
+                'lib/**/*.{js,jsx,ts,tsx}',
             ],
-            thresholds: {
-                lines: 80,
-                functions: 80,
-                statements: 80,
-                branches: 75,
-            },
+            exclude: [
+                '**/*.config.{js,ts}',
+                '**/*.d.ts',
+                '**/*.test.{js,jsx,ts,tsx}',
+                '**/__tests__/**',
+                'lib/supabase/database.types.ts',
+                'lib/supabase/mock-client.ts',
+            ],
         },
         clearMocks: true,
         testTimeout: 10_000,
