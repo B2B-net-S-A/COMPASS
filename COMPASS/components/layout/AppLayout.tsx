@@ -17,15 +17,31 @@ interface AppLayoutProps {
     permissions?: Record<PermissionFeature, PermissionValue>
     sidebarBadges?: SidebarBadgeCounts
     isInboxHandler?: boolean
+    consultantSuccessEnabled?: boolean
 }
 
-export function AppLayout({ children, user, role, permissions, sidebarBadges, isInboxHandler }: AppLayoutProps) {
+export function AppLayout({
+    children,
+    user,
+    role,
+    permissions,
+    sidebarBadges,
+    isInboxHandler,
+    consultantSuccessEnabled,
+}: AppLayoutProps) {
     return (
         <LanguageProvider>
             <PermissionsProvider permissions={permissions ?? null} role={role}>
                 <div className="flex min-h-screen bg-background">
                     {/* Desktop sidebar — always visible md+ */}
-                    <Sidebar role={role} user={user} permissions={permissions} badges={sidebarBadges} isInboxHandler={isInboxHandler} />
+                    <Sidebar
+                        role={role}
+                        user={user}
+                        permissions={permissions}
+                        badges={sidebarBadges}
+                        isInboxHandler={isInboxHandler}
+                        consultantSuccessEnabled={consultantSuccessEnabled}
+                    />
 
                     <div className="flex flex-1 flex-col min-w-0">
                         <TopBar user={user} />

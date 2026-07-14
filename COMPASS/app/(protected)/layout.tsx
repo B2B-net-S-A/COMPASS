@@ -17,6 +17,7 @@ import type { PermissionRole, PermissionsMap } from '@/lib/types/permissions'
 import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
 import nextDynamic from 'next/dynamic'
 import { logger } from '@/lib/logger'
+import { isConsultantSuccessEnabled } from '@/lib/consultant-success/flags'
 
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 // Smart Work Clock (Phase 17) UI disabled — to re-enable, uncomment import + render below.
@@ -136,7 +137,14 @@ export default async function ProtectedLayout({
 
         return (
             <ThemeProvider>
-                <AppLayout user={userData} role={role} permissions={userPermissions} sidebarBadges={sidebarBadges} isInboxHandler={isInboxHandler}>
+                <AppLayout
+                    user={userData}
+                    role={role}
+                    permissions={userPermissions}
+                    sidebarBadges={sidebarBadges}
+                    isInboxHandler={isInboxHandler}
+                    consultantSuccessEnabled={isConsultantSuccessEnabled()}
+                >
                     <LayoutPreferencesProvider>
                         {children}
                     </LayoutPreferencesProvider>
