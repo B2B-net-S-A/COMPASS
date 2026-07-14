@@ -248,7 +248,7 @@ jobs:
               --arg name "$name" \
               --arg frequency "$frequency" \
               --arg command "$command" \
-              '{name: $name, frequency: $frequency, command: $command, timeout: 300, enabled: true}')
+              '{name: $name, frequency: $frequency, command: $command, container: "app", timeout: 300, enabled: true}')
 
             if [ -n "$existing_uuid" ]; then
               curl -fsSL -X PATCH -H "$auth" -H "Content-Type: application/json" \
