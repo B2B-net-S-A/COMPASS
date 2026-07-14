@@ -30,7 +30,7 @@ jobs:
   deploy:
     name: Trigger Coolify deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Update build metadata in Coolify env vault
         # Push GIT_SHA + BUILT_AT into Coolify env vault BEFORE triggering deploy
@@ -86,6 +86,39 @@ jobs:
           echo "Deployment queued: $deployment_uuid"
           echo "deployment_uuid=$deployment_uuid" >> $GITHUB_OUTPUT
         id: trigger
+
+      - name: Observe Coolify deployment
+        env:
+          DEPLOYMENT_UUID: ${{ steps.trigger.outputs.deployment_uuid }}
+        run: |
+          for i in $(seq 1 36); do
+            response=$(curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors \
+              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+              -H "Accept: application/json" \
+              "${{ secrets.COOLIFY_URL }}/api/v1/deployments/$DEPLOYMENT_UUID")
+            status=$(echo "$response" | jq -r '.status // "unknown"')
+            echo "Coolify deployment $DEPLOYMENT_UUID: status=$status (attempt $i/36)"
+
+            case "$status" in
+              finished)
+                exit 0
+                ;;
+              failed|cancelled)
+                echo "::error::Coolify deployment ended with status=$status"
+                echo "$response" | jq -r '.logs // "No deployment logs returned."' | tail -n 250
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Coolify deployment did not finish within 6 minutes"
+          response=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+            -H "Accept: application/json" \
+            "${{ secrets.COOLIFY_URL }}/api/v1/deployments/$DEPLOYMENT_UUID")
+          echo "$response" | jq -r '.logs // "No deployment logs returned."' | tail -n 250
+          exit 1
 
   smoke-test:
     name: Smoke test /api/health
