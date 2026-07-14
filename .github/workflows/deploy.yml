@@ -113,9 +113,8 @@ jobs:
               failed|cancelled)
                 echo "::error::Coolify deployment ended with status=$status"
                 echo "$response" | jq '{status, commit, created_at, updated_at, logs_type: (.logs | type), logs_length: (.logs | length)}'
-                printf '%s' "$response" | jq -r '.logs // empty' > /tmp/coolify-deployment.log
-                if [ -s /tmp/coolify-deployment.log ]; then
-                  tail -n 250 /tmp/coolify-deployment.log
+                if [ "$(echo "$response" | jq -r '.logs | length')" -gt 0 ]; then
+                  echo "$response" | jq '{logs_prefix: .logs[0:1000], logs_tail: .logs[-12000:]}'
                 else
                   echo "No deployment logs returned. Inspecting application status."
                   curl -fsSL \
