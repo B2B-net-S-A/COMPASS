@@ -159,9 +159,9 @@ jobs:
           persist-credentials: false
 
       - name: Validate immutable standard, action pins, and exceptions
-        uses: artur-t-96/engineering-standards/.github/actions/validate-consumer@b9bd87651d97b8e617541d6a3e3274bfa877edd3
+        uses: artur-t-96/engineering-standards/.github/actions/validate-consumer@fa4bb1123a3ea1b444e8bd4d36fb180567960a13
         with:
-          expected-ref: b9bd87651d97b8e617541d6a3e3274bfa877edd3
+          expected-ref: fa4bb1123a3ea1b444e8bd4d36fb180567960a13
           consumer-root: .
 
   docker-build-smoke:
@@ -198,7 +198,7 @@ jobs:
           "compass-ci:$GIT_SHA"
 
       - name: Validate shared livez contract
-        uses: artur-t-96/engineering-standards/.github/actions/validate-health@b9bd87651d97b8e617541d6a3e3274bfa877edd3
+        uses: artur-t-96/engineering-standards/.github/actions/validate-health@fa4bb1123a3ea1b444e8bd4d36fb180567960a13
         with:
           url: http://127.0.0.1:10000/api/livez
           kind: livez

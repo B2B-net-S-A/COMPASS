@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/artur-t-96/engineering-standards/b9bd87651d97b8e617541d6a3e3274bfa877edd3/schemas/coverage-ratchet.schema.json",
+  "$schema": "https://raw.githubusercontent.com/artur-t-96/engineering-standards/fa4bb1123a3ea1b444e8bd4d36fb180567960a13/schemas/coverage-ratchet.schema.json",
   "schema_version": 1,
   "minimum_changed_lines_percent": 80,
   "total_lines": {

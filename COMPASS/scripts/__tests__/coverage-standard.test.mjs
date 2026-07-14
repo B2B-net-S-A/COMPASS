@@ -4,7 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url))
-const standardsRef = 'b9bd87651d97b8e617541d6a3e3274bfa877edd3'
+const standardsRef = 'fa4bb1123a3ea1b444e8bd4d36fb180567960a13'
 
 test('quality-gate enforces the exact coverage standard', async () => {
     const [workflow, ratchetText, lockText] = await Promise.all([
