@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import type {
     ActionResult,
@@ -176,7 +177,7 @@ export async function markLessonComplete(
 async function bumpLearningStreak(
     userId: string,
 ): Promise<{ current: number; milestone_reached: boolean }> {
-    const supabase = createClient()
+    const supabase = createServiceClient()
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
@@ -514,7 +515,7 @@ export async function getRecommendedCourses(): Promise<ActionResult<{ items: Rec
         // Pobierz autorów (do CourseListItem)
         const authorIds = Array.from(new Set(courses.map((c) => c.author_id)))
         const { data: profiles } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name, avatar_url')
             .in('id', authorIds)
         const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()

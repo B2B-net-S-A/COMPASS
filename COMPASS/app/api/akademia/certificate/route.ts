@@ -56,7 +56,7 @@ export const GET = withAuth(async (request, { supabase, user }) => {
             email: string
         }>(),
         supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('full_name')
             .eq('id', enrollment.course.author_id)
             .maybeSingle<{ full_name: string | null }>(),

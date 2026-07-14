@@ -22,6 +22,6 @@ export const maxDuration = 120
  *        "https://compass.dynaminds.pl/api/cron/oof-reconcile"
  */
 export const GET = withCronAuth(async (_request, { admin }) => {
-    const stats = await reconcileOutlookOof(admin as never)
+    const stats = await reconcileOutlookOof(admin)
     return NextResponse.json({ ok: true, ...stats, errors: stats.errors.slice(0, 15) })
 })

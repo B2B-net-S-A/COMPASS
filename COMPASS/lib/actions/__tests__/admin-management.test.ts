@@ -7,6 +7,10 @@ vi.mock('@/lib/supabase/server', () => ({
     createClient: () => currentClient,
 }))
 
+vi.mock('@/lib/supabase/admin', () => ({
+    createServiceClient: () => currentClient,
+}))
+
 function setup(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)
     return currentClient

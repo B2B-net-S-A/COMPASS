@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { getSuperAdmins, isSuperAdmin } from '@/lib/auth/super-admins'
 import { parseOrThrow } from '@/lib/validators/common'
 import { addAdminMemberInputSchema, removeAdminMemberInputSchema } from '@/lib/validators/admin'
@@ -31,15 +32,16 @@ async function requireSuperAdmin() {
         throw new Error('Wymagane uprawnienia Super Admina.')
     }
 
-    return { supabase, user }
+    return { user }
 }
 
 // ─── CRUD Operations ─────────────────────────────────────────────────────────
 
 export async function getAdminMembers(): Promise<AdminMember[]> {
-    const { supabase } = await requireSuperAdmin()
+    await requireSuperAdmin()
+    const service = createServiceClient()
 
-    const { data: adminList, error } = await supabase
+    const { data: adminList, error } = await service
         .from('admin_access_list')
         .select('*')
         .order('created_at', { ascending: false })
@@ -53,7 +55,7 @@ export async function getAdminMembers(): Promise<AdminMember[]> {
 
     // Get matching profiles
     const emails = adminList.map(a => a.email)
-    const { data: profiles } = await supabase
+    const { data: profiles } = await service
         .from('profiles')
         .select('id, email, full_name, avatar_url')
         .in('email', emails)
@@ -79,7 +81,8 @@ export async function getAdminMembers(): Promise<AdminMember[]> {
 }
 
 export async function addAdminMember(email: string) {
-    const { supabase, user } = await requireSuperAdmin()
+    const { user } = await requireSuperAdmin()
+    const service = createServiceClient()
 
     // Zod walidacja: format email + domain @b2bnetwork.pl (Phase 18.4).
     const { email: emailLower } = parseOrThrow(addAdminMemberInputSchema, { email })
@@ -89,7 +92,7 @@ export async function addAdminMember(email: string) {
         throw new Error('Super Admin nie wymaga dodawania — ma uprawnienia automatycznie.')
     }
 
-    const { error } = await supabase
+    const { error } = await service
         .from('admin_access_list')
         .insert({
             email: emailLower,
@@ -105,33 +108,34 @@ export async function addAdminMember(email: string) {
     }
 
     // If user has a profile, update their role immediately
-    const { data: profile } = await supabase
+    const { data: profile } = await service
         .from('profiles')
         .select('id')
         .eq('email', emailLower)
         .maybeSingle()
 
     if (profile) {
-        await supabase.from('profiles').update({ role: 'admin' }).eq('id', profile.id)
+        await service.from('profiles').update({ role: 'admin' }).eq('id', profile.id)
     }
 
     return { success: true }
 }
 
 export async function removeAdminMember(id: string) {
-    const { supabase } = await requireSuperAdmin()
+    await requireSuperAdmin()
+    const service = createServiceClient()
 
     // Zod walidacja: id musi być UUID (Phase 18.4).
     const { id: validId } = parseOrThrow(removeAdminMemberInputSchema, { id })
 
     // Get email before deletion
-    const { data: member } = await supabase
+    const { data: member } = await service
         .from('admin_access_list')
         .select('email')
         .eq('id', validId)
         .single()
 
-    const { error } = await supabase
+    const { error } = await service
         .from('admin_access_list')
         .delete()
         .eq('id', validId)
@@ -143,14 +147,14 @@ export async function removeAdminMember(id: string) {
 
     // Downgrade their role in profiles (they'll get correct role on next login via syncRole)
     if (member?.email) {
-        const { data: profile } = await supabase
+        const { data: profile } = await service
             .from('profiles')
             .select('id')
             .eq('email', member.email)
             .maybeSingle()
 
         if (profile) {
-            await supabase.from('profiles').update({ role: 'consultant' }).eq('id', profile.id)
+            await service.from('profiles').update({ role: 'consultant' }).eq('id', profile.id)
         }
     }
 

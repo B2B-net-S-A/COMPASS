@@ -190,7 +190,7 @@ export async function getRecommendedCoursesV2(): Promise<
         // Author info
         const authorIds = Array.from(new Set(Array.from(courseMap.values()).map((c) => c.author_id)))
         const { data: profiles } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name, avatar_url')
             .in('id', authorIds)
         const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
@@ -346,7 +346,7 @@ Tylko pola które są w zapytaniu. Nie zmyślaj.`,
         const courseList = (courses ?? []) as Course[]
         const authorIds = Array.from(new Set(courseList.map((c) => c.author_id)))
         const { data: profiles } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name, avatar_url')
             .in('id', authorIds)
         const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { logger } from '@/lib/logger'
 
@@ -77,7 +78,15 @@ export async function searchUsers(query: string) {
 
     if (!query || query.length < 2) return []
 
-    const { data, error } = await supabase
+    const { data: callerProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+    if (callerProfile?.role !== 'admin') return []
+
+    const service = createServiceClient()
+    const { data, error } = await service
         .from('profiles')
         .select('id, full_name, email, role, loyalty_points, loyalty_tier')
         .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
@@ -199,7 +208,8 @@ export async function getTierProgress() {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
-        const { data: profile } = await supabase
+        const service = createServiceClient()
+        const { data: profile } = await service
             .from('profiles')
             .select('loyalty_points, loyalty_tier')
             .eq('id', user.id)
@@ -318,7 +328,8 @@ export async function getLoyaltyBreakdown(
         }
 
         // Fetch profile
-        const { data: profile } = await supabase
+        const service = createServiceClient()
+        const { data: profile } = await service
             .from('profiles')
             .select('loyalty_points, loyalty_tier, loyalty_joined_at')
             .eq('id', userId)
@@ -525,7 +536,8 @@ export async function getAllConsultantsLoyalty(): Promise<AllConsultantsLoyaltyR
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 
-        const { data, error } = await supabase
+        const service = createServiceClient()
+        const { data, error } = await service
             .from('profiles')
             .select('id, full_name, email, role, loyalty_points, loyalty_tier, loyalty_joined_at')
             // 'b2b_consultant'/'contractor'/'candidate' are legacy ATS roles no longer in the user_role enum;
@@ -684,7 +696,8 @@ export async function getLoyaltyOverview(targetUserId?: string): Promise<{ succe
             userId = targetUserId
         }
 
-        const { data: profile } = await supabase
+        const service = createServiceClient()
+        const { data: profile } = await service
             .from('profiles')
             .select('loyalty_points, loyalty_tier, loyalty_joined_at')
             .eq('id', userId)
@@ -845,7 +858,8 @@ export async function getLeaderboard(limit = 50): Promise<{ success: true; data:
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
-        const { data, error } = await supabase
+        const service = createServiceClient()
+        const { data, error } = await service
             .from('profiles')
             .select('id, full_name, avatar_url, loyalty_points, loyalty_tier, leaderboard_opt_out')
             .order('loyalty_points', { ascending: false })
@@ -959,4 +973,3 @@ export async function setLeaderboardOptOut(optOut: boolean): Promise<{ success: 
         return { success: false, error: msg }
     }
 }
-

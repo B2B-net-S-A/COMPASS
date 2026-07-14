@@ -7,6 +7,10 @@ vi.mock('@/lib/supabase/server', () => ({
     createClient: () => currentClient,
 }))
 
+vi.mock('@/lib/supabase/admin', () => ({
+    createServiceClient: () => currentClient,
+}))
+
 function setupClient(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)
     return currentClient
@@ -79,6 +83,36 @@ describe('searchUsers', () => {
         const { searchUsers } = await import('../loyalty')
         expect(await searchUsers('a')).toEqual([])
         expect(await searchUsers('')).toEqual([])
+    })
+
+    it('does not expose the directory to an authenticated non-admin', async () => {
+        setupClient({
+            user: { id: 'u1', email: 'user@b2bnetwork.pl' },
+            tables: {
+                profiles: [
+                    { id: 'u1', role: 'consultant' },
+                    { id: 'u2', role: 'consultant', full_name: 'Jan Kowalski', email: 'jan@b2bnetwork.pl' },
+                ],
+            },
+        })
+        const { searchUsers } = await import('../loyalty')
+        expect(await searchUsers('Jan')).toEqual([])
+    })
+
+    it('returns curated loyalty rows to an admin', async () => {
+        setupClient({
+            user: { id: 'u-admin', email: 'admin@b2bnetwork.pl' },
+            tables: {
+                profiles: [
+                    { id: 'u-admin', role: 'admin' },
+                    { id: 'u2', role: 'consultant', full_name: 'Jan Kowalski', email: 'jan@b2bnetwork.pl', loyalty_points: 20, loyalty_tier: 'scout' },
+                ],
+            },
+        })
+        const { searchUsers } = await import('../loyalty')
+        expect(await searchUsers('Jan')).toEqual([
+            expect.objectContaining({ id: 'u2', full_name: 'Jan Kowalski' }),
+        ])
     })
 })
 

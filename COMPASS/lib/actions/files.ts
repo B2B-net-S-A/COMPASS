@@ -33,6 +33,21 @@ function extensionFor(file: File, allowed: Record<string, string>, label: string
     return extension
 }
 
+async function requireAdminFileAction() {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Nie jesteś zalogowany')
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+    if (profile?.role !== 'admin') throw new Error('Niewystarczające uprawnienia')
+
+    return { supabase }
+}
+
 export async function uploadAvatar(formData: FormData) {
     const file = formData.get('file') as File
     if (!file) throw new Error('No file')
@@ -322,14 +337,13 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
     const file = formData.get('file') as File
     if (!file) throw new Error('Nie wybrano pliku')
     assertFileSize(file, MAX_CV_SIZE, 'CV')
+    const fileExt = extensionFor(file, CV_EXTENSIONS, 'CV')
 
-    const supabase = createClient()
-    // Verify admin access here if roles are implemented
-    // For now, assuming if they can call this, they are authorized or middleware handles it
+    const { supabase } = await requireAdminFileAction()
+    const service = createServiceClient()
 
     try {
         // 1. Upload file to candidate's folder
-        const fileExt = file.name.split('.').pop()
         const filePath = `cvs/${candidateId}/${Date.now()}.${fileExt}`
 
         const { error: uploadError } = await supabase.storage
@@ -404,7 +418,7 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
         if (candidateError) throw new Error('Failed to update candidate record: ' + candidateError.message)
 
         // Try to update 'profiles' table too, just in case they are linked
-        await supabase.from('profiles').update(profileUpdate).eq('id', candidateId)
+        await service.from('profiles').update(profileUpdate).eq('id', candidateId)
 
 
         // 4. Trigger AI Analysis automatically
@@ -423,7 +437,8 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
 }
 
 export async function adminGenerateProfileFromCV(candidateId: string, cvUrl: string) {
-    const supabase = createClient()
+    const { supabase } = await requireAdminFileAction()
+    const service = createServiceClient()
 
     try {
         // 1. Download file
@@ -478,7 +493,7 @@ ${sanitizedText.slice(0, 10000)}`,
         }
 
         // We probably also want to update the 'profiles' table if it exists
-        await supabase.from('profiles').update({
+        await service.from('profiles').update({
             bio: summary,
             embedding: embedding as unknown as string,
             skills: aiData.skills || [],

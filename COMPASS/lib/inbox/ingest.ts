@@ -41,6 +41,8 @@ import {
 } from '@/lib/mailbox/graph-mail-read'
 import { classifyMessage, type SkipReason } from './filters'
 
+type ServiceClient = SupabaseClient
+
 // Public so cron route can announce the mailbox in its response body.
 // Phase 26d — pivot to shared mailbox (RAOP cache wouldn't refresh for the
 // M365 Group). Real ingress is now compass-tickets@b2bnetwork.pl, fed by an
@@ -61,7 +63,7 @@ export interface IngestStats {
 }
 
 interface IngestDeps {
-    admin: SupabaseClient
+    admin: ServiceClient
 }
 
 const NOISE_HEADERS_TO_KEEP = [
@@ -97,7 +99,7 @@ function buildAppendCommentBody(msg: GraphMessage): string {
 }
 
 /** Choose a placeholder user_id for ingested tickets — required by support_tickets NOT NULL. */
-async function getInboxBotUserId(admin: SupabaseClient): Promise<string | null> {
+async function getInboxBotUserId(admin: ServiceClient): Promise<string | null> {
     const envOverride = process.env.INBOX_INGEST_USER_ID
     if (envOverride) return envOverride
 
@@ -117,7 +119,7 @@ interface CategoryRow {
 }
 
 async function getInboxCategories(
-    admin: SupabaseClient,
+    admin: ServiceClient,
 ): Promise<Map<string, string>> {
     const { data } = await admin
         .from('support_categories')
@@ -137,7 +139,7 @@ interface ExistingTicketMatch {
 }
 
 async function findTicketByConversation(
-    admin: SupabaseClient,
+    admin: ServiceClient,
     conversationId: string | null,
 ): Promise<ExistingTicketMatch | null> {
     if (!conversationId) return null
@@ -162,7 +164,7 @@ async function findTicketByConversation(
 }
 
 async function alreadyIngested(
-    admin: SupabaseClient,
+    admin: ServiceClient,
     internetMessageId: string,
 ): Promise<boolean> {
     const { data } = await admin
@@ -174,7 +176,7 @@ async function alreadyIngested(
 }
 
 async function writeAudit(
-    admin: SupabaseClient,
+    admin: ServiceClient,
     action: string,
     details: Record<string, unknown>,
 ): Promise<void> {
@@ -198,7 +200,7 @@ interface UploadedAttachment {
 }
 
 async function uploadAttachments(
-    admin: SupabaseClient,
+    admin: ServiceClient,
     ticketId: string,
     mailbox: string,
     kind: MailboxKind,
@@ -248,7 +250,7 @@ async function uploadAttachments(
 // ─── Per-message handlers ───────────────────────────────────────────────────
 
 interface ProcessContext {
-    admin: SupabaseClient
+    admin: ServiceClient
     mailbox: string
     mailboxKind: MailboxKind
     inboxBotUserId: string
@@ -617,7 +619,7 @@ export async function ingestMailbox(
 }
 
 async function persistRunResult(
-    admin: SupabaseClient,
+    admin: ServiceClient,
     mailbox: string,
     stats: IngestStats,
     newLastSynced: Date,

@@ -724,7 +724,11 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
         .order('position', { ascending: true })
     if (tasksErr) throw new Error('Nie udało się pobrać zadań.')
 
-    const { data: employee, error: empErr } = await supabase
+    // The progress row above is the authorization boundary enforced by RLS.
+    // Hydrate sensitive HR profile fields only after that row was visible;
+    // C2 will make direct cross-user profile reads unavailable to the session.
+    const service = createServiceClient()
+    const { data: employee, error: empErr } = await service
         .from('profiles')
         .select('id, full_name, email, role, hired_at, buddy_id, manager_id, employment_status')
         .eq('id', progress.user_id)
@@ -734,7 +738,7 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
     let buddy = null
     if (employee.buddy_id) {
         const { data: buddyRow } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name')
             .eq('id', employee.buddy_id)
             .single()
@@ -744,7 +748,7 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
     let manager = null
     if (employee.manager_id) {
         const { data: managerRow } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name')
             .eq('id', employee.manager_id)
             .single()

@@ -5,6 +5,7 @@ import { postToTeamsAlert } from '@/lib/teams/webhook'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type { TablesInsert } from '@/lib/supabase/database.types'
 import type {
     CreateTicketInput,
@@ -109,7 +110,8 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportAct
         if (input.assignee_id) {
             await notifyUsers(supabase, [input.assignee_id], 'support_ticket_assigned', 'Nowe zgłoszenie z czatu', input.subject.trim())
         } else {
-            const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+            const service = createServiceClient()
+            const { data: admins } = await service.from('profiles').select('id').eq('role', 'admin')
             const adminIds = (admins ?? []).map((p: { id: string }) => p.id)
             await notifyUsers(supabase, adminIds, 'support_ticket_assigned', 'Nowe zgłoszenie w Support', input.subject.trim())
         }
@@ -185,7 +187,7 @@ export async function listTickets(options: ListTicketsOptions): Promise<SupportA
         const categoryIds = Array.from(new Set(tickets.map((t) => t.category_id)))
 
         const [{ data: profiles }, { data: categories }, { data: counts }] = await Promise.all([
-            supabase.from('profiles').select('id, full_name').in('id', userIds),
+            supabase.from('profile_directory').select('id, full_name').in('id', userIds),
             supabase.from('support_categories').select('id, slug, name_pl').in('id', categoryIds),
             supabase
                 .from('support_ticket_comments')
@@ -256,7 +258,7 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
 
         const userIds = Array.from(new Set([ticket.user_id, ticket.assignee_id].filter((x): x is string => !!x)))
         const { data: profiles } = await supabase
-            .from('profiles')
+            .from('profile_directory')
             .select('id, full_name')
             .in('id', userIds)
         const profileMap = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
@@ -269,7 +271,7 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
 
         const commentAuthorIds = Array.from(new Set(((rawComments ?? []) as Array<{ author_id: string }>).map((c) => c.author_id)))
         const { data: commentProfiles } = commentAuthorIds.length > 0
-            ? await supabase.from('profiles').select('id, full_name').in('id', commentAuthorIds)
+            ? await supabase.from('profile_directory').select('id, full_name').in('id', commentAuthorIds)
             : { data: [] }
         const commentProfileMap = new Map((commentProfiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
 
@@ -446,7 +448,8 @@ export async function assignTicket(ticketId: string, assigneeId: string | null):
             await notifyUsers(supabase, [assigneeId], 'support_ticket_assigned', 'Przypisano Cię do ticketu', ticket.subject)
 
             // PR3: Teams alert (#compass-alerts)
-            const { data: assignee } = await supabase
+            const service = createServiceClient()
+            const { data: assignee } = await service
                 .from('profiles')
                 .select('full_name, email')
                 .eq('id', assigneeId)
