@@ -137,6 +137,7 @@ import {
     approveLeaveRequest,
     createLeaveOnBehalf,
     listPendingLeaveRequests,
+    previewLeaveSplit,
     rejectLeaveRequest,
 } from '@/lib/actions/internal-leave'
 
@@ -259,10 +260,31 @@ describe('createLeaveOnBehalf — fail-closed target guard', () => {
             targetUserId: 'emp-x',
             startDate: '2026-08-03',
             endDate: '2026-08-04',
+            halfDay: null,
             leaveType: 'vacation',
         })).rejects.toThrow(/swojemu zespołowi/i)
 
         expect(state.leaveRequestReadCount).toBe(0)
         expect(state.updateCalls.find((call) => call.table === 'leave_requests')).toBeUndefined()
+    })
+})
+
+describe('previewLeaveSplit — self-only profile pool', () => {
+    it('reads the authenticated profile and computes the paid pool preview', async () => {
+        const result = await previewLeaveSplit({
+            startDate: '2026-08-03',
+            endDate: '2026-08-04',
+            halfDay: null,
+            leaveType: 'vacation',
+        })
+
+        expect(result).toEqual(expect.objectContaining({
+            workingDays: 2,
+            paid: 2,
+            unpaid: 0,
+            remainingBefore: 26,
+            remainingAfter: 24,
+        }))
+        expect(state.leaveRequestReadCount).toBeGreaterThan(0)
     })
 })
