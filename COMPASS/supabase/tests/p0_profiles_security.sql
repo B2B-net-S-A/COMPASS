@@ -120,7 +120,7 @@ insert into _tap_results values (
 insert into _tap_results values (
   ok(
     has_table_privilege('authenticated', 'public.profiles', 'SELECT'),
-    'P0.9: authenticated compatibility read remains during expand phase'
+    'P0.9: authenticated keeps SELECT for the final self-only policy'
   )
 );
 insert into _tap_results values (
@@ -301,11 +301,13 @@ set local request.jwt.claims to
   '{"sub":"71300000-0000-0000-0000-000000000001","role":"authenticated"}';
 
 insert into _tap_results values (
-  lives_ok(
+  throws_ok(
     $$update public.profiles
       set bio = 'Allowed personal profile change'
       where id = '71300000-0000-0000-0000-000000000001'$$,
-    'P0.26: authenticated user can still update an allowed personal field'
+    '42501',
+    null,
+    'P0.26: authenticated user cannot directly update even a personal field'
   )
 );
 insert into _tap_results values (

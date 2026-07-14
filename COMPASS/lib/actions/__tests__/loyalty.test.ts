@@ -140,6 +140,27 @@ describe('getLoyaltyRules', () => {
     })
 })
 
+describe('setLeaderboardOptOut', () => {
+    it('authenticates with the session and updates only the current profile via service client', async () => {
+        setupClient({
+            user: { id: 'u1', email: 'user@b2bnetwork.pl' },
+            tables: {
+                profiles: [
+                    { id: 'u1', leaderboard_opt_out: false },
+                    { id: 'u2', leaderboard_opt_out: false },
+                ],
+            },
+        })
+        const { setLeaderboardOptOut } = await import('../loyalty')
+
+        expect(await setLeaderboardOptOut(true)).toEqual({ success: true })
+        expect(currentClient._tables.profiles).toEqual([
+            { id: 'u1', leaderboard_opt_out: true },
+            { id: 'u2', leaderboard_opt_out: false },
+        ])
+    })
+})
+
 describe('updateLoyaltyRule', () => {
     it('returns warning for mock IDs (table missing)', async () => {
         setupClient({
