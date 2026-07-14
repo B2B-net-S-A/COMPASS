@@ -1,6 +1,6 @@
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase/admin'
 
 const MIGRATION_SQL = `
 -- 1. Legal documents table
@@ -114,20 +114,22 @@ export async function GET(request: Request) {
     logCompat.warn('[migrate-compliance] secret in query param — migrate caller to Authorization: Bearer header (query strings appear in proxy/Sentry/CF logs)')
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseUrl || !serviceRole) {
+  let supabase
+  try {
+    // Credential resolution stays inside the server-only Supabase boundary.
+    supabase = createServiceClient()
+  } catch {
     return NextResponse.json({ error: 'Missing Supabase config' }, { status: 500 })
   }
-
-  const supabase = createClient(supabaseUrl, serviceRole, {
-    auth: { persistSession: false },
-  })
 
   const results: { step: string; status: string; error?: string }[] = []
 
   // Step 1: Create tables + indexes + enable RLS
-  const { error: e1 } = await supabase.rpc('exec_sql', { sql: MIGRATION_SQL }).maybeSingle()
+  // Legacy RPC is intentionally absent from generated types and may not exist
+  // on reconciled databases; the route already handles that case explicitly.
+  const { error: e1 } = await supabase
+    .rpc('exec_sql' as never, { sql: MIGRATION_SQL } as never)
+    .maybeSingle()
   if (e1) {
     // If exec_sql doesn't exist, try raw SQL via pg
     // Fallback: execute via individual statements
@@ -172,7 +174,10 @@ export async function GET(request: Request) {
   const { error: seedErr, data: seedData } = await supabase
     .from('um_legal_documents')
     .upsert(
-      documents.map(d => ({ ...d, version: '1.0', is_active: true })),
+      // The legacy route predates the currently generated table shape. Keep
+      // the runtime payload unchanged until this endpoint is retired in favor
+      // of forward-only migrations.
+      documents.map(d => ({ ...d, version: '1.0', is_active: true })) as never,
       { onConflict: 'slug' }
     )
     .select('slug')
