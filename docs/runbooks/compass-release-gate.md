@@ -37,6 +37,56 @@ The workflow uses two team-scoped Coolify tokens so no mutation credential needs
 
 Until the final variable is set, automatic and manual production jobs remain skipped.
 
+## Manual staging release
+
+`.github/workflows/deploy-staging.yml` is a separate staging-only path. It has
+only `workflow_dispatch`; it cannot run on push, PR, schedule, or a completed
+production workflow. A run also needs both the checked
+`confirm_staging_deploy` input and `COMPASS_STAGING_RELEASE_ENABLED=true` in the
+GitHub `staging` Environment. The activation flag is checked in a runner step,
+after Environment variables become available and before Coolify is mutated.
+Configure required reviewers on that Environment.
+
+The dispatcher supplies a full 40-character candidate SHA. Before Coolify is
+mutated, the workflow verifies that the exact SHA has a completed, successful
+`quality-gate` job in `build-check.yml` from this repository. Release tooling is
+checked out from the protected default branch, so candidate application code is
+not executed in the job that receives staging credentials.
+
+Configure these non-secret GitHub Environment variables on `staging`:
+
+| Variable | Meaning |
+|---|---|
+| `COMPASS_STAGING_RELEASE_ENABLED` | Must be exactly `true` to activate the manual job |
+| `STAGING_COOLIFY_URL` | HTTPS Coolify staging origin, for example `https://coolify-staging.dynaminds.pl` |
+| `STAGING_APPLICATION_UUID` | Coolify UUID of the COMPASS staging application |
+| `STAGING_HEALTH_URL` | Cloudflare-protected readiness URL, for example `https://staging.compass.dynaminds.pl/api/health` |
+
+Configure these GitHub Environment secrets on `staging`:
+
+| Secret | Required scope/use |
+|---|---|
+| `COOLIFY_TOKEN` | Team-scoped Coolify API token with only the read, write, and deploy access required to inspect, PATCH, confirm, and deploy this staging application |
+| `MIGRATION_DATABASE_URL` | Staging-only PostgreSQL session-pooler URL with `sslmode=require`; never use a production database URL here |
+| `CF_ACCESS_CLIENT_ID` | Cloudflare Access service-token client ID for staging |
+| `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access service-token client secret for staging |
+
+The workflow sends the two Access values only as `CF-Access-Client-Id` and
+`CF-Access-Client-Secret` request headers. It does not print response bodies or
+secret-bearing request data. Coolify receives and confirms the exact
+`git_commit_sha`, returns a deployment UUID, and is polled until a terminal
+state; there is no blind post-deploy wait. The pinned Supabase CLI then applies
+the migrations from the checked-out candidate SHA to the staging database using
+`MIGRATION_DATABASE_URL`; the workflow never prints that URL. The final gate
+requires exactly three healthy readiness responses, 20 seconds apart, all
+reporting the requested SHA, `checks.database.status=healthy`, and
+`Cache-Control: no-store`.
+
+To release, open **Actions → Deploy staging → Run workflow**, paste the exact
+SHA that already passed `quality-gate`, check the staging confirmation, and let
+the protected `staging` Environment approval control credential access. This
+workflow has no production URL, UUID, Environment, secret, or deploy job.
+
 ## Health contract
 
 - `GET /api/livez` checks only the process and returns exactly `status=alive` plus the full `version`. Docker uses this endpoint, so a database outage does not create a restart loop.
