@@ -5,12 +5,49 @@
     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     "react/no-unescaped-entities": "warn",
     "react-hooks/exhaustive-deps": "warn",
-    "no-console": "error"
+    "no-console": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@supabase/supabase-js",
+            "importNames": ["createClient"],
+            "message": "Use lib/supabase/server, lib/supabase/client, or the server-only lib/supabase/admin boundary."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "MemberExpression[object.object.name='process'][object.property.name='env'][property.name=/^SUPABASE_(SERVICE_ROLE|SECRET)_KEY$/]",
+        "message": "Privileged Supabase credentials may only be read in lib/supabase/admin.ts."
+      },
+      {
+        "selector": "MemberExpression[object.object.name='process'][object.property.name='env'][property.value=/^SUPABASE_(SERVICE_ROLE|SECRET)_KEY$/]",
+        "message": "Privileged Supabase credentials may only be read in lib/supabase/admin.ts."
+      }
+    ]
   },
   "overrides": [
     {
-      "files": ["scripts/**/*.ts", "scripts/**/*.js", "lib/logger.ts"],
-      "rules": { "no-console": "off" }
+      "files": ["scripts/**/*.{ts,js,mjs}", "lib/logger.ts"],
+      "rules": {
+        "no-console": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["lib/supabase/admin.ts"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": ["**/__tests__/**/*.{ts,tsx,js,mjs}", "test/**/*.{ts,tsx,js,mjs}"],
+      "rules": { "no-restricted-syntax": "off" }
     }
   ]
 }

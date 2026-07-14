@@ -31,7 +31,10 @@ services:
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-${NEXT_PUBLIC_APP_URL}}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      # Prefer a per-service sb_secret key; keep the legacy key only during
+      # migration. Application code resolves both inside one server-only module.
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       CRON_SECRET: ${CRON_SECRET}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       # Sentry runtime envs (server-side, NOT NEXT_PUBLIC_). DSN unset = SDK no-op.

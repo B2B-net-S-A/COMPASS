@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET } from '../route'
 
+function supabaseResponse(status = 200, body: unknown = []) {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+    })
+}
+
 describe('GET /api/health', () => {
     const originalEnv = { ...process.env }
 
@@ -18,13 +25,13 @@ describe('GET /api/health', () => {
     })
 
     it('returns HTTP 200 when Supabase is reachable', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(supabaseResponse()))
         const response = await GET()
         expect(response.status).toBe(200)
     })
 
     it('returns standard healthcheck shape', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(supabaseResponse()))
         const response = await GET()
         const body = await response.json()
         expect(body).toMatchObject({
@@ -41,7 +48,7 @@ describe('GET /api/health', () => {
     })
 
     it('returns HTTP 503 + status: unhealthy when Supabase is down', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(supabaseResponse(500, { message: 'down' })))
         const response = await GET()
         const body = await response.json()
         expect(response.status).toBe(503)
@@ -51,7 +58,7 @@ describe('GET /api/health', () => {
     })
 
     it('fails closed when the database probe is rejected', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(supabaseResponse(401, { message: 'denied' })))
         const response = await GET()
         const body = await response.json()
         expect(response.status).toBe(503)
@@ -78,7 +85,7 @@ describe('GET /api/health', () => {
     it('fails readiness when exact release metadata is missing', async () => {
         delete process.env.GIT_SHA
         delete process.env.BUILT_AT
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(supabaseResponse()))
         const response = await GET()
         const body = await response.json()
         expect(response.status).toBe(503)
@@ -88,7 +95,7 @@ describe('GET /api/health', () => {
     })
 
     it('queries a known table with the server-only key and never caches the probe', async () => {
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+        const fetchMock = vi.fn().mockResolvedValue(supabaseResponse())
         vi.stubGlobal('fetch', fetchMock)
 
         await GET()
@@ -96,15 +103,14 @@ describe('GET /api/health', () => {
         expect(fetchMock).toHaveBeenCalledOnce()
         const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit]
         expect(url.toString()).toBe('https://test.supabase.co/rest/v1/profiles?select=id&limit=1')
+        const headers = new Headers(init.headers)
         expect(init).toMatchObject({
             method: 'GET',
             cache: 'no-store',
             redirect: 'error',
-            headers: {
-                apikey: 'test-service-role-key',
-                Authorization: 'Bearer test-service-role-key',
-            },
         })
+        expect(headers.get('apikey')).toBe('test-service-role-key')
+        expect(headers.get('authorization')).toBe('Bearer test-service-role-key')
     })
 
     it('the route is force-dynamic (NEVER cached) and runs on nodejs runtime', async () => {
