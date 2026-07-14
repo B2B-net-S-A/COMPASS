@@ -7,17 +7,18 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-        # Release tooling writes GIT_SHA. Coolify's native SOURCE_COMMIT is the
-        # fail-closed fallback when the same Compose file is rendered directly.
-        # The Dockerfile rejects anything other than a full 40-character SHA.
-        GIT_SHA: ${GIT_SHA:-${SOURCE_COMMIT:?GIT_SHA or SOURCE_COMMIT must be a full 40-character commit SHA}}
+        # The git_commit_sha patched by release tooling determines Coolify's
+        # native SOURCE_COMMIT. Use that checkout identity as the single source
+        # of truth for both build metadata and the immutable image tag. This is
+        # portable across Compose v2/v5 and the Dockerfile validates full SHA.
+        GIT_SHA: ${SOURCE_COMMIT:?SOURCE_COMMIT must be a full 40-character commit SHA}
         BUILT_AT: ${BUILT_AT:?BUILT_AT must be an ISO-8601 UTC timestamp}
         # Sentry build-time args. DSN is public (browser bundle); auth token is
         # supplied separately as a BuildKit secret below.
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
       secrets:
         - SENTRY_AUTH_TOKEN
-    image: compass-app:${GIT_SHA:-${SOURCE_COMMIT:?GIT_SHA or SOURCE_COMMIT must be a full 40-character commit SHA}}
+    image: compass-app:${SOURCE_COMMIT:?SOURCE_COMMIT must be a full 40-character commit SHA}
     container_name: compass-app
     restart: unless-stopped
     # Traefik reaches the service on the Compose network; do not publish a host

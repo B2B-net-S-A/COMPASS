@@ -59,12 +59,14 @@ function assertImmutableProductionApp(app) {
 }
 
 describe('production Compose release wiring', () => {
-    it('renders an immutable image from the release-managed GIT_SHA', () => {
-        const rendered = requireRenderedCompose({ release: { GIT_SHA: targetSha } })
+    it('uses the checked-out SOURCE_COMMIT even when a stale GIT_SHA exists', () => {
+        const rendered = requireRenderedCompose({
+            release: { GIT_SHA: 'e'.repeat(40), SOURCE_COMMIT: targetSha },
+        })
         assertImmutableProductionApp(rendered.services.app)
     })
 
-    it('uses Coolify SOURCE_COMMIT when GIT_SHA is not explicitly supplied', () => {
+    it('renders an immutable image directly from Coolify SOURCE_COMMIT', () => {
         const rendered = requireRenderedCompose({ release: { SOURCE_COMMIT: targetSha } })
         assertImmutableProductionApp(rendered.services.app)
     })
@@ -72,12 +74,12 @@ describe('production Compose release wiring', () => {
     it('fails closed when neither exact source identifier is available', () => {
         const result = renderCompose({ release: {} })
         assert.notEqual(result.status, 0)
-        assert.match(result.stderr, /GIT_SHA or SOURCE_COMMIT must be a full 40-character commit SHA/)
+        assert.match(result.stderr, /SOURCE_COMMIT must be a full 40-character commit SHA/)
     })
 
     it('publishes the application port only through the local loopback override', () => {
         const rendered = requireRenderedCompose({
-            release: { GIT_SHA: targetSha, APP_PORT: '11000' },
+            release: { SOURCE_COMMIT: targetSha, APP_PORT: '11000' },
             local: true,
         })
         const [binding] = rendered.services.app.ports
@@ -88,7 +90,13 @@ describe('production Compose release wiring', () => {
     })
 
     it('keeps the Dockerfile full-SHA build validation wired', async () => {
-        const dockerfile = await readFile(`${repositoryRoot}/COMPASS/Dockerfile`, 'utf8')
+        const [compose, dockerfile] = await Promise.all([
+            readFile(productionCompose, 'utf8'),
+            readFile(`${repositoryRoot}/COMPASS/Dockerfile`, 'utf8'),
+        ])
+
+        assert.match(compose, /GIT_SHA: \$\{SOURCE_COMMIT:\?SOURCE_COMMIT must be/)
+        assert.doesNotMatch(compose, /\$\{GIT_SHA:-\$\{SOURCE_COMMIT:/)
         assert.match(dockerfile, /\^\[0-9a-f\]\{40\}\$/)
         assert.match(dockerfile, /process\.exit\(1\)/)
     })

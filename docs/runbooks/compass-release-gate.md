@@ -7,7 +7,7 @@ This runbook covers the repository-side release foundation. It does not authoriz
 - `quality-gate` is the single branch-protection check aggregating the existing secret scan, application checks, security scan, standards drift job, and an immutable Docker build.
 - Docker CI renders the real App Router `/login` page and verifies that an anonymous request to `/internal` redirects to `/login`; `/api/livez` alone is not accepted as framework-migration evidence.
 - Coolify receives a full 40-character `git_commit_sha`, which is read back before deployment.
-- `GIT_SHA` and `BUILT_AT` are written as build-time and runtime variables before the source build starts. Root Compose uses Coolify's native `SOURCE_COMMIT` only as a fail-closed SHA fallback; the Dockerfile still validates the resolved value as a full 40-character commit SHA.
+- `GIT_SHA` and `BUILT_AT` are written as build-time and runtime variables before the source build starts. Root Compose derives the build `GIT_SHA` and immutable image tag from Coolify's native `SOURCE_COMMIT`, which is determined by the patched `git_commit_sha`; this avoids stale environment metadata overriding the checked-out source. The Dockerfile validates the value as a full 40-character commit SHA.
 - The concrete Coolify deployment UUID is polled; a completed deployment with another commit fails.
 - Readiness must pass three times in a row, 20 seconds apart, with the exact SHA, exact build timestamp, and `checks.database.status=healthy`.
 - The release is monitored for five more minutes. Two consecutive critical failures fail the workflow.
