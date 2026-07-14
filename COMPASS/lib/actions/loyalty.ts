@@ -958,7 +958,8 @@ export async function setLeaderboardOptOut(optOut: boolean): Promise<{ success: 
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
-        const { error } = await supabase
+        const service = createServiceClient()
+        const { error } = await service
             .from('profiles')
             .update({ leaderboard_opt_out: optOut })
             .eq('id', user.id)

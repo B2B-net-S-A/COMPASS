@@ -308,9 +308,38 @@ interface PoolSnapshot {
     alreadyBookedDaysInYear: number
 }
 
+interface LeavePoolProfileRow {
+    employment_type: string | null
+    leave_entitlement_days: number | null
+    leave_carried_over_days: number | string | null
+    leave_used_initial_days: number | string | null
+}
+
+/**
+ * C2: the session client may read only the authenticated user's profile.
+ * Cross-user callers must supply a row already fetched through the guarded
+ * service-role path in their server action.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function readOwnLeavePoolProfile(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase: any,
+    ctx: { userId: string },
+): Promise<LeavePoolProfileRow | null> {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('employment_type, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days')
+        .eq('id', ctx.userId)
+        .maybeSingle()
+
+    if (error) throw new Error('Nie udało się pobrać danych puli urlopowej.')
+    return (data ?? null) as LeavePoolProfileRow | null
+}
+
 /**
  * Phase 30 — fetch pool snapshot + compute paid/unpaid split for a leave request.
- * Wykonuje 3 zapytania (profile + existing leaves in year + holidays). Returns:
+ * Wykonuje 2 zapytania (existing leaves in year + holidays). Profil jest
+ * dostarczany przez self-only albo chronioną service-role ścieżkę callera.
  *   - paid: dni płatne (z puli)
  *   - unpaid: dni bezpłatne (poza pulą)
  *   - workingDays: total dni roboczych w przedziale
@@ -323,6 +352,7 @@ async function computeLeaveRequestSplit(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     supabase: any,
     userId: string,
+    poolProfile: LeavePoolProfileRow | null,
     leaveType: LeaveType,
     startDate: string,
     endDate: string,
@@ -349,12 +379,7 @@ async function computeLeaveRequestSplit(
     const startYear = startDate.slice(0, 4)
     const endYear = endDate.slice(0, 4)
 
-    const [profRes, existingRes, holRes] = await Promise.all([
-        supabase
-            .from('profiles')
-            .select('employment_type, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days')
-            .eq('id', userId)
-            .maybeSingle(),
+    const [existingRes, holRes] = await Promise.all([
         supabase
             .from('leave_requests')
             .select('id, start_date, end_date, half_day, leave_type')
@@ -370,12 +395,6 @@ async function computeLeaveRequestSplit(
             .lte('date', `${endYear}-12-31`),
     ])
 
-    const prof = (profRes.data ?? null) as {
-        employment_type: string | null
-        leave_entitlement_days: number | null
-        leave_carried_over_days: number | string | null
-        leave_used_initial_days: number | string | null
-    } | null
     const holidays = (holRes.data ?? []) as PublicHolidayDate[]
     let existing = (existingRes.data ?? []) as Array<LeaveSpan & { id: string }>
     if (options?.excludeRequestId) {
@@ -389,10 +408,10 @@ async function computeLeaveRequestSplit(
     )
 
     const snapshot: PoolSnapshot = {
-        employmentType: prof?.employment_type ?? null,
-        entitlementDays: prof?.leave_entitlement_days ?? null,
-        carriedOverDays: Number(prof?.leave_carried_over_days ?? 0),
-        usedInitialDays: Number(prof?.leave_used_initial_days ?? 0),
+        employmentType: poolProfile?.employment_type ?? null,
+        entitlementDays: poolProfile?.leave_entitlement_days ?? null,
+        carriedOverDays: Number(poolProfile?.leave_carried_over_days ?? 0),
+        usedInitialDays: Number(poolProfile?.leave_used_initial_days ?? 0),
         alreadyBookedDaysInYear: alreadyBooked,
     }
 
@@ -481,9 +500,11 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
     // wniosku (vacation/on_demand only); non-pool types → 0/0. Dla UoP z ustawionym
     // entitlement: hard-limit (throw gdy wniosek > remaining). Dla B2B/zlecenie z pulą:
     // auto-split (paid z puli + unpaid reszta w jednym leave_request).
+    const poolProfile = await readOwnLeavePoolProfile(supabase, ctx)
     const split = await computeLeaveRequestSplit(
         supabase,
         ctx.userId,
+        poolProfile,
         input.leaveType,
         input.startDate,
         input.endDate,
@@ -862,7 +883,10 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
     // do wykluczenia exited/offboarding.
     const { data: target, error: targetErr } = await admin
         .from('profiles')
-        .select('id, role, manager_id, employment_status, employment_type, email, full_name')
+        .select(
+            'id, role, manager_id, employment_status, employment_type, email, full_name, '
+            + 'leave_entitlement_days, leave_carried_over_days, leave_used_initial_days',
+        )
         .eq('id', input.targetUserId)
         .single<{
             id: string
@@ -872,6 +896,9 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
             employment_type: string | null
             email: string | null
             full_name: string | null
+            leave_entitlement_days: number | null
+            leave_carried_over_days: number | string | null
+            leave_used_initial_days: number | string | null
         }>()
     if (targetErr || !target) {
         throw new Error('Pracownik nie istnieje.')
@@ -944,6 +971,7 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
     const split = await computeLeaveRequestSplit(
         admin,
         input.targetUserId,
+        target,
         input.leaveType,
         input.startDate,
         input.endDate,
@@ -1672,7 +1700,10 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
 
 export async function listMyLeaveRequests(year?: number): Promise<MyLeaveRow[]> {
     const ctx = await requireInternalOrAdminAction()
-    const supabase = createClient()
+    // The result is still hard-scoped to the authenticated user below. Use the
+    // server-only client only to hydrate the optional substitute directory data;
+    // C2 intentionally prevents session clients from reading another profile.
+    const supabase = createServiceClient()
 
     const targetYear = year ?? new Date().getFullYear()
     const yearStart = `${targetYear}-01-01`
@@ -1814,9 +1845,11 @@ export async function previewLeaveSplit(input: {
     }
 
     const supabase = createClient()
+    const poolProfile = await readOwnLeavePoolProfile(supabase, ctx)
     const split = await computeLeaveRequestSplit(
         supabase,
         ctx.userId,
+        poolProfile,
         input.leaveType,
         input.startDate,
         input.endDate,

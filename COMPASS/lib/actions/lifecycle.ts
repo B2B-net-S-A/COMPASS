@@ -616,7 +616,7 @@ export async function assignBuddy(userId: string, buddyId: string | null): Promi
     if (userId === buddyId) {
         throw new Error('Pracownik nie może być swoim własnym buddy.')
     }
-    const supabase = createClient()
+    const supabase = createServiceClient()
     const { error } = await supabase.from('profiles').update({ buddy_id: buddyId }).eq('id', userId)
     if (error) throw new Error('Nie udało się przypisać buddy.')
 
@@ -658,7 +658,6 @@ export async function listOnboardingQueue(filters?: {
         .from('onboarding_progress')
         .select(`
             id, user_id, started_at, completed_at,
-            user:profiles!user_id(full_name, email, role, hired_at),
             tasks:onboarding_tasks(id, completed_at, due_date)
         `)
 
@@ -674,10 +673,36 @@ export async function listOnboardingQueue(filters?: {
         return []
     }
 
+    // Keep onboarding_progress on the session client so its RLS remains the
+    // row-visibility boundary. Only hydrate profiles that survived that check.
+    const userIds = [...new Set((data ?? []).map((row: { user_id: string }) => row.user_id))]
+    const service = createServiceClient()
+    const { data: users, error: usersError } = userIds.length
+        ? await service
+            .from('profiles')
+            .select('id, full_name, email, role, hired_at')
+            .in('id', userIds)
+        : { data: [], error: null }
+    if (usersError) {
+        logCompat.error('listOnboardingQueue profile hydration error:', usersError)
+        return []
+    }
+    type QueueUser = {
+        id: string
+        full_name: string | null
+        email: string
+        role: DbRole
+        hired_at: string | null
+    }
+    const usersById = new Map<string, QueueUser>((users ?? []).map((user: QueueUser) => (
+        [user.id, user]
+    )))
+
     const now = new Date()
     return (data ?? [])
-        .filter((row: any) => !filters?.role || row.user?.role === filters.role)
+        .filter((row: any) => !filters?.role || usersById.get(row.user_id)?.role === filters.role)
         .map((row: any) => {
+            const user = usersById.get(row.user_id)
             const tasks: Array<{ completed_at: string | null; due_date: string | null }> = row.tasks ?? []
             const tasksCompleted = tasks.filter((t) => t.completed_at !== null).length
             const tasksOverdue = tasks.filter(
@@ -686,10 +711,10 @@ export async function listOnboardingQueue(filters?: {
             return {
                 progress_id: row.id,
                 user_id: row.user_id,
-                full_name: row.user?.full_name ?? null,
-                email: row.user?.email ?? '',
-                role: (row.user?.role ?? 'consultant') as DbRole,
-                hired_at: row.user?.hired_at ?? null,
+                full_name: user?.full_name ?? null,
+                email: user?.email ?? '',
+                role: (user?.role ?? 'consultant') as DbRole,
+                hired_at: user?.hired_at ?? null,
                 started_at: row.started_at,
                 completed_at: row.completed_at,
                 tasks_total: tasks.length,
@@ -1182,7 +1207,7 @@ export async function listExitInterviews(filters?: {
     status?: 'scheduled' | 'submitted' | 'reviewed' | 'archived' | 'all'
 }): Promise<Array<ExitInterview & { user_full_name: string | null; user_email: string | null }>> {
     await requireLifecycleManagerAction()
-    const supabase = createClient()
+    const supabase = createServiceClient()
     let query = supabase
         .from('exit_interviews')
         .select('*, user:profiles!user_id(full_name, email)')
@@ -1476,7 +1501,7 @@ export async function getLifecycleSidebarCount(): Promise<LifecycleSidebarCount>
 
 export async function getLifecycleAnalytics(): Promise<LifecycleAnalytics> {
     await requireLifecycleManagerAction()
-    const supabase = createClient()
+    const supabase = createServiceClient()
 
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
     const now = new Date()
@@ -1933,18 +1958,37 @@ export async function listLifecycleNotes(userId: string): Promise<LifecycleNote[
     const supabase = createClient()
     const { data, error } = await supabase
         .from('lifecycle_notes')
-        .select('*, author:profiles!author_id(full_name)')
+        .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
     if (error) {
         logCompat.error('listLifecycleNotes error:', error)
         return []
     }
-    return (data ?? []).map((row: { id: string; user_id: string; author_id: string | null; author: { full_name: string | null } | null; category: 'general' | 'onboarding' | 'exit' | 'flag'; content: string; is_private: boolean; created_at: string; updated_at: string }) => ({
+
+    // Note visibility (including private notes) stays governed by lifecycle_notes
+    // RLS. Author names come from the safe, authenticated directory projection.
+    const authorIds = [...new Set((data ?? [])
+        .map((row: { author_id: string | null }) => row.author_id)
+        .filter((id: string | null): id is string => Boolean(id)))]
+    const { data: authors, error: authorsError } = authorIds.length
+        ? await supabase
+            .from('profile_directory')
+            .select('id, full_name')
+            .in('id', authorIds)
+        : { data: [], error: null }
+    if (authorsError) {
+        logCompat.error('listLifecycleNotes author hydration error:', authorsError)
+    }
+    const authorNames = new Map((authors ?? []).map((author: { id: string; full_name: string | null }) => (
+        [author.id, author.full_name]
+    )))
+
+    return (data ?? []).map((row: { id: string; user_id: string; author_id: string | null; category: 'general' | 'onboarding' | 'exit' | 'flag'; content: string; is_private: boolean; created_at: string; updated_at: string }) => ({
         id: row.id,
         user_id: row.user_id,
         author_id: row.author_id,
-        author_name: row.author?.full_name ?? null,
+        author_name: row.author_id ? (authorNames.get(row.author_id) ?? null) : null,
         category: row.category,
         content: row.content,
         is_private: row.is_private,
@@ -2166,7 +2210,7 @@ export async function listCompletedOnboardings(limit = 100): Promise<Array<{
     duration_days: number | null
 }>> {
     await requireLifecycleManagerAction()
-    const supabase = createClient()
+    const supabase = createServiceClient()
     const { data, error } = await supabase
         .from('onboarding_progress')
         .select(`

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto'
-import { readFile, readdir } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -16,6 +16,7 @@ const SAFE_DIRECTORY_COLUMNS = new Set([
 ])
 
 const SOURCE_ROOTS = ['app', 'components', 'lib']
+const SOURCE_FILES = ['middleware.ts']
 const EXCLUDED_PARTS = new Set(['__tests__', 'node_modules', '.next', 'coverage'])
 const MANIFEST_PATH = 'security/profile-access-inventory.json'
 
@@ -84,6 +85,25 @@ function receiverIdentifier(call, sourceFile) {
     return { receiver, identifier: match?.[0] ?? receiver }
 }
 
+function chainedCall(expression, name) {
+    let current = expression
+    while (current) {
+        if (ts.isCallExpression(current)) {
+            if (propertyName(current) === name) return current
+            if (ts.isPropertyAccessExpression(current.expression)) {
+                current = current.expression.expression
+                continue
+            }
+        }
+        if (ts.isPropertyAccessExpression(current)) {
+            current = current.expression
+            continue
+        }
+        break
+    }
+    return null
+}
+
 function containingFunctionName(node) {
     let current = node.parent
     while (current) {
@@ -98,19 +118,60 @@ function containingFunctionName(node) {
     return null
 }
 
-function collectClientBindings(sourceFile) {
-    const service = new Set()
-    const session = new Set()
+function containingFunctionNode(node) {
+    let current = node.parent
+    while (current) {
+        if (
+            ts.isFunctionDeclaration(current)
+            || ts.isArrowFunction(current)
+            || ts.isFunctionExpression(current)
+            || ts.isMethodDeclaration(current)
+        ) return current
+        current = current.parent
+    }
+    return null
+}
 
-    function classifyBinding(name, initializerOrType) {
+function functionScopes(node) {
+    const scopes = []
+    let current = node.parent
+    while (current) {
+        if (
+            ts.isFunctionDeclaration(current)
+            || ts.isArrowFunction(current)
+            || ts.isFunctionExpression(current)
+            || ts.isMethodDeclaration(current)
+        ) scopes.push(current)
+        current = current.parent
+    }
+    scopes.push(null)
+    return scopes
+}
+
+function collectClientBindings(sourceFile) {
+    const bindings = []
+
+    function classifyBinding(node, name, initializerOrType) {
         const text = initializerOrType?.getText(sourceFile) ?? ''
-        if (/create(?:Lifecycle)?(?:Service|Admin)Client|createPrivilegedClient|\bServiceClient\b/.test(text)) {
-            service.add(name)
+        const scope = containingFunctionNode(node)
+        if (/create(?:Lifecycle)?(?:Service|Admin)Client|createPrivilegedClient|\b(?:Service|Admin)Client\b/.test(text)) {
+            bindings.push({ name, kind: 'service', scope: containingFunctionNode(node), position: node.getStart(sourceFile) })
+            return
         }
-        for (const serviceName of service) {
-            if (new RegExp(`\\b${serviceName}\\b`).test(text)) service.add(name)
+        if (/create(?:Lifecycle)?Client/.test(text) && !/(?:Service|Admin)Client/.test(text)) {
+            bindings.push({ name, kind: 'session', scope: containingFunctionNode(node), position: node.getStart(sourceFile) })
+            return
         }
-        if (/create(?:Lifecycle)?Client/.test(text) && !/(?:Service|Admin)Client/.test(text)) session.add(name)
+        const alias = bindings
+            .filter((binding) => (
+                binding.scope === scope
+                && new RegExp(`\\b${binding.name}\\b`).test(text)
+                && binding.position <= node.getStart(sourceFile)
+            ))
+            .sort((left, right) => right.position - left.position)[0]
+        if (alias) {
+            bindings.push({ name, kind: alias.kind, scope, position: node.getStart(sourceFile) })
+        }
     }
 
     function collectCronAdminBinding(node) {
@@ -120,33 +181,125 @@ function collectClientBindings(sourceFile) {
         if (!fn || !wrapper || !ts.isCallExpression(wrapper) || invokedName(wrapper) !== 'withCronAuth') return
         for (const element of node.name.elements) {
             const property = element.propertyName?.getText(sourceFile) ?? element.name.getText(sourceFile)
-            if (property === 'admin' && ts.isIdentifier(element.name)) service.add(element.name.text)
+            if (property === 'admin' && ts.isIdentifier(element.name)) {
+                bindings.push({
+                    name: element.name.text,
+                    kind: 'service',
+                    scope: containingFunctionNode(node),
+                    position: node.getStart(sourceFile),
+                })
+            }
         }
     }
 
     function visit(node) {
         collectCronAdminBinding(node)
         if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-            classifyBinding(node.name.text, node.initializer ?? node.type)
+            classifyBinding(node, node.name.text, node.initializer ?? node.type)
+        }
+        if (
+            ts.isVariableDeclaration(node)
+            && ts.isObjectBindingPattern(node.name)
+            && sourceFile.text.includes('admin: AdminClient')
+        ) {
+            for (const element of node.name.elements) {
+                const property = element.propertyName?.getText(sourceFile) ?? element.name.getText(sourceFile)
+                if (property === 'admin' && ts.isIdentifier(element.name)) {
+                    bindings.push({
+                        name: element.name.text,
+                        kind: 'service',
+                        scope: containingFunctionNode(node),
+                        position: node.getStart(sourceFile),
+                    })
+                }
+            }
         }
         if (ts.isParameter(node) && ts.isIdentifier(node.name)) {
-            classifyBinding(node.name.text, node.type)
+            classifyBinding(node, node.name.text, node.type)
         }
         ts.forEachChild(node, visit)
     }
     visit(sourceFile)
-    return { service, session }
+    return {
+        kind(identifier, usageNode) {
+            for (const scope of functionScopes(usageNode)) {
+                const match = bindings
+                    .filter((binding) => (
+                        binding.name === identifier
+                        && binding.scope === scope
+                        && binding.position <= usageNode.getStart(sourceFile)
+                    ))
+                    .sort((left, right) => right.position - left.position)[0]
+                if (match) return match.kind
+            }
+            return null
+        },
+    }
+}
+
+function collectStaticStrings(sourceFile) {
+    const bindings = []
+
+    function literalValue(node) {
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
+        if (
+            ts.isParenthesizedExpression(node)
+            || ts.isAsExpression(node)
+            || ts.isSatisfiesExpression(node)
+        ) return literalValue(node.expression)
+        if (ts.isIdentifier(node)) {
+            return bindings
+                .filter((binding) => binding.name === node.text && binding.position <= node.getStart(sourceFile))
+                .sort((left, right) => right.position - left.position)[0]?.value ?? null
+        }
+        return null
+    }
+
+    function visit(node) {
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+            const value = literalValue(node.initializer)
+            if (value !== null) {
+                bindings.push({
+                    name: node.name.text,
+                    value,
+                    scope: containingFunctionNode(node),
+                    position: node.getStart(sourceFile),
+                })
+            }
+        }
+        ts.forEachChild(node, visit)
+    }
+    visit(sourceFile)
+
+    return {
+        value(node, usageNode) {
+            const direct = literalValue(node)
+            if (direct !== null && !ts.isIdentifier(node)) return direct
+            if (!ts.isIdentifier(node)) return null
+            for (const scope of functionScopes(usageNode)) {
+                const match = bindings
+                    .filter((binding) => (
+                        binding.name === node.text
+                        && binding.scope === scope
+                        && binding.position <= usageNode.getStart(sourceFile)
+                    ))
+                    .sort((left, right) => right.position - left.position)[0]
+                if (match) return match.value
+            }
+            return null
+        },
+    }
 }
 
 function isSelfScoped(query) {
     return /\.eq\(\s*['"]id['"]\s*,\s*(?:user\.id|ctx\.userId|auth\.userId|data\.user\.id)\s*\)/.test(query)
 }
 
-function classify({ identifier, receiver, query, columns, predicates, clients, functionName }) {
+function classify({ identifier, receiver, query, columns, predicates, clients, functionName, node }) {
     const directService = /create(?:Lifecycle)?(?:Service|Admin)Client\s*\(|createPrivilegedClient\s*\(/.test(receiver)
-    if (directService || clients.service.has(identifier)) return 'protected_backend'
+    if (directService || clients.kind(identifier, node) === 'service') return 'protected_backend'
 
-    const sessionLike = clients.session.has(identifier)
+    const sessionLike = clients.kind(identifier, node) === 'session'
         || identifier === 'supabase'
         || identifier === 'session'
     if (!sessionLike) return 'unknown_client'
@@ -164,6 +317,15 @@ function classify({ identifier, receiver, query, columns, predicates, clients, f
         return 'directory_candidate'
     }
     return 'legacy_cross_user'
+}
+
+function classifyProfileEmbed({ identifier, receiver, clients, node }) {
+    const directService = /create(?:Lifecycle)?(?:Service|Admin)Client\s*\(|createPrivilegedClient\s*\(/.test(receiver)
+    if (directService || clients.kind(identifier, node) === 'service') return 'protected_backend'
+    if (clients.kind(identifier, node) === 'session' || identifier === 'supabase' || identifier === 'session') {
+        return 'legacy_cross_user_embed'
+    }
+    return 'unknown_client'
 }
 
 async function sourceFiles(root) {
@@ -191,6 +353,15 @@ async function sourceFiles(root) {
         }
     }
     for (const sourceRoot of SOURCE_ROOTS) await walk(path.join(root, sourceRoot))
+    for (const sourceFile of SOURCE_FILES) {
+        const absolute = path.join(root, sourceFile)
+        try {
+            await access(absolute)
+            result.push(absolute)
+        } catch (error) {
+            if (error?.code !== 'ENOENT') throw error
+        }
+    }
     return result.sort()
 }
 
@@ -202,6 +373,7 @@ export async function buildInventory(root) {
         const kind = absolute.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
         const sourceFile = ts.createSourceFile(absolute, content, ts.ScriptTarget.Latest, true, kind)
         const clients = collectClientBindings(sourceFile)
+        const staticStrings = collectStaticStrings(sourceFile)
 
         function visit(node) {
             if (
@@ -231,9 +403,36 @@ export async function buildInventory(root) {
                         predicates,
                         clients,
                         functionName: containingFunctionName(node),
+                        node,
                     }),
                     query,
                 })
+            }
+            if (
+                ts.isCallExpression(node)
+                && propertyName(node) === 'select'
+                && node.arguments.length > 0
+                && (
+                    node.arguments[0].getText(sourceFile).includes('profiles!')
+                    || staticStrings.value(node.arguments[0], node)?.includes('profiles!')
+                )
+            ) {
+                const fromCall = chainedCall(node.expression.expression, 'from')
+                if (fromCall) {
+                    const chain = outerChain(fromCall)
+                    const query = normalizeQuery(chain.getText(sourceFile))
+                    const { receiver, identifier } = receiverIdentifier(fromCall, sourceFile)
+                    const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
+                    entries.push({
+                        fingerprint: fingerprint(relativePath, query),
+                        path: relativePath,
+                        line,
+                        receiver,
+                        selected_columns: ['embedded:profiles'],
+                        classification: classifyProfileEmbed({ identifier, receiver, clients, node }),
+                        query,
+                    })
+                }
             }
             ts.forEachChild(node, visit)
         }
@@ -277,6 +476,53 @@ export function compareWithBaseline(actual, baseline) {
         if (entry.classification === 'unknown_client') {
             failures.push(`unclassified profiles client at ${entry.path}:${entry.line}: ${entry.receiver}`)
         }
+        if (entry.classification === 'legacy_cross_user_embed') {
+            failures.push(`profiles embed must use a guarded service client at ${entry.path}:${entry.line}`)
+        }
+        if (
+            entry.classification !== 'protected_backend'
+            && /\.(?:insert|update|delete|upsert)\s*\(/.test(entry.query)
+        ) {
+            failures.push(`direct authenticated profiles mutation at ${entry.path}:${entry.line}`)
+        }
+    }
+    return failures
+}
+
+export async function validateGuardEvidence(root, baseline) {
+    const failures = []
+    for (const [relativePath, requiredFunctions] of Object.entries(baseline.guard_evidence ?? {})) {
+        const absolute = path.join(root, relativePath)
+        let content
+        try {
+            content = await readFile(absolute, 'utf8')
+        } catch (error) {
+            failures.push(`guard evidence source missing: ${relativePath}`)
+            continue
+        }
+        const kind = absolute.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+        const sourceFile = ts.createSourceFile(absolute, content, ts.ScriptTarget.Latest, true, kind)
+        const functions = new Map()
+        function visit(node) {
+            if (ts.isFunctionDeclaration(node) && node.name) {
+                functions.set(node.name.text, node.getText(sourceFile))
+            }
+            ts.forEachChild(node, visit)
+        }
+        visit(sourceFile)
+
+        for (const [functionName, requiredMarkers] of Object.entries(requiredFunctions)) {
+            const functionText = functions.get(functionName)
+            if (!functionText) {
+                failures.push(`guard evidence function missing: ${relativePath}:${functionName}`)
+                continue
+            }
+            for (const marker of requiredMarkers) {
+                if (!functionText.includes(marker)) {
+                    failures.push(`required guard missing: ${relativePath}:${functionName} (${marker})`)
+                }
+            }
+        }
     }
     return failures
 }
@@ -301,7 +547,7 @@ function buildManifest(entries) {
         summary: summary(entries),
         files,
         c2_blockers: entries
-            .filter((entry) => entry.classification === 'legacy_cross_user')
+            .filter((entry) => entry.classification.startsWith('legacy_cross_user'))
             .map(({ fingerprint: entryFingerprint, path: entryPath, line, selected_columns, query }) => ({
                 fingerprint: entryFingerprint,
                 path: entryPath,
@@ -332,7 +578,10 @@ async function main() {
     }
 
     const baseline = JSON.parse(await readFile(path.join(root, MANIFEST_PATH), 'utf8'))
-    const failures = compareWithBaseline(inventory, baseline)
+    const failures = [
+        ...compareWithBaseline(inventory, baseline),
+        ...await validateGuardEvidence(root, baseline),
+    ]
     if (failures.length > 0) {
         for (const failure of failures) process.stderr.write(`profile access boundary: ${failure}\n`)
         process.exitCode = 1

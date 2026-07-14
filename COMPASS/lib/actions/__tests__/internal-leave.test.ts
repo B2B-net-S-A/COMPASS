@@ -51,6 +51,7 @@ const state = vi.hoisted(() => ({
     pendingLeaves: [] as Array<Record<string, unknown>>,
     leaveRow: null as Record<string, unknown> | null,
     targetManagerId: 'manager-1' as string | null,
+    leaveRequestReadCount: 0,
     updateCalls: [] as Array<{ table: string; payload: Record<string, unknown> }>,
     inCalls: [] as Array<{ col: string; vals: unknown }>,
 }))
@@ -70,9 +71,24 @@ function makeChain(table: string) {
                 // team roster: profiles where manager_id = ctx.userId
                 return { data: state.team, error: null }
             }
-            return { data: { email: 'emp@b2bnetwork.pl', full_name: 'Emp Loyee' }, error: null }
+            return {
+                data: {
+                    id: 'emp-x',
+                    email: 'emp@b2bnetwork.pl',
+                    full_name: 'Emp Loyee',
+                    role: 'internal',
+                    manager_id: state.targetManagerId,
+                    employment_status: 'active',
+                    employment_type: 'uop',
+                    leave_entitlement_days: 26,
+                    leave_carried_over_days: 0,
+                    leave_used_initial_days: 0,
+                },
+                error: null,
+            }
         }
         if (table === 'leave_requests') {
+            state.leaveRequestReadCount += 1
             return { data: mode === 'single' ? state.leaveRow : state.pendingLeaves, error: null }
         }
         return { data: null, error: null }
@@ -119,6 +135,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import {
     approveLeaveRequest,
+    createLeaveOnBehalf,
     listPendingLeaveRequests,
     rejectLeaveRequest,
 } from '@/lib/actions/internal-leave'
@@ -158,6 +175,7 @@ beforeEach(() => {
     state.pendingLeaves = []
     state.leaveRow = null
     state.targetManagerId = 'manager-1'
+    state.leaveRequestReadCount = 0
     state.updateCalls = []
     state.inCalls = []
 })
@@ -230,5 +248,21 @@ describe('approve/reject — manager team-scope guard', () => {
             /swojego zespołu/i,
         )
         expect(state.updateCalls.find((u) => u.table === 'leave_requests')).toBeUndefined()
+    })
+})
+
+describe('createLeaveOnBehalf — fail-closed target guard', () => {
+    it('rejects an out-of-team target before reading or writing leave data', async () => {
+        state.targetManagerId = 'other-manager'
+
+        await expect(createLeaveOnBehalf({
+            targetUserId: 'emp-x',
+            startDate: '2026-08-03',
+            endDate: '2026-08-04',
+            leaveType: 'vacation',
+        })).rejects.toThrow(/swojemu zespołowi/i)
+
+        expect(state.leaveRequestReadCount).toBe(0)
+        expect(state.updateCalls.find((call) => call.table === 'leave_requests')).toBeUndefined()
     })
 })

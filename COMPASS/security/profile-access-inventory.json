@@ -1,7 +1,26 @@
 {
   "schema_version": 1,
   "generated_from": "TypeScript AST; fingerprints are enforced and removals are allowed",
-  "summary": { "self": 60, "protected_backend": 184, "legacy_cross_user": 1 },
+  "summary": { "self": 60, "protected_backend": 205 },
+  "guard_evidence": {
+    "lib/actions/internal-leave.ts": {
+      "createLeaveOnBehalf": ["requireInternalOrAdminAction"],
+      "listMyLeaveRequests": ["requireInternalOrAdminAction"]
+    },
+    "lib/actions/lifecycle.ts": {
+      "assignBuddy": ["requireLifecycleManagerAction"],
+      "getLifecycleAnalytics": ["requireLifecycleManagerAction"],
+      "listCompletedOnboardings": ["requireLifecycleManagerAction"],
+      "listExitInterviews": ["requireLifecycleManagerAction"],
+      "listOnboardingQueue": ["requireInternalOrAdminAction"]
+    },
+    "lib/actions/loyalty.ts": {
+      "setLeaderboardOptOut": ["auth.getUser"]
+    },
+    "lib/actions/onboarding.ts": {
+      "setOnboardingTourDone": ["auth.getUser"]
+    }
+  },
   "files": {
     "app/(protected)/admin/inbox/[id]/page.tsx": { "self": ["8fe1edf7ef5894566ef5"], "protected_backend": ["2dae01c781f7356c6a85"] },
     "app/(protected)/admin/inbox/page.tsx": { "self": ["ffaf0a1cdb6a795fdada"] },
@@ -25,7 +44,8 @@
     "app/api/cron/clock-idle-reaper/route.ts": { "protected_backend": ["017bd8c100c17e538ac1"] },
     "app/api/cron/contractor-followup-reminder/route.ts": { "protected_backend": ["9c754274a03139b10c90"] },
     "app/api/cron/course-inactivity/route.ts": { "protected_backend": ["7d6e5c53eae6445583d7"] },
-    "app/api/cron/lifecycle-reminders/route.ts": { "protected_backend": ["f3820cc227ebfdadf7a6"] },
+    "app/api/cron/lifecycle-checkins/route.ts": { "protected_backend": ["6b2b1e20081630cef78a"] },
+    "app/api/cron/lifecycle-reminders/route.ts": { "protected_backend": ["e6c02e074284ac3322e4", "f3820cc227ebfdadf7a6", "47932fc8956930254a01"] },
     "app/api/cron/m365-profile-resync/route.ts": { "protected_backend": ["eec29b6228d214c55286", "4b92bb8bd2712a80eaaa"] },
     "app/api/cron/placement-hours-reminder/route.ts": { "protected_backend": ["9bab9c9fd42798450b6f"] },
     "app/api/cron/tc-sync/route.ts": { "protected_backend": ["d1387606a988273c7504"] },
@@ -51,21 +71,23 @@
     "lib/actions/incubator.ts": { "self": ["0915338ddd9563789705"], "protected_backend": ["8b2895d8d22a91243e2f", "8b2895d8d22a91243e2f"] },
     "lib/actions/internal-attendance.ts": { "self": ["fb8c0bfde20768eab9eb"], "protected_backend": ["ad6f1930ab965951d217"] },
     "lib/actions/internal-bonus.ts": { "protected_backend": ["1b5d8941b32df89c1001", "6d39f5ceca19d5948208", "c481b9b41d8f78d6ad00", "ae7b133799371931dded", "d15929159aef8a5dbe2f", "8c6b18aa46b61f28b54e", "e5c04c8f3dfe48c4179a"] },
+    "lib/actions/internal-clock/_shared.ts": { "protected_backend": ["268b806e4493ef753892"] },
+    "lib/actions/internal-clock/corrections.ts": { "protected_backend": ["7b1d1318e2af4150dd46"] },
     "lib/actions/internal-clock/preferences.ts": { "protected_backend": ["c2a316884fbc569143e4"] },
     "lib/actions/internal-clock/sessions.ts": { "self": ["e2d4d7282cd4253c00cc"] },
     "lib/actions/internal-contracts.ts": { "protected_backend": ["3584e83c236b8324fa2d"] },
     "lib/actions/internal-employee-profile.ts": { "protected_backend": ["5594a9be959966b9833a", "d106a09936d16dcd4ed1", "b528c075036c2eaeaafe", "8a4c3a929bf0168efb15", "3c1a751c29e9a6a854f1", "9b2095e2bd53dc2b61a3"] },
-    "lib/actions/internal-invoice.ts": { "protected_backend": ["18cb5dd721a4f2d26c5f", "1a06bd5bee9d06a90c11", "791ecfe6fa57cc51c11b", "8a1e0a8566d0338f2b15", "7b9f7f5e48064fe9d0ff", "151d6114fd3e5a51c3a6", "bfe0bbddf21b06dbc170", "708a43491357a57e8143", "708a43491357a57e8143", "708a43491357a57e8143"] },
-    "lib/actions/internal-leave.ts": { "legacy_cross_user": ["0376425cd0acd36cc48f"], "self": ["35b45763f4adfcbe99fe", "35b45763f4adfcbe99fe", "3e19165ac05638555b82"], "protected_backend": ["f8f9b1db21ec96e2cac6", "7d81a9bf98be8560aaf3", "e1dc45871daa87f3a218", "5fd2c736695b7e226de0", "a4b40e0e748f9e723730", "4787c76c95077df6c71c", "a1a81b1baa6221d7370b", "81308da0fe6f2e515d83", "6473f22afa498d88e3a1", "98b08c1261f42b1bf6df", "5bc6f29fae26dbfec95c", "afecc3a3e63107e94cc5", "ba60a5e347ee18cbbb69", "efa67079a4bbac5663f2", "81308da0fe6f2e515d83", "9413ea00a55407262c94", "a85ec12f81d8217e0605", "4f144f7016a83bbd360e", "5bc6f29fae26dbfec95c", "9ad700fc4478569eb5f5", "b5ed5ea5939c8ec1683b", "f2a01459493d4f70b522", "efa67079a4bbac5663f2", "4f144f7016a83bbd360e"] },
+    "lib/actions/internal-invoice.ts": { "protected_backend": ["18cb5dd721a4f2d26c5f", "1a06bd5bee9d06a90c11", "791ecfe6fa57cc51c11b", "8a1e0a8566d0338f2b15", "7b9f7f5e48064fe9d0ff", "151d6114fd3e5a51c3a6", "fd3b93cb3973acf0be81", "4c206f4cbd0dbf64a574", "bfe0bbddf21b06dbc170", "708a43491357a57e8143", "708a43491357a57e8143", "708a43491357a57e8143"] },
+    "lib/actions/internal-leave.ts": { "self": ["58fdc195bbf3d44be729", "35b45763f4adfcbe99fe", "35b45763f4adfcbe99fe", "3e19165ac05638555b82"], "protected_backend": ["f8f9b1db21ec96e2cac6", "7d81a9bf98be8560aaf3", "e1dc45871daa87f3a218", "5fd2c736695b7e226de0", "a4b40e0e748f9e723730", "4787c76c95077df6c71c", "d6671a47ea0bb1dec669", "81308da0fe6f2e515d83", "6473f22afa498d88e3a1", "98b08c1261f42b1bf6df", "5bc6f29fae26dbfec95c", "d49595346972ab90311c", "afecc3a3e63107e94cc5", "35ed66ca007cc0468558", "ba60a5e347ee18cbbb69", "efa67079a4bbac5663f2", "81308da0fe6f2e515d83", "9413ea00a55407262c94", "f906430442a6b9356b42", "a85ec12f81d8217e0605", "1ace1666b2b77b766df5", "4f144f7016a83bbd360e", "5bc6f29fae26dbfec95c", "9ad700fc4478569eb5f5", "b5ed5ea5939c8ec1683b", "f2a01459493d4f70b522", "efa67079a4bbac5663f2", "4eb7b5e99e3ec949a7cb", "7d5ffffca5e6cb7f3870", "5655a195d23ca9df0bd1", "4f144f7016a83bbd360e"] },
     "lib/actions/internal-payroll.ts": { "protected_backend": ["e62510ea984c665d44b2", "c163128676d52c35d432", "941c35bc666269bcb9d7", "d33f684521924dd005e1", "a6de4e04ff374cb41c3d"] },
     "lib/actions/internal-rates.ts": { "protected_backend": ["0250c0f1cee2268fdb5b", "7cef861b80bb95d4e122", "62a29af07177938a5c04", "f1752f50f49cc71b9c6b", "66439dd6dfe1d4a6c1b9", "3cddf32b4c781dfcb33a", "8d904704a72b7393c07d", "7cef861b80bb95d4e122", "62a29af07177938a5c04", "d6a6c18e30b1c9ea6673", "c03fea969fc4095e3736", "eae2e466025b35cc52db", "26e4532cf014c90509ce", "50ab36e0ef1e6fe1740b"] },
     "lib/actions/internal-timesheet-role-defaults.ts": { "protected_backend": ["f312535ee4af743ae008"] },
-    "lib/actions/internal-timesheet.ts": { "protected_backend": ["8871a119f134f34c87c2", "41aa35aa74e66c0dcca8", "41aa35aa74e66c0dcca8", "879e39d7baeebc3a3a93", "917e869f2a2a8aed23b1", "237caa7a1a0848cbb5ab", "0322a91257239906b870", "2cd81a0b534dcb48e678", "27216b7a2505185fb50f"] },
-    "lib/actions/lifecycle.ts": { "protected_backend": ["c76025b2638e142ebec0", "b53bb125637a5a02dce2", "f44018593f14e3b9d7da", "93df782eee5f52c6415a", "df6fc7102fe9e542da95", "540ddb6be53205e47fe9", "1c660475de092f878b07", "b2af5c8fadd01fc845cf", "deff973241ef70829182", "3a3a8f62ce242ca8f499", "8f33fa400c8be4bdc75e", "a8aca8cfa0ce7880f500", "c347bb9237fda62ca08a", "463a46240e614fb1cbc0", "0d8e32d9f826d46d5fd2", "10274d423858c0ece466"] },
-    "lib/actions/loyalty.ts": { "self": ["35bf95346e931a68ff77", "35bf95346e931a68ff77", "06f4e9446b37e3fdcf77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "2b08b490d91d898bf282"], "protected_backend": ["bae52b6a589ae6729a17", "fc882ba33fe28971246f", "0ae873ab47f5c1cff6df", "660abbac7bfeb916e605", "0ae873ab47f5c1cff6df", "2de91e951b18abe23dc0"] },
+    "lib/actions/internal-timesheet.ts": { "protected_backend": ["8871a119f134f34c87c2", "41aa35aa74e66c0dcca8", "41aa35aa74e66c0dcca8", "879e39d7baeebc3a3a93", "80ee24bf9264602b55d1", "917e869f2a2a8aed23b1", "237caa7a1a0848cbb5ab", "0322a91257239906b870", "2cd81a0b534dcb48e678", "27216b7a2505185fb50f"] },
+    "lib/actions/lifecycle.ts": { "protected_backend": ["c76025b2638e142ebec0", "b53bb125637a5a02dce2", "f44018593f14e3b9d7da", "93df782eee5f52c6415a", "df6fc7102fe9e542da95", "540ddb6be53205e47fe9", "4b16d9b485433891675b", "1c660475de092f878b07", "b2af5c8fadd01fc845cf", "8922ebb1ccaf802a097a", "deff973241ef70829182", "3a3a8f62ce242ca8f499", "8f33fa400c8be4bdc75e", "a8aca8cfa0ce7880f500", "c347bb9237fda62ca08a", "463a46240e614fb1cbc0", "0d8e32d9f826d46d5fd2", "923ed1c7fb469643e9ea", "eb5440add6507270a1cb", "10274d423858c0ece466"] },
+    "lib/actions/loyalty.ts": { "self": ["35bf95346e931a68ff77", "35bf95346e931a68ff77", "06f4e9446b37e3fdcf77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77", "35bf95346e931a68ff77"], "protected_backend": ["bae52b6a589ae6729a17", "fc882ba33fe28971246f", "0ae873ab47f5c1cff6df", "660abbac7bfeb916e605", "0ae873ab47f5c1cff6df", "2de91e951b18abe23dc0", "e8f5d0b53b2c8b8224ba"] },
     "lib/actions/news.ts": { "self": ["0addc973dd1f8e5f925e"], "protected_backend": ["1429564aab328ffe680b"] },
     "lib/actions/notifications.ts": { "self": ["acdcea6f74828cc05f82"] },
-    "lib/actions/onboarding.ts": { "self": ["cf2ff85bd700def97e0f"] },
+    "lib/actions/onboarding.ts": { "protected_backend": ["b2e5f6b7e4fc7f0fc3cd"] },
     "lib/actions/people-ops.ts": { "protected_backend": ["2450c6b05c9af044bb12", "2450c6b05c9af044bb12", "ffbe702276f79bdd12fa", "f9c5b70f13901d4beaef"] },
     "lib/actions/placements.ts": { "protected_backend": ["cf65b1645818587ed2e2", "31e37c52e8259be8af72", "bc3315aa5cf38dc39ae1", "9bd67a5c127607e09f09", "71d02487ddf79935de9c"] },
     "lib/actions/profile.ts": { "protected_backend": ["edde67a2ebcc8b99d2c6", "64f845e74b08e4aa8139", "af75d2c8a633a204e93f", "1114f130396e72bd9366"], "self": ["3ad69066ab412f2b950b"] },
@@ -82,17 +104,8 @@
     "lib/inbox/ingest.ts": { "protected_backend": ["5a8abbbc941f8ac4358d"] },
     "lib/m365/people-sync.ts": { "protected_backend": ["775f8e87a3ae7da934ac", "32f240962362ece3ab27"] },
     "lib/oof/reconcile.ts": { "protected_backend": ["56127c7f6582452f60b4", "4768648ded6efa7a0e9c"] },
-    "lib/supabase/admin.ts": { "protected_backend": ["fea5038d0ef25b44b249"] }
+    "lib/supabase/admin.ts": { "protected_backend": ["fea5038d0ef25b44b249"] },
+    "middleware.ts": { "self": ["ad925cbc69150f16fdc7"] }
   },
-  "c2_blockers": [
-    {
-      "fingerprint": "0376425cd0acd36cc48f",
-      "path": "lib/actions/internal-leave.ts",
-      "line": 353,
-      "selected_columns": ["employment_type", "leave_entitlement_days", "leave_carried_over_days", "leave_used_initial_days"],
-      "status": "open",
-      "reason": "Move behind a guarded backend action or narrow to the authenticated user before C2 contract.",
-      "query": "supabase .from('profiles') .select('employment_type, leave_entitlement_days, leave_carried_over_days, leave_used_initial_days') .eq('id', userId) .maybeSingle()"
-    }
-  ]
+  "c2_blockers": []
 }
