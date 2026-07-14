@@ -6096,6 +6096,15 @@ export type Database = {
       next_month_first_day: { Args: never; Returns: string }
       recruiter_bonus_for_margin: { Args: { margin: number }; Returns: number }
       recruiter_tier_for_margin: { Args: { margin: number }; Returns: number }
+      record_lifecycle_event: {
+        Args: {
+          p_actor_id: string
+          p_event_type: string
+          p_metadata?: Json
+          p_user_id: string
+        }
+        Returns: string
+      }
       resolve_role_default: {
         Args: {
           target_project: string
