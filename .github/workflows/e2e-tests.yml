@@ -25,7 +25,7 @@ jobs:
         with:
           # Test the same source revision that the completed deploy workflow
           # received, not a potentially newer default-branch HEAD.
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event_name == 'workflow_run' and github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
