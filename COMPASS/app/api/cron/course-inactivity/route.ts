@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic'
  * A1.5: Course inactivity reminder cron.
  *
  * Trigger: codziennie o 09:00 (configure in Coolify cron).
- *   curl -X GET "https://compass.dynaminds.pl/api/cron/course-inactivity?secret=$CRON_SECRET"
+ *   curl -X GET "https://compass.dynaminds.pl/api/cron/course-inactivity" \
+ *        -H "Authorization: Bearer $CRON_SECRET"
  *
  * Logic:
  *  - Foreach active enrollment (completed_at IS NULL, progress > 0%)

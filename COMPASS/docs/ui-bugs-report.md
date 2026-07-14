@@ -106,7 +106,7 @@ Tabela `um_legal_documents` na prod jest **PUSTA**. Migracja `supabase/migration
 
 ### Fix natychmiastowy (do uruchomienia przez admin z dostępem do CRON_SECRET)
 ```bash
-curl -X GET "https://compass.dynaminds.pl/api/migrate-compliance?secret=$CRON_SECRET"
+curl -X GET -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/migrate-compliance"
 ```
 
 To uruchomi: tworzenie tabel (idempotent) + seed 10 dokumentów + RLS policies. Po wywołaniu wszystkie 3 strony (#003, #004, #005) zaczną pokazywać prawdziwą treść.
@@ -134,7 +134,7 @@ To uruchomi: tworzenie tabel (idempotent) + seed 10 dokumentów + RLS policies. 
 Identyczna jak #003 — Regulamin musi istnieć żeby użytkownik mógł go skutecznie zaakceptować w signup. Bez niego cała umowa B2B między B2B Network a konsultantem jest zwarcie nieprzejrzysta.
 
 ### Fix
-Ten sam co #003 — `GET /api/migrate-compliance?secret=...` insertuje też dokument o slug `terms`.
+Ten sam co #003 — autoryzowany `GET /api/migrate-compliance` insertuje też dokument o slug `terms`.
 
 ### Pliki
 - [app/terms/page.tsx](COMPASS/app/terms/page.tsx) (frontend — OK)
@@ -159,7 +159,7 @@ Ten sam co #003 — `GET /api/migrate-compliance?secret=...` insertuje też doku
 - Każde zapytanie do supportu = ticket
 
 ### Fix
-Identycznie — `GET /api/migrate-compliance?secret=...`. Jeśli seed nie zawiera dokumentu `help` — trzeba go dodać do migracji.
+Identycznie — autoryzowany `GET /api/migrate-compliance`. Jeśli seed nie zawiera dokumentu `help` — trzeba go dodać do migracji.
 
 ### Status
 OTWARTY.

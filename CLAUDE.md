@@ -112,7 +112,7 @@ Po merge PR #54 trzeba dodać 2 nowe cron joby w panelu Coolify (`https://coolif
 | `clock-daily-cutoff` | `0 4 * * *` (codziennie 04:00 UTC = 05:00/06:00 PL) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff"` |
 | `clock-idle-reaper` | `*/15 * * * *` (co 15 min) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/clock-idle-reaper"` |
 
-> **Auth:** preferowany Bearer header (secret nie loguje się w CF/proxy/Sentry). Legacy `?secret=` nadal działa z warningiem.
+> **Auth:** wymagany Bearer header (secret nie loguje się w CF/proxy/Sentry). Query-string credentials są odrzucane.
 > **Stan 2026-05-08:** crony skonfigurowane w Coolify. Migration `phase17_work_clock` zaaplikowana. Floating button live dla `internal`/`admin`.
 
 **Co robią:**
@@ -123,7 +123,7 @@ Po merge PR #54 trzeba dodać 2 nowe cron joby w panelu Coolify (`https://coolif
 
 **Verify po skonfigurowaniu:**
 ```bash
-curl -fsS "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff?secret=$CRON_SECRET" | jq
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/clock-daily-cutoff" | jq
 # expect: { ok: true, scanned: N, closed: N, emailed: N }
 ```
 

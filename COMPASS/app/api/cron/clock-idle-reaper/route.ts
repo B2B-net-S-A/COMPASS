@@ -16,12 +16,9 @@ export const dynamic = 'force-dynamic'
  *
  * Trigger: every 15 min via Coolify cron.
  *
- * Auth (preferred — secret NOT logged in CF/proxy/Sentry traces):
+ * Auth (required — secret NOT logged in CF/proxy/Sentry traces):
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-idle-reaper" \
  *        -H "Authorization: Bearer $CRON_SECRET"
- *
- * Legacy query-based fallback (deprecated, withCronAuth loguje warning):
- *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-idle-reaper?secret=$CRON_SECRET"
  */
 export const GET = withCronAuth(async (_request, { admin }) => {
     const stalenessTs = new Date(Date.now() - 60 * 60 * 1000).toISOString()
