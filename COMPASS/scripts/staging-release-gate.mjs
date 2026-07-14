@@ -46,11 +46,18 @@ export function parsePreflightConfig(env = process.env) {
         throw new Error('STAGING_HEALTH_URL must identify the readiness endpoint')
     }
 
+    const coolifyToken = required(env, 'COOLIFY_TOKEN')
+    const coolifyReadToken = required(env, 'COOLIFY_READ_TOKEN')
+    if (coolifyToken === coolifyReadToken) {
+        throw new Error('COOLIFY_TOKEN and COOLIFY_READ_TOKEN must be different')
+    }
+
     return {
         applicationUuid,
         coolifyUrl: coolifyUrl.toString(),
         healthUrl: healthUrl.toString(),
-        coolifyToken: required(env, 'COOLIFY_TOKEN'),
+        coolifyToken,
+        coolifyReadToken,
         migrationDatabaseUrl: required(env, 'MIGRATION_DATABASE_URL'),
         accessClientId: required(env, 'CF_ACCESS_CLIENT_ID'),
         accessClientSecret: required(env, 'CF_ACCESS_CLIENT_SECRET'),

@@ -66,7 +66,8 @@ Configure these GitHub Environment secrets on `staging`:
 
 | Secret | Required scope/use |
 |---|---|
-| `COOLIFY_TOKEN` | Team-scoped Coolify API token with only the read, write, and deploy access required to inspect, PATCH, confirm, and deploy this staging application |
+| `COOLIFY_TOKEN` | Team-scoped Coolify API token with only `write + deploy`; used for environment/SHA PATCH and the deploy trigger |
+| `COOLIFY_READ_TOKEN` | Separate team-scoped read-only Coolify API token; used only to GET the application and deployment status |
 | `MIGRATION_DATABASE_URL` | Staging-only PostgreSQL session-pooler URL with `sslmode=require`; never use a production database URL here |
 | `CF_ACCESS_CLIENT_ID` | Cloudflare Access service-token client ID for staging |
 | `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access service-token client secret for staging |
@@ -75,12 +76,15 @@ The workflow sends the two Access values only as `CF-Access-Client-Id` and
 `CF-Access-Client-Secret` request headers. It does not print response bodies or
 secret-bearing request data. Coolify receives and confirms the exact
 `git_commit_sha`, returns a deployment UUID, and is polled until a terminal
-state; there is no blind post-deploy wait. The pinned Supabase CLI then applies
-the migrations from the checked-out candidate SHA to the staging database using
-`MIGRATION_DATABASE_URL`; the workflow never prints that URL. The final gate
-requires exactly three healthy readiness responses, 20 seconds apart, all
-reporting the requested SHA, `checks.database.status=healthy`, and
-`Cache-Control: no-store`.
+state; there is no blind post-deploy wait. The staging wrapper delegates to the
+hash-locked central exact-SHA helper but routes application-inspection and
+deployment-status GETs through `COOLIFY_READ_TOKEN`; environment/SHA PATCHes and
+the deploy trigger use `COOLIFY_TOKEN`. The tokens must both exist and must be
+different. The pinned Supabase CLI then applies the migrations from the checked-out
+candidate SHA to the staging database using `MIGRATION_DATABASE_URL`; the
+workflow never prints that URL. The final gate requires exactly three healthy
+readiness responses, 20 seconds apart, all reporting the requested SHA,
+`checks.database.status=healthy`, and `Cache-Control: no-store`.
 
 To release, open **Actions → Deploy staging → Run workflow**, paste the exact
 SHA that already passed `quality-gate`, check the staging confirmation, and let

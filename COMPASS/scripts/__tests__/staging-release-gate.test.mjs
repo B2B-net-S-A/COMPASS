@@ -29,6 +29,7 @@ function preflightEnv(overrides = {}) {
         STAGING_APPLICATION_UUID: 'compass-staging-uuid',
         STAGING_HEALTH_URL: 'https://staging.compass.example.com/api/health',
         COOLIFY_TOKEN: 'coolify-token',
+        COOLIFY_READ_TOKEN: 'coolify-read-token',
         MIGRATION_DATABASE_URL: 'postgresql://staging.example.invalid/database',
         CF_ACCESS_CLIENT_ID: 'access-client-id',
         CF_ACCESS_CLIENT_SECRET: 'access-client-secret',
@@ -54,6 +55,17 @@ describe('COMPASS staging release gate', () => {
         assert.throws(
             () => parsePreflightConfig(preflightEnv({ CF_ACCESS_CLIENT_SECRET: '' })),
             /CF_ACCESS_CLIENT_SECRET is required/,
+        )
+    })
+
+    it('requires separate read-only and mutation Coolify tokens', () => {
+        assert.throws(
+            () => parsePreflightConfig(preflightEnv({ COOLIFY_READ_TOKEN: '' })),
+            /COOLIFY_READ_TOKEN is required/,
+        )
+        assert.throws(
+            () => parsePreflightConfig(preflightEnv({ COOLIFY_READ_TOKEN: 'coolify-token' })),
+            /must be different/,
         )
     })
 
@@ -195,6 +207,9 @@ describe('COMPASS staging release gate', () => {
         assert.match(workflow, /secrets\.CF_ACCESS_CLIENT_ID/)
         assert.match(workflow, /secrets\.CF_ACCESS_CLIENT_SECRET/)
         assert.match(workflow, /secrets\.MIGRATION_DATABASE_URL/)
+        assert.match(workflow, /secrets\.COOLIFY_READ_TOKEN/)
+        assert.match(workflow, /staging-coolify-exact-sha\.py/)
+        assert.doesNotMatch(workflow, /python3 release-gate\/\.standards\/tools\/coolify_exact_sha\.py/)
         assert.match(workflow, /supabase db push/)
         assert.doesNotMatch(workflow, /environment: production/)
     })

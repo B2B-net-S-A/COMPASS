@@ -90,6 +90,7 @@ jobs:
           STAGING_HEALTH_URL: ${{ vars.STAGING_HEALTH_URL }}
           COMPASS_STAGING_RELEASE_ENABLED: ${{ vars.COMPASS_STAGING_RELEASE_ENABLED }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_READ_TOKEN: ${{ secrets.COOLIFY_READ_TOKEN }}
           MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -99,11 +100,12 @@ jobs:
         id: deploy
         env:
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_READ_TOKEN: ${{ secrets.COOLIFY_READ_TOKEN }}
           COOLIFY_BASE_URL: ${{ vars.STAGING_COOLIFY_URL }}
           APPLICATION_UUID: ${{ vars.STAGING_APPLICATION_UUID }}
           TARGET_SHA: ${{ steps.candidate.outputs.sha }}
         run: >-
-          python3 release-gate/.standards/tools/coolify_exact_sha.py
+          python3 release-gate/COMPASS/scripts/staging-coolify-exact-sha.py
           --base-url "$COOLIFY_BASE_URL"
           --application-uuid "$APPLICATION_UUID"
           --sha "$TARGET_SHA"
