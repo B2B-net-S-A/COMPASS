@@ -33,10 +33,10 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       CRON_SECRET: ${CRON_SECRET}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
-      # Consultant Success rollout flags. Safe defaults keep the new surface
-      # and all deliveries disabled until the database migration/config is ready.
-      CONSULTANT_SUCCESS_ENABLED: ${CONSULTANT_SUCCESS_ENABLED:-false}
-      CONSULTANT_SUCCESS_AUTOMATIONS_ENABLED: ${CONSULTANT_SUCCESS_AUTOMATIONS_ENABLED:-false}
+      # Consultant Success rollout flags. The private surface is enabled while
+      # automations stay non-delivering in shadow mode and surveys stay disabled.
+      CONSULTANT_SUCCESS_ENABLED: ${CONSULTANT_SUCCESS_ENABLED:-true}
+      CONSULTANT_SUCCESS_AUTOMATIONS_ENABLED: ${CONSULTANT_SUCCESS_AUTOMATIONS_ENABLED:-true}
       CONSULTANT_SUCCESS_SURVEYS_ENABLED: ${CONSULTANT_SUCCESS_SURVEYS_ENABLED:-false}
       CONSULTANT_SUCCESS_SHADOW_MODE: ${CONSULTANT_SUCCESS_SHADOW_MODE:-true}
       CONSULTANT_SUCCESS_TOKEN_SECRET: ${CONSULTANT_SUCCESS_TOKEN_SECRET:-}
