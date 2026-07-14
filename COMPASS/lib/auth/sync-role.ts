@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type { DbRole } from '@/lib/types/role'
 
 // Phase 18.3: delegacja do atomic Postgres function `public.sync_user_role`.
@@ -21,7 +22,22 @@ export async function syncRole(
     const emailLower = email.toLowerCase()
     const isSuperAdminFlag = isSuperAdmin(emailLower)
 
-    const { data, error } = await supabase.rpc('sync_user_role', {
+    // The database RPC is service-role-only. Before crossing that boundary,
+    // independently verify that the user-scoped client belongs to the exact
+    // account being synchronized. This prevents callers from using the server
+    // helper as a confused deputy for another profile.
+    const {
+        data: { user },
+        error: userError,
+    } = await supabase.auth.getUser()
+    const verifiedEmail = user?.email?.toLowerCase()
+    if (userError || !user || user.id !== userId || verifiedEmail !== emailLower) {
+        throw new Error('sync_user_role failed: verified user mismatch')
+    }
+
+    const admin = createServiceClient()
+
+    const { data, error } = await admin.rpc('sync_user_role', {
         p_user_id: userId,
         p_email: emailLower,
         p_is_super_admin: isSuperAdminFlag,
