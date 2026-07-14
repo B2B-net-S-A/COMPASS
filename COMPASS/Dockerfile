@@ -24,6 +24,10 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 ENV NEXT_PUBLIC_GIT_SHA=$NEXT_PUBLIC_GIT_SHA
+# Coolify builds on a 4 GB ARM host. The full production build (including
+# Sentry source maps) can exceed Node's default old-space limit, so reserve
+# up to 3 GB for the builder while leaving headroom for BuildKit and Coolify.
+ENV NODE_OPTIONS="--max-old-space-size=3072"
 # SENTRY_AUTH_TOKEN is consumed by withSentryConfig at build time only.
 # Not exported as ENV so it never leaks into the runtime image.
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
