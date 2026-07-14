@@ -23,6 +23,14 @@ on:
         description: "Existing Coolify deployment UUID to inspect without deploying"
         required: false
         type: string
+      schedule_action:
+        description: "Inspect or idempotently upsert Consultant Success schedules"
+        required: false
+        type: choice
+        options:
+          - ""
+          - inspect
+          - upsert
 
 permissions:
   contents: read
@@ -34,6 +42,7 @@ concurrency:
 jobs:
   deploy:
     name: Trigger Coolify deploy
+    if: inputs.schedule_action == ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -198,3 +207,63 @@ jobs:
           done
           echo "::error::Smoke test failed after 28 attempts (7 min)"
           exit 1
+
+  success-schedules:
+    name: Consultant Success schedules
+    if: inputs.schedule_action != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect or upsert schedules
+        env:
+          ACTION: ${{ inputs.schedule_action }}
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+        run: |
+          set -euo pipefail
+          api="$COOLIFY_URL/api/v1/applications/$COOLIFY_APP_UUID/scheduled-tasks"
+          auth="Authorization: Bearer $COOLIFY_TOKEN"
+
+          tasks=$(curl -fsSL -H "$auth" -H "Accept: application/json" "$api")
+          echo "Existing schedules (commands intentionally redacted):"
+          echo "$tasks" | jq 'map({uuid, name, frequency, container, timeout, enabled})'
+
+          if [ "$ACTION" = "inspect" ]; then
+            exit 0
+          fi
+
+          upsert_task() {
+            name="$1"
+            frequency="$2"
+            command="$3"
+            existing_uuid=$(echo "$tasks" | jq -r --arg name "$name" '.[] | select(.name == $name) | .uuid' | head -1)
+            payload=$(jq -nc \
+              --arg name "$name" \
+              --arg frequency "$frequency" \
+              --arg command "$command" \
+              '{name: $name, frequency: $frequency, command: $command, timeout: 300, enabled: true}')
+
+            if [ -n "$existing_uuid" ]; then
+              curl -fsSL -X PATCH -H "$auth" -H "Content-Type: application/json" \
+                -d "$payload" "$api/$existing_uuid" >/dev/null
+              echo "Updated $name ($existing_uuid)"
+            else
+              curl -fsSL -X POST -H "$auth" -H "Content-Type: application/json" \
+                -d "$payload" "$api" >/dev/null
+              echo "Created $name"
+            fi
+          }
+
+          upsert_task \
+            "consultant-success-plan" \
+            "10 4 * * *" \
+            'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/consultant-success-plan"'
+          upsert_task \
+            "consultant-success-dispatch" \
+            "*/5 * * * *" \
+            'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/consultant-success-dispatch"'
+
+          verified=$(curl -fsSL -H "$auth" -H "Accept: application/json" "$api")
+          echo "Verified Consultant Success schedules:"
+          echo "$verified" | jq 'map(select(.name | startswith("consultant-success-")) | {uuid, name, frequency, container, timeout, enabled})'
