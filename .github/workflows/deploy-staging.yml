@@ -1,0 +1,149 @@
+name: Deploy staging
+run-name: Deploy COMPASS staging ${{ inputs.target_sha }}
+
+# This workflow never targets production. It is deliberately manual and also
+# requires an explicit boolean confirmation plus an environment activation flag.
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full 40-character SHA with a successful quality-gate
+        required: true
+        type: string
+      confirm_staging_deploy:
+        description: Confirm deployment to COMPASS staging only
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy-compass-staging
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    name: Deploy exact SHA to staging
+    if: ${{ inputs.confirm_staging_deploy }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: staging
+    steps:
+      - name: Resolve exact candidate SHA
+        id: candidate
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo '::error::target_sha must be a full lowercase 40-character Git SHA'
+            exit 1
+          fi
+          printf 'sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      # Release tooling comes from the protected default branch, not from the
+      # candidate being deployed. Candidate application code is never executed
+      # in this secret-bearing job.
+      - name: Checkout trusted release tooling
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: release-gate
+          persist-credentials: false
+
+      - name: Verify exact-SHA quality-gate
+        id: quality
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.candidate.outputs.sha }}
+        run: node release-gate/COMPASS/scripts/staging-release-gate.mjs quality-gate
+
+      - name: Checkout exact candidate migrations
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Confirm candidate checkout SHA
+        working-directory: candidate
+        env:
+          TARGET_SHA: ${{ steps.candidate.outputs.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Verify locked release tooling
+        env:
+          STANDARDS_REF: fa4bb1123a3ea1b444e8bd4d36fb180567960a13
+        run: >-
+          python3 release-gate/.standards/tools/check_local_standards_bundle.py
+          --consumer-root release-gate
+          --lock release-gate/.standards/standards.lock.json
+          --expected-ref "$STANDARDS_REF"
+
+      - name: Validate staging configuration before mutation
+        env:
+          STAGING_COOLIFY_URL: ${{ vars.STAGING_COOLIFY_URL }}
+          STAGING_APPLICATION_UUID: ${{ vars.STAGING_APPLICATION_UUID }}
+          STAGING_HEALTH_URL: ${{ vars.STAGING_HEALTH_URL }}
+          COMPASS_STAGING_RELEASE_ENABLED: ${{ vars.COMPASS_STAGING_RELEASE_ENABLED }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_READ_TOKEN: ${{ secrets.COOLIFY_READ_TOKEN }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: node release-gate/COMPASS/scripts/staging-release-gate.mjs preflight
+
+      - name: Patch, confirm, deploy, and poll exact SHA
+        id: deploy
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_READ_TOKEN: ${{ secrets.COOLIFY_READ_TOKEN }}
+          COOLIFY_BASE_URL: ${{ vars.STAGING_COOLIFY_URL }}
+          APPLICATION_UUID: ${{ vars.STAGING_APPLICATION_UUID }}
+          TARGET_SHA: ${{ steps.candidate.outputs.sha }}
+        run: >-
+          python3 release-gate/COMPASS/scripts/staging-coolify-exact-sha.py
+          --base-url "$COOLIFY_BASE_URL"
+          --application-uuid "$APPLICATION_UUID"
+          --sha "$TARGET_SHA"
+          --deploy-method GET
+          --deployment-timeout 2400
+          --poll-interval 5
+          --state-output staging-deployment.json
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+        with:
+          version: 2.109.1
+
+      - name: Apply exact-SHA staging migrations
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          supabase db push \
+            --db-url "$MIGRATION_DATABASE_URL" \
+            --workdir candidate/COMPASS \
+            --include-all \
+            --yes
+
+      - name: Require three green readiness samples
+        env:
+          TARGET_SHA: ${{ steps.candidate.outputs.sha }}
+          STAGING_HEALTH_URL: ${{ vars.STAGING_HEALTH_URL }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: node release-gate/COMPASS/scripts/staging-release-gate.mjs readiness
+
+      - name: Archive non-secret staging evidence
+        if: always() && hashFiles('staging-deployment.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: compass-staging-${{ steps.candidate.outputs.sha }}
+          path: staging-deployment.json
+          if-no-files-found: error
+          retention-days: 30
