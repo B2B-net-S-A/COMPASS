@@ -25,6 +25,7 @@ import {
     Plane,
     Wallet,
     Briefcase,
+    HeartHandshake,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -64,6 +65,7 @@ interface SidebarProps {
     // Phase 36: gate the "Skrzynka administracja@" link to inbox handlers / admin
     // (others get redirected away from /admin/inbox). Computed server-side in the layout.
     isInboxHandler?: boolean
+    consultantSuccessEnabled?: boolean
 }
 
 interface NavLink {
@@ -81,7 +83,14 @@ interface NavGroup {
     links: NavLink[]
 }
 
-export function Sidebar({ role, user, permissions, forMobile = false, badges }: SidebarProps) {
+export function Sidebar({
+    role,
+    user: _user,
+    permissions,
+    forMobile = false,
+    badges,
+    consultantSuccessEnabled = false,
+}: SidebarProps) {
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const { t } = useTranslation()
@@ -259,6 +268,12 @@ export function Sidebar({ role, user, permissions, forMobile = false, badges }: 
                 exactMatch: true,
                 badgeCount: ticketsBadge > 0 ? ticketsBadge : undefined,
             },
+            ...(consultantSuccessEnabled ? [{
+                name: 'Consultant Success',
+                href: '/internal/people/success',
+                icon: HeartHandshake,
+                feature: null,
+            }] : []),
         ],
     }
 

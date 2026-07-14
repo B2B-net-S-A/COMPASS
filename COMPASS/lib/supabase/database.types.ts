@@ -752,6 +752,259 @@ export type Database = {
           },
         ]
       }
+      contractor_check_ins: {
+        Row: {
+          agenda: string | null
+          assigned_tcm_id: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          channel: string | null
+          check_in_type: string
+          completed_at: string | null
+          completed_by: string | null
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          duration_minutes: number | null
+          health_review_on: string | null
+          health_status: string | null
+          health_status_reason: string | null
+          id: string
+          next_check_in_on: string | null
+          notes: string | null
+          occurred_at: string | null
+          priority: string
+          scheduled_at: string
+          scheduled_for: string | null
+          status: string
+          summary: string | null
+          tags: string[]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          agenda?: string | null
+          assigned_tcm_id?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          channel?: string | null
+          check_in_type?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          duration_minutes?: number | null
+          health_review_on?: string | null
+          health_status?: string | null
+          health_status_reason?: string | null
+          id?: string
+          next_check_in_on?: string | null
+          notes?: string | null
+          occurred_at?: string | null
+          priority?: string
+          scheduled_at: string
+          scheduled_for?: string | null
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          agenda?: string | null
+          assigned_tcm_id?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          channel?: string | null
+          check_in_type?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          duration_minutes?: number | null
+          health_review_on?: string | null
+          health_status?: string | null
+          health_status_reason?: string | null
+          id?: string
+          next_check_in_on?: string | null
+          notes?: string | null
+          occurred_at?: string | null
+          priority?: string
+          scheduled_at?: string
+          scheduled_for?: string | null
+          status?: string
+          summary?: string | null
+          tags?: string[]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_check_ins_assigned_tcm_id_fkey"
+            columns: ["assigned_tcm_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_check_ins_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_check_ins_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_check_ins_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_check_ins_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_check_ins_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_client_feedback: {
+        Row: {
+          archived_at: string | null
+          archived_by: string | null
+          client_name_snapshot: string | null
+          communication_rating: number | null
+          contractor_id: string
+          created_at: string
+          engagement_rating: number | null
+          feedback_date: string
+          id: string
+          improvement_areas: string | null
+          overall_rating: number | null
+          placement_id: string | null
+          provided_by_name: string | null
+          provided_by_role: string | null
+          recommended_actions: string | null
+          recorded_by: string | null
+          reliability_rating: number | null
+          risk_level: string
+          source_check_in_id: string | null
+          strengths: string | null
+          summary: string | null
+          technical_rating: number | null
+          updated_at: string
+          willing_to_continue: string
+        }
+        Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
+          client_name_snapshot?: string | null
+          communication_rating?: number | null
+          contractor_id: string
+          created_at?: string
+          engagement_rating?: number | null
+          feedback_date?: string
+          id?: string
+          improvement_areas?: string | null
+          overall_rating?: number | null
+          placement_id?: string | null
+          provided_by_name?: string | null
+          provided_by_role?: string | null
+          recommended_actions?: string | null
+          recorded_by?: string | null
+          reliability_rating?: number | null
+          risk_level?: string
+          source_check_in_id?: string | null
+          strengths?: string | null
+          summary?: string | null
+          technical_rating?: number | null
+          updated_at?: string
+          willing_to_continue?: string
+        }
+        Update: {
+          archived_at?: string | null
+          archived_by?: string | null
+          client_name_snapshot?: string | null
+          communication_rating?: number | null
+          contractor_id?: string
+          created_at?: string
+          engagement_rating?: number | null
+          feedback_date?: string
+          id?: string
+          improvement_areas?: string | null
+          overall_rating?: number | null
+          placement_id?: string | null
+          provided_by_name?: string | null
+          provided_by_role?: string | null
+          recommended_actions?: string | null
+          recorded_by?: string | null
+          reliability_rating?: number | null
+          risk_level?: string
+          source_check_in_id?: string | null
+          strengths?: string | null
+          summary?: string | null
+          technical_rating?: number | null
+          updated_at?: string
+          willing_to_continue?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_client_feedback_archived_by_fkey"
+            columns: ["archived_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_client_feedback_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_client_feedback_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_client_feedback_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_client_feedback_source_check_in_id_fkey"
+            columns: ["source_check_in_id"]
+            isOneToOne: false
+            referencedRelation: "contractor_check_ins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contractor_conversations: {
         Row: {
           category: string
@@ -970,6 +1223,63 @@ export type Database = {
           },
         ]
       }
+      contractor_health_status_history: {
+        Row: {
+          changed_by: string | null
+          contractor_id: string
+          created_at: string
+          id: string
+          new_review_on: string | null
+          new_status: string
+          previous_review_on: string | null
+          previous_status: string | null
+          reason: string | null
+          source_id: string | null
+          source_type: string
+        }
+        Insert: {
+          changed_by?: string | null
+          contractor_id: string
+          created_at?: string
+          id?: string
+          new_review_on?: string | null
+          new_status: string
+          previous_review_on?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          source_id?: string | null
+          source_type: string
+        }
+        Update: {
+          changed_by?: string | null
+          contractor_id?: string
+          created_at?: string
+          id?: string
+          new_review_on?: string | null
+          new_status?: string
+          previous_review_on?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          source_id?: string | null
+          source_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_health_status_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_health_status_history_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contractor_onboarding_interviews: {
         Row: {
           attachments: Json
@@ -1110,43 +1420,485 @@ export type Database = {
           },
         ]
       }
+      contractor_pulse_rate_limits: {
+        Row: {
+          attempts: number
+          bucket_key: string
+          updated_at: string
+          window_started_at: string
+        }
+        Insert: {
+          attempts: number
+          bucket_key: string
+          updated_at?: string
+          window_started_at: string
+        }
+        Update: {
+          attempts?: number
+          bucket_key?: string
+          updated_at?: string
+          window_started_at?: string
+        }
+        Relationships: []
+      }
+      contractor_pulse_requests: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          delivery_channel: string
+          expires_at: string
+          id: string
+          last_reminder_at: string | null
+          next_reminder_at: string | null
+          recipient_email_snapshot: string | null
+          reminder_count: number
+          responded_at: string | null
+          scheduled_for: string | null
+          sent_at: string | null
+          source_check_in_id: string | null
+          status: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          delivery_channel?: string
+          expires_at: string
+          id?: string
+          last_reminder_at?: string | null
+          next_reminder_at?: string | null
+          recipient_email_snapshot?: string | null
+          reminder_count?: number
+          responded_at?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          source_check_in_id?: string | null
+          status?: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          delivery_channel?: string
+          expires_at?: string
+          id?: string
+          last_reminder_at?: string | null
+          next_reminder_at?: string | null
+          recipient_email_snapshot?: string | null
+          reminder_count?: number
+          responded_at?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          source_check_in_id?: string | null
+          status?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_pulse_requests_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_pulse_requests_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_pulse_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_pulse_requests_source_check_in_id_fkey"
+            columns: ["source_check_in_id"]
+            isOneToOne: false
+            referencedRelation: "contractor_check_ins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_pulse_responses: {
+        Row: {
+          engagement_score: number
+          note: string | null
+          recommendation_score: number
+          request_id: string
+          satisfaction_score: number
+          submitted_at: string
+        }
+        Insert: {
+          engagement_score: number
+          note?: string | null
+          recommendation_score: number
+          request_id: string
+          satisfaction_score: number
+          submitted_at?: string
+        }
+        Update: {
+          engagement_score?: number
+          note?: string | null
+          recommendation_score?: number
+          request_id?: string
+          satisfaction_score?: number
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_pulse_responses_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "contractor_pulse_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_success_deliveries: {
+        Row: {
+          attempt_count: number
+          available_at: string
+          channel: string
+          claimed_at: string | null
+          claimed_by: string | null
+          contractor_id: string | null
+          created_at: string
+          dedupe_key: string
+          delivery_kind: string
+          entity_id: string
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          max_attempts: number
+          payload: Json
+          recipient_email: string | null
+          recipient_user_id: string | null
+          sent_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          available_at?: string
+          channel: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          dedupe_key: string
+          delivery_kind: string
+          entity_id: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          recipient_email?: string | null
+          recipient_user_id?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          available_at?: string
+          channel?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          dedupe_key?: string
+          delivery_kind?: string
+          entity_id?: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          recipient_email?: string | null
+          recipient_user_id?: string | null
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_success_deliveries_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_deliveries_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contractor_success_job_state: {
+        Row: {
+          cursor: Json
+          job_name: string
+          last_completed_at: string | null
+          last_error: string | null
+          last_error_at: string | null
+          last_started_at: string | null
+          last_success_at: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          run_count: number
+          updated_at: string
+        }
+        Insert: {
+          cursor?: Json
+          job_name: string
+          last_completed_at?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_started_at?: string | null
+          last_success_at?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          run_count?: number
+          updated_at?: string
+        }
+        Update: {
+          cursor?: Json
+          job_name?: string
+          last_completed_at?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
+          last_started_at?: string | null
+          last_success_at?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          run_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contractor_success_settings: {
+        Row: {
+          check_in_cadence_days: number
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          health_review_on: string | null
+          health_reviewed_at: string | null
+          health_reviewed_by: string | null
+          health_status: string
+          health_status_reason: string | null
+          health_status_set_at: string | null
+          health_status_set_by: string | null
+          health_status_source: string
+          health_status_source_id: string | null
+          monitoring_paused_at: string | null
+          monitoring_paused_by: string | null
+          monitoring_started_at: string | null
+          monitoring_started_by: string | null
+          monitoring_status: string
+          next_check_in_on: string | null
+          status_verified_at: string | null
+          status_verified_by: string | null
+          surveys_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          check_in_cadence_days?: number
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          health_review_on?: string | null
+          health_reviewed_at?: string | null
+          health_reviewed_by?: string | null
+          health_status?: string
+          health_status_reason?: string | null
+          health_status_set_at?: string | null
+          health_status_set_by?: string | null
+          health_status_source?: string
+          health_status_source_id?: string | null
+          monitoring_paused_at?: string | null
+          monitoring_paused_by?: string | null
+          monitoring_started_at?: string | null
+          monitoring_started_by?: string | null
+          monitoring_status?: string
+          next_check_in_on?: string | null
+          status_verified_at?: string | null
+          status_verified_by?: string | null
+          surveys_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          check_in_cadence_days?: number
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          health_review_on?: string | null
+          health_reviewed_at?: string | null
+          health_reviewed_by?: string | null
+          health_status?: string
+          health_status_reason?: string | null
+          health_status_set_at?: string | null
+          health_status_set_by?: string | null
+          health_status_source?: string
+          health_status_source_id?: string | null
+          monitoring_paused_at?: string | null
+          monitoring_paused_by?: string | null
+          monitoring_started_at?: string | null
+          monitoring_started_by?: string | null
+          monitoring_status?: string
+          next_check_in_on?: string | null
+          status_verified_at?: string | null
+          status_verified_by?: string | null
+          surveys_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contractor_success_settings_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: true
+            referencedRelation: "contractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_settings_health_reviewed_by_fkey"
+            columns: ["health_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_settings_health_status_set_by_fkey"
+            columns: ["health_status_set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_settings_monitoring_paused_by_fkey"
+            columns: ["monitoring_paused_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_settings_monitoring_started_by_fkey"
+            columns: ["monitoring_started_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_settings_status_verified_by_fkey"
+            columns: ["status_verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_success_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contractor_tasks: {
         Row: {
           assigned_tcm_id: string | null
+          completed_at: string | null
           contractor_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
           due_date: string | null
           id: string
+          original_due_date: string | null
+          outcome: string | null
+          priority: string
+          snoozed_until: string | null
+          source_check_in_id: string | null
+          source_conversation_id: string | null
+          source_feedback_id: string | null
           source_ticket_id: string | null
           status: string
+          task_kind: string
           title: string
           updated_at: string
         }
         Insert: {
           assigned_tcm_id?: string | null
+          completed_at?: string | null
           contractor_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
+          original_due_date?: string | null
+          outcome?: string | null
+          priority?: string
+          snoozed_until?: string | null
+          source_check_in_id?: string | null
+          source_conversation_id?: string | null
+          source_feedback_id?: string | null
           source_ticket_id?: string | null
           status?: string
+          task_kind?: string
           title: string
           updated_at?: string
         }
         Update: {
           assigned_tcm_id?: string | null
+          completed_at?: string | null
           contractor_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
+          original_due_date?: string | null
+          outcome?: string | null
+          priority?: string
+          snoozed_until?: string | null
+          source_check_in_id?: string | null
+          source_conversation_id?: string | null
+          source_feedback_id?: string | null
           source_ticket_id?: string | null
           status?: string
+          task_kind?: string
           title?: string
           updated_at?: string
         }
@@ -1170,6 +1922,27 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_tasks_source_check_in_id_fkey"
+            columns: ["source_check_in_id"]
+            isOneToOne: false
+            referencedRelation: "contractor_check_ins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_tasks_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "contractor_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contractor_tasks_source_feedback_id_fkey"
+            columns: ["source_feedback_id"]
+            isOneToOne: false
+            referencedRelation: "contractor_client_feedback"
             referencedColumns: ["id"]
           },
           {
@@ -5945,6 +6718,66 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: boolean
       }
+      claim_contractor_success_deliveries: {
+        Args: {
+          p_lease_seconds?: number
+          p_limit?: number
+          p_worker_id: string
+        }
+        Returns: {
+          attempt_count: number
+          available_at: string
+          channel: string
+          claimed_at: string | null
+          claimed_by: string | null
+          contractor_id: string | null
+          created_at: string
+          dedupe_key: string
+          delivery_kind: string
+          entity_id: string
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          max_attempts: number
+          payload: Json
+          recipient_email: string | null
+          recipient_user_id: string | null
+          sent_at: string | null
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "contractor_success_deliveries"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      complete_contractor_check_in: {
+        Args: {
+          p_action_steps?: Json
+          p_channel?: string
+          p_check_in_id: string
+          p_duration_minutes?: number
+          p_health_review_on?: string
+          p_health_status?: string
+          p_health_status_reason?: string
+          p_next_check_in_on?: string
+          p_notes?: string
+          p_occurred_at?: string
+          p_summary: string
+          p_tags?: string[]
+        }
+        Returns: Json
+      }
+      consume_contractor_pulse_rate_limit: {
+        Args: {
+          p_bucket_key: string
+          p_max_attempts?: number
+          p_window_minutes?: number
+        }
+        Returns: boolean
+      }
       create_notification: {
         Args: {
           p_action_url?: string
@@ -6052,6 +6885,16 @@ export type Database = {
       start_onboarding_for_user: {
         Args: { p_actor_id?: string; p_template_id?: string; p_user_id: string }
         Returns: string
+      }
+      submit_contractor_pulse_response: {
+        Args: {
+          p_engagement: number
+          p_note: string
+          p_recommendation: number
+          p_satisfaction: number
+          p_token_hash: string
+        }
+        Returns: boolean
       }
       submit_quiz_attempt: {
         Args: { p_answers: Json; p_course_id: string }

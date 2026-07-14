@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
     if (user) {
         const pathname = request.nextUrl.pathname
         const isOnboarding = pathname.startsWith('/onboarding')
-        const isPublicPath = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/forgot-password') || pathname.startsWith('/privacy-policy') || pathname.startsWith('/terms') || pathname.startsWith('/help')
+        const isPublicPath = pathname.startsWith('/login') || pathname.startsWith('/auth') || pathname.startsWith('/forgot-password') || pathname.startsWith('/privacy-policy') || pathname.startsWith('/terms') || pathname.startsWith('/help') || pathname.startsWith('/survey/consultant-pulse')
         const onboardingDone = request.cookies.get('onboarding_done')?.value === 'true'
 
         // Single profile fetch — wcześniej były 2 osobne SELECT-y dla /internal guard

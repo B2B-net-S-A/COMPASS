@@ -1,33 +1,25 @@
 'use client'
 
-// Phase 37 — "Zgłoszenia": one module for the administracja@ inbox (Kanban), the consultant
-// helpdesk, and contractor sprawy (conversations + roster, relocated from the old Retencja tab).
+// "Zgłoszenia": administracja@ inbox (Kanban) + consultant helpdesk.
+// Prywatne rozmowy z konsultantami zostały przeniesione do Consultant Success.
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { KanbanBoard } from '@/components/inbox/KanbanBoard'
 import { NewInboxTicketDialog } from '@/components/inbox/NewInboxTicketDialog'
-import { RetencjaPanel } from '@/components/internal/kontraktorzy/panels/RetencjaPanel'
 import { TicketStatusBadge, TicketPriorityBadge } from '@/components/support/TicketStatusBadge'
 import type { InboxTicketWithMeta, TicketStatus, SupportTicketWithMeta } from '@/lib/types/support'
-import type { ConversationListItem, ContractorListItem } from '@/lib/types/contractor'
 
 interface Props {
     inboxColumns: Record<TicketStatus, InboxTicketWithMeta[]>
     helpdesk: SupportTicketWithMeta[]
-    conversations: ConversationListItem[]
-    contractors: ContractorListItem[]
-    tcmProfiles: Array<{ id: string; fullName: string }>
-    contractorsLite: Array<{ id: string; full_name: string }>
     /** Inbox categories + handlers for the "Dodaj sprawę" dialog (empty when caller isn't a handler). */
     categories: Array<{ id: string; slug: string; name_pl: string }>
     handlers: Array<{ id: string; full_name: string | null; email: string }>
     currentUserId: string
 }
 
-export function ZgloszeniaHub({ inboxColumns, helpdesk, conversations, contractors, tcmProfiles, contractorsLite, categories, handlers, currentUserId }: Props) {
-    const router = useRouter()
+export function ZgloszeniaHub({ inboxColumns, helpdesk, categories, handlers, currentUserId }: Props) {
     const inboxCount = Object.values(inboxColumns).reduce((n, arr) => n + arr.length, 0)
     const canAddCase = handlers.length > 0 && categories.length > 0 && currentUserId !== ''
 
@@ -36,7 +28,7 @@ export function ZgloszeniaHub({ inboxColumns, helpdesk, conversations, contracto
             <header>
                 <h1 className="text-2xl font-bold">Zgłoszenia</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Skrzynka administracja@, helpdesk konsultantów i sprawy kontraktorskie — w jednym module.
+                    Skrzynka administracja@ i helpdesk konsultantów — sprawy wymagające obsługi operacyjnej.
                 </p>
             </header>
 
@@ -44,7 +36,6 @@ export function ZgloszeniaHub({ inboxColumns, helpdesk, conversations, contracto
                 <TabsList className="flex flex-wrap">
                     <TabsTrigger value="skrzynka">Skrzynka administracja@ ({inboxCount})</TabsTrigger>
                     <TabsTrigger value="helpdesk">Helpdesk konsultantów ({helpdesk.length})</TabsTrigger>
-                    <TabsTrigger value="kontraktorzy">Sprawy kontraktorskie</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="skrzynka">
@@ -63,16 +54,6 @@ export function ZgloszeniaHub({ inboxColumns, helpdesk, conversations, contracto
 
                 <TabsContent value="helpdesk">
                     <HelpdeskTable tickets={helpdesk} />
-                </TabsContent>
-
-                <TabsContent value="kontraktorzy">
-                    <RetencjaPanel
-                        conversations={conversations}
-                        contractors={contractors}
-                        tcmProfiles={tcmProfiles}
-                        contractorsLite={contractorsLite}
-                        onSaved={() => router.refresh()}
-                    />
                 </TabsContent>
             </Tabs>
         </div>
