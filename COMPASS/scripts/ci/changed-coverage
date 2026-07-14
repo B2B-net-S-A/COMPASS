@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+app_root="$repo_root/COMPASS"
+lcov_path="$app_root/coverage/lcov.info"
+normalized_path="$lcov_path.normalized"
+
+cd "$app_root"
+npm run test:coverage
+test -s "$lcov_path"
+
+# Vitest writes source paths relative to the application root. The central
+# checker evaluates repository-relative Git paths, so prefix only relative
+# records and keep absolute/file URLs intact.
+awk '
+    /^SF:/ {
+        source = substr($0, 4)
+        if (source !~ /^\// && source !~ /^file:\/\// && source !~ /^COMPASS\//) {
+            $0 = "SF:COMPASS/" source
+        }
+    }
+    { print }
+' "$lcov_path" > "$normalized_path"
+mv "$normalized_path" "$lcov_path"
+
+test -s "$lcov_path"

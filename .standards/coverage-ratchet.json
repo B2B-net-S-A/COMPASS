@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/artur-t-96/engineering-standards/fa4bb1123a3ea1b444e8bd4d36fb180567960a13/schemas/coverage-ratchet.schema.json",
+  "schema_version": 1,
+  "minimum_changed_lines_percent": 80,
+  "total_lines": {
+    "covered": 3131,
+    "found": 22143
+  },
+  "source_extensions": [".js", ".jsx", ".ts", ".tsx"],
+  "exclude_globs": [
+    "**/*.config.js",
+    "**/*.config.ts",
+    "**/*.d.ts",
+    "**/*.spec.js",
+    "**/*.spec.ts",
+    "**/*.test.js",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "COMPASS/test/**",
+    "COMPASS/lib/supabase/database.types.ts",
+    "COMPASS/lib/supabase/mock-client.ts"
+  ]
+}
