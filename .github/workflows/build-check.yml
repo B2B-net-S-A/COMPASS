@@ -93,10 +93,10 @@ jobs:
           supabase db start --workdir COMPASS
           supabase db reset --workdir COMPASS --local --no-seed
 
-      - name: Run migration reconciliation pgTAP
+      - name: Run all database security and reconciliation pgTAP suites
         run: >-
           supabase test db --workdir COMPASS --local
-          COMPASS/supabase/tests/migration_reconciliation.sql
+          COMPASS/supabase/tests
 
       - name: Lint reconstructed schemas
         run: >-
@@ -233,6 +233,7 @@ jobs:
     needs:
       - secret-scan
       - typecheck-and-build
+      - database-replay
       - security-scan
       - standards-drift
       - docker-build-smoke
@@ -241,11 +242,12 @@ jobs:
         env:
           SECRET_SCAN: ${{ needs.secret-scan.result }}
           TYPECHECK_BUILD: ${{ needs.typecheck-and-build.result }}
+          DATABASE_REPLAY: ${{ needs.database-replay.result }}
           SECURITY_SCAN: ${{ needs.security-scan.result }}
           STANDARDS_DRIFT: ${{ needs.standards-drift.result }}
           DOCKER_BUILD: ${{ needs.docker-build-smoke.result }}
         run: |
-          for result in "$SECRET_SCAN" "$TYPECHECK_BUILD" "$SECURITY_SCAN" "$STANDARDS_DRIFT" "$DOCKER_BUILD"; do
+          for result in "$SECRET_SCAN" "$TYPECHECK_BUILD" "$DATABASE_REPLAY" "$SECURITY_SCAN" "$STANDARDS_DRIFT" "$DOCKER_BUILD"; do
             if [ "$result" != "success" ]; then
               echo "::error::Required quality job ended with result: $result"
               exit 1
