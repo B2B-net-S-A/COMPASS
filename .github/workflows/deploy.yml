@@ -230,6 +230,12 @@ jobs:
           echo "$tasks" | jq 'map({uuid, name, frequency, container, timeout, enabled})'
 
           if [ "$ACTION" = "inspect" ]; then
+            echo "Recent Consultant Success executions:"
+            echo "$tasks" | jq -r '.[] | select(.name | startswith("consultant-success-")) | [.name, .uuid] | @tsv' |
+              while IFS=$'\t' read -r task_name task_uuid; do
+                executions=$(curl -fsSL -H "$auth" -H "Accept: application/json" "$api/$task_uuid/executions")
+                echo "$executions" | jq --arg task "$task_name" '{task: $task, executions: (sort_by(.created_at) | reverse | .[:3] | map({uuid, status, created_at, finished_at, message}))}'
+              done
             exit 0
           fi
 
