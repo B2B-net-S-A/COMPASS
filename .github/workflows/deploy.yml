@@ -18,6 +18,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deployment_uuid:
+        description: "Existing Coolify deployment UUID to inspect without deploying"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -33,6 +38,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Update build metadata in Coolify env vault
+        if: inputs.deployment_uuid == ''
         # Push GIT_SHA + BUILT_AT into Coolify env vault BEFORE triggering deploy
         # so the next docker build receives them as ARG/ENV. /api/health then
         # returns the real version + deploy timestamp instead of "unknown".
@@ -73,6 +79,7 @@ jobs:
           done
 
       - name: Trigger deployment
+        if: inputs.deployment_uuid == ''
         run: |
           response=$(curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
@@ -89,7 +96,7 @@ jobs:
 
       - name: Observe Coolify deployment
         env:
-          DEPLOYMENT_UUID: ${{ steps.trigger.outputs.deployment_uuid }}
+          DEPLOYMENT_UUID: ${{ inputs.deployment_uuid || steps.trigger.outputs.deployment_uuid }}
         run: |
           for i in $(seq 1 36); do
             response=$(curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors \
@@ -105,7 +112,18 @@ jobs:
                 ;;
               failed|cancelled)
                 echo "::error::Coolify deployment ended with status=$status"
-                echo "$response" | jq -r '.logs // "No deployment logs returned."' | tail -n 250
+                echo "$response" | jq '{status, commit, created_at, updated_at, logs_type: (.logs | type), logs_length: (.logs | length)}'
+                logs=$(echo "$response" | jq -r '.logs // empty')
+                if [ -n "$logs" ]; then
+                  echo "$logs" | tail -n 250
+                else
+                  echo "No deployment logs returned. Inspecting application status."
+                  curl -fsSL \
+                    -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+                    -H "Accept: application/json" \
+                    "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}" \
+                    | jq '{uuid, name, status, git_branch, git_commit_sha, updated_at}'
+                fi
                 exit 1
                 ;;
             esac
@@ -123,6 +141,7 @@ jobs:
   smoke-test:
     name: Smoke test /api/health
     needs: deploy
+    if: inputs.deployment_uuid == ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
