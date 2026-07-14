@@ -11,10 +11,11 @@ import { DownloadList } from '@/components/support/DownloadList'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { category: string }
+    params: Promise<{ category: string }>
 }
 
-export default async function KbCategoryPage({ params }: PageProps) {
+export default async function KbCategoryPage(props: PageProps) {
+    const params = await props.params;
     const categoriesRes = await listSupportCategories()
     if (!categoriesRes.success) notFound()
     const category = categoriesRes.data.find((c) => c.slug === params.category)

@@ -1,42 +1,37 @@
+import {
+    deriveReadinessStatus,
+    getReleaseMetadata,
+    hasValidReleaseMetadata,
+    NO_STORE_HEADERS,
+} from '@/lib/health/contract'
+import { checkDatabase } from '@/lib/health/database'
+
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const SUPABASE_TIMEOUT_MS = 2000
-
-async function checkSupabase(): Promise<'healthy' | 'unhealthy'> {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!url || !key) return 'unhealthy'
-
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS)
-
-    try {
-        const response = await fetch(`${url}/rest/v1/?apikey=${key}`, {
-            method: 'HEAD',
-            signal: controller.signal,
-        })
-        return response.status < 500 ? 'healthy' : 'unhealthy'
-    } catch {
-        return 'unhealthy'
-    } finally {
-        clearTimeout(timer)
-    }
-}
-
 export async function GET() {
-    const supabase = await checkSupabase()
-    const status = supabase === 'unhealthy' ? 'unhealthy' : 'healthy'
+    const metadata = getReleaseMetadata()
+    const database = await checkDatabase()
+    const release = {
+        status: hasValidReleaseMetadata(metadata) ? 'healthy' as const : 'unhealthy' as const,
+        critical: true,
+    }
+    const status = deriveReadinessStatus([database.status, release.status])
 
     return Response.json(
         {
             status,
-            version: process.env.GIT_SHA ?? 'unknown',
-            deployedAt: process.env.BUILT_AT ?? 'unknown',
+            ...metadata,
             checks: {
-                supabase,
+                database,
+                // Compatibility alias for one release. New consumers must use checks.database.
+                supabase: database,
+                release,
             },
         },
-        { status: status === 'unhealthy' ? 503 : 200 },
+        {
+            status: status === 'unhealthy' ? 503 : 200,
+            headers: NO_STORE_HEADERS,
+        },
     )
 }

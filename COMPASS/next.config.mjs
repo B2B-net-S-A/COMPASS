@@ -20,9 +20,8 @@ const nextConfig = {
         ],
     },
     compress: true,
-    swcMinify: true,
+    serverExternalPackages: ['pg'],
     experimental: {
-        serverComponentsExternalPackages: ['pg'],
         optimizePackageImports: [
             'lucide-react',
             '@radix-ui/react-dialog',

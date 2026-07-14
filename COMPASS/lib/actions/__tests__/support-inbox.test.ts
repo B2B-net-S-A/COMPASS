@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createMockSupabaseClient, type MockSupabase, type MockSupabaseConfig } from '@/test/mocks/supabase'
 
 let currentClient: MockSupabase
@@ -16,6 +16,13 @@ vi.mock('@/lib/supabase/admin', () => ({
 vi.mock('next/cache', () => ({
     revalidatePath: vi.fn(),
 }))
+
+// Next.js 15's first server-action module transform is noticeably more
+// expensive in a cold Vitest worker. Warm it outside an individual test's
+// 10-second timeout; all assertions below still exercise the real exports.
+beforeAll(async () => {
+    await import('../support-inbox')
+}, 30_000)
 
 function setupClient(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)

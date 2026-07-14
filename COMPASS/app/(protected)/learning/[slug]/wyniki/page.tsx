@@ -11,11 +11,13 @@ import { getCourseDetail } from '@/lib/actions/courses'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { slug: string }
-    searchParams: { score?: string; passed?: string; already?: string; award?: string }
+    params: Promise<{ slug: string }>
+    searchParams: Promise<{ score?: string; passed?: string; already?: string; award?: string }>
 }
 
-export default async function QuizResultsPage({ params, searchParams }: PageProps) {
+export default async function QuizResultsPage(props: PageProps) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const detailResult = await getCourseDetail(params.slug)
     if (!detailResult.success) notFound()
     const course = detailResult.data

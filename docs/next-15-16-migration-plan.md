@@ -1,14 +1,34 @@
 # Next.js 14 → 15 → 16 Migration Plan
 
-> **Status:** PLAN (nie zaczęte). PR [#48](https://github.com/artur-t-96/compass/pull/48) (Dependabot 14.2.35 → 16.2.6) zamknięty świadomie — patrz sekcja "Decyzja". Migrację robimy etapowo: dwa osobne PR-y (14→15, 15→16), nie skok.
+> **Status (2026-07-13):** Faza A zaimplementowana na `codex/p1-next15-security`
+> jako aktualizacja bezpieczeństwa do Next.js 15.5.20; nie wdrożona. Faza B
+> (Next 16 i jego React Canary) pozostaje osobnym zadaniem. PR [#48](https://github.com/artur-t-96/compass/pull/48)
+> (Dependabot 14.2.35 → 16.2.6) zamknięto świadomie — patrz sekcja "Decyzja".
+
+## Wynik Fazy A
+
+- Next.js i `eslint-config-next`: 14.2.35 → 15.5.20; React/React DOM → 19.2.7.
+- `react-joyride`: 2.9.3 → 3.2.0 z migracją API toura onboardingowego.
+- Wszystkie `params`, `searchParams`, `cookies()` i `headers()` objęte zmianą Next 15
+  zostały zmigrowane; produkcyjny adapter Supabase używa asynchronicznych cookies.
+- Audit HIGH/CRITICAL: 0; Trivy finalnego obrazu: 0 HIGH/CRITICAL i 0 sekretów.
+- Weryfikacja: lint, typecheck, 907 testów unit, 9 testów release, build,
+  render `/login` i przekierowanie chronionej trasy do `/login`, Docker livez
+  exact-SHA i health contract — PASS. Pełny auth E2E pozostaje obowiązkowym
+  testem na stagingu przed wdrożeniem.
 
 ## TL;DR
 
-- **Compass jest na Next 14.2.35** (App Router, React 18, standalone output, monorepo w `COMPASS/`).
-- Dependabot zaproponował **bezpośredni skok 14 → 16.2.6** (PR #48) — odrzucone, bo to przejście przez **dwa cykle breaking changes** w jednym PR (sync→async API w 15, React 19 + Turbopack default w 16).
+- Punktem wyjścia był **Next 14.2.35 + React 18** (App Router, standalone output,
+  monorepo w `COMPASS/`). Faza A przechodzi na Next 15.5.20 + React 19.2.7.
+- Dependabot zaproponował **bezpośredni skok 14 → 16.2.6** (PR #48) — odrzucone, bo to przejście przez **dwa cykle breaking changes** w jednym PR (async request API + React 19 w 15, Turbopack/default proxy i dalsze zmiany runtime w 16).
 - Plan: **Fazowo**, każda faza w osobnym PR z UAT:
-  - **Faza A: 14 → 15.4.x** (najnowsza stabilna 15.x w momencie migracji) — async API, Sentry SDK bump, fetch cache audit. **~20–30h.**
-  - **Faza B: 15.4.x → 16.2.x** — React 18 → 19, Turbopack ergonomics, drobne config cleanup. **~12–16h.**
+  - **Faza A: 14.2.35/React 18 → 15.5.20/React 19** — async API,
+    fetch cache audit i migracja Tour. Sentry 8.55.2 pozostaje, bo jego jawny
+    peer range obejmuje Next 15. **~20–30h.**
+  - **Faza B: 15.5.x → 16.2.x** — React Canary używany przez App Router,
+    Turbopack jako domyślny bundler, `middleware` → `proxy` i przejście z
+    `next lint` na ESLint CLI. **~12–16h.**
 - **Łączny effort: 32–46h pracy + smoke** (Dependabot proponował "8-16h" jak na patch, ale to nierealistyczne dla 70+ plików dotkniętych async API).
 
 ## Decyzja: dlaczego nie merge PR #48
@@ -36,10 +56,11 @@ Wszystkie grep'y na `COMPASS/` (gdzie żyje aplikacja Next.js):
 | `webpack(...)` hook w `next.config.mjs` | 0 | (czysty config — łatwiej z Turbopack) |
 | `@vercel/og` | 0 | (nie używamy, OK) |
 
-**Dep versions (`COMPASS/package.json`):**
-- `next`: `^14.2.35`
-- `react`: `^18`, `react-dom`: `^18`
-- `@sentry/nextjs`: `^8.55.2` (Next 15 wymaga `^9`, Next 16 najprawdopodobniej `^10`)
+**Wersje bazowe z audytu 2026-05-11:** Next 14.2.35, React 18 i
+`@sentry/nextjs` 8.55.2. Na gałęzi Fazy A są Next 15.5.20, React/React DOM
+19.2.7 oraz typy React 19.2.x. Sentry 8.55.2 deklaruje kompatybilność z
+`next ^13.2 || ^14 || ^15.0.0-rc.0`, więc nie dokładamy niezależnej migracji
+SDK do awaryjnego upgrade'u frameworka.
 
 **Komendy do reweryfikacji audytu** (jeśli czas minął i kod się zmienił):
 ```bash
@@ -52,9 +73,9 @@ grep -rn "useFormState" . 2>/dev/null
 grep -E '"(react|react-dom|next|@sentry/nextjs)"' package.json
 ```
 
-## Faza A: Next 14 → 15.4.x
+## Faza A: Next 14/React 18 → Next 15.5.20/React 19
 
-> Reference: [Next 15.0 release notes](https://github.com/vercel/next.js/releases/tag/v15.0.0) · [15.1](https://github.com/vercel/next.js/releases/tag/v15.1.0) · [15.2](https://github.com/vercel/next.js/releases/tag/v15.2.0) · [15.3](https://github.com/vercel/next.js/releases/tag/v15.3.0) · [15.4](https://github.com/vercel/next.js/releases/tag/v15.4.0) · [oficjalny upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-15)
+> Reference: [Next 15.0 release notes](https://github.com/vercel/next.js/releases/tag/v15.0.0) · [15.1](https://github.com/vercel/next.js/releases/tag/v15.1.0) · [15.2](https://github.com/vercel/next.js/releases/tag/v15.2.0) · [15.3](https://github.com/vercel/next.js/releases/tag/v15.3.0) · [15.4](https://github.com/vercel/next.js/releases/tag/v15.4.0) · [15.5](https://github.com/vercel/next.js/releases/tag/v15.5.0) · [oficjalny upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-15)
 
 ### Breaking changes które dotyczą Compass
 
@@ -75,50 +96,46 @@ grep -E '"(react|react-dom|next|@sentry/nextjs)"' package.json
    - **Zakres Compass:** Tylko 2 jawne `fetch(...)`. Implicit fetch'e przez Supabase SDK / Anthropic SDK — nie dotknięte (mają własną cache logic).
    - **Akcja:** Audyt 2 plików (`lib/ai/embeddings.ts`, `app/api/health/route.ts`). Jeśli polegamy gdzieś na cache → dodaj `{ cache: 'force-cache' }` explicit.
 
-4. **Sentry SDK `@sentry/nextjs ^8` → `^9`**
-   - Compass używa `withSentryConfig` w `next.config.mjs`. Bump `^8.55.2 → ^9.x` wymaga:
-     - Update `package.json`
-     - Re-check `instrumentation.ts` / `sentry.*.config.ts` — Sentry ^9 zmienił initialization API
-     - Reupload source maps (sprawdź `SENTRY_AUTH_TOKEN` nadal build-time only)
-   - Reference: [Sentry Next.js migration guide ^8 → ^9](https://docs.sentry.io/platforms/javascript/guides/nextjs/migration/v8-to-v9/)
+4. **React 19 jest wymagany przez Next 15 App Router**
+   - Aktualizujemy razem `react`, `react-dom`, `@types/react` i
+     `@types/react-dom`; zgodność React 18 w Next 15 dotyczy Pages Routera.
+   - `@sentry/nextjs` 8.55.2 pozostaje bez zmian, bo jego peer dependency
+     obejmuje Next 15. Osobny upgrade Sentry wymaga własnego PR i testów source map.
 
 5. **Min Node 18.18** → Compass ma Node 20 (Docker base + GHA). **OK, no action.**
 
 6. **`@next/font` removed** (już od 14, ale finalize w 15) — Compass nie używa `@next/font`, **OK.**
 
-### Faza A — checklist (PR `chore/next-15`)
+### Faza A — checklist (PR `codex/p1-next15-security`)
 
-- [ ] **A.1** Bump w `COMPASS/package.json`: `next: ^15.4.0`, `eslint-config-next: ^15.4.0`
-- [ ] **A.2** Bump `@sentry/nextjs: ^9.x` + audit `sentry.*.config.ts` per Sentry migration guide
-- [ ] **A.3** Run `npx @next/codemod@latest next-async-request-api ./` w `COMPASS/` → review diff
-- [ ] **A.4** Manual fix wszystkich `headers()/cookies()` co codemod ominął (caller w sync function → przeniesienie do async)
-- [ ] **A.5** Fix `params`/`searchParams` w 22+15 plikach (Promise + await)
-- [ ] **A.6** Audyt 2 plików z explicit `fetch()` — czy zachowanie cache się nie zmienia
-- [ ] **A.7** `npm --prefix COMPASS run typecheck` → 0 errors
-- [ ] **A.8** `npm --prefix COMPASS run lint` → 0 errors
-- [ ] **A.9** `npm --prefix COMPASS run test:unit` → all pass
-- [ ] **A.10** `cd COMPASS && npm run build` → 0 errors
-- [ ] **A.11** `cd COMPASS && npm run e2e` (Playwright) → critical flows pass
-- [ ] **A.12** Local docker compose run + Chrome MCP smoke: login → /internal/timesheets → PDF export → /admin
-- [ ] **A.13** Deploy do prod → smoke `compass.dynaminds.pl` (loginflow, timesheet, akademia)
-- [ ] **A.14** Monitor Sentry 24h po deploy — żadne new error types
+- [x] **A.1** Next i `eslint-config-next` 15.5.20; React/DOM 19.2.7 i typy 19.2.x.
+- [x] **A.2** Potwierdzić peer range Sentry i pozostawić 8.55.2 bez zbędnej migracji major.
+- [x] **A.3** Uruchomić codemod `next-async-request-api` i przejrzeć cały diff.
+- [x] **A.4** Ręcznie naprawić pozostałe `headers()`/`cookies()` i adapter Supabase.
+- [x] **A.5** Zmienić `params`/`searchParams` na `Promise` + `await`.
+- [x] **A.6** Przejrzeć jawne `fetch()` po zmianie domyślnego cache.
+- [x] **A.7** `cd COMPASS && npx tsc --noEmit` → 0 błędów.
+- [x] **A.8** `npm --prefix COMPASS run lint` → 0 błędów (zastane warningi pozostają).
+- [x] **A.9** `npm --prefix COMPASS run test:unit` → 907/907.
+- [x] **A.10** `cd COMPASS && npm run build` → 0 błędów.
+- [x] **A.11** Produkcyjny smoke App Router: `/login` 200 i `/internal` 307 → `/login`;
+  ten test jest również częścią Docker CI.
+- [ ] **A.12** Auth E2E na stagingu dla realnej sesji i chronionych stron.
+- [ ] **A.13** Akceptacja produkcji, deploy exact-SHA i smoke kluczowych przepływów.
+- [ ] **A.14** Monitor Sentry przez minimum 24h bez nowych klas błędów.
 
 **Estymata Faza A:** **20–30h** (codemod cuts ~50% of manual work, ale review każdego pliku + Playwright debug konsumuje większość czasu)
 
-## Faza B: Next 15.4.x → 16.2.x
+## Faza B: Next 15.5.x → 16.2.x
 
 > Reference: [Next 16.0 release notes](https://github.com/vercel/next.js/releases/tag/v16.0.0) · [16.1](https://github.com/vercel/next.js/releases/tag/v16.1.0) · [16.2](https://github.com/vercel/next.js/releases/tag/v16.2.0) · [oficjalny upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16)
 
 ### Breaking changes które dotyczą Compass
 
-1. **React 18 → React 19** (BREAKING)
-   - Compass na `react ^18` → bump na `^19`. Compatibility issues do sprawdzenia:
-     - **Custom hook prop typing** — React 19 stricter z `useEffect` cleanup timing
-     - **Legacy Context API** — `contextType` static deprecated w klasach (Compass nie ma class components, ale verify)
-     - **`useRef()` typing** — TypeScript 5+ wymagany (Compass ma TS 5, OK)
-     - **`ReactDOM.flushSync`** — sprawdź czy używamy
-     - **`act(...)` deprecation** w testach → migrate do `await act(...)`
-   - Reference: [React 19 upgrade guide](https://react.dev/blog/2024/12/05/react-19-upgrade-guide)
+1. **React Canary w Next 16 App Router** (BREAKING RISK)
+   - Stabilny React 19 jest już częścią Fazy A. Next 16 App Router używa najnowszego
+     React Canary z funkcjami React 19.2, więc trzeba ponownie wykonać testy renderu,
+     efektów, refów i bibliotek klienckich; nie jest to już migracja React 18 → 19.
 
 2. **Turbopack default w `next dev` i `next build`**
    - Compass nie ma custom `webpack(...)` hook (good!) → Turbopack powinien działać out-of-box.
@@ -128,30 +145,39 @@ grep -E '"(react|react-dom|next|@sentry/nextjs)"' package.json
      - Bundle analyzer (jeśli używamy) → bump `@next/bundle-analyzer ^16`
    - **Opt-out** (fallback do webpack): `next dev --webpack` / `next build --webpack`. Trzymaj jako bezpiecznik.
 
-3. **Sentry SDK `^9` → `^10`** (potencjalnie)
-   - Sprawdź [@sentry/nextjs releases](https://github.com/getsentry/sentry-javascript/releases) — czy w momencie migracji `^10` jest oficjalnie compatible z Next 16. Jeśli nie, zostań na `^9`.
+3. **Sentry 8.55.2 i Next 16** (do potwierdzenia)
+   - Sprawdź [@sentry/nextjs releases](https://github.com/getsentry/sentry-javascript/releases)
+     i peer range dla Next 16. Upgrade SDK wykonaj tylko jeśli jest wymagany, z testem
+     source map i konfiguracji runtime.
 
 4. **Middleware Edge runtime — drobne constraints**
    - Compass middleware: `COMPASS/middleware.ts` (Edge runtime). Drobne API zmiany w 16, sprawdź na konkretnym pliku.
 
-5. **`unstable_*` API stabilization** — Compass nie używa `unstable_cache`, `unstable_after`, `unstable_noStore`. **OK.**
+5. **Usunięcie synchronicznego dostępu do Request APIs**
+   - Next 15 tymczasowo dekoruje Promise zwracany przez `cookies()` metodami
+     synchronicznymi. Lokalny emergency bypass w `lib/supabase/server.ts` korzysta
+     z tej zgodności i został przetestowany, ale Next 16 ją usuwa. Przed Fazą B
+     fabryka klienta musi stać się asynchroniczna albo otrzymać już rozwiązany cookie store.
+
+6. **`unstable_*` API stabilization** — Compass nie używa `unstable_cache`, `unstable_after`, `unstable_noStore`. **OK.**
 
 ### Faza B — checklist (PR `chore/next-16`, **po merge Fazy A**)
 
-- [ ] **B.1** Bump w `COMPASS/package.json`: `next: ^16.2.x`, `eslint-config-next: ^16.2.x`, `react: ^19`, `react-dom: ^19`, `@types/react: ^19`, `@types/react-dom: ^19`
+- [ ] **B.1** Bump Next/`eslint-config-next` do 16.2.x i wersji React/typów wymaganych przez ten release.
 - [ ] **B.2** Sprawdź `@sentry/nextjs` compatibility z Next 16 → bump `^10` jeśli wymagane
 - [ ] **B.3** Run `npx @next/codemod@latest upgrade ./` (auto-migrate gdzie się da)
-- [ ] **B.4** Run React 19 codemod: `npx codemod@latest react/19/migration-recipe` (act() + ref typing)
-- [ ] **B.5** Audit `pdf-lib` / `pdf2json` z Turbopack — local build + PDF generate test
-- [ ] **B.6** `npm --prefix COMPASS run typecheck` → 0 errors
-- [ ] **B.7** `npm --prefix COMPASS run lint` → 0 errors (eslint-config-next 16 ma nowe rules)
-- [ ] **B.8** `npm --prefix COMPASS run test:unit` → all pass (Vitest może wymagać `act()` updates)
-- [ ] **B.9** `cd COMPASS && npm run build` z Turbopack → 0 errors. Fallback `--webpack` jeśli regress.
-- [ ] **B.10** `cd COMPASS && npm run e2e` (Playwright)
-- [ ] **B.11** Lokalna Chrome MCP weryfikacja: login → /internal/timesheets → PDF export → /admin → /akademia (z AI)
-- [ ] **B.12** Deploy do prod → smoke + monitor Sentry 48h
+- [ ] **B.4** Migracja `next lint` → ESLint CLI oraz `middleware.ts` → `proxy.ts` po ocenie runtime.
+- [ ] **B.5** Usunąć `UnsafeUnwrappedCookies`; przetestować local bypass i produkcyjny adapter.
+- [ ] **B.6** Audit `pdf-lib` / `pdf2json` z Turbopack — local build + PDF generate test.
+- [ ] **B.7** `cd COMPASS && npx tsc --noEmit` → 0 errors.
+- [ ] **B.8** `npm --prefix COMPASS run lint` → 0 errors (eslint-config-next 16 ma nowe rules).
+- [ ] **B.9** `npm --prefix COMPASS run test:unit` → all pass.
+- [ ] **B.10** `cd COMPASS && npm run build` z Turbopack → 0 errors. Fallback `--webpack` jeśli regress.
+- [ ] **B.11** `npm --prefix COMPASS run test:e2e` na stagingu.
+- [ ] **B.12** Weryfikacja: login → `/internal/timesheets` → PDF export → `/admin` → `/akademia`.
+- [ ] **B.13** Deploy exact-SHA do prod → smoke + monitor Sentry 48h.
 
-**Estymata Faza B:** **12–16h** (React 19 audit + Turbopack PDF testing to większość)
+**Estymata Faza B:** **12–16h** (React Canary, usunięcie sync Request APIs i testy PDF/Turbopack to większość)
 
 ## Razem: timeline
 
@@ -173,7 +199,8 @@ grep -E '"(react|react-dom|next|@sentry/nextjs)"' package.json
 
 - **NIE** mergować security PR-ów `next/...` które przeskakują major (jak #48). Każdy `next` PR od Dependabot przed Fazą A → zignoruj/zamknij/zaplanuj jako Faza A.
 - **NIE** wprowadzać new `headers()` / `cookies()` użyć w obecnym kodzie bez świadomości że migracja je dotknie. Jeśli musisz — udokumentuj w komentarzu `// TODO(next-15-migration): convert to await`.
-- **NIE** mergować `@sentry/nextjs ^9` przed Fazą A — Sentry SDK bump + Next bump razem, nie osobno (uniknij dwukrotnego testowania).
+- **NIE** dokładać niepotrzebnego upgrade'u Sentry do Fazy A; Sentry major ma mieć
+  własny zakres, test source map i rollback.
 
 ## Decyzja końcowa
 

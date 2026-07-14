@@ -94,7 +94,7 @@ export async function saveUserConsents(input: SaveConsentsInput): Promise<{ erro
   }
 
   // Get IP and User-Agent from request headers
-  const headersList = headers()
+  const headersList = await headers()
   const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() || headersList.get('x-real-ip') || null
   const ua = headersList.get('user-agent') || null
 

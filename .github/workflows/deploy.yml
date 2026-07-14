@@ -1,149 +1,145 @@
 name: Deploy
+run-name: Deploy COMPASS ${{ github.event.workflow_run.head_sha || inputs.target_sha }}
 
-# Unified deployment workflow per ~/.claude/rules/deployment.md.
-# Identyczny pattern dla wszystkich 3 apek (Compass, NEXUS, LeadGen).
+# Deployment is allowed only after the required Build check workflow completed
+# successfully for main, or for a manually selected SHA which already has a
+# successful `quality-gate` check run.
 #
-# Push do main → trigger Coolify deploy via API → wait → smoke test /api/health.
-# Coolify samo buduje + restart kontenerów (z compose `build:` block lub GHCR pull).
-#
-# Required GH secrets:
-#   COOLIFY_URL       e.g. https://coolify-compass.dynaminds.pl
-#   COOLIFY_TOKEN     Bearer token (Sanctum personal_access_tokens)
-#   COOLIFY_APP_UUID  Application UUID (from Coolify panel resource URL)
-#
-# Required GH variables:
-#   APP_URL           Production URL for smoke test (e.g. https://compass.dynaminds.pl)
+# Required GitHub Environment: production (configure required reviewers).
+# Required secrets in that environment:
+#   COOLIFY_TOKEN       team-scoped token with write + deploy only
+#   COOLIFY_READ_TOKEN  separate team-scoped read-only token
+#   COOLIFY_APP_UUID    application UUID
+# Required variables:
+#   STAGING_COOLIFY_URL    e.g. https://coolify-staging.dynaminds.pl
+#   PRODUCTION_COOLIFY_URL e.g. https://coolify-compass.dynaminds.pl
+#   APP_URL             e.g. https://compass.dynaminds.pl
+#   ROLLBACK_FLOOR_SHA  oldest explicitly approved rollback SHA
+# Activation variable (must be set deliberately after the runbook is complete):
+#   COMPASS_RELEASE_GATE_ENABLED=true
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Build check"]
     branches: [main]
+    types: [completed]
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full 40-character SHA that already passed quality-gate
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-production
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Trigger Coolify deploy
+  release:
+    name: Deploy exact SHA
+    if: >-
+      ${{ vars.COMPASS_RELEASE_GATE_ENABLED == 'true' &&
+          (github.event_name == 'workflow_dispatch' ||
+           (github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.event == 'push' &&
+            github.event.workflow_run.head_branch == 'main' &&
+            github.event.workflow_run.head_repository.full_name == github.repository)) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Includes the worst-case target deployment plus a complete rollback and
+    # rollback-readiness verification. A shorter timeout can kill the safety path.
+    timeout-minutes: 75
+    environment: production
     steps:
-      - name: Update build metadata in Coolify env vault
-        # Push GIT_SHA + BUILT_AT into Coolify env vault BEFORE triggering deploy
-        # so the next docker build receives them as ARG/ENV. /api/health then
-        # returns the real version + deploy timestamp instead of "unknown".
-        # Patch is idempotent — Coolify upserts envs by key.
-        run: |
-          GIT_SHA="${{ github.sha }}"
-          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          for entry in \
-            "GIT_SHA=$GIT_SHA" \
-            "BUILT_AT=$BUILT_AT"
-          do
-            key="${entry%%=*}"
-            value="${entry#*=}"
-            payload=$(jq -nc \
-              --arg k "$key" --arg v "$value" \
-              '{key: $k, value: $v, is_buildtime: true, is_runtime: true, is_preview: false}')
-            http=$(curl -sS --retry 5 --retry-delay 5 --retry-all-errors -o /tmp/resp.json -w '%{http_code}' -X PATCH \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              -H "Accept: application/json" \
-              -d "$payload" \
-              "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}/envs")
-            if [ "$http" -ge 400 ]; then
-              echo "::warning::PATCH $key returned HTTP $http: $(cat /tmp/resp.json)"
-              # Try POST as fallback (in case env doesn't exist yet)
-              http=$(curl -sS --retry 5 --retry-delay 5 --retry-all-errors -o /tmp/resp.json -w '%{http_code}' -X POST \
-                -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-                -H "Content-Type: application/json" \
-                -H "Accept: application/json" \
-                -d "$payload" \
-                "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}/envs")
-              if [ "$http" -ge 400 ]; then
-                echo "::error::Failed to set $key (POST also returned HTTP $http): $(cat /tmp/resp.json)"
-                exit 1
-              fi
-            fi
-            echo "✅ $key set (HTTP $http)"
-          done
-
-      - name: Trigger deployment
-        run: |
-          response=$(curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -X GET \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}")
-          echo "Response: $response"
-          deployment_uuid=$(echo "$response" | jq -r '.deployments[0].deployment_uuid')
-          if [ -z "$deployment_uuid" ] || [ "$deployment_uuid" = "null" ]; then
-            echo "::error::Failed to start deployment"
-            exit 1
-          fi
-          echo "Deployment queued: $deployment_uuid"
-          echo "deployment_uuid=$deployment_uuid" >> $GITHUB_OUTPUT
-        id: trigger
-
-  smoke-test:
-    name: Smoke test /api/health
-    needs: deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Wait for Coolify build + restart
-        run: sleep 60
-
-      - name: Healthcheck (standard shape + version match)
+      - name: Resolve immutable release metadata
+        id: release
         env:
-          APP_URL: ${{ vars.APP_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          MANUAL_SHA: ${{ inputs.target_sha }}
         run: |
-          if [ -z "$APP_URL" ]; then
-            echo "::error::vars.APP_URL not set in repo settings"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            TARGET_SHA="$WORKFLOW_SHA"
+          else
+            TARGET_SHA="$MANUAL_SHA"
+          fi
+          if ! echo "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Target must be a full lowercase 40-character Git SHA"
             exit 1
           fi
-          EXPECTED_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          # Coolify build typowo 3-5 min (BuildKit cache mounts + ARG reorder
-          # + force_rebuild=f), max ~7-8 min na pierwszy build po dużej zmianie
-          # next.config / Dockerfile. Plus restart ~30s. 28 retries × 15s = 7 min,
-          # plus initial 60s wait = ~8 min total window — pokrywa worst-case
-          # cold-cache, ale -1.5 min vs poprzednie 32×15s + sleep 90 (9.5 min).
-          #
-          # Cloudflare path — testujemy real CF→origin route (jak Atlas).
-          # Wcześniejsze PR #91/#92 dostawały 32×403 od Bot Fight Mode (ASN +
-          # TLS fingerprint), PR #93 obszedł CF przez --resolve do origin IP.
-          # Teraz na zonie dynaminds.pl: BFM=OFF + custom firewall bypass-rule
-          # (id fb25a18b5a2a4f10bcd813b2afaef2fa, action=bypass) matchuje
-          # UA contains "dynaminds-smoke-test" AND path eq "/api/health"
-          # — patrz ~/.claude/rules/observability.md §Cloudflare smoke-test
-          # bypass. Drop --resolve + hardcoded origin IP, używamy standardu.
-          UA="dynaminds-smoke-test/1.0 (+github-actions; compass)"
-          for i in $(seq 1 28); do
-            response=$(curl -fsSL \
-              -A "$UA" \
-              "$APP_URL/api/health" 2>/tmp/curl_err || echo '')
-            if [ -n "$response" ]; then
-              status=$(echo "$response" | jq -r '.status // "missing"')
-              version=$(echo "$response" | jq -r '.version // "missing"')
-              version_short=$(echo "$version" | cut -c1-7)
-              if [ "$status" != "unhealthy" ] && [ "$status" != "missing" ]; then
-                if [ "$version_short" = "$EXPECTED_SHA" ]; then
-                  echo "✅ Pass: status=$status version=$version"
-                  exit 0
-                fi
-                echo "Attempt $i/28: stale version (got $version_short, expected $EXPECTED_SHA), retrying in 15s..."
-              else
-                echo "Attempt $i/28: status=$status, retrying in 15s..."
-              fi
-            else
-              # Surface curl's actual error so future silent failures are
-              # diagnosable in 1 attempt instead of 32 (e.g. Cloudflare WAF
-              # 403 on the runner IP, like Atlas hit — see Atlas PR #96).
-              echo "Attempt $i/28: no response — $(cat /tmp/curl_err 2>/dev/null | head -1), retrying in 15s..."
-            fi
-            sleep 15
-          done
-          echo "::error::Smoke test failed after 28 attempts (7 min)"
-          exit 1
+          echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ steps.release.outputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release commit belongs to protected main
+        env:
+          TARGET_SHA: ${{ steps.release.outputs.target_sha }}
+        run: |
+          if ! git show-ref --verify --quiet refs/remotes/origin/main; then
+            echo "::error::Full-history checkout did not contain origin/main"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$TARGET_SHA" origin/main; then
+            echo "::error::Target SHA is not reachable from protected main"
+            exit 1
+          fi
+
+      - name: Verify quality-gate for a manual release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.release.outputs.target_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          response=$(curl -fsSL --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPOSITORY/actions/workflows/build-check.yml/runs?branch=main&status=completed&head_sha=$TARGET_SHA&per_page=100")
+          passed=$(echo "$response" | jq --arg sha "$TARGET_SHA" \
+            '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push" and .conclusion == "success")] | length')
+          if [ "$passed" -lt 1 ]; then
+            echo "::error::The selected SHA has no successful main-branch Build check workflow"
+            exit 1
+          fi
+
+      - name: Resolve migration head
+        id: migration
+        run: |
+          head=$(find COMPASS/supabase/migrations -maxdepth 1 -type f -name '*.sql' -print | sort | tail -n 1)
+          if [ -z "$head" ]; then
+            echo "::error::No Supabase migrations found"
+            exit 1
+          fi
+          echo "head=$(basename "$head" .sql)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and verify exact SHA through Coolify
+        env:
+          COOLIFY_URL: ${{ vars.PRODUCTION_COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_READ_TOKEN: ${{ secrets.COOLIFY_READ_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          APP_URL: ${{ vars.APP_URL }}
+          TARGET_SHA: ${{ steps.release.outputs.target_sha }}
+          BUILT_AT: ${{ steps.release.outputs.built_at }}
+          MIGRATION_HEAD: ${{ steps.migration.outputs.head }}
+          ROLLBACK_FLOOR_SHA: ${{ vars.ROLLBACK_FLOOR_SHA }}
+          RELEASE_MANIFEST_PATH: ${{ github.workspace }}/release-manifest.json
+        run: node COMPASS/scripts/coolify-release.mjs
+
+      - name: Archive release manifest
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-manifest-${{ steps.release.outputs.target_sha }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 90

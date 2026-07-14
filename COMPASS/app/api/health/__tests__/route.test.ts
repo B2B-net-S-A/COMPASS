@@ -6,8 +6,8 @@ describe('GET /api/health', () => {
 
     beforeEach(() => {
         process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
-        process.env.GIT_SHA = 'abc1234'
+        process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
+        process.env.GIT_SHA = 'a'.repeat(40)
         process.env.BUILT_AT = '2026-04-29T12:00:00Z'
     })
 
@@ -29,10 +29,15 @@ describe('GET /api/health', () => {
         const body = await response.json()
         expect(body).toMatchObject({
             status: 'healthy',
-            version: 'abc1234',
+            version: 'a'.repeat(40),
             deployedAt: '2026-04-29T12:00:00Z',
-            checks: { supabase: 'healthy' },
+            checks: {
+                database: { status: 'healthy', critical: true },
+                supabase: { status: 'healthy', critical: true },
+                release: { status: 'healthy', critical: true },
+            },
         })
+        expect(response.headers.get('cache-control')).toBe('no-store, max-age=0')
     })
 
     it('returns HTTP 503 + status: unhealthy when Supabase is down', async () => {
@@ -41,16 +46,17 @@ describe('GET /api/health', () => {
         const body = await response.json()
         expect(response.status).toBe(503)
         expect(body.status).toBe('unhealthy')
-        expect(body.checks.supabase).toBe('unhealthy')
+        expect(body.checks.database.status).toBe('unhealthy')
+        expect(body.checks.supabase).toEqual(body.checks.database)
     })
 
-    it('treats Supabase 4xx (auth-rejected HEAD) as healthy — service alive', async () => {
+    it('fails closed when the database probe is rejected', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
         const response = await GET()
         const body = await response.json()
-        expect(response.status).toBe(200)
-        expect(body.status).toBe('healthy')
-        expect(body.checks.supabase).toBe('healthy')
+        expect(response.status).toBe(503)
+        expect(body.status).toBe('unhealthy')
+        expect(body.checks.database.status).toBe('unhealthy')
     })
 
     it('returns unhealthy when fetch throws (network error or timeout)', async () => {
@@ -58,24 +64,47 @@ describe('GET /api/health', () => {
         const response = await GET()
         const body = await response.json()
         expect(response.status).toBe(503)
-        expect(body.checks.supabase).toBe('unhealthy')
+        expect(body.checks.database.status).toBe('unhealthy')
     })
 
-    it('returns unhealthy when env vars are missing', async () => {
-        delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    it('returns unhealthy when the private database credential is missing', async () => {
+        delete process.env.SUPABASE_SERVICE_ROLE_KEY
         const response = await GET()
         const body = await response.json()
-        expect(body.checks.supabase).toBe('unhealthy')
+        expect(response.status).toBe(503)
+        expect(body.checks.database.status).toBe('unhealthy')
     })
 
-    it('falls back to "unknown" when GIT_SHA / BUILT_AT not set', async () => {
+    it('fails readiness when exact release metadata is missing', async () => {
         delete process.env.GIT_SHA
         delete process.env.BUILT_AT
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }))
         const response = await GET()
         const body = await response.json()
+        expect(response.status).toBe(503)
         expect(body.version).toBe('unknown')
         expect(body.deployedAt).toBe('unknown')
+        expect(body.checks.release).toEqual({ status: 'unhealthy', critical: true })
+    })
+
+    it('queries a known table with the server-only key and never caches the probe', async () => {
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+        vi.stubGlobal('fetch', fetchMock)
+
+        await GET()
+
+        expect(fetchMock).toHaveBeenCalledOnce()
+        const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit]
+        expect(url.toString()).toBe('https://test.supabase.co/rest/v1/profiles?select=id&limit=1')
+        expect(init).toMatchObject({
+            method: 'GET',
+            cache: 'no-store',
+            redirect: 'error',
+            headers: {
+                apikey: 'test-service-role-key',
+                Authorization: 'Bearer test-service-role-key',
+            },
+        })
     })
 
     it('the route is force-dynamic (NEVER cached) and runs on nodejs runtime', async () => {

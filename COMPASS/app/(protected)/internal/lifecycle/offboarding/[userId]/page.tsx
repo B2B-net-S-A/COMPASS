@@ -11,7 +11,8 @@ import { LogOut } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-export default async function OffboardingDetailPage({ params }: { params: { userId: string } }) {
+export default async function OffboardingDetailPage(props: { params: Promise<{ userId: string }> }) {
+    const params = await props.params;
     const ctx = await requireLifecycleHubLayout()
 
     const supabase = createClient()

@@ -32,12 +32,12 @@ const ALL_TABS: ReadonlyArray<HubTab> = ALL_TABS_RAW.filter(
 )
 
 interface PageProps {
-    searchParams?: {
+    searchParams?: Promise<{
         tab?: string
         year?: string
         month?: string
         scope?: string
-    }
+    }>
 }
 
 function parseIntSafe(value: string | undefined): number | undefined {
@@ -46,7 +46,8 @@ function parseIntSafe(value: string | undefined): number | undefined {
     return Number.isFinite(n) ? n : undefined
 }
 
-export default async function InternalAdminHubPage({ searchParams }: PageProps) {
+export default async function InternalAdminHubPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const ctx = await requireInternalAdminAreaLayout()
 
     // Phase 20 + 22 + 25b + 26: tabs visible per role.

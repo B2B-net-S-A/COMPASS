@@ -28,10 +28,11 @@ function formatRating(rating: number, count: number): string {
 }
 
 interface PageProps {
-    searchParams: { type?: string }
+    searchParams: Promise<{ type?: string }>
 }
 
-export default async function AkademiaPage({ searchParams }: PageProps) {
+export default async function AkademiaPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const typeParam = searchParams.type === 'company' || searchParams.type === 'consultant' ? searchParams.type as CourseType : undefined
     const result = await listPublishedCourses({ orderBy: 'newest', limit: 24, course_type: typeParam })
     const items = result.success ? result.data.items : []

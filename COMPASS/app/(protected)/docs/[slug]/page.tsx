@@ -7,15 +7,17 @@ import { sanitizeHtml } from '@/lib/html/sanitize'
 export const dynamic = 'force-dynamic'
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
-export async function generateMetadata({ params }: Props) {
+export async function generateMetadata(props: Props) {
+  const params = await props.params;
   const doc = await getLegalDocument(params.slug)
   return { title: doc ? `${doc.title} | COMPASS` : 'Dokument | COMPASS' }
 }
 
-export default async function LegalDocPage({ params }: Props) {
+export default async function LegalDocPage(props: Props) {
+  const params = await props.params;
   const doc = await getLegalDocument(params.slug)
   if (!doc) notFound()
 

@@ -8,10 +8,11 @@ import { getProjectBySlug } from '@/lib/actions/incubator'
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    params: { slug: string }
+    params: Promise<{ slug: string }>
 }
 
-export default async function ApplyPage({ params }: PageProps) {
+export default async function ApplyPage(props: PageProps) {
+    const params = await props.params;
     const result = await getProjectBySlug(params.slug)
     if (!result.success) notFound()
     const project = result.data

@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -15,12 +14,11 @@ import { getLifecycleSidebarCount } from '@/lib/actions/lifecycle'
 import { getActiveLeavesCount } from '@/lib/actions/internal-leave'
 import type { PermissionRole, PermissionsMap } from '@/lib/types/permissions'
 import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
-import nextDynamic from 'next/dynamic'
+import { Tour } from '@/components/onboarding/Tour'
 import { logger } from '@/lib/logger'
 
-const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 // Smart Work Clock (Phase 17) UI disabled — to re-enable, uncomment import + render below.
-// const WorkClockButton = nextDynamic(
+// const WorkClockButton = dynamic(
 //     () => import('@/components/internal/WorkClockButton').then((m) => m.WorkClockButton),
 //     { ssr: false },
 // )
@@ -49,13 +47,14 @@ export default async function ProtectedLayout({
 }: {
     children: React.ReactNode
 }) {
-    try {
-        const supabase = createClient()
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
-        if (authError || !user) {
-            redirect('/login')
-        }
+    const supabase = createClient()
+    const authResult = await supabase.auth.getUser().catch(() => null)
+    if (!authResult || authResult.error || !authResult.data.user) {
+        redirect('/login')
+    }
+    const user = authResult.data.user
 
+    try {
         type ProfileData = { full_name?: string | null; avatar_url?: string | null; role?: string; bio?: string | null; onboarding_tour_done?: boolean; is_inbox_handler?: boolean }
         let profile: ProfileData | null = null
         let permissionsMap: PermissionsMap = {} as PermissionsMap
@@ -147,10 +146,7 @@ export default async function ProtectedLayout({
             </ThemeProvider>
         )
     } catch (e) {
-        const err = e as { digest?: string }
-        if (err?.digest !== 'NEXT_REDIRECT') {
-            logger.error({ event: 'protected_layout.failed', error: e })
-        }
+        logger.error({ event: 'protected_layout.failed', error: e })
         redirect('/login')
     }
 }

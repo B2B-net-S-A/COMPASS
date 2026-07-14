@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic'
 // Phase 17b R12 — get clustered daily timeline for the authenticated user.
 // Returns array of TimelineBlock { start, end, activeSeconds, primaryRoute, label }.
 // User-only: server action returns ctx.userId data, never another user's.
-export async function GET(_request: Request, { params }: { params: { date: string } }) {
+export async function GET(_request: Request, props: { params: Promise<{ date: string }> }) {
+    const params = await props.params;
     try {
         const blocks = await getMyTimelineForDay(params.date)
         return NextResponse.json({ blocks })

@@ -7,21 +7,22 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-        # Build-time metadata for /api/health. Coolify env vault sets these via
-        # GH Actions deploy.yml on every push to main (see PR #2).
-        GIT_SHA: ${GIT_SHA:-unknown}
-        BUILT_AT: ${BUILT_AT:-unknown}
+        # Immutable release metadata. Compose fails closed when release tooling
+        # did not provide the exact source SHA and UTC build timestamp.
+        GIT_SHA: ${GIT_SHA:?GIT_SHA must be a full 40-character commit SHA}
+        BUILT_AT: ${BUILT_AT:?BUILT_AT must be an ISO-8601 UTC timestamp}
         # Sentry build-time args. DSN is public (browser bundle); auth token is
-        # build-only and stripped before runtime image. Both come from Coolify
-        # env vault with is_buildtime=true.
+        # supplied separately as a BuildKit secret below.
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
-        NEXT_PUBLIC_GIT_SHA: ${GIT_SHA:-unknown}
-        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
-    image: compass-app:latest
+      secrets:
+        - SENTRY_AUTH_TOKEN
+    image: compass-app:${GIT_SHA:?GIT_SHA must be a full 40-character commit SHA}
     container_name: compass-app
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-10000}:10000"
+    # Traefik reaches the service on the Compose network; do not publish a host
+    # port in production and accidentally bypass the edge proxy.
+    expose:
+      - "10000"
     environment:
       NODE_ENV: production
       PORT: 10000
@@ -39,7 +40,7 @@ services:
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
       SENTRY_PROFILES_SAMPLE_RATE: ${SENTRY_PROFILES_SAMPLE_RATE:-0.1}
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:10000/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:10000/api/livez"]
       interval: 30s
       timeout: 10s
       start_period: 40s
@@ -58,7 +59,7 @@ services:
   # in the env vault. Once GRAFANA_LOKI_* are set, flip the profile and
   # logs start flowing.
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy@sha256:4f6ddc56ffdcf8a6316748fc5162972e20cb301523cac1bb4a31957df733ae9b
     container_name: compass-alloy
     restart: unless-stopped
     command:
@@ -78,3 +79,7 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+secrets:
+  SENTRY_AUTH_TOKEN:
+    environment: SENTRY_AUTH_TOKEN
