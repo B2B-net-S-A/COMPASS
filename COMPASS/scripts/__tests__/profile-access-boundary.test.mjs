@@ -130,6 +130,7 @@ test('detects profiles embeds stored in a select constant', async () => {
 test('rejects removal of a required server-action guard', async () => {
     const root = await fixture(`
         export async function guardedAction() {
+            // requireAdminAction() is not evidence: it must be a real call.
             const service = createServiceClient()
             return service.from('profiles').select('email')
         }
@@ -148,9 +149,53 @@ test('rejects removal of a required server-action guard', async () => {
 
     await writeFile(path.join(root, 'app', 'fixture.ts'), `
         export async function guardedAction() {
+            const service = createServiceClient()
+            const result = await service.from('profiles').select('email')
+            await requireAdminAction()
+            return result
+        }
+    `)
+    assert.deepEqual(await validateGuardEvidence(root, baseline), [
+        'required guard must run before profile access: app/fixture.ts:guardedAction (requireAdminAction)',
+    ])
+
+    await writeFile(path.join(root, 'app', 'fixture.ts'), `
+        export async function guardedAction() {
             await requireAdminAction()
             const service = createServiceClient()
             return service.from('profiles').select('email')
+        }
+    `)
+    assert.deepEqual(await validateGuardEvidence(root, baseline), [])
+})
+
+test('requires getUser authentication to fail closed before service access', async () => {
+    const root = await fixture(`
+        export async function selfAction() {
+            const session = createClient()
+            const { data: { user } } = await session.auth.getUser()
+            const service = createServiceClient()
+            return service.from('profiles').update({ bio: 'x' }).eq('id', user.id)
+        }
+    `)
+    const baseline = {
+        guard_evidence: {
+            'app/fixture.ts': {
+                selfAction: ['auth.getUser'],
+            },
+        },
+    }
+    assert.deepEqual(await validateGuardEvidence(root, baseline), [
+        'getUser guard must fail closed before profile access: app/fixture.ts:selfAction',
+    ])
+
+    await writeFile(path.join(root, 'app', 'fixture.ts'), `
+        export async function selfAction() {
+            const session = createClient()
+            const { data: { user } } = await session.auth.getUser()
+            if (!user) return { success: false }
+            const service = createServiceClient()
+            return service.from('profiles').update({ bio: 'x' }).eq('id', user.id)
         }
     `)
     assert.deepEqual(await validateGuardEvidence(root, baseline), [])

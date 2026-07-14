@@ -502,24 +502,100 @@ export async function validateGuardEvidence(root, baseline) {
         }
         const kind = absolute.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
         const sourceFile = ts.createSourceFile(absolute, content, ts.ScriptTarget.Latest, true, kind)
+        const clients = collectClientBindings(sourceFile)
+        const staticStrings = collectStaticStrings(sourceFile)
         const functions = new Map()
         function visit(node) {
             if (ts.isFunctionDeclaration(node) && node.name) {
-                functions.set(node.name.text, node.getText(sourceFile))
+                functions.set(node.name.text, node)
             }
             ts.forEachChild(node, visit)
         }
         visit(sourceFile)
 
         for (const [functionName, requiredMarkers] of Object.entries(requiredFunctions)) {
-            const functionText = functions.get(functionName)
-            if (!functionText) {
+            const functionNode = functions.get(functionName)
+            if (!functionNode) {
                 failures.push(`guard evidence function missing: ${relativePath}:${functionName}`)
                 continue
             }
+
+            const guardCalls = []
+            const serviceProfileAccesses = []
+            const failClosedUserChecks = []
+            function inspect(node) {
+                if (ts.isCallExpression(node)) {
+                    guardCalls.push({
+                        callee: node.expression.getText(sourceFile),
+                        position: node.getStart(sourceFile),
+                    })
+
+                    if (
+                        propertyName(node) === 'from'
+                        && node.arguments.length === 1
+                        && (ts.isStringLiteral(node.arguments[0]) || ts.isNoSubstitutionTemplateLiteral(node.arguments[0]))
+                        && node.arguments[0].text === 'profiles'
+                    ) {
+                        const { receiver, identifier } = receiverIdentifier(node, sourceFile)
+                        const directService = /create(?:Lifecycle)?(?:Service|Admin)Client\s*\(|createPrivilegedClient\s*\(/.test(receiver)
+                        if (directService || clients.kind(identifier, node) === 'service') {
+                            serviceProfileAccesses.push(node.getStart(sourceFile))
+                        }
+                    }
+
+                    if (
+                        propertyName(node) === 'select'
+                        && node.arguments.length > 0
+                        && (
+                            node.arguments[0].getText(sourceFile).includes('profiles!')
+                            || staticStrings.value(node.arguments[0], node)?.includes('profiles!')
+                        )
+                    ) {
+                        const fromCall = chainedCall(node.expression.expression, 'from')
+                        if (fromCall) {
+                            const { receiver, identifier } = receiverIdentifier(fromCall, sourceFile)
+                            const directService = /create(?:Lifecycle)?(?:Service|Admin)Client\s*\(|createPrivilegedClient\s*\(/.test(receiver)
+                            if (directService || clients.kind(identifier, fromCall) === 'service') {
+                                serviceProfileAccesses.push(node.getStart(sourceFile))
+                            }
+                        }
+                    }
+                }
+
+                if (ts.isIfStatement(node) && /(?:!\s*user\b|\buser\s*(?:===?|!==?)\s*(?:null|undefined))/.test(node.expression.getText(sourceFile))) {
+                    let terminates = false
+                    function findTermination(child) {
+                        if (ts.isReturnStatement(child) || ts.isThrowStatement(child)) terminates = true
+                        if (!terminates) ts.forEachChild(child, findTermination)
+                    }
+                    findTermination(node.thenStatement)
+                    if (terminates) failClosedUserChecks.push(node.getStart(sourceFile))
+                }
+                ts.forEachChild(node, inspect)
+            }
+            inspect(functionNode.body)
+            const firstProfileAccess = Math.min(...serviceProfileAccesses)
+
             for (const marker of requiredMarkers) {
-                if (!functionText.includes(marker)) {
+                const matchingCalls = guardCalls.filter(({ callee }) => (
+                    callee === marker || callee.endsWith(`.${marker}`)
+                ))
+                if (matchingCalls.length === 0) {
                     failures.push(`required guard missing: ${relativePath}:${functionName} (${marker})`)
+                    continue
+                }
+                const firstGuardCall = Math.min(...matchingCalls.map(({ position }) => position))
+                if (firstGuardCall >= firstProfileAccess) {
+                    failures.push(`required guard must run before profile access: ${relativePath}:${functionName} (${marker})`)
+                    continue
+                }
+                if (
+                    marker === 'auth.getUser'
+                    && !failClosedUserChecks.some((position) => (
+                        position > firstGuardCall && position < firstProfileAccess
+                    ))
+                ) {
+                    failures.push(`getUser guard must fail closed before profile access: ${relativePath}:${functionName}`)
                 }
             }
         }
