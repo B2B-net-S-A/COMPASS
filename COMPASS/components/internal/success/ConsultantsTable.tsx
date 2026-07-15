@@ -40,7 +40,26 @@ export function ConsultantsTable({ consultants, initial }: { consultants: Succes
     const [quality, setQuality] = useState(initial.quality ?? '')
 
     const owners = useMemo(() => Array.from(new Map(consultants.filter((item) => item.ownerTcmId).map((item) => [item.ownerTcmId!, item.ownerTcmName ?? 'Nieznany opiekun'])).entries()).sort((a, b) => a[1].localeCompare(b[1], 'pl')), [consultants])
-    const clients = useMemo(() => Array.from(new Set(consultants.map((item) => item.currentClient).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b, 'pl')), [consultants])
+    // Client names are free text (import/manual entry), so the same client often appears with
+    // different casing (e.g. "Nordea" / "NORDEA"). Dedupe case-insensitively and show the
+    // most common casing per client so the dropdown lists one entry, not one per variant.
+    const clients = useMemo(() => {
+        const variantCounts = new Map<string, Map<string, number>>()
+        for (const item of consultants) {
+            const raw = item.currentClient?.trim()
+            if (!raw) continue
+            const key = raw.toLocaleLowerCase('pl')
+            const variants = variantCounts.get(key) ?? new Map<string, number>()
+            variants.set(raw, (variants.get(raw) ?? 0) + 1)
+            variantCounts.set(key, variants)
+        }
+        return Array.from(variantCounts.entries())
+            .map(([key, variants]) => {
+                const canonical = Array.from(variants.entries()).sort((a, b) => b[1] - a[1])[0][0]
+                return { key, name: canonical }
+            })
+            .sort((a, b) => a.name.localeCompare(b.name, 'pl'))
+    }, [consultants])
 
     function setUrl(key: string, value: string) {
         const params = new URLSearchParams(searchParams.toString())
@@ -59,7 +78,7 @@ export function ConsultantsTable({ consultants, initial }: { consultants: Succes
         if (owner && item.ownerTcmId !== owner) return false
         if (health && item.health.status !== health) return false
         if (monitoring && item.monitoringState !== monitoring) return false
-        if (client && item.currentClient !== client) return false
+        if (client && item.currentClient?.trim().toLocaleLowerCase('pl') !== client) return false
         if (verified === 'verified' && !item.statusVerifiedAt) return false
         if (verified === 'unverified' && item.statusVerifiedAt) return false
         if (contact === 'recent30' && (!lastContactTime || lastContactTime < thirtyDaysAgo)) return false
@@ -130,7 +149,7 @@ export function ConsultantsTable({ consultants, initial }: { consultants: Succes
                         <select aria-label="Opiekun TCM" className={selectClass} value={owner} onChange={(event) => { setOwner(event.target.value); setUrl('owner', event.target.value) }}><option value="">Wszyscy opiekunowie</option>{owners.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
                         <select aria-label="Status relacji" className={selectClass} value={health} onChange={(event) => { setHealth(event.target.value); setUrl('health', event.target.value) }}><option value="">Każdy status relacji</option><option value="green">Zielony</option><option value="amber">Żółty</option><option value="red">Czerwony</option><option value="unknown">Bez statusu</option></select>
                         <select aria-label="Monitoring" className={selectClass} value={monitoring} onChange={(event) => { setMonitoring(event.target.value); setUrl('monitoring', event.target.value) }}><option value="">Każdy monitoring</option><option value="active">Aktywny</option><option value="paused">Wstrzymany</option><option value="inactive">Nieaktywny</option></select>
-                        <select aria-label="Klient" className={selectClass} value={client} onChange={(event) => { setClient(event.target.value); setUrl('client', event.target.value) }}><option value="">Wszyscy klienci</option>{clients.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+                        <select aria-label="Klient" className={selectClass} value={client} onChange={(event) => { setClient(event.target.value); setUrl('client', event.target.value) }}><option value="">Wszyscy klienci</option>{clients.map((entry) => <option key={entry.key} value={entry.key}>{entry.name}</option>)}</select>
                         <select aria-label="Weryfikacja statusu" className={selectClass} value={verified} onChange={(event) => { setVerified(event.target.value); setUrl('verified', event.target.value) }}><option value="">Każda weryfikacja</option><option value="verified">Status potwierdzony</option><option value="unverified">Status do weryfikacji</option></select>
                         <select aria-label="Ostatni kontakt" className={selectClass} value={contact} onChange={(event) => { setContact(event.target.value); setUrl('contact', event.target.value) }}><option value="">Każdy ostatni kontakt</option><option value="recent30">W ostatnich 30 dniach</option><option value="stale30">Ponad 30 dni temu</option><option value="never">Brak kontaktu</option></select>
                         <select aria-label="Następny check-in" className={selectClass} value={next} onChange={(event) => { setNext(event.target.value); setUrl('next', event.target.value) }}><option value="">Każdy kolejny check-in</option><option value="overdue">Zaległy</option><option value="upcoming">Zaplanowany</option><option value="none">Brak terminu</option></select>
