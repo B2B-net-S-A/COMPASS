@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { listSuccessConsultants } from '@/lib/actions/consultant-success'
+import { listSuccessConsultants, listSuccessTcmOptions } from '@/lib/actions/consultant-success'
 import { PageHeader } from '@/components/ds/PageHeader'
 import { Button } from '@/components/ui/button'
 import { ConsultantsTable } from '@/components/internal/success/ConsultantsTable'
@@ -24,7 +24,10 @@ interface PageProps {
 
 export default async function SuccessConsultantsPage({ searchParams }: PageProps) {
     try {
-        const consultants = await listSuccessConsultants()
+        const [consultants, tcmOptions] = await Promise.all([
+            listSuccessConsultants(),
+            listSuccessTcmOptions(),
+        ])
         return (
             <main className="space-y-6">
                 <PageHeader
@@ -36,7 +39,7 @@ export default async function SuccessConsultantsPage({ searchParams }: PageProps
                 />
                 {consultants.length === 0
                     ? <SuccessEmptyState title="Brak konsultantów" description="Katalog zostanie zasilony istniejącymi rekordami kontraktorów. Dodawanie i dane bazowe pozostają w People Ops." action={{ label: 'Otwórz kontraktorów', href: '/internal/people?tab=kontraktorzy' }} />
-                    : <ConsultantsTable consultants={consultants} initial={searchParams ?? {}} />}
+                    : <ConsultantsTable consultants={consultants} tcmOptions={tcmOptions} initial={searchParams ?? {}} />}
             </main>
         )
     } catch {

@@ -280,6 +280,15 @@ export async function listSuccessConsultants(): Promise<SuccessConsultantListIte
     return loadSuccessConsultants()
 }
 
+// Full TCM/admin roster (not just currently-assigned owners) — used to populate
+// "opiekun" pickers/filters so every eligible person is selectable, even before
+// any consultant has been assigned to them.
+export async function listSuccessTcmOptions(): Promise<SuccessTcmOption[]> {
+    await requireSuccessManagerAction()
+    const { options } = await loadTcmOptions()
+    return options
+}
+
 export async function listSuccessCheckIns(): Promise<SuccessCheckInListItem[]> {
     await requireSuccessManagerAction()
     return loadSuccessCheckIns()
