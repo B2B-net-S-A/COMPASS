@@ -7,7 +7,7 @@ import { DataTable, type DataTableColumn } from '@/components/ds/DataTable'
 import { FilterBar } from '@/components/ds/FilterBar'
 import { Badge } from '@/components/ui/badge'
 import { HealthBadge, MonitoringBadge, formatSuccessDate, isPastDue } from './SuccessBadges'
-import type { SuccessConsultantListItem } from '@/lib/types/consultant-success'
+import type { SuccessConsultantListItem, SuccessTcmOption } from '@/lib/types/consultant-success'
 
 const selectClass = 'h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring'
 
@@ -24,7 +24,7 @@ interface InitialFilters {
     quality?: string
 }
 
-export function ConsultantsTable({ consultants, initial }: { consultants: SuccessConsultantListItem[]; initial: InitialFilters }) {
+export function ConsultantsTable({ consultants, tcmOptions, initial }: { consultants: SuccessConsultantListItem[]; tcmOptions: SuccessTcmOption[]; initial: InitialFilters }) {
     const router = useRouter()
     const pathname = usePathname()
     const searchParams = useSearchParams()
@@ -39,7 +39,9 @@ export function ConsultantsTable({ consultants, initial }: { consultants: Succes
     const [actions, setActions] = useState(initial.actions ?? '')
     const [quality, setQuality] = useState(initial.quality ?? '')
 
-    const owners = useMemo(() => Array.from(new Map(consultants.filter((item) => item.ownerTcmId).map((item) => [item.ownerTcmId!, item.ownerTcmName ?? 'Nieznany opiekun'])).entries()).sort((a, b) => a[1].localeCompare(b[1], 'pl')), [consultants])
+    // Pełny roster TCM/admin (nie tylko osoby, które już mają przypisanego konsultanta) —
+    // każdy uprawniony opiekun musi być wybieralny w filtrze, nawet z zerowym portfolio.
+    const owners = useMemo(() => tcmOptions.map((option) => [option.id, option.name] as const).sort((a, b) => a[1].localeCompare(b[1], 'pl')), [tcmOptions])
     // Client names are free text (import/manual entry), so the same client often appears with
     // different casing (e.g. "Nordea" / "NORDEA"). Dedupe case-insensitively and show the
     // most common casing per client so the dropdown lists one entry, not one per variant.
