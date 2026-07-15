@@ -56,6 +56,15 @@ const nextConfig = {
             { source: '/loyalty', destination: '/league', permanent: false },
             { source: '/loyalty/:path*', destination: '/league/:path*', permanent: false },
             { source: '/admin/settings/loyalty', destination: '/admin/settings', permanent: false },
+            // Consultant Success: resolve legacy contractor deep links before
+            // protected layouts render. A nested server-component redirect can
+            // otherwise be replaced by the layout's auth fallback during RSC
+            // navigation, sending an authenticated TCM to /login.
+            {
+                source: '/internal/kontraktorzy/:id',
+                destination: '/internal/people/success/consultants/:id',
+                permanent: false,
+            },
         ]
     },
     async headers() {
