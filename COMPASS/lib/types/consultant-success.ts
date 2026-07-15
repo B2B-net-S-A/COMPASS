@@ -50,6 +50,7 @@ export interface SuccessConsultantListItem {
     currentClient: string | null
     currentPosition: string | null
     contractorStatus: 'prospect' | 'onboarding' | 'active' | 'offboarding' | 'exited'
+    statusVerifiedAt: string | null
     ownerTcmId: string | null
     ownerTcmName: string | null
     monitoringState: SuccessMonitoringState

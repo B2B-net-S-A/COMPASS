@@ -200,6 +200,7 @@ async function loadSuccessConsultants(): Promise<SuccessConsultantListItem[]> {
             currentClient: text(row.current_client),
             currentPosition: text(row.current_position),
             contractorStatus: (row.status ?? 'prospect') as SuccessConsultantListItem['contractorStatus'],
+            statusVerifiedAt: iso(state?.status_verified_at),
             ownerTcmId: ownerId,
             ownerTcmName: ownerId ? tcms.names.get(ownerId) ?? null : null,
             monitoringState: (state?.monitoring_status ?? 'inactive') as SuccessConsultantListItem['monitoringState'],

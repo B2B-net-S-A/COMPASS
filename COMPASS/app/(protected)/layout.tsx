@@ -156,9 +156,14 @@ export default async function ProtectedLayout({
         )
     } catch (e) {
         const err = e as { digest?: string }
-        if (err?.digest !== 'NEXT_REDIRECT') {
-            logger.error({ event: 'protected_layout.failed', error: e })
+        // Redirects and not-found signals from nested routes are implemented as
+        // framework exceptions. Let Next.js handle them instead of replacing a
+        // valid child redirect (for example a legacy contractor deep link) with
+        // an unrelated /login redirect.
+        if (err.digest?.startsWith('NEXT_REDIRECT') || err.digest?.startsWith('NEXT_NOT_FOUND')) {
+            throw e
         }
+        logger.error({ event: 'protected_layout.failed', error: e })
         redirect('/login')
     }
 }

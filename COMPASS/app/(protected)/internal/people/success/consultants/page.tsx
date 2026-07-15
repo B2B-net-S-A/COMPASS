@@ -8,7 +8,18 @@ import { SuccessEmptyState, SuccessErrorState } from '@/components/internal/succ
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
-    searchParams?: { q?: string; owner?: string; health?: string; monitoring?: string; client?: string }
+    searchParams?: {
+        q?: string
+        owner?: string
+        health?: string
+        monitoring?: string
+        client?: string
+        verified?: string
+        contact?: string
+        next?: string
+        actions?: string
+        quality?: string
+    }
 }
 
 export default async function SuccessConsultantsPage({ searchParams }: PageProps) {
