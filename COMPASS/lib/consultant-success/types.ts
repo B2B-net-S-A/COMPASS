@@ -11,6 +11,7 @@ export type DeliveryKind =
     | 'check_in_due'
     | 'task_due'
     | 'conversation_follow_up'
+    | 'client_feedback_risk'
     | 'pulse_invitation'
     | 'pulse_reminder'
     | 'pulse_low_alert'
@@ -62,6 +63,7 @@ export interface PlannerStats {
     checkInsScanned: number
     tasksScanned: number
     conversationsScanned: number
+    feedbackScanned: number
     healthReviewsScanned: number
     pulseRequestsScanned: number
     pulseRequestsExpired: number

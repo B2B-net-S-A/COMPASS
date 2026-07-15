@@ -142,7 +142,10 @@ export interface SuccessTask {
     assignedTcmId: string | null
     assignedTcmName: string | null
     dueDate: string | null
+    originalDueDate: string | null
+    snoozedUntil: string | null
     completedAt: string | null
+    outcome: string | null
     createdAt: string
 }
 
@@ -315,7 +318,18 @@ export interface CreateSuccessTaskInput {
 
 export interface UpdateSuccessTaskInput {
     taskId: string
-    status: SuccessTaskStatus
+    status?: SuccessTaskStatus
+    title?: string
+    description?: string | null
+    dueDate?: string | null
+    priority?: SuccessPriority
+    assignedTcmId?: string | null
+    snoozedUntil?: string | null
+    outcome?: string | null
+}
+
+export interface DeleteSuccessTaskInput {
+    taskId: string
 }
 
 export interface RetrySuccessDeliveryInput {

@@ -2,20 +2,33 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarPlus, CirclePause, ClipboardPlus, HeartPulse, Loader2, MessageSquarePlus, Play, RefreshCw, Send } from 'lucide-react'
+import { CalendarPlus, CirclePause, ClipboardPlus, HeartPulse, Loader2, MessageSquarePlus, Pencil, Play, RefreshCw, Send, Trash2 } from 'lucide-react'
 import {
     activateSuccessMonitoring,
     addSuccessClientFeedback,
     createSuccessTask,
+    deleteSuccessTask,
     pauseSuccessMonitoring,
     rescheduleSuccessCheckIn,
     scheduleSuccessCheckIn,
     sendSuccessPulseSurvey,
     setSuccessHealthStatus,
+    updateSuccessTask,
 } from '@/lib/actions/consultant-success'
 import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,6 +43,7 @@ import type {
     SuccessTcmOption,
     SuccessCheckInType,
     SuccessClientFeedback,
+    SuccessTask,
 } from '@/lib/types/consultant-success'
 
 const selectClass = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring'
@@ -271,8 +285,8 @@ function MonitoringDialogContent({
                 </label>
             ) : null}
             <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
-                <input type="checkbox" checked={surveysEnabled} onChange={(event) => setSurveysEnabled(event.target.checked)} className="mt-0.5 h-4 w-4" />
-                <span><strong>Włącz wysyłkę pulse survey</strong><br /><span className="text-muted-foreground">Ankieta nie daje konsultantowi dostępu do profilu ani historii TCM.</span></span>
+                <input type="checkbox" checked={surveysEnabled} disabled={!consultant.email} onChange={(event) => setSurveysEnabled(event.target.checked)} className="mt-0.5 h-4 w-4" />
+                <span><strong>Włącz wysyłkę pulse survey</strong><br /><span className="text-muted-foreground">{consultant.email ? 'Ankieta nie daje konsultantowi dostępu do profilu ani historii TCM.' : 'Najpierw uzupełnij e-mail konsultanta w People Ops.'}</span></span>
             </label>
             <DialogFooter>
                 <Button onClick={onSave} disabled={pending}>
@@ -526,6 +540,83 @@ export function CreateTaskDialog({
                     <div className="space-y-2"><Label htmlFor="task-owner">Właściciel</Label><select id="task-owner" className={selectClass} value={assignedTcmId} onChange={(event) => setAssignedTcmId(event.target.value)}><option value="">Bez przypisania</option>{tcmOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></div>
                 </div>
                 <DialogFooter><Button onClick={save} disabled={pending}>{pending ? <Loader2 className="animate-spin" /> : <ClipboardPlus />}Dodaj</Button></DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+export function EditTaskDialog({
+    task,
+    tcmOptions,
+}: {
+    task: SuccessTask
+    tcmOptions: SuccessTcmOption[]
+}) {
+    const [open, setOpen] = useState(false)
+    const [title, setTitle] = useState(task.title)
+    const [description, setDescription] = useState(task.description ?? '')
+    const [dueDate, setDueDate] = useState(task.dueDate?.slice(0, 10) ?? '')
+    const [priority, setPriority] = useState<SuccessPriority>(task.priority)
+    const [assignedTcmId, setAssignedTcmId] = useState(task.assignedTcmId ?? '')
+    const [snoozedUntil, setSnoozedUntil] = useState(task.snoozedUntil?.slice(0, 10) ?? '')
+    const [outcome, setOutcome] = useState(task.outcome ?? '')
+    const { pending, run } = useActionFeedback()
+
+    function save() {
+        if (!title.trim()) return toast.error('Podaj tytuł działania.')
+        run(
+            () => updateSuccessTask({
+                taskId: task.id,
+                title: title.trim(),
+                description: description.trim() || null,
+                dueDate: dueDate || null,
+                priority,
+                assignedTcmId: assignedTcmId || null,
+                snoozedUntil: snoozedUntil || null,
+                outcome: outcome.trim() || null,
+            }),
+            'Działanie zostało zaktualizowane.',
+            () => setOpen(false),
+        )
+    }
+
+    function remove() {
+        run(
+            () => deleteSuccessTask({ taskId: task.id }),
+            'Działanie zostało usunięte.',
+            () => setOpen(false),
+        )
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild><Button variant="ghost" size="sm"><Pencil />Edytuj</Button></DialogTrigger>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Edytuj działanie</DialogTitle>
+                    <DialogDescription>Zmień ustalenia, właściciela, termin albo czasowo wycisz przypomnienia.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="space-y-2"><Label htmlFor={`task-title-${task.id}`}>Tytuł</Label><Input id={`task-title-${task.id}`} value={title} onChange={(event) => setTitle(event.target.value)} /></div>
+                    <div className="space-y-2"><Label htmlFor={`task-description-${task.id}`}>Opis</Label><Textarea id={`task-description-${task.id}`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></div>
+                    <FormSection columns={2}>
+                        <div className="space-y-2"><Label htmlFor={`task-due-${task.id}`}>Termin</Label><Input id={`task-due-${task.id}`} type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></div>
+                        <div className="space-y-2"><Label htmlFor={`task-priority-${task.id}`}>Priorytet</Label><select id={`task-priority-${task.id}`} className={selectClass} value={priority} onChange={(event) => setPriority(event.target.value as SuccessPriority)}><option value="low">Niski</option><option value="medium">Średni</option><option value="high">Wysoki</option><option value="critical">Krytyczny</option></select></div>
+                        <div className="space-y-2"><Label htmlFor={`task-owner-${task.id}`}>Właściciel</Label><select id={`task-owner-${task.id}`} className={selectClass} value={assignedTcmId} onChange={(event) => setAssignedTcmId(event.target.value)}><option value="">Bez przypisania</option>{tcmOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></div>
+                        <div className="space-y-2"><Label htmlFor={`task-snooze-${task.id}`}>Wycisz przypomnienia do</Label><Input id={`task-snooze-${task.id}`} type="date" value={snoozedUntil} onChange={(event) => setSnoozedUntil(event.target.value)} /></div>
+                    </FormSection>
+                    <div className="space-y-2"><Label htmlFor={`task-outcome-${task.id}`}>Rezultat / outcome</Label><Textarea id={`task-outcome-${task.id}`} rows={3} value={outcome} onChange={(event) => setOutcome(event.target.value)} /></div>
+                </div>
+                <DialogFooter className="gap-2 sm:justify-between">
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild><Button type="button" variant="destructive" disabled={pending}><Trash2 />Usuń</Button></AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader><AlertDialogTitle>Usunąć działanie?</AlertDialogTitle><AlertDialogDescription>Działanie zniknie z aktywnej kolejki, ale pozostanie w prywatnym timeline i audycie jako anulowane.</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogFooter><AlertDialogCancel>Anuluj</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={remove}>Usuń działanie</AlertDialogAction></AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                    <Button onClick={save} disabled={pending}>{pending ? <Loader2 className="animate-spin" /> : <Pencil />}Zapisz zmiany</Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     )

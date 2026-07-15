@@ -21,6 +21,7 @@ import type {
     AddSuccessClientFeedbackInput,
     CompleteSuccessCheckInInput,
     CreateSuccessTaskInput,
+    DeleteSuccessTaskInput,
     PauseSuccessMonitoringInput,
     RescheduleSuccessCheckInInput,
     RetrySuccessDeliveryInput,
@@ -328,7 +329,10 @@ function mapTask(row: DbRow, tcmNames: Map<string, string>): SuccessTask {
         assignedTcmId: assigneeId,
         assignedTcmName: assigneeId ? tcmNames.get(assigneeId) ?? null : null,
         dueDate: iso(row.due_date),
+        originalDueDate: iso(row.original_due_date),
+        snoozedUntil: iso(row.snoozed_until),
         completedAt: iso(row.completed_at),
+        outcome: text(row.outcome),
         createdAt: iso(row.created_at) ?? new Date().toISOString(),
     }
 }
@@ -1046,15 +1050,97 @@ export async function createSuccessTask(input: CreateSuccessTaskInput): Promise<
 
 export async function updateSuccessTask(input: UpdateSuccessTaskInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
-    const parsed = z.object({ taskId: uuid, status: z.enum(['todo', 'in_progress', 'done', 'cancelled']) }).parse(input)
+    const parsed = z.object({
+        taskId: uuid,
+        status: z.enum(['todo', 'in_progress', 'done', 'cancelled']).optional(),
+        title: z.string().trim().min(1).max(240).optional(),
+        description: z.string().trim().max(5000).nullable().optional(),
+        dueDate: z.string().date().nullable().optional(),
+        priority: priority.optional(),
+        assignedTcmId: uuid.nullable().optional(),
+        snoozedUntil: z.string().date().nullable().optional(),
+        outcome: z.string().trim().max(5000).nullable().optional(),
+    }).refine((value) => Object.keys(value).some((key) => key !== 'taskId'), {
+        message: 'Podaj co najmniej jedną zmianę działania.',
+    }).parse(input)
     const db = successDb()
-    const { data: task, error: lookupError } = await db.from('contractor_tasks').select('id, contractor_id').eq('id', parsed.taskId).maybeSingle()
+    const { data: task, error: lookupError } = await db
+        .from('contractor_tasks')
+        .select('id, contractor_id, task_kind')
+        .eq('id', parsed.taskId)
+        .maybeSingle()
     assertDb(lookupError, 'Nie udało się sprawdzić działania')
     if (!task) throw new Error('Działanie nie istnieje.')
-    const completedAt = parsed.status === 'done' || parsed.status === 'cancelled' ? new Date().toISOString() : null
-    const { error } = await db.from('contractor_tasks').update({ status: parsed.status, completed_at: completedAt }).eq('id', parsed.taskId)
+    if (task.task_kind === 'ticket_task') {
+        throw new Error('Zadania pochodzące z ticketów edytujesz w module Spraw.')
+    }
+
+    if (parsed.assignedTcmId) {
+        const { data: assignee, error: assigneeError } = await db
+            .from('profiles')
+            .select('id, role')
+            .eq('id', parsed.assignedTcmId)
+            .maybeSingle()
+        assertDb(assigneeError, 'Nie udało się sprawdzić właściciela działania')
+        if (!assignee || !['admin', 'talent_community'].includes(String(assignee.role))) {
+            throw new Error('Właścicielem działania może być tylko TCM lub admin.')
+        }
+    }
+
+    const patch: Record<string, unknown> = {}
+    if (parsed.status !== undefined) {
+        patch.status = parsed.status
+        patch.completed_at = parsed.status === 'done' || parsed.status === 'cancelled'
+            ? new Date().toISOString()
+            : null
+    }
+    if (parsed.title !== undefined) patch.title = parsed.title
+    if (parsed.description !== undefined) patch.description = parsed.description || null
+    if (parsed.dueDate !== undefined) patch.due_date = parsed.dueDate
+    if (parsed.priority !== undefined) patch.priority = dbPriority(parsed.priority)
+    if (parsed.assignedTcmId !== undefined) patch.assigned_tcm_id = parsed.assignedTcmId
+    if (parsed.snoozedUntil !== undefined) patch.snoozed_until = parsed.snoozedUntil
+    if (parsed.outcome !== undefined) patch.outcome = parsed.outcome || null
+
+    const { error } = await db.from('contractor_tasks').update(patch).eq('id', parsed.taskId)
     assertDb(error, 'Nie udało się zaktualizować działania')
-    await logAudit(ctx.userId, 'CONTRACTOR_TASK_UPDATED', { task_id: parsed.taskId, status: parsed.status })
+    await logAudit(ctx.userId, 'CONTRACTOR_TASK_UPDATED', {
+        task_id: parsed.taskId,
+        fields: Object.keys(patch),
+        status: parsed.status ?? null,
+    })
+    revalidateSuccess(text(task.contractor_id) ?? undefined)
+}
+
+export async function deleteSuccessTask(input: DeleteSuccessTaskInput): Promise<void> {
+    const ctx = await requireSuccessManagerAction()
+    const taskId = uuid.parse(input.taskId)
+    const db = successDb()
+    const { data: task, error: lookupError } = await db
+        .from('contractor_tasks')
+        .select('id, contractor_id, task_kind, status')
+        .eq('id', taskId)
+        .maybeSingle()
+    assertDb(lookupError, 'Nie udało się sprawdzić działania')
+    if (!task) throw new Error('Działanie nie istnieje.')
+    if (task.task_kind === 'ticket_task') {
+        throw new Error('Zadania pochodzące z ticketów usuwasz w module Spraw.')
+    }
+
+    // Preserve the timeline and audit trail: deletion in the Success UI is a
+    // terminal soft-delete, not a destructive removal of the source record.
+    const now = new Date().toISOString()
+    const { error } = await db.from('contractor_tasks').update({
+        status: 'cancelled',
+        completed_at: now,
+        outcome: 'Usunięte przez TCM',
+    }).eq('id', taskId)
+    assertDb(error, 'Nie udało się usunąć działania')
+    await logAudit(ctx.userId, 'CONTRACTOR_TASK_DELETED', {
+        task_id: taskId,
+        contractor_id: task.contractor_id,
+        previous_status: task.status,
+    })
     revalidateSuccess(text(task.contractor_id) ?? undefined)
 }
 

@@ -120,6 +120,19 @@ async function validateCurrentDeliveryState(
         if (plannedDueOn && data.follow_up_date !== plannedDueOn) {
             return { disposition: 'cancelled', reason: 'conversation_follow_up_changed' }
         }
+    } else if (delivery.delivery_kind === 'client_feedback_risk') {
+        const { data, error } = await admin
+            .from('contractor_client_feedback')
+            .select('feedback_date, risk_level, archived_at')
+            .eq('id', delivery.entity_id)
+            .maybeSingle()
+        if (error) return { disposition: 'failed', error: `client_feedback_lookup:${error.message}` }
+        if (!data || data.archived_at || !['high', 'critical'].includes(data.risk_level)) {
+            return { disposition: 'cancelled', reason: 'client_feedback_no_longer_risky' }
+        }
+        if (plannedDueOn && data.feedback_date !== plannedDueOn) {
+            return { disposition: 'cancelled', reason: 'client_feedback_date_changed' }
+        }
     } else if (delivery.delivery_kind === 'health_review') {
         if (!['amber', 'red'].includes(settings.health_status) || !settings.health_review_on) {
             return { disposition: 'cancelled', reason: 'health_review_not_due' }

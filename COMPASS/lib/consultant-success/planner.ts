@@ -9,6 +9,7 @@ import {
     TASK_MILESTONES,
     TCM_DELIVERY_CHANNELS,
     addCalendarDays,
+    clientFeedbackRiskMilestone,
     deliveryDedupeKey,
     latestReachedMilestone,
     latestRecurrenceOnOrBefore,
@@ -27,7 +28,7 @@ import type {
 const SUCCESS_HUB_URL = '/internal/people/success'
 
 function successDeepLink(options: {
-    kind: 'check_in' | 'task' | 'follow_up' | 'health'
+    kind: 'check_in' | 'task' | 'follow_up' | 'feedback' | 'health'
     entityId: string
     contractorId: string | null
 }): string {
@@ -39,7 +40,9 @@ function successDeepLink(options: {
         ? 'actions'
         : options.kind === 'follow_up'
             ? 'timeline'
-            : 'overview'
+            : options.kind === 'feedback'
+                ? 'feedback'
+                : 'overview'
     const focus = options.kind === 'health' ? 'health' : options.entityId
     return `${SUCCESS_HUB_URL}/consultants/${options.contractorId}?tab=${tab}&focus=${focus}`
 }
@@ -84,6 +87,13 @@ interface ConversationRow {
     follow_up_date: string
 }
 
+interface FeedbackRow {
+    id: string
+    contractor_id: string
+    feedback_date: string
+    risk_level: 'high' | 'critical'
+}
+
 interface PulseRequestRow {
     id: string
     contractor_id: string
@@ -115,8 +125,8 @@ interface PlannerOptions {
 }
 
 function notificationPriority(milestone: string): NotificationPriority {
-    if (milestone === 'overdue7' || milestone === 'low') return 'urgent'
-    if (milestone === 'overdue2' || milestone === 'due') return 'high'
+    if (milestone === 'overdue7' || milestone === 'low' || milestone === 'risk_critical') return 'urgent'
+    if (milestone === 'overdue2' || milestone === 'due' || milestone === 'risk_high') return 'high'
     return 'normal'
 }
 
@@ -126,6 +136,12 @@ function milestoneBody(
     contractorName: string,
     dueDate: string,
 ): { pl: string; en: string } {
+    if (kind === 'feedback') {
+        return {
+            pl: `${contractorName} — ryzykowny feedback klienta; data ${dueDate}. Wymaga ręcznego przeglądu przez TCM.`,
+            en: `${contractorName} — high-risk client feedback; date ${dueDate}. A manual TCM review is required.`,
+        }
+    }
     const stage = milestone === 'pre3'
         ? { pl: 'Termin przypada za 3 dni.', en: 'The due date is in 3 days.' }
         : milestone === 'due'
@@ -150,6 +166,7 @@ function title(kind: string): { pl: string; en: string } {
     if (kind === 'check_in') return { pl: 'Consultant Success — check-in', en: 'Consultant Success — check-in' }
     if (kind === 'task') return { pl: 'Consultant Success — action step', en: 'Consultant Success — action step' }
     if (kind === 'follow_up') return { pl: 'Consultant Success — follow-up', en: 'Consultant Success — follow-up' }
+    if (kind === 'feedback') return { pl: 'Consultant Success — ryzykowny feedback', en: 'Consultant Success — high-risk feedback' }
     if (kind === 'low_pulse') return { pl: 'Consultant Success — niski pulse', en: 'Consultant Success — low pulse' }
     return { pl: 'Consultant Success — przegląd kondycji', en: 'Consultant Success — health review' }
 }
@@ -166,6 +183,7 @@ function baseStats(shadowMode: boolean): PlannerStats {
         checkInsScanned: 0,
         tasksScanned: 0,
         conversationsScanned: 0,
+        feedbackScanned: 0,
         healthReviewsScanned: 0,
         pulseRequestsScanned: 0,
         pulseRequestsExpired: 0,
@@ -222,7 +240,7 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
     }
 
     const enqueueMilestone = (options: {
-        kind: 'check_in' | 'task' | 'follow_up' | 'health'
+        kind: 'check_in' | 'task' | 'follow_up' | 'feedback' | 'health'
         deliveryKind: PlannedDelivery['delivery_kind']
         entityId: string
         contractorId: string | null
@@ -415,7 +433,32 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
         })
     }
 
-    // 5. Health review is intentionally separate from check-in cadence.
+    // 5. High/critical client feedback is a separate signal. It never changes
+    // the manual health status; it only asks the responsible TCM to review it.
+    const { data: feedbackData, error: feedbackError } = await admin
+        .from('contractor_client_feedback')
+        .select('id, contractor_id, feedback_date, risk_level')
+        .in('risk_level', ['high', 'critical'])
+        .is('archived_at', null)
+    ensureQuery(feedbackError, 'client_feedback_read_failed')
+    const feedbackRows = (feedbackData ?? []) as FeedbackRow[]
+    stats.feedbackScanned = feedbackRows.length
+    for (const feedback of feedbackRows) {
+        if (!activeContractorIds.has(feedback.contractor_id)) continue
+        const milestone = clientFeedbackRiskMilestone(feedback.risk_level)
+        if (!milestone) continue
+        enqueueMilestone({
+            kind: 'feedback',
+            deliveryKind: 'client_feedback_risk',
+            entityId: feedback.id,
+            contractorId: feedback.contractor_id,
+            preferredRecipientId: contractorMap.get(feedback.contractor_id)?.owner_tcm_id ?? null,
+            milestone,
+            dueDate: feedback.feedback_date,
+        })
+    }
+
+    // 6. Health review is intentionally separate from check-in cadence.
     for (const setting of settings) {
         if (!setting.health_review_on || setting.health_review_on > addCalendarDays(today, 3)) continue
         stats.healthReviewsScanned += 1
@@ -432,7 +475,7 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
         })
     }
 
-    // 6. Pulse invitations, D+3/D+7 reminders, D+14 expiry and low-score alerts.
+    // 7. Pulse invitations, D+3/D+7 reminders, D+14 expiry and low-score alerts.
     const { data: pulseData, error: pulseError } = await admin
         .from('contractor_pulse_requests')
         .select('id, contractor_id, status, recipient_email_snapshot, scheduled_for, sent_at, expires_at, responded_at')

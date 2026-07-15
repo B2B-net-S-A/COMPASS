@@ -7,10 +7,11 @@ import { updateSuccessTask } from '@/lib/actions/consultant-success'
 import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { PriorityBadge, TaskStatusBadge, formatSuccessDate, isPastDue } from './SuccessBadges'
+import { EditTaskDialog } from './SuccessActions'
 import { cn } from '@/lib/utils'
-import type { SuccessTask, SuccessTaskStatus } from '@/lib/types/consultant-success'
+import type { SuccessTask, SuccessTaskStatus, SuccessTcmOption } from '@/lib/types/consultant-success'
 
-export function SuccessTaskList({ tasks, focusId }: { tasks: SuccessTask[]; focusId?: string }) {
+export function SuccessTaskList({ tasks, focusId, tcmOptions = [] }: { tasks: SuccessTask[]; focusId?: string; tcmOptions?: SuccessTcmOption[] }) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
@@ -50,14 +51,19 @@ export function SuccessTaskList({ tasks, focusId }: { tasks: SuccessTask[]; focu
                                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                                     <span>Właściciel: {task.assignedTcmName ?? 'nieprzypisany'}</span>
                                     <span className={overdue ? 'font-semibold text-destructive' : ''}>Termin: {formatSuccessDate(task.dueDate)}</span>
+                                    {task.snoozedUntil ? <span>Wyciszone do: {formatSuccessDate(task.snoozedUntil)}</span> : null}
                                 </div>
+                                {task.outcome ? <p className="mt-2 text-sm"><strong>Rezultat:</strong> {task.outcome}</p> : null}
                             </div>
-                            {task.status !== 'done' && task.status !== 'cancelled' ? (
-                                <div className="flex shrink-0 gap-2">
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                                {task.status !== 'done' && task.status !== 'cancelled' ? (
+                                    <>
                                     {task.status === 'todo' ? <Button variant="outline" size="sm" disabled={pending && busyId === task.id} onClick={() => changeStatus(task.id, 'in_progress')}>{pending && busyId === task.id ? <Loader2 className="animate-spin" /> : <Play />}W toku</Button> : null}
                                     <Button size="sm" disabled={pending && busyId === task.id} onClick={() => changeStatus(task.id, 'done')}>{pending && busyId === task.id ? <Loader2 className="animate-spin" /> : <Check />}Zrobione</Button>
-                                </div>
-                            ) : null}
+                                    </>
+                                ) : null}
+                                <EditTaskDialog task={task} tcmOptions={tcmOptions} />
+                            </div>
                         </div>
                     </article>
                 )
