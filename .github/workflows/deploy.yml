@@ -264,11 +264,11 @@ jobs:
           upsert_task \
             "consultant-success-plan" \
             "10 4 * * *" \
-            'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/consultant-success-plan"'
+            'wget --quiet --output-document=- --header="Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/consultant-success-plan"'
           upsert_task \
             "consultant-success-dispatch" \
             "*/5 * * * *" \
-            'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/consultant-success-dispatch"'
+            'wget --quiet --output-document=- --header="Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/consultant-success-dispatch"'
 
           verified=$(curl -fsSL -H "$auth" -H "Accept: application/json" "$api")
           echo "Verified Consultant Success schedules:"
