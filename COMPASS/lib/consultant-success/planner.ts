@@ -382,9 +382,14 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
             deliveryKind: 'task_due',
             entityId: task.id,
             contractorId: task.contractor_id,
-            preferredRecipientId: task.contractor_id
-                ? contractorMap.get(task.contractor_id)?.owner_tcm_id ?? null
-                : null,
+            // Audyt 2026-07-16 P1.9: reminder taska idzie do WYKONAWCY
+            // (assigned_tcm_id); owner portfolio tylko jako jawny fallback,
+            // gdy task nie ma assignee. recipientFor() nadal egzekwuje
+            // allowlistę TCM/admin.
+            preferredRecipientId: task.assigned_tcm_id
+                ?? (task.contractor_id
+                    ? contractorMap.get(task.contractor_id)?.owner_tcm_id ?? null
+                    : null),
             milestone: milestone.key,
             dueDate: effectiveDueDate,
         })

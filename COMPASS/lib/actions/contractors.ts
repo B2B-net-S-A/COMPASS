@@ -8,6 +8,7 @@ import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { requireLifecycleManagerAction } from '@/lib/auth/internal-guard'
 import { createServiceClient } from '@/lib/supabase/admin'
+import { logCompat } from '@/lib/logger'
 import { logAudit } from '@/lib/actions/audit'
 import { normalizeContractorName } from '@/lib/types/contractor'
 import type {
@@ -1176,58 +1177,26 @@ export async function getContractorInterviewFileUrl(path: string): Promise<strin
 }
 
 // ─── Phase 39: Bench (consultants between projects) ───────────────────────────
-/** Auto-seed window: departures that left within this many days (or are undated / future) seed the bench. */
-const BENCH_SEED_WINDOW_DAYS = 90
 
 /**
- * List the bench worklist. Hybrid population: first auto-seeds bench rows for recent / upcoming
- * departures that don't yet have one (idempotent — a dismissed row keeps its departure slot, so it
- * isn't re-added), then returns every non-dismissed row. The client filters active vs. all.
+ * List the bench worklist — READ-ONLY (audyt 2026-07-16, P1.8: render nie może
+ * mieć efektów ubocznych). Auto-seed z niedawnych zejść żyje w
+ * lib/contractors/bench-seed.ts i jest wołany przez joby tworzące zejścia
+ * (cron tc-sync + commitZejsciaImport); pomija internalizację.
  */
 export async function listBench(): Promise<BenchItem[]> {
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
 
-    // 1. Departures already represented on the bench (incl. dismissed → never re-seed them).
-    const { data: existing } = await admin
-        .from('contractor_bench')
-        .select('departure_id')
-        .not('departure_id', 'is', null)
-    const seeded = new Set(((existing ?? []) as Array<{ departure_id: string | null }>).map((r) => r.departure_id))
-
-    // 2. Qualifying departures: left within the seed window, or leaving in the future / undated.
-    const cutoff = new Date(Date.now() - BENCH_SEED_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
-    const { data: deps } = await admin
-        .from('client_departures')
-        .select('id, contractor_id, consultant_name, client_name, position, departure_date, last_notice_day')
-        .or(`departure_date.is.null,departure_date.gte.${cutoff}`)
-    const missing = ((deps ?? []) as Array<{
-        id: string; contractor_id: string | null; consultant_name: string; client_name: string
-        position: string | null; departure_date: string | null; last_notice_day: string | null
-    }>).filter((d) => !seeded.has(d.id))
-
-    // 3. Seed the missing ones (best-effort; a concurrent insert would 23505 and simply retry next load).
-    if (missing.length > 0) {
-        await admin.from('contractor_bench').insert(
-            missing.map((d) => ({
-                departure_id: d.id,
-                contractor_id: d.contractor_id,
-                consultant_name: d.consultant_name,
-                client_name: d.client_name,
-                role: d.position,
-                departure_date: d.departure_date,
-                notice_date: d.last_notice_day,
-                source: 'auto' as const,
-            })),
-        )
-    }
-
-    // 4. Return the live bench (non-dismissed), newest departures first.
-    const { data } = await admin
+    const { data, error } = await admin
         .from('contractor_bench')
         .select('*')
         .is('dismissed_at', null)
         .order('departure_date', { ascending: false, nullsFirst: false })
+    if (error) {
+        logCompat.error('listBench error:', error)
+        throw new Error('Nie udało się pobrać benchu.')
+    }
     return (data ?? []) as BenchItem[]
 }
 

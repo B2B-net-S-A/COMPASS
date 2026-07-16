@@ -17,6 +17,7 @@ import {
     sendOnboardingWelcome,
 } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { businessTodayISO, isDateOverdue } from '@/lib/utils/business-date'
 import { computeDueDate } from '@/lib/utils/sla'
 import { roleLabelPl, type DbRole } from '@/lib/types/role'
 import type {
@@ -637,7 +638,9 @@ export async function listOnboardingQueue(filters?: {
         `)
 
     if (!filters?.status || filters.status === 'in_progress') {
-        query = query.is('completed_at', null)
+        // Audyt 2026-07-16 P1.3: anulowany onboarding NIE jest aktywny —
+        // completed_at IS NULL to za mało, cancelled_at też musi być NULL.
+        query = query.is('completed_at', null).is('cancelled_at', null)
     } else if (filters.status === 'completed') {
         query = query.not('completed_at', 'is', null)
     }
@@ -648,14 +651,16 @@ export async function listOnboardingQueue(filters?: {
         return []
     }
 
-    const now = new Date()
+    // Overdue liczone względem biznesowego "dziś" (Europe/Warsaw), nie UTC-parsingu
+    // DATE — zadanie z terminem na dziś nie jest po terminie (audyt P1.3).
+    const todayISO = businessTodayISO()
     return (data ?? [])
         .filter((row: any) => !filters?.role || row.user?.role === filters.role)
         .map((row: any) => {
             const tasks: Array<{ completed_at: string | null; due_date: string | null }> = row.tasks ?? []
             const tasksCompleted = tasks.filter((t) => t.completed_at !== null).length
             const tasksOverdue = tasks.filter(
-                (t) => t.completed_at === null && t.due_date && new Date(t.due_date) < now,
+                (t) => t.completed_at === null && isDateOverdue(t.due_date, todayISO),
             ).length
             return {
                 progress_id: row.id,

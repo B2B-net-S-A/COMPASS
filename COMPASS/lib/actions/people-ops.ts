@@ -17,6 +17,7 @@
 
 import { createLifecycleAdminClient } from '@/lib/supabase/lifecycle-client'
 import { requireTalentCommunityOrAdminAction } from '@/lib/auth/internal-guard'
+import { countEmployeeExitDue, type EmployeeExitDue, type ExitInterviewLite } from '@/lib/people-ops/exit-due'
 import { logger } from '@/lib/logger'
 
 export interface DueDone {
@@ -32,20 +33,27 @@ export interface PeopleOpsMonthlySummary {
         contractor: { due: number; done: number; cancelled: number }
     }
     exit: {
-        // dueByTermination = intencja (profiles.termination_date); dueByScheduled = fallback (exit_interviews.scheduled_for)
-        employee: { dueByTermination: number; dueByScheduled: number; done: number }
+        // due = per-rekord COALESCE(termination_date, scheduled_for) — audyt P1.6;
+        // dueFallbackScheduled = ilu z due weszło fallbackiem (brak termination_date)
+        employee: { due: number; done: number; dueFallbackScheduled: number }
         // departures (raw) − conversions (internalizacja) = realne odejścia; done = złożone wywiady (niezależnie)
         contractor: { departures: number; conversions: number; done: number }
     }
-    cases: { open: number; unassigned: number } // bieżące sprawy: rodziny inbox_% + contractor_%, status NOT closed/resolved
+    // Bieżące sprawy: WYŁĄCZNIE rodzina inbox_% — dokładnie ten sam zakres,
+    // który pokazuje kanban w zakładce Sprawy (audyt P1.2: KPI = lista).
+    cases: { open: number; unassigned: number }
     hasAnyData: boolean
     latestActivityMonth: { year: number; month: number } | null
+    // Prawidłowo trwające procesy — informacja, NIE alert (audyt P1.5).
+    processes: {
+        activeOnboardings: number
+        scheduledExits: number
+    }
+    // Wyłącznie braki/niespójności danych wymagające działania.
     attention: {
         offboardingWithoutTerminationDate: number
         departuresWithoutDate: number
         hrProfilesWithoutHiredAt: number
-        activeOnboardingsInTable: number // reconcile: vs employment_status (dziś wszyscy 'active')
-        scheduledExitsInTable: number
     }
 }
 
@@ -91,6 +99,38 @@ function monthFromDateString(d: string | null): { year: number; month: number } 
 }
 
 /**
+ * Należne exity pracowników per-rekord: COALESCE(termination_date, scheduled_for)
+ * z deduplikacją i wykluczeniem anulowanych wywiadów (audyt P1.6).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchEmployeeExitDue(db: any, start: string, end: string): Promise<EmployeeExitDue> {
+    const [terminationInWindow, interviewsRes] = await Promise.all([
+        readCount(
+            db.from('profiles').select('id', { count: 'exact', head: true })
+                .gte('termination_date', start).lt('termination_date', end),
+        ),
+        db.from('exit_interviews')
+            .select('id, user_id, scheduled_for, status')
+            .gte('scheduled_for', start).lt('scheduled_for', end)
+            .neq('status', 'cancelled'),
+    ])
+    if (interviewsRes.error) throw new Error(interviewsRes.error.message)
+    const interviews = (interviewsRes.data ?? []) as ExitInterviewLite[]
+
+    const userIds = Array.from(new Set(interviews.map((i) => i.user_id).filter((x): x is string => x !== null)))
+    const terminationDateByUser = new Map<string, string | null>()
+    if (userIds.length > 0) {
+        const { data, error } = await db.from('profiles').select('id, termination_date').in('id', userIds)
+        if (error) throw new Error(error.message)
+        for (const row of (data ?? []) as Array<{ id: string; termination_date: string | null }>) {
+            terminationDateByUser.set(row.id, row.termination_date)
+        }
+    }
+
+    return countEmployeeExitDue({ terminationInWindow, interviews, terminationDateByUser })
+}
+
+/**
  * North-star KPI dla danego miesiąca. Obie populacje (pracownicy wewnętrzni + kontraktorzy).
  * Guard: admin lub Talent Community Manager. Liczy service-rolem (po guardzie) dla spójnych
  * liczb niezależnie od RLS wołającego.
@@ -113,8 +153,7 @@ export async function getPeopleOpsMonthlySummary(
             ctrOnbDue,
             ctrOnbCancelled,
             ctrOnbDone,
-            empExitDueTerm,
-            empExitDueSched,
+            empExitDue,
             empExitDone,
             ctrDepartures,
             ctrConversions,
@@ -136,9 +175,8 @@ export async function getPeopleOpsMonthlySummary(
             readCount(inWindow(db.from('placements').select('id', { count: 'exact', head: true }), 'start_date').neq('status', 'cancelled')),
             readCount(inWindow(db.from('placements').select('id', { count: 'exact', head: true }), 'start_date').eq('status', 'cancelled')),
             readCount(inWindow(db.from('contractor_onboarding_interviews').select('id', { count: 'exact', head: true }), 'submitted_at')),
-            // --- EXIT ---
-            readCount(inWindow(db.from('profiles').select('id', { count: 'exact', head: true }), 'termination_date')),
-            readCount(inWindow(db.from('exit_interviews').select('id', { count: 'exact', head: true }), 'scheduled_for')),
+            // --- EXIT (per-rekord COALESCE, audyt P1.6) ---
+            fetchEmployeeExitDue(db, start, end),
             readCount(inWindow(db.from('exit_interviews').select('id', { count: 'exact', head: true }), 'submitted_at').in('status', ['submitted', 'reviewed', 'archived'])),
             readCount(inWindow(db.from('client_departures').select('id', { count: 'exact', head: true }), 'departure_date')),
             readCount(inWindow(db.from('client_departures').select('id', { count: 'exact', head: true }), 'departure_date').eq('who_resigned', 'internalizacja')),
@@ -147,6 +185,7 @@ export async function getPeopleOpsMonthlySummary(
             readCount(db.from('profiles').select('id', { count: 'exact', head: true }).eq('employment_status', 'offboarding').is('termination_date', null)),
             readCount(db.from('client_departures').select('id', { count: 'exact', head: true }).is('departure_date', null)),
             readCount(db.from('profiles').select('id', { count: 'exact', head: true }).is('hired_at', null).in('role', HR_ZONE_ROLES as unknown as string[]).neq('employment_status', 'exited')),
+            // --- AKTYWNE PROCESY (informacja, nie alert — audyt P1.5) ---
             readCount(db.from('onboarding_progress').select('id', { count: 'exact', head: true }).is('completed_at', null).is('cancelled_at', null)),
             readCount(db.from('exit_interviews').select('id', { count: 'exact', head: true }).eq('status', 'scheduled')),
             // --- KANBAN families ---
@@ -158,11 +197,13 @@ export async function getPeopleOpsMonthlySummary(
             maxDate(db, 'exit_interviews', 'submitted_at'),
         ])
 
-        // Bieżące sprawy: rodziny inbox_% + contractor_%, status otwarty.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const caseCategoryIds: string[] = (categories.data ?? [])
-            .filter((c: { slug: string }) => c.slug.startsWith('inbox_') || c.slug.startsWith('contractor_'))
-            .map((c: { id: string }) => c.id)
+        // Bieżące sprawy: WYŁĄCZNIE rodzina inbox_% — dokładnie zakres kanbana
+        // w zakładce Sprawy (audyt P1.2: kafel musi liczyć to, co pokazuje lista;
+        // rozmowy/taski contractor_% żyją w Consultant Success, nie w Sprawach).
+        if (categories.error) throw new Error(categories.error.message)
+        const caseCategoryIds: string[] = ((categories.data ?? []) as Array<{ id: string; slug: string }>)
+            .filter((c) => c.slug.startsWith('inbox_'))
+            .map((c) => c.id)
 
         let casesOpen = 0
         let casesUnassigned = 0
@@ -174,7 +215,7 @@ export async function getPeopleOpsMonthlySummary(
         }
 
         const hasAnyData =
-            empOnbDue + empOnbDone + ctrOnbDue + ctrOnbDone + empExitDueTerm + empExitDueSched + empExitDone + ctrDepartures + ctrExitDone > 0
+            empOnbDue + empOnbDone + ctrOnbDue + ctrOnbDone + empExitDue.due + empExitDone + ctrDepartures + ctrExitDone > 0
 
         const latestCandidates = [latestPlacement, latestDeparture, latestOnbDone, latestExitDone]
             .filter((d): d is string => !!d)
@@ -189,18 +230,20 @@ export async function getPeopleOpsMonthlySummary(
                 contractor: { due: ctrOnbDue, done: ctrOnbDone, cancelled: ctrOnbCancelled },
             },
             exit: {
-                employee: { dueByTermination: empExitDueTerm, dueByScheduled: empExitDueSched, done: empExitDone },
+                employee: { due: empExitDue.due, done: empExitDone, dueFallbackScheduled: empExitDue.dueFallbackScheduled },
                 contractor: { departures: ctrDepartures, conversions: ctrConversions, done: ctrExitDone },
             },
             cases: { open: casesOpen, unassigned: casesUnassigned },
             hasAnyData,
             latestActivityMonth,
+            processes: {
+                activeOnboardings,
+                scheduledExits,
+            },
             attention: {
                 offboardingWithoutTerminationDate: offboardingNoTerm,
                 departuresWithoutDate: departuresNoDate,
                 hrProfilesWithoutHiredAt: hrNoHiredAt,
-                activeOnboardingsInTable: activeOnboardings,
-                scheduledExitsInTable: scheduledExits,
             },
         }
     } catch (err) {
