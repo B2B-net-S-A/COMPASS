@@ -594,7 +594,9 @@ export async function assignBuddy(userId: string, buddyId: string | null): Promi
     if (error) throw new Error('Nie udało się przypisać buddy.')
 
     if (buddyId) {
-        await supabase.from('lifecycle_events').insert({
+        // lifecycle_events jest append-only i od Fazy 0 audytu (2026-07-16) nie ma
+        // polityki INSERT dla authenticated — zapis wyłącznie service-rolem po guardzie.
+        await createServiceClient().from('lifecycle_events').insert({
             user_id: userId,
             event_type: 'buddy_assigned',
             metadata: { buddy_id: buddyId },
