@@ -26,15 +26,21 @@ export async function SprawyTabPanel() {
             .order('sort_order', { ascending: true }),
     ])
 
+    // Audyt P1.1/P1.7: odmowa dostępu / awaria zapytania ≠ pusta lista.
+    // Błąd przekazujemy do huba jako jawny stan zamiast renderować pusty kanban.
     const inboxColumns = inboxRes.success ? inboxRes.data : EMPTY_COLUMNS
+    const inboxError = inboxRes.success ? null : inboxRes.error ?? 'Nieznany błąd skrzynki'
     const helpdesk: SupportTicketWithMeta[] = helpdeskRes.success ? helpdeskRes.data.items : []
+    const helpdeskError = helpdeskRes.success ? null : helpdeskRes.error ?? 'Nieznany błąd helpdesku'
     const handlers = handlersRes.success ? handlersRes.data : []
     const categories = (categoriesRes.data ?? []) as Array<{ id: string; slug: string; name_pl: string }>
 
     return (
         <ZgloszeniaHub
             inboxColumns={inboxColumns}
+            inboxError={inboxError}
             helpdesk={helpdesk}
+            helpdeskError={helpdeskError}
             categories={categories}
             handlers={handlers}
             currentUserId={user?.id ?? ''}

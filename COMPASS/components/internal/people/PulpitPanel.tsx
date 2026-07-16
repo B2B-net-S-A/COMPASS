@@ -49,9 +49,8 @@ export async function PulpitPanel({ year, month }: Props) {
 
     const prev = shiftMonth(year, month, -1)
     const next = shiftMonth(year, month, 1)
-    const { onboarding, exit, cases, hasAnyData, latestActivityMonth, attention } = summary
+    const { onboarding, exit, cases, hasAnyData, latestActivityMonth, processes, attention } = summary
 
-    const empExitDue = exit.employee.dueByTermination
     const ctrExitDueNet = Math.max(0, exit.contractor.departures - exit.contractor.conversions)
 
     return (
@@ -112,15 +111,15 @@ export async function PulpitPanel({ year, month }: Props) {
                     )}
                 </KpiTile>
 
-                {/* Tile 2 — Exit interviews */}
+                {/* Tile 2 — Exit interviews (due = COALESCE(termination_date, scheduled_for) per rekord) */}
                 <KpiTile title="Exit interviews" icon={<LogOut className="h-4 w-4" />} href="/internal/people?tab=exit">
                     <MetricRow
                         label="Pracownicy"
-                        due={empExitDue}
+                        due={exit.employee.due}
                         done={exit.employee.done}
                         note={
-                            empExitDue === 0 && exit.employee.dueByScheduled > 0
-                                ? `wg zaplanowania: ${exit.employee.dueByScheduled}`
+                            exit.employee.dueFallbackScheduled > 0
+                                ? `w tym ${exit.employee.dueFallbackScheduled} wg zaplanowania — brak termination_date`
                                 : undefined
                         }
                     />
@@ -151,11 +150,12 @@ export async function PulpitPanel({ year, month }: Props) {
                         <span className="text-sm text-muted-foreground">Nieprzypisane</span>
                         <span className="text-sm font-semibold tabular-nums text-foreground">{cases.unassigned}</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Skrzynka administracja@ + sprawy kontraktorskie</p>
+                    <p className="text-[11px] text-muted-foreground">Skrzynka administracja@ (zakres = kanban Spraw)</p>
                 </KpiTile>
             </div>
 
-            {/* Wymaga uwagi dziś */}
+            {/* Aktywne procesy (informacja) osobno od braków danych (alert) — audyt P1.5 */}
+            <ProcessesCard processes={processes} />
             <AttentionList attention={attention} />
         </section>
     )
@@ -204,6 +204,27 @@ function MetricRow({ label, due, done, note }: { label: string; due: number; don
     )
 }
 
+/** Prawidłowo trwające procesy — neutralna informacja, nie alert (audyt P1.5). */
+function ProcessesCard({ processes }: { processes: PeopleOpsProcesses }) {
+    if (processes.activeOnboardings === 0 && processes.scheduledExits === 0) return null
+    return (
+        <div className="rounded-lg border border-border bg-card p-4">
+            <div className="mb-2 text-sm font-semibold text-foreground">Aktywne procesy</div>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                <span>
+                    <span className="font-semibold text-foreground tabular-nums">{processes.activeOnboardings}</span>{' '}
+                    aktywnych onboardingów
+                </span>
+                <span>
+                    <span className="font-semibold text-foreground tabular-nums">{processes.scheduledExits}</span>{' '}
+                    zaplanowanych exit interviews
+                </span>
+            </div>
+        </div>
+    )
+}
+
+/** Wyłącznie braki/niespójności danych — normalny proces nie jest problemem. */
 function AttentionList({ attention }: { attention: PeopleOpsAttention }) {
     const items: string[] = []
     if (attention.departuresWithoutDate > 0) {
@@ -214,13 +235,6 @@ function AttentionList({ attention }: { attention: PeopleOpsAttention }) {
     }
     if (attention.offboardingWithoutTerminationDate > 0) {
         items.push(`${attention.offboardingWithoutTerminationDate} offboardingów bez termination_date`)
-    }
-    // Reconcile sygnał: tabele lifecycle vs employment_status
-    if (attention.activeOnboardingsInTable > 0) {
-        items.push(`${attention.activeOnboardingsInTable} aktywnych onboardingów (wg tabeli)`)
-    }
-    if (attention.scheduledExitsInTable > 0) {
-        items.push(`${attention.scheduledExitsInTable} zaplanowanych exit interviews (wg tabeli)`)
     }
 
     if (items.length === 0) {
@@ -249,10 +263,13 @@ function AttentionList({ attention }: { attention: PeopleOpsAttention }) {
     )
 }
 
+interface PeopleOpsProcesses {
+    activeOnboardings: number
+    scheduledExits: number
+}
+
 interface PeopleOpsAttention {
     offboardingWithoutTerminationDate: number
     departuresWithoutDate: number
     hrProfilesWithoutHiredAt: number
-    activeOnboardingsInTable: number
-    scheduledExitsInTable: number
 }

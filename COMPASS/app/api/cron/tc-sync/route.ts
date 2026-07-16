@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { downloadSharedWorkbook } from '@/lib/graph/sharepoint'
 import { importWejsciaFromBuffer, importZejsciaFromBuffer } from '@/lib/contractors/import-core'
+import { seedBenchFromRecentDepartures } from '@/lib/contractors/bench-seed'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -69,6 +70,14 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     } catch (e) {
         out.zejscia = { error: e instanceof Error ? e.message : 'import zejść nie powiódł się' }
         out.ok = false
+    }
+
+    // Bench seeduje się tu (jawny job), nie przy renderze listy — audyt 2026-07-16 P1.8.
+    // Best-effort: brak seedu nie unieważnia importu.
+    try {
+        out.benchSeed = await seedBenchFromRecentDepartures(admin)
+    } catch (e) {
+        out.benchSeed = { error: e instanceof Error ? e.message : 'seed benchu nie powiódł się' }
     }
 
     revalidatePath(HUB)

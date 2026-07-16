@@ -8,6 +8,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireLifecycleManagerAction } from '@/lib/auth/internal-guard'
 import { createServiceClient } from '@/lib/supabase/admin'
+import { seedBenchFromRecentDepartures } from '@/lib/contractors/bench-seed'
 import { normalizePersonName } from '@/lib/types/placement'
 import {
     importRozmowyFromBuffer,
@@ -151,6 +152,13 @@ export async function commitZejsciaImport(formData: FormData): Promise<ImportRes
     const ctx = await requireLifecycleManagerAction()
     const admin = createServiceClient()
     const res = await importZejsciaFromBuffer(admin, await fileFromForm(formData), ctx.userId)
+    // Bench seeduje się po imporcie Zejść (jawna komenda), nie przy renderze
+    // listy — audyt 2026-07-16 P1.8. Best-effort: seed nie unieważnia importu.
+    try {
+        await seedBenchFromRecentDepartures(admin)
+    } catch {
+        // zalogowane wewnątrz seedu; kolejny import / cron doseeduje
+    }
     revalidatePath(HUB)
     return res
 }

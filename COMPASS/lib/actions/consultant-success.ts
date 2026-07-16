@@ -16,6 +16,7 @@ import {
     areConsultantSuccessSurveysEnabled,
     isConsultantSuccessEnabled,
 } from '@/lib/consultant-success/flags'
+import { buildMonthlyHealthSnapshots } from '@/lib/consultant-success/health-snapshot'
 import type {
     ActivateSuccessMonitoringInput,
     AddSuccessClientFeedbackInput,
@@ -551,7 +552,9 @@ export async function getSuccessDashboard(): Promise<SuccessDashboard> {
         db.from('contractor_tasks').select('id, contractor_id, title, status, due_date, priority').limit(5000),
         db.from('contractor_conversations').select('id, contractor_id, note, status, follow_up_date, resolved_at').is('resolved_at', null).limit(5000),
         db.from('contractor_pulse_requests').select('id, contractor_id, status').in('status', ['scheduled', 'sent']).limit(5000),
-        db.from('contractor_health_status_history').select('new_status, created_at').gte('created_at', new Date(Date.now() - 185 * DAY_MS).toISOString()).limit(5000),
+        // Audyt P1.10: snapshot potrzebuje contractor_id i wpisów SPRZED okna
+        // (carry-forward ostatniego statusu), nie tylko zmian z ostatnich 185 dni.
+        db.from('contractor_health_status_history').select('contractor_id, new_status, created_at').order('created_at', { ascending: true }).limit(5000),
         db.from('contractor_success_deliveries')
             .select('id, contractor_id, delivery_kind, channel, attempt_count, last_error, created_at')
             .eq('status', 'dead')
@@ -617,18 +620,18 @@ export async function getSuccessDashboard(): Promise<SuccessDashboard> {
     )
 
     const healthDistribution = (['green', 'amber', 'red', 'unknown'] as const).map((status) => ({ status, count: consultants.filter((item) => item.health.status === status).length }))
-    const monthRows = new Map<string, { period: string; green: number; amber: number; red: number; unknown: number }>()
-    for (let offset = 5; offset >= 0; offset--) {
-        const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1))
-        const period = date.toISOString().slice(0, 7)
-        monthRows.set(period, { period, green: 0, amber: 0, red: 0, unknown: 0 })
-    }
-    for (const row of (historyRes.data ?? []) as DbRow[]) {
-        const period = String(row.created_at ?? '').slice(0, 7)
-        const bucket = monthRows.get(period)
-        const status = String(row.new_status)
-        if (bucket && (status === 'green' || status === 'amber' || status === 'red' || status === 'unknown')) bucket[status] += 1
-    }
+    // Audyt P1.10: healthHistory to SNAPSHOT — ostatni znany status per konsultant
+    // na koniec każdego okresu (green→amber→green = 1× green, nie 2×; słupek nigdy
+    // nie przekracza liczby zmierzonych osób).
+    const healthHistorySnapshots = buildMonthlyHealthSnapshots(
+        ((historyRes.data ?? []) as DbRow[]).map((row) => ({
+            contractor_id: String(row.contractor_id ?? ''),
+            new_status: String(row.new_status ?? ''),
+            created_at: String(row.created_at ?? ''),
+        })),
+        6,
+        now,
+    )
 
     const openTasks = ((tasksRes.data ?? []) as DbRow[]).filter((row) => row.status !== 'done' && row.status !== 'cancelled').length
     const deadDeliveries: SuccessDeadDelivery[] = ((deliveriesRes.data ?? []) as DbRow[]).map((row) => {
@@ -658,7 +661,7 @@ export async function getSuccessDashboard(): Promise<SuccessDashboard> {
         priorityItems: priorityItems.slice(0, 100),
         upcomingCheckIns: openCheckIns.filter((item) => dateOnly(item.scheduledAt) >= today).slice(0, 12),
         healthDistribution,
-        healthHistory: Array.from(monthRows.values()),
+        healthHistory: healthHistorySnapshots,
         deadDeliveries,
     }
 }

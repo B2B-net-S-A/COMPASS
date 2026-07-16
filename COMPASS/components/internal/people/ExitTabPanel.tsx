@@ -7,9 +7,14 @@ import { ExitSection } from './ContractorSections'
 // Pracownicy = exit_interviews do przeglądu (reuse listExitInterviews + detail /internal/lifecycle/exit/[id]).
 // Kontraktorzy = zejścia + exit interview + Bench (reuse ExitPanel via klientowy wrapper).
 export async function ExitTabPanel() {
-    const [employeeExits, bench, departures] = await Promise.all([
+    // Awaria jednego źródła ≠ pusty stan (audyt P1.7): bench pokazuje jawny
+    // błąd sekcji zamiast udawać pustą listę; reszta zakładki renderuje się.
+    const [employeeExits, benchResult, departures] = await Promise.all([
         listExitInterviews({ status: 'submitted' }),
-        listBench(),
+        listBench().then(
+            (data) => ({ ok: true as const, data }),
+            (err: unknown) => ({ ok: false as const, error: err instanceof Error ? err.message : 'Błąd benchu' }),
+        ),
         listExitDepartures(),
     ])
 
@@ -41,7 +46,12 @@ export async function ExitTabPanel() {
 
             <section className="space-y-3">
                 <h2 className="text-lg font-semibold text-foreground">Kontraktorzy — zejścia, exit interview, bench</h2>
-                <ExitSection bench={bench} departures={departures} />
+                {!benchResult.ok && (
+                    <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                        Nie udało się załadować benchu: {benchResult.error}. Zejścia i wywiady poniżej są kompletne.
+                    </p>
+                )}
+                <ExitSection bench={benchResult.ok ? benchResult.data : []} departures={departures} />
             </section>
         </div>
     )

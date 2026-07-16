@@ -65,9 +65,12 @@ async function validateCurrentDeliveryState(
         return { disposition: 'cancelled', reason: 'contractor_not_active' }
     }
 
+    // task_due waliduje odbiorcę względem assignee taska (audyt P1.9) w gałęzi
+    // niżej — pozostałe alerty wewnętrzne nadal muszą trafiać do ownera portfolio.
     const isInternalAlert = !['pulse_invitation', 'pulse_reminder'].includes(delivery.delivery_kind)
     if (
         isInternalAlert
+        && delivery.delivery_kind !== 'task_due'
         && (!contractor.owner_tcm_id || delivery.recipient_user_id !== contractor.owner_tcm_id)
     ) {
         return { disposition: 'cancelled', reason: 'recipient_owner_changed' }
@@ -93,12 +96,19 @@ async function validateCurrentDeliveryState(
     } else if (delivery.delivery_kind === 'task_due') {
         const { data, error } = await admin
             .from('contractor_tasks')
-            .select('status, due_date, snoozed_until')
+            .select('status, due_date, snoozed_until, assigned_tcm_id')
             .eq('id', delivery.entity_id)
             .maybeSingle()
         if (error) return { disposition: 'failed', error: `task_lookup:${error.message}` }
         if (!data || !['todo', 'in_progress'].includes(data.status)) {
             return { disposition: 'cancelled', reason: 'task_not_active' }
+        }
+        // Audyt P1.9: reminder taska należy do assignee (fallback: owner portfolio,
+        // gdy taska nikt nie ma przypisanego). Zmiana assignee po zaplanowaniu →
+        // anuluj; kolejny run plannera zakolejkuje do właściwej osoby.
+        const expectedRecipient = data.assigned_tcm_id ?? contractor.owner_tcm_id
+        if (!expectedRecipient || delivery.recipient_user_id !== expectedRecipient) {
+            return { disposition: 'cancelled', reason: 'recipient_assignee_changed' }
         }
         if (data.snoozed_until && data.snoozed_until > localDate(now)) {
             return { disposition: 'cancelled', reason: 'task_snoozed' }

@@ -108,7 +108,7 @@ export function SuccessAnalyticsView({
             </div>
 
             {dashboard.healthHistory.length > 0 ? (
-                <ChartCard title="Zmiana statusów relacji" description="Liczebność ręcznych statusów w kolejnych okresach.">
+                <ChartCard title="Statusy relacji na koniec okresu" description="Ostatni znany status każdego zmierzonego konsultanta na koniec miesiąca (snapshot, nie liczba zmian).">
                     <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={dashboard.healthHistory} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="period" tick={{ fontSize: 12 }} /><YAxis allowDecimals={false} tick={{ fontSize: 12 }} /><Tooltip /><Legend /><Bar stackId="health" dataKey="green" name="Zielone" fill={COLORS.green} /><Bar stackId="health" dataKey="amber" name="Żółte" fill={COLORS.amber} /><Bar stackId="health" dataKey="red" name="Czerwone" fill={COLORS.red} /><Bar stackId="health" dataKey="unknown" name="Bez statusu" fill={COLORS.unknown} /></BarChart></ResponsiveContainer></div>
                 </ChartCard>
             ) : null}
