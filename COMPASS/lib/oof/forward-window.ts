@@ -44,11 +44,16 @@ export function warsawTomorrow(now: Date): string {
  * True when an approved leave with a substitute should currently have a forwarding
  * rule in the employee's mailbox.
  *
- * The window opens one day EARLY (`startDate <= tomorrow`) on purpose: the cron runs
- * at 06:00 UTC, so opening on the first day of the leave would leave mail arriving
- * between midnight and ~08:00 Warsaw unforwarded. The cost is that forwarding also
- * covers the last working day before the leave. To trade back, change
- * `warsawTomorrow` to `warsawToday` here — that is the only knob.
+ * The window is the leave itself: it opens on the first day (`startDate <= today`)
+ * and never before. Approving a leave in advance must not start forwarding — mail
+ * moving to the substitute while the employee is still at their desk surprises both
+ * of them, and the substitute sees correspondence they were not yet standing in for.
+ *
+ * The cost is a gap on the first morning: the rule appears when the cron runs, so
+ * mail arriving between midnight and that run is never forwarded (it does still land
+ * in the owner's mailbox — forwarding copies, it does not move). Shrink that gap by
+ * running the cron earlier, not by opening a day early. `warsawTomorrow` is kept as
+ * the escape hatch should this trade ever be revisited.
  *
  * Both bounds are inclusive; `endDate` is the last day of the leave.
  */
@@ -56,7 +61,7 @@ export function shouldForwardBeActive(leave: ForwardWindowLeave, now: Date): boo
     if (leave.status !== 'approved') return false
     if (!leave.substituteId) return false
     if (!leave.startDate || !leave.endDate) return false
-    return leave.startDate <= warsawTomorrow(now) && leave.endDate >= warsawToday(now)
+    return leave.startDate <= warsawToday(now) && leave.endDate >= warsawToday(now)
 }
 
 export interface ForwardEditPlan {

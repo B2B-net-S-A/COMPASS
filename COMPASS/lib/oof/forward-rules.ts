@@ -23,7 +23,7 @@ import {
 } from '@/lib/mailbox/graph-inbox-rules'
 import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sync'
 import { logger } from '@/lib/logger'
-import { shouldForwardBeActive, warsawToday, warsawTomorrow } from './forward-window'
+import { shouldForwardBeActive, warsawToday } from './forward-window'
 import { HR_ROLES } from './reconcile'
 
 /**
@@ -82,18 +82,18 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
 
     const now = new Date()
     const today = warsawToday(now)
-    const tomorrow = warsawTomorrow(now)
 
     // ─── Pass 1: open ────────────────────────────────────────────────────────
-    // `start_date <= tomorrow` (not `=`) makes this self-healing: a run skipped
-    // yesterday still opens the rule today rather than missing the leave entirely.
+    // `start_date <= today` (not `=`) makes this self-healing: a leave whose rule was
+    // never created — a skipped run, or a deploy landing mid-leave — still gets one on
+    // the next run instead of going unforwarded for its whole duration.
     const { data: toOpenRaw, error: openErr } = await admin
         .from('leave_requests')
         .select('id, user_id, substitute_id, start_date, end_date, status, outlook_forward_rule_id')
         .eq('status', 'approved')
         .not('substitute_id', 'is', null)
         .is('outlook_forward_rule_id', null)
-        .lte('start_date', tomorrow)
+        .lte('start_date', today)
         .gte('end_date', today)
     if (openErr) {
         stats.errors.push(`open query: ${openErr.message}`)
