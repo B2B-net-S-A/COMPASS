@@ -300,7 +300,10 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
                         </select>
                         {substituteId && (
                             <p className="text-[11px] text-muted-foreground">
-                                Zastępca dostanie email z informacją + zostanie wpisany w auto-reply Outlook.
+                                Zastępca dostanie email z informacją + zostanie wpisany w auto-reply
+                                Outlook. Po akceptacji Twoja przychodząca poczta będzie też
+                                kopiowana do zastępcy na czas urlopu (oryginały zostają w Twojej
+                                skrzynce).
                             </p>
                         )}
                     </div>

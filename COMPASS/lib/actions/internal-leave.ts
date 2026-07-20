@@ -23,6 +23,9 @@ import {
     disableOutOfOffice,
     setOutOfOffice,
 } from '@/lib/mailbox/graph-oof'
+import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sync'
+import { createForwardRule } from '@/lib/mailbox/graph-inbox-rules'
+import { shouldForwardBeActive } from '@/lib/oof/forward-window'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import {
@@ -86,6 +89,10 @@ export interface LeaveRequestRow {
     graph_sync_error?: string | null
     // Phase 25d — Compass świadomie nie nadpisał OOF (np. 'user_custom').
     graph_oof_skip_reason?: string | null
+    // Phase 41 — ID reguły Outlooka przekierowującej pocztę do zastępcy.
+    // NULL = brak aktywnego przekierowania. Reguła nie wygasa sama — kasuje ją
+    // cancel/edycja albo cron (oof-reconcile), stąd potrzeba trwałego ID.
+    outlook_forward_rule_id?: string | null
     // Phase 30 — split płatny/bezpłatny (0/0 dla historycznych przed Phase 30
     // oraz dla non-vacation leave types out of scope of paid vacation pool).
     paid_days?: number
@@ -667,7 +674,9 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
 
     const { data: row, error: fetchErr } = await supabase
         .from('leave_requests')
-        .select('id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set')
+        .select(
+            'id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
+        )
         .eq('id', id)
         .single<{
             id: string
@@ -678,6 +687,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
             leave_type: LeaveType
             outlook_event_id: string | null
             graph_oof_set: boolean | null
+            outlook_forward_rule_id: string | null
         }>()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
     if (row.user_id !== ctx.userId) throw new Error('To nie jest Twój wniosek.')
@@ -738,6 +748,23 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
                     }
                 })
                 .catch((e) => logCompat.error('[cancelMyLeaveRequest] OOF disable failed:', e))
+        }
+
+        // Phase 41 — tear down mail forwarding. Reachable even though only future
+        // leaves can be self-cancelled: the rule opens a day early, so a leave
+        // starting tomorrow already has one today.
+        if (row.outlook_forward_rule_id) {
+            closeForwardRule({
+                admin: createServiceClient(),
+                leaveId: id,
+                ruleId: row.outlook_forward_rule_id,
+                userEmail: ctx.email,
+                actorUserId: ctx.userId,
+                reason: 'cancelled',
+                auditExtra: { via: 'self_cancel' },
+            }).catch((e) =>
+                logCompat.error('[cancelMyLeaveRequest] forward rule delete failed:', e),
+            )
         }
 
         await logAudit(ctx.userId, 'LEAVE_CANCELLED', {
@@ -1120,6 +1147,33 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
                 input.endDate,
             ).catch((e) => logCompat.error('[createLeaveOnBehalf] substitute notify failed:', e))
         }
+
+        // Phase 41 — mail forwarding, only once the window is actually open. An
+        // on-behalf leave is inserted already approved, so a leave that started
+        // earlier this week gets its rule right away; a future one waits for the cron.
+        if (
+            substituteEmail &&
+            shouldForwardBeActive(
+                {
+                    status: 'approved',
+                    substituteId: input.substituteId ?? null,
+                    startDate: input.startDate,
+                    endDate: input.endDate,
+                },
+                new Date(),
+            )
+        ) {
+            openForwardRule({
+                admin,
+                leaveId: inserted.id,
+                userEmail: target.email,
+                substituteEmail,
+                substituteName,
+                actorUserId: ctx.userId,
+                targetUserId: input.targetUserId,
+                auditExtra: { via: 'on_behalf' },
+            }).catch((e) => logCompat.error('[createLeaveOnBehalf] forward rule failed:', e))
+        }
     }
 
     // Teams alert ZAWSZE — info dla zespołu (niebieski "informacyjny", nie zielony "approved").
@@ -1465,7 +1519,9 @@ export async function cancelTeamLeave(id: string): Promise<void> {
     const admin = createServiceClient()
     const { data: row, error } = await admin
         .from('leave_requests')
-        .select('id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set')
+        .select(
+            'id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
+        )
         .eq('id', id)
         .single<{
             id: string
@@ -1476,6 +1532,7 @@ export async function cancelTeamLeave(id: string): Promise<void> {
             leave_type: LeaveType
             outlook_event_id: string | null
             graph_oof_set: boolean | null
+            outlook_forward_rule_id: string | null
         }>()
     if (error || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'pending' && row.status !== 'approved') {
@@ -1510,6 +1567,18 @@ export async function cancelTeamLeave(id: string): Promise<void> {
                 }
             })
             .catch((e) => logCompat.error('[cancelTeamLeave] OOF disable failed:', e))
+    }
+    // Phase 41 — tear down mail forwarding.
+    if (contact?.email && row.outlook_forward_rule_id) {
+        closeForwardRule({
+            admin,
+            leaveId: id,
+            ruleId: row.outlook_forward_rule_id,
+            userEmail: contact.email,
+            actorUserId: ctx.userId,
+            reason: 'cancelled',
+            auditExtra: { via: 'manager_cancel', target_user_id: row.user_id },
+        }).catch((e) => logCompat.error('[cancelTeamLeave] forward rule delete failed:', e))
     }
 
     await logAudit(ctx.userId, 'LEAVE_CANCELLED_BY_MANAGER', {
@@ -1552,7 +1621,9 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
     const admin = createServiceClient()
     const { data: row, error } = await admin
         .from('leave_requests')
-        .select('id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id')
+        .select(
+            'id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id, outlook_forward_rule_id',
+        )
         .eq('id', input.id)
         .single<{
             id: string
@@ -1564,6 +1635,7 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
             half_day: 'morning' | 'afternoon' | null
             note: string | null
             substitute_id: string | null
+            outlook_forward_rule_id: string | null
         }>()
     if (error || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'pending' && row.status !== 'approved') {
@@ -1650,6 +1722,68 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
         await syncAttendanceFromLeave(input.id, row.user_id, 'create').catch((e) =>
             logCompat.error('[updateTeamLeave] attendance create failed:', e),
         )
+    }
+
+    // Phase 41 — keep mail forwarding in step with the edit. An inbox rule points at
+    // a fixed recipient and never expires, so without this: changing the substitute
+    // would keep delivering mail to the PREVIOUS person, and shortening the leave
+    // would keep forwarding after the employee is back.
+    //
+    // Awaited rather than fire-and-forget, so the stale rule is provably gone before
+    // the replacement is created — two live rules would double-deliver.
+    const datesChanged = newStart !== row.start_date || newEnd !== row.end_date
+    const substituteChanged = newSubstituteId !== row.substitute_id
+    const forwardShouldExist = shouldForwardBeActive(
+        {
+            status: row.status,
+            substituteId: newSubstituteId,
+            startDate: newStart,
+            endDate: newEnd,
+        },
+        new Date(),
+    )
+    const forwardStale =
+        Boolean(row.outlook_forward_rule_id) &&
+        (substituteChanged || datesChanged || !forwardShouldExist)
+
+    if (forwardStale || (forwardShouldExist && !row.outlook_forward_rule_id)) {
+        const contact = await fetchUserContact(row.user_id)
+        if (contact?.email) {
+            if (forwardStale && row.outlook_forward_rule_id) {
+                await closeForwardRule({
+                    admin,
+                    leaveId: input.id,
+                    ruleId: row.outlook_forward_rule_id,
+                    userEmail: contact.email,
+                    actorUserId: ctx.userId,
+                    reason: 'edited',
+                    auditExtra: { target_user_id: row.user_id },
+                }).catch((e) =>
+                    logCompat.error('[updateTeamLeave] forward rule delete failed:', e),
+                )
+            }
+            if (forwardShouldExist && newSubstituteId) {
+                const { data: sub } = await admin
+                    .from('profiles')
+                    .select('full_name, email')
+                    .eq('id', newSubstituteId)
+                    .maybeSingle<{ full_name: string | null; email: string }>()
+                if (sub?.email) {
+                    await openForwardRule({
+                        admin,
+                        leaveId: input.id,
+                        userEmail: contact.email,
+                        substituteEmail: sub.email,
+                        substituteName: sub.full_name ?? sub.email,
+                        actorUserId: ctx.userId,
+                        targetUserId: row.user_id,
+                        auditExtra: { via: 'edit' },
+                    }).catch((e) =>
+                        logCompat.error('[updateTeamLeave] forward rule create failed:', e),
+                    )
+                }
+            }
+        }
     }
 
     await logAudit(ctx.userId, 'LEAVE_UPDATED_BY_MANAGER', {
@@ -2058,26 +2192,27 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
             })
             .catch((e) => logCompat.error('[approveLeaveRequest] calendar push failed:', e))
 
+        // Resolve substitute info if assigned. Hoisted out of the OOF block in Phase 41
+        // — the forwarding rule below needs the same lookup.
+        let substituteName: string | null = null
+        let substituteEmail: string | null = null
+        if (row.substitute_id) {
+            const { data: sub } = await admin
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', row.substitute_id)
+                .maybeSingle<{ full_name: string | null; email: string }>()
+            if (sub) {
+                substituteName = sub.full_name ?? sub.email
+                substituteEmail = sub.email
+            }
+        }
+
         // Phase 25 — Outlook Out-of-Office auto-reply (skip for half-day single-day urlopy,
         // ale ustawiamy nawet bez substitute — fallback "kontakt z managerem").
         // Sick leave (L4) ma auto-approve flow; OOF też ustawiamy bo to opisany urlop.
         const shouldSetOof = row.start_date !== row.end_date || !row.start_date.includes('XXX')
         if (shouldSetOof) {
-            // Resolve substitute info if assigned.
-            let substituteName: string | null = null
-            let substituteEmail: string | null = null
-            if (row.substitute_id) {
-                const { data: sub } = await admin
-                    .from('profiles')
-                    .select('full_name, email')
-                    .eq('id', row.substitute_id)
-                    .maybeSingle<{ full_name: string | null; email: string }>()
-                if (sub) {
-                    substituteName = sub.full_name ?? sub.email
-                    substituteEmail = sub.email
-                }
-            }
-
             const defaults = buildDefaultOofMessages({
                 employeeName: userInfo.full_name ?? userInfo.email,
                 endDate: row.end_date,
@@ -2117,6 +2252,34 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                     row.end_date,
                 ).catch((e) => logCompat.error('[approveLeaveRequest] substitute notify failed:', e))
             }
+        }
+
+        // Phase 41 — forward incoming mail to the substitute for the leave's duration.
+        // Deliberately NOT inside the OOF block: an inbox rule carries no schedule, so
+        // it may only be created once the window is actually open. Approving a leave
+        // that starts later leaves the rule to the daily cron.
+        if (
+            substituteEmail &&
+            shouldForwardBeActive(
+                {
+                    status: 'approved',
+                    substituteId: row.substitute_id ?? null,
+                    startDate: row.start_date,
+                    endDate: row.end_date,
+                },
+                new Date(),
+            )
+        ) {
+            openForwardRule({
+                admin,
+                leaveId: id,
+                userEmail: userInfo.email,
+                substituteEmail,
+                substituteName,
+                actorUserId: ctx.userId,
+                targetUserId: row.user_id,
+                auditExtra: { via: 'approve' },
+            }).catch((e) => logCompat.error('[approveLeaveRequest] forward rule failed:', e))
         }
     }
     // H3.3: Push notification (fire-and-forget)
@@ -2828,7 +2991,9 @@ export async function listLeavesWithUserCustomOof(): Promise<PendingLeaveRow[]> 
 
 // ─── Phase 25d: retry Graph sync for a leave (admin only) ───────────────────
 
-export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; calendar: boolean; error?: string }> {
+export async function retryLeaveGraphSync(
+    id: string,
+): Promise<{ oof: boolean; calendar: boolean; forward: boolean; error?: string }> {
     const ctx = await requireAdminAction()
     const admin = createServiceClient()
 
@@ -2837,7 +3002,7 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
         .select(`
             id, user_id, start_date, end_date, leave_type, status,
             substitute_id, oof_internal_message, oof_external_message,
-            outlook_event_id
+            outlook_event_id, outlook_forward_rule_id
         `)
         .eq('id', id)
         .single<{
@@ -2851,6 +3016,7 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
             oof_internal_message: string | null
             oof_external_message: string | null
             outlook_event_id: string | null
+            outlook_forward_rule_id: string | null
         }>()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'approved') {
@@ -2885,6 +3051,7 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
     let oofOk = false
     let oofSkipReason: string | null = null
     let calOk = false
+    let forwardOk = false
     const errors: string[] = []
 
     const oofRes = await setOutOfOffice({
@@ -2943,6 +3110,45 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
         calOk = true // already has event
     }
 
+    // Phase 41 — forwarding rule. Same short-circuit shape as the calendar branch:
+    // never recreate a rule we already track, or the mailbox ends up with two rules
+    // forwarding the same mail and only one id to delete.
+    if (row.outlook_forward_rule_id) {
+        forwardOk = true // already has rule
+    } else if (
+        substituteEmail &&
+        shouldForwardBeActive(
+            {
+                status: row.status,
+                substituteId: row.substitute_id,
+                startDate: row.start_date,
+                endDate: row.end_date,
+            },
+            new Date(),
+        )
+    ) {
+        const fwdRes = await createForwardRule({
+            userEmail: userInfo.email,
+            substituteEmail,
+            substituteName,
+            leaveId: id,
+        })
+        if (fwdRes.success) {
+            forwardOk = true
+            if (fwdRes.ruleId) {
+                await admin
+                    .from('leave_requests')
+                    .update({ outlook_forward_rule_id: fwdRes.ruleId } as never)
+                    .eq('id', id)
+            }
+        } else if (fwdRes.error) {
+            errors.push(`forward: ${fwdRes.error}`)
+        }
+    } else {
+        // No substitute, or the leave sits outside the forwarding window — nothing owed.
+        forwardOk = true
+    }
+
     if (errors.length > 0) {
         await admin
             .from('leave_requests')
@@ -2956,7 +3162,7 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
     }
 
     const auditAction =
-        oofOk && calOk
+        oofOk && calOk && forwardOk
             ? oofSkipReason === 'user_custom'
                 ? 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
                 : 'LEAVE_OOF_SET'
@@ -2967,12 +3173,14 @@ export async function retryLeaveGraphSync(id: string): Promise<{ oof: boolean; c
         oof_ok: oofOk,
         oof_skip_reason: oofSkipReason ?? undefined,
         calendar_ok: calOk,
+        forward_ok: forwardOk,
         errors: errors.length > 0 ? errors.join('; ') : undefined,
     })
 
     return {
         oof: oofOk,
         calendar: calOk,
+        forward: forwardOk,
         error: errors.length > 0 ? errors.join('; ') : undefined,
     }
 }

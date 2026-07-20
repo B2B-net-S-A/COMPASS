@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Check, X, Loader2, UserCheck, Mail, UserPlus } from 'lucide-react'
+import { Check, X, Loader2, UserCheck, Mail, UserPlus, Forward } from 'lucide-react'
 import Link from 'next/link'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -311,6 +311,14 @@ export function LeaveQueue({ requests }: Props) {
                                                     <p className="text-[10px] text-info mt-1 inline-flex items-center gap-1">
                                                         <Mail className="h-3 w-3" />
                                                         Custom Out of Office message
+                                                    </p>
+                                                )}
+                                                {/* Phase 41 — flag the side-effect of approving: the
+                                                    employee's mail starts being copied to the substitute. */}
+                                                {req.substitute_full_name && (
+                                                    <p className="text-[10px] text-info mt-1 inline-flex items-center gap-1">
+                                                        <Forward className="h-3 w-3" />
+                                                        Po akceptacji poczta będzie przekierowywana do zastępcy
                                                     </p>
                                                 )}
                                                 {/* Phase 30 — pool snapshot dla B2B/zlecenie + UoP z pulą */}
