@@ -68,15 +68,27 @@ describe('shouldForwardBeActive', () => {
         expect(shouldForwardBeActive(leave(), NOW)).toBe(true)
     })
 
-    it('opens a day EARLY so the first morning of the leave is covered', () => {
-        // Cron runs 06:00 UTC; opening on the first day would miss 00:00-08:00 Warsaw.
+    it('does NOT open the day before the leave starts', () => {
+        // Reported from prod: a leave approved on 20.07 for 21.07 started forwarding
+        // immediately, so the substitute read the employee's mail while they were
+        // still working. Forwarding belongs to the leave, not to the approval.
         const startsTomorrow = leave({ startDate: '2026-07-21', endDate: '2026-07-25' })
-        expect(shouldForwardBeActive(startsTomorrow, NOW)).toBe(true)
+        expect(shouldForwardBeActive(startsTomorrow, NOW)).toBe(false)
+    })
+
+    it('opens on the first day of the leave', () => {
+        const startsToday = leave({ startDate: '2026-07-20', endDate: '2026-07-25' })
+        expect(shouldForwardBeActive(startsToday, NOW)).toBe(true)
     })
 
     it('is not active two days before the leave', () => {
         const startsLater = leave({ startDate: '2026-07-22', endDate: '2026-07-25' })
         expect(shouldForwardBeActive(startsLater, NOW)).toBe(false)
+    })
+
+    it('still opens for a leave already underway (self-healing after a missed run)', () => {
+        const alreadyRunning = leave({ startDate: '2026-07-18', endDate: '2026-07-25' })
+        expect(shouldForwardBeActive(alreadyRunning, NOW)).toBe(true)
     })
 
     it('is active on the last day of the leave', () => {

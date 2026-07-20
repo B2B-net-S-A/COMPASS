@@ -1029,9 +1029,11 @@ Phase 25 wymieniała zastępcę w treści auto-reply OOF, ale poczta nieobecnej 
 
 ### Okno przekierowania
 
-`shouldForwardBeActive` (`lib/oof/forward-window.ts`, czysty, `now` wstrzykiwany): `approved` ∧ `substitute_id` ∧ `start_date <= warsawJutro` ∧ `end_date >= warsawDziś`.
+`shouldForwardBeActive` (`lib/oof/forward-window.ts`, czysty, `now` wstrzykiwany): `approved` ∧ `substitute_id` ∧ `start_date <= warsawDziś` ∧ `end_date >= warsawDziś`.
 
-Otwiera się **dzień wcześniej** świadomie — cron chodzi o 06:00 UTC, więc otwarcie w pierwszym dniu zostawiłoby lukę 00:00–08:00. Koszt: przekierowanie łapie też ostatni dzień roboczy przed urlopem. Przełącznik = zamiana `warsawTomorrow` → `warsawToday` w tym jednym miejscu.
+Okno = **sam urlop**, nigdy wcześniej. Pierwotnie otwierało się dzień wcześniej (żeby cron o 06:00 UTC zdążył przed pierwszym rankiem urlopu), ale to znaczyło, że akceptacja wniosku od razu przerzucała pocztę na zastępcę, choć pracownik jeszcze siedział przy biurku — zgłoszone z produkcji 2026-07-20 (urlop 21.07 zaakceptowany 20.07, zastępczyni dostawała pocztę już od akceptu). Przekierowanie należy do urlopu, nie do decyzji o nim.
+
+Koszt tej zamiany: **luka pierwszego ranka** — reguła powstaje dopiero gdy przejdzie cron, więc poczta z przedziału północ–przebieg crona nie zostanie skopiowana (u właściciela zostaje, bo forward kopiuje). Skracać przez **wcześniejszy cron**, nie przez otwieranie dzień wcześniej. Przy `0 6 * * *` luka to 00:00–08:00 czasu warszawskiego; `0 3 * * *` zbija ją do 00:00–05:00 (noc). `warsawTomorrow` zostaje wyeksportowany jako escape hatch, gdyby kiedyś wracać do starego kompromisu.
 
 **Daty liczone w Europe/Warsaw**, nie UTC (`warsawDate()` wyeksportowany z `oof-dates.ts`) — forward przełącza się na granicy dnia, więc `toISOString().slice(0,10)` myliłby się o dobę wieczorami.
 
