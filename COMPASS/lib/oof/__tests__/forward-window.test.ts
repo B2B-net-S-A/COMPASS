@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+    planForwardRuleEdit,
     shouldForwardBeActive,
     warsawToday,
     warsawTomorrow,
@@ -114,5 +115,68 @@ describe('shouldForwardBeActive', () => {
         const endedToday = leave({ startDate: '2026-07-18', endDate: '2026-07-20' })
         const lateEvening = new Date('2026-07-20T22:30:00Z')
         expect(shouldForwardBeActive(endedToday, lateEvening)).toBe(false)
+    })
+})
+
+describe('planForwardRuleEdit', () => {
+    const plan = (o: Partial<Parameters<typeof planForwardRuleEdit>[0]> = {}) =>
+        planForwardRuleEdit({
+            hasExistingRule: true,
+            substituteChanged: false,
+            datesChanged: false,
+            forwardShouldExist: true,
+            ...o,
+        })
+
+    it('does nothing when an active leave is edited but the rule is still correct', () => {
+        // e.g. the manager only fixed the note — no reason to churn the mailbox.
+        expect(plan()).toEqual({ close: false, open: false })
+    })
+
+    it('replaces the rule when the substitute changes', () => {
+        // The critical one: without the close, mail keeps going to the OLD substitute.
+        expect(plan({ substituteChanged: true })).toEqual({ close: true, open: true })
+    })
+
+    it('replaces the rule when the dates change', () => {
+        expect(plan({ datesChanged: true })).toEqual({ close: true, open: true })
+    })
+
+    it('only closes when forwarding is no longer owed (substitute removed, leave moved to the past)', () => {
+        expect(plan({ forwardShouldExist: false })).toEqual({ close: true, open: false })
+        expect(plan({ substituteChanged: true, forwardShouldExist: false })).toEqual({
+            close: true,
+            open: false,
+        })
+    })
+
+    it('opens a rule when a substitute is added to a leave that is already running', () => {
+        expect(plan({ hasExistingRule: false, substituteChanged: true })).toEqual({
+            close: false,
+            open: true,
+        })
+    })
+
+    it('does nothing when there is no rule and none is owed', () => {
+        expect(plan({ hasExistingRule: false, forwardShouldExist: false })).toEqual({
+            close: false,
+            open: false,
+        })
+    })
+
+    it('never asks to close a rule that does not exist', () => {
+        for (const forwardShouldExist of [true, false]) {
+            for (const substituteChanged of [true, false]) {
+                for (const datesChanged of [true, false]) {
+                    const result = plan({
+                        hasExistingRule: false,
+                        forwardShouldExist,
+                        substituteChanged,
+                        datesChanged,
+                    })
+                    expect(result.close).toBe(false)
+                }
+            }
+        }
     })
 })

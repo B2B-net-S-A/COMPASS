@@ -58,3 +58,39 @@ export function shouldForwardBeActive(leave: ForwardWindowLeave, now: Date): boo
     if (!leave.startDate || !leave.endDate) return false
     return leave.startDate <= warsawTomorrow(now) && leave.endDate >= warsawToday(now)
 }
+
+export interface ForwardEditPlan {
+    /** Tear the existing rule down — it points at the wrong person or window. */
+    close: boolean
+    /** Create a rule for the leave's current substitute and window. */
+    open: boolean
+}
+
+/**
+ * What has to happen to the forwarding rule after a manager edits a leave.
+ *
+ * A rule names one recipient and never expires, so editing a leave without touching
+ * it leaves mail going to the previous substitute, or forwarding past the end date.
+ *
+ * `open` is true whenever forwarding is owed and no *correct* rule is in place —
+ * either because we are replacing one (`close`) or because none existed. An
+ * untouched leave whose rule is already right yields `{close: false, open: false}`,
+ * so a note-only edit does not churn the mailbox.
+ *
+ * Callers must additionally refuse to open when a requested close failed; that is a
+ * runtime condition this function cannot see.
+ *
+ * Pure function — exported for unit testing.
+ */
+export function planForwardRuleEdit(input: {
+    hasExistingRule: boolean
+    substituteChanged: boolean
+    datesChanged: boolean
+    forwardShouldExist: boolean
+}): ForwardEditPlan {
+    const close =
+        input.hasExistingRule &&
+        (input.substituteChanged || input.datesChanged || !input.forwardShouldExist)
+    const open = input.forwardShouldExist && (close || !input.hasExistingRule)
+    return { close, open }
+}

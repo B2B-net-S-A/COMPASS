@@ -57,10 +57,16 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         Sentry.captureException(e, { tags: { kind: 'cron_forward_rules' } })
     }
 
+    // Two different thresholds on purpose:
+    //   `ok`     — did anything crash? Monitoring reads this, so a half that died must
+    //              never report success (Phase 36 returned ok:true unconditionally and
+    //              relied on a 500 to signal trouble; keep that strictness).
+    //   Sentry   — only when the WHOLE run collapsed. Across ~37 mailboxes a single
+    //              unreadable one is routine, and paging on it teaches people to ignore
+    //              Sentry.
+    const anyDown = Boolean(oofError || forwardError)
     const bothDown = Boolean(oofError && forwardError)
     if (bothDown) {
-        // Escalate only when the whole run collapsed. Across ~37 mailboxes a single
-        // unreadable one is routine, and paging on it trains people to ignore Sentry.
         Sentry.captureMessage('oof_reconcile_run_failed', {
             level: 'warning',
             tags: { kind: 'cron_oof_reconcile' },
@@ -69,7 +75,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     }
 
     return NextResponse.json({
-        ok: !bothDown,
+        ok: !anyDown,
         // Phase 36 response shape preserved at the top level so existing checks keep working.
         ...(oofStats ?? {}),
         errors: oofStats ? oofStats.errors.slice(0, 15) : [oofError ?? 'oof: unknown'],

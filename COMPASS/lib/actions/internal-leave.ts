@@ -25,7 +25,7 @@ import {
 } from '@/lib/mailbox/graph-oof'
 import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sync'
 import { createForwardRule } from '@/lib/mailbox/graph-inbox-rules'
-import { shouldForwardBeActive } from '@/lib/oof/forward-window'
+import { planForwardRuleEdit, shouldForwardBeActive } from '@/lib/oof/forward-window'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import {
@@ -1729,8 +1729,8 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
     // would keep delivering mail to the PREVIOUS person, and shortening the leave
     // would keep forwarding after the employee is back.
     //
-    // Awaited rather than fire-and-forget, so the stale rule is provably gone before
-    // the replacement is created — two live rules would double-deliver.
+    // Awaited rather than fire-and-forget, and the replacement is gated on the
+    // teardown succeeding (see below) — two live rules would double-deliver.
     const datesChanged = newStart !== row.start_date || newEnd !== row.end_date
     const substituteChanged = newSubstituteId !== row.substitute_id
     const forwardShouldExist = shouldForwardBeActive(
@@ -1742,15 +1742,26 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
         },
         new Date(),
     )
-    const forwardStale =
-        Boolean(row.outlook_forward_rule_id) &&
-        (substituteChanged || datesChanged || !forwardShouldExist)
+    const { close: shouldCloseForward, open: shouldOpenForward } = planForwardRuleEdit({
+        hasExistingRule: Boolean(row.outlook_forward_rule_id),
+        substituteChanged,
+        datesChanged,
+        forwardShouldExist,
+    })
 
-    if (forwardStale || (forwardShouldExist && !row.outlook_forward_rule_id)) {
+    if (shouldCloseForward || shouldOpenForward) {
         const contact = await fetchUserContact(row.user_id)
         if (contact?.email) {
-            if (forwardStale && row.outlook_forward_rule_id) {
-                await closeForwardRule({
+            // Gate the replacement on the teardown actually succeeding. closeForwardRule
+            // RETURNS false on a Graph failure (it does not throw), so without this the
+            // code would fall straight through and create a second rule while the first
+            // one is still live — mail would then land with BOTH the old and the new
+            // substitute. Better to leave the leave un-forwarded and surface
+            // graph_sync_error: the admin retry and the orphan sweep both recover from
+            // that, neither recovers from silent double delivery.
+            let teardownOk = true
+            if (shouldCloseForward && row.outlook_forward_rule_id) {
+                teardownOk = await closeForwardRule({
                     admin,
                     leaveId: input.id,
                     ruleId: row.outlook_forward_rule_id,
@@ -1758,11 +1769,12 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
                     actorUserId: ctx.userId,
                     reason: 'edited',
                     auditExtra: { target_user_id: row.user_id },
-                }).catch((e) =>
-                    logCompat.error('[updateTeamLeave] forward rule delete failed:', e),
-                )
+                }).catch((e) => {
+                    logCompat.error('[updateTeamLeave] forward rule delete failed:', e)
+                    return false
+                })
             }
-            if (forwardShouldExist && newSubstituteId) {
+            if (teardownOk && shouldOpenForward && newSubstituteId) {
                 const { data: sub } = await admin
                     .from('profiles')
                     .select('full_name, email')
@@ -3140,6 +3152,17 @@ export async function retryLeaveGraphSync(
                     .from('leave_requests')
                     .update({ outlook_forward_rule_id: fwdRes.ruleId } as never)
                     .eq('id', id)
+                // Emitted explicitly because this path calls createForwardRule directly
+                // rather than going through openForwardRule (retry owns graph_sync_error
+                // wholesale, see the overwrite below). Every moment a mailbox starts
+                // being copied to somebody else must show up as LEAVE_FORWARD_SET —
+                // that is the whole point of this audit trail.
+                await logAudit(ctx.userId, 'LEAVE_FORWARD_SET', {
+                    leave_id: id,
+                    target_user_id: row.user_id,
+                    substitute_email: substituteEmail,
+                    retry: true,
+                })
             }
         } else if (fwdRes.error) {
             errors.push(`forward: ${fwdRes.error}`)
