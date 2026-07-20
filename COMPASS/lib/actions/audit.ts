@@ -131,6 +131,13 @@ export type AuditAction =
     | 'LEAVE_OOF_DISABLED'
     // Phase 25d — Compass detected user-set OOF and did NOT overwrite it
     | 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
+    // Phase 41 — Outlook inbox rule forwarding mail to the substitute during leave
+    | 'LEAVE_FORWARD_SET'
+    | 'LEAVE_FORWARD_FAILED'
+    | 'LEAVE_FORWARD_DISABLED'
+    // Phase 41 — sweep removed a rule with no live leave behind it (an inbox rule
+    // never expires by itself, so this is the backstop against forwarding forever)
+    | 'LEAVE_FORWARD_ORPHAN_REMOVED'
     // Phase 25b — Manager/admin wpisuje urlop w imieniu pracownika
     | 'LEAVE_CREATED_ON_BEHALF'
     // Phase 27j — Manager/admin zarządza urlopem zespołu (edycja / anulowanie)

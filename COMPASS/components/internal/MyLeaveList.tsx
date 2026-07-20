@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, UserCheck, MailCheck, AlertTriangle } from 'lucide-react'
+import { Loader2, UserCheck, MailCheck, AlertTriangle, Forward } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -173,6 +173,18 @@ export function MyLeaveList({ requests }: Props) {
                                                         Out of Office: nie ustawione
                                                     </span>
                                                 )}
+                                            </p>
+                                        )}
+                                        {/* Phase 41 — mail forwarding to the substitute. Shown only
+                                            while a rule actually exists, so the employee always knows
+                                            when their inbox is being copied to somebody else. */}
+                                        {req.status === 'approved' && req.outlook_forward_rule_id && (
+                                            <p className="text-xs mt-1 inline-flex items-center gap-1">
+                                                <Forward className="h-3 w-3 text-success" />
+                                                <span className="text-success">
+                                                    Poczta przekierowywana do:{' '}
+                                                    {req.substitute_full_name ?? 'zastępcy'}
+                                                </span>
                                             </p>
                                         )}
                                     </div>

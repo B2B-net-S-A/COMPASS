@@ -37,7 +37,12 @@ function toInstant(dt: GraphDateTime | null | undefined): Date | null {
     return Number.isNaN(d.getTime()) ? null : d
 }
 
-function warsawDate(d: Date): string {
+/**
+ * Instant → calendar date (YYYY-MM-DD) as seen in Warsaw. Exported since Phase 41:
+ * forwarding rules toggle exactly on day boundaries, so they must not derive "today"
+ * from UTC (`toISOString().slice(0,10)`), which is off by one late in the evening.
+ */
+export function warsawDate(d: Date): string {
     return new Intl.DateTimeFormat('en-CA', {
         timeZone: WARSAW_TZ,
         year: 'numeric',

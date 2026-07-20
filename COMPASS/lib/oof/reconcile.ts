@@ -23,7 +23,8 @@ import { computeMissingRuns, oofScheduledToDates, type OofDateRange } from './oo
 import { logger } from '@/lib/logger'
 
 const COMPASS_OOF_MARKER = 'compass-managed-oof-v1'
-const HR_ROLES = ['internal', 'manager', 'finanse', 'talent_community', 'admin'] as const
+/** Roles whose mailboxes Compass touches. Shared with the Phase 41 forwarding sweep. */
+export const HR_ROLES = ['internal', 'manager', 'finanse', 'talent_community', 'admin'] as const
 const OOF_SOURCE = 'outlook_oof'
 
 export interface OofReconcileStats {

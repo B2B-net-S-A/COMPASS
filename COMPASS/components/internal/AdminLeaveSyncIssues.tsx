@@ -62,11 +62,13 @@ export function AdminLeaveSyncIssues({ requests }: Props) {
         startTransition(async () => {
             try {
                 const res = await retryLeaveGraphSync(req.id)
-                if (res.oof && res.calendar) {
-                    toastSuccess('Synchronizacja Graph powiodła się (OOF + Calendar).')
-                } else if (res.oof || res.calendar) {
+                if (res.oof && res.calendar && res.forward) {
+                    toastSuccess(
+                        'Synchronizacja Graph powiodła się (OOF + Calendar + przekierowanie).',
+                    )
+                } else if (res.oof || res.calendar || res.forward) {
                     toast.warning(
-                        `Częściowa synchronizacja: OOF ${res.oof ? '✓' : '✗'}, Calendar ${res.calendar ? '✓' : '✗'}. ${res.error ?? ''}`,
+                        `Częściowa synchronizacja: OOF ${res.oof ? '✓' : '✗'}, Calendar ${res.calendar ? '✓' : '✗'}, Przekierowanie ${res.forward ? '✓' : '✗'}. ${res.error ?? ''}`,
                     )
                 } else {
                     toast.error(`Synchronizacja nie powiodła się: ${res.error ?? 'nieznany błąd'}`)

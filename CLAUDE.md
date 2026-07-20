@@ -1012,6 +1012,52 @@ Tabele Wejścia/Zejścia **same aktualizują się raz dziennie** zaciągając pl
 - **Coolify schedule:** `tc-sync` — `0 5 * * *` (05:00 UTC daily) — `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/tc-sync"`.
 - **Semantyka:** **additive** (jak manual import) — nowe wiersze w pliku trafiają do `client_entries`/`client_departures`; usunięcia/edycje pól kluczowych (`external_key`) nie propagują (świadome ograniczenie v1; dedup ręczny lub follow-up). Re-runy bezpieczne (idempotent).
 
+## Phase 41 — Przekierowanie poczty do zastępcy na czas urlopu (2026-07-20)
+
+Phase 25 wymieniała zastępcę w treści auto-reply OOF, ale poczta nieobecnej osoby leżała w jej skrzynce do powrotu. Teraz po akceptacji urlopu z zastępcą COMPASS zakłada w skrzynce pracownika **regułę Outlooka** (Graph `messageRule`) kopiującą przychodzącą pocztę do zastępcy, a po urlopie ją kasuje.
+
+**Semantyka:** `forwardTo` (kopia — oryginał zostaje u właściciela, po powrocie ma komplet poczty), NIE `redirectTo`.
+
+### KRYTYCZNE: reguła skrzynki nie ma warunków czasowych
+
+`messageRulePredicates` nie zawiera **żadnego** pola daty/harmonogramu — reguła jest niezależna od `automaticRepliesSetting`. Ustawienie OOF na 10–20.07 nie ogranicza reguły do tego okna. Skutki projektowe:
+- OOF wystarczał jeden PATCH przy akceptacji (Exchange sam pilnuje `scheduledStart/End`); forward tak **nie umie** — okno otwiera i zamyka cron.
+- Nieudane zamknięcie = przekierowanie w nieskończoność → **sprzątacz sierot jest częścią systemu, nie opcją**.
+- ID reguły MUSI być trwale zapisane (`leave_requests.outlook_forward_rule_id`), a `displayName` zawiera UUID urlopu (`COMPASS · zastępstwo · <leaveId>`), żeby sprzątacz rozpoznał regułę, której ID zgubiliśmy.
+
+**Uprawnienia — bez zmian w Entra/Exchange.** POST i DELETE `/users/{upn}/mailFolders/inbox/messageRules` wymagają `MailboxSettings.ReadWrite` (Application) — dokładnie tego, którym Phase 25 PATCH-uje OOF na tych samych skrzynkach. Docs: „Higher privileged permissions: Not available".
+
+### Okno przekierowania
+
+`shouldForwardBeActive` (`lib/oof/forward-window.ts`, czysty, `now` wstrzykiwany): `approved` ∧ `substitute_id` ∧ `start_date <= warsawJutro` ∧ `end_date >= warsawDziś`.
+
+Otwiera się **dzień wcześniej** świadomie — cron chodzi o 06:00 UTC, więc otwarcie w pierwszym dniu zostawiłoby lukę 00:00–08:00. Koszt: przekierowanie łapie też ostatni dzień roboczy przed urlopem. Przełącznik = zamiana `warsawTomorrow` → `warsawToday` w tym jednym miejscu.
+
+**Daty liczone w Europe/Warsaw**, nie UTC (`warsawDate()` wyeksportowany z `oof-dates.ts`) — forward przełącza się na granicy dnia, więc `toISOString().slice(0,10)` myliłby się o dobę wieczorami.
+
+### Pliki
+
+- `lib/mailbox/graph-inbox-rules.ts` — `createForwardRule` / `deleteForwardRule` (**404 = sukces**) / `listCompassForwardRules` (`null` przy błędzie, bez retry) + czyste `buildForwardRuleName` / `parseLeaveIdFromRuleName`. Reguła: bez `conditions`, `stopProcessingRules: false` (własne reguły użytkownika muszą dalej działać), `exceptions: {isAutomaticReply, isAutomaticForward}` (ochrona przed pętlą A→B→A).
+- `lib/mailbox/forward-rule-sync.ts` — plain module (NIE 'use server') z `openForwardRule`/`closeForwardRule`; wspólny dla akcji i crona. Kolumna zerowana **tylko** gdy Graph potwierdzi usunięcie — inaczej żywa reguła zostałaby bez wskaźnika.
+- `lib/oof/forward-rules.ts` — `reconcileForwardRules`: OTWÓRZ / ZAMKNIJ / SPRZĄTACZ SIEROT (`MAX_SWEEP_PER_RUN = 100`, roster = `HR_ROLES` z `reconcile.ts` + filtr `exited`/`offboarding` w JS).
+- Wpięcia w `lib/actions/internal-leave.ts`: `approveLeaveRequest` (lookup zastępcy wyciągnięty poza blok `shouldSetOof`), `createLeaveOnBehalf`, `cancelMyLeaveRequest`, `cancelTeamLeave`, `updateTeamLeave`, `retryLeaveGraphSync` (zwraca teraz `{oof, calendar, forward}`).
+
+**`updateTeamLeave` była najostrzejszą krawędzią** — zmieniała daty i `substitute_id` z zerową resynchronizacją Graph. Bez Phase 41 edycja zastępcy zostawiałaby regułę celującą w **poprzednią osobę**. Teraz: skasuj starą → załóż nową (awaited, żeby nie było dwóch żywych reguł).
+
+### Cron
+
+Doklejone do istniejącego `oof-reconcile` (**bez nowego harmonogramu w Coolify**, nadal `0 6 * * *`). Route: każda połowa w osobnym `try/catch` (wcześniej nie miał żadnego → rzut = gołe 500 bez Sentry), `maxDuration` 120 → **240**, Sentry eskalowany dopiero gdy padły obie połowy. Odpowiedź: kształt Phase 36 na górnym poziomie + `forward: {opened, closed, orphansRemoved, sweptMailboxes, errors}`.
+
+### Audit log
+
+`LEAVE_FORWARD_SET` / `LEAVE_FORWARD_FAILED` / `LEAVE_FORWARD_DISABLED` / `LEAVE_FORWARD_ORPHAN_REMOVED`. Błędy lądują w `graph_sync_error` z prefiksem `forward:` (obok `oof:` / `calendar:`), więc kolejka „problemy z synchronizacją" i przycisk retry działają bez zmian.
+
+### Ops po deploy
+
+1. **Smoke test PRZED merge** (RAOP potrafi blokować mimo poprawnych uprawnień — patrz Phase 26b→26d): app-only POST reguły z `isEnabled:false` na jedną skrzynkę → oczekiwane 201, potem DELETE → 204. Przy `403 [RAOP]` sprawdzić `Get-ApplicationAccessPolicy` i `CompassMailSenders`.
+2. Migracja `20260720102237_phase41_leave_forward_rule` zaaplikowana na prod 2026-07-20 (addytywna, nullable TEXT + partial index).
+3. **Pierwszy przebieg crona założy reguły od razu na skrzynkach trwających urlopów z zastępcą** (w chwili wdrożenia: 3). To nie jest stopniowy rollout — warto uprzedzić te osoby.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

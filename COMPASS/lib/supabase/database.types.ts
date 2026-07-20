@@ -3624,6 +3624,7 @@ export type Database = {
           oof_external_message: string | null
           oof_internal_message: string | null
           outlook_event_id: string | null
+          outlook_forward_rule_id: string | null
           paid_days: number
           source: string | null
           start_date: string
@@ -3653,6 +3654,7 @@ export type Database = {
           oof_external_message?: string | null
           oof_internal_message?: string | null
           outlook_event_id?: string | null
+          outlook_forward_rule_id?: string | null
           paid_days?: number
           source?: string | null
           start_date: string
@@ -3682,6 +3684,7 @@ export type Database = {
           oof_external_message?: string | null
           oof_internal_message?: string | null
           outlook_event_id?: string | null
+          outlook_forward_rule_id?: string | null
           paid_days?: number
           source?: string | null
           start_date?: string
