@@ -138,6 +138,13 @@ export type AuditAction =
     // Phase 41 — sweep removed a rule with no live leave behind it (an inbox rule
     // never expires by itself, so this is the backstop against forwarding forever)
     | 'LEAVE_FORWARD_ORPHAN_REMOVED'
+    // Phase 41b — heartbeat for the forwarding reconcile cron. Emitted once at the
+    // start and once at the end of every run. The forward half's outcome otherwise
+    // lives only in the HTTP response, invisible in the DB; these rows are the sole
+    // durable proof of whether it ran and what it did. 'start' with no matching 'done'
+    // = the run was killed mid-flight (e.g. maxDuration); no 'start' at all = the cron
+    // never reached the forward half.
+    | 'FORWARD_RECONCILE_RUN'
     // Phase 25b — Manager/admin wpisuje urlop w imieniu pracownika
     | 'LEAVE_CREATED_ON_BEHALF'
     // Phase 27j — Manager/admin zarządza urlopem zespołu (edycja / anulowanie)
