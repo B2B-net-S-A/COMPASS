@@ -1050,6 +1050,15 @@ Koszt tej zamiany: **luka pierwszego ranka** — reguła powstaje dopiero gdy pr
 
 Doklejone do istniejącego `oof-reconcile` (**bez nowego harmonogramu w Coolify**, nadal `0 6 * * *`). Route: każda połowa w osobnym `try/catch` (wcześniej nie miał żadnego → rzut = gołe 500 bez Sentry), `maxDuration` 120 → **240**, Sentry eskalowany dopiero gdy padły obie połowy. Odpowiedź: kształt Phase 36 na górnym poziomie + `forward: {opened, closed, orphansRemoved, sweptMailboxes, errors}`.
 
+### Phase 41b — forward idzie pierwszy + heartbeat w audit_logs (2026-07-22)
+
+Zgłoszenie z produkcji: po zakończonym urlopie Marleny Rosół zastępczyni (Klaudia) **dalej** dostawała jej pocztę, a trzy trwające urlopy (Marcin/Michał/Błażej) **nie miały** reguł wcale. Diagnoza z bazy: forward-owa połowa crona nie zostawiła **żadnego** śladu — zero `LEAVE_FORWARD*` z `via:cron` przez ≥2 poranne przebiegi, mimo że ścieżka approve działała (reguła Marleny powstała 20.07). Błąd forward-owej połowy żył **wyłącznie w odpowiedzi HTTP** (route go łapie, ale nigdzie nie persystuje), więc z samej bazy nie dało się odróżnić „cron nie odpala" od „forward pada po starcie". Dwie zmiany:
+
+1. **Kolejność w route: forward PRZED OOF.** OOF czyta ~37 skrzynek sekwencyjnie bez per-call timeoutu; jedna zawieszona skrzynka potrafi zjeść cały `maxDuration`, a runtime ubija request **zanim** dojdzie do forward (linia z `reconcileForwardRules`) — bez wyjątku, bez Sentry, bez śladu. To najlepiej tłumaczy „zero efektu, zero logu". Forward jest tańszy (listing reguł per skrzynka, DB-bounded), więc kończy szybko i zostawia budżet OOF-owi.
+2. **Heartbeat `FORWARD_RECONCILE_RUN` w `audit_logs`** — jeden wpis `phase:'start'` na wejściu do `reconcileForwardRules`, jeden `phase:'done'` (ze statystykami + `errors`) na wyjściu. To **jedyny czytelny z bazy** dowód, że połowa się wykonała. Wzorzec diagnozy: `start` bez `done` = request ubity w locie (timeout); brak `start` = cron w ogóle nie dosięgnął forward (→ problem harmonogramu Coolify); `done` z `errors` = dokładny komunikat błędu bez potrzeby `CRON_SECRET`. `logAudit` nigdy nie rzuca, więc heartbeat sam z siebie nie zepsuje przebiegu.
+
+**Znany dług operacyjny (poza tym PR, wymaga dostępu do prod):** stara reguła Marleny (`57da4f35...`, `outlook_forward_rule_id=AQAAAOXg7Hg=`) wisi w jej skrzynce — zamknie ją dopiero pierwszy sprawny przebieg forward-reconcile (pass 2 „close", bo `end_date < dziś`) **albo** ręczne usunięcie w Outlooku (Ustawienia → Poczta → Reguły → „COMPASS · zastępstwo · 57da4f35..."). Ten sam przebieg dołoży brakujące reguły Marcinowi/Michałowi/Błażejowi (pass 1 „open"). Weryfikacja po deployu: `select action, details from audit_logs where action='FORWARD_RECONCILE_RUN' order by created_at desc` — jeśli po 06:00 UTC nie ma wiersza `start`, cron nie odpala forward i trzeba sprawdzić `scheduled_tasks` w `coolify-db`.
+
 ### Audit log
 
 `LEAVE_FORWARD_SET` / `LEAVE_FORWARD_FAILED` / `LEAVE_FORWARD_DISABLED` / `LEAVE_FORWARD_ORPHAN_REMOVED`. Błędy lądują w `graph_sync_error` z prefiksem `forward:` (obok `oof:` / `calendar:`), więc kolejka „problemy z synchronizacją" i przycisk retry działają bez zmian.

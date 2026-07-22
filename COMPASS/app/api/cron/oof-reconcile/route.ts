@@ -37,16 +37,14 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     // Each half runs in its own try/catch: a forwarding bug must not take down the OOF
     // reconcile, or vice versa. Before Phase 41 this route had no try/catch at all, so
     // any throw surfaced as a bare 500 with nothing in Sentry.
-    let oofStats: Awaited<ReturnType<typeof reconcileOutlookOof>> | null = null
-    let oofError: string | null = null
-    try {
-        oofStats = await reconcileOutlookOof(admin as never)
-    } catch (e) {
-        oofError = e instanceof Error ? e.message : 'unknown'
-        logger.error({ event: 'oof.reconcile.crashed', error: oofError })
-        Sentry.captureException(e, { tags: { kind: 'cron_oof_reconcile' } })
-    }
-
+    //
+    // Forward runs FIRST (Phase 41b). The OOF half reads ~37 mailboxes sequentially with
+    // no per-call timeout; if any of them hangs, it can burn the whole maxDuration budget
+    // and the runtime kills the request before the forward half ever executes — which
+    // leaves forwarding rules stuck open with nothing in the DB to show for it. Ordering
+    // forwarding first guarantees it gets its turn. It is also the cheaper half (a rule
+    // listing per mailbox, DB-bounded), so it finishes fast and leaves the rest of the
+    // budget to OOF.
     let forwardStats: Awaited<ReturnType<typeof reconcileForwardRules>> | null = null
     let forwardError: string | null = null
     try {
@@ -55,6 +53,16 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         forwardError = e instanceof Error ? e.message : 'unknown'
         logger.error({ event: 'forward_rules.reconcile.crashed', error: forwardError })
         Sentry.captureException(e, { tags: { kind: 'cron_forward_rules' } })
+    }
+
+    let oofStats: Awaited<ReturnType<typeof reconcileOutlookOof>> | null = null
+    let oofError: string | null = null
+    try {
+        oofStats = await reconcileOutlookOof(admin as never)
+    } catch (e) {
+        oofError = e instanceof Error ? e.message : 'unknown'
+        logger.error({ event: 'oof.reconcile.crashed', error: oofError })
+        Sentry.captureException(e, { tags: { kind: 'cron_oof_reconcile' } })
     }
 
     // Two different thresholds on purpose:
