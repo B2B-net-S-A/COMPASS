@@ -20,6 +20,10 @@ import {
 } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { requireInvoicesEnabled } from '@/lib/feature-flags'
+// Formularz premii ma w dropdownie klientów opcję „Inny (wpisz ręcznie)", więc nazwa może
+// przyjść jako wolny tekst — kanonizujemy ją tak samo jak przy imporcie TC (Phase 42a),
+// inaczej „NORDEA" wpisane z ręki znów rozbiłoby statystyki na dwa byty.
+import { normalizeClientName } from '@/lib/contractors/name-normalization'
 import type {
     BonusRow,
     BonusStatus,
@@ -226,12 +230,12 @@ function buildCategoryInsertPayload(input: AssignBonusInput): Record<string, unk
     switch (input.category) {
         case 'sales':
             return {
-                client_name: input.client_name.trim(),
+                client_name: normalizeClientName(input.client_name),
                 sales_service_description: input.sales_service_description.trim(),
             }
         case 'delivery_lead':
             return {
-                client_name: input.client_name.trim(),
+                client_name: normalizeClientName(input.client_name),
                 delivery_candidate_name: input.delivery_candidate_name.trim(),
                 delivery_margin_amount: input.delivery_margin_amount,
                 delivery_margin_percent: input.delivery_margin_percent ?? 10.0,
@@ -239,7 +243,7 @@ function buildCategoryInsertPayload(input: AssignBonusInput): Record<string, unk
         case 'recruiter': {
             const tier = recruiterTierForMargin(input.recruiter_margin_per_hour)
             return {
-                client_name: input.client_name.trim(),
+                client_name: normalizeClientName(input.client_name),
                 recruiter_margin_per_hour: input.recruiter_margin_per_hour,
                 recruiter_candidate_name: input.recruiter_candidate_name.trim(),
                 recruiter_calculated_tier: tier?.tier ?? null,
