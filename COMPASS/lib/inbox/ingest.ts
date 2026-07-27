@@ -40,6 +40,7 @@ import {
     type MailboxKind,
 } from '@/lib/mailbox/graph-mail-read'
 import { classifyMessage, type SkipReason } from './filters'
+import { isRunInProgress } from './run-lock'
 
 // Public so cron route can announce the mailbox in its response body.
 // Phase 26d — pivot to shared mailbox (RAOP cache wouldn't refresh for the
@@ -255,10 +256,13 @@ interface ProcessContext {
     administrationCategoryId: string
 }
 
+/** Postgres unique_violation. */
+const PG_UNIQUE_VIOLATION = '23505'
+
 async function processNewTicket(
     ctx: ProcessContext,
     msg: GraphMessage,
-): Promise<{ ok: boolean; ticketId?: string; error?: string }> {
+): Promise<{ ok: boolean; ticketId?: string; error?: string; duplicate?: boolean }> {
     const subject = (msg.subject ?? '(bez tematu)').trim().slice(0, 500)
     const text = msg.body?.contentType === 'text' ? msg.body.content : null
     const html = msg.body?.contentType === 'html' ? msg.body.content : null
@@ -302,6 +306,19 @@ async function processNewTicket(
     if (metaErr) {
         // Compensate — drop the orphan ticket so a future tick can retry cleanly
         await ctx.admin.from('support_tickets').delete().eq('id', ticketId)
+
+        // A unique violation on external_message_id means the mail is already a
+        // ticket — someone got here first. That is a no-op, not a failure, and the
+        // distinction matters: an error keeps the run's error list non-empty and
+        // makes a perfectly healthy tick look broken.
+        //
+        // The pre-flight check (alreadyIngested) cannot prevent this on its own,
+        // because the winning insert may land *after* that check ran — exactly what
+        // happens when two ticks overlap. The constraint is the real guard; this is
+        // where we honour it.
+        if ((metaErr as { code?: string }).code === PG_UNIQUE_VIOLATION) {
+            return { ok: false, duplicate: true }
+        }
         return { ok: false, error: metaErr.message }
     }
 
@@ -466,7 +483,7 @@ export async function ingestMailbox(
     // 1. Cursor
     const { data: cursorRow } = await admin
         .from('inbox_sync_state')
-        .select('last_synced_at, mailbox_kind, group_id')
+        .select('last_synced_at, mailbox_kind, group_id, run_started_at, last_run_at')
         .eq('mailbox', mailbox)
         .maybeSingle()
 
@@ -484,7 +501,26 @@ export async function ingestMailbox(
         last_synced_at: string
         mailbox_kind?: string | null
         group_id?: string | null
+        run_started_at?: string | null
+        last_run_at?: string | null
     }
+
+    // Overlap guard. The cursor only moves when a run finishes, so a tick that
+    // starts while the previous one is still working reads a stale cursor and
+    // re-fetches the same messages — 50 wasted Graph calls and four wasted
+    // minutes, every other tick, once there is a backlog to chew through.
+    if (isRunInProgress(row.run_started_at, row.last_run_at, start)) {
+        stats.skippedByReason.previous_run_in_progress = 1
+        stats.durationMs = Date.now() - start
+        logger.info({ event: 'inbox.ingest.skipped_overlap', mailbox })
+        return stats
+    }
+    // Claim the run before doing any work, so the *next* tick can see it.
+    await admin
+        .from('inbox_sync_state')
+        .update({ run_started_at: new Date().toISOString() })
+        .eq('mailbox', mailbox)
+
     const since = new Date(row.last_synced_at)
 
     // Phase 26c — when the mailbox is a M365 Group, surface the group id to the
@@ -584,7 +620,11 @@ export async function ingestMailbox(
                 }
             } else {
                 const res = await processNewTicket(ctx, msg)
-                if (!res.ok) {
+                if (res.duplicate) {
+                    stats.skipped += 1
+                    stats.skippedByReason.duplicate =
+                        (stats.skippedByReason.duplicate ?? 0) + 1
+                } else if (!res.ok) {
                     stats.errors.push(`create_failed:${msg.internetMessageId}: ${res.error}`)
                 } else {
                     stats.created += 1
