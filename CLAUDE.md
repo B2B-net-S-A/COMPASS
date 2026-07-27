@@ -1100,6 +1100,41 @@ siedzą w `comment` (**318/333**), bo importer mapuje arkuszowy „Komentarz" w�
 przyczyn (budżet / niedopasowanie / lepsza oferta) · ożywienie `contractor_exit_interviews` (0 rekordów —
 bez zmiany procesu TCM sam kod nic nie da).
 
+## Phase 42a — Kanonizacja nazw klientów i osób przy imporcie (2026-07-27)
+
+Arkusze TCM są uzupełniane ręcznie od lat, więc ta sama firma miała po kilka zapisów
+(`Nordea`/`NORDEA`, `Xperi`/`XPERI`/`Xperii`, `BNP`/`BNP Paribas`, `PKO`/`PKO BP`, 5 wariantów e-zdrowia),
+a rekruterzy literówki (`Aleksandra Borzecka`, `lza Grabińska`, `MIchał Walasek`). Statystyki liczyły każdy
+wariant osobno.
+
+**Słownik: [`lib/contractors/name-normalization.ts`](COMPASS/lib/contractors/name-normalization.ts)** —
+`CLIENT_ALIASES` + `STAFF_ALIASES` (rekruterzy, Delivery Leadowie i TCM to jedna pula) + `normalizeClientName`
+/ `normalizeStaffName`. Wpięte w **parsery** (`lib/contractors/parse.ts`, `lib/placements/parse-xlsx.ts`),
+więc kanonizacja obejmuje też `external_key` i `contractors.current_client`. Nowy wariant = jedna linijka + deploy.
+
+**Cztery rzeczy, o których trzeba wiedzieć przy zmianach tutaj:**
+1. **Pisownia kanoniczna zgadza się z tabelą `clients`** (Phase 27d, dropdowny premii) — stąd wersaliki
+   w `ATOS`/`BOSCH`/`ERGO`/`NORI`/`ORLEN`/`XPERI` i małe `e-zdrowie`. To nie kaprys: dwie listy klientów
+   w jednej aplikacji byłyby gorsze niż nieidealna pisownia marek. Dodając alias, sprawdź `clients`.
+2. **`external_key` zawiera nazwę klienta** (`importExternalKey('dep', nazwisko, klient, data)`), więc
+   zmiana aliasu zmienia klucz idempotencji. Bez przeliczenia w bazie ponowny wgrany ten sam plik wstawi
+   duplikaty. Wzorzec backfillu: migracja `20260727120000_phase42a_*` — odtwarza FNV-1a w SQL i **przed**
+   jakąkolwiek zmianą sprawdza, że replika zgadza się z każdym istniejącym kluczem (rozjazd → `RAISE
+   EXCEPTION` + rollback). Przed pisaniem sprawdź też kolizje UNIQUE (`client_departures`, `client_entries`,
+   `idx_placements_natural_key`).
+3. **Kontrola wymaganych pól musi iść PO normalizacji** (parser placementów). Znacznik „nikt" (`-`, `ND`)
+   normalizuje się do `null`; gdyby walidacja szła na surowej wartości, `-` przeszedłby ją i wywalił się
+   dopiero przy dopasowaniu profilu. Detekcja pustego wiersza zostaje na surowych wartościach — inaczej
+   wiersz z samym `-` zniknąłby po cichu zamiast dać błąd.
+4. **Nie zgadujemy przy imionach bez nazwiska.** `Igor` ma jednego właściciela → mapowany. `Klaudia`
+   (Uliasz vs Grelak) i `Marcin` (Kraszewski vs Kurowski) zostają nietknięte — scalenie zafałszowałoby
+   ranking per rekruter. Tak samo osobne byty: `Cardif` / `BNP Paribas Cardif`, `Centrum e-Zdrowia`,
+   kontrakty dzielone `BOSCH/Nordea` i `Frontex / Atos`.
+
+**Poza zakresem:** `bonuses.client_name` / `sales_client_name` (dane premii) · `contracts`,
+`support_inbox_meta`, `profiles.previous_clients` · literówki w samej tabeli `clients` („PEFRON",
+„Mnisterstwo") · `client_departures.manager_raw` (manager po stronie klienta, nie nasza pula osób).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
