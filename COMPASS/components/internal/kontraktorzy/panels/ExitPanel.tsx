@@ -130,7 +130,7 @@ export function ExitPanel({ bench, departures, onSaved }: Props) {
                                 <th className="p-2 text-left">Data zejścia</th>
                                 <th className="p-2 text-left">Wypowiedzenie</th>
                                 <th className="p-2 text-left">Kto zrezygnował</th>
-                                <th className="p-2 text-left">Powód</th>
+                                <th className="p-2 text-left">Powód / komentarz</th>
                                 <th className="p-2 text-left">Manager</th>
                                 <th className="p-2 text-center">Przepięcie</th>
                                 <th className="p-2 text-center">Replacement</th>
@@ -149,7 +149,11 @@ export function ExitPanel({ bench, departures, onSaved }: Props) {
                                     <td className="p-2 whitespace-nowrap">{d.departure_date ?? '—'}</td>
                                     <td className="p-2 whitespace-nowrap">{d.last_notice_day ?? '—'}</td>
                                     <td className="p-2">{d.who_resigned ? WHO_RESIGNED_PL[d.who_resigned] : '—'}</td>
-                                    <td className="p-2 max-w-xs text-muted-foreground">{d.reason ?? '—'}</td>
+                                    {/* Import Excela wpisuje treść do „Komentarz" — „Powód" jest w praktyce pusty,
+                                        więc pokazujemy komentarz jako fallback (pełna treść w tooltipie). */}
+                                    <td className="p-2 max-w-xs text-muted-foreground" title={d.reason ?? d.comment ?? undefined}>
+                                        {d.reason ?? d.comment ?? '—'}
+                                    </td>
                                     <td className="p-2">{d.manager_raw ?? '—'}</td>
                                     <td className="p-2 text-center">{d.transferred ? '✓' : '—'}</td>
                                     <td className="p-2 text-center">{d.replacement ? '✓' : '—'}</td>

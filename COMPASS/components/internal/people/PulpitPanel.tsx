@@ -62,6 +62,14 @@ export async function PulpitPanel({ year, month }: Props) {
                     <span className="font-semibold capitalize">{monthLabel(year, month)}</span>
                 </div>
                 <div className="flex items-center gap-1">
+                    {/* Kafel „Exit interviews" jest sam Linkiem, więc skrót do rozbicia zejść
+                        (wg powodów / klienta / rekrutera) mieszka tutaj, nie w środku kafla. */}
+                    <Link
+                        href="/internal/people?tab=analityka&period=month"
+                        className="mr-2 text-xs font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                        Analityka zejść
+                    </Link>
                     <Link
                         href={pulpitHref(prev.year, prev.month)}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
