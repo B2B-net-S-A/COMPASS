@@ -148,6 +148,12 @@ jobs:
             "$PSQL 'select scheduled_task_id, status, created_at from scheduled_task_executions order by created_at desc limit 10;'" || echo "(query failed)"
 
           echo ""
+          echo "=== why the failures failed (message of the 3 most recent) ==="
+          # status alone says nothing about the cause; the job stores its output here.
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select scheduled_task_id, status, created_at, left(coalesce(message,'(null)'), 600) as message from scheduled_task_executions where status = 'failed' order by created_at desc limit 3;\"" || echo "(query failed)"
+
+          echo ""
           echo "=== coolify containers ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "docker ps --filter name=coolify --format '{{.Names}}\t{{.Status}}'" || echo "(failed)"
@@ -161,6 +167,14 @@ jobs:
           echo "=== scheduler mentions in laravel.log ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "docker exec coolify tail -300 /var/www/html/storage/logs/laravel.log | grep -iE 'schedul|cron' | tail -20" || echo "(nothing)"
+
+          echo ""
+          echo "=== laravel.log tail, unfiltered ==="
+          # A grep on 'schedul|cron' hides any *new* failure mode whose message
+          # happens not to contain those words — which is exactly what happened
+          # once the container name was filled in.
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker exec coolify tail -40 /var/www/html/storage/logs/laravel.log | cut -c1-300" || echo "(nothing)"
 
       # The actual failure mode found on 2026-07-27: the scheduler runs fine and
       # fires every task on time, but each one dies with "More than one container
