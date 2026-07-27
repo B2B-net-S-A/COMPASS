@@ -20,13 +20,30 @@ name: Coolify Ops
 # The list output contains only build metadata (UUIDs, SHAs, statuses,
 # timestamps) — no env values or secrets.
 
+# 2026-07-27 — extended with scheduled-task ops.
+#
+# The Coolify cron scheduler on this instance stopped firing entirely: the
+# FORWARD_RECONCILE_RUN heartbeat (Phase 41b) produced zero rows across five
+# mornings, inbox_sync_state.last_run_at has been NULL since May, and tc-sync
+# has pulled nothing since June. The scheduled tasks live in the Coolify
+# Postgres, which the API does not expose — hence SSH, using the Hetzner key
+# GH Actions has held since April.
+#
+#   3. action=cron-list             → dump scheduled_tasks + scheduler health.
+#   4. action=cron-enable           → re-enable every disabled task.
+#   5. action=cron-restart          → restart the Coolify container (respawns
+#                                     the Laravel scheduler).
+#
+# cron-list is read-only. Neither of the other two touches application data:
+# they flip `enabled` in Coolify's own DB and bounce Coolify's own container.
+
 on:
   workflow_dispatch:
     inputs:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel]
+        options: [list, cancel, cron-list, cron-enable, cron-restart]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -83,3 +100,79 @@ jobs:
             fi
           done
           exit $rc
+
+      # ─── Scheduled-task ops (SSH into the Coolify host) ──────────────────
+      # Coolify keeps schedules in its own Postgres and exposes no API for them,
+      # so these steps go in over SSH. Each is guarded by `if:` so a run only
+      # does the one thing it was asked to.
+      - name: Set up SSH
+        if: startsWith(inputs.action, 'cron-')
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.HETZNER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "Key installed for ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}"
+
+      - name: List scheduled tasks + scheduler health
+        if: inputs.action == 'cron-list'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+        run: |
+          PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
+
+          echo "=== scheduled_tasks ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL 'select id, name, frequency, enabled, container_name, last_run_at from scheduled_tasks order by id;'" || echo "(query failed)"
+
+          echo ""
+          echo "=== scheduled_task_executions (10 most recent) ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL 'select scheduled_task_id, status, created_at from scheduled_task_executions order by created_at desc limit 10;'" || echo "(query failed)"
+
+          echo ""
+          echo "=== coolify containers ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker ps --filter name=coolify --format '{{.Names}}\t{{.Status}}'" || echo "(failed)"
+
+          echo ""
+          echo "=== scheduler/worker processes inside coolify container ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker exec coolify ps aux | grep -E 'schedule|horizon' | grep -v grep" || echo "(no schedule/horizon process found)"
+
+          echo ""
+          echo "=== scheduler mentions in laravel.log ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker exec coolify tail -300 /var/www/html/storage/logs/laravel.log | grep -iE 'schedul|cron' | tail -20" || echo "(nothing)"
+
+      - name: Re-enable disabled scheduled tasks
+        if: inputs.action == 'cron-enable'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+        run: |
+          PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
+
+          echo "=== before ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL 'select id, name, enabled from scheduled_tasks order by id;'"
+
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL 'update scheduled_tasks set enabled = true where enabled is distinct from true;'"
+
+          echo "=== after ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL 'select id, name, enabled from scheduled_tasks order by id;'"
+
+      - name: Restart Coolify (respawn scheduler)
+        if: inputs.action == 'cron-restart'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" "docker restart coolify"
+          sleep 30
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker ps --filter name=coolify --format '{{.Names}}\t{{.Status}}'"
+          echo ""
+          echo "=== scheduler process after restart ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker exec coolify ps aux | grep -E 'schedule|horizon' | grep -v grep" || echo "(none)"
