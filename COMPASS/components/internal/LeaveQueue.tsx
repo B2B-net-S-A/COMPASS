@@ -313,12 +313,14 @@ export function LeaveQueue({ requests }: Props) {
                                                         Custom Out of Office message
                                                     </p>
                                                 )}
-                                                {/* Phase 41 — flag the side-effect of approving: the
-                                                    employee's mail starts being copied to the substitute. */}
-                                                {req.substitute_full_name && (
+                                                {/* Phase 41c — akceptujący musi wiedzieć, na co się zgadza.
+                                                    Przekierowanie jest opt-in, więc pokazujemy je tylko wtedy,
+                                                    gdy pracownik faktycznie o nie poprosił — inaczej byłaby to
+                                                    obietnica skutku, który nie nastąpi. */}
+                                                {req.substitute_full_name && req.forward_mail_enabled && (
                                                     <p className="text-[10px] text-info mt-1 inline-flex items-center gap-1">
                                                         <Forward className="h-3 w-3" />
-                                                        Po akceptacji poczta będzie przekierowywana do zastępcy
+                                                        Pracownik prosi o przekazywanie poczty do zastępcy na czas urlopu
                                                     </p>
                                                 )}
                                                 {/* Phase 30 — pool snapshot dla B2B/zlecenie + UoP z pulą */}

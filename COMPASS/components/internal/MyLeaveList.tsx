@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, UserCheck, MailCheck, AlertTriangle, Forward } from 'lucide-react'
+import { Loader2, UserCheck, MailCheck, AlertTriangle } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
+import { ForwardToggle } from '@/components/internal/ForwardToggle'
 import { cancelMyLeaveRequest, type MyLeaveRow } from '@/lib/actions/internal-leave'
 
 interface Props {
@@ -175,18 +176,20 @@ export function MyLeaveList({ requests }: Props) {
                                                 )}
                                             </p>
                                         )}
-                                        {/* Phase 41 — mail forwarding to the substitute. Shown only
-                                            while a rule actually exists, so the employee always knows
-                                            when their inbox is being copied to somebody else. */}
-                                        {req.status === 'approved' && req.outlook_forward_rule_id && (
-                                            <p className="text-xs mt-1 inline-flex items-center gap-1">
-                                                <Forward className="h-3 w-3 text-success" />
-                                                <span className="text-success">
-                                                    Poczta przekierowywana do:{' '}
-                                                    {req.substitute_full_name ?? 'zastępcy'}
-                                                </span>
-                                            </p>
-                                        )}
+                                        {/* Phase 41c — stan przekierowania + własny wyłącznik.
+                                            Wcześniej była tu sama informacja; skoro reguła Outlooka
+                                            nie wygasa sama, a uzgodnienie potrafi nie przyjść,
+                                            pracownik musi móc ją zdjąć bez proszenia kogokolwiek. */}
+                                        {req.status !== 'cancelled' &&
+                                            req.status !== 'rejected' &&
+                                            req.substitute_id && (
+                                                <ForwardToggle
+                                                    leaveId={req.id}
+                                                    enabled={Boolean(req.forward_mail_enabled)}
+                                                    ruleActive={Boolean(req.outlook_forward_rule_id)}
+                                                    substituteName={req.substitute_full_name ?? null}
+                                                />
+                                            )}
                                     </div>
                                     {(() => {
                                         // H2.3: cancel button

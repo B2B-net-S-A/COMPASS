@@ -138,6 +138,12 @@ export type AuditAction =
     // Phase 41 — sweep removed a rule with no live leave behind it (an inbox rule
     // never expires by itself, so this is the backstop against forwarding forever)
     | 'LEAVE_FORWARD_ORPHAN_REMOVED'
+    // Phase 41c — somebody changed the INTENT to forward (opt-in at request time, or
+    // the manual on/off switch). Deliberately separate from LEAVE_FORWARD_SET /
+    // _DISABLED, which record what Graph actually did to the mailbox: the two diverge
+    // whenever Graph refuses, and telling "who asked" from "what happened" is the
+    // whole point of keeping both.
+    | 'LEAVE_FORWARD_PREFERENCE_SET'
     // Phase 41b — heartbeat for the forwarding reconcile cron. Emitted once at the
     // start and once at the end of every run. The forward half's outcome otherwise
     // lives only in the HTTP response, invisible in the DB; these rows are the sole

@@ -53,6 +53,22 @@ interface LeaveRow {
     end_date: string
     status: string
     outlook_forward_rule_id: string | null
+    forward_mail_enabled: boolean
+}
+
+/** Columns every pass needs. Kept in one place so the three queries cannot drift apart. */
+const LEAVE_COLUMNS =
+    'id, user_id, substitute_id, start_date, end_date, status, outlook_forward_rule_id, forward_mail_enabled'
+
+/** Row → the shape `shouldForwardBeActive` expects. */
+function windowInput(leave: LeaveRow) {
+    return {
+        status: leave.status,
+        substituteId: leave.substitute_id,
+        startDate: leave.start_date,
+        endDate: leave.end_date,
+        forwardMailEnabled: leave.forward_mail_enabled,
+    }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,8 +110,9 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
     // the next run instead of going unforwarded for its whole duration.
     const { data: toOpenRaw, error: openErr } = await admin
         .from('leave_requests')
-        .select('id, user_id, substitute_id, start_date, end_date, status, outlook_forward_rule_id')
+        .select(LEAVE_COLUMNS)
         .eq('status', 'approved')
+        .eq('forward_mail_enabled', true) // Phase 41c — opt-in only
         .not('substitute_id', 'is', null)
         .is('outlook_forward_rule_id', null)
         .lte('start_date', today)
@@ -139,7 +156,7 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
     // ─── Pass 2: close ───────────────────────────────────────────────────────
     const { data: toCloseRaw, error: closeErr } = await admin
         .from('leave_requests')
-        .select('id, user_id, substitute_id, start_date, end_date, status, outlook_forward_rule_id')
+        .select(LEAVE_COLUMNS)
         .not('outlook_forward_rule_id', 'is', null)
     if (closeErr) {
         stats.errors.push(`close query: ${closeErr.message}`)
@@ -147,18 +164,11 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
 
     for (const leave of (toCloseRaw ?? []) as LeaveRow[]) {
         // Re-use the single source of truth rather than re-deriving the condition:
-        // anything that should no longer be forwarding gets torn down here.
-        if (
-            shouldForwardBeActive(
-                {
-                    status: leave.status,
-                    substituteId: leave.substitute_id,
-                    startDate: leave.start_date,
-                    endDate: leave.end_date,
-                },
-                now,
-            )
-        ) {
+        // anything that should no longer be forwarding gets torn down here. Since
+        // Phase 41c that includes withdrawn consent, so this pass is also what
+        // executes a manual "switch it off" that the server action could not push
+        // to Graph at the time.
+        if (shouldForwardBeActive(windowInput(leave), now)) {
             continue
         }
         try {
@@ -173,7 +183,11 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
                 ruleId: leave.outlook_forward_rule_id as string,
                 userEmail,
                 actorUserId: null, // system
-                reason: leave.status === 'approved' ? 'leave_ended' : 'not_approved',
+                reason: !leave.forward_mail_enabled
+                    ? 'opted_out'
+                    : leave.status === 'approved'
+                      ? 'leave_ended'
+                      : 'not_approved',
                 auditExtra: { via: 'cron', target_user_id: leave.user_id },
             })
             if (ok) stats.closed++
@@ -186,23 +200,12 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
     // Built AFTER passes 1-2 so rules created moments ago count as legitimate.
     const { data: liveRaw } = await admin
         .from('leave_requests')
-        .select('id, user_id, substitute_id, start_date, end_date, status, outlook_forward_rule_id')
+        .select(LEAVE_COLUMNS)
         .not('outlook_forward_rule_id', 'is', null)
 
     const legitRuleByLeave = new Map<string, string>()
     for (const leave of (liveRaw ?? []) as LeaveRow[]) {
-        if (
-            leave.outlook_forward_rule_id &&
-            shouldForwardBeActive(
-                {
-                    status: leave.status,
-                    substituteId: leave.substitute_id,
-                    startDate: leave.start_date,
-                    endDate: leave.end_date,
-                },
-                now,
-            )
-        ) {
+        if (leave.outlook_forward_rule_id && shouldForwardBeActive(windowInput(leave), now)) {
             legitRuleByLeave.set(leave.id, leave.outlook_forward_rule_id)
         }
     }

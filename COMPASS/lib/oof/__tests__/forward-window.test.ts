@@ -16,6 +16,9 @@ function leave(overrides: Partial<ForwardWindowLeave> = {}): ForwardWindowLeave 
         substituteId: 'sub-1',
         startDate: '2026-07-20',
         endDate: '2026-07-24',
+        // Opt-in (Phase 41c). True in the fixture so the window cases below stay about
+        // dates and status; the consent cases override it explicitly.
+        forwardMailEnabled: true,
         ...overrides,
     }
 }
@@ -66,6 +69,31 @@ describe('warsawToday / warsawTomorrow', () => {
 describe('shouldForwardBeActive', () => {
     it('is active on a day inside the leave', () => {
         expect(shouldForwardBeActive(leave(), NOW)).toBe(true)
+    })
+
+    // ─── Phase 41c: consent ──────────────────────────────────────────────
+    it('stays inactive without consent, even mid-leave with a substitute', () => {
+        // The default for every leave. Naming a substitute is not permission to
+        // forward mail to them.
+        expect(shouldForwardBeActive(leave({ forwardMailEnabled: false }), NOW)).toBe(false)
+    })
+
+    it('withdrawing consent mid-leave closes the window', () => {
+        // This is the manual off-switch: the employee is back early, flips the toggle,
+        // and reconcile tears the rule down on the strength of this returning false.
+        const midLeave = new Date('2026-07-22T10:00:00Z')
+        expect(shouldForwardBeActive(leave(), midLeave)).toBe(true)
+        expect(shouldForwardBeActive(leave({ forwardMailEnabled: false }), midLeave)).toBe(false)
+    })
+
+    it('consent alone does not open the window outside the leave dates', () => {
+        // Consent gates forwarding; it never overrides the calendar.
+        expect(
+            shouldForwardBeActive(
+                leave({ startDate: '2026-08-01', endDate: '2026-08-05' }),
+                NOW,
+            ),
+        ).toBe(false)
     })
 
     it('does NOT open the day before the leave starts', () => {

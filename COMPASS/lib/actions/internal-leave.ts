@@ -93,6 +93,10 @@ export interface LeaveRequestRow {
     // NULL = brak aktywnego przekierowania. Reguła nie wygasa sama — kasuje ją
     // cancel/edycja albo cron (oof-reconcile), stąd potrzeba trwałego ID.
     outlook_forward_rule_id?: string | null
+    // Phase 41c — zgoda pracownika na przekierowanie (opt-in). Intencja; stan
+    // faktyczny reguły to outlook_forward_rule_id. Czyta się je razem: "chce
+    // przekierowania" vs "reguła faktycznie istnieje w skrzynce".
+    forward_mail_enabled?: boolean
     // Phase 30 — split płatny/bezpłatny (0/0 dla historycznych przed Phase 30
     // oraz dla non-vacation leave types out of scope of paid vacation pool).
     paid_days?: number
@@ -148,6 +152,12 @@ export interface CreateLeaveInput {
     substituteId?: string | null
     oofInternalMessage?: string | null
     oofExternalMessage?: string | null
+    /**
+     * Phase 41c — forward incoming mail to the substitute for the leave's duration.
+     * Opt-in: absent/false means the substitute is only named in the OOF reply, which
+     * is what picking one has meant since Phase 25. Ignored without a substitute.
+     */
+    forwardMail?: boolean
 }
 
 /**
@@ -568,6 +578,9 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
             substitute_id: input.substituteId ?? null,
             oof_internal_message: input.oofInternalMessage?.trim() || null,
             oof_external_message: input.oofExternalMessage?.trim() || null,
+            // Phase 41c — consent only counts alongside a substitute; without one there
+            // is nobody to forward to, and a stray true would confuse the admin panel.
+            forward_mail_enabled: Boolean(input.substituteId && input.forwardMail),
             created_by: ctx.userId,
             created_on_behalf: false,
             // Phase 30 — auto-split płatny (z puli) / bezpłatny.
@@ -750,9 +763,9 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
                 .catch((e) => logCompat.error('[cancelMyLeaveRequest] OOF disable failed:', e))
         }
 
-        // Phase 41 — tear down mail forwarding. Reachable even though only future
-        // leaves can be self-cancelled: the rule opens a day early, so a leave
-        // starting tomorrow already has one today.
+        // Phase 41 — tear down mail forwarding. Only future leaves can be
+        // self-cancelled and the window opens on the first day (Phase 41a), so a rule
+        // is rare here — but a leave cancelled on its own start date still has one.
         if (row.outlook_forward_rule_id) {
             closeForwardRule({
                 admin: createServiceClient(),
@@ -843,6 +856,8 @@ export interface CreateLeaveOnBehalfInput {
     halfDay?: 'morning' | 'afternoon' | null
     note?: string | null
     substituteId?: string | null
+    /** Phase 41c — opt-in mail forwarding to the substitute. See CreateLeaveInput. */
+    forwardMail?: boolean
 }
 
 /**
@@ -1011,6 +1026,11 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
             half_day: input.halfDay ?? null,
             note: input.note ?? null,
             substitute_id: isOngoingOrFuture ? (input.substituteId ?? null) : null,
+            // Phase 41c — mirrors the substitute above: a finished leave keeps neither,
+            // since there is nothing left to forward.
+            forward_mail_enabled: Boolean(
+                isOngoingOrFuture && input.substituteId && input.forwardMail,
+            ),
             status: 'approved',
             decided_by: ctx.userId,
             decided_at: new Date().toISOString(),
@@ -1151,6 +1171,7 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
         // Phase 41 — mail forwarding, only once the window is actually open. An
         // on-behalf leave is inserted already approved, so a leave that started
         // earlier this week gets its rule right away; a future one waits for the cron.
+        // Phase 41c — and only when the forwarding box was ticked.
         if (
             substituteEmail &&
             shouldForwardBeActive(
@@ -1159,6 +1180,7 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
                     substituteId: input.substituteId ?? null,
                     startDate: input.startDate,
                     endDate: input.endDate,
+                    forwardMailEnabled: Boolean(input.forwardMail),
                 },
                 new Date(),
             )
@@ -1622,7 +1644,7 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
     const { data: row, error } = await admin
         .from('leave_requests')
         .select(
-            'id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id, outlook_forward_rule_id',
+            'id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id, outlook_forward_rule_id, forward_mail_enabled',
         )
         .eq('id', input.id)
         .single<{
@@ -1636,6 +1658,7 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
             note: string | null
             substitute_id: string | null
             outlook_forward_rule_id: string | null
+            forward_mail_enabled: boolean
         }>()
     if (error || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'pending' && row.status !== 'approved') {
@@ -1739,6 +1762,9 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void
             substituteId: newSubstituteId,
             startDate: newStart,
             endDate: newEnd,
+            // Phase 41c — an edit never grants consent; it only carries over what the
+            // employee already agreed to. Turning forwarding on is its own action.
+            forwardMailEnabled: row.forward_mail_enabled,
         },
         new Date(),
     )
@@ -2019,7 +2045,7 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
         .select(`
             id, user_id, start_date, end_date, leave_type, half_day, note,
             documentation_url, status, decided_by, decided_at, decision_note, created_at,
-            substitute_id, oof_internal_message, oof_external_message,
+            substitute_id, oof_internal_message, oof_external_message, forward_mail_enabled,
             graph_oof_set, graph_oof_set_at, graph_sync_error,
             paid_days, unpaid_days,
             profiles:profiles!leave_requests_user_id_fkey(
@@ -2126,7 +2152,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
 
     const { data: row, error: fetchErr } = await admin
         .from('leave_requests')
-        .select('id, user_id, leave_type, start_date, end_date, status, substitute_id, oof_internal_message, oof_external_message')
+        .select('id, user_id, leave_type, start_date, end_date, status, substitute_id, oof_internal_message, oof_external_message, forward_mail_enabled')
         .eq('id', id)
         .single<
             Pick<
@@ -2140,6 +2166,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                 | 'substitute_id'
                 | 'oof_internal_message'
                 | 'oof_external_message'
+                | 'forward_mail_enabled'
             >
         >()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
@@ -2270,6 +2297,8 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
         // Deliberately NOT inside the OOF block: an inbox rule carries no schedule, so
         // it may only be created once the window is actually open. Approving a leave
         // that starts later leaves the rule to the daily cron.
+        // Phase 41c — gated on the employee's opt-in, carried on the row since they
+        // filed the request.
         if (
             substituteEmail &&
             shouldForwardBeActive(
@@ -2278,6 +2307,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                     substituteId: row.substitute_id ?? null,
                     startDate: row.start_date,
                     endDate: row.end_date,
+                    forwardMailEnabled: Boolean(row.forward_mail_enabled),
                 },
                 new Date(),
             )
@@ -3014,7 +3044,7 @@ export async function retryLeaveGraphSync(
         .select(`
             id, user_id, start_date, end_date, leave_type, status,
             substitute_id, oof_internal_message, oof_external_message,
-            outlook_event_id, outlook_forward_rule_id
+            outlook_event_id, outlook_forward_rule_id, forward_mail_enabled
         `)
         .eq('id', id)
         .single<{
@@ -3029,6 +3059,7 @@ export async function retryLeaveGraphSync(
             oof_external_message: string | null
             outlook_event_id: string | null
             outlook_forward_rule_id: string | null
+            forward_mail_enabled: boolean
         }>()
     if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
     if (row.status !== 'approved') {
@@ -3135,6 +3166,8 @@ export async function retryLeaveGraphSync(
                 substituteId: row.substitute_id,
                 startDate: row.start_date,
                 endDate: row.end_date,
+                // Phase 41c — retry re-creates what consent asked for, nothing more.
+                forwardMailEnabled: Boolean(row.forward_mail_enabled),
             },
             new Date(),
         )
@@ -3206,4 +3239,170 @@ export async function retryLeaveGraphSync(
         forward: forwardOk,
         error: errors.length > 0 ? errors.join('; ') : undefined,
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 41c — ręczne sterowanie przekierowaniem poczty
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SetLeaveMailForwardResult {
+    /** Intencja po zmianie — to, co widzi UI. */
+    enabled: boolean
+    /** Czy reguła faktycznie istnieje teraz w skrzynce (po próbie synchronizacji). */
+    ruleActive: boolean
+    /**
+     * Ustawione, gdy intencja została zapisana, ale Graph nie wykonał operacji.
+     * UI pokazuje to jako ostrzeżenie — preferencja żyje w bazie i uzgodnienie
+     * dokończy pracę później.
+     */
+    warning?: string
+}
+
+/**
+ * Włącz lub wyłącz przekierowanie poczty do zastępcy dla konkretnego urlopu.
+ *
+ * Sedno Phase 41c. Reguła Outlooka nie ma warunków czasowych, więc ktoś musi ją
+ * otworzyć i zamknąć — a uzgodnienie, które miało to robić, jest zakładnikiem
+ * harmonogramu (weryfikacja 2026-07-27: crony tej instancji nie wykonują się).
+ * Ta akcja rozmontowuje tę zależność: zmiana intencji od razu idzie do Graph,
+ * więc pracownik może odciąć przekierowanie w sekundę, nie czekając na nic.
+ *
+ * Zapis do bazy jest pierwszy i nie zależy od Graph. Gdyby Graph odmówił,
+ * intencja i tak jest utrwalona, a pass 2 uzgodnienia dokończy — nigdy odwrotnie,
+ * bo utrwalona zgoda bez reguły jest nieszkodliwa, a żywa reguła bez zgody nie jest.
+ *
+ * Uprawnienia: właściciel urlopu, jego manager lub admin. Manager świadomie może
+ * wyłączyć: gdy pracownik jest nieosiągalny, ktoś musi móc zatrzymać wyciek poczty.
+ */
+export async function setLeaveMailForward(
+    leaveId: string,
+    enabled: boolean,
+): Promise<SetLeaveMailForwardResult> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+
+    const { data: row, error: fetchErr } = await admin
+        .from('leave_requests')
+        .select(
+            'id, user_id, status, start_date, end_date, substitute_id, outlook_forward_rule_id, forward_mail_enabled',
+        )
+        .eq('id', leaveId)
+        .single<{
+            id: string
+            user_id: string
+            status: LeaveStatus
+            start_date: string
+            end_date: string
+            substitute_id: string | null
+            outlook_forward_rule_id: string | null
+            forward_mail_enabled: boolean
+        }>()
+    if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
+
+    // Właściciel zawsze; poza tym admin lub manager pracownika.
+    if (row.user_id !== ctx.userId) {
+        await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
+    }
+
+    if (enabled && !row.substitute_id) {
+        throw new Error(
+            'Najpierw wskaż zastępcę — bez niego nie ma komu przekazywać poczty.',
+        )
+    }
+
+    const { error: updErr } = await admin
+        .from('leave_requests')
+        .update({ forward_mail_enabled: enabled } as never)
+        .eq('id', leaveId)
+    if (updErr) throw new Error(`Nie udało się zapisać ustawienia: ${updErr.message}`)
+
+    await logAudit(ctx.userId, 'LEAVE_FORWARD_PREFERENCE_SET', {
+        leave_id: leaveId,
+        target_user_id: row.user_id,
+        enabled,
+        via: row.user_id === ctx.userId ? 'self' : 'manager',
+    })
+
+    const contact = await fetchUserContact(row.user_id)
+    if (!contact?.email) {
+        return {
+            enabled,
+            ruleActive: Boolean(row.outlook_forward_rule_id),
+            warning: 'Nie znaleziono adresu e-mail pracownika — ustawienie zapisane, skrzynka nietknięta.',
+        }
+    }
+
+    // ─── Wyłączanie: skasuj regułę, jeśli jakąś znamy ────────────────────
+    if (!enabled) {
+        if (!row.outlook_forward_rule_id) return { enabled: false, ruleActive: false }
+
+        const closed = await closeForwardRule({
+            admin,
+            leaveId,
+            ruleId: row.outlook_forward_rule_id,
+            userEmail: contact.email,
+            actorUserId: ctx.userId,
+            reason: 'opted_out',
+            auditExtra: { via: 'manual_toggle', target_user_id: row.user_id },
+        })
+        return closed
+            ? { enabled: false, ruleActive: false }
+            : {
+                  enabled: false,
+                  ruleActive: true,
+                  warning:
+                      'Przekierowanie wyłączone w COMPASS, ale Outlook odrzucił usunięcie reguły. '
+                      + 'Zostanie usunięta przy najbliższym uzgodnieniu — jeśli to pilne, skasuj ją '
+                      + 'w Outlooku (Ustawienia → Poczta → Reguły).',
+              }
+    }
+
+    // ─── Włączanie: reguła tylko wtedy, gdy okno jest otwarte ────────────
+    // Poza oknem zapisana zgoda wystarcza — regułę założy uzgodnienie w dniu startu.
+    const windowOpen = shouldForwardBeActive(
+        {
+            status: row.status,
+            substituteId: row.substitute_id,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            forwardMailEnabled: true,
+        },
+        new Date(),
+    )
+    if (!windowOpen || row.outlook_forward_rule_id) {
+        return { enabled: true, ruleActive: Boolean(row.outlook_forward_rule_id) }
+    }
+
+    const { data: sub } = await admin
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', row.substitute_id as string)
+        .maybeSingle<{ full_name: string | null; email: string }>()
+    if (!sub?.email) {
+        return {
+            enabled: true,
+            ruleActive: false,
+            warning: 'Nie znaleziono adresu e-mail zastępcy — przekierowania nie założono.',
+        }
+    }
+
+    const opened = await openForwardRule({
+        admin,
+        leaveId,
+        userEmail: contact.email,
+        substituteEmail: sub.email,
+        substituteName: sub.full_name ?? sub.email,
+        actorUserId: ctx.userId,
+        targetUserId: row.user_id,
+        auditExtra: { via: 'manual_toggle' },
+    })
+    return opened
+        ? { enabled: true, ruleActive: true }
+        : {
+              enabled: true,
+              ruleActive: false,
+              warning:
+                  'Zapisano zgodę, ale Outlook nie założył reguły. Ponowna próba nastąpi '
+                  + 'przy najbliższym uzgodnieniu.',
+          }
 }
