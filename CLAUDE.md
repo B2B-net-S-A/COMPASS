@@ -1135,6 +1135,84 @@ więc kanonizacja obejmuje też `external_key` i `contractors.current_client`. N
 `support_inbox_meta`, `profiles.previous_clients` · literówki w samej tabeli `clients` („PEFRON",
 „Mnisterstwo") · `client_departures.manager_raw` (manager po stronie klienta, nie nasza pula osób).
 
+## Phase 43 — Archiwizacja pracownika naprawdę archiwizuje (PR #272, #290, #292, 2026-07-27)
+
+Do lipca 2026 archiwizacja pracownika (`employment_status='exited'`) była **wyłącznie kosmetyką
+po stronie UI**, i to dziurawą. Kalendarz zespołu pokazywał osoby, które odeszły miesiące temu,
+bo składał listę wyłącznie po `role` — a archiwizacja roli nie zmienia. Audyt wszystkich 274
+zapytań do `profiles` pokazał, że kalendarz nie był wyjątkiem, tylko jedynym miejscem, gdzie
+akurat było to widać.
+
+### KRYTYCZNE: archiwizacja odbiera dostęp do aplikacji
+
+Kliknięcie **Archiwizuj** w Administracji HR od 2026-07-27 **natychmiast odcina człowiekowi
+logowanie**. Wcześniej konto dalej przechodziło autoryzację — nigdzie w middleware ani
+w guardach nie sprawdzaliśmy `employment_status`, więc broniło nas tylko wyłączenie konta
+w M365. To cudza procedura poza COMPASS-em, która w dodatku **nie dotyczy logowania hasłem**
+(konsultanci spoza `@b2bnetwork.pl` nie mają M365).
+
+Reguła siedzi w [`lib/auth/employment-access.ts`](COMPASS/lib/auth/employment-access.ts).
+Trzy warstwy egzekucji, bo każda łapie co innego:
+
+| Warstwa | Co obejmuje | Czego nie |
+|---|---|---|
+| `app/auth/callback/route.ts` + `app/login/actions.ts` | Odrzuca zanim powstanie sesja | Sesji już otwartych |
+| `middleware.ts` | Każde żądanie → pada sesja otwarta w chwili archiwizacji. **Jedyna warstwa obejmująca server actions** (POST na ścieżkę strony), więc stara karta nie wywoła akcji | `/api/**` — wycięte z matchera |
+| `lib/api/with-auth.ts` | Route'y user-facing pod `/api/**` | — |
+
+**Blokuje `exited`, NIE `termination_date < dziś`.** Offboarding trwa po ostatnim dniu pracy —
+pracownik ma jeszcze wypełnić exit interview, a datę zejścia wpisuje się z wyprzedzeniem.
+Do tego literówka w dacie zamykałaby dostęp żywemu pracownikowi. Blokuje więc jawny akt
+archiwizacji. **`offboarding` przechodzi wszędzie.**
+
+**Brak statusu / brak profilu NIE blokuje.** Gdyby odczyt profilu padł albo trafił na świeże
+konto bez wiersza, blokada „na wszelki wypadek" wylogowałaby całą firmę.
+
+**Wylogowanie jest best-effort** — gdyby `signOut()` padł, blokada i tak trzyma, bo middleware
+przelicza ją przy każdym żądaniu. Bezpieczeństwo nie stoi na powodzeniu czyszczenia ciasteczek.
+
+`needsProfile` w middleware rozszerzone z listy ścieżek na **każdą niepubliczną** — inaczej
+blokada miałaby dziury tam, gdzie akurat nie potrzebowaliśmy roli (`/messages`, `/profile`,
+`/documents` ten SELECT pomijały). Koszt: jeden lookup po PK. Wszystkie redirecty zależne od
+roli są path-scoped, więc szerszy fetch nie zmienia niczego poza samą blokadą.
+
+### DWIE REGUŁY filtrowania list ludzi — łatwo ujednolicić w złą stronę
+
+Dodając zapytanie do `profiles` zwracające wielu ludzi, wybierz świadomie:
+
+- **Listy „tu i teraz"** (adresaci komunikatora, dropdowny przypisania, rozsyłki powiadomień,
+  crony mailowe) → `.neq('employment_status', 'exited')`. Tak robią już payroll, stawki,
+  premie, placementy, urlop za pracownika, kolejka timesheetów.
+- **Widoki i raporty miesięczne** (kalendarz zespołu, `payroll-export`) →
+  `filterEmployedInMonth` z [`lib/hr/employment-window.ts`](COMPASS/lib/hr/employment-window.ts),
+  czyli „czy pracował w TYM miesiącu". Człowiek wypada dopiero od miesiąca PO ostatnim dniu pracy.
+
+**Oba kierunki błędu bolą.** Ślepe `neq('exited')` w raporcie miesięcznym wycina kogoś
+z miesiąca, który przepracował — kto odszedł 20-go, **musi** zostać w payrollu za ten miesiąc.
+Brak filtra w liście zostawia archiwum na zawsze — dokładnie to robił kalendarz.
+
+Naprawione w #290 (11 miejsc): komunikator (`getAllUsersToMessage`, `searchUsersToMessage` —
+jedyny **żywy** wyciek, reszta nie strzelała przez zbieg okoliczności), crony
+`timesheet-reminder` i `clock-daily-summary`, `payroll-export`, `listManagerCandidates`,
+dropdowny TCM (`listTcmProfiles`, `loadTcmOptions`, ticket→zadanie w inboxie, planner),
+`listHandlers` skrzynki, powiadomienia przy publikacji newsa.
+
+**Celowo pokazują archiwum:** Administracja HR → Pracownicy (jawny filtr Aktywni / Nieaktywni /
+Wszyscy, domyślnie Aktywni), `/internal/lifecycle` (archiwum), People Ops.
+
+### Poza zakresem (znane, świadomie nietknięte)
+
+- **Brak backingu RLS** — wszystkie filtry są app-layer. Uwierzytelniony użytkownik odpytujący
+  `profiles` bezpośrednio nadal zobaczy zarchiwizowanych. Zgodne z resztą architektury.
+- **`people-sync.ts` nie wykrywa odejść** — wyłączone konto w Graph nie ustawia `exited`,
+  archiwizacja zostaje aktem ręcznym w Administracji HR.
+- **Konta `pending`** (zaproszone, jeszcze nie zaczęły) nie są wykluczane z rozsyłek.
+- **`listProposableRecipients`** ([internal-bonus.ts](COMPASS/lib/actions/internal-bonus.ts)) —
+  martwy kod po Phase 23, zero wywołań.
+- `?error=account_archived` w URL-u ujawnia istnienie konta. Świadomie: przy SSO Microsoft
+  odrzuca wcześniej, a generyczny komunikat kazałby komuś błędnie zarchiwizowanemu myśleć,
+  że aplikacja jest zepsuta, zamiast pójść do HR.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
