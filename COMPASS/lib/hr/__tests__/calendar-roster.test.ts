@@ -60,6 +60,18 @@ describe('isOnCalendarRosterForMonth', () => {
         ).toBe(true)
     })
 
+    it('keeps an offboarding employee whose last day is not settled yet', () => {
+        // Offboarding starts before the termination date is always known. Until
+        // someone records that date they are still employed, still on the team,
+        // and their leaves still matter — so they stay on the grid.
+        expect(
+            isOnCalendarRosterForMonth(
+                { employment_status: 'offboarding', termination_date: null },
+                JULY,
+            ),
+        ).toBe(true)
+    })
+
     it('hides a legacy exited row that has no termination date', () => {
         expect(
             isOnCalendarRosterForMonth({ employment_status: 'exited', termination_date: null }, JULY),
