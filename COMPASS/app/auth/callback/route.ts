@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { syncRole } from "@/lib/auth/sync-role";
+import { ARCHIVED_ACCOUNT_ERROR_CODE, isArchivedAccount } from "@/lib/auth/employment-access";
 import { syncProfileFromGraph } from "@/lib/m365/people-sync";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -47,9 +48,19 @@ export async function GET(request: Request) {
         if (user?.email) {
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('role')
+                .select('role, employment_status')
                 .eq('id', user.id)
                 .single();
+
+            // Zarchiwizowanego pracownika odrzucamy w drzwiach — zanim
+            // zsynchronizujemy rolę czy dociągniemy cokolwiek z Graph.
+            // Middleware złapałby go i tak, ale wtedy zdążyłby dostać sesję.
+            if (isArchivedAccount(profile?.employment_status as string | undefined)) {
+                await supabase.auth.signOut();
+                logger.warn({ event: 'auth.callback.archived_account_blocked', userId: user.id });
+                return NextResponse.redirect(`${origin}/login?error=${ARCHIVED_ACCOUNT_ERROR_CODE}`);
+            }
+
             const currentRole = profile?.role ?? 'consultant';
             try {
                 syncedRole = await syncRole(supabase, user.id, user.email, currentRole);

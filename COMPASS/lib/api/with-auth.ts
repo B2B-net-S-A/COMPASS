@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { isArchivedAccount } from '@/lib/auth/employment-access'
 import type { DbRole } from '@/lib/types/role'
 
 // Phase 18.7: ujednolicony auth wrapper dla API routes (/api/**).
@@ -90,17 +91,22 @@ export function withAuth(handler: AuthHandler, opts: WithAuthOpts = {}) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        let role: DbRole | null = null
+        // Profil pobierany ZAWSZE, nie tylko gdy `opts.role` jest ustawione:
+        // matcher middleware wycina `/api`, więc to jedyne miejsce, w którym
+        // route'y user-facing mogą odrzucić zarchiwizowane konto.
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, employment_status')
+            .eq('id', user.id)
+            .maybeSingle()
+
+        if (isArchivedAccount(profile?.employment_status as string | undefined)) {
+            return NextResponse.json({ error: 'Account archived' }, { status: 403 })
+        }
+
+        const role: DbRole | null = (profile?.role as DbRole | undefined) ?? null
 
         if (opts.role) {
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', user.id)
-                .maybeSingle()
-
-            role = (profile?.role as DbRole | undefined) ?? null
-
             const allowed = Array.isArray(opts.role) ? opts.role : [opts.role]
             if (!role || !allowed.includes(role)) {
                 return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

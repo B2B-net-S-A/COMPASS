@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
+import { ARCHIVED_ACCOUNT_ERROR_CODE, isArchivedAccount } from '@/lib/auth/employment-access'
 
 export async function middleware(request: NextRequest) {
     const response = NextResponse.next({
@@ -42,26 +43,48 @@ export async function middleware(request: NextRequest) {
 
         // Single profile fetch — wcześniej były 2 osobne SELECT-y dla /internal guard
         // i onboarding gate. Łączymy w jeden żeby zmniejszyć latency edge.
-        const needsProfile = pathname.startsWith('/internal')
-            || pathname === '/home'
-            || pathname.startsWith('/learning')
-            || pathname.startsWith('/league')
-            || pathname.startsWith('/incubator')
-            || pathname.startsWith('/news')
-            || pathname.startsWith('/support')
-            || pathname.startsWith('/admin')
-            || (!isPublicPath && !isOnboarding && !onboardingDone)
+        //
+        // Zakres rozszerzony z listy ścieżek na "każda niepubliczna": blokada
+        // zarchiwizowanych kont niżej musi działać WSZĘDZIE, a nie tylko tam,
+        // gdzie akurat potrzebowaliśmy roli (/messages, /profile, /documents
+        // wcześniej ten SELECT pomijały). Koszt to jeden lookup po PK na tych
+        // ścieżkach — cena za to, żeby blokada nie miała dziur.
+        const needsProfile = !isPublicPath
 
         let role: string | undefined
         let onboardingCompleted: boolean | undefined
+        let employmentStatus: string | undefined
         if (needsProfile) {
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('role, onboarding_completed')
+                .select('role, onboarding_completed, employment_status')
                 .eq('id', user.id)
                 .single()
             role = profile?.role as string | undefined
             onboardingCompleted = profile?.onboarding_completed as boolean | undefined
+            employmentStatus = profile?.employment_status as string | undefined
+        }
+
+        // Zarchiwizowany pracownik traci dostęp natychmiast — także z sesją,
+        // którą miał otwartą w chwili archiwizacji. To jedyna warstwa, przez
+        // którą przechodzą też server actions (POST na ścieżkę strony), więc
+        // stara karta w przeglądarce nie może dalej wołać akcji.
+        //
+        // Wylogowanie jest best-effort: gdyby signOut padł, blokada i tak
+        // trzyma, bo middleware liczy ją przy KAŻDYM żądaniu.
+        if (isArchivedAccount(employmentStatus)) {
+            try {
+                await supabase.auth.signOut()
+            } catch {
+                // Sesja i tak jest martwa z punktu widzenia aplikacji.
+            }
+            const loginUrl = new URL('/login', request.url)
+            loginUrl.searchParams.set('error', ARCHIVED_ACCOUNT_ERROR_CODE)
+            const archivedResponse = NextResponse.redirect(loginUrl)
+            // signOut czyści ciasteczka przez setAll na `response`; przenosimy je
+            // na odpowiedź przekierowującą, bo to ona wraca do przeglądarki.
+            response.cookies.getAll().forEach((cookie) => archivedResponse.cookies.set(cookie))
+            return archivedResponse
         }
 
         // Phase 20: HR-zone roles (everyone EXCEPT consultant IT).

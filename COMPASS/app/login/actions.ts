@@ -10,6 +10,7 @@ import { cookies } from 'next/headers'
 
 import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
 import { syncRole } from '@/lib/auth/sync-role'
+import { ARCHIVED_ACCOUNT_MESSAGE_PL, isArchivedAccount } from '@/lib/auth/employment-access'
 import { logger } from '@/lib/logger'
 
 // ─── Friendly Error Messages ────────────────────────────────────────────────
@@ -136,9 +137,17 @@ export async function login(formData: FormData) {
     // 3. Get current profile role + onboarding status
     const { data: profile } = await supabase
         .from('profiles')
-        .select('role, onboarding_completed')
+        .select('role, onboarding_completed, employment_status')
         .eq('id', user.id)
         .single()
+
+    // Ścieżka hasłowa to konsultanci spoza @b2bnetwork.pl — ich kont NIE
+    // wyłącza M365, więc bez tej blokady archiwizacja nic by im nie odbierała.
+    if (isArchivedAccount(profile?.employment_status as string | undefined)) {
+        await supabase.auth.signOut()
+        logger.warn({ event: 'auth.login.archived_account_blocked', userId: user.id })
+        return { error: ARCHIVED_ACCOUNT_MESSAGE_PL }
+    }
 
     const currentRole = profile?.role || 'consultant'
 
