@@ -8,6 +8,7 @@ import { KontraktorzyTabPanel } from '@/components/internal/people/KontraktorzyT
 import { SprawyTabPanel } from '@/components/internal/people/SprawyTabPanel'
 import { AnalitykaTabPanel } from '@/components/internal/people/AnalitykaTabPanel'
 import { SzablonyTabPanel } from '@/components/internal/people/SzablonyTabPanel'
+import { DEPARTURE_PERIODS, type DeparturePeriod } from '@/lib/contractors/departure-analytics'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +29,9 @@ interface PageProps {
         tab?: string
         year?: string
         month?: string
+        period?: string
+        client?: string
+        recruiter?: string
     }
 }
 
@@ -39,6 +43,12 @@ export default async function PeopleOpsPage({ searchParams }: PageProps) {
     const now = new Date()
     const year = clampInt(searchParams?.year, now.getFullYear(), 2020, 2100)
     const month = clampInt(searchParams?.month, now.getMonth() + 1, 1, 12)
+
+    // Filtry analityki zejść — okres z białej listy, klient/rekruter przekazywane dosłownie
+    // (dopasowanie do wartości ze słownika robi już akcja).
+    const period = DEPARTURE_PERIODS.includes(searchParams?.period as DeparturePeriod)
+        ? (searchParams!.period as DeparturePeriod)
+        : undefined
 
     return (
         <div className="space-y-6">
@@ -56,7 +66,9 @@ export default async function PeopleOpsPage({ searchParams }: PageProps) {
             {tab === 'exit' && <ExitTabPanel />}
             {tab === 'kontraktorzy' && <KontraktorzyTabPanel />}
             {tab === 'sprawy' && <SprawyTabPanel />}
-            {tab === 'analityka' && <AnalitykaTabPanel />}
+            {tab === 'analityka' && (
+                <AnalitykaTabPanel period={period} client={searchParams?.client} recruiter={searchParams?.recruiter} />
+            )}
             {tab === 'szablony' && <SzablonyTabPanel />}
         </div>
     )
