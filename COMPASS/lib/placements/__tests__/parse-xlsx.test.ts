@@ -54,6 +54,19 @@ describe('parsePlacementsWorkbook', () => {
         })
     })
 
+    it('odrzuca wiersz, gdzie rekruter/DL to znacznik „nikt" (Phase 42a)', async () => {
+        const buf = await buildBuffer([
+            ['Jan Bezdl', 'NORDEA', '-', 'Tester', 100, 140, 40, 6720, '2026-02-12', '2026-04-15', 'ND'],
+        ])
+        const res = await parsePlacementsWorkbook(buf)
+        // „-" przechodziłoby surową kontrolę wymaganych pól i wywalało się dopiero przy
+        // dopasowaniu profilu — kontrola działa na wartości po normalizacji.
+        expect(res.rows).toHaveLength(0)
+        expect(res.scannedRows).toBe(1) // wiersz widziany, nie „po cichu pusty"
+        expect(res.errors.join(' ')).toMatch(/brak DL/)
+        expect(res.errors.join(' ')).toMatch(/brak rekrutera/)
+    })
+
     it('reports rows missing a start date and excludes them', async () => {
         const buf = await buildBuffer([
             ['Brak Startu', 'NORDEA', 'DL X', 'Pos', 100, 140, 40, 6720, '2026-02-12', '', 'Rec Y'],

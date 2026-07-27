@@ -51,6 +51,11 @@ describe('normalizeClientName', () => {
         expect(normalizeClientName('Frontex / Atos')).toBe('Frontex / Atos')
     })
 
+    it('znosi null/undefined bez wyjątku', () => {
+        expect(normalizeClientName(null)).toBe('')
+        expect(normalizeClientName(undefined)).toBe('')
+    })
+
     it('nieznane nazwy zostawia z oryginalną pisownią, tylko przycięte', () => {
         expect(normalizeClientName('  Bank   Pocztowy ')).toBe('Bank Pocztowy')
         expect(normalizeClientName('PFRON')).toBe('PFRON')
@@ -92,8 +97,8 @@ describe('normalizeStaffName', () => {
     })
 
     it('znaczniki „brak" dają null zamiast fałszywej osoby w statystykach', () => {
-        for (const marker of [null, undefined, '', '   ', '-', '--', '—', 'ND', 'nd.', 'brak', 'n/a']) {
-            expect(normalizeStaffName(marker)).toBeNull()
+        for (const marker of [null, undefined, '', '   ', '-', '--', '—', '–', 'ND', 'nd', 'nd.', 'brak', 'n/a', 'x', 'X']) {
+            expect(normalizeStaffName(marker), `marker ${JSON.stringify(marker)}`).toBeNull()
         }
     })
 

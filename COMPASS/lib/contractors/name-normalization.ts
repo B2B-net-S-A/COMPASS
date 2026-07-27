@@ -99,8 +99,8 @@ export const STAFF_ALIASES: Readonly<Record<string, string>> = {
 const EMPTY_PERSON_MARKERS = new Set(['-', '--', '—', '–', 'brak', 'n/a', 'nd', 'nd.', 'x'])
 
 /** Kanoniczna nazwa klienta. Nieznane nazwy wracają przycięte, z zachowaną pisownią. */
-export function normalizeClientName(raw: string): string {
-    const collapsed = raw.trim().replace(/\s+/g, ' ')
+export function normalizeClientName(raw: string | null | undefined): string {
+    const collapsed = (raw ?? '').trim().replace(/\s+/g, ' ')
     return CLIENT_ALIASES[lookupKey(collapsed)] ?? collapsed
 }
 
