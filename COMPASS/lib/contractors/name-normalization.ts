@@ -26,7 +26,8 @@ function lookupKey(raw: string): string {
  * Stąd wersaliki w ATOS/BOSCH/ERGO/NORI/ORLEN/XPERI i małe „e-zdrowie".
  *
  * Świadomie NIE scalane (osobne byty biznesowe, mimo podobieństwa):
- *   • „Cardif" i „BNP Paribas Cardif" — spółka ubezpieczeniowa grupy, nie bank,
+ *   • „BNP Paribas Cardif" ≠ „BNP Paribas" — spółka ubezpieczeniowa grupy, nie bank
+ *     (własne warianty „Cardif" / „BNP Cardif" scalamy w pełną nazwę),
  *   • „Centrum e-Zdrowia" — instytucja (CeZ), obok projektowego „e-zdrowie",
  *   • „BOSCH/Nordea", „Frontex / Atos" — kontrakty dzielone między dwóch klientów.
  */
@@ -49,8 +50,10 @@ export const CLIENT_ALIASES: Readonly<Record<string, string>> = {
     'bnp': 'BNP Paribas',
     'bnp paribas': 'BNP Paribas',
     // Spółka ubezpieczeniowa grupy — osobny byt od banku, ale jej własne warianty scalamy.
+    'cardif': 'BNP Paribas Cardif',
     'bnp cardif': 'BNP Paribas Cardif',
     'bnp paribas cardif': 'BNP Paribas Cardif',
+    'metlife': 'MetLife',
     'pko': 'PKO BP',
     'pko bp': 'PKO BP',
     'nationale': 'Nationale Nederlanden',
