@@ -48,6 +48,9 @@ export const CLIENT_ALIASES: Readonly<Record<string, string>> = {
     'alior bank': 'Alior',
     'bnp': 'BNP Paribas',
     'bnp paribas': 'BNP Paribas',
+    // Spółka ubezpieczeniowa grupy — osobny byt od banku, ale jej własne warianty scalamy.
+    'bnp cardif': 'BNP Paribas Cardif',
+    'bnp paribas cardif': 'BNP Paribas Cardif',
     'pko': 'PKO BP',
     'pko bp': 'PKO BP',
     'nationale': 'Nationale Nederlanden',
