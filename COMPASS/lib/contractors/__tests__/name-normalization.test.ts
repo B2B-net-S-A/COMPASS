@@ -43,9 +43,14 @@ describe('normalizeClientName', () => {
         expect(normalizeClientName('m-leasing')).toBe('mLeasing')
     })
 
+    it('scala warianty spółki ubezpieczeniowej, ale nie miesza jej z bankiem', () => {
+        expect(normalizeClientName('BNP Cardif')).toBe('BNP Paribas Cardif')
+        expect(normalizeClientName('BNP Paribas Cardif')).toBe('BNP Paribas Cardif')
+        expect(normalizeClientName('BNP')).toBe('BNP Paribas') // bank zostaje bankiem
+    })
+
     it('NIE scala osobnych bytów biznesowych', () => {
         expect(normalizeClientName('Cardif')).toBe('Cardif')
-        expect(normalizeClientName('BNP Paribas Cardif')).toBe('BNP Paribas Cardif')
         expect(normalizeClientName('Centrum e-Zdrowia')).toBe('Centrum e-Zdrowia')
         expect(normalizeClientName('BOSCH/Nordea')).toBe('BOSCH/Nordea')
         expect(normalizeClientName('Frontex / Atos')).toBe('Frontex / Atos')
