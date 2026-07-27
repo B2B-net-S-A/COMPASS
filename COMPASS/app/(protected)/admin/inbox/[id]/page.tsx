@@ -48,7 +48,7 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
     let taskContractors: Array<{ id: string; full_name: string }> = []
     if (canCreateTask) {
         const [{ data: tcm }, { data: cs }] = await Promise.all([
-            supabase.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']).order('full_name'),
+            supabase.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']).neq('employment_status', 'exited').order('full_name'),
             supabase.from('contractors').select('id, full_name').order('full_name'),
         ])
         taskTcmProfiles = ((tcm ?? []) as Array<{ id: string; full_name: string | null }>).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))
