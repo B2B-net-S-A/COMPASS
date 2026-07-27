@@ -6,7 +6,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 let mockUser: { id: string; email: string | null } | null = null
-let mockProfile: { role: string } | null = null
+let mockProfile: { role: string; employment_status?: string } | null = null
 
 vi.mock('@/lib/supabase/server', () => ({
     createClient: () => ({
@@ -144,6 +144,35 @@ describe('withAuth', () => {
         const handler = vi.fn(async () => new Response('ok'))
         const res = await withAuth(handler, { role: ['admin', 'internal'] })(mockRequest())
         expect(res.status).toBe(403)
+    })
+
+    it('returns 403 for an archived account even with no role requirement', async () => {
+        // /api/** jest wycięte z matchera middleware, więc to jedyne miejsce,
+        // w którym zarchiwizowane konto może zostać odrzucone na API.
+        mockUser = { id: 'u1', email: 'a@b.com' }
+        mockProfile = { role: 'internal', employment_status: 'exited' }
+        const handler = vi.fn(async () => new Response('ok'))
+        const res = await withAuth(handler)(mockRequest())
+        expect(res.status).toBe(403)
+        expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('returns 403 for an archived account whose role would otherwise pass', async () => {
+        mockUser = { id: 'u1', email: 'a@b.com' }
+        mockProfile = { role: 'admin', employment_status: 'exited' }
+        const handler = vi.fn(async () => new Response('ok'))
+        const res = await withAuth(handler, { role: 'admin' })(mockRequest())
+        expect(res.status).toBe(403)
+        expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('lets an offboarding account through — still employed until the last day', async () => {
+        mockUser = { id: 'u1', email: 'a@b.com' }
+        mockProfile = { role: 'internal', employment_status: 'offboarding' }
+        const handler = vi.fn(async () => new Response('ok'))
+        const res = await withAuth(handler)(mockRequest())
+        expect(res.status).toBe(200)
+        expect(handler).toHaveBeenCalledOnce()
     })
 
     it('passes user + role to handler', async () => {

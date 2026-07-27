@@ -8,6 +8,7 @@ import { AlertCircle, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { AuthShell } from '@/components/blocks/AuthShell'
 import Link from 'next/link'
 import { login, signup, signInWithMicrosoft } from './actions'
+import { ARCHIVED_ACCOUNT_ERROR_CODE, ARCHIVED_ACCOUNT_MESSAGE_PL } from '@/lib/auth/employment-access'
 
 // ─── Loading Step Messages ──────────────────────────────────────────────────
 const LOADING_STEPS = [
@@ -59,6 +60,8 @@ export default function LoginPage() {
         const err = params.get('error')
         if (err === 'domain_not_allowed') {
             setError('Logowanie przez Microsoft jest dostępne tylko dla kont @b2bnetwork.pl.')
+        } else if (err === ARCHIVED_ACCOUNT_ERROR_CODE) {
+            setError(ARCHIVED_ACCOUNT_MESSAGE_PL)
         } else if (err === 'auth_failed') {
             setError('Logowanie nie powiodło się. Spróbuj ponownie.')
         }
