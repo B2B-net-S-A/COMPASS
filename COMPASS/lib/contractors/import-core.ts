@@ -72,6 +72,15 @@ export function resolveTcmId(rawName: string | null | undefined, tcmProfiles: Re
     return resolveProfileId(rawName, tcmProfiles, new Map(), 0.9)
 }
 
+/**
+ * Postgres unique_violation.
+ *
+ * Reaching this is not a bug: `contractors` is unique on lower(trim(full_name)), and
+ * two imports running at once (the daily cron and someone pressing Import in the UI)
+ * can both decide the same person is missing. The constraint settles it.
+ */
+const PG_UNIQUE_VIOLATION = '23505'
+
 async function loadContractorMap(admin: ServiceClient): Promise<Map<string, string>> {
     const { data } = await admin.from('contractors').select('id, full_name')
     const map = new Map<string, string>()
@@ -107,10 +116,52 @@ export async function ensureContractors(
     for (let i = 0; i < rows.length; i += 200) {
         const chunk = rows.slice(i, i + 200)
         const { data, error } = await admin.from('contractors').insert(chunk).select('id, full_name')
-        if (error) throw new Error(`Nie udało się utworzyć kontraktorów: ${error.message}`)
-        for (const c of (data ?? []) as Array<{ id: string; full_name: string }>) {
-            map.set(normalizePersonName(c.full_name), c.id)
-            created += 1
+        if (!error) {
+            for (const c of (data ?? []) as Array<{ id: string; full_name: string }>) {
+                map.set(normalizePersonName(c.full_name), c.id)
+                created += 1
+            }
+            continue
+        }
+        if (error.code !== PG_UNIQUE_VIOLATION) {
+            throw new Error(`Nie udało się utworzyć kontraktorów: ${error.message}`)
+        }
+        // Someone created one of these names between our map snapshot above and this
+        // insert — `contractors` is unique on lower(trim(full_name)). The batch is
+        // all-or-nothing, so a single contested name would otherwise abort the entire
+        // import, not just its own row. Fall back to one row at a time and let the
+        // constraint arbitrate; the map was only ever a cache, the index is the truth.
+        const fresh = await loadContractorMap(admin)
+        for (const candidate of chunk) {
+            const norm = normalizePersonName(candidate.full_name)
+            const known = fresh.get(norm)
+            if (known) {
+                map.set(norm, known)
+                continue
+            }
+            const { data: one, error: oneErr } = await admin
+                .from('contractors')
+                .insert(candidate)
+                .select('id, full_name')
+                .single()
+            if (!oneErr && one) {
+                const row = one as { id: string; full_name: string }
+                map.set(normalizePersonName(row.full_name), row.id)
+                created += 1
+                continue
+            }
+            if (oneErr?.code !== PG_UNIQUE_VIOLATION) {
+                throw new Error(`Nie udało się utworzyć kontraktorów: ${oneErr?.message ?? 'unknown'}`)
+            }
+            // Lost the race for this name specifically — adopt the row that won, so
+            // the rest of the import still links to a real contractor.
+            const { data: found } = await admin
+                .from('contractors')
+                .select('id, full_name')
+                .ilike('full_name', candidate.full_name)
+                .maybeSingle()
+            const winner = found as { id: string; full_name: string } | null
+            if (winner) map.set(normalizePersonName(winner.full_name), winner.id)
         }
     }
     return { map, created }
