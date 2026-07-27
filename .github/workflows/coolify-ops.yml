@@ -43,7 +43,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -216,6 +216,53 @@ jobs:
           echo "=== after (this application only) ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "$PSQL \"select id, name, container, enabled from scheduled_tasks where $SCOPE order by id;\""
+
+      # Second failure mode, uncovered once the container name was filled in:
+      #
+      #   Job permanently failed after 1 attempts: sh: curl: not found
+      #
+      # The app image is Next.js standalone on Alpine and ships no curl. Every task
+      # written before 2026-07 uses `curl`; the only two that ever worked
+      # (consultant-success-*) use `wget`, which busybox does provide. That single
+      # difference is why exactly those two ran while fifteen others died.
+      #
+      # Rewrites the command to match the working pattern, including the absolute
+      # URL — the older tasks refer to "$APP_URL", which is not among the app's
+      # runtime env vars (it has NEXT_PUBLIC_APP_URL), so leaving it would just swap
+      # one silent failure for another.
+      - name: Rewrite scheduled task commands from curl to wget
+        if: inputs.action == 'cron-curl-to-wget'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+          APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          BASE_URL: ${{ vars.APP_URL }}
+        run: |
+          if ! printf '%s' "$BASE_URL" | grep -qE '^https://[a-zA-Z0-9.-]+$'; then
+            echo "::error::APP_URL variable must be a bare https origin, got '$BASE_URL'"
+            exit 1
+          fi
+          PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
+          SCOPE="application_id = (select id from applications where uuid = '$APP_UUID')"
+
+          echo "=== before: how many tasks still use curl ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select count(*) as curl_tasks from scheduled_tasks where command like 'curl %' and $SCOPE;\""
+
+          # Two substitutions, both anchored so they cannot corrupt anything else:
+          #   'curl -fsS -H '  → wget equivalent (the trailing space becomes '=')
+          #   '"\$APP_URL/'    → the real origin
+          # The bearer token inside the command is left untouched.
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"update scheduled_tasks set command = replace(replace(command, 'curl -fsS -H ', 'wget --quiet --output-document=- --header='), '\\\"\\\$APP_URL/', '\\\"$BASE_URL/') where command like 'curl %' and $SCOPE;\""
+
+          echo "=== after ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select id, name, left(command, 60) as command_head from scheduled_tasks where $SCOPE order by id;\""
+
+          echo ""
+          echo "=== anything still on curl, or still pointing at \$APP_URL? ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select id, name from scheduled_tasks where (command like 'curl %' or command like '%APP_URL%') and $SCOPE;\""
 
       - name: Re-enable disabled scheduled tasks
         if: inputs.action == 'cron-enable'

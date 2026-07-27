@@ -5,6 +5,7 @@
 import ExcelJS from 'exceljs'
 import { isValid, parse as parseDateFns, parseISO } from 'date-fns'
 import { PLACEMENT_COLUMNS, type ParsedPlacementRow } from '@/lib/types/placement'
+import { normalizeClientName, normalizeStaffName } from '@/lib/contractors/name-normalization'
 
 export interface ParseResult {
     rows: ParsedPlacementRow[]
@@ -170,11 +171,18 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
         // non-empty cell). Either it lands in `rows` (valid) or `errors` (rejected with reason).
         scannedRows += 1
 
+        // Kanonizacja PRZED kontrolą wymaganych pól: normalizator zwraca null dla znaczników
+        // „nikt" („-", „ND"), a taki wiersz ma dać czytelny błąd „brak DL" tu, a nie
+        // niejasną porażkę dopasowania profilu w imporcie. Detekcja pustego wiersza wyżej
+        // działa na surowych wartościach, żeby wiersz z samym „-" nie zniknął po cichu.
+        const deliveryLead = normalizeStaffName(deliveryLeadRaw)
+        const recruiter = normalizeStaffName(recruiterRaw)
+
         const rowErrs: string[] = []
         if (!consultantName) rowErrs.push('brak konsultanta')
         if (!clientName) rowErrs.push('brak klienta')
-        if (!deliveryLeadRaw) rowErrs.push('brak DL')
-        if (!recruiterRaw) rowErrs.push('brak rekrutera')
+        if (!deliveryLead) rowErrs.push('brak DL')
+        if (!recruiter) rowErrs.push('brak rekrutera')
 
         const costRate = cellNumber(get('costRate'))
         const revenueRate = cellNumber(get('revenueRate'))
@@ -204,10 +212,11 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
         rows.push({
             rowNumber: r,
             consultantName,
-            clientName,
+            clientName: normalizeClientName(clientName),
             position: cellString(get('position')) || null,
-            deliveryLeadRaw,
-            recruiterRaw,
+            // Nie-null: kontrola wymaganych pól wyżej odrzuca wiersz, gdy normalizacja dała null.
+            deliveryLeadRaw: deliveryLead as string,
+            recruiterRaw: recruiter as string,
             costRate: costRate as number,
             revenueRate: revenueRate as number,
             signingDate,
