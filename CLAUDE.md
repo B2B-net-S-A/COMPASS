@@ -1128,12 +1128,30 @@ więc kanonizacja obejmuje też `external_key` i `contractors.current_client`. N
    wiersz z samym `-` zniknąłby po cichu zamiast dać błąd.
 4. **Nie zgadujemy przy imionach bez nazwiska.** `Igor` ma jednego właściciela → mapowany. `Klaudia`
    (Uliasz vs Grelak) i `Marcin` (Kraszewski vs Kurowski) zostają nietknięte — scalenie zafałszowałoby
-   ranking per rekruter. Tak samo osobne byty: `Cardif` / `BNP Paribas Cardif`, `Centrum e-Zdrowia`,
-   kontrakty dzielone `BOSCH/Nordea` i `Frontex / Atos`.
+   ranking per rekruter. Tak samo osobne byty: `BNP Paribas Cardif` ≠ `BNP Paribas` (spółka
+   ubezpieczeniowa grupy, choć jej własne warianty `Cardif` / `BNP Cardif` scalamy w pełną nazwę),
+   `Centrum e-Zdrowia` ≠ `e-zdrowie`, kontrakty dzielone `BOSCH/Nordea` i `Frontex / Atos`.
 
-**Poza zakresem:** `bonuses.client_name` / `sales_client_name` (dane premii) · `contracts`,
-`support_inbox_meta`, `profiles.previous_clients` · literówki w samej tabeli `clients` („PEFRON",
-„Mnisterstwo") · `client_departures.manager_raw` (manager po stronie klienta, nie nasza pula osób).
+**Poza zakresem:** `contracts`, `support_inbox_meta`, `profiles.previous_clients` ·
+`client_departures.manager_raw` (manager po stronie klienta, nie nasza pula osób) ·
+`contractor_conversations.tcm_raw` objęte (Phase 42a), ale bez mapowania „Paula" — brak nazwiska w bazie.
+
+### Domknięcia 42b–42e (2026-07-27)
+
+Cała reszta łańcucha nazw, w kolejności: **42b** literówki w słowniku `clients` (`PEFRON` → `PFRON`;
+`Mnisterstwo` usunięte jako duplikat `Ministerstwo Sprawiedliwości`) plus ta sama literówka w 2 premiach,
+do których wyciekła z dropdownu · **42c** kanonizacja `bonuses.client_name` (`NORDEA`+`Nordea` → 56 premii,
+12 nazw → 8) plus `normalizeClientName` w `buildCategoryInsertPayload`, bo formularz premii ma opcję
+„Inny (wpisz ręcznie)" · **42d** `BNP Cardif` → `BNP Paribas Cardif` w słowniku · **42e** `Cardif` →
+`BNP Paribas Cardif` i `Metlife` → `MetLife` we wszystkich tabelach.
+
+**Wnioski na przyszłość:**
+- **Słownik `clients` nie jest „tylko listą"** — zasila dropdown premii, więc literówka w nim wycieka
+  do danych finansowych. Poprawiając nazwę tam, sprawdź `bonuses.client_name`.
+- **Zmiana wielkości liter nie rusza `external_key`** (hash liczy po `lower()`), ale zmiana treści nazwy
+  tak. `Metlife` → `MetLife` nie wymagało przeliczenia, `Cardif` → `BNP Paribas Cardif` już tak.
+- **Migracje ruszające dane premiowe zostawiają wpisy w `audit_logs`** (`source: migration phase42*`,
+  para `[przed, po]` w `changes`) — nie ma zalogowanego użytkownika, więc ślad musi zrobić migracja.
 
 ## Phase 43 — Archiwizacja pracownika naprawdę archiwizuje (PR #272, #290, #292, 2026-07-27)
 

@@ -44,13 +44,18 @@ describe('normalizeClientName', () => {
     })
 
     it('scala warianty spółki ubezpieczeniowej, ale nie miesza jej z bankiem', () => {
-        expect(normalizeClientName('BNP Cardif')).toBe('BNP Paribas Cardif')
-        expect(normalizeClientName('BNP Paribas Cardif')).toBe('BNP Paribas Cardif')
+        for (const variant of ['Cardif', 'BNP Cardif', 'BNP Paribas Cardif', 'CARDIF']) {
+            expect(normalizeClientName(variant)).toBe('BNP Paribas Cardif')
+        }
         expect(normalizeClientName('BNP')).toBe('BNP Paribas') // bank zostaje bankiem
     })
 
+    it('poprawia stylizację marki MetLife', () => {
+        expect(normalizeClientName('Metlife')).toBe('MetLife')
+        expect(normalizeClientName('METLIFE')).toBe('MetLife')
+    })
+
     it('NIE scala osobnych bytów biznesowych', () => {
-        expect(normalizeClientName('Cardif')).toBe('Cardif')
         expect(normalizeClientName('Centrum e-Zdrowia')).toBe('Centrum e-Zdrowia')
         expect(normalizeClientName('BOSCH/Nordea')).toBe('BOSCH/Nordea')
         expect(normalizeClientName('Frontex / Atos')).toBe('Frontex / Atos')
