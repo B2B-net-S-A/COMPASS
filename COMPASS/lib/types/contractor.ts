@@ -395,6 +395,10 @@ export interface ContractorDashboard {
     departuresByClient: Array<{ client: string; count: number }>
 }
 
+// Typ wyniku analityki zejść (`DepartureAnalytics`) mieszka w lib/contractors/departure-analytics.ts
+// — razem ze swoimi składowymi (MonthlyDepartureBucket, DepartureCount, DeparturePeriod).
+// Trzymanie go tutaj wymagałoby cyklu importów: tamten moduł importuje stąd `WhoResigned`.
+
 // ─── Phase 34: Zadania (department task list) ────────────────────────────────
 export type ContractorTaskStatus = 'todo' | 'in_progress' | 'done'
 

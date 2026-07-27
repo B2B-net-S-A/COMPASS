@@ -10,7 +10,18 @@ import { requireLifecycleManagerAction } from '@/lib/auth/internal-guard'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logCompat } from '@/lib/logger'
 import { logAudit } from '@/lib/actions/audit'
-import { normalizeContractorName } from '@/lib/types/contractor'
+import { normalizeContractorName, WHO_RESIGNED_PL } from '@/lib/types/contractor'
+import {
+    buildDepartureAnalytics,
+    DEPARTURE_PERIODS,
+    filterDepartures,
+    resolvePeriodRange,
+    type DepartureAnalytics,
+    type DepartureAnalyticsQuery,
+    type DepartureAnalyticsRow,
+    type DeparturePeriod,
+} from '@/lib/contractors/departure-analytics'
+import { warsawDate } from '@/lib/oof/oof-dates'
 import type {
     BenchBenefits,
     BenchItem,
@@ -651,6 +662,124 @@ export async function getContractorDashboard(): Promise<ContractorDashboard> {
         conversationsByTcm: Array.from(tcmCount.entries()).map(([tcm, count]) => ({ tcm, count })).sort((a, b) => b.count - a.count),
         departuresByClient: Array.from(clientCount.entries()).map(([client, count]) => ({ client, count })).sort((a, b) => b.count - a.count).slice(0, 15),
     }
+}
+
+// ─── Analityka zejść (trend miesięczny + powody) ──────────────────────────────
+
+/** Kolumny potrzebne analityce i eksportowi — jeden SELECT obsługuje oba. */
+const DEPARTURE_ANALYTICS_COLUMNS =
+    'id, consultant_name, client_name, position, recruiter_raw, start_date, departure_date, ' +
+    'last_notice_day, who_resigned, reason, comment, transferred, replacement'
+
+interface DepartureAnalyticsSourceRow extends DepartureAnalyticsRow {
+    id: string
+    consultant_name: string
+    position: string | null
+    start_date: string | null
+    last_notice_day: string | null
+    reason: string | null
+    comment: string | null
+    transferred: boolean
+    replacement: boolean
+}
+
+export interface DepartureAnalyticsInput {
+    period?: DeparturePeriod
+    client?: string
+    recruiter?: string
+}
+
+/**
+ * „Dziś" wg kalendarza warszawskiego, znormalizowane do południa UTC. Serwer chodzi w UTC,
+ * więc 1. dnia miesiąca nad ranem „Ten miesiąc" pokazywałby poprzedni (ta sama pułapka,
+ * którą Phase 41 rozwiązuje przez warsawDate).
+ */
+function warsawNow(): Date {
+    return new Date(`${warsawDate(new Date())}T12:00:00Z`)
+}
+
+/** Wspólne wczytanie + normalizacja filtra dla widoku i eksportu, żeby obie ścieżki liczyły to samo. */
+async function loadDeparturesForAnalytics(input: DepartureAnalyticsInput): Promise<{
+    all: DepartureAnalyticsSourceRow[]
+    query: DepartureAnalyticsQuery
+}> {
+    const admin = createServiceClient()
+    const { data, error } = await admin
+        .from('client_departures')
+        .select(DEPARTURE_ANALYTICS_COLUMNS)
+        .order('departure_date', { ascending: false, nullsFirst: false })
+    if (error) {
+        logCompat.error('loadDeparturesForAnalytics error:', error)
+        throw new Error('Nie udało się pobrać zejść.')
+    }
+
+    const period: DeparturePeriod = DEPARTURE_PERIODS.includes(input.period as DeparturePeriod)
+        ? (input.period as DeparturePeriod)
+        : 'last12'
+
+    return {
+        all: (data ?? []) as unknown as DepartureAnalyticsSourceRow[],
+        query: {
+            period,
+            client: input.client?.trim() || null,
+            recruiter: input.recruiter?.trim() || null,
+        },
+    }
+}
+
+/**
+ * Zejścia w ujęciu czasowym: trend 12 miesięcy + zestawienia (kto zrezygnował / klient / rekruter)
+ * przeliczane w wybranym okresie. Agregacja w JS — zbiór to setki wierszy, jeden SELECT wystarczy
+ * (tak samo liczy getContractorDashboard).
+ */
+export async function getDepartureAnalytics(input: DepartureAnalyticsInput = {}): Promise<DepartureAnalytics> {
+    await requireLifecycleManagerAction()
+    const { all, query } = await loadDeparturesForAnalytics(input)
+    return buildDepartureAnalytics(all, query, warsawNow())
+}
+
+/** Eksport zejść z tym samym filtrem, co widok. UTF-8 BOM dokłada strona kliencka. */
+export async function exportDeparturesCsv(input: DepartureAnalyticsInput = {}): Promise<string> {
+    await requireLifecycleManagerAction()
+    const { all, query } = await loadDeparturesForAnalytics(input)
+    // Ten sam filtr, co liczby w widoku — eksport nie może pokazywać innego zbioru.
+    const filtered = filterDepartures(all, {
+        range: resolvePeriodRange(query.period, warsawNow()),
+        client: query.client ?? undefined,
+        recruiter: query.recruiter ?? undefined,
+    })
+
+    const escapeCsv = (v: unknown): string => {
+        if (v === null || v === undefined) return ''
+        // Treści pochodzą z Excela wgrywanego przez TCM — komórka zaczynająca się od
+        // =, +, - lub @ zostałaby w Excelu potraktowana jak formuła po ponownym otwarciu
+        // pliku. Wiodący apostrof to standardowa mitygacja CSV injection.
+        const raw = String(v)
+        const s = /^[=+\-@]/.test(raw) ? `'${raw}` : raw
+        // CR bez LF też wymaga cudzysłowów (RFC 4180) — inaczej parser widzi nowy wiersz.
+        if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+        return s
+    }
+
+    const header = [
+        'Konsultant', 'Klient', 'Stanowisko', 'Rekruter', 'Start', 'Data zejścia',
+        'Wypowiedzenie', 'Kto zrezygnował', 'Powód / komentarz', 'Przepięcie', 'Replacement',
+    ]
+    const rows = filtered.map((r) => [
+        r.consultant_name,
+        r.client_name,
+        r.position ?? '',
+        r.recruiter_raw ?? '',
+        r.start_date ?? '',
+        r.departure_date ?? '',
+        r.last_notice_day ?? '',
+        r.who_resigned ? WHO_RESIGNED_PL[r.who_resigned] : '',
+        r.reason ?? r.comment ?? '',
+        r.transferred ? 'tak' : 'nie',
+        r.replacement ? 'tak' : 'nie',
+    ].map(escapeCsv).join(','))
+
+    return [header.join(','), ...rows].join('\n')
 }
 
 // ─── Phase 34: journey-stage queues (Onboarding / Exit tabs) ──────────────────

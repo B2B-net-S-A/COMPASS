@@ -1069,6 +1069,37 @@ Zgłoszenie z produkcji: po zakończonym urlopie Marleny Rosół zastępczyni (K
 2. Migracja `20260720102237_phase41_leave_forward_rule` zaaplikowana na prod 2026-07-20 (addytywna, nullable TEXT + partial index).
 3. **Pierwszy przebieg crona założy reguły od razu na skrzynkach trwających urlopów z zastępcą** (w chwili wdrożenia: 3). To nie jest stopniowy rollout — warto uprzedzić te osoby.
 
+## Phase 42 — Analityka zejść kontraktorów (trend miesięczny + widoczne powody, 2026-07-27)
+
+Dział Talent Community nie miał odpowiedzi na „ile osób schodzi w miesiącu" i „dlaczego": Analityka liczyła
+wyłącznie all-time (jedyny licznik miesięczny to pojedyncza liczba w kaflu Exit interviews na Pulpicie),
+a kolumna „Powód" renderowała `client_departures.reason` — wypełniony w **4 z 333** wierszy. Realne opisy
+siedzą w `comment` (**318/333**), bo importer mapuje arkuszowy „Komentarz" właśnie tam
+([parse.ts](COMPASS/lib/contractors/parse.ts)) i ta kolumna nie była pokazywana nigdzie.
+
+**Bez migracji, bez cronów, bez env-varów** — dane produkcyjne nietknięte, cała zmiana to odczyt i prezentacja.
+
+- `lib/contractors/departure-analytics.ts` — czyste funkcje (wzorzec `health-snapshot.ts`, `now` wstrzykiwany):
+  `resolvePeriodRange` · `filterDepartures` · `buildMonthlyDepartureSeries` · `summarizeDepartures` ·
+  `buildDepartureAnalytics` (składa cały wynik). Daty porównywane jako stringi `YYYY-MM-DD`.
+- `getDepartureAnalytics` / `exportDeparturesCsv` w `lib/actions/contractors.ts` — jeden SELECT, agregacja w JS.
+  `getContractorDashboard` bez zmian.
+- UI: `/internal/people?tab=analityka` → `DepartureAnalyticsSection` (stacked BarChart 12 mies. wg
+  „kto zrezygnował", tabela miesiąc × kategoria, kafle liczone w okresie, filtry przez query string, CSV).
+- Tabela Zejść (`ExitPanel`) pokazuje `reason ?? comment`.
+
+**Trzy pułapki, na które uważać przy zmianach tutaj:**
+1. **Trend celowo ignoruje filtr okresu** (inaczej „Ten miesiąc" zostawiłby jeden słupek), ale respektuje
+   klienta/rekrutera — stąd dwa różne zbiory w `buildDepartureAnalytics`.
+2. **`withoutDate` liczy się z `trendRows`, nie z `filtered`** — wiersze bez daty wypadają z każdego zakresu,
+   więc liczone z `filtered` byłyby zawsze 0 (kafel jakości danych ma pokazywać stan globalny).
+3. **Granice okresów wg kalendarza warszawskiego** (`warsawNow()` → `warsawDate`) — serwer chodzi w UTC,
+   więc 1. dnia miesiąca nad ranem „Ten miesiąc" pokazywałby poprzedni.
+
+Świadomie poza zakresem: backfill `reason := comment` i zmiana mapowania importera · słownik kategorii
+przyczyn (budżet / niedopasowanie / lepsza oferta) · ożywienie `contractor_exit_interviews` (0 rekordów —
+bez zmiany procesu TCM sam kod nic nie da).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
