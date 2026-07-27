@@ -43,10 +43,14 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
+        required: false
+        default: ""
+      container:
+        description: "Container name for scheduled tasks (action=cron-set-container)"
         required: false
         default: ""
 
@@ -121,9 +125,22 @@ jobs:
         run: |
           PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
 
+          echo "=== scheduled_tasks columns ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select column_name from information_schema.columns where table_name='scheduled_tasks' order by ordinal_position;\"" || echo "(query failed)"
+
+          echo ""
           echo "=== scheduled_tasks ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL 'select id, name, frequency, enabled, container_name, last_run_at from scheduled_tasks order by id;'" || echo "(query failed)"
+            "$PSQL 'select * from scheduled_tasks order by id;'" || echo "(query failed)"
+
+          echo ""
+          echo "=== running containers of the Compass application ==="
+          # Coolify needs the exact container name when a compose stack has more
+          # than one service (this one has app + alloy) — that is the whole cause
+          # of "More than one container exists but no container name was provided".
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker ps --format '{{.Names}}' | grep -v '^coolify' | head -20" || echo "(failed)"
 
           echo ""
           echo "=== scheduled_task_executions (10 most recent) ==="
@@ -144,6 +161,34 @@ jobs:
           echo "=== scheduler mentions in laravel.log ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "docker exec coolify tail -300 /var/www/html/storage/logs/laravel.log | grep -iE 'schedul|cron' | tail -20" || echo "(nothing)"
+
+      # The actual failure mode found on 2026-07-27: the scheduler runs fine and
+      # fires every task on time, but each one dies with "More than one container
+      # exists but no container name was provided" (ScheduledTaskJob.php:136).
+      # This compose stack has two services (app + alloy), so Coolify refuses to
+      # guess which one the command belongs in. Naming it fixes every task at once.
+      - name: Point scheduled tasks at a container
+        if: inputs.action == 'cron-set-container'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+          TARGET_CONTAINER: ${{ inputs.container }}
+        run: |
+          if [ -z "$TARGET_CONTAINER" ]; then
+            echo "::error::action=cron-set-container requires the 'container' input"
+            exit 1
+          fi
+          PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
+
+          echo "=== before ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL 'select id, name, container from scheduled_tasks order by id;'"
+
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"update scheduled_tasks set container = '$TARGET_CONTAINER' where container is null or container = '';\""
+
+          echo "=== after ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL 'select id, name, container, enabled from scheduled_tasks order by id;'"
 
       - name: Re-enable disabled scheduled tasks
         if: inputs.action == 'cron-enable'
