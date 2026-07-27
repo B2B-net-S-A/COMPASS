@@ -172,41 +172,57 @@ jobs:
         env:
           SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
           TARGET_CONTAINER: ${{ inputs.container }}
+          APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
         run: |
           if [ -z "$TARGET_CONTAINER" ]; then
             echo "::error::action=cron-set-container requires the 'container' input"
             exit 1
           fi
+          # The input is free text that ends up inside a SQL string, so constrain it
+          # to the alphabet Docker actually allows for container names. Anything else
+          # is rejected before it can reach the database.
+          if ! printf '%s' "$TARGET_CONTAINER" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$'; then
+            echo "::error::Refusing container name '$TARGET_CONTAINER' — allowed: letters, digits, _ . - (max 128)"
+            exit 1
+          fi
           PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
 
-          echo "=== before ==="
+          # scheduled_tasks is instance-wide, not per-application. Scope every write to
+          # this app's own rows so a future second application on the same Coolify
+          # instance can never be silently retargeted.
+          SCOPE="application_id = (select id from applications where uuid = '$APP_UUID')"
+
+          echo "=== before (this application only) ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL 'select id, name, container from scheduled_tasks order by id;'"
+            "$PSQL \"select id, name, container from scheduled_tasks where $SCOPE order by id;\""
 
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL \"update scheduled_tasks set container = '$TARGET_CONTAINER' where container is null or container = '';\""
+            "$PSQL \"update scheduled_tasks set container = '$TARGET_CONTAINER' where (container is null or container = '') and $SCOPE;\""
 
-          echo "=== after ==="
+          echo "=== after (this application only) ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL 'select id, name, container, enabled from scheduled_tasks order by id;'"
+            "$PSQL \"select id, name, container, enabled from scheduled_tasks where $SCOPE order by id;\""
 
       - name: Re-enable disabled scheduled tasks
         if: inputs.action == 'cron-enable'
         env:
           SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+          APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
         run: |
           PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
+          # Same scoping rule as cron-set-container: never write outside this app's rows.
+          SCOPE="application_id = (select id from applications where uuid = '$APP_UUID')"
 
-          echo "=== before ==="
+          echo "=== before (this application only) ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL 'select id, name, enabled from scheduled_tasks order by id;'"
+            "$PSQL \"select id, name, enabled from scheduled_tasks where $SCOPE order by id;\""
 
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL 'update scheduled_tasks set enabled = true where enabled is distinct from true;'"
+            "$PSQL \"update scheduled_tasks set enabled = true where enabled is distinct from true and $SCOPE;\""
 
-          echo "=== after ==="
+          echo "=== after (this application only) ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL 'select id, name, enabled from scheduled_tasks order by id;'"
+            "$PSQL \"select id, name, enabled from scheduled_tasks where $SCOPE order by id;\""
 
       - name: Restart Coolify (respawn scheduler)
         if: inputs.action == 'cron-restart'
