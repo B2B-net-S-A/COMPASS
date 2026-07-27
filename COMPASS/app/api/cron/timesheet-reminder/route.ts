@@ -78,6 +78,10 @@ export const GET = withCronAuth(async (request, { admin }) => {
         .from('profiles')
         .select('id, full_name, email, employment_type')
         .in('role', ['internal', 'admin'])
+        // Przypomnienie o timesheecie do byłego pracownika = mail w próżnię.
+        // Dziś nie strzelało tylko dlatego, że archiwum trafiło się na B2B
+        // (a B2B i tak odpada niżej) — na UoP poszłoby.
+        .neq('employment_status', 'exited')
     if (employeesErr) {
         logCompat.error('[timesheet-reminder] employees fetch error:', employeesErr)
         return NextResponse.json({ error: employeesErr.message }, { status: 500 })

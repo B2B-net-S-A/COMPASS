@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
-import { filterCalendarRoster } from '@/lib/hr/calendar-roster'
+import { filterEmployedInMonth } from '@/lib/hr/employment-window'
 import { endOfMonth, format, startOfMonth } from 'date-fns'
 
 export type AttendanceStatus =
@@ -240,7 +240,7 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
     // Roster resolved for the displayed month: someone leaves the grid starting
     // with the month after their last working day, so archived employees stop
     // appearing while historic months keep showing who actually worked them.
-    const employees = filterCalendarRoster(employeesRes.data ?? [], start)
+    const employees = filterEmployedInMonth(employeesRes.data ?? [], start)
 
     return {
         year,

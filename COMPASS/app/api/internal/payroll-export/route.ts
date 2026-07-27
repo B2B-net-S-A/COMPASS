@@ -1,6 +1,7 @@
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { filterEmployedInMonth } from '@/lib/hr/employment-window'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,18 +65,25 @@ export const GET = withCronAuth(async (request, { admin }) => {
     // Pull all UoP employees (B2B nie payroll)
     const { data: employees, error: empErr } = await admin
         .from('profiles')
-        .select('id, full_name, email, employment_type, role')
+        .select('id, full_name, email, employment_type, role, employment_status, termination_date')
         .in('role', ['internal', 'admin'])
     if (empErr) {
         return NextResponse.json({ error: empErr.message }, { status: 500 })
     }
-    const uopEmployees = ((employees ?? []) as Array<{
-        id: string
-        full_name: string | null
-        email: string
-        employment_type: string | null
-        role: string
-    }>).filter((e) => e.employment_type !== 'b2b')
+    // Reguła miesięczna, nie "nie-exited": kto odszedł 20-go, ma być w payrollu
+    // za ten miesiąc (przepracował go w większości), a zniknąć dopiero z następnego.
+    const uopEmployees = filterEmployedInMonth(
+        (employees ?? []) as Array<{
+            id: string
+            full_name: string | null
+            email: string
+            employment_type: string | null
+            role: string
+            employment_status: string | null
+            termination_date: string | null
+        }>,
+        monthStart,
+    ).filter((e) => e.employment_type !== 'b2b')
 
     if (uopEmployees.length === 0) {
         return NextResponse.json({

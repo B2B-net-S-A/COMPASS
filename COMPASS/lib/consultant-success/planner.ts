@@ -199,6 +199,8 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
         .from('profiles')
         .select('id, email')
         .in('role', ['talent_community', 'admin'])
+        // Fallbackowi odbiorcy ankiet — bez osób, które odeszły.
+        .neq('employment_status', 'exited')
         .order('id')
     ensureQuery(profileError, 'profiles_read_failed')
     const fallbackProfiles = (profileData ?? []) as RecipientProfile[]

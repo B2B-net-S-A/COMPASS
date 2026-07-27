@@ -134,6 +134,8 @@ async function loadTcmOptions(db = successDb()): Promise<{ options: SuccessTcmOp
         .from('profiles')
         .select('id, full_name')
         .in('role', ['talent_community', 'admin'])
+        // Jak w listTcmProfiles — byli opiekunowie znikają z wyboru.
+        .neq('employment_status', 'exited')
         .order('full_name')
     assertDb(error, 'Nie udało się pobrać opiekunów TCM')
     const options = ((data ?? []) as DbRow[]).map((row) => ({

@@ -668,6 +668,8 @@ export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
         .from('profiles')
         .select('id, full_name, email, role')
         .in('role', ['admin', 'manager', 'finanse'])
+        // Nikogo nie podpinamy pod przełożonego, który już odszedł.
+        .neq('employment_status', 'exited')
         .order('full_name', { ascending: true })
     if (error) throw new Error(`Błąd listowania managerów: ${error.message}`)
     return ((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null; role: string }>)

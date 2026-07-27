@@ -542,6 +542,8 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
             .from('profiles')
             .select('id, full_name, email, role, is_inbox_handler')
             .or('role.eq.admin,is_inbox_handler.eq.true')
+            // Ticket przypisany osobie, która odeszła, nie ma kto obsłużyć.
+            .neq('employment_status', 'exited')
             .order('full_name', { ascending: true })
 
         if (error) throw error

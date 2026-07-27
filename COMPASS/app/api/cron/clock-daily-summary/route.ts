@@ -39,6 +39,9 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         .select('id, full_name, email, clock_daily_summary_email')
         .in('role', ['internal', 'admin'])
         .eq('clock_daily_summary_email', true)
+        // Flaga zgody zostaje na profilu po archiwizacji (domyślnie true),
+        // więc bez tego byłego pracownika broni tylko brak wpisów w work_clock_daily.
+        .neq('employment_status', 'exited')
 
     if (!users || users.length === 0) {
         return NextResponse.json({ ok: true, sent: 0, skipped: 0, scanned: 0 })

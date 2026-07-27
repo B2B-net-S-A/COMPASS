@@ -281,6 +281,9 @@ export async function getAllUsersToMessage(): Promise<{ data: any[], error: stri
         .select('id, full_name, email, avatar_url, role')
         .neq('id', user.id)
         .not('full_name', 'is', null)
+        // Byli pracownicy nie są adresatami — nikt tam już nie czyta.
+        // 'offboarding' zostaje: do ostatniego dnia normalnie pracuje.
+        .neq('employment_status', 'exited')
         .order('full_name')
         .limit(50)
 
@@ -314,6 +317,9 @@ export async function searchUsersToMessage(query: string): Promise<{ data: any[]
         .select('id, full_name, email, avatar_url, role')
         .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
         .neq('id', user.id)
+        // Jak w getAllUsersToMessage — wyszukiwarka nie może podpowiadać osób,
+        // które już odeszły (szukający nie ma jak zauważyć, że pisze w próżnię).
+        .neq('employment_status', 'exited')
         .order('full_name')
         .limit(20)
 

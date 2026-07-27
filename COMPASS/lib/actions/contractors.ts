@@ -115,6 +115,8 @@ export async function listTcmProfiles(): Promise<Array<{ id: string; fullName: s
         .from('profiles')
         .select('id, full_name, role')
         .in('role', ['talent_community', 'admin'])
+        // Opiekun, który odszedł, nie jest opiekunem — nie oferuj go w dropdownie.
+        .neq('employment_status', 'exited')
         .order('full_name', { ascending: true })
     return ((data ?? []) as ProfileLite[]).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))
 }

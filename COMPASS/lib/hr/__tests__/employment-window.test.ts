@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-    filterCalendarRoster,
-    isOnCalendarRosterForMonth,
-} from '@/lib/hr/calendar-roster'
+    filterEmployedInMonth,
+    isEmployedInMonth,
+} from '@/lib/hr/employment-window'
 
 const JULY = '2026-07-01'
 const JUNE = '2026-06-01'
 
-describe('isOnCalendarRosterForMonth', () => {
+describe('isEmployedInMonth', () => {
     it('keeps an active employee with no termination date', () => {
         expect(
-            isOnCalendarRosterForMonth({ employment_status: 'active', termination_date: null }, JULY),
+            isEmployedInMonth({ employment_status: 'active', termination_date: null }, JULY),
         ).toBe(true)
     })
 
     it('hides someone who left before the displayed month', () => {
         expect(
-            isOnCalendarRosterForMonth(
+            isEmployedInMonth(
                 { employment_status: 'exited', termination_date: '2026-06-30' },
                 JULY,
             ),
@@ -26,7 +26,7 @@ describe('isOnCalendarRosterForMonth', () => {
 
     it('still shows that person in the month they actually worked', () => {
         expect(
-            isOnCalendarRosterForMonth(
+            isEmployedInMonth(
                 { employment_status: 'exited', termination_date: '2026-06-30' },
                 JUNE,
             ),
@@ -35,7 +35,7 @@ describe('isOnCalendarRosterForMonth', () => {
 
     it('keeps an offboarding employee through their final month', () => {
         expect(
-            isOnCalendarRosterForMonth(
+            isEmployedInMonth(
                 { employment_status: 'offboarding', termination_date: '2026-07-27' },
                 JULY,
             ),
@@ -44,7 +44,7 @@ describe('isOnCalendarRosterForMonth', () => {
 
     it('drops that employee from the month after their last day', () => {
         expect(
-            isOnCalendarRosterForMonth(
+            isEmployedInMonth(
                 { employment_status: 'offboarding', termination_date: '2026-07-27' },
                 '2026-08-01',
             ),
@@ -53,7 +53,7 @@ describe('isOnCalendarRosterForMonth', () => {
 
     it('keeps someone whose last day is exactly the 1st of the month', () => {
         expect(
-            isOnCalendarRosterForMonth(
+            isEmployedInMonth(
                 { employment_status: 'offboarding', termination_date: '2026-07-01' },
                 JULY,
             ),
@@ -65,7 +65,7 @@ describe('isOnCalendarRosterForMonth', () => {
         // someone records that date they are still employed, still on the team,
         // and their leaves still matter — so they stay on the grid.
         expect(
-            isOnCalendarRosterForMonth(
+            isEmployedInMonth(
                 { employment_status: 'offboarding', termination_date: null },
                 JULY,
             ),
@@ -74,16 +74,16 @@ describe('isOnCalendarRosterForMonth', () => {
 
     it('hides a legacy exited row that has no termination date', () => {
         expect(
-            isOnCalendarRosterForMonth({ employment_status: 'exited', termination_date: null }, JULY),
+            isEmployedInMonth({ employment_status: 'exited', termination_date: null }, JULY),
         ).toBe(false)
     })
 
     it('keeps a row with no employment data at all (defensive default)', () => {
-        expect(isOnCalendarRosterForMonth({}, JULY)).toBe(true)
+        expect(isEmployedInMonth({}, JULY)).toBe(true)
     })
 })
 
-describe('filterCalendarRoster', () => {
+describe('filterEmployedInMonth', () => {
     it('removes only the people gone before the month started', () => {
         const roster = [
             { id: 'active', employment_status: 'active', termination_date: null },
@@ -91,6 +91,6 @@ describe('filterCalendarRoster', () => {
             { id: 'gone', employment_status: 'exited', termination_date: '2026-06-30' },
         ]
 
-        expect(filterCalendarRoster(roster, JULY).map((m) => m.id)).toEqual(['active', 'leaving'])
+        expect(filterEmployedInMonth(roster, JULY).map((m) => m.id)).toEqual(['active', 'leaving'])
     })
 })
