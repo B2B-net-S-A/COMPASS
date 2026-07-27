@@ -72,6 +72,8 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
     const [oofExternal, setOofExternal] = useState<string>('')
     const [showOofAdvanced, setShowOofAdvanced] = useState(false)
     const [substitutes, setSubstitutes] = useState<EligibleSubstitute[]>([])
+    // Phase 41c — opt-in na przekazywanie poczty. Domyślnie wyłączone.
+    const [forwardMail, setForwardMail] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -155,6 +157,7 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
                     substituteId: substituteId || null,
                     oofInternalMessage: oofInternal.trim() || null,
                     oofExternalMessage: oofExternal.trim() || null,
+                    forwardMail: Boolean(substituteId) && forwardMail,
                 })
                 toastSuccess(
                     res.autoApproved
@@ -171,6 +174,7 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
                 setOofInternal('')
                 setOofExternal('')
                 setShowOofAdvanced(false)
+                setForwardMail(false)
                 router.refresh()
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Nieznany błąd')
@@ -301,12 +305,37 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
                         {substituteId && (
                             <p className="text-[11px] text-muted-foreground">
                                 Zastępca dostanie email z informacją + zostanie wpisany w auto-reply
-                                Outlook. Po akceptacji Twoja przychodząca poczta będzie też
-                                kopiowana do zastępcy na czas urlopu (oryginały zostają w Twojej
-                                skrzynce).
+                                Outlook.
                             </p>
                         )}
                     </div>
+
+                    {/*
+                      Phase 41c — przekazywanie poczty jest osobną, świadomą zgodą.
+                      Wskazanie zastępcy samo w sobie znaczy tylko tyle, że jego nazwisko
+                      trafi do auto-reply; oddanie mu wglądu w skrzynkę to inna decyzja.
+                    */}
+                    {substituteId && (
+                        <div className="rounded-md border p-3 space-y-1.5">
+                            <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="mt-0.5"
+                                    checked={forwardMail}
+                                    onChange={(e) => setForwardMail(e.target.checked)}
+                                />
+                                <span className="text-sm font-medium">
+                                    Przekazuj moją pocztę do zastępcy na czas urlopu
+                                </span>
+                            </label>
+                            <p className="text-[11px] text-muted-foreground pl-6">
+                                Zastępca dostanie kopię każdej wiadomości, która przyjdzie na Twoją
+                                skrzynkę między pierwszym a ostatnim dniem urlopu — oryginały
+                                zostają u Ciebie. Możesz to wyłączyć w każdej chwili, także
+                                w trakcie urlopu, na liście swoich wniosków.
+                            </p>
+                        </div>
+                    )}
 
                     <div className="space-y-1.5">
                         <Label htmlFor="note">Notatka (opcjonalna)</Label>

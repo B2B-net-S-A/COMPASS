@@ -18,6 +18,16 @@ export interface ForwardWindowLeave {
     startDate: string
     /** YYYY-MM-DD, inclusive. */
     endDate: string
+    /**
+     * Phase 41c — did the employee actually ask for forwarding? Opt-in, default false.
+     *
+     * Separate from `substituteId` on purpose: naming a substitute (Phase 25) only puts
+     * their name in the Out-of-Office reply, which is a very different thing from handing
+     * them your inbox. Flipping this to false is also the manual off-switch — reconcile
+     * reads it and tears the rule down, which is what makes forwarding controllable
+     * without waiting for a cron that may never run.
+     */
+    forwardMailEnabled: boolean
 }
 
 /**
@@ -56,8 +66,12 @@ export function warsawTomorrow(now: Date): string {
  * the escape hatch should this trade ever be revisited.
  *
  * Both bounds are inclusive; `endDate` is the last day of the leave.
+ *
+ * Consent (`forwardMailEnabled`) is checked first because it is the one condition a
+ * human flips mid-leave to stop forwarding immediately.
  */
 export function shouldForwardBeActive(leave: ForwardWindowLeave, now: Date): boolean {
+    if (!leave.forwardMailEnabled) return false
     if (leave.status !== 'approved') return false
     if (!leave.substituteId) return false
     if (!leave.startDate || !leave.endDate) return false

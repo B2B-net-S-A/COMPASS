@@ -82,8 +82,18 @@ export interface CloseForwardRuleArgs {
     ruleId: string
     userEmail: string
     actorUserId: string | null
-    /** Why the rule is going away — ends up in the audit log. */
-    reason: 'leave_ended' | 'cancelled' | 'edited' | 'not_approved' | 'retry_recreate'
+    /**
+     * Why the rule is going away — ends up in the audit log.
+     * `opted_out` is Phase 41c: the employee (or their manager) switched forwarding
+     * off by hand, as opposed to the leave simply running its course.
+     */
+    reason:
+        | 'leave_ended'
+        | 'cancelled'
+        | 'edited'
+        | 'not_approved'
+        | 'retry_recreate'
+        | 'opted_out'
     auditExtra?: Record<string, unknown>
 }
 

@@ -3613,6 +3613,7 @@ export type Database = {
           decision_note: string | null
           documentation_url: string | null
           end_date: string
+          forward_mail_enabled: boolean
           graph_oof_set: boolean
           graph_oof_set_at: string | null
           graph_oof_skip_reason: string | null
@@ -3643,6 +3644,7 @@ export type Database = {
           decision_note?: string | null
           documentation_url?: string | null
           end_date: string
+          forward_mail_enabled?: boolean
           graph_oof_set?: boolean
           graph_oof_set_at?: string | null
           graph_oof_skip_reason?: string | null
@@ -3673,6 +3675,7 @@ export type Database = {
           decision_note?: string | null
           documentation_url?: string | null
           end_date?: string
+          forward_mail_enabled?: boolean
           graph_oof_set?: boolean
           graph_oof_set_at?: string | null
           graph_oof_skip_reason?: string | null

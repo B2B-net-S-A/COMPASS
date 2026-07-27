@@ -41,6 +41,8 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
     const [halfDay, setHalfDay] = useState<'' | 'morning' | 'afternoon'>('')
     const [note, setNote] = useState<string>('')
     const [substituteId, setSubstituteId] = useState<string>('')
+    // Phase 41c — opt-in na przekazywanie poczty pracownika. Domyślnie wyłączone.
+    const [forwardMail, setForwardMail] = useState(false)
 
     const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
     const showHalfDay = startDate && endDate && startDate === endDate
@@ -72,6 +74,7 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
         setHalfDay('')
         setNote('')
         setSubstituteId('')
+        setForwardMail(false)
     }
 
     function handleSubmit(e: React.FormEvent) {
@@ -99,6 +102,7 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                     halfDay: showHalfDay && halfDay ? halfDay : null,
                     note: note.trim() || null,
                     substituteId: showSubstitute && substituteId ? substituteId : null,
+                    forwardMail: Boolean(showSubstitute && substituteId) && forwardMail,
                 })
                 toastSuccess(
                     isPastLeave
@@ -272,6 +276,32 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                                     </option>
                                 ))}
                             </select>
+                            {/*
+                              Phase 41c — wpisując urlop za kogoś, decydujesz też o jego
+                              skrzynce. Domyślnie wyłączone: to zgoda pracownika, a nie
+                              wygoda wpisującego. Włączaj tylko wtedy, gdy pracownik o to
+                              poprosił.
+                            */}
+                            {substituteId && (
+                                <div className="rounded-md border p-3 space-y-1.5 mt-2">
+                                    <label className="flex items-start gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="mt-0.5"
+                                            checked={forwardMail}
+                                            onChange={(e) => setForwardMail(e.target.checked)}
+                                        />
+                                        <span className="text-sm font-medium">
+                                            Przekazuj pocztę pracownika do zastępcy
+                                        </span>
+                                    </label>
+                                    <p className="text-[11px] text-muted-foreground pl-6">
+                                        Zaznacz tylko, jeśli pracownik o to poprosił — zastępca
+                                        zobaczy wszystko, co przyjdzie na jego skrzynkę w czasie
+                                        urlopu. Pracownik może to sam wyłączyć w swoich wnioskach.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 
