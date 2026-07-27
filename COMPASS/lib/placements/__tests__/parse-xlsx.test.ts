@@ -28,7 +28,7 @@ describe('parsePlacementsWorkbook', () => {
         expect(res.rows).toHaveLength(2)
         expect(res.rows[0]).toMatchObject({
             consultantName: 'Adam Sadowski',
-            clientName: 'NORDEA',
+            clientName: 'Nordea', // Phase 42a — parser kanonizuje nazwę klienta
             deliveryLeadRaw: 'Marcin Kraszewski',
             recruiterRaw: 'Aleksandra Jaczyńska',
             costRate: 130,
@@ -38,6 +38,33 @@ describe('parsePlacementsWorkbook', () => {
             marginFromFile: 45,
         })
         expect(res.rows[1].startDate).toBe('2026-04-15')
+    })
+
+    it('kanonizuje warianty nazwy klienta i literówki w nazwiskach (Phase 42a)', async () => {
+        const buf = await buildBuffer([
+            ['Jan Testowy', 'Xperii', 'lza Grabińska', 'Tester', 100, 140, 40, 6720,
+                '2026-02-12', '2026-04-15', 'MIchał Walasek'],
+        ])
+        const res = await parsePlacementsWorkbook(buf)
+        expect(res.errors).toEqual([])
+        expect(res.rows[0]).toMatchObject({
+            clientName: 'XPERI',
+            deliveryLeadRaw: 'Elza Grabińska',
+            recruiterRaw: 'Michał Walasek',
+        })
+    })
+
+    it('odrzuca wiersz, gdzie rekruter/DL to znacznik „nikt" (Phase 42a)', async () => {
+        const buf = await buildBuffer([
+            ['Jan Bezdl', 'NORDEA', '-', 'Tester', 100, 140, 40, 6720, '2026-02-12', '2026-04-15', 'ND'],
+        ])
+        const res = await parsePlacementsWorkbook(buf)
+        // „-" przechodziłoby surową kontrolę wymaganych pól i wywalało się dopiero przy
+        // dopasowaniu profilu — kontrola działa na wartości po normalizacji.
+        expect(res.rows).toHaveLength(0)
+        expect(res.scannedRows).toBe(1) // wiersz widziany, nie „po cichu pusty"
+        expect(res.errors.join(' ')).toMatch(/brak DL/)
+        expect(res.errors.join(' ')).toMatch(/brak rekrutera/)
     })
 
     it('reports rows missing a start date and excludes them', async () => {
