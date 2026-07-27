@@ -304,8 +304,24 @@ async function processNewTicket(
         email_headers: trimHeaders(msg.internetMessageHeaders),
     })
     if (metaErr) {
-        // Compensate — drop the orphan ticket so a future tick can retry cleanly
-        await ctx.admin.from('support_tickets').delete().eq('id', ticketId)
+        // Compensate — drop the orphan ticket so a future tick can retry cleanly.
+        // If the delete itself fails, the ticket survives with no inbox meta: it is
+        // invisible in the inbox UI and the dedup check (which reads meta) will never
+        // see it, so the mail can be ingested a second time. Rare, but silent — log it.
+        const { error: deleteErr } = await ctx.admin
+            .from('support_tickets')
+            .delete()
+            .eq('id', ticketId)
+        if (deleteErr) {
+            logger.error({
+                event: 'inbox.orphan_ticket_left_behind',
+                mailbox: ctx.mailbox,
+                ticketId,
+                internetMessageId: msg.internetMessageId,
+                metaError: metaErr.message,
+                deleteError: deleteErr.message,
+            })
+        }
 
         // A unique violation on external_message_id means the mail is already a
         // ticket — someone got here first. That is a no-op, not a failure, and the
