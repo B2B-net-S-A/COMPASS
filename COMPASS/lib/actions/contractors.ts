@@ -12,13 +12,12 @@ import { logCompat } from '@/lib/logger'
 import { logAudit } from '@/lib/actions/audit'
 import { normalizeContractorName, WHO_RESIGNED_PL } from '@/lib/types/contractor'
 import {
-    buildMonthlyDepartureSeries,
-    collectFilterOptions,
+    buildDepartureAnalytics,
     DEPARTURE_PERIODS,
     filterDepartures,
     resolvePeriodRange,
-    summarizeDepartures,
     type DepartureAnalytics,
+    type DepartureAnalyticsQuery,
     type DepartureAnalyticsRow,
     type DeparturePeriod,
 } from '@/lib/contractors/departure-analytics'
@@ -699,13 +698,10 @@ function warsawNow(): Date {
     return new Date(`${warsawDate(new Date())}T12:00:00Z`)
 }
 
-/** Wspólne wczytanie + filtrowanie dla widoku i eksportu, żeby obie ścieżki liczyły to samo. */
-async function loadFilteredDepartures(input: DepartureAnalyticsInput): Promise<{
+/** Wspólne wczytanie + normalizacja filtra dla widoku i eksportu, żeby obie ścieżki liczyły to samo. */
+async function loadDeparturesForAnalytics(input: DepartureAnalyticsInput): Promise<{
     all: DepartureAnalyticsSourceRow[]
-    filtered: DepartureAnalyticsSourceRow[]
-    period: DeparturePeriod
-    client: string | null
-    recruiter: string | null
+    query: DepartureAnalyticsQuery
 }> {
     const admin = createServiceClient()
     const { data, error } = await admin
@@ -713,27 +709,21 @@ async function loadFilteredDepartures(input: DepartureAnalyticsInput): Promise<{
         .select(DEPARTURE_ANALYTICS_COLUMNS)
         .order('departure_date', { ascending: false, nullsFirst: false })
     if (error) {
-        logCompat.error('loadFilteredDepartures error:', error)
+        logCompat.error('loadDeparturesForAnalytics error:', error)
         throw new Error('Nie udało się pobrać zejść.')
     }
 
-    const all = (data ?? []) as unknown as DepartureAnalyticsSourceRow[]
     const period: DeparturePeriod = DEPARTURE_PERIODS.includes(input.period as DeparturePeriod)
         ? (input.period as DeparturePeriod)
         : 'last12'
-    const client = input.client?.trim() || null
-    const recruiter = input.recruiter?.trim() || null
 
     return {
-        all,
-        filtered: filterDepartures(all, {
-            range: resolvePeriodRange(period, warsawNow()),
-            client: client ?? undefined,
-            recruiter: recruiter ?? undefined,
-        }),
-        period,
-        client,
-        recruiter,
+        all: (data ?? []) as unknown as DepartureAnalyticsSourceRow[],
+        query: {
+            period,
+            client: input.client?.trim() || null,
+            recruiter: input.recruiter?.trim() || null,
+        },
     }
 }
 
@@ -744,42 +734,30 @@ async function loadFilteredDepartures(input: DepartureAnalyticsInput): Promise<{
  */
 export async function getDepartureAnalytics(input: DepartureAnalyticsInput = {}): Promise<DepartureAnalytics> {
     await requireLifecycleManagerAction()
-    const { all, filtered, period, client, recruiter } = await loadFilteredDepartures(input)
-
-    // Trend ignoruje filtr okresu (inaczej „Ten miesiąc" zostawiłby jeden słupek),
-    // ale respektuje zawężenie do klienta/rekrutera.
-    const trendRows = filterDepartures(all, {
-        client: client ?? undefined,
-        recruiter: recruiter ?? undefined,
-    })
-    const summary = summarizeDepartures(filtered)
-    const options = collectFilterOptions(all)
-
-    return {
-        period,
-        client,
-        recruiter,
-        series12m: buildMonthlyDepartureSeries(trendRows, 12, warsawNow()),
-        total: summary.total,
-        totalAllTime: all.length,
-        withoutDate: summary.withoutDate,
-        byWho: summary.byWho,
-        byClient: summary.byClient,
-        byRecruiter: summary.byRecruiter,
-        clients: options.clients,
-        recruiters: options.recruiters,
-    }
+    const { all, query } = await loadDeparturesForAnalytics(input)
+    return buildDepartureAnalytics(all, query, warsawNow())
 }
 
 /** Eksport zejść z tym samym filtrem, co widok. UTF-8 BOM dokłada strona kliencka. */
 export async function exportDeparturesCsv(input: DepartureAnalyticsInput = {}): Promise<string> {
     await requireLifecycleManagerAction()
-    const { filtered } = await loadFilteredDepartures(input)
+    const { all, query } = await loadDeparturesForAnalytics(input)
+    // Ten sam filtr, co liczby w widoku — eksport nie może pokazywać innego zbioru.
+    const filtered = filterDepartures(all, {
+        range: resolvePeriodRange(query.period, warsawNow()),
+        client: query.client ?? undefined,
+        recruiter: query.recruiter ?? undefined,
+    })
 
     const escapeCsv = (v: unknown): string => {
         if (v === null || v === undefined) return ''
-        const s = String(v)
-        if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+        // Treści pochodzą z Excela wgrywanego przez TCM — komórka zaczynająca się od
+        // =, +, - lub @ zostałaby w Excelu potraktowana jak formuła po ponownym otwarciu
+        // pliku. Wiodący apostrof to standardowa mitygacja CSV injection.
+        const raw = String(v)
+        const s = /^[=+\-@]/.test(raw) ? `'${raw}` : raw
+        // CR bez LF też wymaga cudzysłowów (RFC 4180) — inaczej parser widzi nowy wiersz.
+        if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
         return s
     }
 

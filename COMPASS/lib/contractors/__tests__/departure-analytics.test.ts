@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+    buildDepartureAnalytics,
     buildMonthlyDepartureSeries,
     collectFilterOptions,
     filterDepartures,
@@ -160,6 +161,50 @@ describe('collectFilterOptions', () => {
         ])
         expect(clients).toEqual(['ACME', 'Żabka'])
         expect(recruiters).toEqual(['Ada', 'Zenon', NO_RECRUITER_LABEL])
+    })
+})
+
+describe('buildDepartureAnalytics', () => {
+    const rows = [
+        dep({ departure_date: '2026-07-10', who_resigned: 'klient', client_name: 'ACME', recruiter_raw: 'Anna' }),
+        dep({ departure_date: '2026-05-10', who_resigned: 'kandydat', client_name: 'ACME', recruiter_raw: 'Anna' }),
+        dep({ departure_date: '2025-09-10', who_resigned: 'klient', client_name: 'Nordea', recruiter_raw: 'Bartek' }),
+        dep({ departure_date: '2021-12-31', who_resigned: 'klient', client_name: 'Stary', recruiter_raw: 'Anna' }),
+        dep({ departure_date: null, who_resigned: 'nieznany', client_name: 'ACME', recruiter_raw: null }),
+    ]
+
+    it('total respektuje okres, totalAllTime pokazuje całą bazę', () => {
+        const a = buildDepartureAnalytics(rows, { period: 'month', client: null, recruiter: null }, NOW)
+        expect(a.total).toBe(1) // tylko 2026-07
+        expect(a.totalAllTime).toBe(5)
+    })
+
+    it('withoutDate liczy braki dat niezależnie od wybranego okresu', () => {
+        // Regresja: liczone z `filtered` zawsze dawało 0, bo wiersze bez daty wypadają z zakresu.
+        for (const period of ['month', 'quarter', 'year', 'last12', 'all'] as const) {
+            const a = buildDepartureAnalytics(rows, { period, client: null, recruiter: null }, NOW)
+            expect(a.withoutDate, `okres ${period}`).toBe(1)
+        }
+    })
+
+    it('trend ignoruje filtr okresu, ale respektuje klienta', () => {
+        const monthOnly = buildDepartureAnalytics(rows, { period: 'month', client: null, recruiter: null }, NOW)
+        expect(monthOnly.series12m.reduce((s, b) => s + b.total, 0)).toBe(3) // 07/26, 05/26, 09/25 (2021 poza oknem)
+
+        const acme = buildDepartureAnalytics(rows, { period: 'all', client: 'ACME', recruiter: null }, NOW)
+        expect(acme.series12m.reduce((s, b) => s + b.total, 0)).toBe(2)
+        expect(acme.total).toBe(3) // 'all' bierze też wiersz bez daty
+    })
+
+    it('opcje dropdownów pochodzą z pełnego zbioru, nie z bieżącego okresu', () => {
+        const a = buildDepartureAnalytics(rows, { period: 'month', client: 'ACME', recruiter: null }, NOW)
+        expect(a.clients).toEqual(['ACME', 'Nordea', 'Stary'])
+        expect(a.recruiters).toEqual(['Anna', 'Bartek', NO_RECRUITER_LABEL])
+    })
+
+    it('przekazuje filtr z powrotem do UI (stan selectów)', () => {
+        const a = buildDepartureAnalytics(rows, { period: 'year', client: 'ACME', recruiter: 'Anna' }, NOW)
+        expect(a).toMatchObject({ period: 'year', client: 'ACME', recruiter: 'Anna' })
     })
 })
 

@@ -233,6 +233,52 @@ export interface DepartureAnalytics {
     recruiters: string[]
 }
 
+export interface DepartureAnalyticsQuery {
+    period: DeparturePeriod
+    client: string | null
+    recruiter: string | null
+}
+
+/**
+ * Składa cały wynik analityki z surowych wierszy — bez I/O, żeby dało się to przetestować.
+ * Trzy różne zbiory, świadomie:
+ *  • `filtered`  — pełny filtr (okres + klient + rekruter) → liczby „w okresie",
+ *  • `trendRows` — bez filtra okresu → 12-miesięczny trend i licznik braków dat
+ *                  (jakość danych to stan globalny, nie właściwość wycinka czasu),
+ *  • `rows`      — pełny zbiór → opcje dropdownów i punkt odniesienia `totalAllTime`.
+ */
+export function buildDepartureAnalytics(
+    rows: DepartureAnalyticsRow[],
+    query: DepartureAnalyticsQuery,
+    now: Date = new Date(),
+): DepartureAnalytics {
+    const { period, client, recruiter } = query
+    const scope = { client: client ?? undefined, recruiter: recruiter ?? undefined }
+
+    const trendRows = filterDepartures(rows, scope)
+    const filtered = filterDepartures(rows, { ...scope, range: resolvePeriodRange(period, now) })
+
+    const summary = summarizeDepartures(filtered)
+    const options = collectFilterOptions(rows)
+
+    return {
+        period,
+        client,
+        recruiter,
+        series12m: buildMonthlyDepartureSeries(trendRows, 12, now),
+        total: summary.total,
+        totalAllTime: rows.length,
+        // Z `filtered` byłoby zawsze 0 dla okresu innego niż „Wszystko" — wiersze bez daty
+        // wypadają z każdego zakresu. Kafel ma pokazywać realny stan danych.
+        withoutDate: summarizeDepartures(trendRows).withoutDate,
+        byWho: summary.byWho,
+        byClient: summary.byClient,
+        byRecruiter: summary.byRecruiter,
+        clients: options.clients,
+        recruiters: options.recruiters,
+    }
+}
+
 /** Posortowane, unikalne wartości do dropdownów filtrów (pełny zbiór, nie tylko okres). */
 export function collectFilterOptions(rows: DepartureAnalyticsRow[]): { clients: string[]; recruiters: string[] } {
     const clients = new Set<string>()
