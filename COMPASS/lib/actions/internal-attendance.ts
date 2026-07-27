@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { filterCalendarRoster } from '@/lib/hr/calendar-roster'
 import { endOfMonth, format, startOfMonth } from 'date-fns'
 
 export type AttendanceStatus =
@@ -210,7 +211,9 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
             .from('profiles')
             // Full HR-zone roster, not just internal+admin — managers/finanse and
             // talent_community (e.g. Błażej, Paulina) belong on the team calendar too.
-            .select('id, full_name, email, avatar_url, role')
+            // employment_status/termination_date drive the per-month roster filter
+            // below — without them archived employees stayed on the grid forever.
+            .select('id, full_name, email, avatar_url, role, employment_status, termination_date')
             .in('role', ['admin', 'internal', 'manager', 'finanse', 'talent_community'])
             .order('full_name'),
         admin
@@ -234,10 +237,15 @@ export async function getTeamCalendar(year: number, month: number): Promise<Team
 
     if (employeesRes.error) throw new Error(`Błąd pobierania pracowników: ${employeesRes.error.message}`)
 
+    // Roster resolved for the displayed month: someone leaves the grid starting
+    // with the month after their last working day, so archived employees stop
+    // appearing while historic months keep showing who actually worked them.
+    const employees = filterCalendarRoster(employeesRes.data ?? [], start)
+
     return {
         year,
         month,
-        employees: (employeesRes.data ?? []) as TeamCalendarEmployee[],
+        employees: employees as TeamCalendarEmployee[],
         leaves: (leavesRes.data ?? []) as TeamCalendarData['leaves'],
         attendances: (attendancesRes.data ?? []) as TeamCalendarData['attendances'],
         holidays: (holidaysRes.data ?? []) as PublicHolidayRow[],
