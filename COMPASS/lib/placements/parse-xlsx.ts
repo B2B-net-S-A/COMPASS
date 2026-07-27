@@ -5,6 +5,7 @@
 import ExcelJS from 'exceljs'
 import { isValid, parse as parseDateFns, parseISO } from 'date-fns'
 import { PLACEMENT_COLUMNS, type ParsedPlacementRow } from '@/lib/types/placement'
+import { normalizeClientName, normalizeStaffName } from '@/lib/contractors/name-normalization'
 
 export interface ParseResult {
     rows: ParsedPlacementRow[]
@@ -204,10 +205,12 @@ export async function parsePlacementsWorkbook(buffer: ArrayBuffer | Buffer): Pro
         rows.push({
             rowNumber: r,
             consultantName,
-            clientName,
+            // Kanonizacja po walidacji pustych wierszy — normalizator zwraca null dla „-",
+            // a tutaj pustka ma trafić w kontrolę „brak rekrutera", nie zniknąć po cichu.
+            clientName: normalizeClientName(clientName),
             position: cellString(get('position')) || null,
-            deliveryLeadRaw,
-            recruiterRaw,
+            deliveryLeadRaw: normalizeStaffName(deliveryLeadRaw) ?? deliveryLeadRaw,
+            recruiterRaw: normalizeStaffName(recruiterRaw) ?? recruiterRaw,
             costRate: costRate as number,
             revenueRate: revenueRate as number,
             signingDate,

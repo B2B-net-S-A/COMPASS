@@ -4,6 +4,7 @@
 
 import ExcelJS from 'exceljs'
 import { isValid, parse as parseDateFns, parseISO } from 'date-fns'
+import { normalizeClientName, normalizeStaffName } from '@/lib/contractors/name-normalization'
 import {
     conversationStatusFromFill,
     normalizeConversationCategory,
@@ -232,9 +233,9 @@ export async function parseRozmowyWorkbook(buffer: ArrayBuffer | Buffer): Promis
             rowNumber: r,
             fullName,
             phone: cellString(get('Nr telefonu')) || null,
-            client: client || null,
+            client: client ? normalizeClientName(client) : null,
             conversationDate: cellDate(get('Data rozmowy')),
-            tcmRaw: cellString(get('TCM')) || null,
+            tcmRaw: normalizeStaffName(cellString(get('TCM'))),
             category: normalizeConversationCategory(sprawa),
             status,
             note: note || null,
@@ -280,9 +281,9 @@ export async function parseWejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promis
         rows.push({
             rowNumber: r,
             fullName,
-            client,
-            recruiterRaw: cellString(get('Odpowiedzialny rekruter')) || null,
-            deliveryLeadRaw: cellString(get('Delivery Lead')) || null,
+            client: normalizeClientName(client),
+            recruiterRaw: normalizeStaffName(cellString(get('Odpowiedzialny rekruter'))),
+            deliveryLeadRaw: normalizeStaffName(cellString(get('Delivery Lead'))),
             signingDate: cellDate(get('Data podpisania umowy')),
             startDate: cellDate(get('Start date')),
             orderTerm: cellString(get('Termin Zamówienia')) || null,
@@ -336,8 +337,8 @@ export async function parseZejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promis
         rows.push({
             rowNumber: r,
             fullName,
-            client,
-            recruiterRaw: cellString(get('Odpowiedzialny rekruter')) || null,
+            client: normalizeClientName(client),
+            recruiterRaw: normalizeStaffName(cellString(get('Odpowiedzialny rekruter'))),
             position: cellString(get('Stanowisko')) || null,
             startDate: cellDate(get('Start date')),
             departureDate: cellDate(get('Data zejścia')),
