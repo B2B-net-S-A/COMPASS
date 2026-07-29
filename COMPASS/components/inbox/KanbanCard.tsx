@@ -47,15 +47,6 @@ export function KanbanCard({ ticket, isDragging }: KanbanCardProps) {
             <div className="flex items-center gap-1.5 flex-wrap">
                 <InboxPriorityBadge priority={ticket.meta.priority_level} />
                 <SlaCountdownBadge dueDate={ticket.meta.due_date} />
-                {ticket.meta.source === 'email' && (
-                    <span
-                        title="Zaimportowane automatycznie z administracja@b2bnetwork.pl"
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info border border-info/20"
-                    >
-                        <Mail className="w-3 h-3" />
-                        email
-                    </span>
-                )}
             </div>
 
             <div className="text-[11px] text-muted-foreground space-y-1">

@@ -170,17 +170,9 @@ export async function listInboxTickets(filter?: {
     }
 }
 
-export interface InboxAttachmentLink {
-    name: string
-    size: number
-    /** Time-limited signed URL (60s) for download. */
-    signedUrl: string
-    storagePath: string
-}
-
 export async function getInboxTicketDetail(
     ticketId: string,
-): Promise<SupportActionResult<InboxTicketWithMeta & { comments: SupportComment[]; can_reply: boolean; can_change_status: boolean; attachments: InboxAttachmentLink[] }>> {
+): Promise<SupportActionResult<InboxTicketWithMeta & { comments: SupportComment[]; can_reply: boolean; can_change_status: boolean }>> {
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -221,31 +213,6 @@ export async function getInboxTicketDetail(
             (commentProfiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name])
         )
 
-        // Phase 26b — list attachments uploaded by ingest, generate signed URLs.
-        // Folder pattern is inbox-attachments/{ticket_id}/. Empty for manual_paste / user.
-        const attachments: InboxAttachmentLink[] = []
-        if (meta.source === 'email') {
-            const { data: files } = await supabase.storage
-                .from('inbox-attachments')
-                .list(ticketId, { limit: 100, sortBy: { column: 'created_at', order: 'asc' } })
-            for (const f of files ?? []) {
-                const path = `${ticketId}/${f.name}`
-                const { data: signed } = await supabase.storage
-                    .from('inbox-attachments')
-                    .createSignedUrl(path, 60)
-                if (signed?.signedUrl) {
-                    // f.name has the timestamp prefix; strip it for display.
-                    const displayName = f.name.replace(/^\d+_/, '')
-                    attachments.push({
-                        name: displayName,
-                        size: (f.metadata as { size?: number } | null)?.size ?? 0,
-                        signedUrl: signed.signedUrl,
-                        storagePath: path,
-                    })
-                }
-            }
-        }
-
         const comments: SupportComment[] = ((rawComments ?? []) as Array<{
             id: string; ticket_id: string; author_id: string; body_md: string; is_internal: boolean; created_at: string
         }>).map((c) => ({
@@ -284,7 +251,6 @@ export async function getInboxTicketDetail(
                 comments,
                 can_reply: true,
                 can_change_status: true,
-                attachments,
             },
         }
     } catch (error: unknown) {

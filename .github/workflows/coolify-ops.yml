@@ -36,6 +36,15 @@ name: Coolify Ops
 #
 # cron-list is read-only. Neither of the other two touches application data:
 # they flip `enabled` in Coolify's own DB and bounce Coolify's own container.
+#
+# 2026-07-29 — added cron-disable-task (Phase 44).
+#
+#   6. action=cron-disable-task, task_name=X → flip `enabled` off for one task.
+#
+# Needed when an endpoint is retired but its schedule outlives it: cron-enable
+# re-enables *everything*, so a retired task would silently come back on the next
+# fleet-wide fix. Disables rather than deletes — the row stays as a record and one
+# UPDATE brings it back.
 
 on:
   workflow_dispatch:
@@ -43,7 +52,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -51,6 +60,10 @@ on:
         default: ""
       container:
         description: "Container name for scheduled tasks (action=cron-set-container)"
+        required: false
+        default: ""
+      task_name:
+        description: "scheduled_tasks.name to disable (action=cron-disable-task)"
         required: false
         default: ""
 
@@ -282,6 +295,43 @@ jobs:
             "$PSQL \"update scheduled_tasks set enabled = true where enabled is distinct from true and $SCOPE;\""
 
           echo "=== after (this application only) ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select id, name, enabled from scheduled_tasks where $SCOPE order by id;\""
+
+      # Phase 44 — the inbox-ingest schedule outlived its endpoint. Its route was
+      # deleted with the Kanban↔mailbox integration, so every tick would now curl
+      # a 404 forever. cron-enable cannot be used to clean this up: it re-enables
+      # every row indiscriminately, which is exactly why a retired task has to be
+      # switched off by name.
+      - name: Disable one scheduled task by name
+        if: inputs.action == 'cron-disable-task'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+          APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          TASK_NAME: ${{ inputs.task_name }}
+        run: |
+          if [ -z "$TASK_NAME" ]; then
+            echo "::error::action=cron-disable-task requires the 'task_name' input"
+            exit 1
+          fi
+          # Free text heading into a SQL string literal — constrain it to the
+          # alphabet Coolify task names actually use before it can get there.
+          if ! printf '%s' "$TASK_NAME" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$'; then
+            echo "::error::Refusing task name '$TASK_NAME' — allowed: letters, digits, _ . - (max 64)"
+            exit 1
+          fi
+          PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
+          # Same scoping rule as every other write here: this app's rows only.
+          SCOPE="application_id = (select id from applications where uuid = '$APP_UUID')"
+
+          echo "=== before ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select id, name, enabled from scheduled_tasks where $SCOPE order by id;\""
+
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"update scheduled_tasks set enabled = false where name = '$TASK_NAME' and $SCOPE;\""
+
+          echo "=== after ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "$PSQL \"select id, name, enabled from scheduled_tasks where $SCOPE order by id;\""
 
