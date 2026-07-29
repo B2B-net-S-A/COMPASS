@@ -125,8 +125,13 @@ export const TICKET_PRIORITY_LABEL: Record<TicketPriority, string> = {
 
 // ============================================================
 // Inbox Kanban — Phase 10 (2026-05-06)
-// Email-driven tickets with P1/P2/P3 SLA, distinct from user-submitted tickets.
+// Manually entered tickets with P1/P2/P3 SLA, distinct from user-submitted ones.
 // 1:1 join on support_tickets via support_inbox_meta.
+//
+// Phase 44 (2026-07-29) — the Graph mailbox auto-import was removed: every reply
+// in a thread landed as its own ticket, so the board became unusable. Tickets are
+// entered by hand again. `'email'` survives in the union only because ~178 rows
+// ingested on 27–28.07 still carry it (bulk-closed, kept for the record).
 // ============================================================
 
 export type InboxPriorityLevel = 'P1' | 'P2' | 'P3'
@@ -136,8 +141,6 @@ export interface SupportInboxMeta {
     ticket_id: string
     source: InboxSource
     external_message_id: string | null
-    /** Phase 26b — Graph conversationId used to thread replies into one ticket. */
-    external_conversation_id?: string | null
     /** Legacy profiles(role='consultant') link — kept for back-compat, no longer written. */
     consultant_id: string | null
     /** Phase 40 — consultant the ticket concerns (matched contractor or manual free-text). */
@@ -153,11 +156,6 @@ export interface SupportInboxMeta {
     email_from: string | null
     email_subject: string | null
     email_received_at: string | null
-    /** Phase 26b — full email body if ingested via Graph. */
-    email_body_html?: string | null
-    email_body_text?: string | null
-    /** Phase 26b — set when ingest classified the message as noise (NDR/OOF/internal). */
-    email_skip_reason?: string | null
     created_at: string
 }
 

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { Inbox, Mail, Paperclip, Phone, Building2, User as UserIcon } from 'lucide-react'
+import { Inbox, Mail, Phone, Building2, User as UserIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/server'
@@ -9,14 +9,7 @@ import { TicketChat } from '@/components/support/TicketChat'
 import { InboxPriorityBadge } from '@/components/inbox/InboxPriorityBadge'
 import { SlaCountdownBadge } from '@/components/inbox/SlaCountdownBadge'
 import { getInboxTicketDetail } from '@/lib/actions/support-inbox'
-import { sanitizeHtml } from '@/lib/html/sanitize'
 import { TicketToTaskButton } from '@/components/inbox/TicketToTaskButton'
-
-function formatBytes(n: number): string {
-    if (n < 1024) return `${n} B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-    return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
 
 export const dynamic = 'force-dynamic'
 
@@ -104,9 +97,6 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                             {ticket.meta.email_received_at && (
                                 <span>· Odebrane: {new Date(ticket.meta.email_received_at).toLocaleString('pl-PL')}</span>
                             )}
-                            {ticket.meta.source === 'email' && (
-                                <Badge variant="outline" className="text-[10px]">auto-import</Badge>
-                            )}
                         </div>
                     )}
                     {(ticket.consultant_name || ticket.consultant_phone || ticket.client_name) && (
@@ -131,47 +121,9 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                             )}
                         </div>
                     )}
-                    {ticket.meta.source === 'email' && ticket.meta.email_body_html ? (
-                        <div
-                            className="prose prose-sm prose-invert max-w-none text-sm"
-                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(ticket.meta.email_body_html) }}
-                        />
-                    ) : ticket.meta.source === 'email' && ticket.meta.email_body_text ? (
-                        <p className="whitespace-pre-wrap text-sm">{ticket.meta.email_body_text}</p>
-                    ) : (
-                        <p className="whitespace-pre-wrap text-sm">{ticket.body_md}</p>
-                    )}
+                    <p className="whitespace-pre-wrap text-sm">{ticket.body_md}</p>
                 </CardContent>
             </Card>
-
-            {ticket.attachments.length > 0 && (
-                <Card className="bg-card border-border">
-                    <CardContent className="p-5">
-                        <div className="flex items-center gap-2 text-sm font-medium mb-3">
-                            <Paperclip className="w-4 h-4" />
-                            Załączniki ({ticket.attachments.length})
-                        </div>
-                        <ul className="space-y-1.5">
-                            {ticket.attachments.map((a) => (
-                                <li key={a.storagePath} className="flex items-center gap-2 text-xs">
-                                    <a
-                                        href={a.signedUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-primary hover:underline truncate flex-1"
-                                    >
-                                        {a.name}
-                                    </a>
-                                    <span className="text-muted-foreground">{formatBytes(a.size)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                        <p className="text-[10px] text-muted-foreground mt-2">
-                            Linki tracą ważność po 60 sekundach — odśwież stronę aby ponownie wygenerować.
-                        </p>
-                    </CardContent>
-                </Card>
-            )}
 
             <Card className="bg-card border-border">
                 <CardContent className="p-5">

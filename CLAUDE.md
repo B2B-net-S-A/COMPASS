@@ -541,143 +541,55 @@ Równocześnie wyłączono cały flow faktur (Phase 19/20c) z UI za pomocą feat
 2. Coolify env vars ustawione przez API: `NEXT_PUBLIC_INVOICES_ENABLED=false` (buildtime+runtime), `INVOICES_ENABLED=false` (runtime).
 3. Brak rebuild required — defaults bez env vars i tak resolve do `false`. Env vars set jawnie dla widoczności w panelu.
 
-## Phase 26b — Inbox email ingest z administracja@b2bnetwork.pl (2026-05-19)
+## Phase 44 — Kanban ↔ skrzynka mailowa: integracja USUNIĘTA (2026-07-29)
 
-Automatyczne wciąganie maili przychodzących na shared mailbox `administracja@b2bnetwork.pl` do Kanban Inbox (`/admin/inbox`) jako tickety. Workflow rzeczywiście używany przez handlery (Błażej, Paulina, TCM, admin).
+> Zastępuje Fazy 26b / 26c / 26d (auto-import maili do `/admin/inbox`). Kod integracji nie istnieje —
+> opis poniżej jest po to, żeby nikt nie odtwarzał jej z pamięci ani nie szukał martwych plików.
+> Historia implementacji: `git log -- COMPASS/lib/inbox COMPASS/lib/mailbox/graph-mail-read.ts`.
 
-**Scope MVP (świadomie wąski):**
-- Tylko `administracja@b2bnetwork.pl` (pierwsza skrzynka — można rozszerzyć kolejnymi rzędami w `inbox_sync_state`)
-- Bez backfill — startujemy od momentu deployu (seed: `last_synced_at=NOW()`)
-- Bez AI klasyfikacji — wszystko ląduje w kategorii **`inbox_administracja`** (P3 default), handler ręcznie zmienia kategorię/priorytet po review
-- Treść + załączniki zapisywane w DB / Storage (pełen widok bez otwierania Outlook)
-- Reply matchowany przez Graph `conversationId` → append comment do istniejącego ticketu + auto-reopen jeśli był resolved/closed
-- Filtry szumu: NDR/bounce (mailer-daemon, postmaster, noreply), Out-of-Office (Auto-Submitted/X-Auto-Response-Suppress/Precedence headers), internal noise (sentry/github/coolify/m365/azure/supabase/vercel/cloudflare domains). **NIE filtrujemy** maili od pracowników b2bnetwork.pl.
+**Co robiła:** cron `*/5` czytał Graphem shared mailbox `compass-tickets@b2bnetwork.pl` (zasilany
+transport rule BCC-ującym każdy mail z `administracja@`) i zakładał z maili tickety na tablicy Kanban;
+odpowiedzi miały doklejać się do istniejącego ticketu po `conversationId`.
 
-**Migracja `phase26b_inbox_email_ingest`:**
-- `support_inbox_meta` += `external_conversation_id`, `email_body_html`, `email_body_text`, `email_headers JSONB`, `email_skip_reason`
-- Nowa tabela `inbox_sync_state` (singleton per mailbox): `last_synced_at`, `last_run_at`, `last_error`, statystyki `last_scanned/created/appended/skipped`
-- Storage bucket `inbox-attachments` (private), folder `{ticket_id}/`, RLS: SELECT dla handlerów, DELETE dla admin (writes tylko service-role)
-- `notifications.type` += `inbox_email_reopened`, `inbox_email_arrived`
-- Seed: row dla `administracja@b2bnetwork.pl` z `last_synced_at=NOW()`
+**Dlaczego wycofana:** crony Coolify nie odpalały od maja (patrz `coolify_cron_needs_container_name`),
+więc ingest ruszył realnie dopiero **27.07.2026** — i w dwie doby wrzucił **178 ticketów**.
+Wątkowanie po `conversationId` nie zadziałało dla tej poczty: **każda odpowiedź w wątku (RE:/ODP:/Fw:)
+zakładała osobny ticket**. Przy 44 ticketach ręcznych tablica przestała nadawać się do pracy.
+Decyzja Artura 29.07: wrócić do ręcznego wpisywania spraw.
 
-**Architektura:**
-```
-Coolify cron (*/5 min) → /api/cron/inbox-ingest (Bearer $CRON_SECRET)
-  ↓ withCronAuth (service-role admin client)
-  ↓ ingestMailbox(admin, 'administracja@b2bnetwork.pl')
-  ├─ Read cursor: SELECT last_synced_at FROM inbox_sync_state WHERE mailbox=...
-  ├─ Graph: GET /users/{mailbox}/messages?$filter=receivedDateTime gt {cursor} (+select+orderby+top=50)
-  ├─ Per message: classifyMessage() → skip lub keep
-  │    ├─ MATCH external_message_id → already ingested, advance cursor
-  │    ├─ MATCH external_conversation_id → append comment + reopen if closed
-  │    └─ NEW → INSERT support_tickets + support_inbox_meta + upload załączników
-  └─ UPDATE inbox_sync_state z nowym cursor + stats + last_error
-```
+**Usunięty kod:** `app/api/cron/inbox-ingest/`, `lib/inbox/` (ingest + filters + run-lock + testy),
+`lib/mailbox/graph-mail-read.ts`. W UI: banner „Auto-import", badge „email" na karcie, render treści
+maila (HTML/tekst) i sekcja załączników na `[id]`. W `getInboxTicketDetail` — pobieranie podpisanych
+URL-i z bucketu. **Zostaje** pole „Od (email)" w ręcznym dialogu (to zwykłe pole formularza, nie integracja).
 
-**Pliki:**
-- `lib/mailbox/graph-mail-read.ts` — Graph helper (`listNewMessages`, `listAttachments`) z retry/backoff i Sentry capture
-- `lib/inbox/filters.ts` — pure functions (`classifyMessage`, `isNonDeliveryReport`, `isAutoReply`, `isInternalNoise`)
-- `lib/inbox/ingest.ts` — `ingestMailbox()` orchestrator
-- `app/api/cron/inbox-ingest/route.ts` — endpoint z `withCronAuth` i `maxDuration: 240s`
-- UI: `components/inbox/KanbanCard.tsx` (badge "✉ email"), `app/(protected)/admin/inbox/[id]/page.tsx` (sanitized HTML body + lista załączników z signed URLs), `app/(protected)/admin/inbox/page.tsx` (banner sync status)
+**Uwaga — `lib/mailbox/` NIE jest martwe.** Zostały tam `graph-oof.ts`, `graph-inbox-rules.ts`
+i `forward-rule-sync.ts` — to Fazy 25/41 (Out of Office + przekierowanie poczty na czas urlopu),
+zupełnie inna funkcja. Usunięty został wyłącznie `graph-mail-read.ts`.
 
-**Audit log actions:** `INBOX_EMAIL_INGESTED`, `INBOX_EMAIL_THREAD_APPENDED`, `INBOX_EMAIL_REOPENED`, `INBOX_EMAIL_SKIPPED` (z reason details).
+**Czego migracja NIE ruszyła (dane zostają, do odzyskania):**
+- 178 ticketów `support_inbox_meta.source='email'` — **zamknięte** migracją
+  `phase44_close_ingested_inbox_tickets` (zeszły z tablicy, nie skasowane). Powrót: `UPDATE
+  support_tickets SET status='open' WHERE ...`. Ślad w audycie: `INBOX_EMAIL_TICKETS_BULK_CLOSED`.
+- Tabela `inbox_sync_state` (2 wiersze z kursorami), kolumny `support_inbox_meta.email_body_html` /
+  `email_body_text` / `email_headers` / `email_skip_reason` / `external_conversation_id`, bucket
+  `inbox-attachments` — martwe, ale nietknięte. Treść maili i 24 komentarze są dalej w bazie.
+- `InboxSource` wciąż zawiera `'email'` — właśnie z powodu tych 178 wierszy.
 
-**Coolify cron job (do dodania po deploy):**
+**Ops do zrobienia ręcznie po deployu (poza repo):**
+1. **Coolify** — wyłączyć zadanie `inbox-ingest` (endpoint już nie istnieje, więc tik = 404 co 5 min):
+   `gh workflow run "Coolify Ops" -f action=cron-disable-task -f task_name=inbox-ingest`.
+   Uwaga: `action=cron-enable` włącza **wszystkie** zadania naraz, więc po każdym takim przebiegu
+   trzeba `inbox-ingest` wyłączyć ponownie.
+2. **Exchange** (wymaga PowerShella i uprawnień EXO — Claude tego nie zrobi):
+   `Remove-TransportRule -Identity "Mirror Administracja to Compass Inbox"` (kopia do
+   `compass-tickets@`). Sama skrzynka `compass-tickets@b2bnetwork.pl` może zostać — bez transport
+   rule nic do niej nie wpada. Uprawnienia app `Mail.Read` / `Sites.Read.All` zostają nietknięte:
+   `Mail.Read` nie jest już przez COMPASS używane do ingestu, ale RAOP/`CompassMailSenders` obsługują
+   też OOF i forward (Fazy 25/41) — **nie odbierać ich hurtem**.
 
-| Nazwa | Schedule | Komenda |
-|---|---|---|
-| `inbox-ingest` | `*/5 * * * *` (co 5 min) | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/inbox-ingest"` |
-
-**Ops post-merge (KRYTYCZNE — bez tego ingest zwraca 403 RAOP):**
-
-1. **Entra app permission**: dodać `Mail.Read` (Application) do app `Compass` (`17f9ff8c-ac4e-414d-890e-a823722b4c35`) + admin consent
-2. **Exchange Online RBAC** (analogicznie do Phase 25 OOF — bez tego Graph blokuje):
-   ```powershell
-   Connect-ExchangeOnline -UserPrincipalName artur.twardowski@b2bnetwork.pl
-   $sp = Get-ServicePrincipal -Identity "Compass"
-   New-ManagementRoleAssignment -App $sp.Identity -Role "Application Mail.Read"
-   ```
-3. **Defense-in-depth** — scope app tylko do `administracja@b2bnetwork.pl` (bez tego app może czytać każdą skrzynkę w tenant):
-   ```powershell
-   New-ApplicationAccessPolicy -AppId "17f9ff8c-ac4e-414d-890e-a823722b4c35" `
-     -PolicyScopeGroupId "administracja@b2bnetwork.pl" `
-     -AccessRight RestrictAccess `
-     -Description "Compass inbox ingest — only administracja@"
-   ```
-4. **Coolify schedule** — dodać cron `inbox-ingest` wg tabeli powyżej.
-5. **Verify** — po pierwszym tick:
-   ```bash
-   curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/inbox-ingest" | jq
-   # expect: {ok:true, mailbox:"administracja@b2bnetwork.pl", scanned, created, ...}
-   ```
-   I w UI `/admin/inbox` zielony banner "Auto-import z administracja@b2bnetwork.pl · ostatni sync: ..."
-
-**Opcjonalny env var** `INBOX_INGEST_USER_ID` — UUID profilu używanego jako `user_id` w `support_tickets` (bo NOT NULL). Bez niego cron wybiera pierwszego admina/handler chronologicznie. Override przydatny gdy chcesz "system bot" profile.
-
-## Phase 26c — Inbox ingest dla Microsoft 365 Group (2026-05-19)
-
-**Discovery podczas ops setupu Phase 26b:** `administracja@b2bnetwork.pl` to **Microsoft 365 Group** (`Unified` GroupType, primary SMTP `Administracja@b2bnetsa.onmicrosoft.com`, alias `administracja@b2bnetwork.pl`), NIE shared mailbox / user mailbox. Mail.Read User API zwraca `ErrorInvalidUser 404` dla GroupMailbox.
-
-**Architektura przebudowana:** helper `lib/mailbox/graph-mail-read.ts` używa teraz Groups Conversations API:
-- `GET /groups/{groupId}/threads?$filter=lastDeliveredDateTime gt {cursor}`
-- `GET /groups/{groupId}/threads/{threadId}/posts`
-- `GET /groups/{groupId}/threads/{threadId}/posts/{postId}/attachments`
-
-Każdy `post` jest mapowany na syntetyczny `GraphMessage` (zachowany shape z Phase 26b), gdzie `conversationId = thread.id`. Dzięki temu pipeline `lib/inbox/ingest.ts` zostaje bez zmian: dedupe po `internetMessageId` (= `${threadId}/${postId}`), match po `conversationId`, append-or-create.
-
-**Migracja `phase26c_inbox_group_id`:**
-- `inbox_sync_state` += `mailbox_kind` (`'user'|'group'`, default `'user'`), `group_id TEXT NULL`
-- Backfill row dla `administracja@b2bnetwork.pl`: `mailbox_kind='group'`, `group_id='c5630e8f-7aee-498e-9561-0c4a376ffa79'`
-
-**Permission stack (zaktualizowany):**
-
-| Layer | What | Status |
-|---|---|---|
-| Entra (Application permissions) | `Mail.Read` ❌ **niewystarczająca** dla GroupMailbox | dodane w Phase 26b ops — zostaje (nie szkodzi) |
-| Entra (Application permissions) | `Group.Read.All` ✅ wymagana dla `/groups/.../threads` | dodana 2026-05-19 + admin consent (via `az ad app permission add` + `az rest POST appRoleAssignments`) |
-| Exchange Online RBAC | `Application Mail.Read` ✅ wymagana — RAOP traktuje Group mailbox jak mailbox | dodana 2026-05-19 (`New-ManagementRoleAssignment -App $sp -Role "Application Mail.Read"`) |
-| ApplicationAccessPolicy | Tenant ma `CompassMailSenders` (RestrictAccess) — Compass może czytać tylko skrzynki w tej grupie | `Administracja@b2bnetsa.onmicrosoft.com` dodana jako member 2026-05-19 (`Add-DistributionGroupMember -Identity CompassMailSenders -Member Administracja@b2bnetsa.onmicrosoft.com`) |
-
-**Gotcha — propagacja AAP:** po `Add-DistributionGroupMember` Microsoft cache RAOP może trzymać stary stan **15-60 minut**. `Test-ApplicationAccessPolicy -AppId ... -Identity administracja@...` zwraca `AccessCheckResult: Granted` natychmiast, ale Graph wciąż 403 RAOP. Cierpliwość. Po propagacji ingest działa.
-
-**Opcjonalny env var** `INBOX_PRIMARY_GROUP_ID` — Graph object id grupy. Helper preferuje tę wartość jeśli ustawiona (skip live `$filter=mail eq ...` lookup). DB column `inbox_sync_state.group_id` jest source of truth — ingest ustawia env per-tick.
-
-**Filters caveat:** Groups Conversations API NIE zwraca `internetMessageHeaders` na postach. Sender-based filters (mailer-daemon, postmaster, noreply localparts; sentry/github/m365/azure noise domains) działają, ale Auto-Submitted/Precedence/X-Auto-Response-Suppress checki są no-op. W praktyce M365 Group nie dostaje typowych NDR/OOF email-side, więc to akceptowalne.
-
-## Phase 26d — Pivot na shared mailbox (RAOP cache nie odświeża się dla GroupMailbox) (2026-05-19)
-
-**Problem:** Phase 26c działa technicznie ale Microsoft RAOP cache po `Add-DistributionGroupMember Administracja → CompassMailSenders` nie odświeża się w >60 min nawet po `Remove-ApplicationAccessPolicy` całkowitej removal i `EnforceExoAppRbacPermissions=False` na poziomie tenant. `Test-ApplicationAccessPolicy` zwraca `Granted` natychmiast, ale Graph wciąż 403 [RAOP].
-
-**Rozwiązanie:** Utworzono shared mailbox `compass-tickets@b2bnetwork.pl` z transport rule kopiującym każdy mail z `administracja@` (BCC). Shared mailbox to klasyczny User mailbox — Graph `/users/{upn}/messages` działa natychmiast, bez RAOP issues. Code branchuje na `mailbox_kind` w `inbox_sync_state`.
-
-**Ops zrobione 2026-05-19:**
-```powershell
-# 1. Shared mailbox
-New-Mailbox -Shared -Name "Compass Tickets" -DisplayName "Compass Tickets" -PrimarySmtpAddress compass-tickets@b2bnetwork.pl
-# ExchangeObjectId: 42865e35-78c9-4c23-a4f7-434b80ce4199
-
-# 2. Transport rule: każdy mail na administracja@ → BCC compass-tickets@
-New-TransportRule -Name "Mirror Administracja to Compass Inbox" -SentTo "administracja@b2bnetwork.pl" -BlindCopyTo "compass-tickets@b2bnetwork.pl" -Mode Enforce
-
-# 3. Defense-in-depth — member of Group i DL
-Add-UnifiedGroupLinks -Identity "Administracja@b2bnetsa.onmicrosoft.com" -LinkType Members -Links compass-tickets@b2bnetwork.pl
-Add-DistributionGroupMember -Identity CompassMailSenders -Member compass-tickets@b2bnetwork.pl
-```
-
-Test Graph `/users/compass-tickets@b2bnetwork.pl/messages` → **HTTP 200** od ręki (zero opóźnienia, brak RAOP block).
-
-**Zmiany kodu:**
-- `lib/mailbox/graph-mail-read.ts` — dodano `kind: 'user' | 'group'` w `ListNewMessagesInput` i `ListAttachmentsInput`. User mode: `/users/{upn}/messages`. Group mode: `/groups/{id}/threads/posts` (Phase 26c logika zachowana).
-- `lib/inbox/ingest.ts` — czyta `mailbox_kind` z `inbox_sync_state`, przekazuje do helpera, propaguje do attachments fetch.
-- Migracja `phase26d_pivot_to_shared_mailbox`: UPDATE row z `administracja@b2bnetwork.pl` → `compass-tickets@b2bnetwork.pl`, `mailbox_kind='user'`, `group_id=NULL`, reset stats, `last_synced_at=NOW()`.
-
-**Skutki dla użytkownika:**
-- **Bez zmian dla nadawców** — wszyscy nadal piszą na `administracja@b2bnetwork.pl`.
-- **Bez zmian dla Outlook Groups UI** — pracownicy nadal widzą wątki w Outlook Groups (transport rule BCC kopiuje, nie redirectuje).
-- **Compass widzi każdy nowy mail** — przez Mail.Read na shared mailbox. Tickety pojawiają się w `/admin/inbox`.
-
-**Filters zachowują headers:** User mailbox API zwraca `internetMessageHeaders` (Auto-Submitted/Precedence/X-Auto-Response-Suppress), więc NDR/OOF detection wraca do pełnej skuteczności (Phase 26c caveat odpada dla `compass-tickets@`).
+**Jeśli kiedyś wracać do auto-importu:** najpierw naprawić wątkowanie (`conversationId` z Graph nie
+scala wątku dla tej poczty — trzeba oprzeć się o `In-Reply-To`/`References` albo normalizację tematu),
+i dopiero potem cokolwiek włączać. Bez tego wraca dokładnie ten sam zalew.
 
 ## Phase 28 — Placementy (import Excela → auto-premie DL/Rekruter + tickety TCM, 2026-05-21)
 
@@ -1065,7 +977,7 @@ Zgłoszenie z produkcji: po zakończonym urlopie Marleny Rosół zastępczyni (K
 
 ### Ops po deploy
 
-1. **Smoke test PRZED merge** (RAOP potrafi blokować mimo poprawnych uprawnień — patrz Phase 26b→26d): app-only POST reguły z `isEnabled:false` na jedną skrzynkę → oczekiwane 201, potem DELETE → 204. Przy `403 [RAOP]` sprawdzić `Get-ApplicationAccessPolicy` i `CompassMailSenders`.
+1. **Smoke test PRZED merge** (RAOP potrafi blokować mimo poprawnych uprawnień — historia w Phase 44, szczegóły w `git log` Faz 26b→26d): app-only POST reguły z `isEnabled:false` na jedną skrzynkę → oczekiwane 201, potem DELETE → 204. Przy `403 [RAOP]` sprawdzić `Get-ApplicationAccessPolicy` i `CompassMailSenders`.
 2. Migracja `20260720102237_phase41_leave_forward_rule` zaaplikowana na prod 2026-07-20 (addytywna, nullable TEXT + partial index).
 3. **Pierwszy przebieg crona założy reguły od razu na skrzynkach trwających urlopów z zastępcą** (w chwili wdrożenia: 3). To nie jest stopniowy rollout — warto uprzedzić te osoby.
 
