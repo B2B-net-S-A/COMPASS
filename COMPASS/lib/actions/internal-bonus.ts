@@ -748,10 +748,9 @@ export async function proposeBonus(input: ProposeBonusInput): Promise<BonusRow> 
 }
 
 export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
-    // Phase 32 — po przypisaniu (akceptacji managera) premię może anulować TYLKO
-    // administrator lub finanse. Manager traci prawo edycji/anulowania po assign,
-    // żeby finanse miały stabilny obraz do wypłaty ("nic się już nie zmieni").
-    const ctx = await requireFinanseOrAdminAction()
+    // Admin/finanse: anulują dowolną premię.
+    // Manager: anuluje tylko premie które sam przypisał (proposed_by = ctx.userId).
+    const ctx = await requireBonusProposerAction()
     if (!input.id) throw new Error('Brak id premii.')
     const cancellationReason = (input.cancellation_reason ?? '').trim()
     if (cancellationReason.length < 3) {
@@ -768,6 +767,10 @@ export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
         .eq('id', input.id)
         .single<BonusRow>()
     if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
+
+    if (!ctx.isAdmin && ctx.role !== 'finanse' && bonus.proposed_by !== ctx.userId) {
+        throw new Error('Manager może anulować tylko premie, które sam przypisał.')
+    }
 
     // Status must be assigned or pending (legacy).
     if (bonus.status !== 'assigned' && bonus.status !== 'pending') {
