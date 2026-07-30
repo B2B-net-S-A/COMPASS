@@ -19,7 +19,7 @@ vi.mock('@/lib/auth/internal-guard', () => ({
         return authContextMock
     },
     requireBonusReadAllAction: async () => authContextMock,
-    // Phase 32 — edit/cancel of an assigned bonus is admin/finanse only.
+    // Phase 32 — edit of an assigned bonus is admin/finanse only.
     requireFinanseOrAdminAction: async () => {
         if (!authContextMock.isAdmin && authContextMock.role !== 'finanse') {
             throw new Error('Wymagane uprawnienia: administrator lub finanse.')
@@ -430,7 +430,7 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
     })
 })
 
-describe('cancelBonus (Phase 26 + 32 — admin/finanse only)', () => {
+describe('cancelBonus (Phase 26 + 32 — admin/finanse any; manager own)', () => {
     it('allows admin to cancel an assigned bonus', async () => {
         setAdminContext()
         supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
@@ -445,12 +445,17 @@ describe('cancelBonus (Phase 26 + 32 — admin/finanse only)', () => {
         expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
     })
 
-    it('blocks a manager from cancelling after assignment', async () => {
-        // Default beforeEach context is a manager — locked out even for bonuses they assigned.
+    it('allows a manager to cancel their own bonus', async () => {
         supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
+        await cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager cancels own' })
+        expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
+    })
+
+    it('blocks a manager from cancelling someone else\'s bonus', async () => {
+        supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
         await expect(
-            cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager tries to cancel' }),
-        ).rejects.toThrow(/administrator lub finanse/i)
+            cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager tries other' }),
+        ).rejects.toThrow(/tylko premie, które sam przypisał/i)
     })
 })
 
