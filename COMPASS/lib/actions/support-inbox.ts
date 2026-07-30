@@ -134,6 +134,12 @@ export async function listInboxTickets(filter?: {
         for (const t of ticketRows) {
             const meta = metaMap.get(t.id)
             if (!meta) continue
+            // Phase 44 — tickety z usuniętego auto-importu maili nie wracają na tablicę.
+            // Zamknięcie ich (migracja phase44) zdjęło je z kolumn roboczych, ale 178 sztuk
+            // zalewało kolumnę „Zamknięte" i zostawiało dokładnie ten bałagan, przez który
+            // integracja poszła precz. Wiersze zostają w bazie — karta jest wciąż pod
+            // /admin/inbox/{id}, jeśli ktoś będzie czegoś szukał.
+            if (meta.source === 'email') continue
             if (filter?.priority_level && meta.priority_level !== filter.priority_level) continue
             if (filter?.consultant_id && meta.consultant_id !== filter.consultant_id) continue
             const cat = categoryMap.get(t.category_id)
