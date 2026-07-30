@@ -35,7 +35,7 @@ export const GET = withCronAuth(async (_request, { admin: adminTyped }) => {
         .from('onboarding_tasks')
         .select(`
             id, title, due_date, responsible_role,
-            progress:onboarding_progress!progress_id(
+            progress:onboarding_progress!progress_id!inner(
                 id, user_id,
                 user:profiles!user_id(full_name, email, manager_id)
             )
@@ -43,6 +43,8 @@ export const GET = withCronAuth(async (_request, { admin: adminTyped }) => {
         .is('completed_at', null)
         .lt('due_date', todayIso)
         .in('responsible_role', ['manager', 'buddy'])
+        .is('progress.cancelled_at', null)
+        .is('progress.completed_at', null)
 
     if (tasksErr) {
         errors.push(`tasks: ${tasksErr.message}`)
