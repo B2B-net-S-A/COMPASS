@@ -750,7 +750,10 @@ export async function proposeBonus(input: ProposeBonusInput): Promise<BonusRow> 
 export async function cancelBonus(input: CancelBonusInput): Promise<BonusRow> {
     // Admin/finanse: anulują dowolną premię.
     // Manager: anuluje tylko premie które sam przypisał (proposed_by = ctx.userId).
-    const ctx = await requireBonusProposerAction()
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && ctx.role !== 'finanse' && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator, finanse lub manager.')
+    }
     if (!input.id) throw new Error('Brak id premii.')
     const cancellationReason = (input.cancellation_reason ?? '').trim()
     if (cancellationReason.length < 3) {
