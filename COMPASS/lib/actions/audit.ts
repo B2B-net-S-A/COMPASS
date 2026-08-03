@@ -225,6 +225,17 @@ export type AuditAction =
     | 'BENCH_ENTRY_ADDED'
     | 'BENCH_ENTRY_UPDATED'
     | 'BENCH_ENTRY_DISMISSED'
+    // Phase 46 — Mapa technologiczna (karty wywiadów + słowniki + rotacja bloków)
+    | 'TECH_CARD_CREATED'
+    | 'TECH_CARD_UPDATED'
+    | 'TECH_CARD_FINALIZED'
+    | 'TECH_DICT_CREATED'
+    | 'TECH_DICT_UPDATED'
+    | 'TECH_DICT_DELETED'
+    | 'TECH_AREA_CREATED'
+    | 'TECH_BLOCK_OVERRIDDEN'
+    | 'TECH_MAP_ROTATION_RUN'
+    | 'CLIENT_CREATED_FROM_TECH_MAP'
 
 export async function logAudit(
     userId: string | null,

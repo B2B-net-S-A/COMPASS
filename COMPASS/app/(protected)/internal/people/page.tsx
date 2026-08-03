@@ -1,4 +1,4 @@
-import { LayoutDashboard, UserPlus, LogOut, Users, Inbox, BarChart3, FileText } from 'lucide-react'
+import { LayoutDashboard, UserPlus, LogOut, Users, Inbox, BarChart3, FileText, Radar } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { requireTalentCommunityOrAdminLayout } from '@/lib/auth/internal-guard'
 import { PulpitPanel } from '@/components/internal/people/PulpitPanel'
@@ -8,6 +8,7 @@ import { KontraktorzyTabPanel } from '@/components/internal/people/KontraktorzyT
 import { SprawyTabPanel } from '@/components/internal/people/SprawyTabPanel'
 import { AnalitykaTabPanel } from '@/components/internal/people/AnalitykaTabPanel'
 import { SzablonyTabPanel } from '@/components/internal/people/SzablonyTabPanel'
+import { MapaTabPanel } from '@/components/internal/people/MapaTabPanel'
 import { DEPARTURE_PERIODS, type DeparturePeriod } from '@/lib/contractors/departure-analytics'
 
 export const dynamic = 'force-dynamic'
@@ -17,6 +18,7 @@ const TABS: ReadonlyArray<HubTab> = [
     { id: 'onboarding', label: 'Onboarding', icon: UserPlus },
     { id: 'exit', label: 'Exit', icon: LogOut },
     { id: 'kontraktorzy', label: 'Kontraktorzy', icon: Users },
+    { id: 'mapa', label: 'Mapa technologiczna', icon: Radar },
     { id: 'sprawy', label: 'Sprawy', icon: Inbox },
     { id: 'analityka', label: 'Analityka', icon: BarChart3 },
     { id: 'szablony', label: 'Szablony', icon: FileText },
@@ -36,7 +38,7 @@ interface PageProps {
 }
 
 export default async function PeopleOpsPage({ searchParams }: PageProps) {
-    await requireTalentCommunityOrAdminLayout()
+    const ctx = await requireTalentCommunityOrAdminLayout()
 
     const tab = VALID_TAB_IDS.includes(searchParams?.tab ?? '') ? (searchParams!.tab as string) : 'pulpit'
 
@@ -65,6 +67,7 @@ export default async function PeopleOpsPage({ searchParams }: PageProps) {
             {tab === 'onboarding' && <OnboardingTabPanel />}
             {tab === 'exit' && <ExitTabPanel />}
             {tab === 'kontraktorzy' && <KontraktorzyTabPanel />}
+            {tab === 'mapa' && <MapaTabPanel isAdmin={ctx.isAdmin} />}
             {tab === 'sprawy' && <SprawyTabPanel />}
             {tab === 'analityka' && (
                 <AnalitykaTabPanel period={period} client={searchParams?.client} recruiter={searchParams?.recruiter} />

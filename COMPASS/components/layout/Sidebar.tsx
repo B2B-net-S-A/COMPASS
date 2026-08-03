@@ -26,6 +26,7 @@ import {
     Wallet,
     Briefcase,
     HeartHandshake,
+    Radar,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -270,6 +271,14 @@ export function Sidebar({
                 feature: null,
                 exactMatch: true,
                 badgeCount: ticketsBadge > 0 ? ticketsBadge : undefined,
+            },
+            // Phase 46 — deep-link do zakładki mapy technologicznej (TCM intel).
+            {
+                name: 'Mapa technologiczna',
+                href: '/internal/people?tab=mapa',
+                icon: Radar,
+                feature: null,
+                exactMatch: true,
             },
             ...(consultantSuccessEnabled ? [{
                 name: 'Consultant Success',
