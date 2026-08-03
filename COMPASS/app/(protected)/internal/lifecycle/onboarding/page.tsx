@@ -12,7 +12,7 @@ export default async function OnboardingQueuePage() {
     const ctx = await requireLifecycleHubLayout()
 
     // Employee → redirect to their own onboarding (if any)
-    if (!canManageLifecycle(ctx.role) && ctx.role !== 'manager') {
+    if (!canManageLifecycle(ctx.role) && ctx.role !== 'manager' && !ctx.hasTcmAccess) {
         const supabase = createClient()
         const { data: own } = await supabase
             .from('onboarding_progress')

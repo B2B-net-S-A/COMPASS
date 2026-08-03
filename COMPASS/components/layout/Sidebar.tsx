@@ -66,6 +66,8 @@ interface SidebarProps {
     // (others get redirected away from /admin/inbox). Computed server-side in the layout.
     isInboxHandler?: boolean
     consultantSuccessEnabled?: boolean
+    // Phase 45: per-user grant — additive Talent Community access without the role.
+    hasTcmAccess?: boolean
 }
 
 interface NavLink {
@@ -90,6 +92,7 @@ export function Sidebar({
     forMobile = false,
     badges,
     consultantSuccessEnabled = false,
+    hasTcmAccess = false,
 }: SidebarProps) {
     const pathname = usePathname()
     const searchParams = useSearchParams()
@@ -313,13 +316,14 @@ export function Sidebar({
         if (isManager) out.push(managerGroup)
         // Phase 38 — Talent Community = five contractor-lifecycle elements (TCM + admin), then the
         // separate Komunikacja group (administracja@ inbox/helpdesk + News composer).
-        if (isTalentCommunity || isAdmin) {
+        // Phase 45: a per-user has_tcm_access grant opens People Ops for a non-TCM role (e.g. a manager).
+        if (isTalentCommunity || isAdmin || hasTcmAccess) {
             out.push(peopleOpsGroup)
             out.push(komunikacjaGroup)
         }
         // Internal-employee onboarding/exit (DIFFERENT population from contractors) — osobny link tylko dla
-        // HR-zone BEZ TCM/admin (manager/internal/finanse). TCM+admin mają to w module People Ops.
-        if (isHrZone && !isTalentCommunity && !isAdmin) out.push(lifecycleGroup)
+        // HR-zone BEZ TCM/admin (manager/internal/finanse). TCM+admin (i grant has_tcm_access) mają to w module People Ops.
+        if (isHrZone && !isTalentCommunity && !isAdmin && !hasTcmAccess) out.push(lifecycleGroup)
         // Platform administration sits last (admin only).
         if (isAdmin) out.push(adminGroup)
         return out

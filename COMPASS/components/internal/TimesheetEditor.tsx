@@ -33,6 +33,8 @@ import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 
 interface Props {
     timesheet: TimesheetWithEntries
+    /** Phase 45 — when true the user may log >8h/day (overtime override + reason). */
+    canLogOvertime?: boolean
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -42,7 +44,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
-export function TimesheetEditor({ timesheet }: Props) {
+export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [editingEntry, setEditingEntry] = useState<TimesheetEntryRow | null>(null)
@@ -93,7 +95,7 @@ export function TimesheetEditor({ timesheet }: Props) {
         router.push(`/internal/timesheet/${newY}/${newM}`)
     }
 
-    function handleAdd(values: { workDate: string; hours: number; project: string | null; description: string }) {
+    function handleAdd(values: { workDate: string; hours: number; project: string | null; description: string; overtimeReason: string | null }) {
         startTransition(async () => {
             try {
                 await addEntry({ timesheetId: timesheet.id, ...values })
@@ -106,7 +108,7 @@ export function TimesheetEditor({ timesheet }: Props) {
         })
     }
 
-    function handleUpdate(values: { workDate: string; hours: number; project: string | null; description: string }) {
+    function handleUpdate(values: { workDate: string; hours: number; project: string | null; description: string; overtimeReason: string | null }) {
         if (!editingEntry) return
         const id = editingEntry.id
         startTransition(async () => {
@@ -117,6 +119,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                     hours: values.hours,
                     project: values.project,
                     description: values.description,
+                    overtimeReason: values.overtimeReason,
                 })
                 toastSuccess('Zaktualizowano')
                 setEditingEntry(null)
@@ -642,6 +645,7 @@ export function TimesheetEditor({ timesheet }: Props) {
                     saving={pending}
                     existingEntries={timesheet.entries}
                     blockedLeaveDates={blockedLeaveDates}
+                    allowOvertime={canLogOvertime}
                     onOpenChange={(o) => {
                         if (!o) {
                             setEditingEntry(null)

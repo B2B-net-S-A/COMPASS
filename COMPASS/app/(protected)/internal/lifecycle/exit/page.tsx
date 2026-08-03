@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export default async function ExitInterviewQueuePage() {
     const ctx = await requireLifecycleHubLayout()
 
-    if (!canManageLifecycle(ctx.role)) {
+    if (!canManageLifecycle(ctx.role) && !ctx.hasTcmAccess) {
         // Non-TCM/admin → redirect to own form or hub
         redirect('/internal/lifecycle/exit/wypelnij')
     }

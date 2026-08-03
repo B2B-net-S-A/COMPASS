@@ -209,19 +209,35 @@ export interface AddEntryInput {
     overtimeReason?: string | null
 }
 
+/**
+ * Phase 45 — is the current user allowed to log overtime (>8h/day) on their own
+ * timesheet? Drives the employee editor's overtime UI (raised cap + reason field).
+ */
+export async function getMyOvertimeAllowed(): Promise<boolean> {
+    const ctx = await requireInternalOrAdminAction()
+    return ctx.canLogOvertime
+}
+
 export async function addEntry(input: AddEntryInput): Promise<TimesheetEntryRow> {
     const ctx = await requireInternalOrAdminAction()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
         throw new Error('work_date musi być w formacie YYYY-MM-DD.')
     }
-    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
+    // Phase 45: users granted can_log_overtime may log >8h (up to 16h) on their own
+    // timesheet; everyone else stays capped at 8h. Overtime rows carry the override
+    // columns (reason required) — resolved below.
+    const selfMaxHours = ctx.canLogOvertime ? OVERTIME_OVERRIDE_HOURS_MAX : STANDARD_DAILY_HOURS_MAX
+    if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > selfMaxHours) {
         throw new Error(
-            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.`,
+            ctx.canLogOvertime
+                ? `Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`
+                : `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.`,
         )
     }
     if (!input.description?.trim()) {
         throw new Error('Opis jest wymagany.')
     }
+    const overtime = resolveOvertimeColumns(ctx, input.hours, input.overtimeReason)
 
     const supabase = createClient()
     const { data: header, error: headerErr } = await supabase
@@ -248,6 +264,7 @@ export async function addEntry(input: AddEntryInput): Promise<TimesheetEntryRow>
             hours: input.hours,
             project: input.project?.trim() || null,
             description: input.description.trim(),
+            ...overtime,
         })
         .select('*')
         .single<TimesheetEntryRow>()
@@ -440,7 +457,7 @@ export interface UpdateEntryInput {
 }
 
 export async function updateEntry(input: UpdateEntryInput): Promise<void> {
-    await requireInternalOrAdminAction()
+    const ctx = await requireInternalOrAdminAction()
     const supabase = createClient()
     const updates: Record<string, unknown> = {}
     if (input.workDate !== undefined) {
@@ -450,12 +467,18 @@ export async function updateEntry(input: UpdateEntryInput): Promise<void> {
         updates.work_date = input.workDate
     }
     if (input.hours !== undefined) {
-        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > STANDARD_DAILY_HOURS_MAX) {
+        // Phase 45: users granted can_log_overtime may raise a day to >8h (up to 16h);
+        // the override columns are (re)set here, and cleared when lowered back to ≤8h.
+        const selfMaxHours = ctx.canLogOvertime ? OVERTIME_OVERRIDE_HOURS_MAX : STANDARD_DAILY_HOURS_MAX
+        if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > selfMaxHours) {
             throw new Error(
-                `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.`,
+                ctx.canLogOvertime
+                    ? `Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`
+                    : `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.`,
             )
         }
         updates.hours = input.hours
+        Object.assign(updates, resolveOvertimeColumns(ctx, input.hours, input.overtimeReason))
     }
     if (input.project !== undefined) updates.project = input.project?.trim() || null
     if (input.description !== undefined) {
@@ -881,9 +904,10 @@ function resolveOvertimeColumns(
             override_at: null,
         }
     }
-    if (!ctx.isAdmin) {
+    // Phase 45: overtime (>8h) is admin OR a user granted can_log_overtime.
+    if (!ctx.isAdmin && !ctx.canLogOvertime) {
         throw new Error(
-            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny (>8h) może wpisać tylko administrator.`,
+            `Maksymalnie ${STANDARD_DAILY_HOURS_MAX}h/dzień. Nadgodziny (>8h) może wpisać tylko administrator lub osoba z nadanym uprawnieniem.`,
         )
     }
     if (hours > OVERTIME_OVERRIDE_HOURS_MAX) {

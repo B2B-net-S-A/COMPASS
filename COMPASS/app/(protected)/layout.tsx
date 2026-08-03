@@ -57,12 +57,12 @@ export default async function ProtectedLayout({
             redirect('/login')
         }
 
-        type ProfileData = { full_name?: string | null; avatar_url?: string | null; role?: string; bio?: string | null; onboarding_tour_done?: boolean; is_inbox_handler?: boolean }
+        type ProfileData = { full_name?: string | null; avatar_url?: string | null; role?: string; bio?: string | null; onboarding_tour_done?: boolean; is_inbox_handler?: boolean; has_tcm_access?: boolean }
         let profile: ProfileData | null = null
         let permissionsMap: PermissionsMap = {} as PermissionsMap
         try {
             const [profileRes, perms] = await Promise.all([
-                supabase.from('profiles').select('id, full_name, avatar_url, email, bio, role, cv_url, gdpr_consent, onboarding_tour_done, is_inbox_handler').eq('id', user.id).single(),
+                supabase.from('profiles').select('id, full_name, avatar_url, email, bio, role, cv_url, gdpr_consent, onboarding_tour_done, is_inbox_handler, has_tcm_access').eq('id', user.id).single(),
                 getPermissions(),
             ])
             profile = (profileRes as { data?: ProfileData | null })?.data ?? null
@@ -100,6 +100,8 @@ export default async function ProtectedLayout({
         // Phase 10: inbox kanban open ticket count for handlers (admin or is_inbox_handler).
         const isAdminLike = role === 'admin'
         const isInboxHandler = isAdminLike || profile?.is_inbox_handler === true
+        // Phase 45: per-user grant — additive Talent Community / People Ops access on top of role.
+        const hasTcmAccess = profile?.has_tcm_access === true
         // Phase 22: lifecycle count for HR-zone roles only (consultant IT has no lifecycle module).
         const isHrZoneUser = isAdminLike || ['internal', 'finanse', 'manager', 'talent_community'].includes(role)
         const [
@@ -144,6 +146,7 @@ export default async function ProtectedLayout({
                     sidebarBadges={sidebarBadges}
                     isInboxHandler={isInboxHandler}
                     consultantSuccessEnabled={isConsultantSuccessEnabled()}
+                    hasTcmAccess={hasTcmAccess}
                 >
                     <LayoutPreferencesProvider>
                         {children}
