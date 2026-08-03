@@ -73,3 +73,48 @@ export function computePlannedBlock(
     if (latestBefore) return { block: nextBlock(latestBefore.block), basis: 'computed', source: null }
     return { block: 'B', basis: 'computed', source: null }
 }
+
+// ─── Przemiatanie kwartalne (Etap 2: cron + przycisk admina) ────────────────
+
+export interface RotationCandidate {
+    contractorId: string
+    /** Wszystkie dotychczasowe przydziały tego kontraktora. */
+    assignments: AssignmentLike[]
+}
+
+export interface RotationInsert {
+    contractor_id: string
+    period_year: number
+    period_quarter: number
+    block: InterviewBlock
+    source: 'auto'
+}
+
+/**
+ * Wiersze do wstawienia dla (year, quarter): po jednym na kontraktora, który
+ * NIE ma jeszcze przydziału na ten kwartał. Kontraktorzy z przydziałem —
+ * automatycznym czy ręcznym — są pomijani, więc override admina jest lepki,
+ * a wielokrotne uruchomienie crona nic nie zmienia (idempotencja).
+ *
+ * Populację (aktywni kontraktorzy) wybiera warstwa danych — tu wchodzi już
+ * gotowa lista kandydatów.
+ */
+export function computeRotationInserts(
+    candidates: RotationCandidate[],
+    year: number,
+    quarter: number,
+): RotationInsert[] {
+    const inserts: RotationInsert[] = []
+    for (const c of candidates) {
+        const planned = computePlannedBlock(c.assignments, year, quarter)
+        if (planned.basis === 'assigned') continue
+        inserts.push({
+            contractor_id: c.contractorId,
+            period_year: year,
+            period_quarter: quarter,
+            block: planned.block,
+            source: 'auto',
+        })
+    }
+    return inserts
+}
