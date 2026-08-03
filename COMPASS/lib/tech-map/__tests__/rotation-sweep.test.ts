@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
     computeRotationInserts,
+    quarterBounds,
     type RotationCandidate,
 } from '@/lib/tech-map/block-rotation'
 
@@ -88,5 +89,27 @@ describe('computeRotationInserts', () => {
 
     it('pusta populacja daje pustą listę', () => {
         expect(computeRotationInserts([], 2026, 3)).toEqual([])
+    })
+})
+
+describe('quarterBounds', () => {
+    // Naiwne „ostatni dzień = start+2 miesiące, dzień 31" dawało 06-31 i 09-31,
+    // czyli daty, których nie ma w kalendarzu — Postgres odrzucał takie zapytanie.
+    it.each([
+        [1, '2026-01-01', '2026-04-01'],
+        [2, '2026-04-01', '2026-07-01'],
+        [3, '2026-07-01', '2026-10-01'],
+    ])('Q%i ma poprawne, istniejące granice', (quarter, start, endExclusive) => {
+        expect(quarterBounds(2026, quarter)).toEqual({ start, endExclusive })
+    })
+
+    it('Q4 przechodzi na styczeń następnego roku', () => {
+        expect(quarterBounds(2026, 4)).toEqual({ start: '2026-10-01', endExclusive: '2027-01-01' })
+    })
+
+    it('koniec jest wyłączny — ostatni dzień kwartału mieści się w przedziale', () => {
+        const { start, endExclusive } = quarterBounds(2026, 3)
+        expect('2026-09-30' >= start && '2026-09-30' < endExclusive).toBe(true)
+        expect('2026-10-01' < endExclusive).toBe(false)
     })
 })

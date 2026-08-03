@@ -118,19 +118,23 @@ export async function sweepBlockAssignments(
 
     let assigned = 0
     if (inserts.length > 0) {
-        const { error: insertError } = await admin
+        // `.select()` zwraca wiersze REALNIE wstawione — przy ignoreDuplicates
+        // wyścig z fallbackiem zapisu karty po cichu pomija część, więc liczenie
+        // `inserts.length` zawyżałoby statystykę w audycie.
+        const { data: insertedRows, error: insertError } = await admin
             .from('tech_block_assignments')
             .upsert(inserts, {
                 onConflict: 'contractor_id,period_year,period_quarter',
                 ignoreDuplicates: true,
             })
+            .select('id')
         if (insertError) {
             // Wyścig z zapisem karty (fallback z Etapu 1) jest nieszkodliwy —
             // następny przebieg dokończy robotę.
             errors.push(`upsert: ${insertError.message}`)
             logger.warn({ event: 'tech_map_rotation.upsert_failed', error: insertError.message })
         } else {
-            assigned = inserts.length
+            assigned = (insertedRows ?? []).length
         }
     }
 

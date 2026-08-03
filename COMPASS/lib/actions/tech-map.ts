@@ -18,6 +18,7 @@ import { validateCardBase, validateCardForFinalize } from '@/lib/tech-map/valida
 import {
     computePlannedBlock,
     periodFromDate,
+    quarterBounds,
     type AssignmentLike,
 } from '@/lib/tech-map/block-rotation'
 import {
@@ -1028,9 +1029,7 @@ export async function getRotationOverview(): Promise<RotationOverview> {
 
     const todayISO = warsawDate(new Date())
     const { year, quarter } = periodFromDate(todayISO)
-    const quarterStartMonth = (quarter - 1) * 3 + 1
-    const quarterStart = `${year}-${String(quarterStartMonth).padStart(2, '0')}-01`
-    const quarterEnd = `${year}-${String(quarterStartMonth + 2).padStart(2, '0')}-31`
+    const { start: quarterStart, endExclusive: quarterEndExclusive } = quarterBounds(year, quarter)
 
     const [contractorsRes, assignmentsRes, cardsRes] = await Promise.all([
         admin
@@ -1046,10 +1045,16 @@ export async function getRotationOverview(): Promise<RotationOverview> {
             .select('contractor_id, interview_date')
             .eq('is_draft', false)
             .gte('interview_date', quarterStart)
-            .lte('interview_date', quarterEnd),
+            .lt('interview_date', quarterEndExclusive),
     ])
 
     if (contractorsRes.error) throw new Error(`Błąd pobierania konsultantów: ${contractorsRes.error.message}`)
+    if (assignmentsRes.error) {
+        throw new Error(`Błąd pobierania przydziałów: ${assignmentsRes.error.message}`)
+    }
+    // Bez tego sprawdzenia błąd zapytania o karty byłby niewidoczny: `cardDates`
+    // zostałoby puste i panel pokazałby, że NIKT nie rozmawiał w tym kwartale.
+    if (cardsRes.error) throw new Error(`Błąd pobierania kart: ${cardsRes.error.message}`)
 
     const contractors = (contractorsRes.data ?? []) as Array<{
         id: string

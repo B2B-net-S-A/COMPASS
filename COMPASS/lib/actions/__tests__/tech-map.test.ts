@@ -52,7 +52,7 @@ function makeChain(table: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const chain: any = {}
     const self = () => chain
-    for (const m of ['select', 'eq', 'neq', 'in', 'gte', 'lte', 'order', 'limit', 'ilike', 'or', 'delete']) {
+    for (const m of ['select', 'eq', 'neq', 'in', 'gte', 'lte', 'lt', 'order', 'limit', 'ilike', 'or', 'delete']) {
         chain[m] = vi.fn(self)
     }
     chain.insert = vi.fn((rows: unknown) => {
