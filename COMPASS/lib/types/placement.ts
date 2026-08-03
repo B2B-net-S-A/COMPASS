@@ -162,3 +162,53 @@ export function placementStatusLabelPl(status: PlacementStatus): string {
             return 'Anulowany'
     }
 }
+
+// ─── Phase 28 follow-up — edit-before-generate at 168h confirmation ─────────
+// The manager reviews/edits the two auto-computed bonuses (DL + recruiter) in a
+// pre-filled dialog before they are generated and the recipients are notified.
+
+/** Editable values for one placement bonus, supplied by the manager before generation. */
+export interface PlacementBonusOverride {
+    amount: number
+    reason: string
+    periodYear: number
+    periodMonth: number
+    notes?: string | null
+}
+
+/**
+ * Optional per-recipient overrides accepted by `confirmPlacementHours`. When a side is
+ * omitted the action falls back to the computed defaults (unchanged legacy behaviour).
+ */
+export interface ConfirmPlacementHoursOverrides {
+    dl?: PlacementBonusOverride
+    recruiter?: PlacementBonusOverride
+}
+
+/**
+ * Default DL-bonus reason. Kept byte-identical to the text `confirmPlacementHours`
+ * generated before this feature, so an un-touched form reproduces the legacy bonus.
+ */
+export function defaultDlBonusReason(
+    consultantName: string,
+    clientName: string,
+    monthlyMargin: number,
+): string {
+    return `Premia DL — placement ${consultantName} @ ${clientName} (${DL_BONUS_PERCENT}% z marży miesięcznej ${Number(monthlyMargin).toLocaleString('pl-PL')} zł)`
+}
+
+/** Default recruiter-bonus reason (identical to the pre-edit generated text). */
+export function defaultRecruiterBonusReason(
+    consultantName: string,
+    clientName: string,
+    recruiterTier: number,
+    marginPerHour: number,
+): string {
+    return `Premia rekrutacyjna — placement ${consultantName} @ ${clientName} (próg ${recruiterTier}, marża ${Number(marginPerHour)} zł/h)`
+}
+
+/** Parse a bonus period {year, month} from an ISO yyyy-mm-dd eligible date. */
+export function bonusPeriodFromEligibleDate(eligibleDateISO: string): { year: number; month: number } {
+    const [year, month] = eligibleDateISO.split('-').slice(0, 2).map(Number)
+    return { year, month }
+}
