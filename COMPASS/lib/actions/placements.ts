@@ -29,6 +29,7 @@ import {
 import {
     BONUS_MAX_AMOUNT,
     BONUS_MIN_AMOUNT,
+    BONUS_NOTES_MAX_LENGTH,
     BONUS_REASON_MAX_LENGTH,
     BONUS_REASON_MIN_LENGTH,
     type BonusStatus,
@@ -474,6 +475,9 @@ function validateBonusOverride(o: PlacementBonusOverride, label: string): void {
     if (!Number.isInteger(o.periodYear) || o.periodYear < 2020 || o.periodYear > 2100) {
         throw new Error(`Premia ${label}: nieprawidłowy rok premii.`)
     }
+    if (o.notes != null && o.notes.trim().length > BONUS_NOTES_MAX_LENGTH) {
+        throw new Error(`Premia ${label}: notatka za długa (max ${BONUS_NOTES_MAX_LENGTH} znaków).`)
+    }
 }
 
 /**
@@ -503,23 +507,46 @@ export async function confirmPlacementHours(
 
     const { year: defYear, month: defMonth } = bonusPeriodFromEligibleDate(p.bonus_eligible_date)
 
-    // Effective (edited-or-default) values per bonus, resolved once so they feed both the
-    // INSERT, the notification, and the audit log consistently.
-    const dlAmount = overrides?.dl ? overrides.dl.amount : Number(p.dl_bonus_amount)
-    const dlReason = overrides?.dl
-        ? overrides.dl.reason.trim()
-        : defaultDlBonusReason(p.consultant_name, p.client_name, Number(p.monthly_margin))
+    // Computed defaults (also used below to decide whether the manager actually changed
+    // anything, so the audit's `edited` flag is truthful rather than just "went via dialog").
+    const dlDefaultAmount = Number(p.dl_bonus_amount)
+    const recDefaultAmount = Number(p.recruiter_bonus_amount)
+    const dlDefaultReason = defaultDlBonusReason(p.consultant_name, p.client_name, Number(p.monthly_margin))
+    const recDefaultReason = defaultRecruiterBonusReason(
+        p.consultant_name,
+        p.client_name,
+        p.recruiter_tier,
+        Number(p.margin_per_hour),
+    )
+
+    // Effective (edited-or-default) values per bonus, resolved once so they feed the INSERT,
+    // the notification, and the audit log consistently.
+    const dlAmount = overrides?.dl ? overrides.dl.amount : dlDefaultAmount
+    const dlReason = overrides?.dl ? overrides.dl.reason.trim() : dlDefaultReason
     const dlYear = overrides?.dl ? overrides.dl.periodYear : defYear
     const dlMonth = overrides?.dl ? overrides.dl.periodMonth : defMonth
     const dlNotes = overrides?.dl?.notes?.trim() || null
 
-    const recAmount = overrides?.recruiter ? overrides.recruiter.amount : Number(p.recruiter_bonus_amount)
-    const recReason = overrides?.recruiter
-        ? overrides.recruiter.reason.trim()
-        : defaultRecruiterBonusReason(p.consultant_name, p.client_name, p.recruiter_tier, Number(p.margin_per_hour))
+    const recAmount = overrides?.recruiter ? overrides.recruiter.amount : recDefaultAmount
+    const recReason = overrides?.recruiter ? overrides.recruiter.reason.trim() : recDefaultReason
     const recYear = overrides?.recruiter ? overrides.recruiter.periodYear : defYear
     const recMonth = overrides?.recruiter ? overrides.recruiter.periodMonth : defMonth
     const recNotes = overrides?.recruiter?.notes?.trim() || null
+
+    // Did the manager actually change a value vs. the computed default? (A click-through of
+    // the pre-filled dialog is NOT an edit; adding an internal note counts as one.)
+    const dlEdited =
+        dlAmount !== dlDefaultAmount ||
+        dlReason !== dlDefaultReason ||
+        dlYear !== defYear ||
+        dlMonth !== defMonth ||
+        dlNotes !== null
+    const recEdited =
+        recAmount !== recDefaultAmount ||
+        recReason !== recDefaultReason ||
+        recYear !== defYear ||
+        recMonth !== defMonth ||
+        recNotes !== null
 
     const { data: peopleRaw } = await admin
         .from('profiles')
@@ -602,9 +629,9 @@ export async function confirmPlacementHours(
         placement_id: placementId,
         dl_bonus_id: dlBonusId,
         recruiter_bonus_id: recBonusId,
-        edited: Boolean(overrides?.dl || overrides?.recruiter),
-        dl: { amount: dlAmount, period_year: dlYear, period_month: dlMonth },
-        recruiter: { amount: recAmount, period_year: recYear, period_month: recMonth },
+        edited: dlEdited || recEdited,
+        dl: { amount: dlAmount, period_year: dlYear, period_month: dlMonth, edited: dlEdited },
+        recruiter: { amount: recAmount, period_year: recYear, period_month: recMonth, edited: recEdited },
     })
 
     revalidatePath('/internal/admin')

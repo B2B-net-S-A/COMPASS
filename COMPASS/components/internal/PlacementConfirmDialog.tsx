@@ -34,6 +34,7 @@ import {
     BONUS_MAX_AMOUNT,
     BONUS_MIN_AMOUNT,
     BONUS_MONTHS_PL,
+    BONUS_NOTES_MAX_LENGTH,
     BONUS_PERIOD_MAX_MONTHS_BACK,
     BONUS_REASON_MAX_LENGTH,
     BONUS_REASON_MIN_LENGTH,
@@ -60,6 +61,11 @@ function pln(n: number | string): string {
  * Period dropdown = last 12 months + current, guaranteeing the placement's eligible month
  * is selectable even when it falls outside that window (a future month for an early confirm,
  * or an older one for a late confirm).
+ *
+ * `now` is the browser's local clock, so the window edge can differ by a day from Warsaw
+ * near midnight. That's intentionally tolerated here: the list is only a convenience, the
+ * eligible month is always present via `ensure`, and the server (authoritative) does not
+ * restrict the period at all — so a boundary-day skew never blocks a valid confirmation.
  */
 function buildPeriodOptions(ensure: { year: number; month: number }): PeriodOption[] {
     const now = new Date()
@@ -104,13 +110,17 @@ function parseDraft(d: Draft): PlacementBonusOverride | { error: string } {
     if (reason.length > BONUS_REASON_MAX_LENGTH) {
         return { error: `Uzasadnienie max ${BONUS_REASON_MAX_LENGTH} znaków.` }
     }
+    const notes = d.notes.trim()
+    if (notes.length > BONUS_NOTES_MAX_LENGTH) {
+        return { error: `Notatka max ${BONUS_NOTES_MAX_LENGTH} znaków.` }
+    }
     const [yearStr, monthStr] = d.periodKey.split('-')
     return {
         amount,
         reason,
         periodYear: Number(yearStr),
         periodMonth: Number(monthStr),
-        notes: d.notes.trim() || null,
+        notes: notes || null,
     }
 }
 
@@ -316,8 +326,12 @@ function BonusCard({
                     onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
                     disabled={disabled}
                     rows={1}
+                    maxLength={BONUS_NOTES_MAX_LENGTH}
                     placeholder="Widoczna dla managera i admina."
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                    {draft.notes.trim().length}/{BONUS_NOTES_MAX_LENGTH} znaków
+                </p>
             </div>
         </div>
     )
