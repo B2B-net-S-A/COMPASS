@@ -52,6 +52,8 @@ interface Props {
     canUnlockApproved?: boolean
     /** Phase 33b — admin may enter > 8h/day (overtime override) inline + edit/delete overtime rows. */
     isAdmin?: boolean
+    /** Phase 45 — per-user grant: approver (non-admin) may also enter/edit overtime rows. */
+    canLogOvertime?: boolean
     onOpenChange: (open: boolean) => void
     onRequestReject: (t: TimesheetWithEntriesAndUser) => void
 }
@@ -92,9 +94,11 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
 }
 
 
-export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = true, isAdmin = false, onOpenChange, onRequestReject }: Props) {
+export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = true, isAdmin = false, canLogOvertime = false, onOpenChange, onRequestReject }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
+    // Phase 45: overtime (>8h) inline is allowed for admins OR approvers granted can_log_overtime.
+    const canOvertime = isAdmin || canLogOvertime
     const [confirm, ConfirmUI] = useConfirm()
 
     // Phase 27f — local entry state so approver edits reflect immediately without
@@ -466,7 +470,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                         </td>
                                         {editable && (
                                             <td className="py-2 text-right whitespace-nowrap align-top">
-                                                {e.is_overtime_override && !isAdmin ? (
+                                                {e.is_overtime_override && !canOvertime ? (
                                                     <span className="text-[10px] text-muted-foreground">
                                                         —
                                                     </span>
@@ -591,7 +595,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                 saving={pending}
                 existingEntries={entries}
                 blockedLeaveDates={blockedLeaveDates}
-                allowOvertime={isAdmin}
+                allowOvertime={canOvertime}
                 onOpenChange={(o) => {
                     if (!o) {
                         setEditingEntry(null)
