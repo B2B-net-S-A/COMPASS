@@ -33,6 +33,7 @@ export async function AdminTimesheetsPanel({ year, month }: Props) {
                 timesheets={timesheets}
                 canUnlockApproved={canUnlockApproved}
                 isAdmin={ctx.isAdmin}
+                canLogOvertime={ctx.canLogOvertime}
             />
         </section>
     )

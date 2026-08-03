@@ -32,6 +32,8 @@ interface Props {
     canUnlockApproved: boolean
     /** Phase 33b — admin may enter > 8h/day (overtime override) inline in the preview dialog. */
     isAdmin: boolean
+    /** Phase 45 — per-user grant: approver (non-admin) may also enter/edit overtime rows. */
+    canLogOvertime?: boolean
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -41,7 +43,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
-export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved, isAdmin }: Props) {
+export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved, isAdmin, canLogOvertime = false }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
@@ -348,6 +350,7 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
                 open={!!previewTarget}
                 canUnlockApproved={canUnlockApproved}
                 isAdmin={isAdmin}
+                canLogOvertime={canLogOvertime}
                 onOpenChange={(o) => {
                     if (!o) setPreviewTarget(null)
                 }}

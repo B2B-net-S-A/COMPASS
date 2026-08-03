@@ -983,12 +983,14 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Time
         .eq('id', input.entryId)
         .single<{ id: string; timesheet_id: string; is_overtime_override: boolean }>()
     if (eErr || !entry) throw new Error('Wpis nie istnieje.')
-    // Phase 33b — overtime rows are editable inline by admins; managers still
-    // route through the read-only flow (cannot touch overtime entries).
-    if (entry.is_overtime_override && !ctx.isAdmin) {
-        throw new Error('Ten wpis to nadgodziny — edytuj go w panelu nadgodzin (administrator).')
-    }
+    // Confirm the approver may edit THIS timesheet (team scope + editable status) BEFORE any
+    // entry-specific logic, so an out-of-scope actor is rejected first.
     const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)
+    // Phase 33b / 45 — overtime rows are editable inline by admins OR users granted
+    // can_log_overtime; other approvers (plain managers) cannot touch overtime entries.
+    if (entry.is_overtime_override && !ctx.isAdmin && !ctx.canLogOvertime) {
+        throw new Error('Ten wpis to nadgodziny — może go edytować administrator lub osoba z uprawnieniem do nadgodzin.')
+    }
 
     const updates: Record<string, unknown> = {}
     if (input.workDate !== undefined) {
@@ -1060,11 +1062,14 @@ export async function approverDeleteEntry(entryId: string): Promise<void> {
             is_overtime_override: boolean
         }>()
     if (eErr || !entry) throw new Error('Wpis nie istnieje.')
-    // Phase 33b — admins may delete overtime rows inline; managers cannot.
-    if (entry.is_overtime_override && !ctx.isAdmin) {
-        throw new Error('Ten wpis to nadgodziny — usuń go w panelu nadgodzin (administrator).')
-    }
+    // Confirm the approver may edit THIS timesheet (team scope + editable status) BEFORE any
+    // entry-specific logic, so an out-of-scope actor is rejected first.
     const header = await loadApproverEditableTimesheet(admin, ctx, entry.timesheet_id)
+    // Phase 33b / 45 — admins OR users granted can_log_overtime may delete overtime
+    // rows inline; other approvers (plain managers) cannot.
+    if (entry.is_overtime_override && !ctx.isAdmin && !ctx.canLogOvertime) {
+        throw new Error('Ten wpis to nadgodziny — może go usunąć administrator lub osoba z uprawnieniem do nadgodzin.')
+    }
 
     const { error } = await admin.from('timesheet_entries').delete().eq('id', entryId)
     if (error) throw new Error(`Błąd usunięcia wpisu: ${error.message}`)
