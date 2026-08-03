@@ -72,6 +72,16 @@ function buildCtx(base: AuthContextBase): InternalAuthContext {
 }
 
 /**
+ * Phase 45 — the per-user `has_tcm_access` grant only counts for HR-zone users,
+ * never a bare `consultant`, even if the flag were mis-set. Granting is admin-only,
+ * but this is defence-in-depth so a stray flag on a platform consultant can't open
+ * the TCM zone. (The DB mirror of this guard lives in has_lifecycle_access().)
+ */
+function hasEffectiveTcmAccess(base: AuthContextBase): boolean {
+    return base.hasTcmAccess && canAccessInternalZone(base.role)
+}
+
+/**
  * Server-side guard for /internal/* layout. Redirects unauthorized users.
  * Use in: app/(protected)/internal/layout.tsx
  *
@@ -191,8 +201,8 @@ export async function requireInvoiceReviewerLayout(): Promise<InternalAuthContex
 export async function requireTalentCommunityOrAdminAction(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
     if (!ctx) throw new Error('Unauthorized')
-    // Phase 45: per-user has_tcm_access grant unlocks TCM without the role.
-    if (!canManageInbox(ctx.role) && !ctx.hasTcmAccess) {
+    // Phase 45: per-user has_tcm_access grant unlocks TCM without the role (HR-zone only).
+    if (!canManageInbox(ctx.role) && !hasEffectiveTcmAccess(ctx)) {
         throw new Error('Wymagane uprawnienia: administrator lub Talent Community Manager.')
     }
     return buildCtx(ctx)
@@ -204,8 +214,8 @@ export async function requireTalentCommunityOrAdminAction(): Promise<InternalAut
 export async function requireTalentCommunityOrAdminLayout(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
     if (!ctx) redirect('/login')
-    // Phase 45: per-user has_tcm_access grant unlocks TCM without the role.
-    if (!canManageInbox(ctx.role) && !ctx.hasTcmAccess) {
+    // Phase 45: per-user has_tcm_access grant unlocks TCM without the role (HR-zone only).
+    if (!canManageInbox(ctx.role) && !hasEffectiveTcmAccess(ctx)) {
         redirect('/internal')
     }
     return buildCtx(ctx)
@@ -233,8 +243,8 @@ export async function requireInternalAdminAreaLayout(): Promise<InternalAuthCont
 export async function requireLifecycleManagerAction(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
     if (!ctx) throw new Error('Unauthorized')
-    // Phase 45: per-user has_tcm_access grant unlocks lifecycle CRUD without the role.
-    if (!canManageLifecycle(ctx.role) && !ctx.hasTcmAccess) {
+    // Phase 45: per-user has_tcm_access grant unlocks lifecycle CRUD without the role (HR-zone only).
+    if (!canManageLifecycle(ctx.role) && !hasEffectiveTcmAccess(ctx)) {
         throw new Error('Wymagane uprawnienia: administrator lub Talent Community Manager.')
     }
     return buildCtx(ctx)
@@ -250,8 +260,8 @@ export async function requireLifecycleHubLayout(): Promise<InternalAuthContext> 
     if (!ctx) redirect('/login')
     // Access logic delegated to layout — we just enforce auth + HR-zone here.
     // Konsultant IT without active lifecycle redirects to /home.
-    // Phase 45: per-user has_tcm_access grant also passes.
-    if (!canAccessInternalZone(ctx.role) && !canManageLifecycle(ctx.role) && !ctx.hasTcmAccess) {
+    // Phase 45: per-user has_tcm_access grant also passes (HR-zone only).
+    if (!canAccessInternalZone(ctx.role) && !canManageLifecycle(ctx.role) && !hasEffectiveTcmAccess(ctx)) {
         redirect('/home')
     }
     return buildCtx(ctx)

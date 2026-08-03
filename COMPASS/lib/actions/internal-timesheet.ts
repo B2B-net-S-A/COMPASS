@@ -885,11 +885,12 @@ interface OvertimeColumns {
 }
 
 /**
- * Phase 33b — resolve the overtime-override columns for an approver-entered
- * `hours` value. Standard days (≤8h) clear any override. Days > 8h are an
- * admin-only overtime override: capped at {@link OVERTIME_OVERRIDE_HOURS_MAX}
+ * Phase 33b / 45 — resolve the overtime-override columns for an entered `hours`
+ * value (approver flow or self-service). Standard days (≤8h) clear any override.
+ * Days > 8h are an overtime override allowed for admins OR users granted
+ * `can_log_overtime` (Phase 45): capped at {@link OVERTIME_OVERRIDE_HOURS_MAX}
  * and requiring a reason (≥{@link OVERTIME_REASON_MIN_LENGTH} chars), matching
- * the dedicated overtime panel + the DB CHECK/trigger from Phase 27a.
+ * the dedicated overtime panel + the DB CHECK/trigger from Phase 27a (widened in Phase 45).
  */
 function resolveOvertimeColumns(
     ctx: InternalAuthContext,
