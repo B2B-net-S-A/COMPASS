@@ -9,6 +9,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireLifecycleManagerAction, type InternalAuthContext } from '@/lib/auth/internal-guard'
 import { createServiceClient } from '@/lib/supabase/admin'
+import { logCompat } from '@/lib/logger'
 import { logAudit } from '@/lib/actions/audit'
 import { listConversations } from '@/lib/actions/contractors'
 import { normalizeClientName } from '@/lib/contractors/name-normalization'
@@ -58,6 +59,11 @@ function validateDictName(raw: string): string {
     return trimmed
 }
 
+/** Wartość do exact-match przez .ilike() — escapuje wildcardy % i _. */
+function ilikeExact(value: string): string {
+    return value.replace(/[\\%_]/g, '\\$&')
+}
+
 async function loadProfileNames(admin: ServiceClient, ids: Array<string | null>): Promise<Map<string, string>> {
     const unique = Array.from(new Set(ids.filter((id): id is string => Boolean(id))))
     const map = new Map<string, string>()
@@ -103,13 +109,22 @@ export async function createTechnologyUnverified(name: string): Promise<Technolo
 
     if (error) {
         if ((error as { code?: string }).code === '23505') {
-            const { data: existing } = await admin
+            // Konflikt slug/nazwy → zwróć pozycję kanoniczną. Dwa parametryzowane
+            // lookupy zamiast ręcznie sklejanego .or() — przecinki/nawiasy w nazwie
+            // rozsypałyby parser filtrów PostgREST.
+            const { data: bySlug } = await admin
                 .from('technologies')
                 .select('*')
-                .or(`slug.eq.${slug},name.ilike.${trimmed}`)
+                .eq('slug', slug)
+                .maybeSingle()
+            if (bySlug) return bySlug as TechnologyRow
+            const { data: byName } = await admin
+                .from('technologies')
+                .select('*')
+                .ilike('name', ilikeExact(trimmed))
                 .limit(1)
                 .maybeSingle()
-            if (existing) return existing as TechnologyRow
+            if (byName) return byName as TechnologyRow
         }
         throw new Error(`Błąd dodawania technologii: ${error.message}`)
     }
@@ -195,7 +210,7 @@ export async function createVendorUnverified(name: string): Promise<VendorRow> {
             const { data: existing } = await admin
                 .from('vendors')
                 .select('*')
-                .ilike('name', trimmed)
+                .ilike('name', ilikeExact(trimmed))
                 .limit(1)
                 .maybeSingle()
             if (existing) return existing as VendorRow
@@ -275,7 +290,7 @@ export async function createClientArea(clientId: string, name: string): Promise<
                 .from('client_areas')
                 .select('*')
                 .eq('client_id', clientId)
-                .ilike('name', trimmed)
+                .ilike('name', ilikeExact(trimmed))
                 .limit(1)
                 .maybeSingle()
             if (existing) return existing as ClientAreaRow
@@ -312,7 +327,7 @@ export async function createClientForTechMap(name: string): Promise<{ id: string
             const { data: existing } = await admin
                 .from('clients')
                 .select('id, name')
-                .ilike('name', normalized)
+                .ilike('name', ilikeExact(normalized))
                 .limit(1)
                 .maybeSingle()
             if (existing) return existing as { id: string; name: string }
@@ -362,8 +377,12 @@ async function assertAreaBelongsToClient(admin: ServiceClient, input: CardInput)
     }
 }
 
+// Rewrite junctions: delete + insert (supabase-js nie daje transakcji klienckiej).
+// Błędy delete są sprawdzane; częściowy zapis naprawia się przy kolejnym zapisie
+// karty, bo relacje są zawsze przepisywane w całości z inputu.
 async function syncCardRelations(admin: ServiceClient, cardId: string, input: CardInput): Promise<void> {
-    await admin.from('tech_interview_card_technologies').delete().eq('card_id', cardId)
+    const delTech = await admin.from('tech_interview_card_technologies').delete().eq('card_id', cardId)
+    if (delTech.error) throw new Error(`Błąd zapisu technologii: ${delTech.error.message}`)
     if (input.technologyIds.length > 0) {
         const { error } = await admin
             .from('tech_interview_card_technologies')
@@ -371,7 +390,8 @@ async function syncCardRelations(admin: ServiceClient, cardId: string, input: Ca
         if (error) throw new Error(`Błąd zapisu technologii: ${error.message}`)
     }
 
-    await admin.from('tech_interview_card_vendors').delete().eq('card_id', cardId)
+    const delVendors = await admin.from('tech_interview_card_vendors').delete().eq('card_id', cardId)
+    if (delVendors.error) throw new Error(`Błąd zapisu dostawców: ${delVendors.error.message}`)
     if (input.vendorIds.length > 0) {
         const { error } = await admin
             .from('tech_interview_card_vendors')
@@ -379,7 +399,8 @@ async function syncCardRelations(admin: ServiceClient, cardId: string, input: Ca
         if (error) throw new Error(`Błąd zapisu dostawców: ${error.message}`)
     }
 
-    await admin.from('tech_interview_card_initiatives').delete().eq('card_id', cardId)
+    const delInitiatives = await admin.from('tech_interview_card_initiatives').delete().eq('card_id', cardId)
+    if (delInitiatives.error) throw new Error(`Błąd zapisu inicjatyw: ${delInitiatives.error.message}`)
     const initiatives = input.initiatives
         .map((i) => ({ name: i.name.trim(), kind: i.kind, priority: i.priority }))
         .filter((i) => i.name.length >= 2)
@@ -496,7 +517,8 @@ export async function createCardDraft(input: CardInput): Promise<{ id: string }>
     await assertAreaBelongsToClient(admin, input)
 
     // Prefill placementu: najświeższy aktywny placement kontraktora (jeśli jest).
-    const { data: placement } = await admin
+    // Opcjonalny — błąd lookupa nie blokuje karty, ale zostawia ślad w logach.
+    const { data: placement, error: placementError } = await admin
         .from('placements')
         .select('id')
         .eq('contractor_id', input.contractorId)
@@ -504,6 +526,9 @@ export async function createCardDraft(input: CardInput): Promise<{ id: string }>
         .order('start_date', { ascending: false })
         .limit(1)
         .maybeSingle()
+    if (placementError) {
+        logCompat.warn('tech-map: prefill placementu nie powiódł się', placementError)
+    }
 
     const { data, error } = await admin
         .from('tech_interview_cards')

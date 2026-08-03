@@ -175,6 +175,15 @@ describe('createCardDraft', () => {
         expect(assignment!.rows.block).toBe('B')
         expect(assignment!.rows.source).toBe('auto')
     })
+
+    it('nie nadpisuje istniejącego przydziału kwartału (manual jest lepki)', async () => {
+        db.tables.tech_interview_cards = [{ id: 'card-1' }]
+        db.tables.tech_block_assignments = [
+            { period_year: 2026, period_quarter: 3, block: 'C', source: 'manual' },
+        ]
+        await createCardDraft(card({ interviewDate: '2026-08-01' }))
+        expect(db.upserts.find((u) => u.table === 'tech_block_assignments')).toBeUndefined()
+    })
 })
 
 describe('saveCard / finalizeCard — własność i kompletność', () => {
