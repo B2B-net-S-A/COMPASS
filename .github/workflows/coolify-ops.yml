@@ -391,8 +391,10 @@ jobs:
             echo "::error::Refusing endpoint '$ENDPOINT' — allowed: lowercase letters, digits, - (max 64)"
             exit 1
           fi
-          if ! printf '%s' "$FREQ" | grep -qE '^[0-9*/,: -]{1,40}$'; then
-            echo "::error::Refusing cron expression '$FREQ' — unexpected characters"
+          # Standard 5-field cron only — no ':' (that would let a typo like '30:5 * * *'
+          # through and register a task that silently never fires).
+          if ! printf '%s' "$FREQ" | grep -qE '^[0-9*/,-]+( [0-9*/,-]+){4}$'; then
+            echo "::error::Refusing cron expression '$FREQ' — expected 5 space-separated fields"
             exit 1
           fi
           PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -tAc"
@@ -403,9 +405,16 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "$PSQL_TBL \"select id, name, frequency, container, enabled from scheduled_tasks where $SCOPE order by id;\""
 
-          # Idempotency: never create a second row with the same name.
+          # Idempotency: never create a second row with the same name. A dropped SSH
+          # connection returns an empty string, not "0" — treat empty as a hard failure
+          # so a flap can never masquerade as "already exists" and skip registration.
           EXISTING=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL \"select count(*) from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\"")
+            "$PSQL \"select count(*) from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\"") \
+            || { echo "::error::SSH failed during idempotency check"; exit 1; }
+          if [ -z "$EXISTING" ]; then
+            echo "::error::Empty result from idempotency check — aborting rather than guessing"
+            exit 1
+          fi
           if [ "$EXISTING" != "0" ]; then
             echo "Task '$TASK_NAME' already exists ($EXISTING row) — nothing to do."
             exit 0
@@ -414,12 +423,14 @@ jobs:
           # Clone the newest enabled wget task that hits /api/cron/, swapping the path.
           # INSERT ... SELECT inserts zero rows if no template matches — caught below.
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL \"insert into scheduled_tasks (uuid, name, command, frequency, container, application_id, team_id, enabled, timeout, created_at, updated_at) select gen_random_uuid(), '$TASK_NAME', regexp_replace(command, '/api/cron/[a-z0-9-]+', '/api/cron/$ENDPOINT'), '$FREQ', 'app', application_id, team_id, true, timeout, now(), now() from scheduled_tasks where $SCOPE and enabled = true and command like '%wget %' and command like '%/api/cron/%' order by id desc limit 1;\""
+            "$PSQL \"insert into scheduled_tasks (uuid, name, command, frequency, container, application_id, team_id, enabled, timeout, created_at, updated_at) select gen_random_uuid(), '$TASK_NAME', regexp_replace(command, '/api/cron/[a-z0-9-]+', '/api/cron/$ENDPOINT'), '$FREQ', 'app', application_id, team_id, true, timeout, now(), now() from scheduled_tasks where $SCOPE and enabled = true and command like '%wget %' and command like '%/api/cron/%' order by id desc limit 1;\"" \
+            || { echo "::error::SSH failed during INSERT — task may or may not exist, re-run to converge"; exit 1; }
 
           CREATED=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
-            "$PSQL \"select count(*) from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\"")
-          if [ "$CREATED" = "0" ]; then
-            echo "::error::No enabled wget /api/cron/ task to clone — cannot derive a safe command. Register one working task first."
+            "$PSQL \"select count(*) from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\"") \
+            || { echo "::error::SSH failed during post-INSERT verification"; exit 1; }
+          if [ -z "$CREATED" ] || [ "$CREATED" = "0" ]; then
+            echo "::error::Task not created — no enabled wget /api/cron/ task to clone (or empty result). Register one working task first."
             exit 1
           fi
 
