@@ -18,8 +18,17 @@ import { validateCardBase, validateCardForFinalize } from '@/lib/tech-map/valida
 import {
     computePlannedBlock,
     periodFromDate,
+    quarterBounds,
     type AssignmentLike,
 } from '@/lib/tech-map/block-rotation'
+import {
+    buildClientTechMap,
+    type AggCard,
+    type AggInitiative,
+    type AggLink,
+    type ClientTechMap,
+} from '@/lib/tech-map/aggregation'
+import { sweepBlockAssignments, type RotationSweepStats } from '@/lib/tech-map/rotation-sweep'
 import { daysBetween } from '@/lib/tech-map/freshness'
 import { CONVERSATION_CATEGORY_PL } from '@/lib/types/contractor'
 import {
@@ -849,4 +858,305 @@ export async function getPreInterviewBrief(contractorId: string): Promise<PreInt
         timeline,
         daysSinceLastCard: latestFinal ? daysBetween(latestFinal.interview_date, todayISO) : null,
     }
+}
+
+// ─── Etap 2: karta klienta (agregaty) ───────────────────────────────────────
+
+export interface ClientTechMapResult {
+    client: { id: string; name: string }
+    map: ClientTechMap
+}
+
+/**
+ * Zagregowana mapa technologiczna klienta — WYŁĄCZNIE z kart sfinalizowanych
+ * (drafty to notatki w toku, nie wiedza o kliencie).
+ *
+ * PRYWATNOŚĆ: wynik nie zawiera nazwisk konsultantów ani id kart — agregacja
+ * (lib/tech-map/aggregation.ts) zwraca liczby, daty i nazwy słownikowe. Nazwiska
+ * widać tylko na pojedynczej karcie. Dzięki temu widok jest gotowy pod przyszły
+ * read-only dostęp sprzedaży (Etap 3) bez zmian w kształcie danych.
+ */
+export async function getClientTechMap(clientId: string): Promise<ClientTechMapResult> {
+    await requireLifecycleManagerAction()
+    if (!clientId) throw new Error('Brak id klienta.')
+    const admin = createServiceClient()
+
+    const { data: clientRow, error: clientError } = await admin
+        .from('clients')
+        .select('id, name')
+        .eq('id', clientId)
+        .maybeSingle()
+    if (clientError) throw new Error(`Błąd pobierania klienta: ${clientError.message}`)
+    if (!clientRow) throw new Error('Klient nie istnieje.')
+
+    const [cardsRes, areasRes] = await Promise.all([
+        admin
+            .from('tech_interview_cards')
+            // Jeden literał, bez konkatenacji — supabase-js wnioskuje typ wiersza
+            // z treści select() na poziomie typów; sklejanie `+` to psuje.
+            .select('id, client_area_id, interview_date, block, hiring, hiring_roles, hiring_source, project_end_month, project_end_year, project_end_unknown, tech_old_new, vendors_note, memorable_quote, team_size, team_externals')
+            .eq('client_id', clientId)
+            .eq('is_draft', false)
+            .order('interview_date', { ascending: false }),
+        admin.from('client_areas').select('id, name').eq('client_id', clientId).order('name'),
+    ])
+    if (cardsRes.error) throw new Error(`Błąd pobierania kart: ${cardsRes.error.message}`)
+
+    const cards = (cardsRes.data ?? []) as AggCard[]
+    const areas = ((areasRes.data ?? []) as Array<{ id: string; name: string }>).map((a) => ({
+        id: a.id,
+        name: a.name,
+    }))
+    const cardIds = cards.map((c) => c.id)
+
+    // Puste `in()` w PostgREST zwraca pustą listę, ale zapytania i tak pomijamy.
+    const [techLinksRes, vendorLinksRes, initiativesRes] = await Promise.all([
+        cardIds.length > 0
+            ? admin.from('tech_interview_card_technologies').select('card_id, technology_id').in('card_id', cardIds)
+            : Promise.resolve({ data: [], error: null }),
+        cardIds.length > 0
+            ? admin.from('tech_interview_card_vendors').select('card_id, vendor_id').in('card_id', cardIds)
+            : Promise.resolve({ data: [], error: null }),
+        cardIds.length > 0
+            ? admin
+                  .from('tech_interview_card_initiatives')
+                  .select('card_id, name, kind, priority')
+                  .in('card_id', cardIds)
+            : Promise.resolve({ data: [], error: null }),
+    ])
+
+    const techLinks: AggLink[] = (
+        (techLinksRes.data ?? []) as Array<{ card_id: string; technology_id: string }>
+    ).map((r) => ({ card_id: r.card_id, ref_id: r.technology_id }))
+    const vendorLinks: AggLink[] = (
+        (vendorLinksRes.data ?? []) as Array<{ card_id: string; vendor_id: string }>
+    ).map((r) => ({ card_id: r.card_id, ref_id: r.vendor_id }))
+    const initiatives = (initiativesRes.data ?? []) as AggInitiative[]
+
+    // Nazwy pozycji słownikowych tylko dla realnie użytych id.
+    const techIds = Array.from(new Set(techLinks.map((l) => l.ref_id)))
+    const vendorIds = Array.from(new Set(vendorLinks.map((l) => l.ref_id)))
+    const [techDict, vendorDict] = await Promise.all([
+        techIds.length > 0
+            ? admin.from('technologies').select('id, name').in('id', techIds)
+            : Promise.resolve({ data: [] }),
+        vendorIds.length > 0
+            ? admin.from('vendors').select('id, name').in('id', vendorIds)
+            : Promise.resolve({ data: [] }),
+    ])
+
+    const map = buildClientTechMap({
+        cards,
+        areas,
+        technologies: (techDict.data ?? []) as Array<{ id: string; name: string }>,
+        vendors: (vendorDict.data ?? []) as Array<{ id: string; name: string }>,
+        techLinks,
+        vendorLinks,
+        initiatives,
+        todayISO: warsawDate(new Date()),
+    })
+
+    return { client: clientRow as { id: string; name: string }, map }
+}
+
+/** Klienci z co najmniej jedną sfinalizowaną kartą — wejście do kart klientów. */
+export async function listClientsWithCards(): Promise<
+    Array<{ id: string; name: string; cards: number; lastInterviewDate: string }>
+> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+
+    const { data, error } = await admin
+        .from('tech_interview_cards')
+        .select('client_id, interview_date')
+        .eq('is_draft', false)
+    if (error) throw new Error(`Błąd pobierania kart: ${error.message}`)
+
+    const rows = (data ?? []) as Array<{ client_id: string; interview_date: string }>
+    const acc = new Map<string, { cards: number; last: string }>()
+    for (const r of rows) {
+        const existing = acc.get(r.client_id)
+        if (existing) {
+            existing.cards += 1
+            if (r.interview_date > existing.last) existing.last = r.interview_date
+        } else {
+            acc.set(r.client_id, { cards: 1, last: r.interview_date })
+        }
+    }
+    if (acc.size === 0) return []
+
+    const { data: clientRows } = await admin
+        .from('clients')
+        .select('id, name')
+        .in('id', Array.from(acc.keys()))
+    const names = new Map(
+        ((clientRows ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]),
+    )
+
+    return Array.from(acc, ([id, v]) => ({
+        id,
+        name: names.get(id) ?? '—',
+        cards: v.cards,
+        lastInterviewDate: v.last,
+    })).sort((a, b) => b.lastInterviewDate.localeCompare(a.lastInterviewDate))
+}
+
+// ─── Etap 2: rotacja bloków (przegląd + przelicz + override) ────────────────
+
+export interface RotationRow {
+    contractorId: string
+    contractorName: string
+    currentClient: string | null
+    block: InterviewBlock
+    basis: 'assigned' | 'computed'
+    source: 'auto' | 'manual' | null
+    /** Data ostatniej sfinalizowanej karty w tym kwartale (null = jeszcze nie było rozmowy). */
+    cardThisQuarter: string | null
+}
+
+export interface RotationOverview {
+    year: number
+    quarter: number
+    rows: RotationRow[]
+    /** Ilu aktywnych kontraktorów nie ma jeszcze zmaterializowanego przydziału. */
+    unassigned: number
+}
+
+/** Przegląd przydziałów na bieżący kwartał (bez zapisu — render bez side-effectów). */
+export async function getRotationOverview(): Promise<RotationOverview> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+
+    const todayISO = warsawDate(new Date())
+    const { year, quarter } = periodFromDate(todayISO)
+    const { start: quarterStart, endExclusive: quarterEndExclusive } = quarterBounds(year, quarter)
+
+    const [contractorsRes, assignmentsRes, cardsRes] = await Promise.all([
+        admin
+            .from('contractors')
+            .select('id, full_name, current_client')
+            .eq('status', 'active')
+            .order('full_name'),
+        admin
+            .from('tech_block_assignments')
+            .select('contractor_id, period_year, period_quarter, block, source'),
+        admin
+            .from('tech_interview_cards')
+            .select('contractor_id, interview_date')
+            .eq('is_draft', false)
+            .gte('interview_date', quarterStart)
+            .lt('interview_date', quarterEndExclusive),
+    ])
+
+    if (contractorsRes.error) throw new Error(`Błąd pobierania konsultantów: ${contractorsRes.error.message}`)
+    if (assignmentsRes.error) {
+        throw new Error(`Błąd pobierania przydziałów: ${assignmentsRes.error.message}`)
+    }
+    // Bez tego sprawdzenia błąd zapytania o karty byłby niewidoczny: `cardDates`
+    // zostałoby puste i panel pokazałby, że NIKT nie rozmawiał w tym kwartale.
+    if (cardsRes.error) throw new Error(`Błąd pobierania kart: ${cardsRes.error.message}`)
+
+    const contractors = (contractorsRes.data ?? []) as Array<{
+        id: string
+        full_name: string
+        current_client: string | null
+    }>
+
+    const byContractor = new Map<string, AssignmentLike[]>()
+    for (const row of ((assignmentsRes.data ?? []) as Array<
+        AssignmentLike & { contractor_id: string }
+    >)) {
+        const entry: AssignmentLike = {
+            period_year: row.period_year,
+            period_quarter: row.period_quarter,
+            block: row.block,
+            source: row.source,
+        }
+        const list = byContractor.get(row.contractor_id)
+        if (list) list.push(entry)
+        else byContractor.set(row.contractor_id, [entry])
+    }
+
+    const cardDates = new Map<string, string>()
+    for (const c of ((cardsRes.data ?? []) as Array<{ contractor_id: string; interview_date: string }>)) {
+        const existing = cardDates.get(c.contractor_id)
+        if (!existing || c.interview_date > existing) cardDates.set(c.contractor_id, c.interview_date)
+    }
+
+    const rows: RotationRow[] = contractors.map((c) => {
+        const planned = computePlannedBlock(byContractor.get(c.id) ?? [], year, quarter)
+        return {
+            contractorId: c.id,
+            contractorName: c.full_name,
+            currentClient: c.current_client,
+            block: planned.block,
+            basis: planned.basis,
+            source: planned.source,
+            cardThisQuarter: cardDates.get(c.id) ?? null,
+        }
+    })
+
+    return { year, quarter, rows, unassigned: rows.filter((r) => r.basis === 'computed').length }
+}
+
+/** „Przelicz przydziały" — ta sama ścieżka co cron, wywołana ręcznie przez admina. */
+export async function recalcBlockAssignments(): Promise<RotationSweepStats> {
+    const ctx = await requireLifecycleManagerAction()
+    requireAdmin(ctx)
+    const admin = createServiceClient()
+    const stats = await sweepBlockAssignments(admin, { actorUserId: ctx.userId })
+    revalidatePath(HUB)
+    return stats
+}
+
+/** Ręczna zmiana bloku na bieżący kwartał (lepka — cron jej nie nadpisze). */
+export async function overrideBlockAssignment(input: {
+    contractorId: string
+    block: InterviewBlock
+}): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    requireAdmin(ctx)
+    if (!input.contractorId) throw new Error('Brak id konsultanta.')
+    if (!['B', 'C', 'D'].includes(input.block)) throw new Error('Nieprawidłowy blok.')
+
+    const admin = createServiceClient()
+    const { year, quarter } = periodFromDate(warsawDate(new Date()))
+
+    const { data: existing } = await admin
+        .from('tech_block_assignments')
+        .select('id, block')
+        .eq('contractor_id', input.contractorId)
+        .eq('period_year', year)
+        .eq('period_quarter', quarter)
+        .maybeSingle()
+
+    const previous = (existing as { id: string; block: InterviewBlock } | null)?.block ?? null
+
+    if (existing) {
+        const { error } = await admin
+            .from('tech_block_assignments')
+            .update({ block: input.block, source: 'manual', assigned_by: ctx.userId })
+            .eq('id', (existing as { id: string }).id)
+        if (error) throw new Error(`Błąd zmiany przydziału: ${error.message}`)
+    } else {
+        const { error } = await admin.from('tech_block_assignments').insert({
+            contractor_id: input.contractorId,
+            period_year: year,
+            period_quarter: quarter,
+            block: input.block,
+            source: 'manual',
+            assigned_by: ctx.userId,
+        })
+        if (error) throw new Error(`Błąd zmiany przydziału: ${error.message}`)
+    }
+
+    await logAudit(ctx.userId, 'TECH_BLOCK_OVERRIDDEN', {
+        contractor_id: input.contractorId,
+        period_year: year,
+        period_quarter: quarter,
+        from: previous,
+        to: input.block,
+        via: 'admin_panel',
+    })
+    revalidatePath(HUB)
 }

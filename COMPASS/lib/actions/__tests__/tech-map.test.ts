@@ -52,7 +52,7 @@ function makeChain(table: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const chain: any = {}
     const self = () => chain
-    for (const m of ['select', 'eq', 'neq', 'in', 'gte', 'lte', 'order', 'limit', 'ilike', 'or', 'delete']) {
+    for (const m of ['select', 'eq', 'neq', 'in', 'gte', 'lte', 'lt', 'order', 'limit', 'ilike', 'or', 'delete']) {
         chain[m] = vi.fn(self)
     }
     chain.insert = vi.fn((rows: unknown) => {
@@ -90,9 +90,14 @@ import {
     createClientForTechMap,
     createTechnologyUnverified,
     finalizeCard,
+    getClientTechMap,
     getPreInterviewBrief,
+    getRotationOverview,
     listCards,
+    listClientsWithCards,
     listTechnologies,
+    overrideBlockAssignment,
+    recalcBlockAssignments,
     saveCard,
     updateTechnology,
 } from '@/lib/actions/tech-map'
@@ -142,6 +147,12 @@ describe('kontrola dostępu — moduł niedostępny bez guardu lifecycle', () =>
         ['getPreInterviewBrief', () => getPreInterviewBrief('c-1')],
         ['createClientForTechMap', () => createClientForTechMap('Acme')],
         ['createTechnologyUnverified', () => createTechnologyUnverified('Rust')],
+        // Etap 2
+        ['getClientTechMap', () => getClientTechMap('k-1')],
+        ['listClientsWithCards', () => listClientsWithCards()],
+        ['getRotationOverview', () => getRotationOverview()],
+        ['recalcBlockAssignments', () => recalcBlockAssignments()],
+        ['overrideBlockAssignment', () => overrideBlockAssignment({ contractorId: 'c-1', block: 'C' })],
     ])('%s odrzuca użytkownika bez uprawnień', async (_name, run) => {
         authState.allowed = false
         await expect(run()).rejects.toThrow('Brak uprawnień')
@@ -249,5 +260,101 @@ describe('createClientForTechMap', () => {
         await createClientForTechMap('  Acme   Corp ')
         const insert = db.inserts.find((i) => i.table === 'clients')
         expect((insert!.rows as Record<string, unknown>).name).toBe('Acme Corp')
+    })
+})
+
+describe('Etap 2 — karta klienta', () => {
+    it('agreguje tylko karty sfinalizowane (filtr is_draft=false idzie do zapytania)', async () => {
+        db.tables.clients = [{ id: 'k-1', name: 'PKO BP' }]
+        db.tables.tech_interview_cards = [
+            {
+                id: 'c1',
+                client_area_id: null,
+                interview_date: '2026-07-01',
+                block: 'B',
+                hiring: true,
+                hiring_roles: ['Java Developer'],
+                hiring_source: 'widzial',
+                project_end_month: 12,
+                project_end_year: 2026,
+                project_end_unknown: false,
+                tech_old_new: null,
+                vendors_note: null,
+                memorable_quote: null,
+                team_size: null,
+                team_externals: null,
+            },
+        ]
+        const result = await getClientTechMap('k-1')
+        expect(result.client.name).toBe('PKO BP')
+        expect(result.map.totalCards).toBe(1)
+        expect(result.map.demandSignals).toHaveLength(1)
+        expect(result.map.projectEnds[0].period).toBe('2026-12')
+    })
+
+    it('rzuca dla nieistniejącego klienta', async () => {
+        db.tables.clients = []
+        await expect(getClientTechMap('brak')).rejects.toThrow('Klient nie istnieje')
+    })
+
+    it('wymaga id klienta', async () => {
+        await expect(getClientTechMap('')).rejects.toThrow('Brak id klienta')
+    })
+
+    it('listClientsWithCards grupuje karty per klient i bierze najświeższą datę', async () => {
+        db.tables.tech_interview_cards = [
+            { client_id: 'k-1', interview_date: '2026-05-01' },
+            { client_id: 'k-1', interview_date: '2026-07-01' },
+            { client_id: 'k-2', interview_date: '2026-06-01' },
+        ]
+        db.tables.clients = [{ id: 'k-1', name: 'PKO BP' }]
+        const rows = await listClientsWithCards()
+        expect(rows).toHaveLength(2)
+        expect(rows[0]).toMatchObject({ id: 'k-1', cards: 2, lastInterviewDate: '2026-07-01' })
+    })
+})
+
+describe('Etap 2 — rotacja bloków', () => {
+    it('przegląd wylicza blok bez zapisu (render bez side-effectów)', async () => {
+        db.tables.contractors = [{ id: 'c-1', full_name: 'Adam Bogun', current_client: 'PKO BP' }]
+        db.tables.tech_block_assignments = []
+        const overview = await getRotationOverview()
+        expect(overview.rows[0]).toMatchObject({ block: 'B', basis: 'computed', source: null })
+        expect(overview.unassigned).toBe(1)
+        expect(db.inserts).toHaveLength(0)
+        expect(db.upserts).toHaveLength(0)
+    })
+
+    it('przelicz przydziały wymaga admina', async () => {
+        await expect(recalcBlockAssignments()).rejects.toThrow('Tylko administrator')
+    })
+
+    it('override wymaga admina', async () => {
+        await expect(
+            overrideBlockAssignment({ contractorId: 'c-1', block: 'C' }),
+        ).rejects.toThrow('Tylko administrator')
+    })
+
+    it('override odrzuca nieprawidłowy blok', async () => {
+        authState.isAdmin = true
+        await expect(
+            overrideBlockAssignment({ contractorId: 'c-1', block: 'Z' as never }),
+        ).rejects.toThrow('Nieprawidłowy blok')
+    })
+
+    it('override istniejącego przydziału ustawia source=manual', async () => {
+        authState.isAdmin = true
+        db.tables.tech_block_assignments = [{ id: 'a-1', block: 'B' }]
+        await overrideBlockAssignment({ contractorId: 'c-1', block: 'D' })
+        const patch = db.updates.find((u) => u.table === 'tech_block_assignments')?.patch
+        expect(patch).toMatchObject({ block: 'D', source: 'manual' })
+    })
+
+    it('override bez istniejącego przydziału wstawia nowy wiersz manual', async () => {
+        authState.isAdmin = true
+        db.tables.tech_block_assignments = []
+        await overrideBlockAssignment({ contractorId: 'c-1', block: 'C' })
+        const insert = db.inserts.find((i) => i.table === 'tech_block_assignments')
+        expect(insert!.rows).toMatchObject({ block: 'C', source: 'manual', contractor_id: 'c-1' })
     })
 })

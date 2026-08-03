@@ -1182,10 +1182,38 @@ to pierwszy generyczny tag-picker w repo (Input+Badge+filtrowana lista+„Dodaj:
 **TCM może dodać klienta z formularza** (świadoma decyzja: `createClientForTechMap` — normalizacja Phase 42a
 + audyt `CLIENT_CREATED_FROM_TECH_MAP`, ta sama tabela co panel admina).
 
-**Etapy 2-3 (zaplanowane, nie wdrożone):** karta klienta `/mapa/klienci/[clientId]` (agregaty BEZ nazwisk,
-świeżość >6 mies. wyblakła), cron `tech-map-rotation`, coverage; alerty (koniec projektu <60 dni → bench,
-hiring=TAK → sprzedaż; odbiorcy w `system_settings`), KPI w Analityce, flaga `can_view_tech_map`.
-Pełny plan: `docs/mapa-technologiczna-completion-report.md`.
+### Etap 2 — karta klienta + rotacja bloków (2026-08-03, bez migracji)
+
+**Karta klienta** `/internal/people/mapa/klienci/[clientId]` — agregat z kart **sfinalizowanych**
+(drafty to notatki w toku, nie wiedza o kliencie): technologie/vendorzy (tag + liczba wskazań + data
+ostatniego potwierdzenia + obszary), inicjatywy (scalane po nazwa+rodzaj, `wysoki` wygrywa), sygnały
+popytu, oś końców projektów, **macierz pokrycia obszary × bloki** (puste pole = temat nieporuszony),
+notatki i wielkość zespołu. Dane >6 mies. wyblakłe (`opacity-60` + badge „do odświeżenia").
+**Agregat NIE zawiera nazwisk konsultantów ani id kart** (test to pilnuje) — gotowe pod read-only
+dostęp sprzedaży w Etapie 3. Cała logika w czystym `lib/tech-map/aggregation.ts` (`buildClientTechMap`,
+`todayISO` wstrzykiwany); akcja `getClientTechMap` tylko dowozi wiersze. Wejście: sekcja „Mapy klientów"
+w zakładce + klikalna nazwa klienta w liście kart.
+
+**Rotacja bloków — materializacja.** `lib/tech-map/rotation-sweep.ts` (`sweepBlockAssignments`, plain
+module) nadaje brakujące przydziały na bieżący kwartał; wspólny dla crona i przycisku „Przelicz
+przydziały" (admin). Idempotentne: kontraktor z przydziałem — auto czy **ręcznym** — jest pomijany
+(`computeRotationInserts` + `ignoreDuplicates`), więc override admina jest lepki. Populacja:
+`contractors.status='active'`. Panel `RotationAdminSection` w zakładce pokazuje kto ma jaki blok
+(badge `ręczny` / `z cyklu`) i kto już rozmawiał w kwartale; select bloku i „Przelicz" tylko dla admina.
+`getRotationOverview` liczy blok **bez zapisu** (render bez side-effectów).
+
+**Cron** `GET /api/cron/tech-map-rotation` (`withCronAuth`, maxDuration 120, try/catch + Sentry).
+**Dzienny, nie kwartalny** — kontraktorzy aktywują się w środku kwartału, a crony Coolify potrafią
+nie odpalić; dzienny przebieg sam nadrabia. Ślad w bazie: `TECH_MAP_ROTATION_RUN` (`phase: start|done`)
+w `audit_logs` — `start` bez `done` = przebieg ubity w locie, brak `start` = cron nie odpalił.
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `tech-map-rotation` | `30 5 * * *` | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/tech-map-rotation"` |
+
+**Etap 3 (zaplanowany, nie wdrożony):** alerty (koniec projektu <60 dni → bench, hiring=TAK → sprzedaż;
+odbiorcy w `system_settings`), KPI w Analityce, flaga `can_view_tech_map`, migracja 46c (typy
+notyfikacji przepisane z ŻYWEJ listy). Pełny plan: `docs/mapa-technologiczna-completion-report.md`.
 
 ## Observability
 

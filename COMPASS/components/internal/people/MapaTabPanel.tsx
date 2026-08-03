@@ -1,27 +1,37 @@
 // Phase 46 — zakładka „Mapa technologiczna" w hubie People Ops.
-// Lista kart wywiadów + start nowej rozmowy; dla admina dodatkowo zarządzanie
-// słownikami. Karta klienta (agregaty) dochodzi w Etapie 2.
+// Etap 1: lista kart + start rozmowy + słowniki (admin).
+// Etap 2: mapy klientów (agregaty) + przydziały bloków na bieżący kwartał.
 
 import { listContractors } from '@/lib/actions/contractors'
-import { listCards, listTechnologies, listVendors } from '@/lib/actions/tech-map'
+import {
+    getRotationOverview,
+    listCards,
+    listClientsWithCards,
+    listTechnologies,
+    listVendors,
+} from '@/lib/actions/tech-map'
 import { CardsListSection } from '@/components/internal/people/mapa/CardsListSection'
+import { ClientsWithCardsSection } from '@/components/internal/people/mapa/ClientsWithCardsSection'
 import { DictionaryAdminSection } from '@/components/internal/people/mapa/DictionaryAdminSection'
 import { NewInterviewPicker } from '@/components/internal/people/mapa/NewInterviewPicker'
+import { RotationAdminSection } from '@/components/internal/people/mapa/RotationAdminSection'
 
 export async function MapaTabPanel({ isAdmin }: { isAdmin: boolean }) {
-    const [cards, contractors, technologies, vendors] = await Promise.all([
+    const [cards, contractors, clientsWithCards, rotation, technologies, vendors] = await Promise.all([
         listCards(),
         listContractors(),
+        listClientsWithCards(),
+        getRotationOverview(),
         isAdmin ? listTechnologies() : Promise.resolve([]),
         isAdmin ? listVendors() : Promise.resolve([]),
     ])
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-muted-foreground max-w-2xl">
                     Karty rozmów wg skryptu (blok A + rotacyjny B/C/D) budują mapę technologiczną
-                    klientów. Zacznij od „Nowa rozmowa" — zobaczysz przydzielony blok i to, co już wiemy.
+                    klientów. Zacznij od „Nowa rozmowa” — zobaczysz przydzielony blok i to, co już wiemy.
                 </p>
                 <NewInterviewPicker
                     contractors={contractors.map((c) => ({
@@ -33,7 +43,11 @@ export async function MapaTabPanel({ isAdmin }: { isAdmin: boolean }) {
                 />
             </div>
 
+            <ClientsWithCardsSection clients={clientsWithCards} />
+
             <CardsListSection cards={cards} />
+
+            <RotationAdminSection overview={rotation} isAdmin={isAdmin} />
 
             {isAdmin && <DictionaryAdminSection technologies={technologies} vendors={vendors} />}
         </div>

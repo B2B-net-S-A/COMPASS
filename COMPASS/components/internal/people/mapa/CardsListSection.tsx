@@ -116,7 +116,14 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
                                     </Link>
                                 </td>
                                 <td className="px-3 py-2">{c.contractorName}</td>
-                                <td className="px-3 py-2">{c.clientName}</td>
+                                <td className="px-3 py-2">
+                                    <Link
+                                        href={`/internal/people/mapa/klienci/${c.clientId}`}
+                                        className="hover:text-primary hover:underline"
+                                    >
+                                        {c.clientName}
+                                    </Link>
+                                </td>
                                 <td className="px-3 py-2 text-muted-foreground">{c.areaName ?? '—'}</td>
                                 <td className="px-3 py-2 font-semibold">{c.block}</td>
                                 <td className="px-3 py-2">
