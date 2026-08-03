@@ -19,8 +19,12 @@ import {
     WHO_RESIGNED_PL,
     type ContractorDetail,
 } from '@/lib/types/contractor'
+import {
+    INTERVIEW_CARD_STATUS_BADGE, INTERVIEW_CARD_STATUS_PL,
+    type CardListItem,
+} from '@/lib/types/tech-map'
 
-export function ContractorDetailClient({ detail, tcmProfiles }: { detail: ContractorDetail; tcmProfiles: Array<{ id: string; fullName: string }> }) {
+export function ContractorDetailClient({ detail, tcmProfiles, techCards = [] }: { detail: ContractorDetail; tcmProfiles: Array<{ id: string; fullName: string }>; techCards?: CardListItem[] }) {
     const router = useRouter()
     const refresh = () => router.refresh()
     const { contractor, conversations, onboardingInterviews, exitInterviews, entries, departures, placements } = detail
@@ -94,6 +98,56 @@ export function ContractorDetailClient({ detail, tcmProfiles }: { detail: Contra
                         </tbody>
                     </table>
                 </div>
+            </section>
+
+            {/* Phase 46 — karty wywiadów mapy technologicznej */}
+            <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold">Karty wywiadów — mapa technologiczna ({techCards.length})</h2>
+                    <Button asChild size="sm" variant="secondary">
+                        <Link href={`/internal/people/mapa/wywiad/${contractor.id}`}>Nowa rozmowa</Link>
+                    </Button>
+                </div>
+                {techCards.length === 0 ? (
+                    <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        Brak kart wywiadów. Kliknij „Nowa rozmowa”.
+                    </p>
+                ) : (
+                    <div className="overflow-x-auto rounded-md border">
+                        <table className="w-full text-sm">
+                            <thead className="bg-muted/50">
+                                <tr>
+                                    <th className="p-2 text-left">Data</th><th className="p-2 text-left">Blok</th>
+                                    <th className="p-2 text-left">Klient</th><th className="p-2 text-left">Status</th>
+                                    <th className="p-2 text-left">Prowadzący</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {techCards.map((c) => (
+                                    <tr key={c.id} className="border-t">
+                                        <td className="p-2 whitespace-nowrap">
+                                            <Link href={`/internal/people/mapa/karta/${c.id}`} className="text-primary hover:underline">
+                                                {c.interviewDate}
+                                            </Link>
+                                        </td>
+                                        <td className="p-2 font-semibold">{c.block}</td>
+                                        <td className="p-2">{c.clientName}{c.areaName ? ` · ${c.areaName}` : ''}</td>
+                                        <td className="p-2">
+                                            {c.isDraft ? (
+                                                <Badge variant="warning" size="sm">Wersja robocza</Badge>
+                                            ) : c.status ? (
+                                                <span className={cn('inline-block rounded border px-2 py-0.5 text-xs', INTERVIEW_CARD_STATUS_BADGE[c.status])}>
+                                                    {INTERVIEW_CARD_STATUS_PL[c.status]}
+                                                </span>
+                                            ) : '—'}
+                                        </td>
+                                        <td className="p-2 text-muted-foreground">{c.tcmName ?? '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </section>
 
             {/* Onboarding interview */}

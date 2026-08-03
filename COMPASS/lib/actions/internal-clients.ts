@@ -136,7 +136,15 @@ export async function deleteClient(id: string): Promise<void> {
         .from('clients' as any)
         .delete()
         .eq('id', id)
-    if (error) throw new Error(`Błąd usuwania klienta: ${error.message}`)
+    if (error) {
+        // Phase 46: klient ma FK z mapy technologicznej (karty wywiadów, obszary).
+        if ((error as { code?: string }).code === '23503') {
+            throw new Error(
+                'Klient ma powiązane dane mapy technologicznej (karty wywiadów lub obszary) — dezaktywuj go zamiast usuwać.',
+            )
+        }
+        throw new Error(`Błąd usuwania klienta: ${error.message}`)
+    }
     await logAudit(ctx.userId, 'CLIENT_DELETED', {
         client_id: id,
         name: (existing as { name?: string } | null)?.name ?? null,

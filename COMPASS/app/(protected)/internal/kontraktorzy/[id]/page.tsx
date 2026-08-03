@@ -3,6 +3,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import { getContractorDetail, listTcmProfiles } from '@/lib/actions/contractors'
+import { listCards } from '@/lib/actions/tech-map'
 import { ContractorDetailClient } from '@/components/internal/kontraktorzy/ContractorDetailClient'
 import { isConsultantSuccessEnabled } from '@/lib/consultant-success/flags'
 
@@ -16,7 +17,9 @@ export default async function ContractorDetailPage({ params }: { params: { id: s
     const tcmProfiles = await listTcmProfiles()
     try {
         const detail = await getContractorDetail(params.id)
-        return <ContractorDetailClient detail={detail} tcmProfiles={tcmProfiles} />
+        // Phase 46 — karty wywiadów mapy technologicznej na wspólnej osi z logiem rozmów.
+        const techCards = await listCards({ contractorId: params.id })
+        return <ContractorDetailClient detail={detail} tcmProfiles={tcmProfiles} techCards={techCards} />
     } catch {
         notFound()
     }

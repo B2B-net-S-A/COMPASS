@@ -312,6 +312,30 @@ export type Database = {
           },
         ]
       }
+      client_areas: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       client_departures: {
         Row: {
           client_name: string
@@ -5953,6 +5977,228 @@ export type Database = {
           },
         ]
       }
+      tech_block_assignments: {
+        Row: {
+          assigned_by: string | null
+          block: string
+          contractor_id: string
+          created_at: string
+          id: string
+          period_quarter: number
+          period_year: number
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          block: string
+          contractor_id: string
+          created_at?: string
+          id?: string
+          period_quarter: number
+          period_year: number
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_by?: string | null
+          block?: string
+          contractor_id?: string
+          created_at?: string
+          id?: string
+          period_quarter?: number
+          period_year?: number
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tech_interview_card_initiatives: {
+        Row: {
+          card_id: string
+          id: string
+          kind: string
+          name: string
+          priority: string
+        }
+        Insert: {
+          card_id: string
+          id?: string
+          kind?: string
+          name: string
+          priority?: string
+        }
+        Update: {
+          card_id?: string
+          id?: string
+          kind?: string
+          name?: string
+          priority?: string
+        }
+        Relationships: []
+      }
+      tech_interview_card_technologies: {
+        Row: {
+          card_id: string
+          technology_id: string
+        }
+        Insert: {
+          card_id: string
+          technology_id: string
+        }
+        Update: {
+          card_id?: string
+          technology_id?: string
+        }
+        Relationships: []
+      }
+      tech_interview_card_vendors: {
+        Row: {
+          card_id: string
+          vendor_id: string
+        }
+        Insert: {
+          card_id: string
+          vendor_id: string
+        }
+        Update: {
+          card_id?: string
+          vendor_id?: string
+        }
+        Relationships: []
+      }
+      tech_interview_cards: {
+        Row: {
+          block: string
+          client_area_id: string | null
+          client_id: string
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          demand_alerted_at: string | null
+          finalized_at: string | null
+          hiring: boolean | null
+          hiring_roles: string[]
+          hiring_source: string | null
+          id: string
+          interview_date: string
+          is_draft: boolean
+          memorable_quote: string | null
+          placement_id: string | null
+          project_end_alerted_at: string | null
+          project_end_month: number | null
+          project_end_unknown: boolean
+          project_end_year: number | null
+          satisfaction: number | null
+          satisfaction_comment: string | null
+          status: string | null
+          tcm_id: string | null
+          team_externals: number | null
+          team_size: number | null
+          tech_old_new: string | null
+          updated_at: string
+          vendors_note: string | null
+        }
+        Insert: {
+          block: string
+          client_area_id?: string | null
+          client_id: string
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          demand_alerted_at?: string | null
+          finalized_at?: string | null
+          hiring?: boolean | null
+          hiring_roles?: string[]
+          hiring_source?: string | null
+          id?: string
+          interview_date: string
+          is_draft?: boolean
+          memorable_quote?: string | null
+          placement_id?: string | null
+          project_end_alerted_at?: string | null
+          project_end_month?: number | null
+          project_end_unknown?: boolean
+          project_end_year?: number | null
+          satisfaction?: number | null
+          satisfaction_comment?: string | null
+          status?: string | null
+          tcm_id?: string | null
+          team_externals?: number | null
+          team_size?: number | null
+          tech_old_new?: string | null
+          updated_at?: string
+          vendors_note?: string | null
+        }
+        Update: {
+          block?: string
+          client_area_id?: string | null
+          client_id?: string
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          demand_alerted_at?: string | null
+          finalized_at?: string | null
+          hiring?: boolean | null
+          hiring_roles?: string[]
+          hiring_source?: string | null
+          id?: string
+          interview_date?: string
+          is_draft?: boolean
+          memorable_quote?: string | null
+          placement_id?: string | null
+          project_end_alerted_at?: string | null
+          project_end_month?: number | null
+          project_end_unknown?: boolean
+          project_end_year?: number | null
+          satisfaction?: number | null
+          satisfaction_comment?: string | null
+          status?: string | null
+          tcm_id?: string | null
+          team_externals?: number | null
+          team_size?: number | null
+          tech_old_new?: string | null
+          updated_at?: string
+          vendors_note?: string | null
+        }
+        Relationships: []
+      }
+      technologies: {
+        Row: {
+          aliases: string[]
+          category: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_verified: boolean
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_verified?: boolean
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_verified?: boolean
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       timesheet_entries: {
         Row: {
           correction_decided_at: string | null
@@ -6431,6 +6677,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      vendors: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_verified: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_verified?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_verified?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       verification_codes: {
         Row: {

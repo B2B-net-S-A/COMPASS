@@ -1143,6 +1143,50 @@ Wszyscy, domyślnie Aktywni), `/internal/lifecycle` (archiwum), People Ops.
   odrzuca wcześniej, a generyczny komunikat kazałby komuś błędnie zarchiwizowanemu myśleć,
   że aplikacja jest zepsuta, zamiast pójść do HR.
 
+## Phase 46 — Mapa technologiczna (TCM tech-intel, Etap 1 MVP, 2026-08-03)
+
+Strukturalne karty rozmów TCM z kontraktorami u klientów (skrypt: blok A zawsze + rotacyjny B/C/D),
+agregowane docelowo w mapę technologiczną klientów. **Ewolucja modułu Kontraktorzy — nie równoległy silos**:
+konsultant = `contractors` (NIE profiles), klient = ISTNIEJĄCA tabela `clients`, karta żyje OBOK logu
+`contractor_conversations` (log = sprawy opieki; wspólna oś czasu w briefie i na profilu kontraktora).
+
+**Dostęp:** `requireLifecycleManagerAction()` + RLS `has_lifecycle_access()` (admin | talent_community |
+grant `has_tcm_access`). Zero dostępu dla konsultantów. Bez nowego uprawnienia. Rola „sprzedaż" (read-only
+agregaty) = flaga `can_view_tech_map` planowana w Etapie 3.
+
+**Schema (migracje 46a+46b):**
+- `technologies` — słownik ze **stabilnym `slug`** (kebab, niezmienny przy rename — kotwica pod sync z NEXUS),
+  `aliases text[]` (k8s→Kubernetes), `category` (jezyk/chmura/dane/devops/security/inne), `is_verified`
+  (tag-picker dodaje FALSE). Seed ~130 pozycji. `vendors` — analogicznie bez sluga/kategorii.
+- `client_areas` — child `clients` (UNIQUE per klient, lower(trim)).
+- `tech_interview_cards` — draft (`is_draft`, `status` nullable) → finalizacja (`finalized_at`); pola bloku A
+  (satysfakcja+komentarz, koniec projektu month/year XOR `project_end_unknown`, hiring+role+źródło, cytat),
+  B (tech_old_new, team_size/externals), D (vendors_note); `*_alerted_at` = dedup alertów Etapu 3.
+  **Matryca kompletności w `lib/tech-map/validation.ts` (app-layer, NIE trigger)** — `ok`/`niechetny` wymaga
+  końca projektu + odpowiedzi o rekrutacji; `odmowa`/`brak_czasu` luzuje; satysfakcja ≤3 → komentarz.
+- Junctions `tech_interview_card_technologies/_vendors` (słownik RESTRICT — delete łapie 23503 z polskim
+  komunikatem; dotyczy też `deleteClient` w internal-clients.ts — pierwsze FK do `clients`!) +
+  `tech_interview_card_initiatives`.
+- `tech_block_assignments` — przydział bloku per kontraktor per kwartał, UNIQUE(contractor, rok, kwartał),
+  `source=manual` lepki. Rotacja = czysty cykl B→C→D (`lib/tech-map/block-rotation.ts`); materializacja:
+  fallback przy zapisie karty (Etap 1) + cron/przycisk (Etap 2). **Brief liczy blok czysto bez zapisu**
+  (render bez side-effectów, audyt P1.8). Finalizacja z innym blokiem niż przydzielony → przydział
+  aktualizowany do rzeczywistości (source=manual, audyt `TECH_BLOCK_OVERRIDDEN`).
+
+**UI:** zakładka `mapa` w `/internal/people` (MapaTabPanel: lista kart + filtry client-side + „Nowa rozmowa"
++ słowniki dla admina) · pełne strony `/internal/people/mapa/wywiad/[contractorId]` (brief „przed rozmową":
+duża litera bloku, prefill klienta przez `normalizeClientName`→`clients`, oś czasu kart+rozmów „żeby nie pytać
+drugi raz") i `/mapa/karta/[cardId]` (edycja; własne karty — autor lub admin) · deep-link w sidebarze
+(peopleOpsGroup) · sekcja kart na profilu kontraktora. **`TagMultiSelect`** (components/internal/people/mapa/)
+to pierwszy generyczny tag-picker w repo (Input+Badge+filtrowana lista+„Dodaj: X" → słownik unverified).
+**TCM może dodać klienta z formularza** (świadoma decyzja: `createClientForTechMap` — normalizacja Phase 42a
++ audyt `CLIENT_CREATED_FROM_TECH_MAP`, ta sama tabela co panel admina).
+
+**Etapy 2-3 (zaplanowane, nie wdrożone):** karta klienta `/mapa/klienci/[clientId]` (agregaty BEZ nazwisk,
+świeżość >6 mies. wyblakła), cron `tech-map-rotation`, coverage; alerty (koniec projektu <60 dni → bench,
+hiring=TAK → sprzedaż; odbiorcy w `system_settings`), KPI w Analityce, flaga `can_view_tech_map`.
+Pełny plan: `docs/mapa-technologiczna-completion-report.md`.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
