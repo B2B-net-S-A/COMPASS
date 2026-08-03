@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getOrCreateMyTimesheet } from '@/lib/actions/internal-timesheet'
+import { getOrCreateMyTimesheet, getMyOvertimeAllowed } from '@/lib/actions/internal-timesheet'
 import { TimesheetEditor } from '@/components/internal/TimesheetEditor'
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +15,10 @@ export default async function TimesheetMonthPage({ params }: PageProps) {
         notFound()
     }
 
-    const timesheet = await getOrCreateMyTimesheet(year, month)
+    const [timesheet, canLogOvertime] = await Promise.all([
+        getOrCreateMyTimesheet(year, month),
+        getMyOvertimeAllowed(),
+    ])
 
     return (
         <div className="space-y-6">
@@ -26,7 +29,7 @@ export default async function TimesheetMonthPage({ params }: PageProps) {
                     timesheet i generowany jest PDF do podpisania.
                 </p>
             </div>
-            <TimesheetEditor timesheet={timesheet} />
+            <TimesheetEditor timesheet={timesheet} canLogOvertime={canLogOvertime} />
         </div>
     )
 }

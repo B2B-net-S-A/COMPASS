@@ -4907,6 +4907,8 @@ export type Database = {
           github_url: string | null
           hired_at: string | null
           id: string
+          can_log_overtime: boolean
+          has_tcm_access: boolean
           is_external: boolean
           is_inbox_handler: boolean
           job_title: string | null
@@ -4974,6 +4976,8 @@ export type Database = {
           github_url?: string | null
           hired_at?: string | null
           id: string
+          can_log_overtime?: boolean
+          has_tcm_access?: boolean
           is_external?: boolean
           is_inbox_handler?: boolean
           job_title?: string | null
@@ -5041,6 +5045,8 @@ export type Database = {
           github_url?: string | null
           hired_at?: string | null
           id?: string
+          can_log_overtime?: boolean
+          has_tcm_access?: boolean
           is_external?: boolean
           is_inbox_handler?: boolean
           job_title?: string | null

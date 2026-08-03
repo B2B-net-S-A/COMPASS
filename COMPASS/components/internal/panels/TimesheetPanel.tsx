@@ -1,5 +1,5 @@
 import { logCompat } from '@/lib/logger'
-import { getOrCreateMyTimesheet } from '@/lib/actions/internal-timesheet'
+import { getOrCreateMyTimesheet, getMyOvertimeAllowed } from '@/lib/actions/internal-timesheet'
 import {
     suggestTimesheetEntriesFromClock,
     markTimesheetAutoFilled,
@@ -50,6 +50,8 @@ export async function TimesheetPanel({ year, month }: Props) {
         }
     }
 
+    const canLogOvertime = await getMyOvertimeAllowed()
+
     return (
         <section className="space-y-4">
             <div>
@@ -59,7 +61,7 @@ export async function TimesheetPanel({ year, month }: Props) {
                     timesheet i generowany jest PDF do podpisania.
                 </p>
             </div>
-            <TimesheetEditor timesheet={timesheet} />
+            <TimesheetEditor timesheet={timesheet} canLogOvertime={canLogOvertime} />
         </section>
     )
 }

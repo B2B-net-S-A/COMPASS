@@ -19,7 +19,8 @@ export default async function LifecycleHubPage() {
     const supabase = createClient()
 
     // Non-manager employees: redirect to their own onboarding or exit form.
-    if (!canManageLifecycle(ctx.role) && ctx.role !== 'manager') {
+    // Phase 45: a per-user has_tcm_access grant also reaches the full dashboard.
+    if (!canManageLifecycle(ctx.role) && ctx.role !== 'manager' && !ctx.hasTcmAccess) {
         const { data: ownProgress } = await supabase
             .from('onboarding_progress')
             .select('id')
@@ -40,8 +41,9 @@ export default async function LifecycleHubPage() {
         redirect('/internal')
     }
 
-    // Manager-only view: limited dashboard
-    if (ctx.role === 'manager' && !ctx.isAdmin && !ctx.isTalentCommunity) {
+    // Manager-only view: limited dashboard. Phase 45: a manager with the has_tcm_access
+    // grant skips the restricted view and gets the full admin/TCM dashboard below.
+    if (ctx.role === 'manager' && !ctx.isAdmin && !ctx.isTalentCommunity && !ctx.hasTcmAccess) {
         return <ManagerLifecycleView />
     }
 

@@ -18,6 +18,7 @@ interface AppLayoutProps {
     sidebarBadges?: SidebarBadgeCounts
     isInboxHandler?: boolean
     consultantSuccessEnabled?: boolean
+    hasTcmAccess?: boolean
 }
 
 export function AppLayout({
@@ -28,6 +29,7 @@ export function AppLayout({
     sidebarBadges,
     isInboxHandler,
     consultantSuccessEnabled,
+    hasTcmAccess,
 }: AppLayoutProps) {
     return (
         <LanguageProvider>
@@ -41,6 +43,7 @@ export function AppLayout({
                         badges={sidebarBadges}
                         isInboxHandler={isInboxHandler}
                         consultantSuccessEnabled={consultantSuccessEnabled}
+                        hasTcmAccess={hasTcmAccess}
                     />
 
                     <div className="flex flex-1 flex-col min-w-0">

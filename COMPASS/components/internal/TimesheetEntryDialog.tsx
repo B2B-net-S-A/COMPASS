@@ -206,7 +206,7 @@ export function TimesheetEntryDialog({
                             />
                             <p className="text-[10px] text-muted-foreground">
                                 {allowOvertime
-                                    ? 'Ponad 8h = nadgodziny (wymagane uzasadnienie). Tylko administrator.'
+                                    ? 'Ponad 8h = nadgodziny (wymagane uzasadnienie, audytowane).'
                                     : 'Nadgodziny wpisuje administrator z poziomu profilu pracownika.'}
                             </p>
                         </div>

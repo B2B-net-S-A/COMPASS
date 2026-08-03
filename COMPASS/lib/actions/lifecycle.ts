@@ -1382,7 +1382,7 @@ export async function getLifecycleSidebarCount(): Promise<LifecycleSidebarCount>
 
     // Overdue tasks where current user is responsible (employee/manager/buddy/tcm/admin)
     const now = new Date().toISOString().split('T')[0]
-    const isManagerOrTcm = ctx.isAdmin || ctx.isManager || ctx.isTalentCommunity
+    const isManagerOrTcm = ctx.isAdmin || ctx.isManager || ctx.isTalentCommunity || ctx.hasTcmAccess
 
     // Own active onboarding
     const { count: ownOnboarding } = await supabase
@@ -1428,7 +1428,7 @@ export async function getLifecycleSidebarCount(): Promise<LifecycleSidebarCount>
 
     // Pending exit interviews for TCM/admin
     let pendingExits = 0
-    if (ctx.isAdmin || ctx.isTalentCommunity) {
+    if (ctx.isAdmin || ctx.isTalentCommunity || ctx.hasTcmAccess) {
         const { count } = await supabase
             .from('exit_interviews')
             .select('id', { count: 'exact', head: true })

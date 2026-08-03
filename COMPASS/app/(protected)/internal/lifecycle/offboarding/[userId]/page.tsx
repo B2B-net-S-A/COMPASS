@@ -24,7 +24,7 @@ export default async function OffboardingDetailPage({ params }: { params: { user
     if (error || !profile) notFound()
 
     const isManagerOfEmployee = profile.manager_id === ctx.userId
-    const isAuthorized = canManageLifecycle(ctx.role) || isManagerOfEmployee
+    const isAuthorized = canManageLifecycle(ctx.role) || ctx.hasTcmAccess || isManagerOfEmployee
     if (!isAuthorized) notFound()
 
     const [tasks, timeline] = await Promise.all([
@@ -67,7 +67,7 @@ export default async function OffboardingDetailPage({ params }: { params: { user
                 />
             </section>
 
-            {canManageLifecycle(ctx.role)
+            {(canManageLifecycle(ctx.role) || ctx.hasTcmAccess)
                 && requiredCompleted === requiredTotal
                 && profile.employment_status === 'offboarding'
                 && (

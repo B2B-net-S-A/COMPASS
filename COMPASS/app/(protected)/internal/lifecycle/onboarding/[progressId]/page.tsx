@@ -29,7 +29,7 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
     const timeline = await getLifecycleTimeline(detail.employee.id)
 
     const isOwner = detail.employee.id === ctx.userId
-    const isLifecycleAdmin = canManageLifecycle(ctx.role)
+    const isLifecycleAdmin = canManageLifecycle(ctx.role) || ctx.hasTcmAccess
     const isManagerOfEmployee = detail.employee.manager_id === ctx.userId
     const isCancelled = detail.progress.cancelled_at !== null
     const canEditTasks = (isLifecycleAdmin || isManagerOfEmployee || isOwner || detail.employee.buddy_id === ctx.userId) && !isCancelled
