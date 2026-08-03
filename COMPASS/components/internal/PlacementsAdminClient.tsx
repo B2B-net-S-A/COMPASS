@@ -7,19 +7,15 @@ import { useRouter } from 'next/navigation'
 import { Loader2, CheckCircle2, Ban, Download, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { toast } from '@/lib/toast'
-import {
-    confirmPlacementHours,
-    cancelPlacement,
-    deletePlacementBonus,
-} from '@/lib/actions/placements'
+import { cancelPlacement, deletePlacementBonus } from '@/lib/actions/placements'
 import {
     placementStatusLabelPl,
     type PlacementStatus,
     type PlacementWithBonusStatus,
 } from '@/lib/types/placement'
 import { PlacementImportDialog } from '@/components/internal/PlacementImportDialog'
+import { PlacementConfirmDialog } from '@/components/internal/PlacementConfirmDialog'
 
 interface Props {
     placements: PlacementWithBonusStatus[]
@@ -48,30 +44,13 @@ export function PlacementsAdminClient({ placements }: Props) {
     const router = useRouter()
     const [filter, setFilter] = useState<PlacementStatus | 'all'>('all')
     const [busyId, setBusyId] = useState<string | null>(null)
+    const [confirmTarget, setConfirmTarget] = useState<PlacementWithBonusStatus | null>(null)
     const [, startTransition] = useTransition()
-    const [confirm, ConfirmUI] = useConfirm()
 
     const visible = placements.filter((p) => filter === 'all' || p.status === filter)
 
     function refresh() {
         startTransition(() => router.refresh())
-    }
-
-    async function onConfirm(p: PlacementWithBonusStatus) {
-        const ok = await confirm({
-            description: `Potwierdzasz, że ${p.consultant_name} przepracował 168h?\n\nWygeneruje to premie:\n• DL (${p.delivery_lead_raw}): ${pln(p.dl_bonus_amount)}\n• Rekruter (${p.recruiter_raw}): ${pln(p.recruiter_bonus_amount)}`,
-        })
-        if (!ok) return
-        setBusyId(p.id)
-        try {
-            await confirmPlacementHours(p.id)
-            toast.success('Potwierdzono 168h — premie naliczone.')
-            refresh()
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Nie udało się potwierdzić.')
-        } finally {
-            setBusyId(null)
-        }
     }
 
     async function onCancel(p: PlacementWithBonusStatus) {
@@ -212,14 +191,10 @@ export function PlacementsAdminClient({ placements }: Props) {
                                                         size="sm"
                                                         variant="secondary"
                                                         disabled={busyId === p.id}
-                                                        onClick={() => onConfirm(p)}
+                                                        onClick={() => setConfirmTarget(p)}
                                                         className="gap-1"
                                                     >
-                                                        {busyId === p.id ? (
-                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                        ) : (
-                                                            <CheckCircle2 className="h-3.5 w-3.5" />
-                                                        )}
+                                                        <CheckCircle2 className="h-3.5 w-3.5" />
                                                         168h
                                                     </Button>
                                                     <Button
@@ -282,7 +257,15 @@ export function PlacementsAdminClient({ placements }: Props) {
                     </table>
                 </div>
             )}
-            <ConfirmUI />
+
+            <PlacementConfirmDialog
+                placement={confirmTarget}
+                onClose={() => setConfirmTarget(null)}
+                onConfirmed={() => {
+                    setConfirmTarget(null)
+                    refresh()
+                }}
+            />
         </div>
     )
 }

@@ -13,15 +13,27 @@ import { sendBonusAssigned, sendBonusCancelled } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
 import { differenceInCalendarDays } from 'date-fns'
 import {
+    bonusPeriodFromEligibleDate,
+    defaultDlBonusReason,
+    defaultRecruiterBonusReason,
     normalizePersonName,
     placementNaturalKey,
     type CommitImportResult,
+    type ConfirmPlacementHoursOverrides,
+    type PlacementBonusOverride,
     type PlacementImportPreview,
     type PlacementReviewRow,
     type PlacementRow,
     type PlacementWithBonusStatus,
 } from '@/lib/types/placement'
-import type { BonusStatus } from '@/lib/types/bonus'
+import {
+    BONUS_MAX_AMOUNT,
+    BONUS_MIN_AMOUNT,
+    BONUS_NOTES_MAX_LENGTH,
+    BONUS_REASON_MAX_LENGTH,
+    BONUS_REASON_MIN_LENGTH,
+    type BonusStatus,
+} from '@/lib/types/bonus'
 import { parsePlacementsWorkbook } from '@/lib/placements/parse-xlsx'
 import {
     buildPeopleResolutions,
@@ -437,20 +449,104 @@ async function notifyBonusRecipient(
 }
 
 /**
+ * Defense-in-depth validation of a manager-supplied bonus override. The dialog validates
+ * the same rules client-side; this guards the trusted write path against a crafted call.
+ * NB: the period window is intentionally NOT restricted to "past 12 months" (unlike the
+ * manual assignBonus form) — a placement can be confirmed early, making its eligible month
+ * a future one, which is legitimate here.
+ */
+function validateBonusOverride(o: PlacementBonusOverride, label: string): void {
+    if (!Number.isFinite(o.amount) || o.amount < BONUS_MIN_AMOUNT) {
+        throw new Error(`Premia ${label}: kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
+    }
+    if (o.amount > BONUS_MAX_AMOUNT) {
+        throw new Error(`Premia ${label}: kwota za duża (max ${BONUS_MAX_AMOUNT}).`)
+    }
+    const reason = o.reason.trim()
+    if (reason.length < BONUS_REASON_MIN_LENGTH) {
+        throw new Error(`Premia ${label}: uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.`)
+    }
+    if (reason.length > BONUS_REASON_MAX_LENGTH) {
+        throw new Error(`Premia ${label}: uzasadnienie max ${BONUS_REASON_MAX_LENGTH} znaków.`)
+    }
+    if (!Number.isInteger(o.periodMonth) || o.periodMonth < 1 || o.periodMonth > 12) {
+        throw new Error(`Premia ${label}: nieprawidłowy miesiąc premii.`)
+    }
+    if (!Number.isInteger(o.periodYear) || o.periodYear < 2020 || o.periodYear > 2100) {
+        throw new Error(`Premia ${label}: nieprawidłowy rok premii.`)
+    }
+    if (o.notes != null && o.notes.trim().length > BONUS_NOTES_MAX_LENGTH) {
+        throw new Error(`Premia ${label}: notatka za długa (max ${BONUS_NOTES_MAX_LENGTH} znaków).`)
+    }
+}
+
+/**
  * Confirm a placement's consultant worked 168h → generate the DL + recruiter bonuses
  * (status 'assigned'), link them on the placement, notify recipients. Idempotent: skips a
  * bonus that was already generated (guarded by dl_bonus_id / recruiter_bonus_id).
+ *
+ * `overrides` lets the manager edit amount/reason/period/notes for each bonus in a
+ * pre-filled dialog BEFORE generation + notification. When a side is omitted the computed
+ * defaults are used (legacy behaviour). Category-specific columns (candidate, margins,
+ * tier) always come from the placement — the manager tunes the payout, not the provenance.
  */
-export async function confirmPlacementHours(placementId: string): Promise<void> {
+export async function confirmPlacementHours(
+    placementId: string,
+    overrides?: ConfirmPlacementHoursOverrides,
+): Promise<void> {
     const ctx = await requireBonusProposerAction()
     const admin = createServiceClient()
+
+    if (overrides?.dl) validateBonusOverride(overrides.dl, 'DL')
+    if (overrides?.recruiter) validateBonusOverride(overrides.recruiter, 'rekrutera')
 
     const { data: pRaw } = await admin.from('placements').select('*').eq('id', placementId).single()
     if (!pRaw) throw new Error('Placement nie znaleziony.')
     const p = pRaw as PlacementRow
     if (p.status === 'cancelled') throw new Error('Placement jest anulowany.')
 
-    const [year, month] = p.bonus_eligible_date.split('-').slice(0, 2).map(Number)
+    const { year: defYear, month: defMonth } = bonusPeriodFromEligibleDate(p.bonus_eligible_date)
+
+    // Computed defaults (also used below to decide whether the manager actually changed
+    // anything, so the audit's `edited` flag is truthful rather than just "went via dialog").
+    const dlDefaultAmount = Number(p.dl_bonus_amount)
+    const recDefaultAmount = Number(p.recruiter_bonus_amount)
+    const dlDefaultReason = defaultDlBonusReason(p.consultant_name, p.client_name, Number(p.monthly_margin))
+    const recDefaultReason = defaultRecruiterBonusReason(
+        p.consultant_name,
+        p.client_name,
+        p.recruiter_tier,
+        Number(p.margin_per_hour),
+    )
+
+    // Effective (edited-or-default) values per bonus, resolved once so they feed the INSERT,
+    // the notification, and the audit log consistently.
+    const dlAmount = overrides?.dl ? overrides.dl.amount : dlDefaultAmount
+    const dlReason = overrides?.dl ? overrides.dl.reason.trim() : dlDefaultReason
+    const dlYear = overrides?.dl ? overrides.dl.periodYear : defYear
+    const dlMonth = overrides?.dl ? overrides.dl.periodMonth : defMonth
+    const dlNotes = overrides?.dl?.notes?.trim() || null
+
+    const recAmount = overrides?.recruiter ? overrides.recruiter.amount : recDefaultAmount
+    const recReason = overrides?.recruiter ? overrides.recruiter.reason.trim() : recDefaultReason
+    const recYear = overrides?.recruiter ? overrides.recruiter.periodYear : defYear
+    const recMonth = overrides?.recruiter ? overrides.recruiter.periodMonth : defMonth
+    const recNotes = overrides?.recruiter?.notes?.trim() || null
+
+    // Did the manager actually change a value vs. the computed default? (A click-through of
+    // the pre-filled dialog is NOT an edit; adding an internal note counts as one.)
+    const dlEdited =
+        dlAmount !== dlDefaultAmount ||
+        dlReason !== dlDefaultReason ||
+        dlYear !== defYear ||
+        dlMonth !== defMonth ||
+        dlNotes !== null
+    const recEdited =
+        recAmount !== recDefaultAmount ||
+        recReason !== recDefaultReason ||
+        recYear !== defYear ||
+        recMonth !== defMonth ||
+        recNotes !== null
 
     const { data: peopleRaw } = await admin
         .from('profiles')
@@ -464,19 +560,18 @@ export async function confirmPlacementHours(placementId: string): Promise<void> 
 
     let dlBonusId = p.dl_bonus_id
     if (!dlBonusId) {
-        const amount = Number(p.dl_bonus_amount)
-        const reason = `Premia DL — placement ${p.consultant_name} @ ${p.client_name} (10% z marży miesięcznej ${Number(p.monthly_margin).toLocaleString('pl-PL')} zł)`
         const { data: b, error } = await admin
             .from('bonuses')
             .insert({
                 recipient_user_id: p.delivery_lead_id,
                 proposed_by: ctx.userId,
-                amount,
+                amount: dlAmount,
                 currency: 'PLN',
-                reason,
+                reason: dlReason,
+                notes: dlNotes,
                 status: 'assigned',
-                period_year: year,
-                period_month: month,
+                period_year: dlYear,
+                period_month: dlMonth,
                 category: 'delivery_lead',
                 client_name: p.client_name,
                 delivery_candidate_name: p.consultant_name,
@@ -487,24 +582,23 @@ export async function confirmPlacementHours(placementId: string): Promise<void> 
             .single()
         if (error || !b) throw new Error(`Nie udało się utworzyć premii DL: ${error?.message ?? 'unknown'}`)
         dlBonusId = (b as { id: string }).id
-        if (dl) await notifyBonusRecipient(dl, proposerName, amount, year, month, reason, dlBonusId, 'dl')
+        if (dl) await notifyBonusRecipient(dl, proposerName, dlAmount, dlYear, dlMonth, dlReason, dlBonusId, 'dl')
     }
 
     let recBonusId = p.recruiter_bonus_id
     if (!recBonusId) {
-        const amount = Number(p.recruiter_bonus_amount)
-        const reason = `Premia rekrutacyjna — placement ${p.consultant_name} @ ${p.client_name} (próg ${p.recruiter_tier}, marża ${Number(p.margin_per_hour)} zł/h)`
         const { data: b, error } = await admin
             .from('bonuses')
             .insert({
                 recipient_user_id: p.recruiter_id,
                 proposed_by: ctx.userId,
-                amount,
+                amount: recAmount,
                 currency: 'PLN',
-                reason,
+                reason: recReason,
+                notes: recNotes,
                 status: 'assigned',
-                period_year: year,
-                period_month: month,
+                period_year: recYear,
+                period_month: recMonth,
                 category: 'recruiter',
                 client_name: p.client_name,
                 recruiter_margin_per_hour: Number(p.margin_per_hour),
@@ -515,7 +609,7 @@ export async function confirmPlacementHours(placementId: string): Promise<void> 
             .single()
         if (error || !b) throw new Error(`Nie udało się utworzyć premii rekrutera: ${error?.message ?? 'unknown'}`)
         recBonusId = (b as { id: string }).id
-        if (rec) await notifyBonusRecipient(rec, proposerName, amount, year, month, reason, recBonusId, 'recruiter')
+        if (rec) await notifyBonusRecipient(rec, proposerName, recAmount, recYear, recMonth, recReason, recBonusId, 'recruiter')
     }
 
     await admin
@@ -535,6 +629,9 @@ export async function confirmPlacementHours(placementId: string): Promise<void> 
         placement_id: placementId,
         dl_bonus_id: dlBonusId,
         recruiter_bonus_id: recBonusId,
+        edited: dlEdited || recEdited,
+        dl: { amount: dlAmount, period_year: dlYear, period_month: dlMonth, edited: dlEdited },
+        recruiter: { amount: recAmount, period_year: recYear, period_month: recMonth, edited: recEdited },
     })
 
     revalidatePath('/internal/admin')
