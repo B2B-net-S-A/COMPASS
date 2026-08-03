@@ -52,7 +52,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -63,7 +63,15 @@ on:
         required: false
         default: ""
       task_name:
-        description: "scheduled_tasks.name to disable (action=cron-disable-task)"
+        description: "scheduled_tasks.name to disable (action=cron-disable-task) / name for cron-add"
+        required: false
+        default: ""
+      cron_frequency:
+        description: "Cron expression for cron-add (e.g. '30 5 * * *')"
+        required: false
+        default: ""
+      cron_endpoint:
+        description: "Endpoint path segment for cron-add — /api/cron/<this> (e.g. tech-map-rotation)"
         required: false
         default: ""
 
@@ -348,3 +356,75 @@ jobs:
           echo "=== scheduler process after restart ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "docker exec coolify ps aux | grep -E 'schedule|horizon' | grep -v grep" || echo "(none)"
+
+      # Registering a NEW scheduled task. There is no Coolify API for this that we
+      # trust, so we INSERT into scheduled_tasks directly. Rather than hand-write a
+      # command (and risk re-introducing the curl/$APP_URL/empty-container failures
+      # that killed every task before 2026-07), we CLONE an existing, enabled,
+      # wget-based task and swap only the endpoint path. That inherits the proven
+      # command shape, the real bearer token, and container='app' by construction.
+      #
+      # Idempotent: a task with the same name is left untouched. Safe: if no working
+      # template exists, zero rows are inserted and the step fails loudly rather than
+      # creating a broken task. The scheduler picks up the new row within a minute,
+      # no restart needed.
+      - name: Add a scheduled task (clone a working wget task, swap endpoint)
+        if: inputs.action == 'cron-add'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+          APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          TASK_NAME: ${{ inputs.task_name }}
+          FREQ: ${{ inputs.cron_frequency }}
+          ENDPOINT: ${{ inputs.cron_endpoint }}
+        run: |
+          if [ -z "$TASK_NAME" ] || [ -z "$FREQ" ] || [ -z "$ENDPOINT" ]; then
+            echo "::error::cron-add requires task_name, cron_frequency and cron_endpoint"
+            exit 1
+          fi
+          # Every input lands inside a SQL string literal, so each is constrained to a
+          # strict allowlist before it can get there (same discipline as the other steps).
+          if ! printf '%s' "$TASK_NAME" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$'; then
+            echo "::error::Refusing task name '$TASK_NAME' — allowed: letters, digits, _ . - (max 64)"
+            exit 1
+          fi
+          if ! printf '%s' "$ENDPOINT" | grep -qE '^[a-z0-9-]{1,64}$'; then
+            echo "::error::Refusing endpoint '$ENDPOINT' — allowed: lowercase letters, digits, - (max 64)"
+            exit 1
+          fi
+          if ! printf '%s' "$FREQ" | grep -qE '^[0-9*/,: -]{1,40}$'; then
+            echo "::error::Refusing cron expression '$FREQ' — unexpected characters"
+            exit 1
+          fi
+          PSQL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -tAc"
+          PSQL_TBL="docker exec coolify-db psql -U coolify -d coolify -P pager=off -c"
+          SCOPE="application_id = (select id from applications where uuid = '$APP_UUID')"
+
+          echo "=== existing tasks (this application only) ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL_TBL \"select id, name, frequency, container, enabled from scheduled_tasks where $SCOPE order by id;\""
+
+          # Idempotency: never create a second row with the same name.
+          EXISTING=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select count(*) from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\"")
+          if [ "$EXISTING" != "0" ]; then
+            echo "Task '$TASK_NAME' already exists ($EXISTING row) — nothing to do."
+            exit 0
+          fi
+
+          # Clone the newest enabled wget task that hits /api/cron/, swapping the path.
+          # INSERT ... SELECT inserts zero rows if no template matches — caught below.
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"insert into scheduled_tasks (uuid, name, command, frequency, container, application_id, team_id, enabled, timeout, created_at, updated_at) select gen_random_uuid(), '$TASK_NAME', regexp_replace(command, '/api/cron/[a-z0-9-]+', '/api/cron/$ENDPOINT'), '$FREQ', 'app', application_id, team_id, true, timeout, now(), now() from scheduled_tasks where $SCOPE and enabled = true and command like '%wget %' and command like '%/api/cron/%' order by id desc limit 1;\""
+
+          CREATED=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL \"select count(*) from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\"")
+          if [ "$CREATED" = "0" ]; then
+            echo "::error::No enabled wget /api/cron/ task to clone — cannot derive a safe command. Register one working task first."
+            exit 1
+          fi
+
+          # Print only the extracted /api/cron/<path>, never the command itself — the
+          # bearer token sits in the middle of the command and GitHub will not mask it.
+          echo "=== after: new task (endpoint extracted, token never printed) ==="
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "$PSQL_TBL \"select id, name, frequency, container, enabled, substring(command from '/api/cron/[a-z0-9-]+') as endpoint from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\""
