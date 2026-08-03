@@ -208,6 +208,8 @@ export const BONUS_MIN_AMOUNT = 1
 export const BONUS_MAX_AMOUNT = 1_000_000
 export const BONUS_REASON_MIN_LENGTH = 3
 export const BONUS_REASON_MAX_LENGTH = 1000
+/** Cap for the optional internal note (bounds an otherwise unlimited text column). */
+export const BONUS_NOTES_MAX_LENGTH = 1000
 
 /** Phase 26 — allowed period range: past 12 months + current. */
 export const BONUS_PERIOD_MAX_MONTHS_BACK = 12
