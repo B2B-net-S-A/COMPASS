@@ -367,11 +367,17 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
         expect(supabaseState.bonusRow).toMatchObject({ amount: 800 })
     })
 
-    it('blocks a manager from editing after assignment', async () => {
-        // Default beforeEach context is a manager — even the bonus proposer is locked out now.
+    it('allows a manager to edit a bonus they proposed', async () => {
+        // Default beforeEach context is manager-1; this bonus is proposed_by manager-1.
         supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
+        await updateBonus({ id: 'bonus-1', amount: 700 })
+        expect(supabaseState.bonusRow).toMatchObject({ amount: 700 })
+    })
+
+    it('blocks a manager from editing a bonus they did not propose', async () => {
+        supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
         await expect(updateBonus({ id: 'bonus-1', amount: 700 })).rejects.toThrow(
-            /administrator lub finanse/i,
+            /sam przypisał/i,
         )
     })
 

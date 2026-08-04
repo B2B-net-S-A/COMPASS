@@ -364,16 +364,18 @@ export function BonusesAdminClient({
             ) : (
                 <div className="space-y-2">
                     {filtered.map((b) => {
-                        // Phase 32 — edit locked to admin + finanse.
-                        // Cancel: admin/finanse any; manager only own (proposed_by).
+                        // Edit + Cancel: admin/finanse any; manager only own (proposed_by).
+                        // (Zgłoszenie Dominika — manager edytuje własną premię, np. miesiąc,
+                        // bez anuluj+dodaj-od-nowa; parytet z anulowaniem własnej premii.)
                         const canManageRow = canManageAny
-                        const canEditRow = b.status === 'assigned' && canManageRow
-                        const canCancelOwnAsManager =
+                        const canOwnAsManager =
                             viewerMode === 'manager' &&
                             b.proposed_by === currentUserId
+                        const canEditRow =
+                            b.status === 'assigned' && (canManageRow || canOwnAsManager)
                         const canCancelRow =
                             (b.status === 'assigned' || b.status === 'pending') &&
-                            (canManageRow || canCancelOwnAsManager)
+                            (canManageRow || canOwnAsManager)
                         return (
                             <div
                                 key={b.id}
@@ -549,7 +551,8 @@ export function BonusesAdminClient({
                         <DialogHeader>
                             <DialogTitle>Edytuj premię</DialogTitle>
                             <DialogDescription>
-                                Pracownik dostanie powiadomienie o zmianach. Odbiorca i kategoria są niezmienne.
+                                Możesz zmienić kwotę, miesiąc premii, uzasadnienie i notatkę — pracownik
+                                dostanie powiadomienie o zmianach. Odbiorca i kategoria są niezmienne.
                             </DialogDescription>
                         </DialogHeader>
                         <AssignBonusForm
