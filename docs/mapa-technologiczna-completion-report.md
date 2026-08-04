@@ -172,3 +172,44 @@ agregacja i materializacja przydziałów.
 - `contractors.current_client` (wolny TEXT) może dryfować od `clients` → prefill wtedy nie
   trafia i TCM wybiera ręcznie; picker w edycji kontraktora = follow-up.
 - Retencja/RODO dla komentarzy i „plotek" — do przemyślenia po okresie próbnym Etapu 1.
+
+---
+
+# Phase 46d — jedna karta zamiast rotacji bloków (2026-08-04)
+
+Iteracja po zobaczeniu Etapów 1-3. Decyzja Artura: karta wypełniana **za jednym zamachem**
+(technologie, projekt/pion, poszukiwane kompetencje, zadowolenie + reszta opcjonalna), bez
+podziału na bloki B/C/D. Rotacja była nadmiarowa wobec realnego procesu (komplet raz, potem
+lekkie telefony aktualizacyjne — te obsługuje istniejący log rozmów opieki).
+
+## Zmiany
+
+- **Migracja 46d:** DROP `tech_interview_cards.block`, DROP TABLE `tech_block_assignments`
+  (0 realnych kart; 640 auto-B przydziałów = dane testowe z Etapu 2). Indeks popytu odtworzony bez block.
+- **Usunięte pliki:** `lib/tech-map/block-rotation.ts`, `lib/tech-map/rotation-sweep.ts`,
+  `app/api/cron/tech-map-rotation/route.ts`, `components/internal/people/mapa/RotationAdminSection.tsx`
+  + ich testy.
+- **tech-map.ts:** usunięte `getRotationOverview`/`recalcBlockAssignments`/`overrideBlockAssignment`,
+  `ensureAssignmentForPeriod`/`reconcileAssignmentWithCard`; `getPreInterviewBrief` bez `plannedBlock`
+  (tylko „co już wiemy" + `latestCard`).
+- **Typy:** bez `InterviewBlock`/`INTERVIEW_BLOCK*`/`BlockAssignmentSource`/`TechBlockAssignmentRow`;
+  `CardInput`/`TechInterviewCardRow`/`CardListItem` bez `block`; `AreaCoverage` obszary×bloki → cards/lastAny/missing/stale.
+- **Formularz:** wszystko naraz — „Najważniejsze" (status, satysfakcja, koniec projektu, popyt, cytat)
+  + „Technologie i zespół" + opcjonalne „Inicjatywy" i „Dostawcy". Bez selektora bloku.
+  **„Koniec projektu" przeformułowany** — helper „Do kiedy klient planuje ten projekt (nie umowa konsultanta)".
+- **Karta klienta:** pokrycie z macierzy obszary×bloki na listę obszary + świeżość.
+- **Brief:** bez dużej litery bloku, samo „co już wiemy".
+- **Bez zmian:** alerty (popyt + koniec projektu), KPI, guard sprzedaży `requireTechMapViewerAction`.
+
+## Weryfikacja
+
+- `tsc` czysty, `next lint` exit 0, `npm run test:unit` — **1103/1103** (usunięto 30 testów rotacji,
+  przepisano coverage/validation).
+- Adversarialny review przez workflow (4 wymiary: dangling refs, migracja/ops, poprawność formularza/
+  agregacji, parity kept-features) + skeptic-verify potwierdzonych findingów.
+
+## Ops po deploy
+
+1. Migracja 46d przez Supabase MCP.
+2. **Wyłączyć cron `tech-map-rotation` w Coolify** (`cron-disable-task task_name=tech-map-rotation`) —
+   route usunięty, więc zadanie tikałoby w 404 co dzień. Cron `tech-map-project-end` zostaje.
