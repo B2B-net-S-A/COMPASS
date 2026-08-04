@@ -744,11 +744,15 @@ async function notifyLeaveCancelled(params: {
     if (recipientIds.size === 0) return
     const recipients = Array.from(recipientIds)
 
-    // Profile odbiorców (email/nazwa do kanału email).
+    // Profile odbiorców (email/nazwa do kanału email). Phase 43 — exited wypada
+    // z byId, więc nie dostaje maila (dotyczy też managera z manager_id, którego
+    // zapytanie o adminów nie obejmuje). In-app/push i tak są nieszkodliwe (nie
+    // logują się), ale email bywa aktywny.
     const { data: profs } = await admin
         .from('profiles')
         .select('id, email, full_name')
         .in('id', recipients)
+        .neq('employment_status', 'exited')
     const byId = new Map(
         ((profs ?? []) as Array<{ id: string; email: string | null; full_name: string | null }>).map(
             (p) => [p.id, p],
