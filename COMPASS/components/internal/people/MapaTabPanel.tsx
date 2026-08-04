@@ -5,7 +5,6 @@
 import { listContractors } from '@/lib/actions/contractors'
 import {
     getAlertRecipientsConfig,
-    getRotationOverview,
     listCards,
     listClientsWithCards,
     listTechnologies,
@@ -15,16 +14,14 @@ import { CardsListSection } from '@/components/internal/people/mapa/CardsListSec
 import { ClientsWithCardsSection } from '@/components/internal/people/mapa/ClientsWithCardsSection'
 import { DictionaryAdminSection } from '@/components/internal/people/mapa/DictionaryAdminSection'
 import { NewInterviewPicker } from '@/components/internal/people/mapa/NewInterviewPicker'
-import { RotationAdminSection } from '@/components/internal/people/mapa/RotationAdminSection'
 import { AlertRecipientsSection } from '@/components/internal/people/mapa/AlertRecipientsSection'
 
 export async function MapaTabPanel({ isAdmin }: { isAdmin: boolean }) {
-    const [cards, contractors, clientsWithCards, rotation, technologies, vendors, alertConfig] =
+    const [cards, contractors, clientsWithCards, technologies, vendors, alertConfig] =
         await Promise.all([
             listCards(),
             listContractors(),
             listClientsWithCards(),
-            getRotationOverview(),
             isAdmin ? listTechnologies() : Promise.resolve([]),
             isAdmin ? listVendors() : Promise.resolve([]),
             isAdmin ? getAlertRecipientsConfig() : Promise.resolve(null),
@@ -50,8 +47,6 @@ export async function MapaTabPanel({ isAdmin }: { isAdmin: boolean }) {
             <ClientsWithCardsSection clients={clientsWithCards} />
 
             <CardsListSection cards={cards} />
-
-            <RotationAdminSection overview={rotation} isAdmin={isAdmin} />
 
             {isAdmin && alertConfig && (
                 <AlertRecipientsSection config={alertConfig.config} candidates={alertConfig.candidates} />

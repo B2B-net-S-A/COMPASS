@@ -117,7 +117,7 @@ export function ContractorDetailClient({ detail, tcmProfiles, techCards = [] }: 
                         <table className="w-full text-sm">
                             <thead className="bg-muted/50">
                                 <tr>
-                                    <th className="p-2 text-left">Data</th><th className="p-2 text-left">Blok</th>
+                                    <th className="p-2 text-left">Data</th>
                                     <th className="p-2 text-left">Klient</th><th className="p-2 text-left">Status</th>
                                     <th className="p-2 text-left">Prowadzący</th>
                                 </tr>
@@ -130,7 +130,6 @@ export function ContractorDetailClient({ detail, tcmProfiles, techCards = [] }: 
                                                 {c.interviewDate}
                                             </Link>
                                         </td>
-                                        <td className="p-2 font-semibold">{c.block}</td>
                                         <td className="p-2">{c.clientName}{c.areaName ? ` · ${c.areaName}` : ''}</td>
                                         <td className="p-2">
                                             {c.isDraft ? (

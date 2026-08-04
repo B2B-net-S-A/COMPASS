@@ -30,8 +30,6 @@ import {
     INITIATIVE_KIND_PL,
     INITIATIVE_KINDS,
     INITIATIVE_PRIORITY_PL,
-    INTERVIEW_BLOCK_PL,
-    INTERVIEW_BLOCKS,
     INTERVIEW_CARD_STATUS_PL,
     INTERVIEW_CARD_STATUSES,
     TECH_CATEGORY_PL,
@@ -39,7 +37,6 @@ import {
     type ClientAreaRow,
     type HiringSource,
     type InitiativeInput,
-    type InterviewBlock,
     type InterviewCardStatus,
     type TechnologyRow,
     type VendorRow,
@@ -138,12 +135,11 @@ export function InterviewCardForm(props: Props) {
     const [interviewDate, setInterviewDate] = useState(props.initial.interviewDate)
     const [clientId, setClientId] = useState(props.initial.clientId)
     const [clientAreaId, setClientAreaId] = useState<string | null>(props.initial.clientAreaId)
-    const [block, setBlock] = useState<InterviewBlock>(props.initial.block)
     const [newClientName, setNewClientName] = useState<string | null>(null)
     const [newAreaName, setNewAreaName] = useState<string | null>(null)
     const [addingDict, setAddingDict] = useState(false)
 
-    // Blok A
+    // Rdzeń (status, satysfakcja, koniec projektu, popyt, cytat)
     const [status, setStatus] = useState<InterviewCardStatus | null>(props.initial.status)
     const [satisfaction, setSatisfaction] = useState<number | null>(props.initial.satisfaction)
     const [satisfactionComment, setSatisfactionComment] = useState(props.initial.satisfactionComment ?? '')
@@ -155,16 +151,16 @@ export function InterviewCardForm(props: Props) {
     const [hiringSource, setHiringSource] = useState<HiringSource | null>(props.initial.hiringSource)
     const [memorableQuote, setMemorableQuote] = useState(props.initial.memorableQuote ?? '')
 
-    // Blok B
+    // Technologie i zespół
     const [technologyIds, setTechnologyIds] = useState<string[]>(props.initial.technologyIds)
     const [techOldNew, setTechOldNew] = useState(props.initial.techOldNew ?? '')
     const [teamSize, setTeamSize] = useState<string>(props.initial.teamSize?.toString() ?? '')
     const [teamExternals, setTeamExternals] = useState<string>(props.initial.teamExternals?.toString() ?? '')
 
-    // Blok C
+    // Inicjatywy / projekty
     const [initiatives, setInitiatives] = useState<InitiativeInput[]>(props.initial.initiatives)
 
-    // Blok D
+    // Dostawcy
     const [vendorIds, setVendorIds] = useState<string[]>(props.initial.vendorIds)
     const [vendorsNote, setVendorsNote] = useState(props.initial.vendorsNote ?? '')
 
@@ -199,7 +195,6 @@ export function InterviewCardForm(props: Props) {
             clientId,
             clientAreaId,
             interviewDate,
-            block,
             status,
             satisfaction,
             satisfactionComment: satisfactionComment || null,
@@ -406,31 +401,12 @@ export function InterviewCardForm(props: Props) {
                         )}
                     </div>
                 </div>
-                <div className="space-y-1.5">
-                    <Label>Wykonany blok</Label>
-                    <div className="flex flex-wrap gap-2">
-                        {INTERVIEW_BLOCKS.map((b) => (
-                            <button
-                                key={b}
-                                type="button"
-                                onClick={() => setBlock(b)}
-                                className={
-                                    block === b
-                                        ? 'rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary'
-                                        : 'rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted'
-                                }
-                            >
-                                {b} — {INTERVIEW_BLOCK_PL[b]}
-                            </button>
-                        ))}
-                    </div>
-                </div>
             </section>
 
-            {/* ─── Blok A ───────────────────────────────────────────────── */}
+            {/* ─── Rdzeń — zawsze ───────────────────────────────────────── */}
             <section className="rounded-lg border border-border bg-card p-4 space-y-4">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    Blok A — zawsze
+                    Najważniejsze
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
@@ -480,6 +456,9 @@ export function InterviewCardForm(props: Props) {
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
                         <Label>Koniec projektu</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Do kiedy klient planuje ten projekt (nie umowa konsultanta).
+                        </p>
                         <div className="flex items-center gap-2">
                             <select
                                 className={selectCls}
@@ -592,12 +571,11 @@ export function InterviewCardForm(props: Props) {
                 </div>
             </section>
 
-            {/* ─── Blok rotacyjny ───────────────────────────────────────── */}
-            {block === 'B' && (
-                <section className="rounded-lg border border-border bg-card p-4 space-y-4">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Blok B — technologie i zespół
-                    </h2>
+            {/* ─── Technologie i zespół ─────────────────────────────────── */}
+            <section className="rounded-lg border border-border bg-card p-4 space-y-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Technologie i zespół
+                </h2>
                     <div className="space-y-1.5">
                         <Label>Technologie</Label>
                         <TagMultiSelect
@@ -646,14 +624,13 @@ export function InterviewCardForm(props: Props) {
                             />
                         </div>
                     </div>
-                </section>
-            )}
+            </section>
 
-            {block === 'C' && (
-                <section className="rounded-lg border border-border bg-card p-4 space-y-4">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Blok C — inicjatywy / projekty
-                    </h2>
+            {/* ─── Inicjatywy / projekty (opcjonalne) ───────────────────── */}
+            <section className="rounded-lg border border-border bg-card p-4 space-y-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Inicjatywy / projekty <span className="normal-case font-normal">(opcjonalne)</span>
+                </h2>
                     {initiatives.length === 0 && (
                         <p className="text-sm text-muted-foreground">Brak inicjatyw — dodaj pierwszą.</p>
                     )}
@@ -723,14 +700,13 @@ export function InterviewCardForm(props: Props) {
                     >
                         <Plus className="mr-1 h-4 w-4" /> Dodaj inicjatywę
                     </Button>
-                </section>
-            )}
+            </section>
 
-            {block === 'D' && (
-                <section className="rounded-lg border border-border bg-card p-4 space-y-4">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Blok D — inne firmy (dostawcy)
-                    </h2>
+            {/* ─── Inne firmy — dostawcy (opcjonalne) ───────────────────── */}
+            <section className="rounded-lg border border-border bg-card p-4 space-y-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Inne firmy — dostawcy <span className="normal-case font-normal">(opcjonalne)</span>
+                </h2>
                     <div className="space-y-1.5">
                         <Label>Inne firmy (dostawcy)</Label>
                         <TagMultiSelect
@@ -753,8 +729,7 @@ export function InterviewCardForm(props: Props) {
                             placeholder="Kto, w jakim obszarze, jak duża obecność"
                         />
                     </div>
-                </section>
-            )}
+            </section>
 
             {/* ─── Akcje ────────────────────────────────────────────────── */}
             <div className="flex flex-wrap items-center gap-2">

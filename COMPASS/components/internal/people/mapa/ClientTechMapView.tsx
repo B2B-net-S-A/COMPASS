@@ -6,11 +6,7 @@
 // z etykietą „do odświeżenia" — to sygnał do zaplanowania rozmowy, nie błąd.
 
 import { Badge } from '@/components/ui/badge'
-import {
-    INITIATIVE_KIND_PL,
-    INTERVIEW_BLOCKS,
-    type InterviewBlock,
-} from '@/lib/types/tech-map'
+import { INITIATIVE_KIND_PL } from '@/lib/types/tech-map'
 import type { ClientTechMap } from '@/lib/tech-map/aggregation'
 
 const MONTHS_SHORT = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru']
@@ -202,51 +198,37 @@ export function ClientTechMapView({ map }: { map: ClientTechMap }) {
             <section className="space-y-3">
                 <h2 className="text-lg font-semibold">Pokrycie obszarów</h2>
                 <p className="text-sm text-muted-foreground">
-                    Które bloki wywiadu mamy w którym obszarze. Puste pole = temat jeszcze nieporuszony.
+                    Które obszary mają dane i jak świeże. Brak karty = temat jeszcze nieporuszony.
                 </p>
                 <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                                 <th className="px-3 py-2 font-medium">Obszar</th>
-                                {INTERVIEW_BLOCKS.map((b) => (
-                                    <th key={b} className="px-3 py-2 font-medium">
-                                        Blok {b}
-                                    </th>
-                                ))}
+                                <th className="px-3 py-2 font-medium">Karty</th>
+                                <th className="px-3 py-2 font-medium">Ostatnia rozmowa</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                             {map.coverage.map((c) => (
-                                <tr key={c.areaId ?? 'none'}>
+                                <tr key={c.areaId ?? 'none'} className={c.stale ? 'opacity-60' : ''}>
                                     <td className="px-3 py-2 font-medium">{c.areaName}</td>
-                                    {INTERVIEW_BLOCKS.map((b) => {
-                                        const last = c.lastByBlock[b as InterviewBlock]
-                                        const stale = c.staleBlocks.includes(b as InterviewBlock)
-                                        return (
-                                            <td key={b} className="px-3 py-2">
-                                                {last ? (
-                                                    <span
-                                                        className={
-                                                            stale
-                                                                ? 'text-xs text-muted-foreground opacity-60'
-                                                                : 'text-xs text-foreground'
-                                                        }
-                                                    >
-                                                        {last}
-                                                        {stale && ' ·  do odświeżenia'}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-xs text-muted-foreground">— brak</span>
-                                                )}
-                                            </td>
-                                        )
-                                    })}
+                                    <td className="px-3 py-2 text-muted-foreground">{c.cards}</td>
+                                    <td className="px-3 py-2">
+                                        {c.missing ? (
+                                            <span className="text-xs text-muted-foreground">— brak</span>
+                                        ) : (
+                                            <span className="text-xs text-foreground">
+                                                {c.lastAny}
+                                                {c.stale && ' · do odświeżenia'}
+                                            </span>
+                                        )}
+                                    </td>
                                 </tr>
                             ))}
                             {map.coverage.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                                    <td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">
                                         Brak zdefiniowanych obszarów. Dodasz je przy wypełnianiu karty rozmowy.
                                     </td>
                                 </tr>
