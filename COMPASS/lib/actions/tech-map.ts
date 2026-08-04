@@ -20,19 +20,12 @@ import { normalizeClientName } from '@/lib/contractors/name-normalization'
 import { warsawDate } from '@/lib/oof/oof-dates'
 import { validateCardBase, validateCardForFinalize } from '@/lib/tech-map/validation'
 import {
-    computePlannedBlock,
-    periodFromDate,
-    quarterBounds,
-    type AssignmentLike,
-} from '@/lib/tech-map/block-rotation'
-import {
     buildClientTechMap,
     type AggCard,
     type AggInitiative,
     type AggLink,
     type ClientTechMap,
 } from '@/lib/tech-map/aggregation'
-import { sweepBlockAssignments, type RotationSweepStats } from '@/lib/tech-map/rotation-sweep'
 import {
     allTcmAndAdmins,
     dispatchAlert,
@@ -55,9 +48,7 @@ import {
     type CardInput,
     type CardListItem,
     type ClientAreaRow,
-    type InterviewBlock,
     type PreInterviewBrief,
-    type TechBlockAssignmentRow,
     type TechCategory,
     type TechInterviewCardRow,
     type TechnologyRow,
@@ -371,7 +362,6 @@ function cardPayloadFromInput(input: CardInput) {
         client_id: input.clientId,
         client_area_id: input.clientAreaId,
         interview_date: input.interviewDate,
-        block: input.block,
         status: input.status,
         satisfaction: input.satisfaction,
         satisfaction_comment: input.satisfactionComment?.trim() || null,
@@ -436,91 +426,6 @@ async function syncCardRelations(admin: ServiceClient, cardId: string, input: Ca
     }
 }
 
-/**
- * Fallback materializacji rotacji: przy zapisie karty dopilnuj, żeby kwartał
- * rozmowy miał wiersz przydziału (cykl B→C→D). ON CONFLICT DO NOTHING —
- * istniejący (w tym ręczny) przydział nigdy nie jest nadpisywany tą ścieżką.
- */
-async function ensureAssignmentForPeriod(
-    admin: ServiceClient,
-    contractorId: string,
-    interviewDateISO: string,
-): Promise<void> {
-    const { year, quarter } = periodFromDate(interviewDateISO)
-    const { data } = await admin
-        .from('tech_block_assignments')
-        .select('period_year, period_quarter, block, source')
-        .eq('contractor_id', contractorId)
-    const assignments = (data ?? []) as AssignmentLike[]
-    const planned = computePlannedBlock(assignments, year, quarter)
-    if (planned.basis === 'assigned') return
-    // upsert z ignorowaniem konfliktu — wyścig z cronem/adminem jest nieszkodliwy
-    await admin
-        .from('tech_block_assignments')
-        .upsert(
-            {
-                contractor_id: contractorId,
-                period_year: year,
-                period_quarter: quarter,
-                block: planned.block,
-                source: 'auto',
-            },
-            { onConflict: 'contractor_id,period_year,period_quarter', ignoreDuplicates: true },
-        )
-}
-
-/**
- * Reguła zgodności z rzeczywistością: finalizacja karty z innym blokiem niż
- * przydzielony aktualizuje przydział (source=manual) — rotacja w kolejnym
- * kwartale cykluje od tego, co NAPRAWDĘ zrobiono.
- */
-async function reconcileAssignmentWithCard(
-    admin: ServiceClient,
-    ctx: InternalAuthContext,
-    contractorId: string,
-    interviewDateISO: string,
-    cardBlock: InterviewBlock,
-): Promise<void> {
-    const { year, quarter } = periodFromDate(interviewDateISO)
-    const { data } = await admin
-        .from('tech_block_assignments')
-        .select('id, block')
-        .eq('contractor_id', contractorId)
-        .eq('period_year', year)
-        .eq('period_quarter', quarter)
-        .maybeSingle()
-
-    const existing = data as { id: string; block: InterviewBlock } | null
-    if (!existing) {
-        await admin.from('tech_block_assignments').upsert(
-            {
-                contractor_id: contractorId,
-                period_year: year,
-                period_quarter: quarter,
-                block: cardBlock,
-                source: 'manual',
-                assigned_by: ctx.userId,
-            },
-            { onConflict: 'contractor_id,period_year,period_quarter', ignoreDuplicates: true },
-        )
-        return
-    }
-    if (existing.block === cardBlock) return
-
-    await admin
-        .from('tech_block_assignments')
-        .update({ block: cardBlock, source: 'manual', assigned_by: ctx.userId })
-        .eq('id', existing.id)
-    await logAudit(ctx.userId, 'TECH_BLOCK_OVERRIDDEN', {
-        contractor_id: contractorId,
-        period_year: year,
-        period_quarter: quarter,
-        from: existing.block,
-        to: cardBlock,
-        via: 'card_finalize',
-    })
-}
-
 async function loadCardOrThrow(admin: ServiceClient, cardId: string): Promise<TechInterviewCardRow> {
     const { data, error } = await admin
         .from('tech_interview_cards')
@@ -570,13 +475,11 @@ export async function createCardDraft(input: CardInput): Promise<{ id: string }>
 
     const cardId = (data as { id: string }).id
     await syncCardRelations(admin, cardId, input)
-    await ensureAssignmentForPeriod(admin, input.contractorId, input.interviewDate)
 
     await logAudit(ctx.userId, 'TECH_CARD_CREATED', {
         card_id: cardId,
         contractor_id: input.contractorId,
         client_id: input.clientId,
-        block: input.block,
     })
     revalidatePath(HUB)
     return { id: cardId }
@@ -616,14 +519,10 @@ async function saveCardInternal(
 
     await syncCardRelations(admin, cardId, input)
 
-    if (opts.finalize || !card.is_draft) {
-        await reconcileAssignmentWithCard(admin, ctx, card.contractor_id, input.interviewDate, input.block)
-    }
-
     await logAudit(
         ctx.userId,
         opts.finalize && card.is_draft ? 'TECH_CARD_FINALIZED' : 'TECH_CARD_UPDATED',
-        { card_id: cardId, contractor_id: card.contractor_id, block: input.block, status: input.status },
+        { card_id: cardId, contractor_id: card.contractor_id, status: input.status },
     )
 
     // Alert popytu (Etap 3): odpala się gdy karta JEST sfinalizowana, hiring=true,
@@ -770,7 +669,6 @@ export async function listCards(filters: CardFilters = {}): Promise<CardListItem
         clientName: clientMap.get(r.client_id) ?? '—',
         areaName: r.client_area_id ? (areaMap.get(r.client_area_id) ?? null) : null,
         interviewDate: r.interview_date,
-        block: r.block,
         status: r.status,
         isDraft: r.is_draft,
         tcmId: r.tcm_id,
@@ -853,13 +751,8 @@ export async function getPreInterviewBrief(contractorId: string): Promise<PreInt
     }
 
     const todayISO = warsawDate(new Date())
-    const { year, quarter } = periodFromDate(todayISO)
 
-    const [assignmentsRes, cardsRes, conversations, ownerNames] = await Promise.all([
-        admin
-            .from('tech_block_assignments')
-            .select('*')
-            .eq('contractor_id', contractorId),
+    const [cardsRes, conversations, ownerNames] = await Promise.all([
         admin
             .from('tech_interview_cards')
             .select('*')
@@ -870,16 +763,9 @@ export async function getPreInterviewBrief(contractorId: string): Promise<PreInt
         loadProfileNames(admin, [contractor.owner_tcm_id]),
     ])
 
-    const assignments = (assignmentsRes.data ?? []) as TechBlockAssignmentRow[]
-    const planned = computePlannedBlock(assignments, year, quarter)
-
     const cards = (cardsRes.data ?? []) as TechInterviewCardRow[]
-    const latestCardByBlock: PreInterviewBrief['latestCardByBlock'] = { B: null, C: null, D: null }
-    for (const c of cards) {
-        if (!latestCardByBlock[c.block]) {
-            latestCardByBlock[c.block] = { id: c.id, interviewDate: c.interview_date, isDraft: c.is_draft }
-        }
-    }
+    // Karty są posortowane malejąco po dacie — pierwsza to najnowsza.
+    const latestCardRow = cards[0] ?? null
     const latestFinal = cards.find((c) => !c.is_draft)
 
     // Prefill klienta: kanonizacja current_client → dopasowanie do słownika clients.
@@ -904,7 +790,7 @@ export async function getPreInterviewBrief(contractorId: string): Promise<PreInt
             kind: 'card',
             id: c.id,
             date: c.interview_date,
-            label: `Blok ${c.block}`,
+            label: 'Karta',
             summary:
                 c.memorable_quote?.trim() ||
                 (c.status ? INTERVIEW_CARD_STATUS_PL[c.status] : 'Wersja robocza'),
@@ -932,10 +818,11 @@ export async function getPreInterviewBrief(contractorId: string): Promise<PreInt
                 ? (ownerNames.get(contractor.owner_tcm_id) ?? null)
                 : null,
         },
-        plannedBlock: { block: planned.block, basis: planned.basis, source: planned.source },
         matchedClientId,
         matchedClientName,
-        latestCardByBlock,
+        latestCard: latestCardRow
+            ? { id: latestCardRow.id, interviewDate: latestCardRow.interview_date, isDraft: latestCardRow.is_draft }
+            : null,
         timeline,
         daysSinceLastCard: latestFinal ? daysBetween(latestFinal.interview_date, todayISO) : null,
     }
@@ -977,7 +864,7 @@ export async function getClientTechMap(clientId: string): Promise<ClientTechMapR
             .from('tech_interview_cards')
             // Jeden literał, bez konkatenacji — supabase-js wnioskuje typ wiersza
             // z treści select() na poziomie typów; sklejanie `+` to psuje.
-            .select('id, client_area_id, interview_date, block, hiring, hiring_roles, hiring_source, project_end_month, project_end_year, project_end_unknown, tech_old_new, vendors_note, memorable_quote, team_size, team_externals')
+            .select('id, client_area_id, interview_date, hiring, hiring_roles, hiring_source, project_end_month, project_end_year, project_end_unknown, tech_old_new, vendors_note, memorable_quote, team_size, team_externals')
             .eq('client_id', clientId)
             .eq('is_draft', false)
             .order('interview_date', { ascending: false }),
@@ -1082,166 +969,6 @@ export async function listClientsWithCards(): Promise<
         cards: v.cards,
         lastInterviewDate: v.last,
     })).sort((a, b) => b.lastInterviewDate.localeCompare(a.lastInterviewDate))
-}
-
-// ─── Etap 2: rotacja bloków (przegląd + przelicz + override) ────────────────
-
-export interface RotationRow {
-    contractorId: string
-    contractorName: string
-    currentClient: string | null
-    block: InterviewBlock
-    basis: 'assigned' | 'computed'
-    source: 'auto' | 'manual' | null
-    /** Data ostatniej sfinalizowanej karty w tym kwartale (null = jeszcze nie było rozmowy). */
-    cardThisQuarter: string | null
-}
-
-export interface RotationOverview {
-    year: number
-    quarter: number
-    rows: RotationRow[]
-    /** Ilu aktywnych kontraktorów nie ma jeszcze zmaterializowanego przydziału. */
-    unassigned: number
-}
-
-/** Przegląd przydziałów na bieżący kwartał (bez zapisu — render bez side-effectów). */
-export async function getRotationOverview(): Promise<RotationOverview> {
-    await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-
-    const todayISO = warsawDate(new Date())
-    const { year, quarter } = periodFromDate(todayISO)
-    const { start: quarterStart, endExclusive: quarterEndExclusive } = quarterBounds(year, quarter)
-
-    const [contractorsRes, assignmentsRes, cardsRes] = await Promise.all([
-        admin
-            .from('contractors')
-            .select('id, full_name, current_client')
-            .eq('status', 'active')
-            .order('full_name'),
-        admin
-            .from('tech_block_assignments')
-            .select('contractor_id, period_year, period_quarter, block, source'),
-        admin
-            .from('tech_interview_cards')
-            .select('contractor_id, interview_date')
-            .eq('is_draft', false)
-            .gte('interview_date', quarterStart)
-            .lt('interview_date', quarterEndExclusive),
-    ])
-
-    if (contractorsRes.error) throw new Error(`Błąd pobierania konsultantów: ${contractorsRes.error.message}`)
-    if (assignmentsRes.error) {
-        throw new Error(`Błąd pobierania przydziałów: ${assignmentsRes.error.message}`)
-    }
-    // Bez tego sprawdzenia błąd zapytania o karty byłby niewidoczny: `cardDates`
-    // zostałoby puste i panel pokazałby, że NIKT nie rozmawiał w tym kwartale.
-    if (cardsRes.error) throw new Error(`Błąd pobierania kart: ${cardsRes.error.message}`)
-
-    const contractors = (contractorsRes.data ?? []) as Array<{
-        id: string
-        full_name: string
-        current_client: string | null
-    }>
-
-    const byContractor = new Map<string, AssignmentLike[]>()
-    for (const row of ((assignmentsRes.data ?? []) as Array<
-        AssignmentLike & { contractor_id: string }
-    >)) {
-        const entry: AssignmentLike = {
-            period_year: row.period_year,
-            period_quarter: row.period_quarter,
-            block: row.block,
-            source: row.source,
-        }
-        const list = byContractor.get(row.contractor_id)
-        if (list) list.push(entry)
-        else byContractor.set(row.contractor_id, [entry])
-    }
-
-    const cardDates = new Map<string, string>()
-    for (const c of ((cardsRes.data ?? []) as Array<{ contractor_id: string; interview_date: string }>)) {
-        const existing = cardDates.get(c.contractor_id)
-        if (!existing || c.interview_date > existing) cardDates.set(c.contractor_id, c.interview_date)
-    }
-
-    const rows: RotationRow[] = contractors.map((c) => {
-        const planned = computePlannedBlock(byContractor.get(c.id) ?? [], year, quarter)
-        return {
-            contractorId: c.id,
-            contractorName: c.full_name,
-            currentClient: c.current_client,
-            block: planned.block,
-            basis: planned.basis,
-            source: planned.source,
-            cardThisQuarter: cardDates.get(c.id) ?? null,
-        }
-    })
-
-    return { year, quarter, rows, unassigned: rows.filter((r) => r.basis === 'computed').length }
-}
-
-/** „Przelicz przydziały" — ta sama ścieżka co cron, wywołana ręcznie przez admina. */
-export async function recalcBlockAssignments(): Promise<RotationSweepStats> {
-    const ctx = await requireLifecycleManagerAction()
-    requireAdmin(ctx)
-    const admin = createServiceClient()
-    const stats = await sweepBlockAssignments(admin, { actorUserId: ctx.userId })
-    revalidatePath(HUB)
-    return stats
-}
-
-/** Ręczna zmiana bloku na bieżący kwartał (lepka — cron jej nie nadpisze). */
-export async function overrideBlockAssignment(input: {
-    contractorId: string
-    block: InterviewBlock
-}): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    requireAdmin(ctx)
-    if (!input.contractorId) throw new Error('Brak id konsultanta.')
-    if (!['B', 'C', 'D'].includes(input.block)) throw new Error('Nieprawidłowy blok.')
-
-    const admin = createServiceClient()
-    const { year, quarter } = periodFromDate(warsawDate(new Date()))
-
-    const { data: existing } = await admin
-        .from('tech_block_assignments')
-        .select('id, block')
-        .eq('contractor_id', input.contractorId)
-        .eq('period_year', year)
-        .eq('period_quarter', quarter)
-        .maybeSingle()
-
-    const previous = (existing as { id: string; block: InterviewBlock } | null)?.block ?? null
-
-    if (existing) {
-        const { error } = await admin
-            .from('tech_block_assignments')
-            .update({ block: input.block, source: 'manual', assigned_by: ctx.userId })
-            .eq('id', (existing as { id: string }).id)
-        if (error) throw new Error(`Błąd zmiany przydziału: ${error.message}`)
-    } else {
-        const { error } = await admin.from('tech_block_assignments').insert({
-            contractor_id: input.contractorId,
-            period_year: year,
-            period_quarter: quarter,
-            block: input.block,
-            source: 'manual',
-            assigned_by: ctx.userId,
-        })
-        if (error) throw new Error(`Błąd zmiany przydziału: ${error.message}`)
-    }
-
-    await logAudit(ctx.userId, 'TECH_BLOCK_OVERRIDDEN', {
-        contractor_id: input.contractorId,
-        period_year: year,
-        period_quarter: quarter,
-        from: previous,
-        to: input.block,
-        via: 'admin_panel',
-    })
-    revalidatePath(HUB)
 }
 
 // ─── Etap 3: KPI mapy technologicznej (zakładka Analityka) ──────────────────

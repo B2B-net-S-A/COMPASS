@@ -8,7 +8,7 @@
 // agregat może wyjść poza zespół TCM.
 
 import { isStale, STALE_MONTHS } from './freshness'
-import { INTERVIEW_BLOCKS, type InitiativeKind, type InterviewBlock } from '@/lib/types/tech-map'
+import type { InitiativeKind } from '@/lib/types/tech-map'
 
 // ─── Wejście (kształt 1:1 z zapytaniami akcji) ──────────────────────────────
 
@@ -16,7 +16,6 @@ export interface AggCard {
     id: string
     client_area_id: string | null
     interview_date: string
-    block: InterviewBlock
     hiring: boolean | null
     hiring_roles: string[]
     hiring_source: string | null
@@ -98,12 +97,14 @@ export interface ProjectEndEntry {
 export interface AreaCoverage {
     areaId: string | null
     areaName: string
-    /** Data ostatniej sfinalizowanej karty per blok (null = nigdy). */
-    lastByBlock: Record<InterviewBlock, string | null>
-    /** Bloki bez danych albo z danymi starszymi niż próg. */
-    missingBlocks: InterviewBlock[]
-    staleBlocks: InterviewBlock[]
+    /** Liczba sfinalizowanych kart w obszarze. */
+    cards: number
+    /** Data ostatniej sfinalizowanej karty (null = brak danych). */
     lastAny: string | null
+    /** Brak jakiejkolwiek karty w obszarze. */
+    missing: boolean
+    /** Ostatnia karta starsza niż próg świeżości. */
+    stale: boolean
 }
 
 export interface ClientTechMap {
@@ -257,7 +258,7 @@ export function buildClientTechMap(input: {
         }))
         .sort((a, b) => a.period.localeCompare(b.period))
 
-    // ── Pokrycie obszary × bloki (obszar bez kart też się liczy — to właśnie luka)
+    // ── Pokrycie obszarów: który obszar ma dane i jak świeże (obszar bez kart = luka)
     const coverageKeys: Array<{ id: string | null; name: string }> = input.areas.map((a) => ({
         id: a.id,
         name: a.name,
@@ -268,20 +269,18 @@ export function buildClientTechMap(input: {
 
     const coverage: AreaCoverage[] = coverageKeys.map((area) => {
         const areaCards = input.cards.filter((c) => (c.client_area_id ?? null) === area.id)
-        const lastByBlock: Record<InterviewBlock, string | null> = { B: null, C: null, D: null }
-        for (const c of areaCards) {
-            const current = lastByBlock[c.block]
-            if (!current || c.interview_date > current) lastByBlock[c.block] = c.interview_date
-        }
-        const missingBlocks = INTERVIEW_BLOCKS.filter((b) => lastByBlock[b] === null)
-        const staleBlocks = INTERVIEW_BLOCKS.filter(
-            (b) => lastByBlock[b] !== null && isStale(lastByBlock[b], input.todayISO, staleMonths),
-        )
         const lastAny = areaCards.reduce<string | null>(
             (acc, c) => (acc === null || c.interview_date > acc ? c.interview_date : acc),
             null,
         )
-        return { areaId: area.id, areaName: area.name, lastByBlock, missingBlocks, staleBlocks, lastAny }
+        return {
+            areaId: area.id,
+            areaName: area.name,
+            cards: areaCards.length,
+            lastAny,
+            missing: lastAny === null,
+            stale: lastAny !== null && isStale(lastAny, input.todayISO, staleMonths),
+        }
     })
 
     // ── Notatki tekstowe (bez autora — anonimizacja agregatu)

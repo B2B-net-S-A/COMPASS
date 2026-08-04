@@ -5980,42 +5980,6 @@ export type Database = {
           },
         ]
       }
-      tech_block_assignments: {
-        Row: {
-          assigned_by: string | null
-          block: string
-          contractor_id: string
-          created_at: string
-          id: string
-          period_quarter: number
-          period_year: number
-          source: string
-          updated_at: string
-        }
-        Insert: {
-          assigned_by?: string | null
-          block: string
-          contractor_id: string
-          created_at?: string
-          id?: string
-          period_quarter: number
-          period_year: number
-          source?: string
-          updated_at?: string
-        }
-        Update: {
-          assigned_by?: string | null
-          block?: string
-          contractor_id?: string
-          created_at?: string
-          id?: string
-          period_quarter?: number
-          period_year?: number
-          source?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       tech_interview_card_initiatives: {
         Row: {
           card_id: string
@@ -6072,7 +6036,6 @@ export type Database = {
       }
       tech_interview_cards: {
         Row: {
-          block: string
           client_area_id: string | null
           client_id: string
           contractor_id: string
@@ -6103,7 +6066,6 @@ export type Database = {
           vendors_note: string | null
         }
         Insert: {
-          block: string
           client_area_id?: string | null
           client_id: string
           contractor_id: string
@@ -6134,7 +6096,6 @@ export type Database = {
           vendors_note?: string | null
         }
         Update: {
-          block?: string
           client_area_id?: string | null
           client_id?: string
           contractor_id?: string

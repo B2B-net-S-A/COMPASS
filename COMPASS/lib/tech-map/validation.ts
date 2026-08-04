@@ -13,7 +13,6 @@ export function validateCardBase(input: CardInput): string[] {
     if (!input.contractorId) errors.push('Wybierz konsultanta.')
     if (!input.clientId) errors.push('Wybierz klienta.')
     if (!input.interviewDate) errors.push('Podaj datę rozmowy.')
-    if (!['B', 'C', 'D'].includes(input.block)) errors.push('Wybierz wykonany blok (B/C/D).')
     return errors
 }
 

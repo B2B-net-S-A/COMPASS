@@ -99,7 +99,6 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
                             <th className="px-3 py-2 font-medium">Konsultant</th>
                             <th className="px-3 py-2 font-medium">Klient</th>
                             <th className="px-3 py-2 font-medium">Obszar</th>
-                            <th className="px-3 py-2 font-medium">Blok</th>
                             <th className="px-3 py-2 font-medium">Status</th>
                             <th className="px-3 py-2 font-medium">Prowadzący</th>
                         </tr>
@@ -125,7 +124,6 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
                                     </Link>
                                 </td>
                                 <td className="px-3 py-2 text-muted-foreground">{c.areaName ?? '—'}</td>
-                                <td className="px-3 py-2 font-semibold">{c.block}</td>
                                 <td className="px-3 py-2">
                                     {c.isDraft ? (
                                         <Badge variant="warning" size="sm">Wersja robocza</Badge>
@@ -144,7 +142,7 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
                         ))}
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                                     {cards.length === 0
                                         ? 'Brak kart — zacznij od przycisku „Nowa rozmowa".'
                                         : 'Brak kart pasujących do filtrów.'}

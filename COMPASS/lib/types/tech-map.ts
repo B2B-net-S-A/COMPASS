@@ -2,9 +2,7 @@
 // Pure module (no I/O) — safe to import from client + server + tests.
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
-
-/** Rotacyjny blok wywiadu. Blok A jest zawsze — nie jest wartością enuma. */
-export type InterviewBlock = 'B' | 'C' | 'D'
+// Phase 46d: karta wypełniana za jednym zamachem — bez podziału na bloki B/C/D.
 
 export type InterviewCardStatus = 'ok' | 'odmowa' | 'brak_czasu' | 'niechetny'
 
@@ -15,8 +13,6 @@ export type TechCategory = 'jezyk' | 'chmura' | 'dane' | 'devops' | 'security' |
 export type InitiativeKind = 'migracja' | 'nowy_system' | 'ai' | 'regulacje' | 'inne'
 
 export type InitiativePriority = 'wysoki' | 'normalny'
-
-export type BlockAssignmentSource = 'auto' | 'manual'
 
 // ─── PL labels ──────────────────────────────────────────────────────────────
 
@@ -61,15 +57,6 @@ export const INITIATIVE_KIND_PL: Record<InitiativeKind, string> = {
 export const INITIATIVE_PRIORITY_PL: Record<InitiativePriority, string> = {
     wysoki: 'Wysoki',
     normalny: 'Normalny',
-}
-
-export const INTERVIEW_BLOCKS: InterviewBlock[] = ['B', 'C', 'D']
-
-/** Co pokrywa dany blok — używane w UI (przed rozmową + formularz). */
-export const INTERVIEW_BLOCK_PL: Record<InterviewBlock, string> = {
-    B: 'Technologie i zespół',
-    C: 'Inicjatywy / projekty',
-    D: 'Inne firmy (dostawcy)',
 }
 
 export const INTERVIEW_CARD_STATUSES: InterviewCardStatus[] = Object.keys(
@@ -144,7 +131,6 @@ export interface TechInterviewCardRow {
     client_id: string
     client_area_id: string | null
     interview_date: string
-    block: InterviewBlock
     status: InterviewCardStatus | null
     is_draft: boolean
     finalized_at: string | null
@@ -176,18 +162,6 @@ export interface CardInitiativeRow {
     priority: InitiativePriority
 }
 
-export interface TechBlockAssignmentRow {
-    id: string
-    contractor_id: string
-    period_year: number
-    period_quarter: number
-    block: InterviewBlock
-    source: BlockAssignmentSource
-    assigned_by: string | null
-    created_at: string
-    updated_at: string
-}
-
 // ─── View models ────────────────────────────────────────────────────────────
 
 export interface CardListItem {
@@ -198,7 +172,6 @@ export interface CardListItem {
     clientName: string
     areaName: string | null
     interviewDate: string
-    block: InterviewBlock
     status: InterviewCardStatus | null
     isDraft: boolean
     tcmId: string | null
@@ -219,7 +192,6 @@ export interface CardInput {
     clientId: string
     clientAreaId: string | null
     interviewDate: string
-    block: InterviewBlock
     status: InterviewCardStatus | null
     satisfaction: number | null
     satisfactionComment: string | null
@@ -255,7 +227,7 @@ export interface BriefTimelineEntry {
     kind: 'card' | 'conversation'
     id: string
     date: string
-    /** Karta: 'B'/'C'/'D'; rozmowa: kategoria z logu opieki. */
+    /** Karta: „Karta"; rozmowa: kategoria z logu opieki. */
     label: string
     summary: string
     status: string | null
@@ -269,16 +241,11 @@ export interface PreInterviewBrief {
         currentPosition: string | null
         ownerTcmName: string | null
     }
-    plannedBlock: {
-        block: InterviewBlock
-        /** 'assigned' = wiersz w tech_block_assignments; 'computed' = wyliczony czysto (bez zapisu). */
-        basis: 'assigned' | 'computed'
-        source: BlockAssignmentSource | null
-    }
     /** Prefill klienta: dopasowanie current_client → clients (albo null gdy brak). */
     matchedClientId: string | null
     matchedClientName: string | null
-    latestCardByBlock: Record<InterviewBlock, { id: string; interviewDate: string; isDraft: boolean } | null>
+    /** Najnowsza karta konsultanta (null = jeszcze żadnej). */
+    latestCard: { id: string; interviewDate: string; isDraft: boolean } | null
     timeline: BriefTimelineEntry[]
     /** Dni od ostatniej sfinalizowanej karty (null = nigdy). */
     daysSinceLastCard: number | null
