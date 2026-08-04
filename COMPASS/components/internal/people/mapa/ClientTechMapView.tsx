@@ -54,7 +54,7 @@ export function ClientTechMapView({ map }: { map: ClientTechMap }) {
             <section className="space-y-3">
                 <h2 className="text-lg font-semibold">Technologie ({map.technologies.length})</h2>
                 {map.technologies.length === 0 ? (
-                    <SectionEmpty>Brak danych — wykonaj rozmowę z blokiem B.</SectionEmpty>
+                    <SectionEmpty>Brak danych — wypełnij technologie na karcie rozmowy.</SectionEmpty>
                 ) : (
                     <div className="flex flex-wrap gap-2">
                         {map.technologies.map((t) => (
@@ -83,7 +83,7 @@ export function ClientTechMapView({ map }: { map: ClientTechMap }) {
             <section className="space-y-3">
                 <h2 className="text-lg font-semibold">Inicjatywy / projekty ({map.initiatives.length})</h2>
                 {map.initiatives.length === 0 ? (
-                    <SectionEmpty>Brak danych — wykonaj rozmowę z blokiem C.</SectionEmpty>
+                    <SectionEmpty>Brak danych — dodaj inicjatywy na karcie rozmowy.</SectionEmpty>
                 ) : (
                     <ul className="divide-y divide-border rounded-lg border border-border">
                         {map.initiatives.map((i) => (
@@ -115,7 +115,7 @@ export function ClientTechMapView({ map }: { map: ClientTechMap }) {
             <section className="space-y-3">
                 <h2 className="text-lg font-semibold">Inne firmy (dostawcy) ({map.vendors.length})</h2>
                 {map.vendors.length === 0 ? (
-                    <SectionEmpty>Brak danych — wykonaj rozmowę z blokiem D.</SectionEmpty>
+                    <SectionEmpty>Brak danych — dodaj dostawców na karcie rozmowy.</SectionEmpty>
                 ) : (
                     <div className="flex flex-wrap gap-2">
                         {map.vendors.map((v) => (
