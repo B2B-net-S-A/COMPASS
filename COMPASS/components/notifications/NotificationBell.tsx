@@ -145,6 +145,8 @@ export function NotificationBell({ locale = 'pl' }: { locale?: 'pl' | 'en' }) {
                 return '📄'
             case 'payment_received':
                 return '💰'
+            case 'leave_cancelled':
+                return '🚫'
             default:
                 return '📢'
         }

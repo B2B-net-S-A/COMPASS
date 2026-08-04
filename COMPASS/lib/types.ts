@@ -96,6 +96,8 @@ export type NotificationType =
     | 'bonus_proposed'
     | 'bonus_cancelled'
     | 'bonus_linked'
+    // Phase 47 — anulowanie urlopu (approver + zastępca)
+    | 'leave_cancelled'
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent'
 

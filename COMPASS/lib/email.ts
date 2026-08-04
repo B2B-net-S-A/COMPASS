@@ -426,6 +426,55 @@ export async function sendSubstituteAssigned(
 }
 
 /**
+ * Phase 47 — powiadom zastępcę, że urlop, który miał obsłużyć, został anulowany.
+ * Symetryczne do sendSubstituteAssigned — zamyka pętlę, żeby zastępca nie czekał
+ * na zapytania, które nigdy nie przyjdą.
+ */
+export async function sendSubstituteCancelled(
+    substituteEmail: string,
+    substituteName: string,
+    employeeName: string,
+    startDate: string,
+    endDate: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS HR] Zastępstwo anulowane — ${employeeName} (${startDate} – ${endDate})`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć ${substituteName},</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Urlop pracownika <strong>${employeeName}</strong>, podczas którego miałeś/miałaś być
+            zastępcą, został <strong>anulowany</strong>:
+        </p>
+        <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
+            <li><strong>Od:</strong> ${startDate}</li>
+            <li><strong>Do:</strong> ${endDate}</li>
+        </ul>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Nie przejmujesz już jego spraw — Outlook auto-reply oraz przekierowanie poczty
+            zostały wyłączone.
+        </p>
+    `
+    const html = wrapHrEmail({ tag: 'Zastępstwo', heading: subject, bodyHtml, accent: '#f59e0b' })
+
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: substituteEmail,
+            subject,
+            html,
+            saveToSentItems: true,
+        })
+        if (error) {
+            logCompat.error('Resend substitute-cancelled error:', error)
+            return { success: false }
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Substitute-cancelled email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
  * H2.3: notify adminów że user anulował zatwierdzony future urlop.
  */
 export async function sendLeaveCancelledByUser(

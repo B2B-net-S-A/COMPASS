@@ -1,10 +1,12 @@
 import {
+    listAllLeaveRequests,
     listLeavesWithSyncIssues,
     listLeavesWithUserCustomOof,
     listPendingLeaveRequests,
 } from '@/lib/actions/internal-leave'
 import { listForwardRulesFromDb } from '@/lib/actions/leave-forward-admin'
 import { LeaveQueue } from '@/components/internal/LeaveQueue'
+import { AllLeaveRequestsList } from '@/components/internal/AllLeaveRequestsList'
 import { AdminLeaveSyncIssues } from '@/components/internal/AdminLeaveSyncIssues'
 import { AdminLeavePreservedOof } from '@/components/internal/AdminLeavePreservedOof'
 import { AdminForwardRules } from '@/components/internal/AdminForwardRules'
@@ -29,8 +31,9 @@ export async function AdminLeaveRequestsPanel({ isAdmin }: Props) {
     }
 
     // Sync-issues (Graph OOF/calendar repair) + retry + Phase 25d preserved OOF info — admin only.
-    const [requests, syncIssues, preservedOof, forwardRules] = await Promise.all([
+    const [requests, allRequests, syncIssues, preservedOof, forwardRules] = await Promise.all([
         listPendingLeaveRequests(),
+        listAllLeaveRequests().catch(() => []),
         isAdmin ? listLeavesWithSyncIssues().catch(() => []) : Promise.resolve([]),
         isAdmin ? listLeavesWithUserCustomOof().catch(() => []) : Promise.resolve([]),
         isAdmin ? listForwardRulesFromDb().catch(() => []) : Promise.resolve([]),
@@ -50,6 +53,7 @@ export async function AdminLeaveRequestsPanel({ isAdmin }: Props) {
             {isAdmin && <AdminLeavePreservedOof requests={preservedOof} />}
             {isAdmin && <AdminForwardRules initial={forwardRules} />}
             <LeaveQueue requests={requests} />
+            <AllLeaveRequestsList rows={allRequests} />
         </section>
     )
 }
