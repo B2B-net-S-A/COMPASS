@@ -95,16 +95,24 @@ export async function dispatchAlert(
     for (const uid of ids) {
         const profile = byId.get(uid)
 
-        const inApp = admin.from('notifications').insert({
-            user_id: uid,
-            type: payload.type,
-            title_pl: payload.titlePl,
-            title_en: payload.titleEn,
-            body_pl: payload.bodyPl,
-            body_en: payload.bodyEn,
-            action_url: payload.actionUrl,
-            priority: 'normal',
-        })
+        // supabase-js v2 nie rejectuje — resolwuje {error}. Bez tego .then() błąd
+        // insertu byłby „fulfilled" i kanał in_app nigdy nie trafiłby do logu awarii.
+        const inApp = admin
+            .from('notifications')
+            .insert({
+                user_id: uid,
+                type: payload.type,
+                title_pl: payload.titlePl,
+                title_en: payload.titleEn,
+                body_pl: payload.bodyPl,
+                body_en: payload.bodyEn,
+                action_url: payload.actionUrl,
+                priority: 'normal',
+            })
+            .then(({ error }) => {
+                if (error) throw new Error(error.message)
+                return { ok: true }
+            })
 
         const push = sendPushToUserId(uid, {
             title: payload.titlePl,

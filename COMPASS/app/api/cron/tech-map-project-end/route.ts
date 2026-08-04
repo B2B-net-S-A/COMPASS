@@ -68,6 +68,9 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         )
         const cardById = new Map(cards.map((c) => [c.id, c]))
 
+        // Skonfigurowani odbiorcy są tacy sami dla całego przebiegu — czytamy raz.
+        // Fallback (owner_tcm_id) różni się per kontraktor, więc liczony w pętli.
+        const configuredRecipients = await resolveRecipients(admin, PROJECT_END_RECIPIENTS_KEY, [])
         const fallbackAll = await allTcmAndAdmins(admin)
         let alerted = 0
         const errors: string[] = []
@@ -80,8 +83,12 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                     continue
                 }
 
-                const fallback = contractor.owner_tcm_id ? [contractor.owner_tcm_id] : fallbackAll
-                const recipients = await resolveRecipients(admin, PROJECT_END_RECIPIENTS_KEY, fallback)
+                const recipients =
+                    configuredRecipients.length > 0
+                        ? configuredRecipients
+                        : contractor.owner_tcm_id
+                          ? [contractor.owner_tcm_id]
+                          : fallbackAll
                 const clientName = contractor.current_client ?? 'klient'
 
                 await dispatchAlert(admin, recipients, {
@@ -104,10 +111,15 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                 })
 
                 // Dedup: stempluj kartę, żeby jutrzejszy przebieg jej nie powtórzył.
-                await admin
+                // Błąd stempla = ryzyko duplikatu jutro — logujemy do errors (Sentry
+                // + heartbeat), żeby nie zniknął po cichu.
+                const { error: stampError } = await admin
                     .from('tech_interview_cards')
                     .update({ project_end_alerted_at: new Date().toISOString() })
                     .eq('id', alert.cardId)
+                if (stampError) {
+                    errors.push(`stamp ${alert.cardId}: ${stampError.message}`)
+                }
 
                 alerted += 1
             } catch (e) {
