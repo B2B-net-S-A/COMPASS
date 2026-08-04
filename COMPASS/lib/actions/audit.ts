@@ -236,6 +236,10 @@ export type AuditAction =
     | 'TECH_BLOCK_OVERRIDDEN'
     | 'TECH_MAP_ROTATION_RUN'
     | 'CLIENT_CREATED_FROM_TECH_MAP'
+    // Phase 46c — alerty mapy technologicznej
+    | 'TECH_MAP_DEMAND_ALERTED'
+    | 'TECH_MAP_PROJECT_END_ALERTED'
+    | 'TECH_MAP_PROJECT_END_RUN'
 
 export async function logAudit(
     userId: string | null,

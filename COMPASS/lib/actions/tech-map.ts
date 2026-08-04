@@ -7,7 +7,11 @@
 // zaufaną ścieżką zapisu, RLS to defense-in-depth (wzorzec lib/actions/contractors.ts).
 
 import { revalidatePath } from 'next/cache'
-import { requireLifecycleManagerAction, type InternalAuthContext } from '@/lib/auth/internal-guard'
+import {
+    requireLifecycleManagerAction,
+    requireTechMapViewerAction,
+    type InternalAuthContext,
+} from '@/lib/auth/internal-guard'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logCompat } from '@/lib/logger'
 import { logAudit } from '@/lib/actions/audit'
@@ -29,10 +33,21 @@ import {
     type ClientTechMap,
 } from '@/lib/tech-map/aggregation'
 import { sweepBlockAssignments, type RotationSweepStats } from '@/lib/tech-map/rotation-sweep'
+import {
+    allTcmAndAdmins,
+    dispatchAlert,
+    DEMAND_RECIPIENTS_KEY,
+    PROJECT_END_RECIPIENTS_KEY,
+    parseRecipientCsv,
+    resolveRecipients,
+} from '@/lib/tech-map/alerts'
+import { buildTechMapKpi } from '@/lib/tech-map/analytics'
+import { sendTechMapDemand } from '@/lib/email'
 import { daysBetween } from '@/lib/tech-map/freshness'
 import { CONVERSATION_CATEGORY_PL } from '@/lib/types/contractor'
 import {
     generateTechSlug,
+    HIRING_SOURCE_PL,
     INTERVIEW_CARD_STATUS_PL,
     type BriefTimelineEntry,
     type CardDetail,
@@ -610,8 +625,74 @@ async function saveCardInternal(
         opts.finalize && card.is_draft ? 'TECH_CARD_FINALIZED' : 'TECH_CARD_UPDATED',
         { card_id: cardId, contractor_id: card.contractor_id, block: input.block, status: input.status },
     )
+
+    // Alert popytu (Etap 3): odpala się gdy karta JEST sfinalizowana, hiring=true,
+    // a alert jeszcze nie poszedł (dedup demand_alerted_at). Event-driven — nie cron.
+    const isFinalizedAfter = (opts.finalize && card.is_draft) || !card.is_draft
+    if (isFinalizedAfter && input.hiring === true && card.demand_alerted_at === null) {
+        await fireDemandAlert(admin, ctx.userId, cardId, card.contractor_id, input)
+    }
+
     revalidatePath(HUB)
     revalidatePath(`${MAPA}/karta/${cardId}`)
+}
+
+/**
+ * Alert do sprzedaży: klient szuka ludzi. Best-effort — błąd alertu NIE cofa
+ * zapisu karty (opakowany try/catch). Stempluje demand_alerted_at, żeby kolejne
+ * edycje sfinalizowanej karty nie spamowały.
+ */
+async function fireDemandAlert(
+    admin: ServiceClient,
+    actorUserId: string,
+    cardId: string,
+    contractorId: string,
+    input: CardInput,
+): Promise<void> {
+    try {
+        const [{ data: contractor }, { data: client }] = await Promise.all([
+            admin.from('contractors').select('full_name, owner_tcm_id').eq('id', contractorId).maybeSingle(),
+            admin.from('clients').select('name').eq('id', input.clientId).maybeSingle(),
+        ])
+        const ownerTcmId = (contractor as { owner_tcm_id?: string | null } | null)?.owner_tcm_id ?? null
+        const clientName = (client as { name?: string } | null)?.name ?? 'klient'
+        const areaName = input.clientAreaId
+            ? ((await admin.from('client_areas').select('name').eq('id', input.clientAreaId).maybeSingle())
+                  .data as { name?: string } | null)?.name ?? null
+            : null
+
+        const fallback = ownerTcmId ? [ownerTcmId] : await allTcmAndAdmins(admin)
+        const recipients = await resolveRecipients(admin, DEMAND_RECIPIENTS_KEY, fallback)
+
+        const roles = input.hiringRoles.map((r) => r.trim()).filter(Boolean)
+        const sourcePl = input.hiringSource ? HIRING_SOURCE_PL[input.hiringSource] : null
+
+        await dispatchAlert(admin, recipients, {
+            type: 'tech_map_demand',
+            titlePl: `${clientName} szuka ludzi`,
+            titleEn: `${clientName} is hiring`,
+            bodyPl: roles.length > 0 ? `Role: ${roles.join(', ')}` : 'Potrzeba rekrutacyjna zgłoszona.',
+            bodyEn: roles.length > 0 ? `Roles: ${roles.join(', ')}` : 'Hiring need reported.',
+            actionUrl: `/internal/people/mapa/klienci/${input.clientId}`,
+            pushTag: `tech-map-demand-${cardId}`,
+            emailFn: (email, name) =>
+                sendTechMapDemand(email, name, clientName, roles, sourcePl, areaName),
+        })
+
+        await admin
+            .from('tech_interview_cards')
+            .update({ demand_alerted_at: new Date().toISOString() })
+            .eq('id', cardId)
+
+        await logAudit(actorUserId, 'TECH_MAP_DEMAND_ALERTED', {
+            card_id: cardId,
+            contractor_id: contractorId,
+            client_id: input.clientId,
+            recipients: recipients.length,
+        })
+    } catch (e) {
+        logCompat.error('tech-map: alert popytu nie powiódł się', e)
+    }
 }
 
 /** Zapis (draft zostaje draftem; karta sfinalizowana musi pozostać kompletna). */
@@ -877,7 +958,9 @@ export interface ClientTechMapResult {
  * read-only dostęp sprzedaży (Etap 3) bez zmian w kształcie danych.
  */
 export async function getClientTechMap(clientId: string): Promise<ClientTechMapResult> {
-    await requireLifecycleManagerAction()
+    // Guard szerszy niż reszta modułu: dopuszcza też rolę „sprzedaż"
+    // (can_view_tech_map) — to jedyny widok read-only bez nazwisk konsultantów.
+    await requireTechMapViewerAction()
     if (!clientId) throw new Error('Brak id klienta.')
     const admin = createServiceClient()
 
@@ -1158,5 +1241,126 @@ export async function overrideBlockAssignment(input: {
         to: input.block,
         via: 'admin_panel',
     })
+    revalidatePath(HUB)
+}
+
+// ─── Etap 3: KPI mapy technologicznej (zakładka Analityka) ──────────────────
+
+export interface TechMapKpiResult {
+    totalFinalized: number
+    cardsLast7dTotal: number
+    cardsLast7dByTcm: Array<{ tcmName: string; count: number }>
+    areaCoverage: { total: number; fresh: number; pct: number | null }
+    activeDemandSignals: number
+    projectEndsWithin90: number
+}
+
+/** KPI: aktywność prowadzących, świeżość pokrycia, popyt, końce projektów. */
+export async function getTechMapKpi(): Promise<TechMapKpiResult> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+
+    const [cardsRes, areasRes] = await Promise.all([
+        admin
+            .from('tech_interview_cards')
+            .select('tcm_id, finalized_at, interview_date, client_area_id, contractor_id, hiring, project_end_month, project_end_year')
+            .eq('is_draft', false),
+        admin.from('client_areas').select('id'),
+    ])
+    if (cardsRes.error) throw new Error(`Błąd pobierania kart: ${cardsRes.error.message}`)
+
+    const rows = (cardsRes.data ?? []) as Array<{
+        tcm_id: string | null
+        finalized_at: string | null
+        interview_date: string
+        client_area_id: string | null
+        contractor_id: string
+        hiring: boolean | null
+        project_end_month: number | null
+        project_end_year: number | null
+    }>
+
+    const kpi = buildTechMapKpi({
+        cards: rows.map((r) => ({
+            tcmId: r.tcm_id,
+            finalizedAt: r.finalized_at,
+            interviewDate: r.interview_date,
+            clientAreaId: r.client_area_id,
+            contractorId: r.contractor_id,
+            hiring: r.hiring,
+            projectEndMonth: r.project_end_month,
+            projectEndYear: r.project_end_year,
+        })),
+        totalAreas: (areasRes.data ?? []).length,
+        todayISO: warsawDate(new Date()),
+    })
+
+    const tcmNames = await loadProfileNames(admin, kpi.cardsLast7dByTcm.map((t) => t.tcmId))
+    return {
+        totalFinalized: kpi.totalFinalized,
+        cardsLast7dTotal: kpi.cardsLast7dTotal,
+        cardsLast7dByTcm: kpi.cardsLast7dByTcm.map((t) => ({
+            tcmName: tcmNames.get(t.tcmId) ?? '—',
+            count: t.count,
+        })),
+        areaCoverage: kpi.areaCoverage,
+        activeDemandSignals: kpi.activeDemandSignals,
+        projectEndsWithin90: kpi.projectEndsWithin90,
+    }
+}
+
+// ─── Etap 3: konfiguracja odbiorców alertów (admin) ─────────────────────────
+
+export interface AlertRecipientsConfig {
+    demandCsv: string
+    projectEndCsv: string
+}
+
+/** Aktualna konfiguracja odbiorców alertów + lista TCM/admin do wyboru. */
+export async function getAlertRecipientsConfig(): Promise<{
+    config: AlertRecipientsConfig
+    candidates: Array<{ id: string; fullName: string; role: string }>
+}> {
+    const ctx = await requireLifecycleManagerAction()
+    requireAdmin(ctx)
+    const admin = createServiceClient()
+
+    const [demand, projectEnd, candidatesRes] = await Promise.all([
+        admin.from('system_settings').select('value').eq('key', DEMAND_RECIPIENTS_KEY).maybeSingle(),
+        admin.from('system_settings').select('value').eq('key', PROJECT_END_RECIPIENTS_KEY).maybeSingle(),
+        admin
+            .from('profiles')
+            .select('id, full_name, role')
+            .in('role', ['admin', 'talent_community', 'finanse', 'manager'])
+            .neq('employment_status', 'exited')
+            .order('full_name'),
+    ])
+
+    return {
+        config: {
+            demandCsv: (demand.data as { value?: string } | null)?.value ?? '',
+            projectEndCsv: (projectEnd.data as { value?: string } | null)?.value ?? '',
+        },
+        candidates: ((candidatesRes.data ?? []) as Array<{ id: string; full_name: string; role: string }>).map(
+            (p) => ({ id: p.id, fullName: p.full_name, role: p.role }),
+        ),
+    }
+}
+
+/** Zapis listy odbiorców (CSV UUID) do system_settings. Admin only. */
+export async function setAlertRecipients(kind: 'demand' | 'project_end', userIds: string[]): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    requireAdmin(ctx)
+    const key = kind === 'demand' ? DEMAND_RECIPIENTS_KEY : PROJECT_END_RECIPIENTS_KEY
+    const csv = parseRecipientCsv(userIds.join(','))
+
+    const admin = createServiceClient()
+    const { error } = await admin
+        .from('system_settings')
+        .upsert({ key, value: csv.join(','), updated_at: new Date().toISOString(), updated_by: ctx.userId }, {
+            onConflict: 'key',
+        })
+    if (error) throw new Error(`Błąd zapisu odbiorców: ${error.message}`)
+    await logAudit(ctx.userId, 'TECH_DICT_UPDATED', { kind: `alert_recipients_${kind}`, count: csv.length })
     revalidatePath(HUB)
 }

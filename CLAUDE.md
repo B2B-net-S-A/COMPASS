@@ -1211,9 +1211,39 @@ w `audit_logs` — `start` bez `done` = przebieg ubity w locie, brak `start` = c
 |---|---|---|
 | `tech-map-rotation` | `30 5 * * *` | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/tech-map-rotation"` |
 
-**Etap 3 (zaplanowany, nie wdrożony):** alerty (koniec projektu <60 dni → bench, hiring=TAK → sprzedaż;
-odbiorcy w `system_settings`), KPI w Analityce, flaga `can_view_tech_map`, migracja 46c (typy
-notyfikacji przepisane z ŻYWEJ listy). Pełny plan: `docs/mapa-technologiczna-completion-report.md`.
+### Etap 3 — alerty + KPI + flaga sprzedaży (2026-08-04, migracja 46c)
+
+**Migracja 46c:** `notifications_type_check` przepisany z ŻYWEJ listy prod (31 wartości, zweryfikowane
+`pg_get_constraintdef`) +2: `tech_map_demand`, `tech_map_project_end`. `profiles.can_view_tech_map` bool
+(grant read-only dla sprzedaży, wzorzec grant-flags Phase 45).
+
+**Alerty (3 kanały — in-app insert + push + email, `Promise.allSettled`):**
+- **Popyt → sprzedaż** — event-driven przy finalizacji karty (`fireDemandAlert` w `saveCardInternal`):
+  gdy karta sfinalizowana, `hiring=true` i `demand_alerted_at IS NULL`. Best-effort (try/catch — błąd
+  alertu nie cofa zapisu), stempluje `demand_alerted_at` (dedup).
+- **Koniec projektu → bench** — dzienny cron `tech-map-project-end` (`0 6 * * *`): per kontraktor
+  NAJNOWSZA sfinalizowana karta; deadline (ostatni dzień miesiąca) w oknie ≤60 dni i
+  `project_end_alerted_at IS NULL` → alert, stempluje kartę. Heartbeat `TECH_MAP_PROJECT_END_RUN`.
+- **Odbiorcy** — `system_settings` CSV UUID (`tech_map_demand_recipients` / `tech_map_project_end_recipients`),
+  konfigurowani w sekcji admina modułu (`AlertRecipientsSection`); fallback: `owner_tcm_id` kontraktora,
+  potem wszyscy admin+TCM (wzorzec `contractor-followup-reminder`).
+
+**KPI** (sekcja `TechMapKpiSection` w zakładce Analityka): karty/7 dni per prowadzący (po `finalized_at`),
+% obszarów z danymi <90 dni (mianownik = `client_areas`), aktywne sygnały popytu (hiring, <90 dni), końce
+projektów ≤90 dni. Czysta `lib/tech-map/analytics.ts` + testy.
+
+**Guard sprzedaży:** `requireTechMapViewerAction` (lifecycle OR `can_view_tech_map`) podpięty WYŁĄCZNIE
+pod `getClientTechMap` (agregat bez nazwisk). UI dla roli sprzedaż świadomie poza zakresem — gotowy guard+flaga.
+
+**Czyste helpery testowalne** (bez server-only): `lib/tech-map/alert-selection.ts` (`parseRecipientCsv`,
+`projectEndDeadline`, `selectProjectEndAlerts`) wydzielone z `alerts.ts` (I/O: `dispatchAlert`,
+`resolveRecipients`) — wzorzec bench-seed.
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `tech-map-project-end` | `0 6 * * *` | `wget ... "https://compass.dynaminds.pl/api/cron/tech-map-project-end"` |
+
+Pełny plan: `docs/mapa-technologiczna-completion-report.md`.
 
 ## Observability
 

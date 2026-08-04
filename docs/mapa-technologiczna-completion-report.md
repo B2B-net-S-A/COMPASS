@@ -117,15 +117,57 @@ agregacja i materializacja przydziałów.
    `select details from audit_logs where action='TECH_MAP_ROTATION_RUN' order by created_at desc limit 2`
    — para `start` + `done` = cron żyje.
 
+---
+
+# Etap 3 — alerty + KPI + flaga sprzedaży (2026-08-04)
+
+## Pliki
+
+- Migracja `20260804090000_phase46c_tech_map_alerts.sql` — `notifications_type_check` przepisany
+  z żywej listy prod (31 + `tech_map_demand`/`tech_map_project_end`), `profiles.can_view_tech_map`.
+- `lib/tech-map/alert-selection.ts` (czyste: `parseRecipientCsv`, `projectEndDeadline`,
+  `selectProjectEndAlerts`) + `alerts.ts` (I/O: `resolveRecipients`, `dispatchAlert`,
+  `allTcmAndAdmins`) — split żeby czyste było testowalne bez server-only. +12 testów.
+- `lib/tech-map/analytics.ts` (`buildTechMapKpi`) + 8 testów.
+- `lib/actions/tech-map.ts` — `fireDemandAlert` (w `saveCardInternal`), `getTechMapKpi`,
+  `getAlertRecipientsConfig`, `setAlertRecipients`; `getClientTechMap` → `requireTechMapViewerAction`.
+- `app/api/cron/tech-map-project-end/route.ts` — dzienny alert końca projektu.
+- `lib/auth/internal-guard.ts` — `requireTechMapViewerAction` + `canViewTechMap` w ctx.
+- `lib/email.ts` — `sendTechMapDemand` (zielony), `sendTechMapProjectEnd` (bursztyn).
+- UI: `TechMapKpiSection` (w AnalitykaTabPanel), `AlertRecipientsSection` (admin, w MapaTabPanel).
+- `database.types.ts` — `profiles.can_view_tech_map`.
+
+## Decyzje
+
+1. **Popyt = event-driven** (przy finalizacji), koniec projektu = **cron dzienny**. Dwie różne
+   natury zdarzenia: popyt jest znany w momencie rozmowy; koniec projektu „dojrzewa" z czasem.
+2. **Dedup na kartach** (`demand_alerted_at` / `project_end_alerted_at`) — nie osobna tabela.
+3. **Odbiorcy w `system_settings`** (CSV UUID), fallback owner_tcm_id → admin+TCM. Zero hardcode.
+4. **`requireTechMapViewerAction` tylko pod `getClientTechMap`** — sprzedaż widzi agregat bez nazwisk,
+   pojedyncze karty zostają lifecycle-only. UI sprzedaży poza zakresem (guard+flaga gotowe).
+5. **Alert best-effort** — błąd wysyłki nie cofa zapisu karty (try/catch); kanały w `Promise.allSettled`.
+6. Constraint notyfikacji przepisany z **żywej** listy (`pg_get_constraintdef`), nie z pamięci —
+   inne fazy mogły ją rozszerzyć równolegle.
+
+## Weryfikacja
+
+- `tsc` czysty, `next lint` exit 0, `npm run test:unit` — **1133/1133** (+28 testów Etapu 3).
+- Kontrola dostępu: 3 nowe akcje w tabeli odrzucania; `getClientTechMap` przez nowy guard (mock).
+
+## Ops po deploy
+
+1. Migracja `phase46c` zaaplikowana przez MCP (2026-08-04, zweryfikowana).
+2. Cron `tech-map-project-end` (`0 6 * * *`) przez akcję `cron-add` (Coolify Ops).
+3. (Opcjonalnie) admin ustawia odbiorców alertów w zakładce Mapa → sekcja „Odbiorcy alertów";
+   bez tego alerty i tak trafią do opiekuna/TCM (fallback).
+4. Nadanie `can_view_tech_map` osobom sprzedaży — SQL/panel, gdy pojawi się potrzeba.
+
 ## Znane ograniczenia / TODO (świadome)
 
-- **Etap 3 (osobny PR):** alerty (koniec projektu <60 dni → właściciel benchu; hiring=TAK →
-  sprzedaż; odbiorcy w `system_settings`), KPI w Analityce, flaga `can_view_tech_map`,
-  migracja 46c (typy notyfikacji przepisane z ŻYWEJ listy).
-- Karta klienta nie ma jeszcze filtrów po obszarze ani eksportu CSV — do rozważenia, gdy
-  pojawi się realny wolumen kart.
-- Rotacja obejmuje tylko `contractors.status='active'`; prospekci i osoby w offboardingu
-  świadomie poza populacją.
+- **UI dla roli sprzedaż** — poza zakresem; guard+flaga gotowe, brakuje widoku wejściowego dla sprzedaży.
+- Karta klienta bez filtrów po obszarze / eksportu CSV — gdy pojawi się wolumen.
+- Rotacja i KPI obejmują `contractors.status='active'` / karty sfinalizowane; prospekci i drafty poza.
+- Alert popytu odpala się raz per karta (dedup) — zmiana ról w już-zaalarmowanej karcie nie ponawia.
 - Seed słownika to praca redakcyjna — admin weryfikuje/scala pozycje z tag-pickera.
 - `contractors.current_client` (wolny TEXT) może dryfować od `clients` → prefill wtedy nie
   trafia i TCM wybiera ręcznie; picker w edycji kontraktora = follow-up.

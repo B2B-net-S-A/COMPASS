@@ -8,22 +8,29 @@ const authState = vi.hoisted(() => ({
     userId: 'tcm-1',
 }))
 
+const fakeCtx = () => ({
+    userId: authState.userId,
+    email: 'tcm@b2bnetwork.pl',
+    role: authState.isAdmin ? 'admin' : 'talent_community',
+    isAdmin: authState.isAdmin,
+    isManager: false,
+    isTalentCommunity: !authState.isAdmin,
+    hasTcmAccess: false,
+    canLogOvertime: false,
+    canViewTechMap: false,
+})
+
 vi.mock('@/lib/auth/internal-guard', () => ({
     requireLifecycleManagerAction: async () => {
         if (!authState.allowed) {
             // Realny guard rzuca dla konsultanta/anon — moduł mapy jest niedostępny.
             throw new Error('Brak uprawnień: wymagany administrator lub Talent Community.')
         }
-        return {
-            userId: authState.userId,
-            email: 'tcm@b2bnetwork.pl',
-            role: authState.isAdmin ? 'admin' : 'talent_community',
-            isAdmin: authState.isAdmin,
-            isManager: false,
-            isTalentCommunity: !authState.isAdmin,
-            hasTcmAccess: false,
-            canLogOvertime: false,
-        }
+        return fakeCtx()
+    },
+    requireTechMapViewerAction: async () => {
+        if (!authState.allowed) throw new Error('Brak uprawnień do mapy technologicznej.')
+        return fakeCtx()
     },
 }))
 
@@ -90,15 +97,18 @@ import {
     createClientForTechMap,
     createTechnologyUnverified,
     finalizeCard,
+    getAlertRecipientsConfig,
     getClientTechMap,
     getPreInterviewBrief,
     getRotationOverview,
+    getTechMapKpi,
     listCards,
     listClientsWithCards,
     listTechnologies,
     overrideBlockAssignment,
     recalcBlockAssignments,
     saveCard,
+    setAlertRecipients,
     updateTechnology,
 } from '@/lib/actions/tech-map'
 
@@ -153,6 +163,10 @@ describe('kontrola dostępu — moduł niedostępny bez guardu lifecycle', () =>
         ['getRotationOverview', () => getRotationOverview()],
         ['recalcBlockAssignments', () => recalcBlockAssignments()],
         ['overrideBlockAssignment', () => overrideBlockAssignment({ contractorId: 'c-1', block: 'C' })],
+        // Etap 3
+        ['getTechMapKpi', () => getTechMapKpi()],
+        ['getAlertRecipientsConfig', () => getAlertRecipientsConfig()],
+        ['setAlertRecipients', () => setAlertRecipients('demand', [])],
     ])('%s odrzuca użytkownika bez uprawnień', async (_name, run) => {
         authState.allowed = false
         await expect(run()).rejects.toThrow('Brak uprawnień')
