@@ -37,7 +37,6 @@ export default async function WywiadPage({ params }: { params: { contractorId: s
         clientId: brief.matchedClientId ?? '',
         clientAreaId: null,
         interviewDate: warsawDate(new Date()),
-        block: brief.plannedBlock.block,
         status: null,
         satisfaction: null,
         satisfactionComment: null,

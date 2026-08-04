@@ -100,13 +100,10 @@ import {
     getAlertRecipientsConfig,
     getClientTechMap,
     getPreInterviewBrief,
-    getRotationOverview,
     getTechMapKpi,
     listCards,
     listClientsWithCards,
     listTechnologies,
-    overrideBlockAssignment,
-    recalcBlockAssignments,
     saveCard,
     setAlertRecipients,
     updateTechnology,
@@ -117,7 +114,6 @@ const card = (over: Partial<CardInput> = {}): CardInput => ({
     clientId: 'k-1',
     clientAreaId: null,
     interviewDate: '2026-08-01',
-    block: 'B',
     status: 'ok',
     satisfaction: 4,
     satisfactionComment: null,
@@ -160,9 +156,6 @@ describe('kontrola dostępu — moduł niedostępny bez guardu lifecycle', () =>
         // Etap 2
         ['getClientTechMap', () => getClientTechMap('k-1')],
         ['listClientsWithCards', () => listClientsWithCards()],
-        ['getRotationOverview', () => getRotationOverview()],
-        ['recalcBlockAssignments', () => recalcBlockAssignments()],
-        ['overrideBlockAssignment', () => overrideBlockAssignment({ contractorId: 'c-1', block: 'C' })],
         // Etap 3
         ['getTechMapKpi', () => getTechMapKpi()],
         ['getAlertRecipientsConfig', () => getAlertRecipientsConfig()],
@@ -188,26 +181,10 @@ describe('createCardDraft', () => {
         const row = cardInsert!.rows as Record<string, unknown>
         expect(row.tcm_id).toBe('tcm-1')
         expect(row.is_draft).toBe(true)
-        expect(row.block).toBe('B')
 
         const junction = db.inserts.find((i) => i.table === 'tech_interview_card_technologies')
         expect(junction).toBeTruthy()
         expect(junction!.rows).toHaveLength(2)
-
-        // Brak historii przydziałów → fallback wstawia start cyklu (B) jako auto.
-        const assignment = db.upserts.find((u) => u.table === 'tech_block_assignments')
-        expect(assignment).toBeTruthy()
-        expect(assignment!.rows.block).toBe('B')
-        expect(assignment!.rows.source).toBe('auto')
-    })
-
-    it('nie nadpisuje istniejącego przydziału kwartału (manual jest lepki)', async () => {
-        db.tables.tech_interview_cards = [{ id: 'card-1' }]
-        db.tables.tech_block_assignments = [
-            { period_year: 2026, period_quarter: 3, block: 'C', source: 'manual' },
-        ]
-        await createCardDraft(card({ interviewDate: '2026-08-01' }))
-        expect(db.upserts.find((u) => u.table === 'tech_block_assignments')).toBeUndefined()
     })
 })
 
@@ -285,7 +262,6 @@ describe('Etap 2 — karta klienta', () => {
                 id: 'c1',
                 client_area_id: null,
                 interview_date: '2026-07-01',
-                block: 'B',
                 hiring: true,
                 hiring_roles: ['Java Developer'],
                 hiring_source: 'widzial',
@@ -325,50 +301,5 @@ describe('Etap 2 — karta klienta', () => {
         const rows = await listClientsWithCards()
         expect(rows).toHaveLength(2)
         expect(rows[0]).toMatchObject({ id: 'k-1', cards: 2, lastInterviewDate: '2026-07-01' })
-    })
-})
-
-describe('Etap 2 — rotacja bloków', () => {
-    it('przegląd wylicza blok bez zapisu (render bez side-effectów)', async () => {
-        db.tables.contractors = [{ id: 'c-1', full_name: 'Adam Bogun', current_client: 'PKO BP' }]
-        db.tables.tech_block_assignments = []
-        const overview = await getRotationOverview()
-        expect(overview.rows[0]).toMatchObject({ block: 'B', basis: 'computed', source: null })
-        expect(overview.unassigned).toBe(1)
-        expect(db.inserts).toHaveLength(0)
-        expect(db.upserts).toHaveLength(0)
-    })
-
-    it('przelicz przydziały wymaga admina', async () => {
-        await expect(recalcBlockAssignments()).rejects.toThrow('Tylko administrator')
-    })
-
-    it('override wymaga admina', async () => {
-        await expect(
-            overrideBlockAssignment({ contractorId: 'c-1', block: 'C' }),
-        ).rejects.toThrow('Tylko administrator')
-    })
-
-    it('override odrzuca nieprawidłowy blok', async () => {
-        authState.isAdmin = true
-        await expect(
-            overrideBlockAssignment({ contractorId: 'c-1', block: 'Z' as never }),
-        ).rejects.toThrow('Nieprawidłowy blok')
-    })
-
-    it('override istniejącego przydziału ustawia source=manual', async () => {
-        authState.isAdmin = true
-        db.tables.tech_block_assignments = [{ id: 'a-1', block: 'B' }]
-        await overrideBlockAssignment({ contractorId: 'c-1', block: 'D' })
-        const patch = db.updates.find((u) => u.table === 'tech_block_assignments')?.patch
-        expect(patch).toMatchObject({ block: 'D', source: 'manual' })
-    })
-
-    it('override bez istniejącego przydziału wstawia nowy wiersz manual', async () => {
-        authState.isAdmin = true
-        db.tables.tech_block_assignments = []
-        await overrideBlockAssignment({ contractorId: 'c-1', block: 'C' })
-        const insert = db.inserts.find((i) => i.table === 'tech_block_assignments')
-        expect(insert!.rows).toMatchObject({ block: 'C', source: 'manual', contractor_id: 'c-1' })
     })
 })

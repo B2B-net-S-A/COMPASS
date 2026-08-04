@@ -8,7 +8,6 @@ const card = (over: Partial<AggCard> = {}): AggCard => ({
     id: 'card-1',
     client_area_id: null,
     interview_date: '2026-07-01',
-    block: 'B',
     hiring: null,
     hiring_roles: [],
     hiring_source: null,
@@ -156,8 +155,8 @@ describe('buildClientTechMap — sygnały popytu i końce projektów', () => {
     })
 })
 
-describe('buildClientTechMap — pokrycie obszary × bloki', () => {
-    it('obszar bez kart ma wszystkie bloki jako brakujące', () => {
+describe('buildClientTechMap — pokrycie obszarów', () => {
+    it('obszar bez kart jest oznaczony jako brakujący', () => {
         const map = buildClientTechMap({
             ...base,
             cards: [],
@@ -166,25 +165,38 @@ describe('buildClientTechMap — pokrycie obszary × bloki', () => {
             initiatives: [],
         })
         expect(map.coverage).toHaveLength(1)
-        expect(map.coverage[0].missingBlocks).toEqual(['B', 'C', 'D'])
+        expect(map.coverage[0].missing).toBe(true)
+        expect(map.coverage[0].cards).toBe(0)
         expect(map.coverage[0].lastAny).toBeNull()
     })
 
-    it('rozróżnia bloki brakujące od przeterminowanych', () => {
+    it('liczy karty i świeżość, oznacza przeterminowane', () => {
         const map = buildClientTechMap({
             ...base,
             cards: [
-                card({ id: 'c1', client_area_id: 'a-1', block: 'B', interview_date: '2026-07-01' }),
-                card({ id: 'c2', client_area_id: 'a-1', block: 'C', interview_date: '2025-01-01' }),
+                card({ id: 'c1', client_area_id: 'a-1', interview_date: '2025-01-01' }),
+                card({ id: 'c2', client_area_id: 'a-1', interview_date: '2025-02-01' }),
             ],
             techLinks: [],
             vendorLinks: [],
             initiatives: [],
         })
         const cov = map.coverage[0]
-        expect(cov.missingBlocks).toEqual(['D'])
-        expect(cov.staleBlocks).toEqual(['C'])
-        expect(cov.lastByBlock.B).toBe('2026-07-01')
+        expect(cov.cards).toBe(2)
+        expect(cov.missing).toBe(false)
+        expect(cov.lastAny).toBe('2025-02-01')
+        expect(cov.stale).toBe(true) // najnowsza >6 mies. temu
+    })
+
+    it('świeża karta nie jest przeterminowana', () => {
+        const map = buildClientTechMap({
+            ...base,
+            cards: [card({ id: 'c1', client_area_id: 'a-1', interview_date: '2026-07-01' })],
+            techLinks: [],
+            vendorLinks: [],
+            initiatives: [],
+        })
+        expect(map.coverage[0].stale).toBe(false)
     })
 
     it('karty bez obszaru trafiają do osobnego wiersza „bez obszaru"', () => {

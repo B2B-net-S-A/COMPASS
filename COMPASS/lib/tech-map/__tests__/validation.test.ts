@@ -10,7 +10,6 @@ const card = (over: Partial<CardInput> = {}): CardInput => ({
     clientId: 'k-1',
     clientAreaId: null,
     interviewDate: '2026-08-01',
-    block: 'B',
     status: 'ok',
     satisfaction: 4,
     satisfactionComment: null,
@@ -36,11 +35,11 @@ describe('validateCardBase', () => {
         expect(validateCardBase(card())).toEqual([])
     })
 
-    it('brak konsultanta, klienta, daty i bloku zgłasza cztery błędy', () => {
+    it('brak konsultanta, klienta i daty zgłasza trzy błędy', () => {
         const errors = validateCardBase(
-            card({ contractorId: '', clientId: '', interviewDate: '', block: 'X' as never }),
+            card({ contractorId: '', clientId: '', interviewDate: '' }),
         )
-        expect(errors).toHaveLength(4)
+        expect(errors).toHaveLength(3)
     })
 })
 

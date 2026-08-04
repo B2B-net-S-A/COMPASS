@@ -46,7 +46,6 @@ export default async function KartaPage({ params }: { params: { cardId: string }
         clientId: card.client_id,
         clientAreaId: card.client_area_id,
         interviewDate: card.interview_date,
-        block: card.block,
         status: card.status,
         satisfaction: card.satisfaction,
         satisfactionComment: card.satisfaction_comment,

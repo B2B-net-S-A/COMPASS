@@ -1245,6 +1245,29 @@ pod `getClientTechMap` (agregat bez nazwisk). UI dla roli sprzedaż świadomie p
 
 Pełny plan: `docs/mapa-technologiczna-completion-report.md`.
 
+### Phase 46d — jedna karta zamiast rotacji bloków (2026-08-04, migracja 46d)
+
+Decyzja Artura po zobaczeniu Etapów 1-3: **karta wypełniana ZA JEDNYM ZAMACHEM**, bez dzielenia na
+bloki B/C/D. Rotacja („kto ma jaki blok w kwartale") okazała się nadmiarowa — realny proces to komplet
+raz, a potem lekkie telefony aktualizacyjne (obsługiwane przez log rozmów `contractor_conversations`).
+Najważniejsze pola: technologie, projekt/pion (obszar), poszukiwane kompetencje, zadowolenie; reszta
+(dostawcy, inicjatywy, zespół, stare/nowe) opcjonalna w tej samej karcie.
+
+**Migracja 46d:** `DROP COLUMN tech_interview_cards.block` (+ odtworzenie `idx_tech_cards_client_hiring`
+bez block) i `DROP TABLE tech_block_assignments`. Bezpieczne — 0 realnych kart; 640 przydziałów auto-B
+to dane testowe z weryfikacji Etapu 2.
+
+**Usunięto:** `lib/tech-map/{block-rotation,rotation-sweep}.ts`, cron `tech-map-rotation` (route + trzeba
+wyłączyć zadanie w Coolify przez `cron-disable-task`), `RotationAdminSection`, akcje `getRotationOverview`/
+`recalcBlockAssignments`/`overrideBlockAssignment`, typy `InterviewBlock`/`INTERVIEW_BLOCK*`/
+`TechBlockAssignmentRow`/`plannedBlock`/`latestCardByBlock`.
+
+**Zmienione:** formularz — wszystko naraz (sekcja „Najważniejsze" + „Technologie i zespół" + opcjonalne
+„Inicjatywy" i „Dostawcy"), bez selektora bloku; **„Koniec projektu" przeformułowany** na plany klienta
+z helperem „nie umowa konsultanta" (nie straszymy konsultanta, koniec zamówienia znamy z placementów);
+karta klienta — pokrycie obszary×bloki → obszary + świeżość; brief przed rozmową bez dużej litery bloku.
+Alerty, KPI, guard sprzedaży — bez zmian. Testy: usunięto rotation (suita 1103/1103).
+
 ## Phase 47 — powiadomienie o anulowaniu urlopu + historia wniosków (2026-08-04)
 
 Anulowanie urlopu było ślepą plamą: kolejka approvera pokazuje tylko `pending`, więc po
