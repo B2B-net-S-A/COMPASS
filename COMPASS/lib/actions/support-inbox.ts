@@ -510,10 +510,14 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 
+        // Osoby odpowiedzialne = faktyczni operatorzy skrzynki (is_inbox_handler).
+        // Wcześniej dokładaliśmy tu WSZYSTKICH adminów (role.eq.admin) — właściciele
+        // firmy trafiali do listy „osoba odpowiedzialna" mimo że skrzynki nie obsługują
+        // (zgłoszenie Dominika). Admin, który chce obsługiwać, ustawia is_inbox_handler.
         const { data, error } = await supabase
             .from('profiles')
             .select('id, full_name, email, role, is_inbox_handler')
-            .or('role.eq.admin,is_inbox_handler.eq.true')
+            .eq('is_inbox_handler', true)
             // Ticket przypisany osobie, która odeszła, nie ma kto obsłużyć.
             .neq('employment_status', 'exited')
             .order('full_name', { ascending: true })
