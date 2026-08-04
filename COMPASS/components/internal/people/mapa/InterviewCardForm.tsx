@@ -1,6 +1,6 @@
 'use client'
 
-// Phase 46 — formularz karty rozmowy (blok A zawsze + rotacyjny B/C/D).
+// Phase 46 — formularz karty rozmowy (Phase 46d: jedna karta, wszystko naraz).
 // Cel: wypełnienie < 3 minuty — selecty/radio/tag-pickery, minimum wolnego tekstu.
 // Draft zapisywalny w każdej chwili; pełna matryca kompletności dopiero przy
 // finalizacji (client-side pre-check + ponowna walidacja w akcji).
