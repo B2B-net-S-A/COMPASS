@@ -31,6 +31,8 @@ export interface InternalAuthContext {
     //   canLogOvertime — may enter >8h/day (overtime override) like an admin
     hasTcmAccess: boolean
     canLogOvertime: boolean
+    // Phase 46c: read-only na zagregowaną kartę klienta mapy technologicznej (sprzedaż).
+    canViewTechMap: boolean
 }
 
 interface AuthContextBase {
@@ -39,6 +41,7 @@ interface AuthContextBase {
     role: AppRole
     hasTcmAccess: boolean
     canLogOvertime: boolean
+    canViewTechMap: boolean
 }
 
 async function loadAuthContext(): Promise<AuthContextBase | null> {
@@ -48,9 +51,14 @@ async function loadAuthContext(): Promise<AuthContextBase | null> {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('role, has_tcm_access, can_log_overtime')
+        .select('role, has_tcm_access, can_log_overtime, can_view_tech_map')
         .eq('id', user.id)
-        .single<{ role: string | null; has_tcm_access: boolean | null; can_log_overtime: boolean | null }>()
+        .single<{
+            role: string | null
+            has_tcm_access: boolean | null
+            can_log_overtime: boolean | null
+            can_view_tech_map: boolean | null
+        }>()
 
     const role = (profile?.role ?? 'consultant') as AppRole
     return {
@@ -59,6 +67,7 @@ async function loadAuthContext(): Promise<AuthContextBase | null> {
         role,
         hasTcmAccess: profile?.has_tcm_access === true,
         canLogOvertime: profile?.can_log_overtime === true,
+        canViewTechMap: profile?.can_view_tech_map === true,
     }
 }
 
@@ -246,6 +255,21 @@ export async function requireLifecycleManagerAction(): Promise<InternalAuthConte
     // Phase 45: per-user has_tcm_access grant unlocks lifecycle CRUD without the role (HR-zone only).
     if (!canManageLifecycle(ctx.role) && !hasEffectiveTcmAccess(ctx)) {
         throw new Error('Wymagane uprawnienia: administrator lub Talent Community Manager.')
+    }
+    return buildCtx(ctx)
+}
+
+/**
+ * Phase 46c — Tech-map viewer guard (server-action variant).
+ * Dostęp do ZAGREGOWANEJ karty klienta: lifecycle manager (TCM/admin/grant) LUB
+ * grant can_view_tech_map (rola „sprzedaż" — read-only, bez nazwisk konsultantów).
+ * Podpięte WYŁĄCZNIE pod getClientTechMap; pojedyncze karty pozostają lifecycle-only.
+ */
+export async function requireTechMapViewerAction(): Promise<InternalAuthContext> {
+    const ctx = await loadAuthContext()
+    if (!ctx) throw new Error('Unauthorized')
+    if (!canManageLifecycle(ctx.role) && !hasEffectiveTcmAccess(ctx) && !ctx.canViewTechMap) {
+        throw new Error('Brak uprawnień do mapy technologicznej.')
     }
     return buildCtx(ctx)
 }

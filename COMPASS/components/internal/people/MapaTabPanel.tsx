@@ -4,6 +4,7 @@
 
 import { listContractors } from '@/lib/actions/contractors'
 import {
+    getAlertRecipientsConfig,
     getRotationOverview,
     listCards,
     listClientsWithCards,
@@ -15,16 +16,19 @@ import { ClientsWithCardsSection } from '@/components/internal/people/mapa/Clien
 import { DictionaryAdminSection } from '@/components/internal/people/mapa/DictionaryAdminSection'
 import { NewInterviewPicker } from '@/components/internal/people/mapa/NewInterviewPicker'
 import { RotationAdminSection } from '@/components/internal/people/mapa/RotationAdminSection'
+import { AlertRecipientsSection } from '@/components/internal/people/mapa/AlertRecipientsSection'
 
 export async function MapaTabPanel({ isAdmin }: { isAdmin: boolean }) {
-    const [cards, contractors, clientsWithCards, rotation, technologies, vendors] = await Promise.all([
-        listCards(),
-        listContractors(),
-        listClientsWithCards(),
-        getRotationOverview(),
-        isAdmin ? listTechnologies() : Promise.resolve([]),
-        isAdmin ? listVendors() : Promise.resolve([]),
-    ])
+    const [cards, contractors, clientsWithCards, rotation, technologies, vendors, alertConfig] =
+        await Promise.all([
+            listCards(),
+            listContractors(),
+            listClientsWithCards(),
+            getRotationOverview(),
+            isAdmin ? listTechnologies() : Promise.resolve([]),
+            isAdmin ? listVendors() : Promise.resolve([]),
+            isAdmin ? getAlertRecipientsConfig() : Promise.resolve(null),
+        ])
 
     return (
         <div className="space-y-8">
@@ -48,6 +52,10 @@ export async function MapaTabPanel({ isAdmin }: { isAdmin: boolean }) {
             <CardsListSection cards={cards} />
 
             <RotationAdminSection overview={rotation} isAdmin={isAdmin} />
+
+            {isAdmin && alertConfig && (
+                <AlertRecipientsSection config={alertConfig.config} candidates={alertConfig.candidates} />
+            )}
 
             {isAdmin && <DictionaryAdminSection technologies={technologies} vendors={vendors} />}
         </div>

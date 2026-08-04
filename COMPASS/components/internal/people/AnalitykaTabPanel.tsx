@@ -1,8 +1,10 @@
 import { getContractorDashboard, getDepartureAnalytics } from '@/lib/actions/contractors'
 import { getTicketTypeAnalytics } from '@/lib/actions/zgloszenia-analytics'
+import { getTechMapKpi } from '@/lib/actions/tech-map'
 import { Kpi, StatList } from '@/components/internal/kontraktorzy/panels/shared'
 import type { DeparturePeriod } from '@/lib/contractors/departure-analytics'
 import { DepartureAnalyticsSection } from './DepartureAnalyticsSection'
+import { TechMapKpiSection } from './mapa/TechMapKpiSection'
 
 // People Ops — zakładka Analityka: typy zgłoszeń (zunifikowany support_tickets) + zejścia
 // konsultantów w ujęciu czasowym. Reuse getContractorDashboard / getTicketTypeAnalytics,
@@ -14,10 +16,11 @@ interface Props {
 }
 
 export async function AnalitykaTabPanel({ period, client, recruiter }: Props) {
-    const [dashboard, tickets, departures] = await Promise.all([
+    const [dashboard, tickets, departures, techMapKpi] = await Promise.all([
         getContractorDashboard(),
         getTicketTypeAnalytics(),
         getDepartureAnalytics({ period, client, recruiter }),
+        getTechMapKpi(),
     ])
 
     const toRows = (rows: Array<{ label: string; count: number }>) =>
@@ -40,6 +43,8 @@ export async function AnalitykaTabPanel({ period, client, recruiter }: Props) {
                     <StatList title="Per priorytet" rows={toRows(tickets.byPriority)} />
                 </div>
             </section>
+
+            <TechMapKpiSection kpi={techMapKpi} />
 
             <DepartureAnalyticsSection analytics={departures} />
 

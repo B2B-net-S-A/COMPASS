@@ -1757,3 +1757,90 @@ export async function sendRateChangedToFinance(args: {
         return { success: false }
     }
 }
+
+// ─── Phase 46c — alerty mapy technologicznej ─────────────────────────────────
+
+const MONTHS_PL_EMAIL = [
+    'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
+    'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień',
+]
+
+/**
+ * Phase 46c — alert do sprzedaży: klient szuka ludzi (z finalizacji karty).
+ * Accent zielony (nowa okazja). saveToSentItems dla śladu compliance.
+ */
+export async function sendTechMapDemand(
+    recipientEmail: string,
+    recipientName: string,
+    clientName: string,
+    roles: string[],
+    source: string | null,
+    areaName: string | null,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] ${clientName} szuka ludzi`
+    const rolesLine = roles.length > 0 ? roles.join(', ') : 'rola nieokreślona'
+    const bodyHtml = `
+        <p style="color:#d1d5db;font-size:14px;">Cześć ${recipientName},</p>
+        <p style="color:#d1d5db;font-size:14px;">Z rozmowy z naszym konsultantem wynika, że <strong>${clientName}</strong> ma potrzebę rekrutacyjną:</p>
+        <ul style="color:#d1d5db;font-size:14px;line-height:1.6;">
+            <li><strong>Role:</strong> ${rolesLine}</li>
+            ${areaName ? `<li><strong>Obszar:</strong> ${areaName}</li>` : ''}
+            ${source ? `<li><strong>Źródło:</strong> ${source}</li>` : ''}
+        </ul>
+        <p style="color:#d1d5db;font-size:14px;">Szczegóły w module Mapa technologiczna.</p>
+    `
+    const html = wrapHrEmail({ tag: 'Sygnał popytu', heading: subject, bodyHtml, accent: '#22c55e' })
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html,
+        })
+        if (error) logCompat.error('Resend tech-map-demand error:', error)
+        return { success: !error }
+    } catch (err) {
+        logCompat.error('Tech-map-demand email failed:', err)
+        return { success: false }
+    }
+}
+
+/**
+ * Phase 46c — alert do właściciela benchu: koniec projektu konsultanta <60 dni.
+ * Accent bursztynowy (nadchodzące ryzyko). saveToSentItems dla compliance.
+ */
+export async function sendTechMapProjectEnd(
+    recipientEmail: string,
+    recipientName: string,
+    consultantName: string,
+    clientName: string,
+    endMonth: number,
+    endYear: number,
+): Promise<{ success: boolean }> {
+    const monthLabel = MONTHS_PL_EMAIL[endMonth - 1] ?? String(endMonth)
+    const subject = `[COMPASS] Koniec projektu: ${consultantName} (${clientName})`
+    const bodyHtml = `
+        <p style="color:#d1d5db;font-size:14px;">Cześć ${recipientName},</p>
+        <p style="color:#d1d5db;font-size:14px;">Projekt naszego konsultanta zbliża się do końca — warto zaplanować kolejny krok:</p>
+        <ul style="color:#d1d5db;font-size:14px;line-height:1.6;">
+            <li><strong>Konsultant:</strong> ${consultantName}</li>
+            <li><strong>Klient:</strong> ${clientName}</li>
+            <li><strong>Koniec projektu:</strong> ${monthLabel} ${endYear}</li>
+        </ul>
+        <p style="color:#d1d5db;font-size:14px;">Szczegóły w module Mapa technologiczna.</p>
+    `
+    const html = wrapHrEmail({ tag: 'Koniec projektu', heading: subject, bodyHtml, accent: '#f59e0b' })
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html,
+        })
+        if (error) logCompat.error('Resend tech-map-project-end error:', error)
+        return { success: !error }
+    } catch (err) {
+        logCompat.error('Tech-map-project-end email failed:', err)
+        return { success: false }
+    }
+}

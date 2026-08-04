@@ -4932,6 +4932,7 @@ export type Database = {
           hired_at: string | null
           id: string
           can_log_overtime: boolean
+          can_view_tech_map: boolean
           has_tcm_access: boolean
           is_external: boolean
           is_inbox_handler: boolean
@@ -5001,6 +5002,7 @@ export type Database = {
           hired_at?: string | null
           id: string
           can_log_overtime?: boolean
+          can_view_tech_map?: boolean
           has_tcm_access?: boolean
           is_external?: boolean
           is_inbox_handler?: boolean
@@ -5070,6 +5072,7 @@ export type Database = {
           hired_at?: string | null
           id?: string
           can_log_overtime?: boolean
+          can_view_tech_map?: boolean
           has_tcm_access?: boolean
           is_external?: boolean
           is_inbox_handler?: boolean
