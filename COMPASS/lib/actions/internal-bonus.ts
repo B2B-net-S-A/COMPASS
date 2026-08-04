@@ -7,7 +7,6 @@ import {
     requireInternalOrAdminAction,
     requireBonusProposerAction,
     requireBonusReadAllAction,
-    requireFinanseOrAdminAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import {
@@ -1025,9 +1024,14 @@ async function findChampionsLeagueWinnerName(
  * Period + recipient są immutable (DB trigger guard).
  */
 export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
-    // Phase 32 — po przypisaniu premię może edytować TYLKO administrator lub finanse
-    // (manager traci prawo po assign — patrz cancelBonus comment).
-    const ctx = await requireFinanseOrAdminAction()
+    // Admin/finanse: edytują dowolną premię.
+    // Manager: edytuje tylko premie które sam przypisał (proposed_by = ctx.userId) —
+    // parytet z cancelBonus. Pozwala poprawić miesiąc/kwotę/uzasadnienie własnej premii
+    // bez anuluj+dodaj-od-nowa (zgłoszenie Dominika: edycja miesiąca premii).
+    const ctx = await requireInternalOrAdminAction()
+    if (!ctx.isAdmin && ctx.role !== 'finanse' && !ctx.isManager) {
+        throw new Error('Wymagane uprawnienia: administrator, finanse lub manager.')
+    }
     if (!input.id) throw new Error('Brak id premii.')
 
     const hasAmount = input.amount !== undefined
@@ -1053,6 +1057,10 @@ export async function updateBonus(input: UpdateBonusInput): Promise<BonusRow> {
         .eq('id', input.id)
         .single<BonusRow>()
     if (fetchErr || !bonus) throw new Error('Premia nie znaleziona.')
+    // Manager może edytować tylko własne premie (parytet z cancelBonus).
+    if (!ctx.isAdmin && ctx.role !== 'finanse' && bonus.proposed_by !== ctx.userId) {
+        throw new Error('Manager może edytować tylko premie, które sam przypisał.')
+    }
     if (bonus.status !== 'assigned') {
         throw new Error(
             `Można edytować tylko premie w statusie "assigned" (jest: "${bonus.status}").`,
