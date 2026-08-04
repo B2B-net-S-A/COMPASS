@@ -111,10 +111,14 @@ async function loadProfilesByIds(admin: ServiceClient, ids: string[]): Promise<M
 export async function listTcmProfiles(): Promise<Array<{ id: string; fullName: string }>> {
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
+    // Osoby odpowiedzialne za zadania TCM = operatorzy TCM: rola talent_community LUB
+    // grant has_tcm_access (Phase 45). Bare-admini (właściciele firmy) NIE są tu
+    // wypisywani — zaśmiecali listę „przypisane" (zgłoszenie Dominika). Admin, który
+    // realnie prowadzi TCM, dostaje grant has_tcm_access.
     const { data } = await admin
         .from('profiles')
         .select('id, full_name, role')
-        .in('role', ['talent_community', 'admin'])
+        .or('role.eq.talent_community,has_tcm_access.eq.true')
         // Opiekun, który odszedł, nie jest opiekunem — nie oferuj go w dropdownie.
         .neq('employment_status', 'exited')
         .order('full_name', { ascending: true })
