@@ -722,8 +722,14 @@ async function notifyLeaveCancelled(params: {
         .single<{ full_name: string | null; email: string | null; manager_id: string | null }>()
     const employeeName = employee?.full_name ?? employee?.email ?? 'Pracownik'
 
-    // Admini (approverzy globalni).
-    const { data: admins } = await admin.from('profiles').select('id').eq('role', 'admin')
+    // Admini (approverzy globalni). Phase 43 — zarchiwizowani nie logują się, ale
+    // ich mail bywa aktywny; nie wysyłamy im powiadomień (spójne z rosterami
+    // powiadomień w reszcie kodu).
+    const { data: admins } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('role', 'admin')
+        .neq('employment_status', 'exited')
     const adminIds = ((admins ?? []) as Array<{ id: string }>).map((a) => a.id)
 
     // Approverzy = admini + manager pracownika. Osobno zastępca (inna treść) i
@@ -751,6 +757,8 @@ async function notifyLeaveCancelled(params: {
 
     const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
     const range = `${startDate} – ${endDate}`
+    const APPROVER_URL = '/internal/admin?tab=leave-requests'
+    const SELF_URL = '/internal?tab=leave'
 
     // ── in-app (awaited) + push (best-effort) ──
     const inAppInserts: PromiseLike<unknown>[] = []
@@ -767,19 +775,20 @@ async function notifyLeaveCancelled(params: {
             titleEn = 'Substitution cancelled'
             bodyPl = `${employeeName}: urlop ${range} anulowany — nie zastępujesz.`
             bodyEn = `${employeeName}: leave ${range} cancelled — you are no longer covering.`
-            url = '/internal?tab=leave'
+            // Zastępca będący też approverem (admin/manager) i tak trafia do kolejki.
+            url = approverIds.has(id) ? APPROVER_URL : SELF_URL
         } else if (kind === 'employee') {
             titlePl = 'Anulowano Twój urlop'
             titleEn = 'Your leave was cancelled'
             bodyPl = `${range} — anulowane przez przełożonego.`
             bodyEn = `${range} — cancelled by your manager.`
-            url = '/internal?tab=leave'
+            url = SELF_URL
         } else {
             titlePl = 'Anulowano urlop'
             titleEn = 'Leave cancelled'
             bodyPl = `${employeeName}: ${range} · ${typeLabel}${byManager ? ' (anulował przełożony)' : ''}`
             bodyEn = `${employeeName}: ${range} · ${typeLabel}`
-            url = '/internal/admin?tab=leave-requests'
+            url = APPROVER_URL
         }
 
         // supabase-js nie rejectuje — resolwuje {error}; mapujemy na log awarii.
@@ -826,6 +835,7 @@ async function notifyLeaveCancelled(params: {
                 leaveType,
                 startDate,
                 endDate,
+                byManager,
             ).catch((e) => logCompat.error('[notifyLeaveCancelled] approver email failed:', e))
         }
         if (substituteId && substituteId !== actorUserId) {

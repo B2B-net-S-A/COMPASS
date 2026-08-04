@@ -475,7 +475,10 @@ export async function sendSubstituteCancelled(
 }
 
 /**
- * H2.3: notify adminów że user anulował zatwierdzony future urlop.
+ * H2.3: notify approverów, że zatwierdzony future urlop został anulowany.
+ * Phase 47 — `byManager` różnicuje atrybucję: przy anulacji przez przełożonego
+ * (cancelTeamLeave) mail do pozostałych approverów nie może twierdzić, że
+ * anulował sam pracownik.
  */
 export async function sendLeaveCancelledByUser(
     recipientEmails: string[],
@@ -483,13 +486,17 @@ export async function sendLeaveCancelledByUser(
     leaveType: string,
     startDate: string,
     endDate: string,
+    byManager: boolean = false,
 ): Promise<{ success: boolean }> {
     if (recipientEmails.length === 0) return { success: true }
     const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
     const subject = `[COMPASS HR] Anulowano zatwierdzony urlop — ${requesterName}`
+    const lead = byManager
+        ? `Urlop pracownika <strong>${requesterName}</strong> został anulowany przez przełożonego:`
+        : `Pracownik <strong>${requesterName}</strong> anulował zatwierdzony urlop:`
     const bodyHtml = `
         <p style="color: #d1d5db; font-size: 14px;">
-            Pracownik <strong>${requesterName}</strong> anulował zatwierdzony urlop:
+            ${lead}
         </p>
         <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
             <li><strong>Typ:</strong> ${typeLabel}</li>
