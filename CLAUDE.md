@@ -1268,6 +1268,50 @@ z helperem „nie umowa konsultanta" (nie straszymy konsultanta, koniec zamówie
 karta klienta — pokrycie obszary×bloki → obszary + świeżość; brief przed rozmową bez dużej litery bloku.
 Alerty, KPI, guard sprzedaży — bez zmian. Testy: usunięto rotation (suita 1103/1103).
 
+## Phase 47 — powiadomienie o anulowaniu urlopu + historia wniosków (2026-08-04)
+
+Anulowanie urlopu było ślepą plamą: kolejka approvera pokazuje tylko `pending`, więc po
+akceptacji (lub anulowaniu) wniosek znikał bez śladu w UI, a powiadomienia były dziurawe —
+`pending` cancel → **nikt**, `approved` cancel → **tylko admini** (email + push). Manager
+akceptujący wniosek ani wybrany zastępca nie dowiadywali się, że urlop przepadł. Case Artura:
+rozliczał timesheet w oparciu o zapisany urlop, który okazał się anulowany, bez żadnego sygnału.
+
+### Powiadomienie (in-app + push + email) — `notifyLeaveCancelled`
+
+Jeden helper w [internal-leave.ts](COMPASS/lib/actions/internal-leave.ts) wpięty we **wszystkie 3
+ścieżki anulowania** (`cancelMyLeaveRequest` pending + approved, `cancelTeamLeave`). Odbiorcy
+(zdeduplikowani, **z wykluczeniem actora** — nie powiadamiamy tego, kto anulował):
+
+- **Approverzy** = wszyscy `admin` + **manager pracownika** (`profiles.manager_id`).
+- **Zastępca** (`substitute_id`) — osobna treść „Zastępstwo anulowane".
+- **Pracownik** — tylko gdy anulował **ktoś inny** (`byManager`); przy self-cancel pomijany (wie).
+
+Kanały: **in-app** (dzwonek — trwałe, `await`-owane jako najpewniejszy sygnał; nowy typ
+`leave_cancelled`) + **push** (best-effort) + **email tylko dla anulowanego `approved`** urlopu
+(pending znika rutynowo — bez emaila, żeby nie zasypywać skrzynek). Każdy kanał best-effort, nigdy
+nie blokuje anulowania. Nowy typ powiadomienia dodany migracją `phase47_leave_cancelled_notification`
+(addytywnie do `notifications_type_check`) + do TS `NotificationType` + ikona 🚫 w `NotificationBell`.
+Email zastępcy: nowy `sendSubstituteCancelled` (symetryczny do `sendSubstituteAssigned`, accent amber).
+
+**Uwaga na przyszłość:** `notifyLeaveCancelled` zastąpił ad-hoc blok email/push adminów w
+`cancelMyLeaveRequest` (approved) oraz pojedynczy push pracownika w `cancelTeamLeave` — teraz wszystkie
+ścieżki zachowują się jednolicie. `for...of` po `Set` łamie tsconfig target (< es2015) — iteruj
+`Array.from(set)` (TS2802).
+
+### Historia wniosków (wszystkie statusy, w tym anulowane)
+
+`listAllLeaveRequests()` — najświeższe ~500 wierszy wszystkich statusów; scope jak kolejka (admin:
+wszyscy, manager: tylko zespół przez `manager_id`). Renderowana pod kolejką w
+[AdminLeaveRequestsPanel](COMPASS/components/internal/panels/AdminLeaveRequestsPanel.tsx) jako
+`AllLeaveRequestsList` (client): filtr statusu (Wszystkie/Oczekujące/Zaakceptowane/Anulowane/Odrzucone
+z licznikami) + wyszukiwarka po nazwisku/emailu, read-only. Filtrowanie client-side (skala firmy =
+setki wierszy). Rozwiązuje „prośba o akcept znika po kliknięciu Akceptuj" — teraz stan każdego wniosku
+jest sprawdzalny.
+
+**Bez `cancelled_by`/`cancelled_at`** — anulowanie tylko ustawia `status='cancelled'`; kto/kiedy jest
+w `audit_logs` (`LEAVE_CANCELLED` / `LEAVE_CANCELLED_BY_MANAGER`) + `updated_at`. Testy scopingu nowej
+akcji w `internal-leave.test.ts`. Migracja zaaplikowana na prod przez MCP (2026-08-04).
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

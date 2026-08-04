@@ -26,11 +26,13 @@ vi.mock('@/lib/auth/internal-guard', () => ({
 
 vi.mock('@/lib/actions/audit', () => ({ logAudit: vi.fn(async () => {}) }))
 vi.mock('@/lib/email', () => ({
+    HR_LEAVE_TYPE_LABEL: {} as Record<string, string>,
     sendLeaveCancelledByUser: vi.fn(async () => ({ success: true })),
     sendLeaveCreatedOnBehalf: vi.fn(async () => ({ success: true })),
     sendLeaveDecision: vi.fn(async () => ({ success: true })),
     sendLeaveRequestSubmitted: vi.fn(async () => ({ success: true })),
     sendSubstituteAssigned: vi.fn(async () => ({ success: true })),
+    sendSubstituteCancelled: vi.fn(async () => ({ success: true })),
 }))
 vi.mock('@/lib/calendar/graph-events', () => ({
     createLeaveEvent: vi.fn(async () => ({ success: true, skipped: true })),
@@ -119,6 +121,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import {
     approveLeaveRequest,
+    listAllLeaveRequests,
     listPendingLeaveRequests,
     rejectLeaveRequest,
 } from '@/lib/actions/internal-leave'
@@ -210,6 +213,59 @@ describe('listPendingLeaveRequests — manager team scoping', () => {
         authContextMock.role = 'consultant'
 
         await expect(listPendingLeaveRequests()).rejects.toThrow(/administrator lub manager/i)
+    })
+})
+
+describe('listAllLeaveRequests — historia (wszystkie statusy) + scoping', () => {
+    function row(userId: string, status: string): Record<string, unknown> {
+        return { ...pendingRow(userId), status, updated_at: '2026-05-21T00:00:00Z', source: null }
+    }
+
+    it('zwraca wszystkie statusy (w tym cancelled) dla admina, bez filtra zespołu', async () => {
+        authContextMock.isAdmin = true
+        authContextMock.isManager = false
+        authContextMock.role = 'admin'
+        state.pendingLeaves = [
+            row('emp-1', 'approved'),
+            row('emp-2', 'cancelled'),
+            row('emp-3', 'rejected'),
+        ]
+
+        const result = await listAllLeaveRequests()
+
+        expect(result.map((r) => r.status).sort()).toEqual(['approved', 'cancelled', 'rejected'])
+        // admin nie jest scope'owany do zespołu na głównym zapytaniu
+        expect(state.inCalls.find((c) => c.col === 'user_id')).toBeUndefined()
+    })
+
+    it('scope’uje managera do jego zespołu (user_id IN team ids)', async () => {
+        state.team = [{ id: 'emp-1' }, { id: 'emp-2' }]
+        state.pendingLeaves = [row('emp-1', 'cancelled')]
+
+        const result = await listAllLeaveRequests()
+
+        const userIdFilter = state.inCalls.find((c) => c.col === 'user_id')
+        expect(userIdFilter?.vals).toEqual(['emp-1', 'emp-2'])
+        expect(result).toHaveLength(1)
+        expect(result[0].status).toBe('cancelled')
+    })
+
+    it('zwraca [] dla managera bez podwładnych (bez zapytania o wnioski)', async () => {
+        state.team = []
+        state.pendingLeaves = [row('emp-1', 'cancelled')] // wyciekłoby bez short-circuit
+
+        const result = await listAllLeaveRequests()
+
+        expect(result).toEqual([])
+        expect(state.inCalls.find((c) => c.col === 'user_id')).toBeUndefined()
+    })
+
+    it('rzuca dla roli bez uprawnień (consultant)', async () => {
+        authContextMock.isAdmin = false
+        authContextMock.isManager = false
+        authContextMock.role = 'consultant'
+
+        await expect(listAllLeaveRequests()).rejects.toThrow(/administrator lub manager/i)
     })
 })
 

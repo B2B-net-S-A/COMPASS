@@ -11,11 +11,13 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import {
+    HR_LEAVE_TYPE_LABEL,
     sendLeaveCancelledByUser,
     sendLeaveCreatedOnBehalf,
     sendLeaveDecision,
     sendLeaveRequestSubmitted,
     sendSubstituteAssigned,
+    sendSubstituteCancelled,
 } from '@/lib/email'
 import { createLeaveEvent, deleteLeaveEvent } from '@/lib/calendar/graph-events'
 import {
@@ -681,6 +683,176 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id:
  * Po anulowaniu approved: usuwamy auto-utworzone attendance records + notyfikacja
  * admin (email + push) że user anulował zatwierdzony urlop.
  */
+/**
+ * Phase 47 — jednolite powiadomienie o anulowaniu urlopu. Wcześniej pending →
+ * nikt, approved → tylko admini (email + push). Manager akceptujący wniosek ani
+ * wybrany zastępca nie dowiadywali się, że urlop znika (case Artura: rozliczał
+ * timesheet w oparciu o urlop, który okazał się anulowany).
+ *
+ * Odbiorcy: approverzy (admini + manager pracownika) + zastępca, a przy anulacji
+ * przez przełożonego także sam pracownik. Actor jest wykluczony ze wszystkich
+ * kanałów. Kanały: in-app (dzwonek — trwałe, awaited jako najpewniejszy sygnał)
+ * + push + email (email tylko dla anulowanego *approved* urlopu — pending znika
+ * rutynowo, nie zasypujemy skrzynek). Każdy kanał best-effort, nigdy nie blokuje
+ * anulowania.
+ */
+async function notifyLeaveCancelled(params: {
+    leaveId: string
+    employeeUserId: string
+    startDate: string
+    endDate: string
+    leaveType: LeaveType
+    substituteId: string | null
+    wasApproved: boolean
+    actorUserId: string
+    /** true = anulował przełożony/admin (poinformuj też pracownika); false = self-cancel. */
+    byManager: boolean
+}): Promise<void> {
+    const {
+        leaveId, employeeUserId, startDate, endDate, leaveType,
+        substituteId, wasApproved, actorUserId, byManager,
+    } = params
+    const admin = createServiceClient()
+
+    // Pracownik + jego manager (approver merytoryczny).
+    const { data: employee } = await admin
+        .from('profiles')
+        .select('full_name, email, manager_id')
+        .eq('id', employeeUserId)
+        .single<{ full_name: string | null; email: string | null; manager_id: string | null }>()
+    const employeeName = employee?.full_name ?? employee?.email ?? 'Pracownik'
+
+    // Admini (approverzy globalni). Phase 43 — zarchiwizowani nie logują się, ale
+    // ich mail bywa aktywny; nie wysyłamy im powiadomień (spójne z rosterami
+    // powiadomień w reszcie kodu).
+    const { data: admins } = await admin
+        .from('profiles')
+        .select('id')
+        .eq('role', 'admin')
+        .neq('employment_status', 'exited')
+    const adminIds = ((admins ?? []) as Array<{ id: string }>).map((a) => a.id)
+
+    // Approverzy = admini + manager pracownika. Osobno zastępca (inna treść) i
+    // pracownik (tylko gdy anulował ktoś inny).
+    const approverIds = new Set<string>(adminIds)
+    if (employee?.manager_id) approverIds.add(employee.manager_id)
+
+    const recipientIds = new Set<string>(approverIds)
+    if (substituteId) recipientIds.add(substituteId)
+    if (byManager) recipientIds.add(employeeUserId)
+    recipientIds.delete(actorUserId)
+    if (recipientIds.size === 0) return
+    const recipients = Array.from(recipientIds)
+
+    // Profile odbiorców (email/nazwa do kanału email).
+    const { data: profs } = await admin
+        .from('profiles')
+        .select('id, email, full_name')
+        .in('id', recipients)
+    const byId = new Map(
+        ((profs ?? []) as Array<{ id: string; email: string | null; full_name: string | null }>).map(
+            (p) => [p.id, p],
+        ),
+    )
+
+    const typeLabel = HR_LEAVE_TYPE_LABEL[leaveType] ?? leaveType
+    const range = `${startDate} – ${endDate}`
+    const APPROVER_URL = '/internal/admin?tab=leave-requests'
+    const SELF_URL = '/internal?tab=leave'
+
+    // ── in-app (awaited) + push (best-effort) ──
+    const inAppInserts: PromiseLike<unknown>[] = []
+    for (const id of recipients) {
+        const kind =
+            id === substituteId ? 'substitute' : id === employeeUserId ? 'employee' : 'approver'
+        let titlePl: string
+        let titleEn: string
+        let bodyPl: string
+        let bodyEn: string
+        let url: string
+        if (kind === 'substitute') {
+            titlePl = 'Zastępstwo anulowane'
+            titleEn = 'Substitution cancelled'
+            bodyPl = `${employeeName}: urlop ${range} anulowany — nie zastępujesz.`
+            bodyEn = `${employeeName}: leave ${range} cancelled — you are no longer covering.`
+            // Zastępca będący też approverem (admin/manager) i tak trafia do kolejki.
+            url = approverIds.has(id) ? APPROVER_URL : SELF_URL
+        } else if (kind === 'employee') {
+            titlePl = 'Anulowano Twój urlop'
+            titleEn = 'Your leave was cancelled'
+            bodyPl = `${range} — anulowane przez przełożonego.`
+            bodyEn = `${range} — cancelled by your manager.`
+            url = SELF_URL
+        } else {
+            titlePl = 'Anulowano urlop'
+            titleEn = 'Leave cancelled'
+            bodyPl = `${employeeName}: ${range} · ${typeLabel}${byManager ? ' (anulował przełożony)' : ''}`
+            bodyEn = `${employeeName}: ${range} · ${typeLabel}`
+            url = APPROVER_URL
+        }
+
+        // supabase-js nie rejectuje — resolwuje {error}; mapujemy na log awarii.
+        inAppInserts.push(
+            admin
+                .from('notifications')
+                .insert({
+                    user_id: id,
+                    type: 'leave_cancelled',
+                    title_pl: titlePl,
+                    title_en: titleEn,
+                    body_pl: bodyPl,
+                    body_en: bodyEn,
+                    action_url: url,
+                    priority: 'normal',
+                })
+                .then(({ error }) => {
+                    if (error)
+                        logCompat.error('[notifyLeaveCancelled] in-app insert failed:', error.message)
+                }),
+        )
+
+        sendPushToUserId(id, {
+            title: titlePl,
+            body: bodyPl,
+            url,
+            tag: `leave-cancelled-${leaveId}`,
+        }).catch((e) => logCompat.error('[notifyLeaveCancelled] push failed:', e))
+    }
+    // In-app to najpewniejszy kanał — czekamy, żeby na pewno trafił przed powrotem
+    // z akcji (un-awaited insert mógłby zostać ucięty po zwróceniu odpowiedzi).
+    await Promise.allSettled(inAppInserts)
+
+    // ── email — tylko dla anulowanego *approved* urlopu ──
+    if (wasApproved) {
+        const approverEmails = Array.from(approverIds)
+            .filter((aid) => aid !== actorUserId)
+            .map((aid) => byId.get(aid)?.email)
+            .filter((e): e is string => !!e)
+        if (approverEmails.length > 0) {
+            sendLeaveCancelledByUser(
+                approverEmails,
+                employeeName,
+                leaveType,
+                startDate,
+                endDate,
+                byManager,
+            ).catch((e) => logCompat.error('[notifyLeaveCancelled] approver email failed:', e))
+        }
+        if (substituteId && substituteId !== actorUserId) {
+            const sub = byId.get(substituteId)
+            if (sub?.email) {
+                sendSubstituteCancelled(
+                    sub.email,
+                    sub.full_name ?? 'Zastępco',
+                    employeeName,
+                    startDate,
+                    endDate,
+                ).catch((e) => logCompat.error('[notifyLeaveCancelled] substitute email failed:', e))
+            }
+        }
+    }
+}
+
 export async function cancelMyLeaveRequest(id: string): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
     const supabase = createClient()
@@ -688,7 +860,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
     const { data: row, error: fetchErr } = await supabase
         .from('leave_requests')
         .select(
-            'id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
+            'id, user_id, status, start_date, end_date, leave_type, substitute_id, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
         )
         .eq('id', id)
         .single<{
@@ -698,6 +870,7 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
             start_date: string
             end_date: string
             leave_type: LeaveType
+            substitute_id: string | null
             outlook_event_id: string | null
             graph_oof_set: boolean | null
             outlook_forward_rule_id: string | null
@@ -714,6 +887,21 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
         if (error) throw new Error(`Błąd anulowania: ${error.message}`)
 
         await logAudit(ctx.userId, 'LEAVE_CANCELLED', { leave_id: id })
+
+        // Phase 47 — powiadom approverów (i zastępcę, jeśli był), żeby wycofany
+        // wniosek nie wisiał w ich głowie jako „do akceptacji". In-app + push
+        // (bez emaila — pending znika rutynowo).
+        await notifyLeaveCancelled({
+            leaveId: id,
+            employeeUserId: row.user_id,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            leaveType: row.leave_type,
+            substituteId: row.substitute_id,
+            wasApproved: false,
+            actorUserId: ctx.userId,
+            byManager: false,
+        }).catch((e) => logCompat.error('[cancelMyLeaveRequest] notify (pending) failed:', e))
         return
     }
 
@@ -787,29 +975,19 @@ export async function cancelMyLeaveRequest(id: string): Promise<void> {
             end_date: row.end_date,
         })
 
-        // Notify admins (email + push) — admin powinien wiedzieć że user wyrzucił approved leave
-        const adminEmails = await fetchAdminEmails()
-        const userName = await fetchUserDisplayName(ctx.userId, ctx.email)
-        if (adminEmails.length > 0) {
-            sendLeaveCancelledByUser(adminEmails, userName, row.leave_type, row.start_date, row.end_date).catch((e) =>
-                logCompat.error('[cancelMyLeaveRequest] admin email failed:', e),
-            )
-        }
-
-        // Push do adminów
-        const adminClient = createServiceClient()
-        const { data: admins } = await adminClient
-            .from('profiles')
-            .select('id')
-            .eq('role', 'admin')
-        for (const a of (admins ?? []) as Array<{ id: string }>) {
-            sendPushToUserId(a.id, {
-                title: 'Anulowano zatwierdzony urlop',
-                body: `${userName}: ${row.start_date} – ${row.end_date}`,
-                url: '/internal/admin?tab=leave-requests',
-                tag: `leave-cancelled-${id}`,
-            }).catch((e) => logCompat.error('[cancelMyLeaveRequest] admin push failed:', e))
-        }
+        // Phase 47 — powiadom approverów (admini + manager pracownika) oraz
+        // zastępcę, że zatwierdzony urlop został wycofany. In-app + push + email.
+        await notifyLeaveCancelled({
+            leaveId: id,
+            employeeUserId: row.user_id,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            leaveType: row.leave_type,
+            substituteId: row.substitute_id,
+            wasApproved: true,
+            actorUserId: ctx.userId,
+            byManager: false,
+        }).catch((e) => logCompat.error('[cancelMyLeaveRequest] notify (approved) failed:', e))
         return
     }
 
@@ -1391,6 +1569,107 @@ export async function listTeamLeaves(): Promise<TeamLeaveRow[]> {
         .map(mapTeamLeaveRow)
 }
 
+// ─── Phase 47: pełna historia wniosków (w tym anulowane) ────────────────────
+
+export interface AllLeaveRow {
+    id: string
+    user_id: string
+    user_full_name: string | null
+    user_email: string
+    start_date: string
+    end_date: string
+    leave_type: LeaveType
+    half_day: 'morning' | 'afternoon' | null
+    status: LeaveStatus
+    note: string | null
+    created_on_behalf: boolean
+    source: string | null
+    substitute_full_name: string | null
+    decided_at: string | null
+    created_at: string
+    updated_at: string | null
+}
+
+interface AllLeaveQueryRow {
+    id: string
+    user_id: string
+    start_date: string
+    end_date: string
+    leave_type: LeaveType
+    half_day: 'morning' | 'afternoon' | null
+    status: LeaveStatus
+    note: string | null
+    created_on_behalf: boolean | null
+    source: string | null
+    decided_at: string | null
+    created_at: string
+    updated_at: string | null
+    profiles: { full_name: string | null; email: string | null; manager_id: string | null } | null
+    substitute: { full_name: string | null } | null
+}
+
+/**
+ * Phase 47 — pełna historia wniosków urlopowych, wszystkie statusy (w tym
+ * cancelled/rejected). Rozwiązuje problem Artura: kolejka pokazuje tylko pending,
+ * więc po akceptacji (lub anulowaniu) wniosek znika i nie ma jak sprawdzić stanu.
+ *
+ *  - Admin: wszyscy.
+ *  - Manager: tylko podwładni (profiles.manager_id = ctx.userId).
+ *
+ * Zwraca najświeższe ~500 wierszy (po created_at malejąco). Filtrowanie po
+ * statusie i wyszukiwanie po nazwisku robi komponent kliencki — przy skali firmy
+ * (~kilkadziesiąt osób) to garść setek wierszy, więc client-side jest natychmiastowe.
+ */
+export async function listAllLeaveRequests(): Promise<AllLeaveRow[]> {
+    const ctx = await requireLeaveApproverAction()
+    const admin = createServiceClient()
+
+    let teamIds: string[] | null = null
+    if (!ctx.isAdmin) {
+        const { data: team } = await admin
+            .from('profiles')
+            .select('id')
+            .eq('manager_id', ctx.userId)
+        teamIds = ((team ?? []) as Array<{ id: string }>).map((t) => t.id)
+        if (teamIds.length === 0) return []
+    }
+
+    let query = admin
+        .from('leave_requests')
+        .select(`
+            id, user_id, start_date, end_date, leave_type, half_day, status, note,
+            created_on_behalf, source, decided_at, created_at, updated_at,
+            profiles:profiles!leave_requests_user_id_fkey(full_name, email, manager_id),
+            substitute:profiles!leave_requests_substitute_id_fkey(full_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(500)
+
+    if (teamIds) query = query.in('user_id', teamIds)
+
+    const { data, error } = await query
+    if (error) throw new Error(`Błąd pobierania historii wniosków: ${error.message}`)
+
+    return ((data ?? []) as unknown as AllLeaveQueryRow[]).map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        user_full_name: r.profiles?.full_name ?? null,
+        user_email: r.profiles?.email ?? '',
+        start_date: r.start_date,
+        end_date: r.end_date,
+        leave_type: r.leave_type,
+        half_day: r.half_day,
+        status: r.status,
+        note: r.note,
+        created_on_behalf: Boolean(r.created_on_behalf),
+        source: r.source,
+        substitute_full_name: r.substitute?.full_name ?? null,
+        decided_at: r.decided_at,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+    }))
+}
+
 /**
  * Phase 27j — leaves overlapping a given month for one employee, used by the
  * timesheet preview so an approver sees (and can cancel) leave that blocks
@@ -1542,7 +1821,7 @@ export async function cancelTeamLeave(id: string): Promise<void> {
     const { data: row, error } = await admin
         .from('leave_requests')
         .select(
-            'id, user_id, status, start_date, end_date, leave_type, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
+            'id, user_id, status, start_date, end_date, leave_type, substitute_id, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
         )
         .eq('id', id)
         .single<{
@@ -1552,6 +1831,7 @@ export async function cancelTeamLeave(id: string): Promise<void> {
             start_date: string
             end_date: string
             leave_type: LeaveType
+            substitute_id: string | null
             outlook_event_id: string | null
             graph_oof_set: boolean | null
             outlook_forward_rule_id: string | null
@@ -1560,6 +1840,7 @@ export async function cancelTeamLeave(id: string): Promise<void> {
     if (row.status !== 'pending' && row.status !== 'approved') {
         throw new Error(`Nie można anulować wniosku w statusie "${row.status}".`)
     }
+    const wasApproved = row.status === 'approved'
     await assertManagesTarget(admin, ctx, row.user_id)
 
     const { error: updErr } = await admin
@@ -1611,12 +1892,20 @@ export async function cancelTeamLeave(id: string): Promise<void> {
         end_date: row.end_date,
     })
 
-    sendPushToUserId(row.user_id, {
-        title: 'Anulowano Twój urlop',
-        body: `${row.start_date} – ${row.end_date} — anulowane przez przełożonego.`,
-        url: '/internal?tab=leave',
-        tag: `leave-cancelled-${id}`,
-    }).catch((e) => logCompat.error('[cancelTeamLeave] push failed:', e))
+    // Phase 47 — powiadom pracownika (anulował przełożony), jego zastępcę oraz
+    // pozostałych approverów (admini + manager, poza actorem). In-app + push +
+    // (dla approved) email — jednolicie z self-cancel.
+    await notifyLeaveCancelled({
+        leaveId: id,
+        employeeUserId: row.user_id,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        leaveType: row.leave_type,
+        substituteId: row.substitute_id,
+        wasApproved,
+        actorUserId: ctx.userId,
+        byManager: true,
+    }).catch((e) => logCompat.error('[cancelTeamLeave] notify failed:', e))
 }
 
 export interface UpdateTeamLeaveInput {
