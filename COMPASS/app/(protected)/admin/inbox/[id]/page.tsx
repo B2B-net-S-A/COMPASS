@@ -24,24 +24,26 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('role, is_inbox_handler')
+        .select('role, is_inbox_handler, has_tcm_access')
         .eq('id', user.id)
         .single()
 
-    const isAuthorized = profile?.role === 'admin' || profile?.is_inbox_handler === true
+    const isAuthorized = profile?.role === 'admin' || profile?.is_inbox_handler === true || profile?.has_tcm_access === true
     if (!isAuthorized) redirect('/home')
 
     const result = await getInboxTicketDetail(params.id)
     if (!result.success) notFound()
     const ticket = result.data
 
-    // Phase 34 — TCM/admin can spawn a tracked Talent Community task from this ticket.
-    const canCreateTask = profile?.role === 'admin' || profile?.role === 'talent_community'
+    // Phase 34 / 45 — TCM/admin (or a has_tcm_access grant) can spawn a tracked
+    // Talent Community task from this ticket.
+    const canCreateTask = profile?.role === 'admin' || profile?.role === 'talent_community' || profile?.has_tcm_access === true
     let taskTcmProfiles: Array<{ id: string; fullName: string }> = []
     let taskContractors: Array<{ id: string; full_name: string }> = []
     if (canCreateTask) {
+        // Operatorzy TCM: talent_community LUB grant has_tcm_access (bez bare-adminów) — patrz listTcmProfiles.
         const [{ data: tcm }, { data: cs }] = await Promise.all([
-            supabase.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']).neq('employment_status', 'exited').order('full_name'),
+            supabase.from('profiles').select('id, full_name').or('role.eq.talent_community,has_tcm_access.eq.true').neq('employment_status', 'exited').order('full_name'),
             supabase.from('contractors').select('id, full_name').order('full_name'),
         ])
         taskTcmProfiles = ((tcm ?? []) as Array<{ id: string; full_name: string | null }>).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))

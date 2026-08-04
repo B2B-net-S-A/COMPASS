@@ -54,15 +54,21 @@ export async function middleware(request: NextRequest) {
         let role: string | undefined
         let onboardingCompleted: boolean | undefined
         let employmentStatus: string | undefined
+        // Phase 45: per-user grants read at the edge so the /admin/inbox + /admin/news
+        // gate below matches the page-level guards (which honor these flags).
+        let isInboxHandler = false
+        let hasTcmAccess = false
         if (needsProfile) {
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('role, onboarding_completed, employment_status')
+                .select('role, onboarding_completed, employment_status, is_inbox_handler, has_tcm_access')
                 .eq('id', user.id)
                 .single()
             role = profile?.role as string | undefined
             onboardingCompleted = profile?.onboarding_completed as boolean | undefined
             employmentStatus = profile?.employment_status as string | undefined
+            isInboxHandler = profile?.is_inbox_handler === true
+            hasTcmAccess = profile?.has_tcm_access === true
         }
 
         // Zarchiwizowany pracownik traci dostęp natychmiast — także z sesją,
@@ -106,14 +112,19 @@ export async function middleware(request: NextRequest) {
             }
         }
 
-        // Phase 20: /admin/inbox + /admin/compliance + /admin/news — admin OR Talent Community Manager.
-        // Pozostałe /admin/* (np. /admin/users) zostają admin-only — layout enforced separately.
-        if (
-            pathname.startsWith('/admin/inbox') ||
-            pathname.startsWith('/admin/compliance') ||
-            pathname.startsWith('/admin/news')
-        ) {
-            if (!isAdminOrTcm) {
+        // Phase 20 / 45: /admin/inbox + /admin/compliance + /admin/news — admin OR Talent
+        // Community Manager, PLUS per-user grants so the edge gate matches the page guards:
+        //   - /admin/inbox: also is_inbox_handler (its page authorizes on that flag) OR has_tcm_access
+        //   - /admin/news + /admin/compliance: also has_tcm_access
+        // Without this, a manager granted the flags was bounced to /internal here before the
+        // page-level guard ever ran (Dominik: "nie mogę wejść w task, przenosi do profilu").
+        if (pathname.startsWith('/admin/inbox')) {
+            if (!isAdminOrTcm && !isInboxHandler && !hasTcmAccess) {
+                return NextResponse.redirect(new URL(isHrZoneUser ? '/internal' : '/home', request.url))
+            }
+        }
+        if (pathname.startsWith('/admin/compliance') || pathname.startsWith('/admin/news')) {
+            if (!isAdminOrTcm && !hasTcmAccess) {
                 return NextResponse.redirect(new URL(isHrZoneUser ? '/internal' : '/home', request.url))
             }
         }
