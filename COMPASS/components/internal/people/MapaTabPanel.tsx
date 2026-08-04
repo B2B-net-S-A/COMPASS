@@ -31,8 +31,8 @@ export async function MapaTabPanel({ isAdmin }: { isAdmin: boolean }) {
         <div className="space-y-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-muted-foreground max-w-2xl">
-                    Karty rozmów wg skryptu (blok A + rotacyjny B/C/D) budują mapę technologiczną
-                    klientów. Zacznij od „Nowa rozmowa” — zobaczysz przydzielony blok i to, co już wiemy.
+                    Karty rozmów (technologie, projekt, poszukiwane kompetencje, zadowolenie) budują mapę
+                    technologiczną klientów. Zacznij od „Nowa rozmowa” — zobaczysz to, co już wiemy.
                 </p>
                 <NewInterviewPicker
                     contractors={contractors.map((c) => ({
