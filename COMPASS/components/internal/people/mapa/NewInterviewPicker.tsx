@@ -2,10 +2,12 @@
 
 // Phase 46 — wybór konsultanta przed rozmową (wzorzec wyszukiwarki osób ze
 // StartOnboardingDialog: Input + filtrowana lista). Klik → strona wywiadu.
+// Phase 46e: gdy kogoś nie ma w bazie (np. jest tylko w NEXUS), TCM dodaje go
+// prosto stąd — „Dodaj konsultanta" tworzy wiersz contractors i otwiera wywiad.
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MessageSquarePlus, Search } from 'lucide-react'
+import { Loader2, MessageSquarePlus, Search, UserPlus } from 'lucide-react'
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -13,6 +15,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { toast } from '@/lib/toast'
+import { createContractor } from '@/lib/actions/contractors'
 import { CONTRACTOR_STATUS_PL, type ContractorStatus } from '@/lib/types/contractor'
 
 export interface PickerContractor {
@@ -26,6 +30,7 @@ export function NewInterviewPicker({ contractors }: { contractors: PickerContrac
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState('')
+    const [creating, setCreating] = useState(false)
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase()
@@ -36,6 +41,29 @@ export function NewInterviewPicker({ contractors }: { contractors: PickerContrac
                 (c.currentClient ?? '').toLowerCase().includes(q),
         )
     }, [contractors, search])
+
+    const query = search.trim()
+    // Oferuj dodanie tylko gdy nikt nie pasuje DOKŁADNIE po nazwisku (żeby nie
+    // dublować istniejącej osoby wpisanej 1:1).
+    const exactMatch = useMemo(
+        () => contractors.some((c) => c.fullName.toLowerCase() === query.toLowerCase()),
+        [contractors, query],
+    )
+    const canCreate = query.length >= 2 && !exactMatch
+
+    async function create() {
+        if (!canCreate || creating) return
+        setCreating(true)
+        try {
+            const { id } = await createContractor({ fullName: query })
+            setOpen(false)
+            router.push(`/internal/people/mapa/wywiad/${id}`)
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Nie udało się dodać konsultanta.')
+        } finally {
+            setCreating(false)
+        }
+    }
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -89,6 +117,16 @@ export function NewInterviewPicker({ contractors }: { contractors: PickerContrac
                         )}
                     </div>
                 </ScrollArea>
+                {canCreate && (
+                    <Button variant="outline" onClick={create} disabled={creating} className="w-full">
+                        {creating ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <UserPlus className="mr-2 h-4 w-4" />
+                        )}
+                        Dodaj konsultanta „{query}” i rozpocznij rozmowę
+                    </Button>
+                )}
             </DialogContent>
         </Dialog>
     )
