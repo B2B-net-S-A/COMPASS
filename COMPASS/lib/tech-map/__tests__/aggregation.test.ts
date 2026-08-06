@@ -232,14 +232,14 @@ describe('buildClientTechMap — notatki, zespół, prywatność', () => {
         const map = buildClientTechMap({
             ...base,
             cards: [
-                card({ id: 'c1', interview_date: '2026-07-01', team_size: 12, team_externals: 5 }),
+                card({ id: 'c1', interview_date: '2026-07-01', team_size: '10-15', team_externals: 5 }),
                 card({ id: 'c2', interview_date: '2026-07-20' }),
             ],
             techLinks: [],
             vendorLinks: [],
             initiatives: [],
         })
-        expect(map.teamSizeLatest).toEqual({ size: 12, externals: 5, date: '2026-07-01' })
+        expect(map.teamSizeLatest).toEqual({ size: '10-15', externals: 5, date: '2026-07-01' })
     })
 
     it('wynik nie zawiera żadnych identyfikatorów kart ani konsultantów', () => {

@@ -25,7 +25,7 @@ export interface AggCard {
     tech_old_new: string | null
     vendors_note: string | null
     memorable_quote: string | null
-    team_size: number | null
+    team_size: string | null
     team_externals: number | null
 }
 
@@ -118,7 +118,7 @@ export interface ClientTechMap {
     coverage: AreaCoverage[]
     /** Notatki tekstowe (stare/nowe, dostawcy, cytaty) — bez autora, z datą. */
     notes: Array<{ date: string; kind: 'tech_old_new' | 'vendors_note' | 'quote'; text: string }>
-    teamSizeLatest: { size: number | null; externals: number | null; date: string } | null
+    teamSizeLatest: { size: string | null; externals: number | null; date: string } | null
 }
 
 // ─── Implementacja ──────────────────────────────────────────────────────────
