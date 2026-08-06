@@ -50,6 +50,9 @@ const MONTHS_PL = [
     'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
 ]
 
+// Szybkie przedziały do wyboru — pole i tak przyjmuje dowolny tekst.
+const TEAM_SIZE_RANGES = ['0-5', '5-10', '10-15', '15-20', '20-50', '50+']
+
 function localTodayISO(): string {
     return new Intl.DateTimeFormat('en-CA').format(new Date())
 }
@@ -154,7 +157,7 @@ export function InterviewCardForm(props: Props) {
     // Technologie i zespół
     const [technologyIds, setTechnologyIds] = useState<string[]>(props.initial.technologyIds)
     const [techOldNew, setTechOldNew] = useState(props.initial.techOldNew ?? '')
-    const [teamSize, setTeamSize] = useState<string>(props.initial.teamSize?.toString() ?? '')
+    const [teamSize, setTeamSize] = useState<string>(props.initial.teamSize ?? '')
     const [teamExternals, setTeamExternals] = useState<string>(props.initial.teamExternals?.toString() ?? '')
 
     // Inicjatywy / projekty
@@ -206,7 +209,7 @@ export function InterviewCardForm(props: Props) {
             hiringSource,
             memorableQuote: memorableQuote || null,
             techOldNew: techOldNew || null,
-            teamSize: teamSize === '' ? null : Number.parseInt(teamSize, 10),
+            teamSize: teamSize.trim() === '' ? null : teamSize.trim(),
             teamExternals: teamExternals === '' ? null : Number.parseInt(teamExternals, 10),
             vendorsNote: vendorsNote || null,
             technologyIds,
@@ -608,11 +611,26 @@ export function InterviewCardForm(props: Props) {
                         <div className="space-y-1.5">
                             <Label>Wielkość zespołu</Label>
                             <Input
-                                type="number"
-                                min={0}
                                 value={teamSize}
                                 onChange={(e) => setTeamSize(e.target.value)}
+                                placeholder="np. 5-10, ok. 20, cały dział ~50"
                             />
+                            <div className="flex flex-wrap gap-1.5">
+                                {TEAM_SIZE_RANGES.map((r) => (
+                                    <button
+                                        key={r}
+                                        type="button"
+                                        onClick={() => setTeamSize(teamSize === r ? '' : r)}
+                                        className={
+                                            teamSize === r
+                                                ? 'rounded-md border border-primary bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary'
+                                                : 'rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted'
+                                        }
+                                    >
+                                        {r}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                         <div className="space-y-1.5">
                             <Label>W tym zewnętrznych</Label>

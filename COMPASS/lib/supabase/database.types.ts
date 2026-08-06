@@ -6060,7 +6060,7 @@ export type Database = {
           status: string | null
           tcm_id: string | null
           team_externals: number | null
-          team_size: number | null
+          team_size: string | null
           tech_old_new: string | null
           updated_at: string
           vendors_note: string | null
@@ -6090,7 +6090,7 @@ export type Database = {
           status?: string | null
           tcm_id?: string | null
           team_externals?: number | null
-          team_size?: number | null
+          team_size?: string | null
           tech_old_new?: string | null
           updated_at?: string
           vendors_note?: string | null
@@ -6120,7 +6120,7 @@ export type Database = {
           status?: string | null
           tcm_id?: string | null
           team_externals?: number | null
-          team_size?: number | null
+          team_size?: string | null
           tech_old_new?: string | null
           updated_at?: string
           vendors_note?: string | null

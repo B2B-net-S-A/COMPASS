@@ -144,7 +144,7 @@ export interface TechInterviewCardRow {
     hiring_source: HiringSource | null
     memorable_quote: string | null
     tech_old_new: string | null
-    team_size: number | null
+    team_size: string | null
     team_externals: number | null
     vendors_note: string | null
     project_end_alerted_at: string | null
@@ -203,7 +203,7 @@ export interface CardInput {
     hiringSource: HiringSource | null
     memorableQuote: string | null
     techOldNew: string | null
-    teamSize: number | null
+    teamSize: string | null
     teamExternals: number | null
     vendorsNote: string | null
     technologyIds: string[]
