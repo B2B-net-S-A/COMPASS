@@ -33,6 +33,7 @@ export interface InternalAuthContext {
     canLogOvertime: boolean
     // Phase 46c: read-only na zagregowaną kartę klienta mapy technologicznej (sprzedaż).
     canViewTechMap: boolean
+    canViewLegalMonitor: boolean
 }
 
 interface AuthContextBase {
@@ -42,6 +43,7 @@ interface AuthContextBase {
     hasTcmAccess: boolean
     canLogOvertime: boolean
     canViewTechMap: boolean
+    canViewLegalMonitor: boolean
 }
 
 async function loadAuthContext(): Promise<AuthContextBase | null> {
@@ -51,13 +53,14 @@ async function loadAuthContext(): Promise<AuthContextBase | null> {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('role, has_tcm_access, can_log_overtime, can_view_tech_map')
+        .select('role, has_tcm_access, can_log_overtime, can_view_tech_map, can_view_legal_monitor')
         .eq('id', user.id)
         .single<{
             role: string | null
             has_tcm_access: boolean | null
             can_log_overtime: boolean | null
             can_view_tech_map: boolean | null
+            can_view_legal_monitor: boolean | null
         }>()
 
     const role = (profile?.role ?? 'consultant') as AppRole
@@ -68,6 +71,7 @@ async function loadAuthContext(): Promise<AuthContextBase | null> {
         hasTcmAccess: profile?.has_tcm_access === true,
         canLogOvertime: profile?.can_log_overtime === true,
         canViewTechMap: profile?.can_view_tech_map === true,
+        canViewLegalMonitor: profile?.can_view_legal_monitor === true,
     }
 }
 
@@ -238,10 +242,28 @@ export async function requireTalentCommunityOrAdminLayout(): Promise<InternalAut
  */
 export async function requireInternalAdminAreaLayout(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminLayout()
-    if (!ctx.isAdmin && ctx.role !== 'finanse' && !ctx.isManager) {
+    // Phase 50: grant can_view_legal_monitor wpuszcza do huba na read-only
+    // zakładkę monitoringu (page.tsx pokazuje mu wtedy TYLKO ją).
+    if (!ctx.isAdmin && ctx.role !== 'finanse' && !ctx.isManager && !ctx.canViewLegalMonitor) {
         redirect('/internal')
     }
     return ctx
+}
+
+/**
+ * Phase 50 — odczyt monitoringu prawnego: finanse/admin LUB grant
+ * can_view_legal_monitor (zarząd/manager, read-only). Lustro SQL
+ * `has_legal_monitor_read()`. Przegląd wpisów (UPDATE) zostaje przy
+ * requireFinanseOrAdminAction — flaga daje wgląd, nie prawo decyzji.
+ */
+export async function requireLegalMonitorViewerAction(): Promise<InternalAuthContext> {
+    const ctx = await loadAuthContext()
+    if (!ctx) throw new Error('Unauthorized')
+    const isFinanseOrAdmin = ctx.role === 'admin' || ctx.role === 'finanse'
+    if (!isFinanseOrAdmin && !(ctx.canViewLegalMonitor && ctx.role !== 'consultant')) {
+        throw new Error('Brak uprawnień do monitoringu prawnego.')
+    }
+    return buildCtx(ctx)
 }
 
 /**

@@ -3,8 +3,10 @@
 // use-server (push) — NIE importować z komponentu klienckiego ani testu. Czyste
 // helpery (selekcja, parsowanie, deadline) są w alert-selection.ts (testowalne).
 
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
-import { logger } from '@/lib/logger'
+import {
+    dispatchGenericAlert,
+    resolveAlertRecipients,
+} from '@/lib/notifications/alert-dispatch'
 import type { createServiceClient } from '@/lib/supabase/admin'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
@@ -34,14 +36,7 @@ export async function resolveRecipients(
     settingKey: string,
     fallbackUserIds: string[],
 ): Promise<string[]> {
-    const { data } = await admin
-        .from('system_settings')
-        .select('value')
-        .eq('key', settingKey)
-        .maybeSingle()
-    const configured = parseRecipientCsv((data as { value?: string } | null)?.value ?? null)
-    if (configured.length > 0) return configured
-    return Array.from(new Set(fallbackUserIds.filter(Boolean)))
+    return resolveAlertRecipients(admin, settingKey, fallbackUserIds, parseRecipientCsv)
 }
 
 /** Wszyscy admin + talent_community (poza exited) — ostateczny fallback. */
@@ -78,67 +73,5 @@ export async function dispatchAlert(
     recipientIds: string[],
     payload: AlertPayload,
 ): Promise<number> {
-    const ids = Array.from(new Set(recipientIds.filter(Boolean)))
-    if (ids.length === 0) return 0
-
-    const { data: profiles } = await admin
-        .from('profiles')
-        .select('id, email, full_name')
-        .in('id', ids)
-    const byId = new Map(
-        ((profiles ?? []) as Array<{ id: string; email: string | null; full_name: string | null }>).map(
-            (p) => [p.id, p],
-        ),
-    )
-
-    let notified = 0
-    for (const uid of ids) {
-        const profile = byId.get(uid)
-
-        // supabase-js v2 nie rejectuje — resolwuje {error}. Bez tego .then() błąd
-        // insertu byłby „fulfilled" i kanał in_app nigdy nie trafiłby do logu awarii.
-        const inApp = admin
-            .from('notifications')
-            .insert({
-                user_id: uid,
-                type: payload.type,
-                title_pl: payload.titlePl,
-                title_en: payload.titleEn,
-                body_pl: payload.bodyPl,
-                body_en: payload.bodyEn,
-                action_url: payload.actionUrl,
-                priority: 'normal',
-            })
-            .then(({ error }) => {
-                if (error) throw new Error(error.message)
-                return { ok: true }
-            })
-
-        const push = sendPushToUserId(uid, {
-            title: payload.titlePl,
-            body: payload.bodyPl,
-            url: payload.actionUrl,
-            tag: payload.pushTag,
-        }).catch(() => ({ sent: 0, failed: 1 }))
-
-        const email = profile?.email
-            ? payload.emailFn(profile.email, profile.full_name ?? 'Zespół')
-            : Promise.resolve({ success: false })
-
-        const results = await Promise.allSettled([inApp, push, email])
-        const channels = ['in_app', 'push', 'email'] as const
-        results.forEach((r, idx) => {
-            if (r.status === 'rejected') {
-                logger.error({
-                    event: 'tech_map.alert.channel_failed',
-                    channel: channels[idx],
-                    type: payload.type,
-                    user_id: uid,
-                    error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-                })
-            }
-        })
-        notified += 1
-    }
-    return notified
+    return dispatchGenericAlert(admin, recipientIds, payload, 'tech_map.alert.channel_failed')
 }

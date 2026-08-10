@@ -3754,6 +3754,10 @@ export type Database = {
       }
       legal_monitor_items: {
         Row: {
+          alerted_at: string | null
+          assigned_to: string | null
+          due_date: string | null
+          reminded_at: string | null
           created_at: string
           dedupe_key: string
           id: string
@@ -3773,6 +3777,10 @@ export type Database = {
           why_it_matters: string
         }
         Insert: {
+          alerted_at?: string | null
+          assigned_to?: string | null
+          due_date?: string | null
+          reminded_at?: string | null
           created_at?: string
           dedupe_key: string
           id?: string
@@ -3792,6 +3800,10 @@ export type Database = {
           why_it_matters: string
         }
         Update: {
+          alerted_at?: string | null
+          assigned_to?: string | null
+          due_date?: string | null
+          reminded_at?: string | null
           created_at?: string
           dedupe_key?: string
           id?: string
@@ -3811,6 +3823,13 @@ export type Database = {
           why_it_matters?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "legal_monitor_items_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "legal_monitor_items_reviewed_by_fkey"
             columns: ["reviewed_by"]
@@ -5030,6 +5049,7 @@ export type Database = {
           hired_at: string | null
           id: string
           can_log_overtime: boolean
+          can_view_legal_monitor: boolean
           can_view_tech_map: boolean
           has_tcm_access: boolean
           is_external: boolean
@@ -5100,6 +5120,7 @@ export type Database = {
           hired_at?: string | null
           id: string
           can_log_overtime?: boolean
+          can_view_legal_monitor?: boolean
           can_view_tech_map?: boolean
           has_tcm_access?: boolean
           is_external?: boolean
@@ -5170,6 +5191,7 @@ export type Database = {
           hired_at?: string | null
           id?: string
           can_log_overtime?: boolean
+          can_view_legal_monitor?: boolean
           can_view_tech_map?: boolean
           has_tcm_access?: boolean
           is_external?: boolean
@@ -7163,6 +7185,7 @@ export type Database = {
         Args: { p_category_id: string }
         Returns: boolean
       }
+      has_legal_monitor_read: { Args: never; Returns: boolean }
       is_finanse_or_admin: { Args: never; Returns: boolean }
       is_inbox_category: { Args: { p_category_id: string }; Returns: boolean }
       is_inbox_handler: { Args: never; Returns: boolean }

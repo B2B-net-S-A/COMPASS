@@ -1,5 +1,6 @@
 import { logger, logCompat } from '@/lib/logger'
 import { sendEmail, type SendResult } from '@/lib/email/sender'
+import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
 
 // Phase 17b PR-E — Provider-agnostic email send.
 //
@@ -1899,4 +1900,125 @@ export async function sendTechMapProjectEnd(
         logCompat.error('Tech-map-project-end email failed:', err)
         return { success: false }
     }
+}
+
+// ─── Phase 50 — Monitoring prawny ────────────────────────────────────────────
+
+const LEGAL_MONITOR_URL = 'https://compass.dynaminds.pl/internal/admin?tab=legal-monitor'
+
+/** Escape treści od pipeline'u AI — leci do HTML maila, więc nie ufamy jej. */
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+}
+
+async function sendLegalMonitorMail(
+    recipientEmail: string,
+    subject: string,
+    tag: string,
+    accent: string,
+    bodyHtml: string,
+    logLabel: string,
+): Promise<{ success: boolean }> {
+    const html = wrapHrEmail({ tag, heading: subject, bodyHtml, accent })
+    try {
+        const { error } = await getResend().emails.send({
+            from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+            to: recipientEmail,
+            subject,
+            html,
+        })
+        if (error) logCompat.error(`Resend ${logLabel} error:`, error)
+        return { success: !error }
+    } catch (err) {
+        logCompat.error(`${logLabel} email failed:`, err)
+        return { success: false }
+    }
+}
+
+/** Nowy czerwony wpis — może wymagać decyzji. Accent czerwony. */
+export async function sendLegalMonitorRed(
+    recipientEmail: string,
+    recipientName: string,
+    title: string,
+    sourceLabel: string,
+    whyItMatters: string,
+    url: string | null,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Monitoring prawny: ${title.slice(0, 90)}`
+    // Ta sama funkcja co w UI — jedno źródło prawdy o tym, który link jest
+    // bezpieczny. Osobny regex tutaj byłby drugą, cicho rozjeżdżającą się regułą.
+    const safeUrl = safeExternalUrl(url)
+    const bodyHtml = `
+        <p style="color:#d1d5db;font-size:14px;">Cześć ${escapeHtml(recipientName)},</p>
+        <p style="color:#d1d5db;font-size:14px;">Monitoring prawny dopisał pozycję oznaczoną jako <strong>mogącą wymagać decyzji</strong>:</p>
+        <p style="color:#d1d5db;font-size:14px;"><strong>${escapeHtml(title)}</strong><br/>
+           <span style="color:#9ca3af;font-size:13px;">${escapeHtml(sourceLabel)}</span></p>
+        <p style="color:#d1d5db;font-size:14px;"><strong>Co to znaczy dla firmy:</strong> ${escapeHtml(whyItMatters)}</p>
+        ${safeUrl ? `<p style="font-size:14px;"><a href="${safeUrl}" style="color:#60a5fa;">Otwórz źródło</a></p>` : ''}
+        <p style="font-size:14px;"><a href="${LEGAL_MONITOR_URL}" style="color:#60a5fa;">Przejrzyj w COMPASS</a></p>
+    `
+    return sendLegalMonitorMail(recipientEmail, subject, 'Monitoring prawny', '#ef4444', bodyHtml, 'legal-monitor-red')
+}
+
+/** Monitoring milczy w dzień roboczy albo źródło pada seryjnie. Accent bursztynowy. */
+export async function sendLegalMonitorOps(
+    recipientEmail: string,
+    recipientName: string,
+    headline: string,
+    detail: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Monitoring prawny — ${headline}`
+    const bodyHtml = `
+        <p style="color:#d1d5db;font-size:14px;">Cześć ${escapeHtml(recipientName)},</p>
+        <p style="color:#d1d5db;font-size:14px;">${escapeHtml(detail)}</p>
+        <p style="color:#9ca3af;font-size:13px;">Zadaniem cyklicznym monitoringu zarządza właściciel konta Claude — zmiana harmonogramu lub pauza to jedno zdanie w dowolnej sesji.</p>
+        <p style="font-size:14px;"><a href="${LEGAL_MONITOR_URL}" style="color:#60a5fa;">Historia sprawdzeń w COMPASS</a></p>
+    `
+    return sendLegalMonitorMail(recipientEmail, subject, 'Monitoring prawny', '#f59e0b', bodyHtml, 'legal-monitor-ops')
+}
+
+/** Przypomnienie o przeterminowanej reakcji na wpis. Accent bursztynowy. */
+export async function sendLegalMonitorDue(
+    recipientEmail: string,
+    recipientName: string,
+    title: string,
+    dueDate: string,
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Zaległa reakcja: ${title.slice(0, 80)}`
+    const bodyHtml = `
+        <p style="color:#d1d5db;font-size:14px;">Cześć ${escapeHtml(recipientName)},</p>
+        <p style="color:#d1d5db;font-size:14px;">Wpis monitoringu prawnego oznaczony jako <strong>do reakcji</strong> ma termin <strong>${escapeHtml(dueDate)}</strong>, który już minął:</p>
+        <p style="color:#d1d5db;font-size:14px;"><strong>${escapeHtml(title)}</strong></p>
+        <p style="font-size:14px;"><a href="${LEGAL_MONITOR_URL}" style="color:#60a5fa;">Otwórz w COMPASS</a></p>
+    `
+    return sendLegalMonitorMail(recipientEmail, subject, 'Monitoring prawny', '#f59e0b', bodyHtml, 'legal-monitor-due')
+}
+
+/** Tygodniowe podsumowanie. Accent niebieski (informacja, nie alarm). */
+export async function sendLegalMonitorDigest(
+    recipientEmail: string,
+    recipientName: string,
+    from: string,
+    counts: { total: number; red: number; yellow: number; green: number; pending: number },
+    titles: string[],
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Monitoring prawny — podsumowanie tygodnia (${counts.total})`
+    const list = titles.length > 0
+        ? `<ul style="color:#d1d5db;font-size:14px;line-height:1.6;">${titles
+              .map((t) => `<li>${escapeHtml(t)}</li>`)
+              .join('')}</ul>`
+        : '<p style="color:#9ca3af;font-size:14px;">Brak nowych pozycji w tym tygodniu.</p>'
+    const bodyHtml = `
+        <p style="color:#d1d5db;font-size:14px;">Cześć ${escapeHtml(recipientName)},</p>
+        <p style="color:#d1d5db;font-size:14px;">Od ${escapeHtml(from)} monitoring dopisał <strong>${counts.total}</strong> pozycji
+           (${counts.red} mogących wymagać decyzji, ${counts.yellow} do omówienia, ${counts.green} kontekstowych).</p>
+        ${list}
+        <p style="color:#d1d5db;font-size:14px;">Nieprzejrzanych w skrzynce łącznie: <strong>${counts.pending}</strong>.</p>
+        <p style="font-size:14px;"><a href="${LEGAL_MONITOR_URL}" style="color:#60a5fa;">Otwórz skrzynkę</a></p>
+    `
+    return sendLegalMonitorMail(recipientEmail, subject, 'Monitoring prawny', '#3b82f6', bodyHtml, 'legal-monitor-digest')
 }

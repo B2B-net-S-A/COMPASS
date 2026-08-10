@@ -1404,6 +1404,73 @@ Claude (zmiana godziny / pauza / nowe źródło = jedno zdanie do Claude w dowol
 RLS na prodzie (2026-08-10, transakcje z ROLLBACK): `finanse` widzi 15 wpisów / 3 przebiegi i
 aktualizuje 1 wiersz; `consultant` widzi 0 i aktualizuje 0.
 
+## Phase 50 — Monitoring prawny przestaje być pasywny (alerty + follow-up, 2026-08-10)
+
+Phase 48 dała skrzynkę, ale **moduł niczego nie wypychał**: jedynym sygnałem, że automat coś dorzucił
+— albo że przestał chodzić — był licznik na zakładce schowanej w Administracji HR. Narzędzie do
+pilnowania zmian prawnych, które wymaga pamiętania, żeby do niego zajrzeć, ma wbudowaną wadę.
+Dane to potwierdzały: start modułu to **backfill 13 miesięcy** (dokumenty 2025-07-03 → 2026-08-04),
+a bieżący ruch to 0–4 wpisy dziennie — skrzynka się nie zapycha, tylko cicho czeka.
+
+**Cron `legal-monitor-alerts`** (`0 8 * * *`, po przebiegu pipeline'u) robi pięć rzeczy w JEDNYM
+przebiegu, żeby po stronie Coolify było jedno zadanie, nie pięć: czerwony wpis · cisza monitoringu ·
+seria awarii źródła · zaległa reakcja · poniedziałkowy digest.
+
+### Cztery decyzje, które łatwo cofnąć nie znając powodu
+
+1. **Alert o awarii źródła dopiero po `SOURCE_FAILURE_STREAK_THRESHOLD` (3) przebiegach z rzędu.**
+   Pojedynczy `partial` to rutyna — 2 z 3 pierwszych przebiegów na prodzie miały `SEJM_RCL: fail`
+   (api.sejm.gov.pl bywa nieosiągalne). Alert o każdym wyrobiłby odruch ignorowania i przykrył ten
+   jeden ważny. Warunek to `=== threshold`, nie `>=` — daje dokładnie jeden alert na epizod **bez
+   trzymania stanu w bazie**: przy serii 4, 5, 6… już nie alertujemy, a po odzyskaniu źródła licznik
+   sam wraca do zera.
+2. **Termin reakcji siedzi NA WPISIE, nie w zadaniu.** Pierwotny pomysł („Do reakcji" → zadanie, jak
+   `TicketToTaskButton`) rozbija się o uprawnienia: `contractor_tasks` ma RLS `has_lifecycle_access()`
+   (admin+TCM — `finanse` by tam nie sięgnął), a `tasks` to osobiste tablice kanban przypisane do
+   właściciela. `due_date` + `assigned_to` na `legal_monitor_items` dają follow-through bez
+   przeciągania uprawnień przez pół aplikacji, a cron przypomina o zaległościach.
+3. **Digest to gałąź TEGO SAMEGO crona, nie osobny harmonogram** (`isDigestDay` — poniedziałek czasu
+   warszawskiego). Przy 0–4 wpisach dziennie codzienny mail o żółtych i zielonych to szum; jedno
+   podsumowanie tygodniowo pasuje do wolumenu, a Coolify dostaje jedno zadanie do dodania.
+4. **Hurtowe „Przejrzane" z pustą notatką NIE kasuje notatek indywidualnych** — inaczej jedno
+   kliknięcie wymazałoby ustalenia wpisane wcześniej ręcznie. `review_note` trafia do UPDATE tylko
+   wtedy, gdy operator faktycznie coś wpisał.
+
+**Grant `profiles.can_view_legal_monitor`** (piąta flaga tego typu, wzorzec Phase 45/46c) daje
+zarządowi/managerowi podgląd bez nadawania roli `finanse` (która odblokowałaby faktury i stawki).
+SQL: `has_legal_monitor_read()` — nazwa **celowo różna od kolumny**, żeby w ciele funkcji nie było
+wątpliwości, czy identyfikator to kolumna czy wywołanie. Flaga rozszerza **tylko SELECT**; UPDATE
+zostaje przy `is_finanse_or_admin()`, więc posiadacz czyta, ale nie przegląda.
+`requireInternalAdminAreaLayout` wpuszcza go do huba, a `visibleTabs` pokazuje mu **wyłącznie**
+zakładkę monitoringu.
+
+**Dispatcher alertów wyjechał do `lib/notifications/alert-dispatch.ts`** — ten sam kod obsługuje
+teraz tech-mapę (Phase 46c) i monitoring. `lib/tech-map/alerts.ts` to cienkie opakowanie zachowujące
+poprzedni interfejs; 80 testów tech-mapy potwierdza brak regresji.
+
+**Phase 50b — źródło `PRASA`.** Artur wskazał prawo.pl, porozmawiajmyopodatkach.pl, newsletter
+pl.andersen.com i estonskicit.com. Samo ich czytanie jest po stronie pipeline'u, ale `source` ma
+sztywny CHECK — bez tej wartości **każdy taki wpis odbiłby się od constraintu przy INSERT**.
+`PRASA` = pozycje, których pierwotnym źródłem jest omówienie; gdy pipeline dociera do samego
+orzeczenia, nadal używa kodu rejestru, a prasę podaje w `source_label` (tak jak dziś robi
+„TK — Trybunał Konstytucyjny / prasa").
+
+**Pliki:** [alert-selection.ts](COMPASS/lib/legal-monitor/alert-selection.ts) (czysta selekcja,
+25 testów) · [alerts.ts](COMPASS/lib/legal-monitor/alerts.ts) (I/O) ·
+[alert-dispatch.ts](COMPASS/lib/notifications/alert-dispatch.ts) · `app/api/cron/legal-monitor-alerts/`.
+Audyt: `LEGAL_MONITOR_ALERTS_RUN` (start/done), `LEGAL_MONITOR_ITEMS_BULK_REVIEWED`,
+`LEGAL_MONITOR_FOLLOWUP_SET`, `LEGAL_MONITOR_EXPORTED_CSV`.
+
+**Ops po deploy:**
+
+| Nazwa | Schedule | Komenda |
+|---|---|---|
+| `legal-monitor-alerts` | `0 8 * * *` | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/legal-monitor-alerts"` |
+
+Odbiorcy alertów (opcjonalnie — bez nich fallback na wszystkich finanse+admin): `system_settings`
+klucze `legal_monitor_red_recipients` (czerwone + digest) i `legal_monitor_ops_recipients` (cisza,
+awarie źródeł), oba jako CSV z UUID.
+
 ## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
 
 Nagłówki obu strumieni pracy People Ops były nieedytowalne, a oba brały tytuł z cudzych danych:
