@@ -37,6 +37,7 @@ import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { logCompat } from '@/lib/logger'
 import { reviewLegalMonitorItem } from '@/lib/actions/legal-monitor'
+import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
 import {
     LEGAL_MONITOR_SOURCES,
     LEGAL_MONITOR_TOPICS,
@@ -97,6 +98,7 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
 
     const [detail, setDetail] = useState<LegalMonitorItemRow | null>(null)
     const [note, setNote] = useState('')
+    const safeUrl = useMemo(() => safeExternalUrl(detail?.url), [detail])
 
     const statusCounts = useMemo(() => {
         const c: Record<StatusFilter, number> = {
@@ -362,9 +364,11 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                                     </p>
                                 </section>
 
-                                {detail.url && (
+                                {/* URL pochodzi z pipeline'u (treść z zewnątrz) — renderujemy
+                                    link dopiero po sprawdzeniu schematu, patrz safe-url.ts. */}
+                                {safeUrl ? (
                                     <a
-                                        href={detail.url}
+                                        href={safeUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline break-all"
@@ -372,6 +376,15 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                                         <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                         Otwórz źródło
                                     </a>
+                                ) : (
+                                    detail.url && (
+                                        // Mówimy wprost, że link był, ale go nie otworzymy —
+                                        // ciche zniknięcie wyglądałoby jak wpis bez źródła.
+                                        <p className="text-xs text-muted-foreground">
+                                            Link do źródła ma nieprawidłowy adres i nie został
+                                            udostępniony.
+                                        </p>
+                                    )
                                 )}
 
                                 {detail.reviewed_at && (

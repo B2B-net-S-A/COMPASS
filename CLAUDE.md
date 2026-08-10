@@ -1369,6 +1369,11 @@ automat coś dorzucił, dopóki tam nie kliknie. Błąd licznika nie może wywal
 3. **`sources_checked` ma trzy wartości, nie dwie**: `ok` / `empty` / `fail`. `empty` (źródło
    odpowiedziało, ale bez nowości) to stan normalny — do bannera i listy „niedostępnych" liczy się
    wyłącznie `fail`. Pierwszy realny przebieg miał `SEJM_RCL: fail` przy reszcie `empty`.
+4. **`url` z pipeline'u to treść z zewnątrz** — przed renderem przechodzi przez
+   [safeExternalUrl](COMPASS/lib/legal-monitor/safe-url.ts) (tylko http/https, parsowanie przez
+   `URL`, nie regexem). React nie sanityzuje `href`, więc `javascript:` w linku wykonałby się
+   w sesji użytkownika finanse/admin. Odrzucony link nie znika po cichu — zostaje informacja,
+   że wpis miał źródło o nieprawidłowym adresie (inaczej wyglądałby jak wpis bez źródła).
 
 **Pliki:** [lib/types/legal-monitor.ts](COMPASS/lib/types/legal-monitor.ts) (unie + etykiety PL) ·
 [lib/legal-monitor/health.ts](COMPASS/lib/legal-monitor/health.ts) (czysta logika bannera i

@@ -63,6 +63,9 @@ export async function listLegalMonitorItems(): Promise<LegalMonitorItemRow[]> {
         .select(
             'id, source, source_label, topic, severity, published_at, reference, title, url, summary, why_it_matters, status, reviewed_by, reviewed_at, review_note, created_at',
         )
+        // To sortowanie NIE jest zbędne mimo późniejszego sortItemsForReview: decyduje,
+        // KTÓRE wiersze przetrwają limit poniżej. Bez niego Postgres mógłby oddać
+        // dowolne 1000 wierszy i najświeższe wpisy zniknęłyby ze skrzynki.
         .order('created_at', { ascending: false })
         .limit(ITEMS_LIMIT)
     if (error) throw new Error(`Błąd pobierania monitoringu prawnego: ${error.message}`)
