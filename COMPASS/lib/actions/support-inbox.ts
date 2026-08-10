@@ -472,12 +472,17 @@ export async function renameInboxTicket(
             .single()
         if (!meta) return { success: false, error: 'To zgłoszenie nie jest typu inbox' }
 
+        // Brak wiersza traktujemy jak błąd, nie jak cichy sukces: UPDATE na zero
+        // wierszy zwraca w PostgREST `error: null`, więc bez tej bramki akcja
+        // zameldowałaby zmianę i zapisała do audytu parę [null, nowy] dla
+        // nieistniejącego zgłoszenia.
         const { data: before } = await supabase
             .from('support_tickets')
             .select('subject')
             .eq('id', ticketId)
             .single()
-        const previous = (before as { subject?: string } | null)?.subject ?? null
+        if (!before) return { success: false, error: 'Zgłoszenie nie istnieje lub brak dostępu' }
+        const previous = before.subject
         if (previous === trimmed) return { success: true, data: { subject: trimmed } }
 
         const { error } = await supabase

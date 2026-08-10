@@ -300,6 +300,22 @@ describe('renameInboxTicket', () => {
         expect(res.success).toBe(false)
     })
 
+    it('reports an error instead of a silent success when the ticket row is gone', async () => {
+        // UPDATE na zero wierszy zwraca w PostgREST error: null — bez bramki na
+        // brakujący wiersz akcja zameldowałaby zmianę, której nie było.
+        setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables({
+                support_inbox_meta: [
+                    { ticket_id: 't-gone', source: 'manual_paste', priority_level: 'P2', due_date: '2026-05-13T10:00:00Z', consultant_id: null, external_message_id: null, email_from: null, email_subject: 'Sierota', email_received_at: null, created_at: '2026-05-01' },
+                ],
+            }),
+        })
+        const { renameInboxTicket } = await import('../support-inbox')
+        const res = await renameInboxTicket('t-gone', 'Nowy tytuł')
+        expect(res.success).toBe(false)
+    })
+
     it('saves a trimmed title and leaves the original email_subject untouched', async () => {
         const client = setupClient({
             user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
