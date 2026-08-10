@@ -1,17 +1,23 @@
 'use client'
 
-// Phase 48 — skrzynka monitoringu prawnego: filtry + lista + panel szczegółu z przeglądem.
+// Phase 48/50 — skrzynka monitoringu prawnego: filtry + lista + panel szczegółu.
 //
 // Domyślny widok to skrzynka (`new`), bo moduł ma jedno zadanie: przejrzeć to, co
 // dopisał pipeline. Wpisy są już posortowane po stronie serwera (pilność → data),
 // więc tutaj tylko filtrujemy — bez ponownego sortowania, żeby kolejność
 // czerwonych na górze nie rozjechała się między widokami.
+//
+// Phase 50: zaznaczanie hurtem (start modułu to backfill kilkunastu pozycji —
+// klikanie ich po jednej sprawia, że nikt tego nie zrobi), termin reakcji
+// z osobą odpowiedzialną, eksport CSV i tryb read-only dla posiadaczy grantu
+// `can_view_legal_monitor` (zarząd widzi, ale nie przegląda).
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,17 +36,31 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { Check, CircleAlert, ExternalLink, Loader2, Scale, Search, X } from 'lucide-react'
+import {
+    CalendarClock,
+    Check,
+    CircleAlert,
+    Download,
+    ExternalLink,
+    Loader2,
+    Scale,
+    Search,
+    UserCheck,
+    X,
+} from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { logCompat } from '@/lib/logger'
-import { reviewLegalMonitorItem } from '@/lib/actions/legal-monitor'
+import {
+    exportLegalMonitorCsv,
+    reviewLegalMonitorItem,
+    reviewLegalMonitorItems,
+    setLegalMonitorFollowUp,
+} from '@/lib/actions/legal-monitor'
 import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
 import {
-    LEGAL_MONITOR_SOURCES,
-    LEGAL_MONITOR_TOPICS,
     LEGAL_SEVERITY_META,
     LEGAL_SOURCE_LABELS_PL,
     LEGAL_SOURCE_SHORT_PL,
@@ -83,10 +103,18 @@ function fmtDate(iso: string): string {
 }
 
 function fmtDateTime(iso: string): string {
-    return format(parseISO(iso), "d LLL yyyy, HH:mm", { locale: pl })
+    return format(parseISO(iso), 'd LLL yyyy, HH:mm', { locale: pl })
 }
 
-export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
+interface Props {
+    items: LegalMonitorItemRow[]
+    /** false dla posiadaczy grantu can_view_legal_monitor — widzą, ale nie przeglądają. */
+    canReview: boolean
+    /** Osoby, którym można przypisać reakcję (puste w trybie read-only). */
+    assignees: Array<{ id: string; name: string }>
+}
+
+export function LegalMonitorList({ items, canReview, assignees }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
 
@@ -98,7 +126,11 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
 
     const [detail, setDetail] = useState<LegalMonitorItemRow | null>(null)
     const [note, setNote] = useState('')
+    const [dueDate, setDueDate] = useState('')
+    const [assignedTo, setAssignedTo] = useState('')
     const safeUrl = useMemo(() => safeExternalUrl(detail?.url), [detail])
+
+    const [selected, setSelected] = useState<Set<string>>(new Set())
 
     const statusCounts = useMemo(() => {
         const c: Record<StatusFilter, number> = {
@@ -111,6 +143,17 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
         for (const i of items) c[i.status] += 1
         return c
     }, [items])
+
+    // Filtry pokazują tylko to, co realnie występuje — pusta kategoria w rozwijanej
+    // liście (np. temat bez ani jednego wpisu) wygląda jak zepsuty filtr.
+    const presentTopics = useMemo(
+        () => Array.from(new Set(items.map((i) => i.topic))).sort(),
+        [items],
+    )
+    const presentSources = useMemo(
+        () => Array.from(new Set(items.map((i) => i.source))).sort(),
+        [items],
+    )
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase()
@@ -126,9 +169,29 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
         })
     }, [items, status, severity, topic, source, search])
 
+    const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered])
+    const selectedVisible = visibleIds.filter((id) => selected.has(id))
+    const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length
+
+    const toggleAllVisible = () => {
+        const next = new Set(selected)
+        if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id))
+        else visibleIds.forEach((id) => next.add(id))
+        setSelected(next)
+    }
+
+    const toggleOne = (id: string) => {
+        const next = new Set(selected)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        setSelected(next)
+    }
+
     const openDetail = (item: LegalMonitorItemRow) => {
         setDetail(item)
         setNote(item.review_note ?? '')
+        setDueDate(item.due_date ?? '')
+        setAssignedTo(item.assigned_to ?? '')
     }
 
     const submitReview = (next: LegalMonitorReviewStatus) => {
@@ -141,12 +204,64 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
         startTransition(async () => {
             try {
                 await reviewLegalMonitorItem({ id: target.id, status: next, note })
+                // Termin ma sens tylko przy „do reakcji"; przy pozostałych statusach
+                // czyścimy go, żeby cron nie przypominał o zamkniętej sprawie.
+                const wantsFollowUp = next === 'action_required'
+                const nextDue = wantsFollowUp ? dueDate.trim() || null : null
+                const nextAssignee = wantsFollowUp ? assignedTo || null : null
+                if (nextDue !== (target.due_date ?? null) || nextAssignee !== (target.assigned_to ?? null)) {
+                    await setLegalMonitorFollowUp({
+                        id: target.id,
+                        dueDate: nextDue,
+                        assignedTo: nextAssignee,
+                    })
+                }
                 toastSuccess(`Oznaczono jako „${LEGAL_STATUS_META[next].label}”`)
                 setDetail(null)
+                setSelected((prev) => {
+                    const n = new Set(prev)
+                    n.delete(target.id)
+                    return n
+                })
                 router.refresh()
             } catch (e: unknown) {
                 logCompat.error('[legal-monitor] review failed', e)
                 toast.error(e instanceof Error ? e.message : 'Nie udało się zapisać przeglądu.')
+            }
+        })
+    }
+
+    const submitBulk = (next: LegalMonitorReviewStatus) => {
+        const ids = selectedVisible
+        if (ids.length === 0) return
+        startTransition(async () => {
+            try {
+                const changed = await reviewLegalMonitorItems(ids, next)
+                toastSuccess(`Oznaczono ${changed} wpisów jako „${LEGAL_STATUS_META[next].label}”`)
+                setSelected(new Set())
+                router.refresh()
+            } catch (e: unknown) {
+                logCompat.error('[legal-monitor] bulk review failed', e)
+                toast.error(e instanceof Error ? e.message : 'Nie udało się zapisać przeglądu.')
+            }
+        })
+    }
+
+    const downloadCsv = () => {
+        startTransition(async () => {
+            try {
+                const csv = await exportLegalMonitorCsv(selectedVisible)
+                // BOM dokłada już server action — drugi rozsypałby pierwszą komórkę.
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `monitoring-prawny-${new Date().toISOString().slice(0, 10)}.csv`
+                a.click()
+                URL.revokeObjectURL(url)
+            } catch (e: unknown) {
+                logCompat.error('[legal-monitor] csv export failed', e)
+                toast.error(e instanceof Error ? e.message : 'Nie udało się wyeksportować CSV.')
             }
         })
     }
@@ -162,14 +277,22 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                    <Scale className="h-4 w-4" />
-                    Wpisy monitoringu
-                </CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Pozycje wybrane przez monitoring jako istotne dla modelu firmy. Kolejność:
-                    najpierw te, które mogą wymagać decyzji, potem najświeższe.
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Scale className="h-4 w-4" />
+                            Wpisy monitoringu
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Pozycje wybrane przez monitoring jako istotne dla modelu firmy.
+                            Kolejność: najpierw te, które mogą wymagać decyzji, potem najświeższe.
+                        </p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={downloadCsv} disabled={pending}>
+                        <Download className="h-4 w-4 mr-1.5" />
+                        {selectedVisible.length > 0 ? `CSV (${selectedVisible.length})` : 'CSV'}
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -187,10 +310,7 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <Select
-                        value={severity}
-                        onValueChange={(v) => setSeverity(v as SeverityFilter)}
-                    >
+                    <Select value={severity} onValueChange={(v) => setSeverity(v as SeverityFilter)}>
                         <SelectTrigger className="w-[190px]" aria-label="Filtr pilności">
                             <SelectValue placeholder="Pilność" />
                         </SelectTrigger>
@@ -208,7 +328,7 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Każdy temat</SelectItem>
-                            {LEGAL_MONITOR_TOPICS.map((t) => (
+                            {presentTopics.map((t) => (
                                 <SelectItem key={t} value={t}>
                                     {LEGAL_TOPIC_LABELS_PL[t]}
                                 </SelectItem>
@@ -222,7 +342,7 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Każde źródło</SelectItem>
-                            {LEGAL_MONITOR_SOURCES.map((s) => (
+                            {presentSources.map((s) => (
                                 <SelectItem key={s} value={s}>
                                     {LEGAL_SOURCE_LABELS_PL[s]}
                                 </SelectItem>
@@ -248,6 +368,46 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                     )}
                 </div>
 
+                {canReview && filtered.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/30 px-3 py-2">
+                        <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                                checked={allVisibleSelected}
+                                onCheckedChange={toggleAllVisible}
+                                aria-label="Zaznacz wszystkie widoczne"
+                            />
+                            Zaznacz widoczne ({filtered.length})
+                        </label>
+                        {selectedVisible.length > 0 && (
+                            <>
+                                <span className="text-sm text-muted-foreground">
+                                    zaznaczonych: {selectedVisible.length}
+                                </span>
+                                <div className="flex flex-wrap gap-1.5 ml-auto">
+                                    {REVIEW_ACTIONS.map((a) => (
+                                        <Button
+                                            key={a.status}
+                                            variant={a.variant}
+                                            size="sm"
+                                            disabled={pending}
+                                            onClick={() => submitBulk(a.status)}
+                                        >
+                                            {a.label}
+                                        </Button>
+                                    ))}
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setSelected(new Set())}
+                                    >
+                                        Odznacz
+                                    </Button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
+
                 {filtered.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
                         {status === 'new' && !extraFiltersOn
@@ -260,11 +420,20 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                             const sev = LEGAL_SEVERITY_META[item.severity]
                             const st = LEGAL_STATUS_META[item.status]
                             return (
-                                <li key={item.id}>
+                                <li key={item.id} className="flex items-start gap-2 px-3 hover:bg-muted/50 transition-colors">
+                                    {canReview && (
+                                        <span className="pt-4">
+                                            <Checkbox
+                                                checked={selected.has(item.id)}
+                                                onCheckedChange={() => toggleOne(item.id)}
+                                                aria-label={`Zaznacz: ${item.title}`}
+                                            />
+                                        </span>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={() => openDetail(item)}
-                                        className="w-full text-left px-3 py-3 hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                                        className="flex-1 min-w-0 text-left py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                                     >
                                         <div className="flex items-start gap-2.5">
                                             <span aria-hidden className="mt-0.5 text-sm leading-none">
@@ -272,14 +441,9 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                                             </span>
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="text-sm font-medium">
-                                                        {item.title}
-                                                    </span>
+                                                    <span className="text-sm font-medium">{item.title}</span>
                                                     {item.status !== 'new' && (
-                                                        <Badge
-                                                            variant="outline"
-                                                            className={st.className}
-                                                        >
+                                                        <Badge variant="outline" className={st.className}>
                                                             {st.label}
                                                         </Badge>
                                                     )}
@@ -290,17 +454,24 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
                                                     <span title={LEGAL_SOURCE_LABELS_PL[item.source]}>
                                                         {LEGAL_SOURCE_SHORT_PL[item.source]}
-                                                        {item.source_label &&
-                                                            ` · ${item.source_label}`}
+                                                        {item.source_label && ` · ${item.source_label}`}
                                                     </span>
                                                     <span>{LEGAL_TOPIC_LABELS_PL[item.topic]}</span>
                                                     {item.reference && (
-                                                        <span className="font-mono">
-                                                            {item.reference}
+                                                        <span className="font-mono">{item.reference}</span>
+                                                    )}
+                                                    {item.published_at && <span>{fmtDate(item.published_at)}</span>}
+                                                    {item.due_date && (
+                                                        <span className="inline-flex items-center gap-1 text-warning">
+                                                            <CalendarClock className="h-3 w-3" />
+                                                            termin {fmtDate(item.due_date)}
                                                         </span>
                                                     )}
-                                                    {item.published_at && (
-                                                        <span>{fmtDate(item.published_at)}</span>
+                                                    {item.assigned_to_name && (
+                                                        <span className="inline-flex items-center gap-1">
+                                                            <UserCheck className="h-3 w-3" />
+                                                            {item.assigned_to_name}
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
@@ -349,9 +520,7 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                         Co orzeczono / wydano
                                     </h3>
-                                    <p className="text-sm mt-1 whitespace-pre-wrap">
-                                        {detail.summary}
-                                    </p>
+                                    <p className="text-sm mt-1 whitespace-pre-wrap">{detail.summary}</p>
                                 </section>
 
                                 <section className="rounded-md border border-border/60 bg-muted/40 p-3">
@@ -394,36 +563,102 @@ export function LegalMonitorList({ items }: { items: LegalMonitorItemRow[] }) {
                                     </p>
                                 )}
 
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="legal-monitor-note">Notatka (opcjonalna)</Label>
-                                    <Textarea
-                                        id="legal-monitor-note"
-                                        value={note}
-                                        onChange={(e) => setNote(e.target.value)}
-                                        maxLength={REVIEW_NOTE_MAX}
-                                        rows={3}
-                                        placeholder="Np. ustalenia ze spotkania finansowo-prawnego albo co dalej robimy."
-                                    />
-                                </div>
+                                {canReview ? (
+                                    <>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="legal-monitor-due">
+                                                    Termin reakcji (opcjonalny)
+                                                </Label>
+                                                <Input
+                                                    id="legal-monitor-due"
+                                                    type="date"
+                                                    value={dueDate}
+                                                    onChange={(e) => setDueDate(e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="legal-monitor-assignee">
+                                                    Kto reaguje
+                                                </Label>
+                                                <Select
+                                                    value={assignedTo || 'none'}
+                                                    onValueChange={(v) =>
+                                                        setAssignedTo(v === 'none' ? '' : v)
+                                                    }
+                                                >
+                                                    <SelectTrigger id="legal-monitor-assignee">
+                                                        <SelectValue placeholder="Nikt konkretny" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">
+                                                            Nikt konkretny
+                                                        </SelectItem>
+                                                        {assignees.map((a) => (
+                                                            <SelectItem key={a.id} value={a.id}>
+                                                                {a.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground -mt-2">
+                                            Termin działa przy statusie „Do reakcji” — po nim
+                                            przypomnienie idzie codziennie do wskazanej osoby.
+                                        </p>
+
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="legal-monitor-note">
+                                                Notatka (opcjonalna)
+                                            </Label>
+                                            <Textarea
+                                                id="legal-monitor-note"
+                                                value={note}
+                                                onChange={(e) => setNote(e.target.value)}
+                                                maxLength={REVIEW_NOTE_MAX}
+                                                rows={3}
+                                                placeholder="Np. ustalenia ze spotkania finansowo-prawnego albo co dalej robimy."
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {detail.due_date && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Termin reakcji: {fmtDate(detail.due_date)}
+                                                {detail.assigned_to_name &&
+                                                    ` — ${detail.assigned_to_name}`}
+                                            </p>
+                                        )}
+                                        {detail.review_note && (
+                                            <p className="text-sm italic text-muted-foreground">
+                                                „{detail.review_note}”
+                                            </p>
+                                        )}
+                                    </>
+                                )}
                             </div>
 
-                            <DialogFooter className="gap-2 sm:gap-2">
-                                {REVIEW_ACTIONS.map((a) => (
-                                    <Button
-                                        key={a.status}
-                                        variant={a.variant}
-                                        disabled={pending}
-                                        onClick={() => submitReview(a.status)}
-                                    >
-                                        {pending ? (
-                                            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                                        ) : (
-                                            <Check className="h-4 w-4 mr-1.5" />
-                                        )}
-                                        {a.label}
-                                    </Button>
-                                ))}
-                            </DialogFooter>
+                            {canReview && (
+                                <DialogFooter className="gap-2 sm:gap-2">
+                                    {REVIEW_ACTIONS.map((a) => (
+                                        <Button
+                                            key={a.status}
+                                            variant={a.variant}
+                                            disabled={pending}
+                                            onClick={() => submitReview(a.status)}
+                                        >
+                                            {pending ? (
+                                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                            ) : (
+                                                <Check className="h-4 w-4 mr-1.5" />
+                                            )}
+                                            {a.label}
+                                        </Button>
+                                    ))}
+                                </DialogFooter>
+                            )}
                         </>
                     )}
                 </DialogContent>

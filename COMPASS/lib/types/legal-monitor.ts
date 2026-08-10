@@ -13,6 +13,11 @@ export const LEGAL_MONITOR_SOURCES = [
     'ZUS',
     'SEJM_RCL',
     'TK',
+    // Phase 50b — pozycje, których pierwotnym źródłem jest omówienie, a nie
+    // rejestr urzędowy (prawo.pl, porozmawiajmyopodatkach.pl, newsletter
+    // Andersen, estonskicit.com). Gdy pipeline dociera do samego orzeczenia,
+    // nadal używa kodu rejestru, a prasę podaje w `source_label`.
+    'PRASA',
 ] as const
 export type LegalMonitorSource = (typeof LEGAL_MONITOR_SOURCES)[number]
 
@@ -65,8 +70,15 @@ export interface LegalMonitorItemRow {
     reviewed_at: string | null
     review_note: string | null
     created_at: string
+    /** Phase 50 — termin reakcji (sensowny przy status=action_required). */
+    due_date: string | null
+    /** Phase 50 — kto ma zareagować; null = przypomnienie idzie do odbiorców alertów. */
+    assigned_to: string | null
+    /** Phase 50 — stempel alertu o czerwonym wpisie; null = jeszcze nie alertowano. */
+    alerted_at: string | null
     /** Dołączane przez server action (split query po profiles — bez embed-by-FK). */
     reviewed_by_name: string | null
+    assigned_to_name: string | null
 }
 
 export interface LegalMonitorRunRow {
@@ -87,6 +99,7 @@ export const LEGAL_SOURCE_LABELS_PL: Record<LegalMonitorSource, string> = {
     ZUS: 'ZUS',
     SEJM_RCL: 'Sejm / RCL (legislacja)',
     TK: 'Trybunał Konstytucyjny',
+    PRASA: 'Prasa i komentarze branżowe',
 }
 
 /** Krótka forma do badge'a w wierszu listy — pełna nazwa jest w `source_label`. */
@@ -98,6 +111,7 @@ export const LEGAL_SOURCE_SHORT_PL: Record<LegalMonitorSource, string> = {
     ZUS: 'ZUS',
     SEJM_RCL: 'Sejm/RCL',
     TK: 'TK',
+    PRASA: 'Prasa',
 }
 
 export const LEGAL_TOPIC_LABELS_PL: Record<LegalMonitorTopic, string> = {

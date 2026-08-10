@@ -58,6 +58,8 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
     //   finanse          → invoices + bonuses (raport read-only; gdy invoices off → only bonuses)
     //                      + rates/clients + legal-monitor (RLS: is_finanse_or_admin)
     //   manager          → leave-requests + timesheets + invoices + bonuses + leave-on-behalf (zespół; invoices gated)
+    //   grant can_view_legal_monitor (Phase 50) → WYŁĄCZNIE legal-monitor, read-only
+    const canReviewLegalMonitor = ctx.isAdmin || ctx.role === 'finanse'
     const visibleTabs = ALL_TABS.filter((t) => {
         if (ctx.isAdmin) return true
         if (ctx.role === 'finanse')
@@ -73,8 +75,12 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
                 || t.id === 'bonuses'
                 || t.id === 'placements'
                 || t.id === 'leave-on-behalf'
+                // Manager z grantem widzi monitoring obok swoich zakładek.
+                || (t.id === 'legal-monitor' && ctx.canViewLegalMonitor)
         }
-        return false
+        // Ktoś bez roli w hubie, ale z grantem — wpuszczony przez layout
+        // wyłącznie po to, żeby zobaczyć monitoring.
+        return t.id === 'legal-monitor' && ctx.canViewLegalMonitor
     })
 
     const validTabIds = visibleTabs.map((t) => t.id)
@@ -85,7 +91,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             ? (invoicesUiOn ? 'invoices' : 'bonuses')
             : ctx.isManager
                 ? 'timesheets'
-                : (visibleTabs[0]?.id ?? 'bonuses')
+                : (visibleTabs[0]?.id ?? 'legal-monitor')
     const tab = validTabIds.includes(searchParams?.tab ?? '')
         ? (searchParams!.tab as string)
         : defaultTab
@@ -112,12 +118,17 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
         : visibleTabs
 
     // Tytuł sekcji per role
-    const heading = ctx.isManager && !ctx.isAdmin
+    const onlyLegalMonitor = validTabIds.length === 1 && validTabIds[0] === 'legal-monitor'
+    const heading = onlyLegalMonitor
+        ? 'Monitoring prawny'
+        : ctx.isManager && !ctx.isAdmin
         ? 'Mój zespół'
         : ctx.role === 'finanse' && !ctx.isAdmin
             ? 'Faktury — akceptacja finansowa'
             : 'Administracja HR'
-    const subheading = ctx.isManager && !ctx.isAdmin
+    const subheading = onlyLegalMonitor
+        ? 'Podgląd zmian prawnych istotnych dla modelu firmy (read-only).'
+        : ctx.isManager && !ctx.isAdmin
         ? (invoicesUiOn
             ? 'Akceptacja wniosków urlopowych, timesheetów i faktur (etap merytoryczny) Twoich podwładnych.'
             : 'Akceptacja wniosków urlopowych i timesheetów Twoich podwładnych oraz przypisywanie premii.')
@@ -144,7 +155,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             {tab === 'placements' && <PlacementsAdminPanel />}
             {tab === 'rates' && <AdminRatesPanel />}
             {tab === 'clients' && <AdminClientsPanel />}
-            {tab === 'legal-monitor' && <AdminLegalMonitorPanel />}
+            {tab === 'legal-monitor' && <AdminLegalMonitorPanel canReview={canReviewLegalMonitor} />}
             {tab === 'employees' && <AdminEmployeesPanel />}
         </div>
     )

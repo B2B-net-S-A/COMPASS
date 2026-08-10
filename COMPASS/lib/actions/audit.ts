@@ -242,6 +242,13 @@ export type AuditAction =
     | 'TECH_MAP_PROJECT_END_RUN'
     // Phase 48 — Monitoring prawny (przegląd wpisów przez finanse/admin)
     | 'LEGAL_MONITOR_ITEM_REVIEWED'
+    // Phase 50 — alerty + follow-up monitoringu prawnego
+    | 'LEGAL_MONITOR_ITEMS_BULK_REVIEWED'
+    | 'LEGAL_MONITOR_FOLLOWUP_SET'
+    | 'LEGAL_MONITOR_EXPORTED_CSV'
+    // Heartbeat crona alertów: 'start' bez 'done' = przebieg ubity w locie;
+    // brak 'start' = cron w ogóle nie odpalił.
+    | 'LEGAL_MONITOR_ALERTS_RUN'
     // Phase 49 — edytowalne tytuły (zgłoszenia w People Ops; karta rozmowy ma
     // własny ślad w TECH_CARD_UPDATED)
     | 'INBOX_TICKET_RENAMED'
