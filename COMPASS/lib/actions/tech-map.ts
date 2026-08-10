@@ -373,7 +373,7 @@ function cardPayloadFromInput(input: CardInput) {
         hiring_source: input.hiring === true ? input.hiringSource : null,
         memorable_quote: input.memorableQuote?.trim() || null,
         tech_old_new: input.techOldNew?.trim() || null,
-        team_size: input.teamSize,
+        team_size: input.teamSize?.trim() || null,
         team_externals: input.teamExternals,
         vendors_note: input.vendorsNote?.trim() || null,
     }

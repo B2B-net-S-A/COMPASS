@@ -23,7 +23,7 @@ import {
     finalizeCard,
     saveCard,
 } from '@/lib/actions/tech-map'
-import { validateCardForFinalize } from '@/lib/tech-map/validation'
+import { validateCardBase, validateCardForFinalize } from '@/lib/tech-map/validation'
 import {
     HIRING_SOURCE_PL,
     HIRING_SOURCES,
@@ -32,6 +32,7 @@ import {
     INITIATIVE_PRIORITY_PL,
     INTERVIEW_CARD_STATUS_PL,
     INTERVIEW_CARD_STATUSES,
+    TEAM_SIZE_MAX,
     TECH_CATEGORY_PL,
     type CardInput,
     type ClientAreaRow,
@@ -267,8 +268,12 @@ export function InterviewCardForm(props: Props) {
 
     async function submit(kind: 'draft' | 'final') {
         const input = buildInput()
-        if (!input.clientId) {
-            toast.error('Wybierz klienta.')
+        // Walidacja bazowa client-side (klient, data, limit „Wielkości zespołu")
+        // — prod maskuje błędy server-action, więc niepoprawny input trzeba złapać
+        // tu i pokazać przyjazny komunikat zamiast generycznego „Server Components render".
+        const baseErrors = validateCardBase(input)
+        if (baseErrors.length > 0) {
+            toast.error(baseErrors[0])
             return
         }
         if (kind === 'final') {
@@ -613,6 +618,7 @@ export function InterviewCardForm(props: Props) {
                             <Input
                                 value={teamSize}
                                 onChange={(e) => setTeamSize(e.target.value)}
+                                maxLength={TEAM_SIZE_MAX}
                                 placeholder="np. 5-10, ok. 20, cały dział ~50"
                             />
                             <div className="flex flex-wrap gap-1.5">

@@ -41,6 +41,19 @@ describe('validateCardBase', () => {
         )
         expect(errors).toHaveLength(3)
     })
+
+    it('team_size dokładnie 80 znaków przechodzi', () => {
+        expect(validateCardBase(card({ teamSize: 'x'.repeat(80) }))).toEqual([])
+    })
+
+    it('team_size powyżej 80 znaków zgłasza błąd', () => {
+        const errors = validateCardBase(card({ teamSize: 'x'.repeat(81) }))
+        expect(errors.some((e) => e.includes('Wielkość zespołu'))).toBe(true)
+    })
+
+    it('team_size liczy się po przycięciu spacji (81 znaków + spacje mieści się)', () => {
+        expect(validateCardBase(card({ teamSize: `  ${'x'.repeat(80)}  ` }))).toEqual([])
+    })
 })
 
 describe('validateCardForFinalize', () => {
@@ -168,5 +181,10 @@ describe('validateCardForFinalize', () => {
     it('satysfakcja 4 nie wymaga komentarza', () => {
         const errors = validateCardForFinalize(card({ satisfaction: 4 }), TODAY)
         expect(errors).toEqual([])
+    })
+
+    it('za długi team_size blokuje też finalizację (reguła bazowa)', () => {
+        const errors = validateCardForFinalize(card({ teamSize: 'x'.repeat(81) }), TODAY)
+        expect(errors.some((e) => e.includes('Wielkość zespołu'))).toBe(true)
     })
 })
