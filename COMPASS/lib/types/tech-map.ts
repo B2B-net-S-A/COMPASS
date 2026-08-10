@@ -69,6 +69,12 @@ export const INITIATIVE_PRIORITIES: InitiativePriority[] = Object.keys(
     INITIATIVE_PRIORITY_PL,
 ) as InitiativePriority[]
 
+// „Wielkość zespołu" to wolny tekst/przedział (Phase 46f). Limit MUSI zgadzać się
+// z CHECK tech_interview_cards_team_size_len_check (migracja 46g = 80). Egzekwowany
+// w walidacji (validateCardBase) i przez maxLength inputu, żeby przekroczenie dało
+// przyjazny komunikat, a nie zamaskowany w prod błąd server-action.
+export const TEAM_SIZE_MAX = 80
+
 // ─── Slug (stabilny klucz technologii pod sync z NEXUS) ─────────────────────
 
 /**

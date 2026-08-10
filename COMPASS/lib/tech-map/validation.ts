@@ -2,7 +2,7 @@
 // ŚWIADOMIE app-layer zamiast triggera DB: jedno testowalne źródło reguł;
 // akcja finalizeCard woła validateCardForFinalize i odrzuca zapis przy błędach.
 
-import type { CardInput } from '@/lib/types/tech-map'
+import { TEAM_SIZE_MAX, type CardInput } from '@/lib/types/tech-map'
 
 /**
  * Walidacja bazowa — obowiązuje TAKŻE dla draftu (bez tych pól karta nie ma
@@ -13,6 +13,11 @@ export function validateCardBase(input: CardInput): string[] {
     if (!input.contractorId) errors.push('Wybierz konsultanta.')
     if (!input.clientId) errors.push('Wybierz klienta.')
     if (!input.interviewDate) errors.push('Podaj datę rozmowy.')
+    // Limit „Wielkości zespołu" — musi zgadzać się z CHECK w DB (migracja 46g).
+    // Bez tego przekroczenie padało na constraint, a prod maskował błąd.
+    if ((input.teamSize ?? '').trim().length > TEAM_SIZE_MAX) {
+        errors.push(`„Wielkość zespołu" może mieć maksymalnie ${TEAM_SIZE_MAX} znaków.`)
+    }
     return errors
 }
 
