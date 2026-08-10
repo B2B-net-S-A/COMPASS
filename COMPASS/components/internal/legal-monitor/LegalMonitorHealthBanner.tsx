@@ -32,8 +32,13 @@ const ICONS: Record<MonitorHealth['state'], typeof CheckCircle2> = {
 /** Odsyłacz do sekcji niżej — stan problemowy ma gdzie rozwinąć szczegóły. */
 const SEE_HISTORY = 'szczegóły w „Historii sprawdzeń” niżej'
 
+/**
+ * `MMMM`, nie `LLLL`: po liczbie dnia polski wymaga dopełniacza („10 sierpnia"),
+ * a `LLLL` daje formę samodzielną w mianowniku („10 sierpień"). Dla skrótów
+ * (`MMM`/`LLL`) obie formy są równe, więc reszta modułu zostaje na `LLL`.
+ */
 function fmtRunAt(iso: string): string {
-    return format(parseISO(iso), "d LLLL yyyy 'o' HH:mm", { locale: pl })
+    return format(parseISO(iso), "d MMMM yyyy 'o' HH:mm", { locale: pl })
 }
 
 /**

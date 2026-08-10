@@ -1351,7 +1351,7 @@ widoczna dla `admin` i `finanse` — lustro RLS `is_finanse_or_admin()`. Na zak�
 nieprzejrzanych wpisów (`HubTabs` dostał opcjonalne pole `badge`), bo bez niego nikt nie wie, że
 automat coś dorzucił, dopóki tam nie kliknie. Błąd licznika nie może wywalić huba — jest w try/catch.
 
-### Trzy rzeczy, o których trzeba wiedzieć przy zmianach tutaj
+### Sześć rzeczy, o których trzeba wiedzieć przy zmianach tutaj
 
 1. **INSERT/DELETE nie mają polityk RLS i to jest celowe** — pisze wyłącznie pipeline ścieżką
    serwisową. Dodanie polityki INSERT dla `authenticated` otworzyłoby drogę do podrobionych „wpisów
@@ -1374,6 +1374,18 @@ automat coś dorzucił, dopóki tam nie kliknie. Błąd licznika nie może wywal
    `URL`, nie regexem). React nie sanityzuje `href`, więc `javascript:` w linku wykonałby się
    w sesji użytkownika finanse/admin. Odrzucony link nie znika po cichu — zostaje informacja,
    że wpis miał źródło o nieprawidłowym adresie (inaczej wyglądałby jak wpis bez źródła).
+5. **Banner to JEDNO zdanie i ma tak zostać** — surowe `notes` przebiegu to u tego pipeline'u
+   kilka akapitów relacji z tego, co się nie udało; w bannerze zjadały pół ekranu i ucinały się
+   po trzech liniach (widziane na prodzie 2026-08-10). Szczegóły należą do „Historii sprawdzeń",
+   a stan problemowy kończy zdanie odsyłaczem tam. Dlatego historia **sama rozwija uwagi
+   NAJNOWSZEGO przebiegu, gdy jest `partial`/`failed`** (`initiallyExpanded`) — bez tego odsyłacz
+   kazałby klikać drugi raz po treść, po którą się przyszło. Nie wracaj z `notes` do bannera.
+6. **Pełna nazwa miesiąca po polsku to `MMMM`, nie `LLLL`** — `LLLL` daje formę samodzielną
+   w mianowniku („10 sierpień 2026"), a po liczbie dnia polski wymaga dopełniacza („10 sierpnia
+   2026"). Trafiło na prod i było widoczne w bannerze. Dla skrótów `LLL` i `MMM` dają ten sam
+   wynik („10 sie 2026"), więc reszta modułu (listy, historia) świadomie zostaje na `LLL`,
+   spójnie z resztą repo. Odmiana liczebników z czasownikiem — `elapsedWorkingDaysPl`
+   („minął 1 dzień roboczy" / „minęły 2 dni robocze" / „minęło 5 dni roboczych", 12–14 jak 5+).
 
 **Pliki:** [lib/types/legal-monitor.ts](COMPASS/lib/types/legal-monitor.ts) (unie + etykiety PL) ·
 [lib/legal-monitor/health.ts](COMPASS/lib/legal-monitor/health.ts) (czysta logika bannera i
