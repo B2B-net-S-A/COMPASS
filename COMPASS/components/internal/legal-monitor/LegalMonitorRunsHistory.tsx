@@ -42,8 +42,19 @@ const SOURCE_HEALTH_CLASS: Record<LegalMonitorSourceHealth, string> = {
 
 const INITIAL_VISIBLE = 7
 
+/**
+ * Banner odsyła tu po szczegóły, gdy ostatni przebieg się nie udał — więc te
+ * uwagi mają być od razu widoczne, bez drugiego kliknięcia. Przy zdrowym
+ * przebiegu wszystko zostaje zwinięte.
+ */
+function initiallyExpanded(runs: ReadonlyArray<LegalMonitorRunRow>): string | null {
+    const latest = runs[0]
+    if (!latest?.notes) return null
+    return latest.status === 'partial' || latest.status === 'failed' ? latest.id : null
+}
+
 export function LegalMonitorRunsHistory({ runs }: { runs: LegalMonitorRunRow[] }) {
-    const [expanded, setExpanded] = useState<string | null>(null)
+    const [expanded, setExpanded] = useState<string | null>(() => initiallyExpanded(runs))
     const [showAll, setShowAll] = useState(false)
 
     if (runs.length === 0) {
