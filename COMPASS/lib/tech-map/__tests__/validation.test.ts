@@ -51,7 +51,7 @@ describe('validateCardBase', () => {
         expect(errors.some((e) => e.includes('Wielkość zespołu'))).toBe(true)
     })
 
-    it('team_size liczy się po przycięciu spacji (81 znaków + spacje mieści się)', () => {
+    it('team_size z nadmiarowymi spacjami mieści się po trim (80 znaków treści)', () => {
         expect(validateCardBase(card({ teamSize: `  ${'x'.repeat(80)}  ` }))).toEqual([])
     })
 })
