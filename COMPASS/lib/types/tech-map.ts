@@ -75,6 +75,29 @@ export const INITIATIVE_PRIORITIES: InitiativePriority[] = Object.keys(
 // przyjazny komunikat, a nie zamaskowany w prod błąd server-action.
 export const TEAM_SIZE_MAX = 80
 
+// Tytuł rozmowy (Phase 49) — opcjonalny. Limit MUSI zgadzać się z CHECK
+// tech_interview_cards_title_len_check; egzekwowany w validateCardBase i przez
+// maxLength inputu (ta sama lekcja co przy „Wielkości zespołu").
+export const CARD_TITLE_MAX = 120
+
+/**
+ * Tytuł rozmowy do wyświetlenia: własny tytuł TCM albo domyślny
+ * „Rozmowa: {konsultant}". Czysty helper — używany przez nagłówek karty,
+ * listę kart i formularz (placeholder), żeby default był jeden.
+ */
+export function cardDisplayTitle(
+    title: string | null | undefined,
+    contractorName: string,
+): string {
+    const custom = (title ?? '').trim()
+    return custom || defaultCardTitle(contractorName)
+}
+
+/** Domyślny tytuł rozmowy, gdy TCM nie nadał własnego. */
+export function defaultCardTitle(contractorName: string): string {
+    return `Rozmowa: ${contractorName}`
+}
+
 // ─── Slug (stabilny klucz technologii pod sync z NEXUS) ─────────────────────
 
 /**
@@ -136,6 +159,8 @@ export interface TechInterviewCardRow {
     tcm_id: string | null
     client_id: string
     client_area_id: string | null
+    /** Własny tytuł rozmowy; NULL = tytuł domyślny (cardDisplayTitle). */
+    title: string | null
     interview_date: string
     status: InterviewCardStatus | null
     is_draft: boolean
@@ -174,6 +199,8 @@ export interface CardListItem {
     id: string
     contractorId: string
     contractorName: string
+    /** Surowy tytuł z DB (null = domyślny) — lista woła cardDisplayTitle. */
+    title: string | null
     clientId: string
     clientName: string
     areaName: string | null
@@ -197,6 +224,8 @@ export interface CardInput {
     contractorId: string
     clientId: string
     clientAreaId: string | null
+    /** Pusty/whitespace = wróć do tytułu domyślnego. */
+    title: string | null
     interviewDate: string
     status: InterviewCardStatus | null
     satisfaction: number | null

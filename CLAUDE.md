@@ -1404,6 +1404,39 @@ Claude (zmiana godziny / pauza / nowe źródło = jedno zdanie do Claude w dowol
 RLS na prodzie (2026-08-10, transakcje z ROLLBACK): `finanse` widzi 15 wpisów / 3 przebiegi i
 aktualizuje 1 wiersz; `consultant` widzi 0 i aktualizuje 0.
 
+## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
+
+Nagłówki obu strumieni pracy People Ops były nieedytowalne, a oba brały tytuł z cudzych danych:
+karta rozmowy z Mapy technologicznej wyliczała „Rozmowa: {konsultant}" z `contractors.full_name`
+(importy potrafią mieć samo nazwisko — „wasilewski"), a zgłoszenie ze Spraw dostawało tytuł raz,
+przy zakładaniu. W obu przypadkach jedyną drogą do poprawki był SQL.
+
+**Mapa technologiczna — nowa kolumna, nie zmiana nazwiska.** `tech_interview_cards.title` (migracja
+`20260810150000_phase49_card_title`, nullable, `CHECK char_length(btrim(title)) BETWEEN 1 AND 120`)
+trzyma tytuł nadany przez TCM. **Świadomie NIE ruszamy `contractors.full_name`** — poprawianie
+nazwiska w katalogu przy okazji nazywania rozmowy rozjechałoby dopasowania importów (klucze
+naturalne, aliasy z Phase 42a). Pole „Tytuł rozmowy" jest pierwszym polem formularza karty;
+puste = tytuł domyślny. Jedno źródło tego defaultu: `cardDisplayTitle` / `defaultCardTitle`
+w [lib/types/tech-map.ts](COMPASS/lib/types/tech-map.ts) — używają go nagłówek karty, lista kart,
+tabela kart na profilu kontraktora i placeholder w formularzu. Wyszukiwarka listy kart przeszukuje
+teraz konsultanta ORAZ tytuł (karta z własnym tytułem musi być po nim znajdowalna).
+
+**Limit w app-layer, nie tylko w CHECK-u** (lekcja 46g, [[compass_prod_error_masking]]): `CARD_TITLE_MAX`
+zasila `validateCardBase` (client + server) i `maxLength` inputu. Bez tego przekroczenie limitu
+wraca w prod jako zamaskowany „Server Components render", a nie „za długi tytuł".
+
+**Sprawy — `renameInboxTicket`** ([lib/actions/support-inbox.ts](COMPASS/lib/actions/support-inbox.ts)):
+guard `isCallerHandler` + ta sama bariera `support_inbox_meta` co `moveInboxTicket` (akcja nie tyka
+helpdesku ani lustra spraw kontraktorskich), trim + kolaps spacji, limity `TICKET_SUBJECT_MIN/MAX`,
+audyt `INBOX_TICKET_RENAMED` z parą `[przed, po]`. UI: ołówek przy
+nagłówku (`components/inbox/InboxTicketTitle.tsx`, Enter zapisuje, Escape wycofuje).
+
+Dwie rzeczy, o których trzeba wiedzieć przy zmianach tutaj:
+1. **`support_inbox_meta.email_subject` zostaje nietknięty** — to zapis, z czym zgłoszenie przyszło,
+   a nie robocza nazwa sprawy. Test tego pilnuje.
+2. **Rename revaliduje też `/internal/people`** — kanban Spraw żyje w hubie People Ops, więc bez tego
+   stary tytuł zostaje na kafelku mimo poprawnej zmiany w bazie.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

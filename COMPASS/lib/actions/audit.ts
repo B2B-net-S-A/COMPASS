@@ -242,6 +242,9 @@ export type AuditAction =
     | 'TECH_MAP_PROJECT_END_RUN'
     // Phase 48 — Monitoring prawny (przegląd wpisów przez finanse/admin)
     | 'LEGAL_MONITOR_ITEM_REVIEWED'
+    // Phase 49 — edytowalne tytuły (zgłoszenia w People Ops; karta rozmowy ma
+    // własny ślad w TECH_CARD_UPDATED)
+    | 'INBOX_TICKET_RENAMED'
 
 export async function logAudit(
     userId: string | null,

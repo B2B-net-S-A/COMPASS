@@ -219,6 +219,11 @@ export const INBOX_CATEGORY_SLUGS = [
 
 export type InboxCategorySlug = (typeof INBOX_CATEGORY_SLUGS)[number]
 
+// Phase 49 — tytuł zgłoszenia jest edytowalny po utworzeniu. Limity wspólne dla
+// tworzenia i zmiany nazwy, egzekwowane po obu stronach (input maxLength + akcja).
+export const TICKET_SUBJECT_MIN = 3
+export const TICKET_SUBJECT_MAX = 200
+
 // ============================================================
 // KB Materials & Attachments — Phase 21 (2026-05-16)
 // ============================================================

@@ -361,6 +361,9 @@ function cardPayloadFromInput(input: CardInput) {
     return {
         client_id: input.clientId,
         client_area_id: input.clientAreaId,
+        // Puste pole = powrót do tytułu domyślnego („Rozmowa: {konsultant}"),
+        // dlatego '' zapisujemy jako NULL, a nie jako pusty nagłówek.
+        title: input.title?.trim() || null,
         interview_date: input.interviewDate,
         status: input.status,
         satisfaction: input.satisfaction,
@@ -665,6 +668,7 @@ export async function listCards(filters: CardFilters = {}): Promise<CardListItem
         id: r.id,
         contractorId: r.contractor_id,
         contractorName: contractorMap.get(r.contractor_id) ?? '—',
+        title: r.title,
         clientId: r.client_id,
         clientName: clientMap.get(r.client_id) ?? '—',
         areaName: r.client_area_id ? (areaMap.get(r.client_area_id) ?? null) : null,

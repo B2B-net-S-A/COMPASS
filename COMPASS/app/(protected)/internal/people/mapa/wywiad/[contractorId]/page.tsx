@@ -11,7 +11,7 @@ import {
     listVendors,
 } from '@/lib/actions/tech-map'
 import { warsawDate } from '@/lib/oof/oof-dates'
-import type { CardInput, PreInterviewBrief as Brief } from '@/lib/types/tech-map'
+import { defaultCardTitle, type CardInput, type PreInterviewBrief as Brief } from '@/lib/types/tech-map'
 import { InterviewCardForm } from '@/components/internal/people/mapa/InterviewCardForm'
 import { PreInterviewBrief } from '@/components/internal/people/mapa/PreInterviewBrief'
 
@@ -36,6 +36,7 @@ export default async function WywiadPage({ params }: { params: { contractorId: s
         contractorId: brief.contractor.id,
         clientId: brief.matchedClientId ?? '',
         clientAreaId: null,
+        title: null,
         interviewDate: warsawDate(new Date()),
         status: null,
         satisfaction: null,
@@ -66,7 +67,8 @@ export default async function WywiadPage({ params }: { params: { contractorId: s
             </Link>
 
             <header>
-                <h1 className="text-2xl font-bold">Rozmowa: {brief.contractor.fullName}</h1>
+                {/* Tytuł domyślny — własny nadaje się w polu „Tytuł rozmowy" formularza. */}
+                <h1 className="text-2xl font-bold">{defaultCardTitle(brief.contractor.fullName)}</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                     {[brief.contractor.currentPosition, brief.contractor.currentClient]
                         .filter(Boolean)

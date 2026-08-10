@@ -17,6 +17,12 @@ vi.mock('next/cache', () => ({
     revalidatePath: vi.fn(),
 }))
 
+// Phase 49 — renameInboxTicket pisze do audytu; audyt sięga po next/headers,
+// więc w testach zastępujemy go stubem (wzorzec z tech-map.test.ts).
+vi.mock('@/lib/actions/audit', () => ({
+    logAudit: vi.fn(),
+}))
+
 function setupClient(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)
     return currentClient
@@ -240,6 +246,93 @@ describe('moveInboxTicket', () => {
         const updated = ticketRows.find(t => t.id === 't-inbox')
         expect(updated?.status).toBe('resolved')
         expect(updated?.resolved_at).toBeTruthy()
+    })
+})
+
+describe('renameInboxTicket', () => {
+    const withInboxTicket = (subject = 'Onboarding - Wojciech Sokolnicki') =>
+        baseTables({
+            support_tickets: [
+                { id: 't-inbox', user_id: 'handler1', category_id: 'cat-adm', status: 'open', subject, body_md: 'long body', priority: 'normal', assignee_id: 'handler1', resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+            ],
+            support_inbox_meta: [
+                { ticket_id: 't-inbox', source: 'manual_paste', priority_level: 'P2', due_date: '2026-05-13T10:00:00Z', consultant_id: null, external_message_id: null, email_from: null, email_subject: subject, email_received_at: null, created_at: '2026-05-01' },
+            ],
+        })
+
+    it('rejects non-handler caller', async () => {
+        setupClient({ user: { id: 'ext1', email: 'someone@example.com' }, tables: withInboxTicket() })
+        const { renameInboxTicket } = await import('../support-inbox')
+        const res = await renameInboxTicket('t-inbox', 'Nowy tytuł')
+        expect(res.success).toBe(false)
+    })
+
+    it('rejects ticket without inbox meta (cross-contamination guard)', async () => {
+        setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables({
+                support_tickets: [
+                    { id: 't-user', user_id: 'someone', category_id: 'cat-hr', status: 'open', subject: 'User ticket', body_md: '...', priority: 'normal', assignee_id: null, resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+                ],
+            }),
+        })
+        const { renameInboxTicket } = await import('../support-inbox')
+        const res = await renameInboxTicket('t-user', 'Nowy tytuł')
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toMatch(/inbox/)
+    })
+
+    it('rejects too short title', async () => {
+        setupClient({ user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' }, tables: withInboxTicket() })
+        const { renameInboxTicket } = await import('../support-inbox')
+        const res = await renameInboxTicket('t-inbox', '  a  ')
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toMatch(/tytu/i)
+    })
+
+    it('rejects title over the length limit', async () => {
+        setupClient({ user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' }, tables: withInboxTicket() })
+        const { renameInboxTicket } = await import('../support-inbox')
+        const { TICKET_SUBJECT_MAX } = await import('@/lib/types/support')
+        const res = await renameInboxTicket('t-inbox', 'x'.repeat(TICKET_SUBJECT_MAX + 1))
+        expect(res.success).toBe(false)
+    })
+
+    it('reports an error instead of a silent success when the ticket row is gone', async () => {
+        // UPDATE na zero wierszy zwraca w PostgREST error: null — bez bramki na
+        // brakujący wiersz akcja zameldowałaby zmianę, której nie było.
+        setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables({
+                support_inbox_meta: [
+                    { ticket_id: 't-gone', source: 'manual_paste', priority_level: 'P2', due_date: '2026-05-13T10:00:00Z', consultant_id: null, external_message_id: null, email_from: null, email_subject: 'Sierota', email_received_at: null, created_at: '2026-05-01' },
+                ],
+            }),
+        })
+        const { renameInboxTicket } = await import('../support-inbox')
+        const res = await renameInboxTicket('t-gone', 'Nowy tytuł')
+        expect(res.success).toBe(false)
+    })
+
+    it('saves a trimmed title and leaves the original email_subject untouched', async () => {
+        const client = setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: withInboxTicket(),
+        })
+        const { renameInboxTicket } = await import('../support-inbox')
+        const res = await renameInboxTicket('t-inbox', '  Onboarding   PFRON  ')
+        expect(res.success).toBe(true)
+        if (!res.success) return
+        expect(res.data.subject).toBe('Onboarding PFRON')
+
+        const ticket = (client._tables.support_tickets as Array<Record<string, unknown>>)
+            .find(t => t.id === 't-inbox')
+        expect(ticket?.subject).toBe('Onboarding PFRON')
+        const meta = (client._tables.support_inbox_meta as Array<Record<string, unknown>>)
+            .find(m => m.ticket_id === 't-inbox')
+        expect(meta?.email_subject).toBe('Onboarding - Wojciech Sokolnicki')
     })
 })
 
