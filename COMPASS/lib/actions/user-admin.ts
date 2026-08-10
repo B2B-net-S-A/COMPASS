@@ -422,6 +422,10 @@ export async function setUserRole(targetUserId: string, newRole: DbRole): Promis
     if (updateErr) {
         // Kompensacja: bez tego nieudana operacja i tak nadałaby (lub odebrała)
         // admina przy następnym loginie — cicho, wbrew zgłoszonemu błędowi.
+        // Świadomy koszt przy cofaniu odebrania: wiersz wraca z `added_by` = ten,
+        // kto wykonał nieudaną operację (oryginał zniknął razem z DELETE-em).
+        // Odtwarzanie go kosztowałoby dodatkowy SELECT na ścieżce, która już pada,
+        // a panel Super Admina i tak pokazuje `created_at`, nie `added_by`.
         if (adminBoundaryCrossed && target.email) {
             try {
                 await syncAdminAccessList(admin, target.email, wasAdmin, actor.id)

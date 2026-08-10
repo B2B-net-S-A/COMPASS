@@ -422,6 +422,18 @@ describe('user-admin: setUserRole ↔ admin_access_list', () => {
         expect(mockProfilesUpdate).not.toHaveBeenCalled()
     })
 
+    it('does not touch profiles when the list delete fails', async () => {
+        mockProfilesSelectSingle.mockResolvedValue({
+            data: { role: 'admin', full_name: 'Target User' },
+            error: null,
+        })
+        mockAdminListDeleteEq.mockResolvedValue({ error: { message: 'permission denied' } })
+        const { setUserRole } = await import('../user-admin')
+
+        await expect(setUserRole('target-1', 'internal')).rejects.toThrow(/listy administratorów/)
+        expect(mockProfilesUpdate).not.toHaveBeenCalled()
+    })
+
     it('reverts the list grant when the profiles update fails', async () => {
         mockProfilesUpdateEq.mockResolvedValue({ error: { message: 'db down' } })
         const { setUserRole } = await import('../user-admin')
