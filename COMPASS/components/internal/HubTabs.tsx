@@ -6,6 +6,11 @@ export interface HubTab {
     id: string
     label: string
     icon: LucideIcon
+    /**
+     * Opcjonalny licznik „jest tu coś do zrobienia" (Phase 48). Renderowany tylko
+     * gdy > 0, żeby zakładki bez zaległości wyglądały jak dotąd.
+     */
+    badge?: number
 }
 
 interface Props {
@@ -44,6 +49,14 @@ export function HubTabs({ basePath, tabs, active }: Props) {
                     >
                         <Icon className="h-4 w-4" />
                         {t.label}
+                        {typeof t.badge === 'number' && t.badge > 0 && (
+                            <span
+                                aria-label={`${t.badge} do przeglądu`}
+                                className="ml-0.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary"
+                            >
+                                {t.badge}
+                            </span>
+                        )}
                     </Link>
                 )
             })}
