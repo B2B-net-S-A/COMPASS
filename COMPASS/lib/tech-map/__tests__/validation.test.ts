@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { CardInput } from '@/lib/types/tech-map'
+import { CARD_TITLE_MAX, type CardInput } from '@/lib/types/tech-map'
 import { validateCardBase, validateCardForFinalize } from '@/lib/tech-map/validation'
 
 const TODAY = '2026-08-03'
@@ -9,6 +9,7 @@ const card = (over: Partial<CardInput> = {}): CardInput => ({
     contractorId: 'c-1',
     clientId: 'k-1',
     clientAreaId: null,
+    title: null,
     interviewDate: '2026-08-01',
     status: 'ok',
     satisfaction: 4,
@@ -53,6 +54,20 @@ describe('validateCardBase', () => {
 
     it('team_size z nadmiarowymi spacjami mieści się po trim (80 znaków treści)', () => {
         expect(validateCardBase(card({ teamSize: `  ${'x'.repeat(80)}  ` }))).toEqual([])
+    })
+
+    it('tytuł jest opcjonalny — brak i pusty przechodzą', () => {
+        expect(validateCardBase(card({ title: null }))).toEqual([])
+        expect(validateCardBase(card({ title: '   ' }))).toEqual([])
+    })
+
+    it('tytuł dokładnie 120 znaków przechodzi', () => {
+        expect(validateCardBase(card({ title: 'x'.repeat(CARD_TITLE_MAX) }))).toEqual([])
+    })
+
+    it('tytuł powyżej 120 znaków zgłasza błąd (limit z CHECK-a w DB)', () => {
+        const errors = validateCardBase(card({ title: 'x'.repeat(CARD_TITLE_MAX + 1) }))
+        expect(errors.some((e) => e.includes('Tytuł rozmowy'))).toBe(true)
     })
 })
 

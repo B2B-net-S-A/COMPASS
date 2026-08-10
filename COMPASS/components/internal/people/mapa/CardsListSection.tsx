@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
+    cardDisplayTitle,
     INTERVIEW_CARD_STATUS_BADGE,
     INTERVIEW_CARD_STATUS_PL,
     type CardListItem,
@@ -46,7 +47,12 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
             if (tcmId && c.tcmId !== tcmId) return false
             if (dateFrom && c.interviewDate < dateFrom) return false
             if (dateTo && c.interviewDate > dateTo) return false
-            if (q && !c.contractorName.toLowerCase().includes(q)) return false
+            if (q) {
+                // Szukaj po konsultancie ORAZ tytule — karta z własnym tytułem
+                // („Przedłużenie kontraktu") musi być znajdowalna po tym tytule.
+                const haystack = `${c.contractorName} ${cardDisplayTitle(c.title, c.contractorName)}`.toLowerCase()
+                if (!haystack.includes(q)) return false
+            }
             return true
         })
     }, [cards, search, clientId, tcmId, dateFrom, dateTo])
@@ -56,7 +62,7 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
             <div className="flex flex-wrap items-center gap-2">
                 <Input
                     className="w-56"
-                    placeholder="Szukaj konsultanta…"
+                    placeholder="Szukaj konsultanta lub tytułu…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                 />
@@ -96,6 +102,7 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
                     <thead>
                         <tr className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                             <th className="px-3 py-2 font-medium">Data</th>
+                            <th className="px-3 py-2 font-medium">Tytuł</th>
                             <th className="px-3 py-2 font-medium">Konsultant</th>
                             <th className="px-3 py-2 font-medium">Klient</th>
                             <th className="px-3 py-2 font-medium">Obszar</th>
@@ -112,6 +119,14 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
                                         className="text-primary hover:underline"
                                     >
                                         {c.interviewDate}
+                                    </Link>
+                                </td>
+                                <td className="px-3 py-2">
+                                    <Link
+                                        href={`/internal/people/mapa/karta/${c.id}`}
+                                        className="hover:text-primary hover:underline"
+                                    >
+                                        {cardDisplayTitle(c.title, c.contractorName)}
                                     </Link>
                                 </td>
                                 <td className="px-3 py-2">{c.contractorName}</td>
@@ -142,7 +157,7 @@ export function CardsListSection({ cards }: { cards: CardListItem[] }) {
                         ))}
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                                <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
                                     {cards.length === 0
                                         ? 'Brak kart — zacznij od przycisku „Nowa rozmowa".'
                                         : 'Brak kart pasujących do filtrów.'}

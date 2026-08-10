@@ -20,6 +20,7 @@ import {
     type ContractorDetail,
 } from '@/lib/types/contractor'
 import {
+    cardDisplayTitle,
     INTERVIEW_CARD_STATUS_BADGE, INTERVIEW_CARD_STATUS_PL,
     type CardListItem,
 } from '@/lib/types/tech-map'
@@ -118,6 +119,7 @@ export function ContractorDetailClient({ detail, tcmProfiles, techCards = [] }: 
                             <thead className="bg-muted/50">
                                 <tr>
                                     <th className="p-2 text-left">Data</th>
+                                    <th className="p-2 text-left">Tytuł</th>
                                     <th className="p-2 text-left">Klient</th><th className="p-2 text-left">Status</th>
                                     <th className="p-2 text-left">Prowadzący</th>
                                 </tr>
@@ -130,6 +132,7 @@ export function ContractorDetailClient({ detail, tcmProfiles, techCards = [] }: 
                                                 {c.interviewDate}
                                             </Link>
                                         </td>
+                                        <td className="p-2">{cardDisplayTitle(c.title, c.contractorName)}</td>
                                         <td className="p-2">{c.clientName}{c.areaName ? ` · ${c.areaName}` : ''}</td>
                                         <td className="p-2">
                                             {c.isDraft ? (

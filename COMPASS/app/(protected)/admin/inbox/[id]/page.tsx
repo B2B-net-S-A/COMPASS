@@ -10,6 +10,7 @@ import { InboxPriorityBadge } from '@/components/inbox/InboxPriorityBadge'
 import { SlaCountdownBadge } from '@/components/inbox/SlaCountdownBadge'
 import { getInboxTicketDetail } from '@/lib/actions/support-inbox'
 import { TicketToTaskButton } from '@/components/inbox/TicketToTaskButton'
+import { InboxTicketTitle } from '@/components/inbox/InboxTicketTitle'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,7 +71,7 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                                 {ticket.category_name_pl}
                             </Badge>
                         </div>
-                        <h1 className="text-2xl font-bold tracking-tight">{ticket.subject}</h1>
+                        <InboxTicketTitle ticketId={ticket.id} subject={ticket.subject} />
                         <p className="text-xs text-muted-foreground mt-1">
                             Zgłoszone: {new Date(ticket.created_at).toLocaleString('pl-PL')}
                             {' · '}Termin SLA: {new Date(ticket.meta.due_date).toLocaleString('pl-PL')}

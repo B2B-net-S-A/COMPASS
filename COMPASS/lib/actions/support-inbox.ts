@@ -5,9 +5,12 @@ import { logCompat } from '@/lib/logger'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
+import { logAudit } from '@/lib/actions/audit'
 import { computeDueDate } from '@/lib/utils/sla'
 import {
     INBOX_CATEGORY_SLUGS,
+    TICKET_SUBJECT_MAX,
+    TICKET_SUBJECT_MIN,
     type ConsultantSearchResult,
     type CreateInboxTicketInput,
     type InboxSummary,
@@ -430,6 +433,72 @@ export async function moveInboxTicket(
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zmiany statusu'
         logCompat.error('[moveInboxTicket]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
+ * Phase 49 — zmiana tytułu zgłoszenia (People Ops → Sprawy).
+ * Tytuł bywa nadany w pośpiechu albo przeklejony z maila; bez edycji zostawał
+ * na tablicy na zawsze. Nie ruszamy `support_inbox_meta.email_subject` — to zapis
+ * historyczny tego, z czym zgłoszenie przyszło, a nie nazwa robocza sprawy.
+ */
+export async function renameInboxTicket(
+    ticketId: string,
+    subject: string,
+): Promise<SupportActionResult<{ subject: string }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+        if (!(await isCallerHandler(supabase, user.id))) {
+            return { success: false, error: 'Niewystarczające uprawnienia' }
+        }
+
+        const trimmed = (subject ?? '').trim().replace(/\s+/g, ' ')
+        if (trimmed.length < TICKET_SUBJECT_MIN) {
+            return { success: false, error: `Tytuł musi mieć co najmniej ${TICKET_SUBJECT_MIN} znaki` }
+        }
+        if (trimmed.length > TICKET_SUBJECT_MAX) {
+            return { success: false, error: `Tytuł może mieć maksymalnie ${TICKET_SUBJECT_MAX} znaków` }
+        }
+
+        // Ta sama bariera co w moveInboxTicket: akcja obsługuje wyłącznie zgłoszenia
+        // inboxu, nie tickety helpdesku ani lustro spraw kontraktorskich.
+        const { data: meta } = await supabase
+            .from('support_inbox_meta')
+            .select('ticket_id')
+            .eq('ticket_id', ticketId)
+            .single()
+        if (!meta) return { success: false, error: 'To zgłoszenie nie jest typu inbox' }
+
+        const { data: before } = await supabase
+            .from('support_tickets')
+            .select('subject')
+            .eq('id', ticketId)
+            .single()
+        const previous = (before as { subject?: string } | null)?.subject ?? null
+        if (previous === trimmed) return { success: true, data: { subject: trimmed } }
+
+        const { error } = await supabase
+            .from('support_tickets')
+            .update({ subject: trimmed, updated_at: new Date().toISOString() })
+            .eq('id', ticketId)
+        if (error) throw error
+
+        await logAudit(user.id, 'INBOX_TICKET_RENAMED', {
+            ticket_id: ticketId,
+            subject: [previous, trimmed],
+        })
+
+        revalidatePath('/admin/inbox')
+        revalidatePath(`/admin/inbox/${ticketId}`)
+        // Kanban Spraw żyje w hubie People Ops — bez tego stary tytuł zostaje na kafelku.
+        revalidatePath('/internal/people')
+        return { success: true, data: { subject: trimmed } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd zmiany tytułu'
+        logCompat.error('[renameInboxTicket]', error)
         return { success: false, error: msg }
     }
 }
