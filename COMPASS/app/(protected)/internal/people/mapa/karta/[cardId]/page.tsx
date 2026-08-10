@@ -12,7 +12,12 @@ import {
     listTechnologies,
     listVendors,
 } from '@/lib/actions/tech-map'
-import type { CardDetail, CardInput, PreInterviewBrief as Brief } from '@/lib/types/tech-map'
+import {
+    cardDisplayTitle,
+    type CardDetail,
+    type CardInput,
+    type PreInterviewBrief as Brief,
+} from '@/lib/types/tech-map'
 import { InterviewCardForm } from '@/components/internal/people/mapa/InterviewCardForm'
 import { PreInterviewBrief } from '@/components/internal/people/mapa/PreInterviewBrief'
 
@@ -45,6 +50,7 @@ export default async function KartaPage({ params }: { params: { cardId: string }
         contractorId: card.contractor_id,
         clientId: card.client_id,
         clientAreaId: card.client_area_id,
+        title: card.title,
         interviewDate: card.interview_date,
         status: card.status,
         satisfaction: card.satisfaction,
@@ -79,12 +85,14 @@ export default async function KartaPage({ params }: { params: { cardId: string }
             </Link>
 
             <header>
+                {/* Tytuł własny (pole „Tytuł rozmowy") albo domyślny „Rozmowa: {konsultant}".
+                    Konsultant wraca w podtytule, żeby nazwa nie zgubiła się przy własnym tytule. */}
                 <h1 className="text-2xl font-bold">
-                    Karta: {detail.contractorName}
+                    {cardDisplayTitle(card.title, detail.contractorName)}
                     {card.is_draft && <span className="ml-2 text-base font-normal text-amber-600">(wersja robocza)</span>}
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    {detail.clientName}
+                    {detail.contractorName} · {detail.clientName}
                     {detail.areaName && ` · ${detail.areaName}`}
                     {detail.tcmName && ` · prowadzący: ${detail.tcmName}`}
                 </p>

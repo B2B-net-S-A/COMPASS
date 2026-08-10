@@ -2,7 +2,7 @@
 // ŚWIADOMIE app-layer zamiast triggera DB: jedno testowalne źródło reguł;
 // akcja finalizeCard woła validateCardForFinalize i odrzuca zapis przy błędach.
 
-import { TEAM_SIZE_MAX, type CardInput } from '@/lib/types/tech-map'
+import { CARD_TITLE_MAX, TEAM_SIZE_MAX, type CardInput } from '@/lib/types/tech-map'
 
 /**
  * Walidacja bazowa — obowiązuje TAKŻE dla draftu (bez tych pól karta nie ma
@@ -17,6 +17,11 @@ export function validateCardBase(input: CardInput): string[] {
     // Bez tego przekroczenie padało na constraint, a prod maskował błąd.
     if ((input.teamSize ?? '').trim().length > TEAM_SIZE_MAX) {
         errors.push(`„Wielkość zespołu" może mieć maksymalnie ${TEAM_SIZE_MAX} znaków.`)
+    }
+    // Tytuł jest opcjonalny (puste = tytuł domyślny), ale gdy jest — musi zmieścić
+    // się w CHECK-u z migracji 49, inaczej prod zamaskuje błąd server-action.
+    if ((input.title ?? '').trim().length > CARD_TITLE_MAX) {
+        errors.push(`„Tytuł rozmowy" może mieć maksymalnie ${CARD_TITLE_MAX} znaków.`)
     }
     return errors
 }

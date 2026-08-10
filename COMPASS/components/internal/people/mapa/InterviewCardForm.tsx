@@ -25,6 +25,8 @@ import {
 } from '@/lib/actions/tech-map'
 import { validateCardBase, validateCardForFinalize } from '@/lib/tech-map/validation'
 import {
+    CARD_TITLE_MAX,
+    defaultCardTitle,
     HIRING_SOURCE_PL,
     HIRING_SOURCES,
     INITIATIVE_KIND_PL,
@@ -136,6 +138,7 @@ export function InterviewCardForm(props: Props) {
     const [areas, setAreas] = useState(props.areas)
 
     // Meta
+    const [title, setTitle] = useState(props.initial.title ?? '')
     const [interviewDate, setInterviewDate] = useState(props.initial.interviewDate)
     const [clientId, setClientId] = useState(props.initial.clientId)
     const [clientAreaId, setClientAreaId] = useState<string | null>(props.initial.clientAreaId)
@@ -198,6 +201,7 @@ export function InterviewCardForm(props: Props) {
             contractorId: props.contractorId,
             clientId,
             clientAreaId,
+            title: title.trim() || null,
             interviewDate,
             status,
             satisfaction,
@@ -319,6 +323,19 @@ export function InterviewCardForm(props: Props) {
         <div className="space-y-6">
             {/* ─── Meta ─────────────────────────────────────────────────── */}
             <section className="rounded-lg border border-border bg-card p-4 space-y-4">
+                <div className="space-y-1.5">
+                    <Label htmlFor="card-title">Tytuł rozmowy</Label>
+                    <Input
+                        id="card-title"
+                        value={title}
+                        maxLength={CARD_TITLE_MAX}
+                        placeholder={defaultCardTitle(props.contractorName)}
+                        onChange={(e) => setTitle(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        {`Puste pole = tytuł domyślny „${defaultCardTitle(props.contractorName)}”.`}
+                    </p>
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1.5">
                         <Label>Data rozmowy</Label>

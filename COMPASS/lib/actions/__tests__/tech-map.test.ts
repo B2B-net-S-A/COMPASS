@@ -113,6 +113,7 @@ const card = (over: Partial<CardInput> = {}): CardInput => ({
     contractorId: 'c-1',
     clientId: 'k-1',
     clientAreaId: null,
+    title: null,
     interviewDate: '2026-08-01',
     status: 'ok',
     satisfaction: 4,
@@ -227,6 +228,26 @@ describe('saveCard / finalizeCard — własność i kompletność', () => {
         const patch = db.updates.find((u) => u.table === 'tech_interview_cards')?.patch
         expect(patch?.is_draft).toBe(false)
         expect(patch?.finalized_at).toBeTruthy()
+    })
+
+    // Phase 49 — tytuł rozmowy
+    it('zapisuje przycięty tytuł rozmowy', async () => {
+        db.tables.tech_interview_cards = [{ ...foreignCard, tcm_id: 'tcm-1' }]
+        await saveCard('card-1', card({ title: '  Przedłużenie kontraktu  ' }))
+        const patch = db.updates.find((u) => u.table === 'tech_interview_cards')?.patch
+        expect(patch?.title).toBe('Przedłużenie kontraktu')
+    })
+
+    it('wyczyszczony tytuł wraca do NULL (tytuł domyślny), a nie do pustego stringa', async () => {
+        db.tables.tech_interview_cards = [{ ...foreignCard, tcm_id: 'tcm-1' }]
+        await saveCard('card-1', card({ title: '   ' }))
+        const patch = db.updates.find((u) => u.table === 'tech_interview_cards')?.patch
+        expect(patch?.title).toBeNull()
+    })
+
+    it('odrzuca tytuł dłuższy niż limit CHECK-a w DB', async () => {
+        db.tables.tech_interview_cards = [{ ...foreignCard, tcm_id: 'tcm-1' }]
+        await expect(saveCard('card-1', card({ title: 'x'.repeat(121) }))).rejects.toThrow('Tytuł rozmowy')
     })
 })
 

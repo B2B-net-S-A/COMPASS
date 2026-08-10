@@ -6160,6 +6160,7 @@ export type Database = {
           team_externals: number | null
           team_size: string | null
           tech_old_new: string | null
+          title: string | null
           updated_at: string
           vendors_note: string | null
         }
@@ -6190,6 +6191,7 @@ export type Database = {
           team_externals?: number | null
           team_size?: string | null
           tech_old_new?: string | null
+          title?: string | null
           updated_at?: string
           vendors_note?: string | null
         }
@@ -6220,6 +6222,7 @@ export type Database = {
           team_externals?: number | null
           team_size?: string | null
           tech_old_new?: string | null
+          title?: string | null
           updated_at?: string
           vendors_note?: string | null
         }
