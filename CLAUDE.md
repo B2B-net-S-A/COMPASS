@@ -1268,6 +1268,29 @@ z helperem „nie umowa konsultanta" (nie straszymy konsultanta, koniec zamówie
 karta klienta — pokrycie obszary×bloki → obszary + świeżość; brief przed rozmową bez dużej litery bloku.
 Alerty, KPI, guard sprzedaży — bez zmian. Testy: usunięto rotation (suita 1103/1103).
 
+### Phase 46g — „Wielkość zespołu": limit tekstu 40 → 80 + walidacja (2026-08-10, migracja 46g)
+
+Postowanie kart rozmów zwracało zamaskowany błąd **„An error occurred in the Server Components render"**.
+Przyczyna (z logów postgres prod, `new row ... violates check constraint
+tech_interview_cards_team_size_len_check`): pole **„Wielkość zespołu"** (wolny tekst od 46f) miało w DB
+`CHECK char_length <= 40`, ale ani formularz, ani walidacja app-layer tego nie pilnowały. Naturalny opis,
+do którego zachęca placeholder („cały dział ~50"), łatwo przekracza 40 znaków (np. „cały dział IT, ok. 50
+osób w kilku zespołach" = 46) → INSERT padał na constraint, a Next.js **maskował** przyczynę w prod jako
+generyczny błąd server-action (wzorzec [[compass_prod_error_masking]]).
+
+**Migracja 46g:** limit `team_size` **40 → 80** (`tech_interview_cards_team_size_len_check`). Rozszerzenie
+CHECK jest bezpieczne (istniejące wartości ≤40). 80 mieści realny opis, wciąż chroni przed wklejeniem akapitu.
+Zaaplikowana na prod przez Supabase MCP.
+
+**Kod:** stała `TEAM_SIZE_MAX=80` (`lib/types/tech-map.ts`) zasila regułę w `validateCardBase` (client i
+server) oraz `maxLength` inputu „Wielkość zespołu". KLUCZOWE: skoro prod maskuje błędy server-action,
+walidacja musi łapać za długi input **po stronie klienta** — dlatego `submit()` woła teraz `validateCardBase`
+na obu ścieżkach (draft i final), nie tylko przy finalizacji. `team_size` trimowany w `cardPayloadFromInput`
+(spójnie z resztą pól tekstowych karty, żeby walidacja == to, co ląduje w DB). +testy jednostkowe limitu.
+
+**Nauka:** dodając pole z DB CHECK, egzekwuj ten sam limit w app-layer **client-side** — sam constraint DB
+daje w prod zamaskowany, nieczytelny błąd zamiast wskazania przyczyny.
+
 ## Phase 47 — powiadomienie o anulowaniu urlopu + historia wniosków (2026-08-04)
 
 Anulowanie urlopu było ślepą plamą: kolejka approvera pokazuje tylko `pending`, więc po
