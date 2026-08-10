@@ -68,6 +68,18 @@ describe('sourceFailureStreaks', () => {
         expect(streaks.TK).toBe(2)
     })
 
+    it('luka w środku serii jej nie zeruje (regresja: zarzut z review #327)', () => {
+        // [fail, fail, brak klucza, fail] → 3, a nie 2: przebieg bez wpisu o źródle
+        // nie jest dowodem, że źródło odżyło, więc nie przerywa serii.
+        const streaks = sourceFailureStreaks([
+            run({ SEJM_RCL: 'fail' }),
+            run({ SEJM_RCL: 'fail' }),
+            run({ GIP: 'ok' }),
+            run({ SEJM_RCL: 'fail' }),
+        ])
+        expect(streaks.SEJM_RCL).toBe(3)
+    })
+
     it('znosi pusty log i puste sources_checked', () => {
         expect(sourceFailureStreaks([])).toEqual({})
         expect(sourceFailureStreaks([run({})])).toEqual({})

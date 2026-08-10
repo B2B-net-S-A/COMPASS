@@ -87,6 +87,14 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         ])
         if (itemsRes.error) throw new Error(`items: ${itemsRes.error.message}`)
         if (runsRes.error) throw new Error(`runs: ${runsRes.error.message}`)
+        // Świąt NIE traktujemy jak reszty: gdy zapytanie padnie, pusta lista kazałaby
+        // uznać święto za dzień roboczy i wysłać fałszywe „monitoring nie odpowiada".
+        // Rzucenie wyjątkiem byłoby jednak gorsze — zabrałoby też alerty o czerwonych
+        // wpisach, czyli główną funkcję. Więc: pomijamy sam test ciszy, reszta leci.
+        const holidaysAvailable = !holidaysRes.error
+        if (holidaysRes.error) {
+            errors.push(`święta niedostępne, pominięto test ciszy: ${holidaysRes.error.message}`)
+        }
 
         const items = (itemsRes.data ?? []) as unknown as Array<
             Pick<
@@ -144,7 +152,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         // Dedup po `run_at` ostatniego przebiegu: dopóki nie przyjdzie nowy,
         // alertujemy o tej samej ciszy tylko raz.
         const health = computeMonitorHealth({ lastRun: runs[0] ?? null, now, holidays })
-        if (health.state === 'stale' || health.state === 'never') {
+        if (holidaysAvailable && (health.state === 'stale' || health.state === 'never')) {
             const marker = health.lastRunAt ?? 'never'
             const { data: settingRow } = await admin
                 .from('system_settings')

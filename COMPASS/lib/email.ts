@@ -1,5 +1,6 @@
 import { logger, logCompat } from '@/lib/logger'
 import { sendEmail, type SendResult } from '@/lib/email/sender'
+import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
 
 // Phase 17b PR-E — Provider-agnostic email send.
 //
@@ -1948,8 +1949,9 @@ export async function sendLegalMonitorRed(
     url: string | null,
 ): Promise<{ success: boolean }> {
     const subject = `[COMPASS] Monitoring prawny: ${title.slice(0, 90)}`
-    // Link ze źródła przepuszczamy tylko gdy http(s) — ta sama zasada co w UI.
-    const safeUrl = url && /^https?:\/\//i.test(url) ? url : null
+    // Ta sama funkcja co w UI — jedno źródło prawdy o tym, który link jest
+    // bezpieczny. Osobny regex tutaj byłby drugą, cicho rozjeżdżającą się regułą.
+    const safeUrl = safeExternalUrl(url)
     const bodyHtml = `
         <p style="color:#d1d5db;font-size:14px;">Cześć ${escapeHtml(recipientName)},</p>
         <p style="color:#d1d5db;font-size:14px;">Monitoring prawny dopisał pozycję oznaczoną jako <strong>mogącą wymagać decyzji</strong>:</p>

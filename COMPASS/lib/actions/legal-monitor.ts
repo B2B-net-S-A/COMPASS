@@ -301,6 +301,24 @@ export async function setLegalMonitorFollowUp(input: {
     const assignedTo = (input.assignedTo ?? '').trim() || null
 
     const supabase = createClient()
+
+    // Dropdown w UI jest już zawężony do finanse+admin, ale server action to
+    // publiczne wejście — bez tego bezpośrednie wywołanie mogłoby przypisać
+    // reakcję konsultantowi albo osobie zarchiwizowanej, a cron słałby jej
+    // codzienne przypomnienia.
+    if (assignedTo) {
+        const { data: candidate } = await supabase
+            .from('profiles')
+            .select('id, role, employment_status')
+            .eq('id', assignedTo)
+            .maybeSingle()
+        const row = candidate as { role?: string; employment_status?: string } | null
+        const eligible =
+            !!row && (row.role === 'admin' || row.role === 'finanse') && row.employment_status !== 'exited'
+        if (!eligible) {
+            throw new Error('Reakcję można przypisać tylko aktywnej osobie z rolą finanse lub admin.')
+        }
+    }
     const { data, error } = await supabase
         .from('legal_monitor_items')
         .update({
