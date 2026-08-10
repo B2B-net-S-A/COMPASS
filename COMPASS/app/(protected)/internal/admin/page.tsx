@@ -1,4 +1,4 @@
-import { ClipboardList, Receipt, Users, FileText, Gift, UserPlus, Coins, Briefcase, FileSpreadsheet } from 'lucide-react'
+import { ClipboardList, Receipt, Users, FileText, Gift, UserPlus, Coins, Briefcase, FileSpreadsheet, Scale } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { AdminLeaveRequestsPanel } from '@/components/internal/panels/AdminLeaveRequestsPanel'
 import { LeaveOnBehalfPanel } from '@/components/internal/panels/LeaveOnBehalfPanel'
@@ -9,8 +9,11 @@ import { AdminBonusesPanel } from '@/components/internal/panels/AdminBonusesPane
 import { AdminRatesPanel } from '@/components/internal/panels/AdminRatesPanel'
 import { AdminClientsPanel } from '@/components/internal/panels/AdminClientsPanel'
 import { PlacementsAdminPanel } from '@/components/internal/panels/PlacementsAdminPanel'
+import { AdminLegalMonitorPanel } from '@/components/internal/panels/AdminLegalMonitorPanel'
 import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
+import { countNewLegalMonitorItems } from '@/lib/actions/legal-monitor'
+import { logCompat } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +27,7 @@ const ALL_TABS_RAW: ReadonlyArray<HubTab> = [
     { id: 'placements', label: 'Placementy', icon: FileSpreadsheet },
     { id: 'rates', label: 'Stawki i Umowy', icon: Coins },
     { id: 'clients', label: 'Klienci', icon: Briefcase },
+    { id: 'legal-monitor', label: 'Monitoring prawny', icon: Scale },
     { id: 'employees', label: 'Pracownicy', icon: Users },
 ]
 
@@ -49,14 +53,19 @@ function parseIntSafe(value: string | undefined): number | undefined {
 export default async function InternalAdminHubPage({ searchParams }: PageProps) {
     const ctx = await requireInternalAdminAreaLayout()
 
-    // Phase 20 + 22 + 25b + 26: tabs visible per role.
+    // Phase 20 + 22 + 25b + 26 + 48: tabs visible per role.
     //   admin            → all tabs
     //   finanse          → invoices + bonuses (raport read-only; gdy invoices off → only bonuses)
+    //                      + rates/clients + legal-monitor (RLS: is_finanse_or_admin)
     //   manager          → leave-requests + timesheets + invoices + bonuses + leave-on-behalf (zespół; invoices gated)
     const visibleTabs = ALL_TABS.filter((t) => {
         if (ctx.isAdmin) return true
         if (ctx.role === 'finanse')
-            return t.id === 'invoices' || t.id === 'bonuses' || t.id === 'rates' || t.id === 'clients'
+            return t.id === 'invoices'
+                || t.id === 'bonuses'
+                || t.id === 'rates'
+                || t.id === 'clients'
+                || t.id === 'legal-monitor'
         if (ctx.isManager) {
             return t.id === 'leave-requests'
                 || t.id === 'timesheets'
@@ -85,6 +94,23 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
     const month = parseIntSafe(searchParams?.month)
     const scope = searchParams?.scope === 'team' ? 'team' : undefined
 
+    // Phase 48: licznik nieprzejrzanych wpisów monitoringu na zakładce — bez niego
+    // nikt nie wie, że automat coś dorzucił, dopóki tam nie kliknie. Pytamy tylko
+    // gdy zakładka jest widoczna, a błąd licznika nie może wywalić całego huba.
+    const tabsWithBadges: ReadonlyArray<HubTab> = validTabIds.includes('legal-monitor')
+        ? await (async () => {
+            try {
+                const { newTotal } = await countNewLegalMonitorItems()
+                return visibleTabs.map((t) =>
+                    t.id === 'legal-monitor' ? { ...t, badge: newTotal } : t,
+                )
+            } catch (e) {
+                logCompat.error('[admin-hub] legal monitor badge count failed', e)
+                return visibleTabs
+            }
+        })()
+        : visibleTabs
+
     // Tytuł sekcji per role
     const heading = ctx.isManager && !ctx.isAdmin
         ? 'Mój zespół'
@@ -108,7 +134,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
                 <p className="text-sm text-muted-foreground mt-1">{subheading}</p>
             </header>
 
-            <HubTabs basePath="/internal/admin" tabs={visibleTabs} active={tab} />
+            <HubTabs basePath="/internal/admin" tabs={tabsWithBadges} active={tab} />
 
             {tab === 'leave-requests' && <AdminLeaveRequestsPanel isAdmin={ctx.isAdmin} />}
             {tab === 'leave-on-behalf' && <LeaveOnBehalfPanel />}
@@ -118,6 +144,7 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             {tab === 'placements' && <PlacementsAdminPanel />}
             {tab === 'rates' && <AdminRatesPanel />}
             {tab === 'clients' && <AdminClientsPanel />}
+            {tab === 'legal-monitor' && <AdminLegalMonitorPanel />}
             {tab === 'employees' && <AdminEmployeesPanel />}
         </div>
     )

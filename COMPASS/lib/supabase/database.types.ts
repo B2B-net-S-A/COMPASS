@@ -3752,6 +3752,104 @@ export type Database = {
           },
         ]
       }
+      legal_monitor_items: {
+        Row: {
+          created_at: string
+          dedupe_key: string
+          id: string
+          published_at: string | null
+          reference: string | null
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          severity: string
+          source: string
+          source_label: string
+          status: string
+          summary: string
+          title: string
+          topic: string
+          url: string | null
+          why_it_matters: string
+        }
+        Insert: {
+          created_at?: string
+          dedupe_key: string
+          id?: string
+          published_at?: string | null
+          reference?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity: string
+          source: string
+          source_label: string
+          status?: string
+          summary: string
+          title: string
+          topic: string
+          url?: string | null
+          why_it_matters: string
+        }
+        Update: {
+          created_at?: string
+          dedupe_key?: string
+          id?: string
+          published_at?: string | null
+          reference?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity?: string
+          source?: string
+          source_label?: string
+          status?: string
+          summary?: string
+          title?: string
+          topic?: string
+          url?: string | null
+          why_it_matters?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_monitor_items_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_monitor_runs: {
+        Row: {
+          id: string
+          items_found: number
+          notes: string | null
+          run_at: string
+          sources_checked: Json
+          status: string
+          window_from: string | null
+        }
+        Insert: {
+          id?: string
+          items_found?: number
+          notes?: string | null
+          run_at?: string
+          sources_checked?: Json
+          status: string
+          window_from?: string | null
+        }
+        Update: {
+          id?: string
+          items_found?: number
+          notes?: string | null
+          run_at?: string
+          sources_checked?: Json
+          status?: string
+          window_from?: string | null
+        }
+        Relationships: []
+      }
       lifecycle_events: {
         Row: {
           created_at: string

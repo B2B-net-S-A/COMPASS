@@ -1335,6 +1335,58 @@ jest sprawdzalny.
 w `audit_logs` (`LEAVE_CANCELLED` / `LEAVE_CANCELLED_BY_MANAGER`) + `updated_at`. Testy scopingu nowej
 akcji w `internal-leave.test.ts`. Migracja zaaplikowana na prod przez MCP (2026-08-04).
 
+## Phase 48 — Monitoring prawny (skrzynka przeglądu dla finanse/admin, 2026-08-10)
+
+Codziennie w dni robocze ~7:30 zewnętrzny agent AI (zadanie cykliczne na koncie Claude Artura,
+`trig_01VYhNEcpj6Z3bF9FnU3o3Sr`, cron `30 5 * * 1-5` UTC) czyta 7 publicznych baz prawnych, wybiera
+pozycje istotne dla modelu firmy (B2B a art. 22 KP, estoński CIT, ZUS, legislacja, TK) i dopisuje je
+do `legal_monitor_items` + zawsze jeden wiersz do `legal_monitor_runs` (heartbeat).
+
+**COMPASS niczego nie pobiera z internetu** — moduł czyta te dwie tabele i obsługuje przegląd:
+`new → reviewed | action_required | dismissed`. Tabele są stałym interfejsem, więc silnik da się
+kiedyś podmienić (np. na wariant w GitHub Actions) bez ruszania modułu.
+
+**Gdzie:** zakładka `legal-monitor` w hubie Administracja HR (`/internal/admin?tab=legal-monitor`),
+widoczna dla `admin` i `finanse` — lustro RLS `is_finanse_or_admin()`. Na zakładce licznik
+nieprzejrzanych wpisów (`HubTabs` dostał opcjonalne pole `badge`), bo bez niego nikt nie wie, że
+automat coś dorzucił, dopóki tam nie kliknie. Błąd licznika nie może wywalić huba — jest w try/catch.
+
+### Trzy rzeczy, o których trzeba wiedzieć przy zmianach tutaj
+
+1. **INSERT/DELETE nie mają polityk RLS i to jest celowe** — pisze wyłącznie pipeline ścieżką
+   serwisową. Dodanie polityki INSERT dla `authenticated` otworzyłoby drogę do podrobionych „wpisów
+   prawnych". `reviewLegalMonitorItem` idzie **klientem użytkownika**, nie service-role, żeby RLS był
+   realnym backstopem guardu; lista kolumn jest zawężona w kodzie do czterech pól przeglądu
+   (RLS jest wierszowa, nie kolumnowa — treści wpisu i `dedupe_key` pilnuje app-layer).
+   Brak wiersza z `RETURNING` traktujemy jako błąd, nie cichy sukces.
+2. **Alarm „monitoring nie odpowiada" wymaga OBU warunków**: wieku > 26 h **i** realnie pominiętego
+   dnia roboczego (`missedWorkingDaysSince` w [health.ts](COMPASS/lib/legal-monitor/health.ts) —
+   daty liczone w `Europe/Warsaw`, święta z `public_holidays`). Sam próg 26 h alarmowałby po każdym
+   weekendzie; sama „luka dnia roboczego" alarmowałaby po przebiegu wykonanym późnym wieczorem.
+   Dzisiejszy dzień wlicza się dopiero po 10:00 czasu warszawskiego (`EXPECTED_BY_HOUR_WARSAW`),
+   bo do tej godziny brak wpisu z dzisiaj to normalka, nie awaria. **Zimą cron wypada 6:30** — jeśli
+   ktoś przesunie harmonogram, ta stała jest jedynym miejscem do korekty po stronie COMPASS.
+3. **`sources_checked` ma trzy wartości, nie dwie**: `ok` / `empty` / `fail`. `empty` (źródło
+   odpowiedziało, ale bez nowości) to stan normalny — do bannera i listy „niedostępnych" liczy się
+   wyłącznie `fail`. Pierwszy realny przebieg miał `SEJM_RCL: fail` przy reszcie `empty`.
+
+**Pliki:** [lib/types/legal-monitor.ts](COMPASS/lib/types/legal-monitor.ts) (unie + etykiety PL) ·
+[lib/legal-monitor/health.ts](COMPASS/lib/legal-monitor/health.ts) (czysta logika bannera i
+sortowania, `now`/święta wstrzykiwane, 19 testów) ·
+[lib/actions/legal-monitor.ts](COMPASS/lib/actions/legal-monitor.ts) ·
+`components/internal/legal-monitor/` (banner, lista z filtrami + panel szczegółu, historia
+sprawdzeń) · [AdminLegalMonitorPanel](COMPASS/components/internal/panels/AdminLegalMonitorPanel.tsx).
+Audyt: `LEGAL_MONITOR_ITEM_REVIEWED`.
+
+**Migracja:** `20260810121224_legal_monitoring_tables` została zaaplikowana na prod przez MCP
+**zanim** powstał moduł; plik w repo jest jej idempotentnym odwzorowaniem (na prod = no-op), żeby
+świeże środowisko dało się zbudować z samych migracji.
+
+**Ops:** brak nowych cronów i env-varów po stronie COMPASS — harmonogramem zarządza właściciel konta
+Claude (zmiana godziny / pauza / nowe źródło = jedno zdanie do Claude w dowolnej sesji). Weryfikacja
+RLS na prodzie (2026-08-10, transakcje z ROLLBACK): `finanse` widzi 15 wpisów / 3 przebiegi i
+aktualizuje 1 wiersz; `consultant` widzi 0 i aktualizuje 0.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

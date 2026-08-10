@@ -240,6 +240,8 @@ export type AuditAction =
     | 'TECH_MAP_DEMAND_ALERTED'
     | 'TECH_MAP_PROJECT_END_ALERTED'
     | 'TECH_MAP_PROJECT_END_RUN'
+    // Phase 48 — Monitoring prawny (przegląd wpisów przez finanse/admin)
+    | 'LEGAL_MONITOR_ITEM_REVIEWED'
 
 export async function logAudit(
     userId: string | null,
