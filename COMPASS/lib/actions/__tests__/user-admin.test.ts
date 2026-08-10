@@ -9,6 +9,13 @@ const mockUpdateUserById = vi.fn()
 const mockResetPasswordForEmail = vi.fn()
 const mockRpc = vi.fn()
 const mockFromProfiles = vi.fn()
+const mockFromAdminAccessList = vi.fn()
+const mockProfilesSelectSingle = vi.fn()
+const mockProfilesUpdate = vi.fn()
+const mockProfilesUpdateEq = vi.fn()
+const mockAdminListUpsert = vi.fn()
+const mockAdminListDeleteEq = vi.fn()
+const mockSendRoleChangeEmail = vi.fn()
 const mockLogAudit = vi.fn()
 const mockGetSuperAdmins = vi.fn(() => [] as readonly string[])
 const mockIsSuperAdmin = vi.fn((_email: string | null | undefined) => false)
@@ -34,9 +41,14 @@ vi.mock('@/lib/supabase/admin', () => ({
         rpc: mockRpc,
         from: (table: string) => {
             if (table === 'profiles') return mockFromProfiles()
+            if (table === 'admin_access_list') return mockFromAdminAccessList()
             throw new Error(`Unexpected table: ${table}`)
         },
     }),
+}))
+
+vi.mock('@/lib/email', () => ({
+    sendRoleChangeEmail: (...args: unknown[]) => mockSendRoleChangeEmail(...args),
 }))
 
 vi.mock('@/lib/actions/audit', () => ({
@@ -81,11 +93,26 @@ beforeEach(() => {
     mockUpdateUserById.mockResolvedValue({ data: { user: {} }, error: null })
     mockResetPasswordForEmail.mockResolvedValue({ error: null })
     mockRpc.mockResolvedValue({ error: null })
+    mockProfilesSelectSingle.mockResolvedValue({
+        data: { role: 'consultant', full_name: 'Target User' },
+        error: null,
+    })
+    mockProfilesUpdateEq.mockResolvedValue({ error: null })
+    mockProfilesUpdate.mockImplementation(() => ({ eq: mockProfilesUpdateEq }))
     mockFromProfiles.mockReturnValue({
         select: () => ({
             in: async () => ({ data: [], error: null }),
+            eq: () => ({ single: mockProfilesSelectSingle }),
         }),
+        update: mockProfilesUpdate,
     })
+    mockAdminListUpsert.mockResolvedValue({ error: null })
+    mockAdminListDeleteEq.mockResolvedValue({ error: null })
+    mockFromAdminAccessList.mockReturnValue({
+        upsert: mockAdminListUpsert,
+        delete: () => ({ eq: mockAdminListDeleteEq }),
+    })
+    mockSendRoleChangeEmail.mockResolvedValue(undefined)
     mockLogAudit.mockResolvedValue(undefined)
 })
 
@@ -281,5 +308,161 @@ describe('user-admin: happy path', () => {
         expect(result.items[1].is_super_admin).toBe(true)
         expect(result.items[0].has_logged_in).toBe(false)
         expect(result.items[1].has_logged_in).toBe(true)
+    })
+})
+
+// ─── setUserRole ↔ admin_access_list ─────────────────────────────────────────
+// Rola `admin` jest wyprowadzana przy loginie z `admin_access_list`, nie z
+// `profiles.role` — sam UPDATE na profilu cofa się przy następnym logowaniu
+// (a przy odbieraniu admina wpis na liście przywraca rolę). Te testy pilnują,
+// że obie strony zawsze idą w parze.
+
+describe('user-admin: setUserRole ↔ admin_access_list', () => {
+    beforeEach(() => {
+        loginAsSuperAdmin()
+    })
+
+    it('throws when caller is not super admin', async () => {
+        loginAsRegularUser()
+        const { setUserRole } = await import('../user-admin')
+        await expect(setUserRole('target-1', 'admin')).rejects.toThrow(/Super Admina/)
+    })
+
+    it('rejects an unknown role', async () => {
+        const { setUserRole } = await import('../user-admin')
+        await expect(
+            setUserRole('target-1', 'root' as unknown as 'admin')
+        ).rejects.toThrow(/Nieprawidłowa rola/)
+    })
+
+    it('promoting to admin adds the email to admin_access_list', async () => {
+        const { setUserRole } = await import('../user-admin')
+        await setUserRole('target-1', 'admin')
+
+        expect(mockAdminListUpsert).toHaveBeenCalledWith(
+            { email: 'target@b2b.pl', added_by: 'super-1' },
+            expect.objectContaining({ onConflict: 'email' })
+        )
+        expect(mockProfilesUpdate).toHaveBeenCalledWith(expect.objectContaining({ role: 'admin' }))
+        expect(mockLogAudit).toHaveBeenCalledWith(
+            'super-1',
+            'ROLE_CHANGE',
+            expect.objectContaining({ new_role: 'admin', admin_access_list: 'granted' })
+        )
+    })
+
+    it('lowercases the email written to the list', async () => {
+        mockGetUserById.mockResolvedValue({
+            data: { user: { id: 'target-1', email: 'Target@B2B.pl' } },
+            error: null,
+        })
+        const { setUserRole } = await import('../user-admin')
+        await setUserRole('target-1', 'admin')
+
+        expect(mockAdminListUpsert).toHaveBeenCalledWith(
+            expect.objectContaining({ email: 'target@b2b.pl' }),
+            expect.anything()
+        )
+    })
+
+    it('demoting an admin removes the email from admin_access_list', async () => {
+        mockProfilesSelectSingle.mockResolvedValue({
+            data: { role: 'admin', full_name: 'Target User' },
+            error: null,
+        })
+        const { setUserRole } = await import('../user-admin')
+        await setUserRole('target-1', 'internal')
+
+        expect(mockAdminListDeleteEq).toHaveBeenCalledWith('email', 'target@b2b.pl')
+        expect(mockAdminListUpsert).not.toHaveBeenCalled()
+        expect(mockProfilesUpdate).toHaveBeenCalledWith(expect.objectContaining({ role: 'internal' }))
+        expect(mockLogAudit).toHaveBeenCalledWith(
+            'super-1',
+            'ROLE_CHANGE',
+            expect.objectContaining({ admin_access_list: 'revoked' })
+        )
+    })
+
+    it('leaves the list alone when the change does not cross the admin boundary', async () => {
+        mockProfilesSelectSingle.mockResolvedValue({
+            data: { role: 'internal', full_name: 'Target User' },
+            error: null,
+        })
+        const { setUserRole } = await import('../user-admin')
+        await setUserRole('target-1', 'finanse')
+
+        expect(mockAdminListUpsert).not.toHaveBeenCalled()
+        expect(mockAdminListDeleteEq).not.toHaveBeenCalled()
+        expect(mockLogAudit).toHaveBeenCalledWith(
+            'super-1',
+            'ROLE_CHANGE',
+            expect.objectContaining({ admin_access_list: 'unchanged' })
+        )
+    })
+
+    it('does nothing when the role is unchanged', async () => {
+        mockProfilesSelectSingle.mockResolvedValue({
+            data: { role: 'admin', full_name: 'Target User' },
+            error: null,
+        })
+        const { setUserRole } = await import('../user-admin')
+        await setUserRole('target-1', 'admin')
+
+        expect(mockAdminListUpsert).not.toHaveBeenCalled()
+        expect(mockAdminListDeleteEq).not.toHaveBeenCalled()
+        expect(mockProfilesUpdate).not.toHaveBeenCalled()
+        expect(mockLogAudit).not.toHaveBeenCalled()
+    })
+
+    it('does not touch profiles when the list write fails', async () => {
+        mockAdminListUpsert.mockResolvedValue({ error: { message: 'permission denied' } })
+        const { setUserRole } = await import('../user-admin')
+
+        await expect(setUserRole('target-1', 'admin')).rejects.toThrow(/listy administratorów/)
+        expect(mockProfilesUpdate).not.toHaveBeenCalled()
+    })
+
+    it('reverts the list grant when the profiles update fails', async () => {
+        mockProfilesUpdateEq.mockResolvedValue({ error: { message: 'db down' } })
+        const { setUserRole } = await import('../user-admin')
+
+        await expect(setUserRole('target-1', 'admin')).rejects.toThrow(/db down/)
+        // Bez kompensacji nieudana operacja nadałaby admina przy następnym loginie.
+        expect(mockAdminListDeleteEq).toHaveBeenCalledWith('email', 'target@b2b.pl')
+    })
+
+    it('reverts the list revocation when the profiles update fails', async () => {
+        mockProfilesSelectSingle.mockResolvedValue({
+            data: { role: 'admin', full_name: 'Target User' },
+            error: null,
+        })
+        mockProfilesUpdateEq.mockResolvedValue({ error: { message: 'db down' } })
+        const { setUserRole } = await import('../user-admin')
+
+        await expect(setUserRole('target-1', 'internal')).rejects.toThrow(/db down/)
+        expect(mockAdminListUpsert).toHaveBeenCalledWith(
+            expect.objectContaining({ email: 'target@b2b.pl' }),
+            expect.anything()
+        )
+    })
+
+    it('warns explicitly when the compensating revert also fails', async () => {
+        mockProfilesUpdateEq.mockResolvedValue({ error: { message: 'db down' } })
+        mockAdminListDeleteEq.mockResolvedValue({ error: { message: 'still down' } })
+        const { setUserRole } = await import('../user-admin')
+
+        await expect(setUserRole('target-1', 'admin')).rejects.toThrow(/nie udało się jej cofnąć/)
+    })
+
+    it('refuses to cross the admin boundary for an account without email', async () => {
+        mockGetUserById.mockResolvedValue({
+            data: { user: { id: 'target-1', email: null } },
+            error: null,
+        })
+        const { setUserRole } = await import('../user-admin')
+
+        await expect(setUserRole('target-1', 'admin')).rejects.toThrow(/bez adresu email/)
+        expect(mockAdminListUpsert).not.toHaveBeenCalled()
+        expect(mockProfilesUpdate).not.toHaveBeenCalled()
     })
 })

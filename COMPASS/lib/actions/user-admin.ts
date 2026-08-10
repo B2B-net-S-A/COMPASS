@@ -334,6 +334,40 @@ export async function checkUserAdminAccess(): Promise<boolean> {
 
 // ─── Phase 11: change role ──────────────────────────────────────────────────
 
+// Rola `admin` NIE jest wyprowadzana z `profiles.role`. Przy każdym loginie
+// `sync_user_role()` (DB, SECURITY DEFINER) nadaje `admin` WYŁĄCZNIE na
+// podstawie `admin_access_list` / `SUPER_ADMIN_EMAILS`, a `admin` nie jest na
+// liście ról zachowywanych (są nimi internal/finanse/manager/talent_community).
+// Skutki, gdy ruszyć tylko `profiles`:
+//   • nadanie admina  → pierwszy login cofa na `consultant` (i kasuje wcześniejszą rolę HR),
+//   • odebranie admina → pierwszy login przywraca `admin` z listy.
+// Dlatego zmiana roli musi ruszać obie rzeczy naraz.
+//
+// Lista jest zapisywana lowercase przez oba writery (tu i `addAdminMember`),
+// a `sync_user_role()` porównuje LOWER(email) — stąd `eq` na lowercase wystarcza
+// (celowo bez `ilike`: `_` i `%` w adresie są wildcardami i mogłyby trafić w cudzy wiersz).
+async function syncAdminAccessList(
+    admin: ReturnType<typeof createServiceClient>,
+    email: string,
+    shouldBeAdmin: boolean,
+    actorId: string,
+): Promise<void> {
+    const emailLower = email.toLowerCase()
+
+    if (shouldBeAdmin) {
+        // ignoreDuplicates: wpis mógł już istnieć (np. dodany w panelu Super Admina) —
+        // zachowujemy oryginalne `added_by`/`created_at`.
+        const { error } = await admin
+            .from('admin_access_list')
+            .upsert({ email: emailLower, added_by: actorId }, { onConflict: 'email', ignoreDuplicates: true })
+        if (error) throw new Error(`Błąd dopisania do listy administratorów: ${error.message}`)
+        return
+    }
+
+    const { error } = await admin.from('admin_access_list').delete().eq('email', emailLower)
+    if (error) throw new Error(`Błąd usunięcia z listy administratorów: ${error.message}`)
+}
+
 export async function setUserRole(targetUserId: string, newRole: DbRole): Promise<void> {
     const { user: actor } = await requireSuperAdmin()
     if (!DB_ROLES.includes(newRole)) {
@@ -365,17 +399,50 @@ export async function setUserRole(targetUserId: string, newRole: DbRole): Promis
         updateData.onboarding_completed = true
     }
 
+    // Krzyżujemy granicę admina? Wtedy `admin_access_list` musi iść w parze z rolą.
+    // Kolejność: najpierw lista, potem `profiles` — gdy lista padnie, nie zostawiamy
+    // roli, która i tak cofnęłaby się przy następnym loginie.
+    const wasAdmin = oldRole === 'admin'
+    const willBeAdmin = newRole === 'admin'
+    const adminBoundaryCrossed = wasAdmin !== willBeAdmin
+
+    if (adminBoundaryCrossed) {
+        if (!target.email) {
+            throw new Error(
+                'Konto bez adresu email — roli Super Admina nie da się nadać ani odebrać (lista administratorów jest oparta o email).'
+            )
+        }
+        await syncAdminAccessList(admin, target.email, willBeAdmin, actor.id)
+    }
+
     const { error: updateErr } = await admin
         .from('profiles')
         .update(updateData)
         .eq('id', target.id)
-    if (updateErr) throw new Error(`Błąd zmiany roli: ${updateErr.message}`)
+    if (updateErr) {
+        // Kompensacja: bez tego nieudana operacja i tak nadałaby (lub odebrała)
+        // admina przy następnym loginie — cicho, wbrew zgłoszonemu błędowi.
+        if (adminBoundaryCrossed && target.email) {
+            try {
+                await syncAdminAccessList(admin, target.email, wasAdmin, actor.id)
+            } catch (revertErr) {
+                logCompat.error('[setUserRole] admin_access_list revert failed:', revertErr)
+                throw new Error(
+                    `Błąd zmiany roli: ${updateErr.message}. UWAGA: lista administratorów została już zmieniona i nie udało się jej cofnąć — sprawdź panel Super Admina.`
+                )
+            }
+        }
+        throw new Error(`Błąd zmiany roli: ${updateErr.message}`)
+    }
 
     await logAudit(actor.id, 'ROLE_CHANGE', {
         target_user_id: target.id,
         target_email: target.email ?? null,
         old_role: oldRole,
         new_role: newRole,
+        // Jawny ślad, że lista poszła w parze z rolą — po tym poznasz w audycie
+        // wpisy sprzed fixu (ROLE_CHANGE na `admin` bez `admin_access_list`).
+        admin_access_list: adminBoundaryCrossed ? (willBeAdmin ? 'granted' : 'revoked') : 'unchanged',
     })
 
     if (target.email) {
