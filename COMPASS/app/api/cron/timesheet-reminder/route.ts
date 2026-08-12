@@ -90,10 +90,14 @@ export const GET = withCronAuth(async (request, { admin }) => {
     const submittedSet = new Set((existing ?? []).map((t: { user_id: string }) => t.user_id))
 
     // Skip B2B employees (timesheet pakiet UoP only)
-    const pending = (employees ?? []).filter(
-        (e: { id: string; email: string | null; employment_type: string | null }) =>
-            !!e.email && !submittedSet.has(e.id) && e.employment_type !== 'b2b',
+    const roster = (employees ?? []).filter(
+        (e: { email: string | null; employment_type: string | null }) =>
+            !!e.email && e.employment_type !== 'b2b',
     ) as Array<{ id: string; full_name: string | null; email: string }>
+    // Liczone na rosterze, nie na całej tabeli `timesheets` — inaczej licznik brałby
+    // też timesheety konsultantów i finansów, a operator porównuje go z `pending`.
+    const alreadySubmitted = roster.filter((e) => submittedSet.has(e.id)).length
+    const pending = roster.filter((e) => !submittedSet.has(e.id))
 
     // Rezerwacja PRZED wysyłką. `ignoreDuplicates` = ON CONFLICT DO NOTHING, więc
     // `.select()` zwraca wyłącznie wiersze, które naprawdę powstały — czyli osoby,
@@ -197,8 +201,10 @@ export const GET = withCronAuth(async (request, { admin }) => {
         year: targetYear,
         month: targetMonth,
         deadline: submissionDeadlineIso(override.period),
+        // roster = already_submitted + pending; pending = already_reminded + sent + failed
         total_employees: employees?.length ?? 0,
-        already_submitted: submittedSet.size,
+        roster: roster.length,
+        already_submitted: alreadySubmitted,
         already_reminded: pending.length - targets.length,
         reminders_sent: sent,
         reminders_failed: failed,
