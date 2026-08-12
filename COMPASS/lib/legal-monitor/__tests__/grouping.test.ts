@@ -3,6 +3,7 @@ import {
     dayGroupLabel,
     exactDayLabel,
     groupItemsByReceivedDay,
+    partitionPinned,
     receivedDayISO,
 } from '../grouping'
 import type { LegalMonitorItemRow } from '../../types/legal-monitor'
@@ -134,5 +135,42 @@ describe('groupItemsByReceivedDay', () => {
 
     it('zwraca pustą listę grup dla pustej skrzynki', () => {
         expect(groupItemsByReceivedDay([], today)).toEqual([])
+    })
+})
+
+describe('partitionPinned', () => {
+    it('wyjmuje przypięte i układa ostatnio przypięte na górze', () => {
+        const { pinned, rest } = partitionPinned([
+            { id: 'a', pinned_at: null },
+            { id: 'b', pinned_at: '2026-08-12T09:00:00Z' },
+            { id: 'c', pinned_at: '2026-08-12T11:00:00Z' },
+            { id: 'd', pinned_at: null },
+        ])
+        expect(pinned.map((i) => i.id)).toEqual(['c', 'b'])
+        expect(rest.map((i) => i.id)).toEqual(['a', 'd'])
+    })
+
+    it('nie duplikuje wpisu — przypięty znika z reszty', () => {
+        const items = [
+            { id: 'a', pinned_at: '2026-08-12T09:00:00Z' },
+            { id: 'b', pinned_at: null },
+        ]
+        const { pinned, rest } = partitionPinned(items)
+        expect(pinned).toHaveLength(1)
+        expect(rest).toHaveLength(1)
+        expect(pinned.length + rest.length).toBe(items.length)
+    })
+
+    it('remis rozstrzyga po id, żeby kolejność była deterministyczna', () => {
+        const stamp = '2026-08-12T09:00:00Z'
+        const { pinned } = partitionPinned([
+            { id: 'z', pinned_at: stamp },
+            { id: 'a', pinned_at: stamp },
+        ])
+        expect(pinned.map((i) => i.id)).toEqual(['a', 'z'])
+    })
+
+    it('radzi sobie z pustą listą', () => {
+        expect(partitionPinned([])).toEqual({ pinned: [], rest: [] })
     })
 })

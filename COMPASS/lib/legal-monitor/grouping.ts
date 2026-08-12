@@ -110,6 +110,33 @@ export function groupItemsByReceivedDay<T extends GroupableItem>(
         })
 }
 
+/**
+ * Phase 52 — rozdziela przypięte od reszty.
+ *
+ * Przypięte idą do osobnej sekcji NAD dniami i NIE powtarzają się w swoim dniu:
+ * ten sam wpis w dwóch miejscach czyta się jak dwa różne wpisy. Kolejność w
+ * sekcji to „ostatnio przypięte na górze” — pinezka jest gestem ręcznym, więc
+ * przewidywalne jest to, co przed chwilą kliknięte, a nie kolejny ranking
+ * pilności.
+ */
+export function partitionPinned<T extends { id: string; pinned_at: string | null }>(
+    items: ReadonlyArray<T>,
+): { pinned: T[]; rest: T[] } {
+    const pinned: T[] = []
+    const rest: T[] = []
+    for (const item of items) {
+        if (item.pinned_at) pinned.push(item)
+        else rest.push(item)
+    }
+    pinned.sort((a, b) => {
+        const at = a.pinned_at ?? ''
+        const bt = b.pinned_at ?? ''
+        if (at !== bt) return at < bt ? 1 : -1
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    })
+    return { pinned, rest }
+}
+
 function fmtFullDay(dayISO: string): string {
     return format(parseISO(dayISO), 'EEEE, d MMMM yyyy', { locale: pl })
 }

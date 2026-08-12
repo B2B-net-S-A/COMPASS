@@ -47,6 +47,8 @@ import {
     Download,
     ExternalLink,
     Loader2,
+    Pin,
+    PinOff,
     Scale,
     Search,
     UserCheck,
@@ -62,9 +64,10 @@ import {
     reviewLegalMonitorItem,
     reviewLegalMonitorItems,
     setLegalMonitorFollowUp,
+    setLegalMonitorPin,
 } from '@/lib/actions/legal-monitor'
 import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
-import { groupItemsByReceivedDay } from '@/lib/legal-monitor/grouping'
+import { groupItemsByReceivedDay, partitionPinned } from '@/lib/legal-monitor/grouping'
 import {
     LEGAL_SEVERITY_META,
     LEGAL_SOURCE_LABELS_PL,
@@ -174,10 +177,12 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
         [items],
     )
 
-    const filtered = useMemo(() => {
+    const { pinned, rest } = useMemo(() => {
         const q = search.trim().toLowerCase()
-        return items.filter((i) => {
-            if (status !== 'all' && i.status !== status) return false
+        // Filtry inne niż status. Sekcja przypiętych używa TYLKO ich — pinezka ma
+        // znaczyć „zawsze pod ręką”, a nie „dopóki nie oznaczę jako przejrzane”,
+        // więc przełączanie zakładek statusu nie może jej chować.
+        const matchesFacets = (i: LegalMonitorItemRow) => {
             if (severity !== 'all' && i.severity !== severity) return false
             if (topic !== 'all' && i.topic !== topic) return false
             if (source !== 'all' && i.source !== source) return false
@@ -185,15 +190,24 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
             const hay =
                 `${i.title} ${i.summary} ${i.why_it_matters} ${i.reference ?? ''} ${i.source_label}`.toLowerCase()
             return hay.includes(q)
-        })
+        }
+        const byFacets = items.filter(matchesFacets)
+        const split = partitionPinned(byFacets)
+        return {
+            pinned: split.pinned,
+            rest:
+                status === 'all'
+                    ? split.rest
+                    : split.rest.filter((i) => i.status === status),
+        }
     }, [items, status, severity, topic, source, search])
 
-    const groups = useMemo(
-        () => groupItemsByReceivedDay(filtered, todayISO),
-        [filtered, todayISO],
-    )
+    const groups = useMemo(() => groupItemsByReceivedDay(rest, todayISO), [rest, todayISO])
 
-    const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered])
+    const visibleIds = useMemo(
+        () => [...pinned, ...rest].map((i) => i.id),
+        [pinned, rest],
+    )
     const selectedVisible = visibleIds.filter((id) => selected.has(id))
     const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length
 
@@ -267,6 +281,33 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
             } catch (e: unknown) {
                 logCompat.error('[legal-monitor] bulk review failed', e)
                 toast.error(e instanceof Error ? e.message : 'Nie udało się zapisać przeglądu.')
+            }
+        })
+    }
+
+    const setPin = (item: LegalMonitorItemRow, next: boolean) => {
+        startTransition(async () => {
+            try {
+                await setLegalMonitorPin({ id: item.id, pinned: next })
+                toastSuccess(next ? 'Przypięto na górę skrzynki' : 'Zdjęto pinezkę')
+                // Panel szczegółu trzyma własną kopię wpisu, więc bez tego przycisk
+                // w dialogu pokazywałby stary stan aż do zamknięcia. Autora zerujemy
+                // razem ze stemplem (spójna kopia); przy przypięciu nazwisko dociąga
+                // dopiero refresh — wolę puste niż cudze.
+                setDetail((prev) =>
+                    prev && prev.id === item.id
+                        ? {
+                              ...prev,
+                              pinned_at: next ? new Date().toISOString() : null,
+                              pinned_by: null,
+                              pinned_by_name: null,
+                          }
+                        : prev,
+                )
+                router.refresh()
+            } catch (e: unknown) {
+                logCompat.error('[legal-monitor] pin toggle failed', e)
+                toast.error(e instanceof Error ? e.message : 'Nie udało się zmienić pinezki.')
             }
         })
     }
@@ -393,7 +434,7 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
                     )}
                 </div>
 
-                {canReview && filtered.length > 0 && (
+                {canReview && visibleIds.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-muted/30 px-3 py-2">
                         <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
                             <Checkbox
@@ -401,7 +442,7 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
                                 onCheckedChange={toggleAllVisible}
                                 aria-label="Zaznacz wszystkie widoczne"
                             />
-                            Zaznacz widoczne ({filtered.length})
+                            Zaznacz widoczne ({visibleIds.length})
                         </label>
                         {selectedVisible.length > 0 && (
                             <>
@@ -433,7 +474,7 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
                     </div>
                 )}
 
-                {filtered.length === 0 ? (
+                {visibleIds.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
                         {status === 'new' && !extraFiltersOn
                             ? 'Skrzynka pusta — wszystko przejrzane.'
@@ -441,6 +482,40 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
                     </p>
                 ) : (
                     <div className="space-y-4">
+                        {pinned.length > 0 && (
+                            <section>
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 pb-1.5">
+                                    <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
+                                        <Pin className="h-3.5 w-3.5" />
+                                        Przypięte
+                                    </h3>
+                                    <span className="text-xs text-muted-foreground">
+                                        · {itemCountPl(pinned.length)}
+                                    </span>
+                                    {status !== 'all' && (
+                                        <span className="text-xs text-muted-foreground">
+                                            · niezależnie od filtra statusu
+                                        </span>
+                                    )}
+                                </div>
+                                <ul className="divide-y divide-border/40 rounded-md border border-primary/30 bg-primary/[0.03]">
+                                    {pinned.map((item) => (
+                                        <LegalMonitorRow
+                                            key={item.id}
+                                            item={item}
+                                            canReview={canReview}
+                                            checked={selected.has(item.id)}
+                                            onToggle={() => toggleOne(item.id)}
+                                            onOpen={() => openDetail(item)}
+                                            onTogglePin={() => setPin(item, false)}
+                                            /* Poza swoim dniem wpis traci kontekst „kiedy
+                                               przyszedł" — w tej sekcji dokładamy go wprost. */
+                                            showReceivedDate
+                                        />
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
                         {groups.map((group) => (
                             <section key={group.dayISO}>
                                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 pb-1.5">
@@ -463,6 +538,7 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
                                             checked={selected.has(item.id)}
                                             onToggle={() => toggleOne(item.id)}
                                             onOpen={() => openDetail(item)}
+                                            onTogglePin={() => setPin(item, true)}
                                         />
                                     ))}
                                 </ul>
@@ -551,6 +627,15 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
                                     </p>
                                 )}
 
+                                {detail.pinned_at && (
+                                    <p className="text-xs text-primary inline-flex items-center gap-1.5">
+                                        <Pin className="h-3.5 w-3.5" />
+                                        Przypięte na górę skrzynki{' '}
+                                        {fmtDateTime(detail.pinned_at)}
+                                        {detail.pinned_by_name && ` — ${detail.pinned_by_name}`}
+                                    </p>
+                                )}
+
                                 {canReview ? (
                                     <>
                                         <div className="grid gap-3 sm:grid-cols-2">
@@ -630,6 +715,21 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
 
                             {canReview && (
                                 <DialogFooter className="gap-2 sm:gap-2">
+                                    {/* Naturalny moment na pinezkę to „przeczytałem
+                                        i chcę to mieć pod ręką", czyli tutaj. */}
+                                    <Button
+                                        variant="outline"
+                                        disabled={pending}
+                                        onClick={() => setPin(detail, !detail.pinned_at)}
+                                        className="sm:mr-auto"
+                                    >
+                                        {detail.pinned_at ? (
+                                            <PinOff className="h-4 w-4 mr-1.5" />
+                                        ) : (
+                                            <Pin className="h-4 w-4 mr-1.5" />
+                                        )}
+                                        {detail.pinned_at ? 'Zdejmij pinezkę' : 'Przypnij'}
+                                    </Button>
                                     {REVIEW_ACTIONS.map((a) => (
                                         <Button
                                             key={a.status}
@@ -661,11 +761,23 @@ interface RowProps {
     checked: boolean
     onToggle: () => void
     onOpen: () => void
+    onTogglePin: () => void
+    /** Sekcja przypiętych stoi poza dniami, więc tam data otrzymania idzie w wiersz. */
+    showReceivedDate?: boolean
 }
 
-function LegalMonitorRow({ item, canReview, checked, onToggle, onOpen }: RowProps) {
+function LegalMonitorRow({
+    item,
+    canReview,
+    checked,
+    onToggle,
+    onOpen,
+    onTogglePin,
+    showReceivedDate = false,
+}: RowProps) {
     const sev = LEGAL_SEVERITY_META[item.severity]
     const st = LEGAL_STATUS_META[item.status]
+    const isPinned = Boolean(item.pinned_at)
     return (
         <li className="flex items-start gap-2 px-3 hover:bg-muted/50 transition-colors">
             {canReview && (
@@ -713,6 +825,11 @@ function LegalMonitorRow({ item, canReview, checked, onToggle, onOpen }: RowProp
                                     dokument {fmtDate(item.published_at)}
                                 </span>
                             )}
+                            {showReceivedDate && (
+                                <span title="Kiedy wpis trafił do skrzynki">
+                                    otrzymano {fmtDate(item.created_at)}
+                                </span>
+                            )}
                             {item.due_date && (
                                 <span className="inline-flex items-center gap-1 text-warning">
                                     <CalendarClock className="h-3 w-3" />
@@ -729,6 +846,31 @@ function LegalMonitorRow({ item, canReview, checked, onToggle, onOpen }: RowProp
                     </div>
                 </div>
             </button>
+            {/* Pinezka poza dużym przyciskiem wiersza — zagnieżdżony <button> jest
+                niedozwolony w HTML i psuje klawiaturę. */}
+            {canReview ? (
+                <button
+                    type="button"
+                    onClick={onTogglePin}
+                    title={isPinned ? 'Zdejmij pinezkę' : 'Przypnij na górę skrzynki'}
+                    aria-label={
+                        isPinned ? `Zdejmij pinezkę: ${item.title}` : `Przypnij: ${item.title}`
+                    }
+                    aria-pressed={isPinned}
+                    className="mt-3 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[pinned=true]:text-primary"
+                    data-pinned={isPinned}
+                >
+                    {isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                </button>
+            ) : (
+                // Czytający bez prawa przeglądu nie przypina, ale musi rozumieć,
+                // czemu wpis wisi na górze.
+                isPinned && (
+                    <span className="mt-3 shrink-0 p-1.5 text-primary" title="Przypięty">
+                        <Pin className="h-4 w-4" />
+                    </span>
+                )
+            )}
         </li>
     )
 }

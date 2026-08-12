@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { LegalMonitorItemRow } from '@/lib/types/legal-monitor'
+
+const { mockSetPin } = vi.hoisted(() => ({ mockSetPin: vi.fn() }))
 
 vi.mock('@/lib/actions/legal-monitor', () => ({
     reviewLegalMonitorItem: vi.fn(),
     reviewLegalMonitorItems: vi.fn(),
     setLegalMonitorFollowUp: vi.fn(),
+    setLegalMonitorPin: mockSetPin,
     exportLegalMonitorCsv: vi.fn(),
 }))
 
@@ -37,8 +40,11 @@ function buildItem(overrides: Partial<LegalMonitorItemRow> = {}): LegalMonitorIt
         due_date: null,
         assigned_to: null,
         alerted_at: null,
+        pinned_at: null,
+        pinned_by: null,
         reviewed_by_name: null,
         assigned_to_name: null,
+        pinned_by_name: null,
         ...overrides,
     }
 }
@@ -117,6 +123,74 @@ describe('LegalMonitorList — grupowanie po dniu otrzymania', () => {
         renderList([buildItem({ id: 'a', created_at: '2026-08-03T05:30:00Z' })])
         expect(
             screen.getByRole('heading', { name: 'Poniedziałek, 3 sierpnia 2026' }),
+        ).toBeInTheDocument()
+    })
+})
+
+describe('LegalMonitorList — przypinanie', () => {
+    it('sekcja przypiętych stoi nad dniami, a wpis nie dubluje się w swoim dniu', () => {
+        renderList([
+            buildItem({
+                id: 'a',
+                title: 'Przypięty',
+                created_at: '2026-08-10T05:30:00Z',
+                pinned_at: '2026-08-12T08:00:00Z',
+            }),
+            buildItem({ id: 'b', title: 'Zwykły', created_at: '2026-08-10T05:30:00Z' }),
+        ])
+
+        const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+        expect(headings[0]).toMatch(/Przypięte/)
+        expect(headings[1]).toBe('Przedwczoraj')
+
+        const przedwczoraj = screen.getByRole('heading', { name: 'Przedwczoraj' }).closest('section')!
+        expect(within(przedwczoraj).queryByText('Przypięty')).not.toBeInTheDocument()
+        expect(screen.getAllByText('Przypięty')).toHaveLength(1)
+    })
+
+    it('przypięty wpis zostaje widoczny mimo filtra statusu (domyślnie „Do przeglądu”)', () => {
+        renderList([
+            buildItem({
+                id: 'a',
+                title: 'Przypięty i przejrzany',
+                status: 'reviewed',
+                pinned_at: '2026-08-12T08:00:00Z',
+            }),
+            buildItem({ id: 'b', title: 'Nowy wpis' }),
+        ])
+
+        // Bez pinezki wpis „reviewed" nie przeszedłby domyślnego filtra `new`.
+        expect(screen.getByText('Przypięty i przejrzany')).toBeInTheDocument()
+        expect(screen.getByText(/niezależnie od filtra statusu/)).toBeInTheDocument()
+    })
+
+    it('w sekcji przypiętych pokazuje datę otrzymania — wpis stoi poza swoim dniem', () => {
+        renderList([
+            buildItem({
+                id: 'a',
+                created_at: '2026-08-10T05:30:00Z',
+                pinned_at: '2026-08-12T08:00:00Z',
+            }),
+        ])
+        expect(screen.getByText(/otrzymano 10 sie 2026/)).toBeInTheDocument()
+    })
+
+    it('klik pinezki zapisuje docelowy stan, nie „przełącz”', async () => {
+        mockSetPin.mockResolvedValueOnce(undefined)
+        renderList([buildItem({ id: 'a', title: 'Do przypięcia' })])
+
+        fireEvent.click(screen.getByRole('button', { name: 'Przypnij: Do przypięcia' }))
+        await waitFor(() =>
+            expect(mockSetPin).toHaveBeenCalledWith({ id: 'a', pinned: true }),
+        )
+    })
+
+    it('przypięty wiersz oferuje zdjęcie pinezki', () => {
+        renderList([
+            buildItem({ id: 'a', title: 'Przypięty', pinned_at: '2026-08-12T08:00:00Z' }),
+        ])
+        expect(
+            screen.getByRole('button', { name: 'Zdejmij pinezkę: Przypięty' }),
         ).toBeInTheDocument()
     })
 })
