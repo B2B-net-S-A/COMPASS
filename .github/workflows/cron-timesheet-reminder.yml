@@ -10,6 +10,14 @@ name: Timesheet reminder (monthly cron)
 # Wielokrotne wołanie jest bezpieczne: o „raz na miesiąc" decyduje trasa
 # (rezerwacja w timesheet_reminder_log z UNIQUE na user+okres), nie harmonogram.
 # Z tego samego powodu równoległe zadanie w Coolify nie tworzy duplikatów.
+#
+# UWAGA: ten workflow NIE wysłał nigdy ani jednego maila — w repo nie ma sekretu
+# `CRON_SECRET`, więc każde odpalenie (25.05, 25.06, 25.07, 12.08) kończyło się
+# błędem na starcie. Jedynym realnym nadawcą był Coolify. Dopóki sekretu nie ma,
+# przebieg kończy się ostrzeżeniem zamiast czerwonym runem — inaczej harmonogram
+# 1.–5. produkowałby pięć fałszywych alarmów miesięcznie zamiast jednego.
+# Żeby uzyskać prawdziwą redundancję dwóch schedulerów:
+#   gh secret set CRON_SECRET --repo artur-t-96/compass   # wartość: Coolify env vault
 
 on:
   schedule:
@@ -34,9 +42,16 @@ jobs:
           APP_URL: ${{ vars.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "Missing APP_URL variable or CRON_SECRET. Configure them in repo settings." >&2
+          if [ -z "$APP_URL" ]; then
+            echo "::error::Brak zmiennej APP_URL — ustaw ją w ustawieniach repo."
             exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            # Nie błąd, tylko nieskonfigurowana redundancja: przypomnienia wysyła
+            # zadanie `timesheet-reminder` w Coolify. Ten workflow rusza dopiero, gdy
+            # ktoś doda sekret — do tego czasu nie ma sensu farbować CI na czerwono.
+            echo "::warning::Pominięte — brak sekretu CRON_SECRET. Przypomnienia leżą na Coolify; dodaj sekret, żeby mieć drugi scheduler."
+            exit 0
           fi
           echo "Calling $APP_URL/api/cron/timesheet-reminder"
           # Bearer, nie ?secret= — sekret w query trafia do logów CF/proxy/Sentry,
