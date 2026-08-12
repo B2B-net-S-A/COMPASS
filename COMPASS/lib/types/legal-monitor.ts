@@ -76,9 +76,18 @@ export interface LegalMonitorItemRow {
     assigned_to: string | null
     /** Phase 50 — stempel alertu o czerwonym wpisie; null = jeszcze nie alertowano. */
     alerted_at: string | null
+    /**
+     * Phase 52 — kiedy wpis przypięto na górę skrzynki; null = nieprzypięty.
+     * Pinezka jest wspólna dla zespołu i ortogonalna do statusu (przegląd jej nie
+     * zdejmuje) — patrz nota w migracji phase52_legal_monitor_pin.
+     */
+    pinned_at: string | null
+    /** Phase 52 — kto przypiął; null, gdy nieprzypięty albo konto usunięte. */
+    pinned_by: string | null
     /** Dołączane przez server action (split query po profiles — bez embed-by-FK). */
     reviewed_by_name: string | null
     assigned_to_name: string | null
+    pinned_by_name: string | null
 }
 
 export interface LegalMonitorRunRow {

@@ -249,6 +249,9 @@ export type AuditAction =
     // Heartbeat crona alertów: 'start' bez 'done' = przebieg ubity w locie;
     // brak 'start' = cron w ogóle nie odpalił.
     | 'LEGAL_MONITOR_ALERTS_RUN'
+    // Phase 52 — pinezka trzymająca wpis na górze skrzynki (wspólna dla zespołu)
+    | 'LEGAL_MONITOR_ITEM_PINNED'
+    | 'LEGAL_MONITOR_ITEM_UNPINNED'
     // Phase 49 — edytowalne tytuły (zgłoszenia w People Ops; karta rozmowy ma
     // własny ślad w TECH_CARD_UPDATED)
     | 'INBOX_TICKET_RENAMED'

@@ -1498,6 +1498,38 @@ Cztery rzeczy, o których trzeba wiedzieć przy zmianach tutaj:
 4. **Data dokumentu w wierszu jest podpisana słowem „dokument"** — obok nagłówka z datą otrzymania
    dwie różne daty bez podpisu czytają się jak błąd.
 
+## Phase 52 — Monitoring prawny: pinezka trzymająca wpis na górze (2026-08-12)
+
+Phase 51 ułożyła skrzynkę wg dnia otrzymania, więc wpis uznany za ważny po kilku dniach schodzi
+w dół razem ze swoim dniem. Pinezka wyjmuje go z tego porządku: sekcja **Przypięte** stoi nad
+dniami, kolejność „ostatnio przypięte na górze".
+
+Kolumny `pinned_at` / `pinned_by` (migracja `phase52_legal_monitor_pin`, addytywna, RLS bez zmian —
+polityki są wierszowe, więc to warstwa aplikacji pilnuje, których kolumn moduł dotyka). Akcja
+`setLegalMonitorPin` bierze **stan docelowy**, nie „przełącz" — dwa kliknięcia z dwóch kart nie
+mogą dać wyniku zależnego od kolejności.
+
+Cztery decyzje, które łatwo cofnąć nie znając powodu:
+
+1. **Pinezka jest ORTOGONALNA do statusu, nie kolejnym poziomem ważności.** „Do reakcji" to stan
+   procesu — ma termin, osobę i budzi crona przypomnieniami (Phase 50). Przypięcie to „chcemy mieć
+   to pod ręką". Dlatego przypiąć można wpis w dowolnym statusie, a przegląd pinezki NIE zdejmuje.
+   Nie zlewaj tych dwóch rzeczy w jedno pole.
+2. **Wyjątek: odrzucenie zdejmuje pinezkę** (`reviewLegalMonitorItem` + wariant hurtowy) — „nieistotne"
+   i „trzymamy na górze" nie mogą być prawdziwe naraz, a przypięty śmieć zostałby na górze na zawsze.
+3. **Sekcja przypiętych ignoruje filtr statusu**, ale honoruje pilność/temat/źródło/szukajkę. Gdyby
+   honorowała status, przypięty wpis znikałby w chwili oznaczenia go jako przejrzany — czyli
+   dokładnie wtedy, kiedy pinezka ma robić robotę. `visibleIds` (zaznaczanie hurtem) obejmuje obie
+   sekcje, więc „Zaznacz widoczne" nie mija się z tym, co widać.
+4. **Pinezka jest WSPÓLNA dla zespołu**, jak status, notatka i termin — moduł obsługuje kilka osób
+   przy jednej skrzynce. Prywatne zakładki wymagałyby tabeli łączącej (item × user); nie ma potrzeby.
+
+Przypięty wpis nie powtarza się w swoim dniu (ten sam wpis w dwóch miejscach czyta się jak dwa różne),
+więc w sekcji przypiętych dostaje w wierszu datę otrzymania — poza dniem straciłby ten kontekst.
+Logika w [lib/legal-monitor/grouping.ts](COMPASS/lib/legal-monitor/grouping.ts) (`partitionPinned`).
+Audyt: `LEGAL_MONITOR_ITEM_PINNED` / `_UNPINNED`. Świadomie poza zakresem: kolumna „Przypięty"
+w eksporcie CSV i limit liczby przypiętych.
+
 ## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
 
 Nagłówki obu strumieni pracy People Ops były nieedytowalne, a oba brały tytuł z cudzych danych:

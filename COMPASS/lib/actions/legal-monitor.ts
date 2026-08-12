@@ -71,7 +71,7 @@ export async function listLegalMonitorItems(): Promise<LegalMonitorItemRow[]> {
     const { data, error } = await supabase
         .from('legal_monitor_items')
         .select(
-            'id, source, source_label, topic, severity, published_at, reference, title, url, summary, why_it_matters, status, reviewed_by, reviewed_at, review_note, created_at, due_date, assigned_to, alerted_at',
+            'id, source, source_label, topic, severity, published_at, reference, title, url, summary, why_it_matters, status, reviewed_by, reviewed_at, review_note, created_at, due_date, assigned_to, alerted_at, pinned_at, pinned_by',
         )
         // To sortowanie NIE jest zbędne mimo późniejszego sortItemsForReview: decyduje,
         // KTÓRE wiersze przetrwają limit poniżej. Bez niego Postgres mógłby oddać
@@ -82,16 +82,17 @@ export async function listLegalMonitorItems(): Promise<LegalMonitorItemRow[]> {
 
     // Nazwy dokładamy niżej ze split-query, więc wiersz z bazy ich jeszcze nie ma.
     const rows = (data ?? []) as unknown as Array<
-        Omit<LegalMonitorItemRow, 'reviewed_by_name' | 'assigned_to_name'>
+        Omit<LegalMonitorItemRow, 'reviewed_by_name' | 'assigned_to_name' | 'pinned_by_name'>
     >
     if (rows.length === 0) return []
 
-    // Jedno zapytanie na oba pola — przeglądający i osoba odpowiedzialna to
-    // zwykle te same osoby, więc nie ma sensu odpytywać profiles dwa razy.
+    // Jedno zapytanie na wszystkie trzy pola — przeglądający, osoba odpowiedzialna
+    // i przypinający to zwykle te same osoby, więc nie ma sensu odpytywać profiles
+    // trzy razy.
     const reviewerIds = Array.from(
         new Set(
             rows
-                .flatMap((r) => [r.reviewed_by, r.assigned_to])
+                .flatMap((r) => [r.reviewed_by, r.assigned_to, r.pinned_by])
                 .filter((id): id is string => Boolean(id)),
         ),
     )
@@ -115,6 +116,7 @@ export async function listLegalMonitorItems(): Promise<LegalMonitorItemRow[]> {
             ...r,
             reviewed_by_name: r.reviewed_by ? (names.get(r.reviewed_by) ?? null) : null,
             assigned_to_name: r.assigned_to ? (names.get(r.assigned_to) ?? null) : null,
+            pinned_by_name: r.pinned_by ? (names.get(r.pinned_by) ?? null) : null,
         })),
     )
 }
@@ -195,6 +197,10 @@ export async function reviewLegalMonitorItem(input: LegalMonitorReviewInput): Pr
             reviewed_by: ctx.userId,
             reviewed_at: new Date().toISOString(),
             review_note: note.length > 0 ? note : null,
+            // Phase 52: odrzucenie zdejmuje pinezkę — „nieistotne" i „trzymamy
+            // na górze" nie mogą być prawdziwe naraz. Pozostałe statusy jej NIE
+            // ruszają: przypięty wpis ma przetrwać przegląd.
+            ...(input.status === 'dismissed' ? { pinned_at: null, pinned_by: null } : {}),
         })
         .eq('id', id)
         .select('id, title, severity, source, status')
@@ -255,6 +261,11 @@ export async function reviewLegalMonitorItems(
     // Pusta notatka przy operacji zbiorczej NIE kasuje notatek indywidualnych —
     // inaczej hurtowe „Przejrzane" wymazałoby ustalenia wpisane wcześniej ręcznie.
     if (trimmed.length > 0) payload.review_note = trimmed
+    // Ta sama reguła co przy pojedynczym przeglądzie: odrzucenie zdejmuje pinezkę.
+    if (status === 'dismissed') {
+        payload.pinned_at = null
+        payload.pinned_by = null
+    }
 
     const { data, error } = await supabase
         .from('legal_monitor_items')
@@ -274,6 +285,46 @@ export async function reviewLegalMonitorItems(
     })
     revalidatePath(HUB_PATH)
     return changed
+}
+
+/**
+ * Phase 52 — przypięcie wpisu na górę skrzynki (albo zdjęcie pinezki).
+ *
+ * Pinezka jest WSPÓLNA (jak status, notatka i termin) i ORTOGONALNA do statusu:
+ * przypiąć można wpis w dowolnym stanie, a przegląd jej nie zdejmuje. Jedyny
+ * wyjątek to odrzucenie — patrz `reviewLegalMonitorItem`.
+ *
+ * Bierze docelowy stan, nie „przełącz", żeby dwa kliknięcia z dwóch kart nie
+ * dawały wyniku zależnego od kolejności.
+ */
+export async function setLegalMonitorPin(input: { id: string; pinned: boolean }): Promise<void> {
+    const ctx = await requireFinanseOrAdminAction()
+    const id = (input.id ?? '').trim()
+    if (!id) throw new Error('Brak identyfikatora wpisu.')
+
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('legal_monitor_items')
+        .update(
+            input.pinned
+                ? { pinned_at: new Date().toISOString(), pinned_by: ctx.userId }
+                : { pinned_at: null, pinned_by: null },
+        )
+        .eq('id', id)
+        .select('id, title, severity, source, status')
+        .maybeSingle()
+
+    if (error) throw new Error(`Błąd zapisu pinezki: ${error.message}`)
+    if (!data) throw new Error('Nie znaleziono wpisu lub brak uprawnień do jego edycji.')
+
+    const row = data as unknown as { title: string; severity: string; source: string }
+    await logAudit(ctx.userId, input.pinned ? 'LEGAL_MONITOR_ITEM_PINNED' : 'LEGAL_MONITOR_ITEM_UNPINNED', {
+        item_id: id,
+        title: row.title,
+        severity: row.severity,
+        source: row.source,
+    })
+    revalidatePath(HUB_PATH)
 }
 
 /**
