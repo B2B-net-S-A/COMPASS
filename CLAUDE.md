@@ -1587,7 +1587,13 @@ trasę równolegle codziennie 1.–5. i wychodzi z tego jeden mail.
    `timesheet-reminder` (`0 9 1-5 * *`). Uwaga: `action=cron-enable` w workflow „Coolify Ops"
    włącza **wszystkie** zadania naraz, więc po każdym takim przebiegu trzeba te dwa wyłączyć
    ponownie (ta sama pułapka co przy `inbox-ingest`, Phase 44).
-3. Brak nowych env-varów.
+3. **Coolify jest jedynym schedulerem tych przypomnień.** Workflow GH Actions
+   „Timesheet reminder (monthly cron)" **nigdy nie wysłał ani jednego maila** — w repo nie ma
+   sekretu `CRON_SECRET`, więc każdy przebieg (25.05, 25.06, 25.07) padał na pierwszym kroku.
+   Brak sekretu daje teraz ostrzeżenie i zielony przebieg zamiast czerwonego, bo harmonogram
+   1.–5. robiłby z tego pięć fałszywych alarmów miesięcznie. Drugi scheduler włącza jedna
+   komenda: `gh secret set CRON_SECRET --repo artur-t-96/compass` (wartość z Coolify env vault).
+4. Brak nowych env-varów.
 
 ## Observability
 
