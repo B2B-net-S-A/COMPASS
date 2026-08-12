@@ -144,6 +144,12 @@ ssh root@178.104.220.48 "
 
 **Smoke test PASSED 2026-05-11.** 7 emaili wysłane przez Microsoft Graph z `noreply@b2bnetwork.pl`, 0 failed. Application Access Policy enforces że ŻADNA inna skrzynka nie może być użyta jako sender (nawet jeśli ktoś zhakuje secret).
 
+> ⚠️ Komenda wyżej to zapis tego, co odpalono w maju 2026 — **dziś nie zadziała jak wtedy**.
+> Od Phase 52 `?phase=` jest ignorowane, trasa wysyła tylko 1.–5. dnia miesiąca (poza oknem →
+> `{"skipped":"outside_reminder_window"}`), a każda osoba dostaje jednego maila na rozliczany
+> miesiąc (dedup w `timesheet_reminder_log`). Do powtórzenia smoke testu: `?force=1` pomija okno,
+> a `?year=&month=` wskazuje okres, za który przypomnienie jeszcze nie poszło.
+
 ## 7. Rollback
 
 Jeśli Graph nie działa (Azure misconfig, permission scope problem, etc.) — natychmiast wróć do Resend:

@@ -1,9 +1,20 @@
 name: Timesheet reminder (monthly cron)
 
+# Phase 52 — jedno przypomnienie na osobę na miesiąc, za miesiąc ZAMKNIĘTY.
+#
+# Wcześniej: 25-go, czyli za miesiąc jeszcze trwający. Teraz odpalamy codziennie
+# 1.–5., bo tyle trwa okno przed terminem (5. dzień miesiąca). Codziennie, a nie
+# jednego dnia, żeby przeoczony przebieg (opóźnienia schedulera GH, chwilowy 5xx)
+# nie oznaczał braku przypomnienia przez cały miesiąc.
+#
+# Wielokrotne wołanie jest bezpieczne: o „raz na miesiąc" decyduje trasa
+# (rezerwacja w timesheet_reminder_log z UNIQUE na user+okres), nie harmonogram.
+# Z tego samego powodu równoległe zadanie w Coolify nie tworzy duplikatów.
+
 on:
   schedule:
-    # 25th of each month at 09:00 UTC (≈ 10:00 / 11:00 Warsaw depending on DST)
-    - cron: '0 9 25 * *'
+    # 1.–5. dnia miesiąca o 08:00 UTC (≈ 09:00 / 10:00 w Warszawie zależnie od DST)
+    - cron: '0 8 1-5 * *'
   workflow_dispatch:
 
 permissions:
@@ -28,7 +39,10 @@ jobs:
             exit 1
           fi
           echo "Calling $APP_URL/api/cron/timesheet-reminder"
+          # Bearer, nie ?secret= — sekret w query trafia do logów CF/proxy/Sentry,
+          # a trasa loguje za to ostrzeżenie o przestarzałym wywołaniu.
           curl -fsSL --retry 3 --retry-delay 10 \
-            "$APP_URL/api/cron/timesheet-reminder?secret=$CRON_SECRET" | tee /tmp/result.json
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/timesheet-reminder" | tee /tmp/result.json
           echo
           echo "✅ Reminder cron completed."
