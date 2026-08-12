@@ -252,6 +252,10 @@ export type AuditAction =
     // Phase 49 — edytowalne tytuły (zgłoszenia w People Ops; karta rozmowy ma
     // własny ślad w TECH_CARD_UPDATED)
     | 'INBOX_TICKET_RENAMED'
+    // Phase 51 — heartbeat crona przypomnień o timesheecie. Przypomnienie idzie teraz
+    // raz w miesiącu, więc cichy brak przebiegu = cały miesiąc bez sygnału do ludzi;
+    // ten wpis jest jedynym czytelnym z bazy dowodem, że okno 1.–5. zostało obsłużone.
+    | 'TIMESHEET_REMINDER_RUN'
 
 export async function logAudit(
     userId: string | null,

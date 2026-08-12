@@ -6368,6 +6368,38 @@ export type Database = {
           },
         ]
       }
+      timesheet_reminder_log: {
+        Row: {
+          id: string
+          month: number
+          sent_at: string
+          user_id: string
+          year: number
+        }
+        Insert: {
+          id?: string
+          month: number
+          sent_at?: string
+          user_id: string
+          year: number
+        }
+        Update: {
+          id?: string
+          month?: number
+          sent_at?: string
+          user_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_reminder_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       timesheet_role_defaults: {
         Row: {
           applies_to_role: Database["public"]["Enums"]["user_role"] | null

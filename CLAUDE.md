@@ -1531,6 +1531,62 @@ Dwie rzeczy, o których trzeba wiedzieć przy zmianach tutaj:
 2. **Rename revaliduje też `/internal/people`** — kanban Spraw żyje w hubie People Ops, więc bez tego
    stary tytuł zostaje na kafelku mimo poprawnej zmiany w bazie.
 
+## Phase 51 — jedno przypomnienie o timesheecie na miesiąc (2026-08-12)
+
+Kto nie złożył timesheetu, dostawał **~8 maili miesięcznie**: zadania Coolify
+`timesheet-mon-nudge` (`0 9 * * 1`) i `timesheet-wed-warning` (`0 9 * * 3`) plus cron GH Actions
+25-go. Wszystkie za miesiąc **bieżący**, czyli jeszcze niezamknięty — więc treść mijała się
+z prawdą: 12.08 przyszedł mail „timesheet 2026-08, **termin za 3 dni**", choć termin za sierpień
+to 5 września. Cztery fazy eskalacji Harvest-style (Phase 17b R9) zwinięte do jednego maila.
+
+### Trasa decyduje o wysyłce, nie wołający
+
+To jest ta zmiana, którą łatwo cofnąć nie znając powodu. Wcześniej
+`/api/cron/timesheet-reminder` robiła to, co kazał jej `?phase=`, więc liczba maili zależała od
+tego, ile zadań ktoś kiedyś dodał w Coolify. Teraz cała reguła siedzi w trasie:
+
+- **Okres = miesiąc ZAMKNIĘTY** (poprzedni), nigdy trwający — `closedMonthFor`
+  w [lib/hr/timesheet-reminder-window.ts](COMPASS/lib/hr/timesheet-reminder-window.ts).
+- **Okno = 1.–5. dzień miesiąca** (do dnia terminu włącznie). Poza oknem trasa nie wysyła nic,
+  więc stare zadanie z `?phase=mon-nudge` jest **nieszkodliwym no-opem** — nie trzeba było
+  zgadywać, czy uda się wyłączyć wszystkie harmonogramy naraz.
+- **Okno, a nie jeden dzień**, bo scheduler bywa zawodny (crony Coolify potrafiły nie odpalać
+  tygodniami — patrz `coolify_cron_needs_container_name` i Phase 41b). Pięć prób zamiast jednej.
+- **Dedup w bazie** — `timesheet_reminder_log` z `UNIQUE (user_id, year, month)`. Cron najpierw
+  **rezerwuje** wysyłkę wstawką `ON CONFLICT DO NOTHING` (`upsert` + `ignoreDuplicates` + `.select()`
+  zwraca tylko realnie wstawione wiersze), maila wysyła wyłącznie dla nich. Dedup jest atomowy:
+  dwa schedulery naraz nie wyślą duplikatu, bo rozstrzyga UNIQUE, a nie odczyt-potem-zapis.
+  Nieudana wysyłka **kasuje rezerwację**, żeby jutrzejszy przebieg w oknie ją ponowił.
+
+Skoro dedup jest w bazie, redundancja harmonogramów jest darmowa — GH Actions i Coolify wołają
+trasę równolegle codziennie 1.–5. i wychodzi z tego jeden mail.
+
+### Reszta
+
+- **Treść**: jeden szablon zamiast czterech, z **konkretną datą terminu** („Termin: 5 września
+  2026") zamiast fałszywego „za 3 dni", i zdaniem „to jedyne przypomnienie za 2026-08".
+  Odmiana: `LLLL` (mianownik) dla nazwy miesiąca, `MMMM` (dopełniacz) po liczbie dnia — patrz
+  lekcja z Phase 48.
+- **Heartbeat** `TIMESHEET_REMINDER_RUN` w `audit_logs`. Przy jednym mailu na miesiąc cichy brak
+  przebiegu = cały miesiąc bez sygnału do ludzi, a nikt tego nie zauważy; to jedyny czytelny
+  z bazy dowód, że okno zostało obsłużone.
+- **`?force=1`** pomija okno (ręczne uruchomienie), `?year=&month=` wskazują inny okres.
+  **Dedupu nie pomija nic** — od powtórki jest wskazanie innego okresu, nie obejście gwarancji.
+- Alert Teams idzie **po** rezerwacji, nie przed — inaczej HR dostawałby go co przebieg, także
+  wtedy, gdy wszystkie maile poszły pierwszego dnia okna.
+
+### Ops po deploy
+
+1. Migracja `20260812090000_phase51_timesheet_reminder_log` zaaplikowana na prod przez MCP
+   (2026-08-12). Addytywna: nowa tabela, RLS włączone, **zero polityk** (pisze i czyta wyłącznie
+   cron przez service_role — polityka INSERT dla `authenticated` pozwoliłaby komukolwiek
+   zablokować sobie przypomnienie podrobioną rezerwacją).
+2. Coolify: wyłączone `timesheet-mon-nudge` i `timesheet-wed-warning`, dodane jedno
+   `timesheet-reminder` (`0 9 1-5 * *`). Uwaga: `action=cron-enable` w workflow „Coolify Ops"
+   włącza **wszystkie** zadania naraz, więc po każdym takim przebiegu trzeba te dwa wyłączyć
+   ponownie (ta sama pułapka co przy `inbox-ingest`, Phase 44).
+3. Brak nowych env-varów.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:

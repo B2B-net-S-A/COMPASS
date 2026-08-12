@@ -1,78 +1,72 @@
-import { logCompat } from '@/lib/logger'
+import { logCompat, logger } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { sendTimesheetReminder, type TimesheetReminderPhase } from '@/lib/email'
+import * as Sentry from '@sentry/nextjs'
+import { sendTimesheetReminder } from '@/lib/email'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { logAudit } from '@/lib/actions/audit'
+import { warsawDate } from '@/lib/oof/oof-dates'
+import {
+    closedMonthFor,
+    isWithinReminderWindow,
+    periodLabel,
+    submissionDeadlineIso,
+    TIMESHEET_DEADLINE_DAY,
+    type TimesheetPeriod,
+} from '@/lib/hr/timesheet-reminder-window'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Phase 11 + H2.1: timesheet reminder cron with two phases.
+ * Phase 51 — JEDNO przypomnienie o timesheecie na osobę na miesiąc.
  *
- * H2.1: Konfiguruj DWA cron jobs w Coolify (lub server cron):
- *   - 25-go każdego miesiąca: ?phase=warning  → reminder o terminie (5. dnia next month)
- *   - 5-go każdego miesiąca:  ?phase=final    → ostatnia szansa za POPRZEDNI miesiąc
+ * Wcześniej trasa robiła to, co kazał jej parametr `?phase=`, a wołały ją trzy
+ * harmonogramy: zadania Coolify `timesheet-mon-nudge` (`0 9 * * 1`) i
+ * `timesheet-wed-warning` (`0 9 * * 3`) oraz cron GH Actions 25-go. Wszystkie za
+ * miesiąc BIEŻĄCY, więc zalegający dostawał ~8 maili miesięcznie, a treść kłamała:
+ * 12.08 przyszło „timesheet 2026-08, termin za 3 dni", choć termin to 5.09.
  *
- * Auth (preferred — secret NOT logged in CF/proxy/Sentry traces):
- *   curl -X GET "https://compass.dynaminds.pl/api/cron/timesheet-reminder?phase=warning" \
- *        -H "Authorization: Bearer $CRON_SECRET"
+ * Teraz o wysyłce decyduje trasa, nie wołający:
+ *   - okres = miesiąc ZAMKNIĘTY (poprzedni), nigdy trwający,
+ *   - okno = 1.–5. dzień miesiąca (do dnia terminu włącznie); poza nim nie leci nic,
+ *     więc stare zadanie z `?phase=...` jest nieszkodliwym no-opem,
+ *   - dedup = `timesheet_reminder_log` z UNIQUE (user_id, year, month): rezerwacja
+ *     wstawką ON CONFLICT DO NOTHING idzie PRZED wysyłką, więc pięć przebiegów w oknie
+ *     (albo dwa schedulery naraz) dają dokładnie jednego maila na osobę.
  *
- * Legacy (query-based, deprecated):
- *   curl -X GET "https://compass.dynaminds.pl/api/cron/timesheet-reminder?secret=$SECRET&phase=warning"
+ * Wołanie:
+ *   curl -H "Authorization: Bearer $CRON_SECRET" \
+ *        "https://compass.dynaminds.pl/api/cron/timesheet-reminder"
  *
- * Auto-detect (gdy brak ?phase): day < 15 → final (poprzedni miesiąc), inaczej warning (bieżący).
- * Można też explicit ?year=&month= dla manual testing.
+ * Parametry (tylko ręczne uruchomienie): `?force=1` pomija okno, `?year=&month=`
+ * wskazują inny okres. Dedupu nie pomija NIC — od tego jest osobny okres.
+ *
+ * Ślad w bazie: audit_logs `TIMESHEET_REMINDER_RUN` — czytelny bez CRON_SECRET dowód,
+ * że jedyny w miesiącu przebieg faktycznie się wykonał.
  */
 export const GET = withCronAuth(async (request, { admin }) => {
     const url = new URL(request.url)
-    const now = new Date()
-    const dayOfMonth = now.getDate()
-    const dayOfWeek = now.getDay() // 0=Sunday … 6=Saturday
+    const todayIso = warsawDate(new Date())
+    const force = url.searchParams.get('force') === '1'
 
-    // Phase 17b R9 (PR-B): added 'mon-nudge' (gentle Mon) and 'wed-warning'
-    // (urgency Wed). Auto-detect picks based on weekday/day-of-month if no
-    // explicit ?phase is given.
-    const phaseParam = url.searchParams.get('phase')
-    const VALID_PHASES = ['mon-nudge', 'wed-warning', 'warning', 'final'] as const
-    const phase: TimesheetReminderPhase =
-        phaseParam && (VALID_PHASES as readonly string[]).includes(phaseParam)
-            ? (phaseParam as TimesheetReminderPhase)
-            : dayOfMonth < 15
-              ? 'final' // first half of month → cron for previous month's final
-              : dayOfWeek === 1
-                ? 'mon-nudge'
-                : dayOfWeek === 3
-                  ? 'wed-warning'
-                  : 'warning'
-
-    // R9 antispam guard: mon-nudge in first 5 days of the month is irrelevant
-    // (nobody fills timesheet on day 1-5 for current month — they're still
-    // working). Skip early to avoid noise.
-    if (phase === 'mon-nudge' && dayOfMonth < 5) {
+    if (!force && !isWithinReminderWindow(todayIso)) {
+        // Nie błąd — tak wygląda 26 z 31 dni miesiąca, w tym każde odpalenie starego
+        // zadania „mon-nudge"/„wed-warning".
         return NextResponse.json({
             ok: true,
-            phase,
-            skipped: 'too_early_in_month',
-            day_of_month: dayOfMonth,
+            skipped: 'outside_reminder_window',
+            today: todayIso,
+            window: `1-${TIMESHEET_DEADLINE_DAY}`,
         })
     }
 
-    // Target month: final = previous month, others = current month
-    let targetYear = now.getFullYear()
-    let targetMonth = now.getMonth() + 1
-    if (phase === 'final') {
-        if (targetMonth === 1) {
-            targetYear -= 1
-            targetMonth = 12
-        } else {
-            targetMonth -= 1
-        }
+    const period = closedMonthFor(todayIso)
+    const override = readPeriodOverride(url, period)
+    if ('error' in override) {
+        return NextResponse.json({ error: override.error }, { status: 400 })
     }
-    // Explicit override
-    const yearParam = url.searchParams.get('year')
-    const monthParam = url.searchParams.get('month')
-    if (yearParam) targetYear = parseInt(yearParam, 10)
-    if (monthParam) targetMonth = parseInt(monthParam, 10)
+    const { year: targetYear, month: targetMonth } = override.period
+    const monthLabel = periodLabel(override.period)
 
     const { data: employees, error: employeesErr } = await admin
         .from('profiles')
@@ -96,24 +90,50 @@ export const GET = withCronAuth(async (request, { admin }) => {
     const submittedSet = new Set((existing ?? []).map((t: { user_id: string }) => t.user_id))
 
     // Skip B2B employees (timesheet pakiet UoP only)
-    const targets = (employees ?? []).filter(
+    const pending = (employees ?? []).filter(
         (e: { id: string; email: string | null; employment_type: string | null }) =>
             !!e.email && !submittedSet.has(e.id) && e.employment_type !== 'b2b',
     ) as Array<{ id: string; full_name: string | null; email: string }>
 
-    // PR3: batch Teams alert before sending individual emails (only when
-    // there are pending users — skip noise when everyone's already submitted).
+    // Rezerwacja PRZED wysyłką. `ignoreDuplicates` = ON CONFLICT DO NOTHING, więc
+    // `.select()` zwraca wyłącznie wiersze, które naprawdę powstały — czyli osoby,
+    // które jeszcze nie dostały przypomnienia za ten okres. To jedyny krok pilnujący
+    // „raz na miesiąc"; kolejność rozstrzyga UNIQUE w bazie, nie odczyt w aplikacji.
+    let claimed: Array<{ user_id: string }> = []
+    if (pending.length > 0) {
+        const { data, error: claimErr } = await admin
+            .from('timesheet_reminder_log')
+            .upsert(
+                pending.map((p) => ({ user_id: p.id, year: targetYear, month: targetMonth })),
+                { onConflict: 'user_id,year,month', ignoreDuplicates: true },
+            )
+            .select('user_id')
+        if (claimErr) {
+            // Bez rezerwacji nie ma gwarancji jednego maila — wolimy nie wysłać nic
+            // i spróbować jutro (okno trwa 5 dni), niż zaryzykować powtórkę.
+            logCompat.error('[timesheet-reminder] claim error:', claimErr)
+            Sentry.captureMessage('timesheet_reminder_claim_failed', {
+                level: 'error',
+                tags: { kind: 'cron_timesheet_reminder' },
+            })
+            return NextResponse.json({ error: claimErr.message }, { status: 500 })
+        }
+        claimed = (data ?? []) as Array<{ user_id: string }>
+    }
+
+    const claimedIds = new Set(claimed.map((c) => c.user_id))
+    const targets = pending.filter((p) => claimedIds.has(p.id))
+
+    // Alert Teams po rezerwacji, nie przed — inaczej HR dostawałby go co przebieg,
+    // nawet gdy wszystkie maile poszły pierwszego dnia okna.
     if (targets.length > 0) {
-        const monthLabel = `${targetYear}-${String(targetMonth).padStart(2, '0')}`
-        const phaseColor =
-            phase === 'final' ? 'EF4444' : phase === 'wed-warning' ? 'F59E0B' : '3B82F6'
         postToTeamsAlert({
-            title: `Timesheet reminder ${phase} — ${monthLabel}`,
-            text: `${targets.length} ${targets.length === 1 ? 'osoba nie złożyła' : 'osób nie złożyło'} jeszcze timesheetu za ${monthLabel}.`,
-            themeColor: phaseColor,
+            title: `Timesheet reminder — ${monthLabel}`,
+            text: `${targets.length} ${targets.length === 1 ? 'osoba nie złożyła' : 'osób nie złożyło'} jeszcze timesheetu za ${monthLabel}. Termin: ${submissionDeadlineIso(override.period)}.`,
+            themeColor: 'F59E0B',
             facts: [
-                { name: 'Faza', value: phase },
                 { name: 'Miesiąc', value: monthLabel },
+                { name: 'Termin', value: submissionDeadlineIso(override.period) },
                 { name: 'Zaległych', value: String(targets.length) },
             ],
             actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=timesheets`,
@@ -128,20 +148,77 @@ export const GET = withCronAuth(async (request, { admin }) => {
             emp.full_name ?? emp.email,
             targetYear,
             targetMonth,
-            phase,
         )
-        if (res.success) sent += 1
-        else failed += 1
+        if (res.success) {
+            sent += 1
+            continue
+        }
+        failed += 1
+        // Zwolnij rezerwację, żeby kolejny przebieg w oknie ponowił próbę. Bez tego
+        // nieudana wysyłka oznaczałaby brak przypomnienia przez cały miesiąc.
+        const { error: releaseErr } = await admin
+            .from('timesheet_reminder_log')
+            .delete()
+            .eq('user_id', emp.id)
+            .eq('year', targetYear)
+            .eq('month', targetMonth)
+        if (releaseErr) {
+            logCompat.error('[timesheet-reminder] claim release failed:', releaseErr)
+        }
     }
 
-    return NextResponse.json({
-        ok: true,
-        phase,
+    await logAudit(null, 'TIMESHEET_REMINDER_RUN', {
         year: targetYear,
         month: targetMonth,
+        today: todayIso,
+        forced: force,
+        pending: pending.length,
+        already_reminded: pending.length - targets.length,
+        reminders_sent: sent,
+        reminders_failed: failed,
+    })
+
+    if (failed > 0) {
+        Sentry.captureMessage('timesheet_reminder_partial_failure', {
+            level: 'warning',
+            tags: { kind: 'cron_timesheet_reminder' },
+        })
+    }
+
+    logger.info({
+        event: 'timesheet_reminder.done',
+        month: monthLabel,
+        sent,
+        failed,
+    })
+
+    return NextResponse.json({
+        ok: failed === 0,
+        year: targetYear,
+        month: targetMonth,
+        deadline: submissionDeadlineIso(override.period),
         total_employees: employees?.length ?? 0,
         already_submitted: submittedSet.size,
+        already_reminded: pending.length - targets.length,
         reminders_sent: sent,
         reminders_failed: failed,
     })
 })
+
+/** `?year=&month=` do ręcznego wskazania okresu; bez nich — miesiąc zamknięty. */
+function readPeriodOverride(
+    url: URL,
+    fallback: TimesheetPeriod,
+): { period: TimesheetPeriod } | { error: string } {
+    const yearParam = url.searchParams.get('year')
+    const monthParam = url.searchParams.get('month')
+    const year = yearParam ? Number(yearParam) : fallback.year
+    const month = monthParam ? Number(monthParam) : fallback.month
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+        return { error: `Nieprawidłowy rok: ${yearParam}` }
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+        return { error: `Nieprawidłowy miesiąc: ${monthParam}` }
+    }
+    return { period: { year, month } }
+}

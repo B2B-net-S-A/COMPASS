@@ -1,6 +1,13 @@
+import { format, parseISO } from 'date-fns'
+import { pl } from 'date-fns/locale'
 import { logger, logCompat } from '@/lib/logger'
 import { sendEmail, type SendResult } from '@/lib/email/sender'
 import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
+import {
+    periodLabel,
+    periodStartIso,
+    submissionDeadlineIso,
+} from '@/lib/hr/timesheet-reminder-window'
 
 // Phase 17b PR-E — Provider-agnostic email send.
 //
@@ -846,109 +853,56 @@ export async function sendCourseInactivityReminder(
     }
 }
 
-// Phase 17b R9 (PR-B): added 'mon-nudge' and 'wed-warning' phases for the
-// Harvest-style escalation cadence (Mon gentle → Wed warning → Fri/end-of-month final).
-export type TimesheetReminderPhase = 'mon-nudge' | 'wed-warning' | 'warning' | 'final'
-
-interface ReminderTemplate {
-    subject: string
-    body: string
-    tag: string
-    accent: string
-}
-
-function buildReminderTemplate(
-    phase: TimesheetReminderPhase,
-    monthLabel: string,
-    recipientName: string,
-): ReminderTemplate {
-    if (phase === 'mon-nudge') {
-        return {
-            subject: `[COMPASS HR] Hej, pamiętaj o timesheet ${monthLabel}`,
-            body: `
-                <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
-                <p style="color: #d1d5db; font-size: 14px;">
-                    Krótka notka — w tym miesiącu nie złożyłeś jeszcze timesheetu za
-                    <strong>${monthLabel}</strong>. Smart Work Clock przygotował już draft
-                    z trackingu, więc wystarczy go przejrzeć i zatwierdzić.
-                </p>
-                <p style="color: #d1d5db; font-size: 14px;">
-                    Bez stresu — pełny termin jest do 5. dnia kolejnego miesiąca.
-                </p>
-            `,
-            tag: 'Hej, pamiętaj',
-            accent: '#3b82f6',
-        }
-    }
-    if (phase === 'wed-warning') {
-        return {
-            subject: `[COMPASS HR] Przypomnienie: timesheet ${monthLabel} (termin za 3 dni)`,
-            body: `
-                <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
-                <p style="color: #d1d5db; font-size: 14px;">
-                    Przypominamy: timesheet za <strong>${monthLabel}</strong> ma być złożony
-                    do końca tygodnia (5. dnia kolejnego miesiąca). Otwórz <strong>Timesheet</strong>,
-                    przejrzyj draft z trackingu i kliknij <em>Złóż</em>.
-                </p>
-            `,
-            tag: 'Termin za 3 dni',
-            accent: '#f59e0b',
-        }
-    }
-    if (phase === 'final') {
-        return {
-            subject: `[COMPASS HR] OSTATNIA SZANSA: timesheet ${monthLabel}`,
-            body: `
-                <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
-                <p style="color: #d1d5db; font-size: 14px;">
-                    <strong style="color: #ef4444;">Ostatnia szansa</strong> na złożenie timesheetu za
-                    <strong>${monthLabel}</strong>. Bez zaakceptowanego timesheetu naliczenie wynagrodzenia
-                    za ten miesiąc nie nastąpi.
-                </p>
-                <p style="color: #d1d5db; font-size: 14px;">
-                    Otwórz <strong>Timesheet → ${monthLabel}</strong>, uzupełnij wpisy i kliknij
-                    „Złóż timesheet" jak najszybciej.
-                </p>
-            `,
-            tag: 'OSTATNIA SZANSA',
-            accent: '#ef4444',
-        }
-    }
-    // default: warning (legacy 25-of-month reminder)
-    return {
-        subject: `[COMPASS HR] Przypomnienie: timesheet ${monthLabel}`,
-        body: `
-            <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
-            <p style="color: #d1d5db; font-size: 14px;">
-                Przypominamy o złożeniu timesheetu za <strong>${monthLabel}</strong>.
-                Wypełnij wpisy w sekcji <strong>Timesheet</strong> i kliknij „Złóż timesheet"
-                najpóźniej do 5. dnia następnego miesiąca.
-            </p>
-        `,
-        tag: 'Przypomnienie',
-        accent: '#f59e0b',
-    }
-}
-
+/**
+ * Phase 51 — JEDNO przypomnienie o timesheecie na miesiąc, za miesiąc zamknięty.
+ *
+ * Wcześniej (Phase 17b R9) były cztery fazy eskalacji — mon-nudge w każdy poniedziałek,
+ * wed-warning w każdą środę, warning 25-go i final — wszystkie za miesiąc BIEŻĄCY.
+ * Dawało to ~8 maili miesięcznie z treścią mijającą się z prawdą („termin za 3 dni"
+ * pisane trzy tygodnie przed terminem). Kiedy wysyłać — patrz
+ * lib/hr/timesheet-reminder-window.ts; ile razy — pilnuje `timesheet_reminder_log`.
+ *
+ * Odmiana nazw miesięcy: `LLLL` (mianownik, forma samodzielna) dla nazwy okresu,
+ * `MMMM` (dopełniacz) po liczbie dnia w terminie — „5 września", nie „5 wrzesień".
+ */
 export async function sendTimesheetReminder(
     recipientEmail: string,
     recipientName: string,
     year: number,
     month: number,
-    phase: TimesheetReminderPhase = 'warning',
 ): Promise<{ success: boolean }> {
-    const monthLabel = `${year}-${String(month).padStart(2, '0')}`
-    const tpl = buildReminderTemplate(phase, monthLabel, recipientName)
+    const period = { year, month }
+    const monthLabel = periodLabel(period)
+    const monthNamePl = format(parseISO(periodStartIso(period)), 'LLLL yyyy', { locale: pl })
+    const deadlinePl = format(parseISO(submissionDeadlineIso(period)), 'd MMMM yyyy', {
+        locale: pl,
+    })
+    const subject = `[COMPASS HR] Przypomnienie: timesheet ${monthLabel} (termin ${deadlinePl})`
+    const body = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Zamknął się <strong>${monthNamePl}</strong> — czekamy na Twój timesheet za ten
+            miesiąc. Otwórz <strong>Timesheet</strong>, przejrzyj draft z trackingu i kliknij
+            „Złóż timesheet".
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Termin: <strong>${deadlinePl}</strong>. Bez zaakceptowanego timesheetu wynagrodzenie
+            za ten miesiąc nie zostanie naliczone.
+        </p>
+        <p style="color: #9ca3af; font-size: 12px;">
+            To jedyne przypomnienie za ${monthLabel} — kolejnego maila w tej sprawie nie będzie.
+        </p>
+    `
     try {
         const { error } = await getResend().emails.send({
             from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
             to: recipientEmail,
-            subject: tpl.subject,
+            subject,
             html: wrapHrEmail({
-                tag: tpl.tag,
-                heading: tpl.subject,
-                bodyHtml: tpl.body,
-                accent: tpl.accent,
+                tag: 'Przypomnienie',
+                heading: subject,
+                bodyHtml: body,
+                accent: '#f59e0b',
             }),
         })
         if (error) {
