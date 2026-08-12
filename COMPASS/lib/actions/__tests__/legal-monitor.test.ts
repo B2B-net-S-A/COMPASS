@@ -35,6 +35,34 @@ function pinnedItem(overrides: Record<string, unknown> = {}) {
     }
 }
 
+/** Pełny wiersz — eksport CSV dotyka wszystkich kolumn, także słownikowych. */
+function exportableItem(overrides: Record<string, unknown> = {}) {
+    return {
+        id: 'item-1',
+        source: 'NSA_WSA',
+        source_label: 'WSA w Łodzi',
+        topic: 'pip_b2b',
+        severity: 'green',
+        published_at: '2026-08-04',
+        reference: 'I SA/Łd 598/25',
+        title: 'Wpis testowy',
+        url: null,
+        summary: 'Podsumowanie',
+        why_it_matters: 'Znaczenie',
+        status: 'new',
+        reviewed_by: null,
+        reviewed_at: null,
+        review_note: null,
+        created_at: '2026-08-12T05:30:00Z',
+        due_date: null,
+        assigned_to: null,
+        alerted_at: null,
+        pinned_at: null,
+        pinned_by: null,
+        ...overrides,
+    }
+}
+
 function itemsTable(rows: Array<Record<string, unknown>>): MockSupabaseConfig {
     return { tables: { legal_monitor_items: rows } }
 }
@@ -142,5 +170,52 @@ describe('setLegalMonitorPin', () => {
         await expect(setLegalMonitorPin({ id: '  ', pinned: true })).rejects.toThrow(
             /identyfikatora/i,
         )
+    })
+})
+
+describe('exportLegalMonitorCsv', () => {
+    it('ma kolumnę „Przypięty” zaraz po statusie i znaczy nią tylko przypięte', async () => {
+        setup(
+            itemsTable([
+                exportableItem({ id: 'a', title: 'Zwykły' }),
+                exportableItem({
+                    id: 'b',
+                    title: 'Przypięty',
+                    pinned_at: '2026-08-12T08:00:00Z',
+                }),
+            ]),
+        )
+        const { exportLegalMonitorCsv } = await import('../legal-monitor')
+
+        const csv = await exportLegalMonitorCsv()
+        const [header, first, second] = csv.split('\n')
+
+        // BOM siedzi przed pierwszą komórką nagłówka (tego chce Excel) — zdejmujemy
+        // go do porównania, zamiast wpisywać w oczekiwaną wartość.
+        expect(header.replace('﻿', '').split(',').slice(0, 3)).toEqual([
+            '"Pilność"',
+            '"Status"',
+            '"Przypięty"',
+        ])
+        // Przypięte idą na górę pliku, tak jak na ekranie.
+        expect(first).toContain('"Przypięty"')
+        expect(first.split(',')[2]).toBe('"tak"')
+        expect(second).toContain('"Zwykły"')
+        expect(second.split(',')[2]).toBe('""')
+    })
+
+    it('zachowuje BOM i liczbę wierszy przy zaznaczeniu', async () => {
+        setup(
+            itemsTable([
+                exportableItem({ id: 'a' }),
+                exportableItem({ id: 'b', pinned_at: '2026-08-12T08:00:00Z' }),
+            ]),
+        )
+        const { exportLegalMonitorCsv } = await import('../legal-monitor')
+
+        const csv = await exportLegalMonitorCsv(['a'])
+
+        expect(csv.startsWith('﻿')).toBe(true)
+        expect(csv.split('\n')).toHaveLength(2) // nagłówek + jeden wybrany wiersz
     })
 })

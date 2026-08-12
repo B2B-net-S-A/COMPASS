@@ -1527,8 +1527,16 @@ Cztery decyzje, które łatwo cofnąć nie znając powodu:
 Przypięty wpis nie powtarza się w swoim dniu (ten sam wpis w dwóch miejscach czyta się jak dwa różne),
 więc w sekcji przypiętych dostaje w wierszu datę otrzymania — poza dniem straciłby ten kontekst.
 Logika w [lib/legal-monitor/grouping.ts](COMPASS/lib/legal-monitor/grouping.ts) (`partitionPinned`).
-Audyt: `LEGAL_MONITOR_ITEM_PINNED` / `_UNPINNED`. Świadomie poza zakresem: kolumna „Przypięty"
-w eksporcie CSV i limit liczby przypiętych.
+Audyt: `LEGAL_MONITOR_ITEM_PINNED` / `_UNPINNED`. Świadomie poza zakresem: limit liczby przypiętych.
+
+**Phase 52a (2026-08-12):** eksport CSV ma kolumnę **„Przypięty"** (trzecia, zaraz po „Status" —
+kolumny stanu trzymają się razem; doklejona na końcu lądowałaby za długą „Notatką"), a przypięte
+wiersze idą **na górę pliku** — plik jedzie na to samo spotkanie, na które przypinaliśmy wpisy, więc
+rozjazd z ekranem trzeba by odtwarzać ręcznie w Excelu. Kolejność liczy ten sam `partitionPinned`,
+co układa skrzynkę. Wartość to `tak` albo pusto (nie `nie`): kilka „tak" w kolumnie pustych komórek
+widać od razu, a filtr Excela łapie jedno i drugie. **To zmiana kolejności kolumn** — eksport jest
+generowany od nowa przy każdym kliknięciu i nie ma automatycznego konsumenta, ale gdyby ktoś oparł
+o niego szablon arkusza, to jest miejsce, które go ruszyło.
 
 ## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
 
