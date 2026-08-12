@@ -45,6 +45,25 @@ name: Coolify Ops
 # re-enables *everything*, so a retired task would silently come back on the next
 # fleet-wide fix. Disables rather than deletes — the row stays as a record and one
 # UPDATE brings it back.
+#
+# 2026-08-12 — added cron-secret-ciphertext (Phase 52).
+#
+#   7. action=cron-secret-ciphertext, secret_public_key=<repo Actions public key>
+#      → print CRON_SECRET *encrypted* to that key, for the Actions secrets API.
+#
+# CRON_SECRET lives in the Coolify env vault; the GH Actions cron that calls
+# /api/cron/* needs the same value as a repo secret. Only this runner can reach the
+# server, and GITHUB_TOKEN cannot write Actions secrets (there is no such permission
+# scope — storing a PAT to do it would trade one secret-handling problem for a worse
+# one). So the runner prints the value sealed to the repository's public key: the
+# ciphertext is useless to everyone except GitHub, which means it can safely pass
+# through a log and a terminal, and the plaintext never leaves the server.
+#
+#   PK=$(gh api repos/artur-t-96/compass/actions/secrets/public-key --jq .key)
+#   gh workflow run "Coolify Ops" -f action=cron-secret-ciphertext -f secret_public_key="$PK"
+#   # then PUT the printed ENCRYPTED_VALUE with the matching key_id:
+#   gh api -X PUT repos/artur-t-96/compass/actions/secrets/CRON_SECRET \
+#     -f encrypted_value=<...> -f key_id=<...>
 
 on:
   workflow_dispatch:
@@ -52,7 +71,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add, cron-secret-ciphertext]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -72,6 +91,10 @@ on:
         default: ""
       cron_endpoint:
         description: "Endpoint path segment for cron-add — /api/cron/<this> (e.g. tech-map-rotation)"
+        required: false
+        default: ""
+      secret_public_key:
+        description: "Repo Actions public key, base64 (action=cron-secret-ciphertext). Public data — safe as an input."
         required: false
         default: ""
 
@@ -439,3 +462,52 @@ jobs:
           echo "=== after: new task (endpoint extracted, token never printed) ==="
           ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
             "$PSQL_TBL \"select id, name, frequency, container, enabled, substring(command from '/api/cron/[a-z0-9-]+') as endpoint from scheduled_tasks where name = '$TASK_NAME' and $SCOPE;\""
+
+      - name: Print CRON_SECRET encrypted to the repo public key
+        if: inputs.action == 'cron-secret-ciphertext'
+        env:
+          SSH_TARGET: ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}
+          APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          PUBLIC_KEY: ${{ inputs.secret_public_key }}
+        run: |
+          if [ -z "$PUBLIC_KEY" ]; then
+            echo "::error::action=cron-secret-ciphertext requires 'secret_public_key' (gh api repos/{owner}/{repo}/actions/secrets/public-key --jq .key)"
+            exit 1
+          fi
+
+          CONTAINER=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker ps --format '{{.Names}}' | grep '^app-$APP_UUID' | head -1") \
+            || { echo "::error::SSH failed while listing containers"; exit 1; }
+          if [ -z "$CONTAINER" ]; then
+            echo "::error::No running container matching app-$APP_UUID"
+            exit 1
+          fi
+          echo "Reading CRON_SECRET from $CONTAINER"
+
+          VALUE=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+            "docker exec $CONTAINER printenv CRON_SECRET") \
+            || { echo "::error::SSH failed while reading CRON_SECRET"; exit 1; }
+          # Mask first, ask questions second: this value did NOT come from secrets.*,
+          # so nothing masks it automatically and any later `set -x` would leak it.
+          echo "::add-mask::$VALUE"
+          if [ -z "$VALUE" ]; then
+            echo "::error::CRON_SECRET is empty in $CONTAINER — nothing to encrypt"
+            exit 1
+          fi
+
+          python3 -m pip install --quiet pynacl 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pynacl \
+            || { echo "::error::Could not install pynacl"; exit 1; }
+
+          # Value goes in via env, never argv — argv is visible in `ps` to anything
+          # else running on the runner.
+          SECRET_VALUE="$VALUE" python3 - <<'PY'
+          import base64, os
+          from nacl import encoding, public
+
+          pk = public.PublicKey(os.environ["PUBLIC_KEY"].encode("utf-8"), encoding.Base64Encoder())
+          sealed = public.SealedBox(pk).encrypt(os.environ["SECRET_VALUE"].encode("utf-8"))
+          # Safe to print: a sealed box is decryptable only with the repository's
+          # private key, which never leaves GitHub.
+          print("ENCRYPTED_VALUE=" + base64.b64encode(sealed).decode("utf-8"))
+          PY
