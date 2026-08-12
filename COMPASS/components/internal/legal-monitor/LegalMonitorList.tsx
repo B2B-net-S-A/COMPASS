@@ -1,16 +1,20 @@
 'use client'
 
-// Phase 48/50 — skrzynka monitoringu prawnego: filtry + lista + panel szczegółu.
+// Phase 48/50/51 — skrzynka monitoringu prawnego: filtry + lista + panel szczegółu.
 //
 // Domyślny widok to skrzynka (`new`), bo moduł ma jedno zadanie: przejrzeć to, co
-// dopisał pipeline. Wpisy są już posortowane po stronie serwera (pilność → data),
-// więc tutaj tylko filtrujemy — bez ponownego sortowania, żeby kolejność
-// czerwonych na górze nie rozjechała się między widokami.
+// dopisał pipeline.
 //
 // Phase 50: zaznaczanie hurtem (start modułu to backfill kilkunastu pozycji —
 // klikanie ich po jednej sprawia, że nikt tego nie zrobi), termin reakcji
 // z osobą odpowiedzialną, eksport CSV i tryb read-only dla posiadaczy grantu
 // `can_view_legal_monitor` (zarząd widzi, ale nie przegląda).
+//
+// Phase 51: wpisy grupowane po dniu OTRZYMANIA (jak w skrzynce mailowej —
+// „Dzisiaj”, „Wczoraj”, dalej pełne daty), bo codzienne pytanie brzmi „co
+// przyszło nowego”, a płaska lista tego nie pokazywała. Czerwone są pierwsze
+// w swoim dniu, nie globalnie — po „wszystkie czerwone naraz” jest filtr
+// pilności. Grupowanie i kolejność w grupie liczy `lib/legal-monitor/grouping.ts`.
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -60,6 +64,7 @@ import {
     setLegalMonitorFollowUp,
 } from '@/lib/actions/legal-monitor'
 import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
+import { groupItemsByReceivedDay } from '@/lib/legal-monitor/grouping'
 import {
     LEGAL_SEVERITY_META,
     LEGAL_SOURCE_LABELS_PL,
@@ -106,15 +111,29 @@ function fmtDateTime(iso: string): string {
     return format(parseISO(iso), 'd LLL yyyy, HH:mm', { locale: pl })
 }
 
+function itemCountPl(n: number): string {
+    const last = n % 10
+    const lastTwo = n % 100
+    if (n === 1) return '1 wpis'
+    if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return `${n} wpisy`
+    return `${n} wpisów`
+}
+
 interface Props {
     items: LegalMonitorItemRow[]
     /** false dla posiadaczy grantu can_view_legal_monitor — widzą, ale nie przeglądają. */
     canReview: boolean
     /** Osoby, którym można przypisać reakcję (puste w trybie read-only). */
     assignees: Array<{ id: string; name: string }>
+    /**
+     * Dzisiejsza data (YYYY-MM-DD, czas warszawski) liczona na serwerze — inaczej
+     * „Dzisiaj” wyliczone w przeglądarce rozjechałoby się z HTML-em z serwera
+     * przy renderze tuż przed północą (hydration mismatch).
+     */
+    todayISO: string
 }
 
-export function LegalMonitorList({ items, canReview, assignees }: Props) {
+export function LegalMonitorList({ items, canReview, assignees, todayISO }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
 
@@ -168,6 +187,11 @@ export function LegalMonitorList({ items, canReview, assignees }: Props) {
             return hay.includes(q)
         })
     }, [items, status, severity, topic, source, search])
+
+    const groups = useMemo(
+        () => groupItemsByReceivedDay(filtered, todayISO),
+        [filtered, todayISO],
+    )
 
     const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered])
     const selectedVisible = visibleIds.filter((id) => selected.has(id))
@@ -284,8 +308,9 @@ export function LegalMonitorList({ items, canReview, assignees }: Props) {
                             Wpisy monitoringu
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Pozycje wybrane przez monitoring jako istotne dla modelu firmy.
-                            Kolejność: najpierw te, które mogą wymagać decyzji, potem najświeższe.
+                            Pozycje wybrane przez monitoring jako istotne dla modelu firmy,
+                            pogrupowane po dniu, w którym trafiły do skrzynki — najnowsze na
+                            górze. W obrębie dnia pierwsze są te, które mogą wymagać decyzji.
                         </p>
                     </div>
                     <Button variant="outline" size="sm" onClick={downloadCsv} disabled={pending}>
@@ -415,72 +440,35 @@ export function LegalMonitorList({ items, canReview, assignees }: Props) {
                             : 'Brak wpisów dla wybranych filtrów.'}
                     </p>
                 ) : (
-                    <ul className="divide-y divide-border/40 rounded-md border border-border/40">
-                        {filtered.map((item) => {
-                            const sev = LEGAL_SEVERITY_META[item.severity]
-                            const st = LEGAL_STATUS_META[item.status]
-                            return (
-                                <li key={item.id} className="flex items-start gap-2 px-3 hover:bg-muted/50 transition-colors">
-                                    {canReview && (
-                                        <span className="pt-4">
-                                            <Checkbox
-                                                checked={selected.has(item.id)}
-                                                onCheckedChange={() => toggleOne(item.id)}
-                                                aria-label={`Zaznacz: ${item.title}`}
-                                            />
+                    <div className="space-y-4">
+                        {groups.map((group) => (
+                            <section key={group.dayISO}>
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 pb-1.5">
+                                    <h3 className="text-sm font-semibold">{group.label}</h3>
+                                    {group.exactLabel && (
+                                        <span className="text-xs text-muted-foreground">
+                                            {group.exactLabel}
                                         </span>
                                     )}
-                                    <button
-                                        type="button"
-                                        onClick={() => openDetail(item)}
-                                        className="flex-1 min-w-0 text-left py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                                    >
-                                        <div className="flex items-start gap-2.5">
-                                            <span aria-hidden className="mt-0.5 text-sm leading-none">
-                                                {sev.dot}
-                                            </span>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="text-sm font-medium">{item.title}</span>
-                                                    {item.status !== 'new' && (
-                                                        <Badge variant="outline" className={st.className}>
-                                                            {st.label}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                                    {item.summary}
-                                                </p>
-                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
-                                                    <span title={LEGAL_SOURCE_LABELS_PL[item.source]}>
-                                                        {LEGAL_SOURCE_SHORT_PL[item.source]}
-                                                        {item.source_label && ` · ${item.source_label}`}
-                                                    </span>
-                                                    <span>{LEGAL_TOPIC_LABELS_PL[item.topic]}</span>
-                                                    {item.reference && (
-                                                        <span className="font-mono">{item.reference}</span>
-                                                    )}
-                                                    {item.published_at && <span>{fmtDate(item.published_at)}</span>}
-                                                    {item.due_date && (
-                                                        <span className="inline-flex items-center gap-1 text-warning">
-                                                            <CalendarClock className="h-3 w-3" />
-                                                            termin {fmtDate(item.due_date)}
-                                                        </span>
-                                                    )}
-                                                    {item.assigned_to_name && (
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <UserCheck className="h-3 w-3" />
-                                                            {item.assigned_to_name}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </button>
-                                </li>
-                            )
-                        })}
-                    </ul>
+                                    <span className="text-xs text-muted-foreground">
+                                        · {itemCountPl(group.items.length)}
+                                    </span>
+                                </div>
+                                <ul className="divide-y divide-border/40 rounded-md border border-border/40">
+                                    {group.items.map((item) => (
+                                        <LegalMonitorRow
+                                            key={item.id}
+                                            item={item}
+                                            canReview={canReview}
+                                            checked={selected.has(item.id)}
+                                            onToggle={() => toggleOne(item.id)}
+                                            onOpen={() => openDetail(item)}
+                                        />
+                                    ))}
+                                </ul>
+                            </section>
+                        ))}
+                    </div>
                 )}
             </CardContent>
 
@@ -664,5 +652,83 @@ export function LegalMonitorList({ items, canReview, assignees }: Props) {
                 </DialogContent>
             </Dialog>
         </Card>
+    )
+}
+
+interface RowProps {
+    item: LegalMonitorItemRow
+    canReview: boolean
+    checked: boolean
+    onToggle: () => void
+    onOpen: () => void
+}
+
+function LegalMonitorRow({ item, canReview, checked, onToggle, onOpen }: RowProps) {
+    const sev = LEGAL_SEVERITY_META[item.severity]
+    const st = LEGAL_STATUS_META[item.status]
+    return (
+        <li className="flex items-start gap-2 px-3 hover:bg-muted/50 transition-colors">
+            {canReview && (
+                <span className="pt-4">
+                    <Checkbox
+                        checked={checked}
+                        onCheckedChange={onToggle}
+                        aria-label={`Zaznacz: ${item.title}`}
+                    />
+                </span>
+            )}
+            <button
+                type="button"
+                onClick={onOpen}
+                className="flex-1 min-w-0 text-left py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            >
+                <div className="flex items-start gap-2.5">
+                    <span aria-hidden className="mt-0.5 text-sm leading-none">
+                        {sev.dot}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium">{item.title}</span>
+                            {item.status !== 'new' && (
+                                <Badge variant="outline" className={st.className}>
+                                    {st.label}
+                                </Badge>
+                            )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                            {item.summary}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted-foreground">
+                            <span title={LEGAL_SOURCE_LABELS_PL[item.source]}>
+                                {LEGAL_SOURCE_SHORT_PL[item.source]}
+                                {item.source_label && ` · ${item.source_label}`}
+                            </span>
+                            <span>{LEGAL_TOPIC_LABELS_PL[item.topic]}</span>
+                            {item.reference && <span className="font-mono">{item.reference}</span>}
+                            {/* Nagłówek grupy mówi, kiedy wpis do nas trafił, więc data
+                                w wierszu musi się jawnie przedstawić jako data dokumentu —
+                                inaczej dwie różne daty wyglądają jak sprzeczność. */}
+                            {item.published_at && (
+                                <span title="Data dokumentu źródłowego">
+                                    dokument {fmtDate(item.published_at)}
+                                </span>
+                            )}
+                            {item.due_date && (
+                                <span className="inline-flex items-center gap-1 text-warning">
+                                    <CalendarClock className="h-3 w-3" />
+                                    termin {fmtDate(item.due_date)}
+                                </span>
+                            )}
+                            {item.assigned_to_name && (
+                                <span className="inline-flex items-center gap-1">
+                                    <UserCheck className="h-3 w-3" />
+                                    {item.assigned_to_name}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </button>
+        </li>
     )
 }

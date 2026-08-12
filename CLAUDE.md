@@ -1471,6 +1471,33 @@ Odbiorcy alertów (opcjonalnie — bez nich fallback na wszystkich finanse+admin
 klucze `legal_monitor_red_recipients` (czerwone + digest) i `legal_monitor_ops_recipients` (cisza,
 awarie źródeł), oba jako CSV z UUID.
 
+## Phase 51 — Monitoring prawny: skrzynka grupowana po dacie otrzymania (2026-08-12)
+
+Przeglądający wchodzi codziennie i pyta „co przyszło nowego", a lista była płaska i posortowana
+globalnie po pilności — nowości trzeba było wyławiać z całości. Data w wierszu tego nie ratowała:
+to `published_at`, czyli data DOKUMENTU, a jeden poranny przebieg potrafi przynieść dokumenty
+z rozpiętością prawie dwóch lat (prod, 12.08: 5 wpisów z dokumentami od 2024-11-19 do 2026-08-11).
+
+Wpisy są teraz pogrupowane po dniu OTRZYMANIA (`created_at`) jak w skrzynce mailowej: „Dzisiaj",
+„Wczoraj", „Przedwczoraj", dalej „Poniedziałek, 10 sierpnia 2026", najnowszy dzień u góry.
+Logika w [lib/legal-monitor/grouping.ts](COMPASS/lib/legal-monitor/grouping.ts) (czysta, `todayISO`
+wstrzykiwany, 11 testów) + test renderu listy.
+
+Cztery rzeczy, o których trzeba wiedzieć przy zmianach tutaj:
+
+1. **Pilność zeszła z poziomu globalnego na poziom dnia.** Wcześniej wszystkie czerwone były
+   na samej górze listy (spec Phase 48); teraz są pierwsze w SWOIM dniu. Zamiennikiem globalnego
+   przeglądu jest filtr pilności, który jest w UI od Phase 48 — nie dokładaj drugiego przełącznika
+   trybu sortowania. Zerwanie czerwonych z dna listy pilnuje osobno alert e-mail/push z Phase 50.
+2. **Dzień grupy liczony w `Europe/Warsaw`** (`warsawDate`), nie `toISOString().slice(0,10)` —
+   pipeline dopisuje wpisy rano, ale ręczne/ponowne przebiegi po 22:00 UTC wylądowałyby w grupie
+   poprzedniego dnia.
+3. **`todayISO` liczy SERWER** (`AdminLegalMonitorPanel`) i podaje w dół propsem. Wyliczenie
+   „dzisiaj" w komponencie klienckim rozjeżdża się z HTML-em z serwera przy renderze o północy
+   (hydration mismatch).
+4. **Data dokumentu w wierszu jest podpisana słowem „dokument"** — obok nagłówka z datą otrzymania
+   dwie różne daty bez podpisu czytają się jak błąd.
+
 ## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
 
 Nagłówki obu strumieni pracy People Ops były nieedytowalne, a oba brały tytuł z cudzych danych:

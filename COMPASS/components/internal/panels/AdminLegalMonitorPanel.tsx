@@ -15,6 +15,7 @@ import {
     listRecentHolidays,
 } from '@/lib/actions/legal-monitor'
 import { computeMonitorHealth } from '@/lib/legal-monitor/health'
+import { warsawDate } from '@/lib/oof/oof-dates'
 import { LegalMonitorHealthBanner } from '@/components/internal/legal-monitor/LegalMonitorHealthBanner'
 import { LegalMonitorList } from '@/components/internal/legal-monitor/LegalMonitorList'
 import { LegalMonitorRunsHistory } from '@/components/internal/legal-monitor/LegalMonitorRunsHistory'
@@ -27,11 +28,16 @@ export async function AdminLegalMonitorPanel({ canReview }: { canReview: boolean
     ])
     const assignees = canReview ? await listLegalMonitorAssignees() : []
 
+    const now = new Date()
     const health = computeMonitorHealth({
         lastRun: runs[0] ?? null,
-        now: new Date(),
+        now,
         holidays,
     })
+    // Phase 51 — „dzisiaj" dla nagłówków grup liczymy tutaj (serwer chodzi w UTC,
+    // więc data musi przejść przez strefę warszawską) i podajemy w dół, żeby
+    // klient nie wyliczył innego dnia niż przyszedł w HTML-u.
+    const todayISO = warsawDate(now)
 
     return (
         <div className="space-y-4">
@@ -44,7 +50,12 @@ export async function AdminLegalMonitorPanel({ canReview }: { canReview: boolean
             </p>
 
             <LegalMonitorHealthBanner health={health} />
-            <LegalMonitorList items={items} canReview={canReview} assignees={assignees} />
+            <LegalMonitorList
+                items={items}
+                canReview={canReview}
+                assignees={assignees}
+                todayISO={todayISO}
+            />
             <LegalMonitorRunsHistory runs={runs} />
         </div>
     )
