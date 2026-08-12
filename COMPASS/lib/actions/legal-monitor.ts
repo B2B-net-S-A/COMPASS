@@ -21,6 +21,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sortItemsForReview } from '@/lib/legal-monitor/health'
+import { partitionPinned } from '@/lib/legal-monitor/grouping'
 import type { PublicHolidayDate } from '@/lib/hr/working-days'
 import {
     isReviewStatus,
@@ -421,15 +422,26 @@ function csvCell(value: string | null | undefined): string {
 /**
  * Phase 50 — eksport CSV na spotkanie finansowo-prawne.
  * UTF-8 z BOM, żeby Excel nie rozsypał polskich znaków (jak w pozostałych eksportach).
+ *
+ * Phase 52a — kolumna „Przypięty" i przypięte na górze pliku, tak jak na ekranie.
+ * Eksport jedzie na to samo spotkanie, na które przypinaliśmy wpisy, więc gdyby
+ * kolejność się rozjeżdżała, trzeba by ją odtwarzać ręcznie w Excelu.
+ *
+ * Wartość to „tak" albo pusto (nie „nie") — kilka „tak" w kolumnie pustych komórek
+ * widać od razu, a filtr Excela łapie jedno i drugie.
  */
 export async function exportLegalMonitorCsv(ids?: string[]): Promise<string> {
     const ctx = await requireLegalMonitorViewerAction()
     const items = await listLegalMonitorItems()
     const selected = ids && ids.length > 0 ? new Set(ids) : null
-    const rows = selected ? items.filter((i) => selected.has(i.id)) : items
+    const filtered = selected ? items.filter((i) => selected.has(i.id)) : items
+    // Ta sama funkcja, co układa skrzynkę — jedno miejsce decyduje, co znaczy
+    // „przypięte na górze".
+    const { pinned, rest } = partitionPinned(filtered)
+    const rows = [...pinned, ...rest]
 
     const header = [
-        'Pilność', 'Status', 'Temat', 'Źródło', 'Nazwa źródła', 'Sygnatura',
+        'Pilność', 'Status', 'Przypięty', 'Temat', 'Źródło', 'Nazwa źródła', 'Sygnatura',
         'Data dokumentu', 'Tytuł', 'Podsumowanie', 'Co to znaczy dla firmy',
         'Link', 'Termin reakcji', 'Odpowiedzialny', 'Przejrzał', 'Notatka',
     ]
@@ -439,6 +451,7 @@ export async function exportLegalMonitorCsv(ids?: string[]): Promise<string> {
             [
                 LEGAL_SEVERITY_META[i.severity].label,
                 LEGAL_STATUS_META[i.status].label,
+                i.pinned_at ? 'tak' : '',
                 LEGAL_TOPIC_LABELS_PL[i.topic],
                 LEGAL_SOURCE_LABELS_PL[i.source],
                 i.source_label,
@@ -456,6 +469,9 @@ export async function exportLegalMonitorCsv(ids?: string[]): Promise<string> {
         )
     }
 
-    await logAudit(ctx.userId, 'LEGAL_MONITOR_EXPORTED_CSV', { rows: rows.length })
+    await logAudit(ctx.userId, 'LEGAL_MONITOR_EXPORTED_CSV', {
+        rows: rows.length,
+        pinned: pinned.length,
+    })
     return `﻿${lines.join('\n')}`
 }
