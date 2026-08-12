@@ -295,7 +295,10 @@ export async function reviewLegalMonitorItems(
  * wyjątek to odrzucenie — patrz `reviewLegalMonitorItem`.
  *
  * Bierze docelowy stan, nie „przełącz", żeby dwa kliknięcia z dwóch kart nie
- * dawały wyniku zależnego od kolejności.
+ * dawały wyniku zależnego od kolejności. Ponowne przypięcie już przypiętego
+ * odświeża stempel i autora (przeskakuje na górę sekcji) — z UI nieosiągalne,
+ * bo sekcja dni zawiera wyłącznie nieprzypięte, ale warto o tym wiedzieć,
+ * dodając kolejnego wywołującego.
  */
 export async function setLegalMonitorPin(input: { id: string; pinned: boolean }): Promise<void> {
     const ctx = await requireFinanseOrAdminAction()
