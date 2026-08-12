@@ -291,10 +291,17 @@ export function LegalMonitorList({ items, canReview, assignees, todayISO }: Prop
                 await setLegalMonitorPin({ id: item.id, pinned: next })
                 toastSuccess(next ? 'Przypięto na górę skrzynki' : 'Zdjęto pinezkę')
                 // Panel szczegółu trzyma własną kopię wpisu, więc bez tego przycisk
-                // w dialogu pokazywałby stary stan aż do zamknięcia.
+                // w dialogu pokazywałby stary stan aż do zamknięcia. Autora zerujemy
+                // razem ze stemplem (spójna kopia); przy przypięciu nazwisko dociąga
+                // dopiero refresh — wolę puste niż cudze.
                 setDetail((prev) =>
                     prev && prev.id === item.id
-                        ? { ...prev, pinned_at: next ? new Date().toISOString() : null }
+                        ? {
+                              ...prev,
+                              pinned_at: next ? new Date().toISOString() : null,
+                              pinned_by: null,
+                              pinned_by_name: null,
+                          }
                         : prev,
                 )
                 router.refresh()
