@@ -1,4 +1,4 @@
-// Phase 51 — jedno przypomnienie o timesheecie na miesiąc.
+// Phase 52 — jedno przypomnienie o timesheecie na miesiąc.
 //
 // Do sierpnia 2026 przypomnienia szły w eskalacji Harvest-style: „mon-nudge" w KAŻDY
 // poniedziałek i „wed-warning" w KAŻDĄ środę (zadania Coolify `0 9 * * 1` i `0 9 * * 3`),

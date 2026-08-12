@@ -18,7 +18,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 /**
- * Phase 51 — JEDNO przypomnienie o timesheecie na osobę na miesiąc.
+ * Phase 52 — JEDNO przypomnienie o timesheecie na osobę na miesiąc.
  *
  * Wcześniej trasa robiła to, co kazał jej parametr `?phase=`, a wołały ją trzy
  * harmonogramy: zadania Coolify `timesheet-mon-nudge` (`0 9 * * 1`) i

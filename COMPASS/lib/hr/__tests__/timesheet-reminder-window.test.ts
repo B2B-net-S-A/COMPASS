@@ -10,7 +10,7 @@ import {
 
 describe('closedMonthFor', () => {
     it('wskazuje miesiąc poprzedni, nie bieżący', () => {
-        // Regresja Phase 51: stary cron przypominał o timesheecie za miesiąc, który
+        // Regresja Phase 52: stary cron przypominał o timesheecie za miesiąc, który
         // jeszcze trwał (12.08 mail „za sierpień, termin za 3 dni").
         expect(closedMonthFor('2026-09-01')).toEqual({ year: 2026, month: 8 })
         expect(closedMonthFor('2026-09-05')).toEqual({ year: 2026, month: 8 })

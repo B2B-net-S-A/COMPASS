@@ -1,6 +1,6 @@
 name: Timesheet reminder (monthly cron)
 
-# Phase 51 — jedno przypomnienie na osobę na miesiąc, za miesiąc ZAMKNIĘTY.
+# Phase 52 — jedno przypomnienie na osobę na miesiąc, za miesiąc ZAMKNIĘTY.
 #
 # Wcześniej: 25-go, czyli za miesiąc jeszcze trwający. Teraz odpalamy codziennie
 # 1.–5., bo tyle trwa okno przed terminem (5. dzień miesiąca). Codziennie, a nie

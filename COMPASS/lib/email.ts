@@ -854,7 +854,7 @@ export async function sendCourseInactivityReminder(
 }
 
 /**
- * Phase 51 — JEDNO przypomnienie o timesheecie na miesiąc, za miesiąc zamknięty.
+ * Phase 52 — JEDNO przypomnienie o timesheecie na miesiąc, za miesiąc zamknięty.
  *
  * Wcześniej (Phase 17b R9) były cztery fazy eskalacji — mon-nudge w każdy poniedziałek,
  * wed-warning w każdą środę, warning 25-go i final — wszystkie za miesiąc BIEŻĄCY.

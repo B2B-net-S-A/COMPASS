@@ -1531,7 +1531,7 @@ Dwie rzeczy, o których trzeba wiedzieć przy zmianach tutaj:
 2. **Rename revaliduje też `/internal/people`** — kanban Spraw żyje w hubie People Ops, więc bez tego
    stary tytuł zostaje na kafelku mimo poprawnej zmiany w bazie.
 
-## Phase 51 — jedno przypomnienie o timesheecie na miesiąc (2026-08-12)
+## Phase 52 — jedno przypomnienie o timesheecie na miesiąc (2026-08-12)
 
 Kto nie złożył timesheetu, dostawał **~8 maili miesięcznie**: zadania Coolify
 `timesheet-mon-nudge` (`0 9 * * 1`) i `timesheet-wed-warning` (`0 9 * * 3`) plus cron GH Actions
@@ -1577,10 +1577,12 @@ trasę równolegle codziennie 1.–5. i wychodzi z tego jeden mail.
 
 ### Ops po deploy
 
-1. Migracja `20260812090000_phase51_timesheet_reminder_log` zaaplikowana na prod przez MCP
-   (2026-08-12). Addytywna: nowa tabela, RLS włączone, **zero polityk** (pisze i czyta wyłącznie
-   cron przez service_role — polityka INSERT dla `authenticated` pozwoliłaby komukolwiek
-   zablokować sobie przypomnienie podrobioną rezerwacją).
+1. Migracja `phase51_timesheet_reminder_log` zaaplikowana na prod przez MCP (2026-08-12).
+   Addytywna: nowa tabela, RLS włączone, **zero polityk** (pisze i czyta wyłącznie cron przez
+   service_role — polityka INSERT dla `authenticated` pozwoliłaby komukolwiek zablokować sobie
+   przypomnienie podrobioną rezerwacją). Tak, `phase51_` przy fazie 52: migracja poszła na prod,
+   zanim numer 51 zajął równolegle zmergowany PR #330, a nazwa zostaje zgodna z tym, co realnie
+   zapisane w `supabase_migrations.schema_migrations`.
 2. Coolify: wyłączone `timesheet-mon-nudge` i `timesheet-wed-warning`, dodane jedno
    `timesheet-reminder` (`0 9 1-5 * *`). Uwaga: `action=cron-enable` w workflow „Coolify Ops"
    włącza **wszystkie** zadania naraz, więc po każdym takim przebiegu trzeba te dwa wyłączyć

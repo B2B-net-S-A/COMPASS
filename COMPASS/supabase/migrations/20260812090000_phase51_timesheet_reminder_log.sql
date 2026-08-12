@@ -1,4 +1,10 @@
--- Phase 51 — jedno przypomnienie o timesheecie na miesiąc.
+-- Phase 52 — jedno przypomnienie o timesheecie na miesiąc.
+--
+-- Nazwa pliku i wpis w `supabase_migrations.schema_migrations` na prodzie mówią
+-- `phase51_...`, bo migracja poszła na prod, zanim numer 51 zajął równolegle
+-- zmergowany PR #330 (skrzynka monitoringu prawnego). Nazwa zostaje zgodna z tym,
+-- co realnie zapisane na prodzie — zmieniać ją tam byłoby przepisywaniem historii
+-- migracji dla kosmetyki.
 --
 -- Kto nie złożył timesheetu, dostawał ~8 maili miesięcznie: dwa zadania Coolify
 -- (`timesheet-mon-nudge` co poniedziałek, `timesheet-wed-warning` co środę) plus cron
