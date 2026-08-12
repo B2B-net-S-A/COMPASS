@@ -11,13 +11,14 @@ name: Timesheet reminder (monthly cron)
 # (rezerwacja w timesheet_reminder_log z UNIQUE na user+okres), nie harmonogram.
 # Z tego samego powodu równoległe zadanie w Coolify nie tworzy duplikatów.
 #
-# UWAGA: ten workflow NIE wysłał nigdy ani jednego maila — w repo nie ma sekretu
-# `CRON_SECRET`, więc każde odpalenie (25.05, 25.06, 25.07, 12.08) kończyło się
-# błędem na starcie. Jedynym realnym nadawcą był Coolify. Dopóki sekretu nie ma,
-# przebieg kończy się ostrzeżeniem zamiast czerwonym runem — inaczej harmonogram
-# 1.–5. produkowałby pięć fałszywych alarmów miesięcznie zamiast jednego.
-# Żeby uzyskać prawdziwą redundancję dwóch schedulerów:
-#   gh secret set CRON_SECRET --repo artur-t-96/compass   # wartość: Coolify env vault
+# HISTORIA: do 2026-08-12 ten workflow NIE wysłał ani jednego maila — w repo nie było
+# sekretu `CRON_SECRET`, więc każde odpalenie (25.05, 25.06, 25.07) kończyło się błędem
+# na starcie i jedynym realnym nadawcą był Coolify. Sekret uzupełniony, oba schedulery
+# działają — duplikatów nie ma, bo o „raz na miesiąc" decyduje rezerwacja w bazie.
+#
+# Brak sekretu daje ostrzeżenie i zielony przebieg zamiast czerwonego: przy harmonogramie
+# 1.–5. byłoby to pięć fałszywych alarmów miesięcznie zamiast jednego.
+# Rotacja wartości: action=cron-secret-ciphertext w workflow „Coolify Ops".
 
 on:
   schedule:
