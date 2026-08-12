@@ -1587,13 +1587,19 @@ trasę równolegle codziennie 1.–5. i wychodzi z tego jeden mail.
    `timesheet-reminder` (`0 9 1-5 * *`). Uwaga: `action=cron-enable` w workflow „Coolify Ops"
    włącza **wszystkie** zadania naraz, więc po każdym takim przebiegu trzeba te dwa wyłączyć
    ponownie (ta sama pułapka co przy `inbox-ingest`, Phase 44).
-3. **Coolify jest jedynym schedulerem tych przypomnień.** Workflow GH Actions
-   „Timesheet reminder (monthly cron)" **nigdy nie wysłał ani jednego maila** — w repo nie ma
-   sekretu `CRON_SECRET`, więc każdy przebieg (25.05, 25.06, 25.07) padał na pierwszym kroku.
-   Brak sekretu daje teraz ostrzeżenie i zielony przebieg zamiast czerwonego, bo harmonogram
-   1.–5. robiłby z tego pięć fałszywych alarmów miesięcznie. Drugi scheduler włącza jedna
-   komenda: `gh secret set CRON_SECRET --repo artur-t-96/compass` (wartość z Coolify env vault).
-4. Brak nowych env-varów.
+3. **Dwa schedulery, jeden mail.** Workflow GH Actions „Timesheet reminder (monthly cron)"
+   **nigdy wcześniej nie wysłał ani jednego maila** — w repo nie było sekretu `CRON_SECRET`,
+   więc każdy przebieg (25.05, 25.06, 25.07) padał na pierwszym kroku i jedynym realnym nadawcą
+   był Coolify. Sekret uzupełniony 2026-08-12, więc redundancja jest już prawdziwa; duplikatów
+   nie ma, bo o „raz na miesiąc" decyduje rezerwacja w bazie, nie harmonogram. Gdyby sekret
+   kiedyś zniknął, workflow kończy się **ostrzeżeniem i zielonym przebiegiem**, nie czerwonym —
+   przy harmonogramie 1.–5. brak sekretu dawałby pięć fałszywych alarmów miesięcznie.
+4. **Przy rotacji `CRON_SECRET`**: wartość jest w env vault Coolify, a serwer jest osiągalny
+   tylko z runnera GH. Nie kopiuj jej ręcznie — jest na to `action=cron-secret-ciphertext`
+   w workflow „Coolify Ops", który drukuje sekret **zaszyfrowany kluczem publicznym repo**
+   (sealed box; odczyta go wyłącznie GitHub), gotowy do `PUT` na API sekretów. Procedura
+   w nagłówku [coolify-ops.yml](.github/workflows/coolify-ops.yml).
+5. Brak nowych env-varów.
 
 ## Observability
 
