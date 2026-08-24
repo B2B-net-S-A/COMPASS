@@ -1467,6 +1467,10 @@ Audyt: `LEGAL_MONITOR_ALERTS_RUN` (start/done), `LEGAL_MONITOR_ITEMS_BULK_REVIEW
 |---|---|---|
 | `legal-monitor-alerts` | `0 8 * * *` | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/legal-monitor-alerts"` |
 
+> ⚠ **2026-08-24:** to zadanie nigdy nie zostało dodane w Coolify i przez 2 tygodnie żaden
+> alert nie wyszedł; harmonogram przeniesiony na GH Actions (`cron-legal-monitor-alerts.yml`)
+> — szczegóły i powód w sekcji Phase 54.
+
 Odbiorcy alertów (opcjonalnie — bez nich fallback na wszystkich finanse+admin): `system_settings`
 klucze `legal_monitor_red_recipients` (czerwone + digest) i `legal_monitor_ops_recipients` (cisza,
 awarie źródeł), oba jako CSV z UUID.
@@ -1576,6 +1580,20 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 ```
 Dopisanie kolejnej osoby = dopisanie UUID po przecinku. Zdjęcie z listy = usunięcie UUID
 (wraca do samego tygodniowego).
+
+**Scheduler tej trasy to GH Actions (`cron-legal-monitor-alerts.yml`, `0 8 * * *`), NIE
+Coolify.** Przy wdrażaniu 2026-08-24 wyszło na jaw, że cron `legal-monitor-alerts` z tabeli
+Phase 50 **nigdy nie został dodany** (zero przebiegów w audycie od startu modułu — ani
+czerwonych alertów, ani tygodniowych digestów), a co gorsza scheduler Coolify **w ogóle nie
+wykonuje zadań wstawianych do `scheduled_tasks` z zewnątrz** (DB INSERT / akcja cron-add):
+natywne zadania strzelają co do sekundy (`consultant-success-plan`, run_count 13/13), wiersze
+UUID-owe — wcale, nawet z `container='app'` i po `docker restart coolify` (zweryfikowane
+sondą na `/api/cron/oof-reconcile`). Zadanie `legal-monitor-alerts` w Coolify istnieje, ale
+jest **wyłączone** — nie włączać bez stempla dedupu dla tygodniowego digestu (podwójny mail
+w poniedziałki). Uwaga: `action=cron-enable` w „Coolify Ops" włącza WSZYSTKIE zadania, więc
+po takim przebiegu trzeba je wyłączyć ponownie (ta sama pułapka co `inbox-ingest`, Phase 44).
+Systemowy skutek dla pozostałych ~13 UUID-owych zadań (oof-reconcile, tc-sync, lifecycle-*,
+placement-*, tech-map-project-end…) — osobny follow-up, nie ruszany tutaj.
 
 ## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
 
