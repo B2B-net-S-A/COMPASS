@@ -313,23 +313,34 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                     pending: items.filter((i) => i.status === 'new').length,
                 }
                 if (counts.total > 0) {
+                    // Czerwone przodem — po dłuższej przerwie okno może mieć >10
+                    // pozycji, a limit tytułów nie ma prawa uciąć akurat czerwonych.
+                    // Sort stabilny, więc wewnątrz koloru zostaje najnowsze-pierwsze.
+                    const severityOrder: Record<string, number> = { red: 0, yellow: 1, green: 2 }
+                    const titles = fresh
+                        .slice()
+                        .sort((a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3))
+                        .slice(0, 10)
+                        .map((i) => i.title)
                     const { data: recipientProfiles } = await admin
                         .from('profiles')
                         .select('id, email, full_name')
                         .in('id', dailyDigestRecipients)
                     let sent = 0
+                    let attempted = 0
                     for (const profile of (recipientProfiles ?? []) as Array<{
                         id: string
                         email: string | null
                         full_name: string | null
                     }>) {
                         if (!profile.email) continue
+                        attempted += 1
                         try {
                             const result = await sendLegalMonitorDailyDigest(
                                 profile.email,
                                 profile.full_name ?? 'Zespół',
                                 counts,
-                                fresh.slice(0, 10).map((i) => i.title),
+                                titles,
                             )
                             if (result.success) sent += 1
                             else errors.push(`dzienny digest ${profile.id}: wysyłka nieudana`)
@@ -338,6 +349,11 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                                 `dzienny digest ${profile.id}: ${e instanceof Error ? e.message : String(e)}`,
                             )
                         }
+                    }
+                    // Skonfigurowani odbiorcy bez profilu/emaila = digest po cichu
+                    // nie wychodzi w ogóle — to ma być widoczne w audycie, nie nieme.
+                    if (attempted === 0) {
+                        errors.push('dzienny digest: żaden skonfigurowany odbiorca nie ma profilu z emailem')
                     }
                     // Stempel dopiero po ≥1 udanej wysyłce — totalna awaria kanału
                     // ma się ponowić następnym przebiegiem, nie zniknąć po cichu.
