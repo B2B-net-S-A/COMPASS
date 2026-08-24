@@ -332,60 +332,8 @@ export async function disableOutOfOffice(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-export interface BuildDefaultOofInput {
-    employeeName: string
-    endDate: string // YYYY-MM-DD
-    substituteName?: string | null
-    substituteEmail?: string | null
-}
-
-/**
- * Generate a polished bilingual (PL+EN) default OOF message when the user
- * doesn't provide custom text. Mentions the substitute if assigned.
- */
-export function buildDefaultOofMessages(input: BuildDefaultOofInput): {
-    internal: string
-    external: string
-} {
-    const formattedDate = formatPolishDate(input.endDate)
-    const hasSubstitute = Boolean(input.substituteName && input.substituteEmail)
-    const subPart = hasSubstitute
-        ? `W pilnych sprawach prosimy o kontakt z <strong>${escapeHtml(input.substituteName!)}</strong> (<a href="mailto:${escapeHtml(input.substituteEmail!)}">${escapeHtml(input.substituteEmail!)}</a>).`
-        : 'W pilnych sprawach prosimy o kontakt z managerem zespołu.'
-
-    const subPartEn = hasSubstitute
-        ? `For urgent matters please contact <strong>${escapeHtml(input.substituteName!)}</strong> (<a href="mailto:${escapeHtml(input.substituteEmail!)}">${escapeHtml(input.substituteEmail!)}</a>).`
-        : 'For urgent matters please contact the team manager.'
-
-    const internal = `<p>Dzień dobry,</p>
-<p>Jestem nieobecny/-a do <strong>${formattedDate}</strong>. ${subPart}</p>
-<hr/>
-<p>Hello,</p>
-<p>I'm out of office until <strong>${formattedDate}</strong>. ${subPartEn}</p>
-<p>— ${escapeHtml(input.employeeName)}</p>`
-
-    const external = internal // identical for now; admin can customize per leave
-    return { internal, external }
-}
-
-function formatPolishDate(iso: string): string {
-    const months = [
-        'stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca',
-        'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia',
-    ]
-    const [year, month, day] = iso.split('-')
-    return `${parseInt(day, 10)} ${months[parseInt(month, 10) - 1]} ${year}`
-}
-
-function escapeHtml(s: string): string {
-    return s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;')
-}
+// Phase 53: the default message templates (buildDefaultOofMessages) moved to
+// ./oof-template.ts — a pure module the form preview action can also import.
 
 function addDays(isoDate: string, days: number): string {
     const d = new Date(`${isoDate}T00:00:00Z`)

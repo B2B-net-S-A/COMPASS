@@ -131,6 +131,9 @@ export type AuditAction =
     | 'LEAVE_OOF_DISABLED'
     // Phase 25d — Compass detected user-set OOF and did NOT overwrite it
     | 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
+    // Phase 53 — single-day half-day leave: no auto-reply on purpose (the
+    // employee works part of that day)
+    | 'LEAVE_OOF_SKIPPED_HALF_DAY'
     // Phase 41 — Outlook inbox rule forwarding mail to the substitute during leave
     | 'LEAVE_FORWARD_SET'
     | 'LEAVE_FORWARD_FAILED'

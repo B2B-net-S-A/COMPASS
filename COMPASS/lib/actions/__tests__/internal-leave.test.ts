@@ -39,10 +39,11 @@ vi.mock('@/lib/calendar/graph-events', () => ({
     deleteLeaveEvent: vi.fn(async () => ({ success: true })),
 }))
 vi.mock('@/lib/mailbox/graph-oof', () => ({
-    buildDefaultOofMessages: () => ({ internal: 'i', external: 'e' }),
     disableOutOfOffice: vi.fn(async () => ({ success: true })),
     setOutOfOffice: vi.fn(async () => ({ success: true, skipped: true })),
 }))
+// Phase 53: buildDefaultOofMessages/shouldSetOofForLeave przeniesione do
+// oof-template.ts — czysty moduł, w testach działa naprawdę (bez mocka).
 vi.mock('@/lib/teams/webhook', () => ({ postToTeamsAlert: vi.fn(async () => {}) }))
 vi.mock('@/lib/actions/push-subscriptions', () => ({
     sendPushToUserId: vi.fn(async () => ({ success: true })),
