@@ -14,10 +14,12 @@ import {
     createLeaveRequest,
     listEligibleSubstitutes,
     previewLeaveSplit,
+    previewOofMessages,
     uploadLeaveProof,
     type EligibleSubstitute,
     type LeaveSplitPreview,
     type LeaveType,
+    type OofMessagesPreview,
 } from '@/lib/actions/internal-leave'
 
 const LEAVE_TYPES: ReadonlyArray<{ value: LeaveType; label: string; needsDocs?: boolean; uopOnly?: boolean }> = [
@@ -119,6 +121,31 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
 
     const showHalfDay = startDate && endDate && startDate === endDate
     const showDocsField = LEAVE_TYPES.find((t) => t.value === leaveType)?.needsDocs ?? false
+
+    // Phase 53 — live preview domyślnej automatycznej odpowiedzi (debounce 350ms).
+    // Ten sam builder co przy akceptacji wniosku, więc podgląd nigdy nie kłamie.
+    const [oofPreview, setOofPreview] = useState<OofMessagesPreview | null>(null)
+    useEffect(() => {
+        if (!showOofAdvanced || !startDate || !endDate || endDate < startDate) {
+            setOofPreview(null)
+            return
+        }
+        const handler = setTimeout(() => {
+            previewOofMessages({
+                startDate,
+                endDate,
+                halfDay: startDate === endDate && halfDay ? halfDay : null,
+                substituteId: substituteId || null,
+            })
+                .then((p) => {
+                    // Deploy-skew guard: stary bundle + nowa akcja może zwrócić undefined.
+                    if (p && typeof p.internal === 'string') setOofPreview(p)
+                    else setOofPreview(null)
+                })
+                .catch(() => setOofPreview(null))
+        }, 350)
+        return () => clearTimeout(handler)
+    }, [showOofAdvanced, startDate, endDate, halfDay, substituteId])
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
@@ -368,7 +395,7 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
                                         id="oof_internal"
                                         rows={3}
                                         maxLength={2000}
-                                        placeholder="Domyślnie: 'Jestem nieobecny do DD-MM. W pilnych sprawach prosimy o kontakt z [zastępca].'"
+                                        placeholder="Zostaw puste, aby użyć domyślnej treści — podgląd poniżej."
                                         value={oofInternal}
                                         onChange={(e) => setOofInternal(e.target.value)}
                                     />
@@ -381,15 +408,47 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
                                         id="oof_external"
                                         rows={3}
                                         maxLength={2000}
-                                        placeholder="Jak wyżej — zostaw puste, aby użyć tej samej treści."
+                                        placeholder="Zostaw puste, aby użyć domyślnej treści — podgląd poniżej."
                                         value={oofExternal}
                                         onChange={(e) => setOofExternal(e.target.value)}
                                     />
                                 </div>
                                 <p className="text-[11px] text-muted-foreground">
-                                    Jeśli zostawisz puste, system wygeneruje dwujęzyczny PL+EN tekst z datą
-                                    powrotu i (jeśli wybrany) emailem zastępcy.
+                                    Puste pola = treść domyślna: wewnętrzna po polsku, zewnętrzna
+                                    PL + EN, z datą powrotu (pierwszy dzień roboczy) i kontaktem na
+                                    czas nieobecności (zastępca, a bez zastępcy — Twój manager).
                                 </p>
+                                {oofPreview && (
+                                    <div className="space-y-2">
+                                        {!oofPreview.willSetOof && (
+                                            <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                                                Dla jednodniowego urlopu na pół dnia automatyczna
+                                                odpowiedź nie zostanie ustawiona — jesteś w pracy
+                                                przez część dnia.
+                                            </p>
+                                        )}
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-medium text-muted-foreground">
+                                                Podgląd domyślnej odpowiedzi — nadawcy z b2bnetwork.pl
+                                            </p>
+                                            <div
+                                                className="rounded-md border border-border/40 bg-muted/30 p-3 text-xs leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_hr]:my-2 [&_hr]:border-border/40"
+                                                // Własny szablon z oof-template.ts — wszystkie
+                                                // interpolacje przechodzą przez escapeHtml.
+                                                dangerouslySetInnerHTML={{ __html: oofPreview.internal }}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-medium text-muted-foreground">
+                                                Podgląd domyślnej odpowiedzi — nadawcy zewnętrzni
+                                            </p>
+                                            <div
+                                                className="rounded-md border border-border/40 bg-muted/30 p-3 text-xs leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_hr]:my-2 [&_hr]:border-border/40"
+                                                dangerouslySetInnerHTML={{ __html: oofPreview.external }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

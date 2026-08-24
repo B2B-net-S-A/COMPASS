@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { isWorkingDay, workingDaysBetween, workingDaysInMonth } from '../working-days'
+import {
+    isWorkingDay,
+    nextWorkingDayAfter,
+    workingDaysBetween,
+    workingDaysInMonth,
+} from '../working-days'
 
 const HOLIDAYS = [
     { date: '2026-05-01', name_pl: 'Święto Pracy' },
@@ -48,5 +53,29 @@ describe('workingDaysBetween', () => {
         )
         // 5/1 holiday OUT, 5/2 Sat OUT, 5/3 Sun + holiday OUT, 5/4 Mon IN, 5/5 Tue IN → 2
         expect(days.length).toBe(2)
+    })
+})
+
+// Phase 53 — return date for the OOF auto-reply ("odpowiem po powrocie, X").
+describe('nextWorkingDayAfter', () => {
+    it('plain weekday → next calendar day', () => {
+        // Wed 2026-08-19 → Thu 2026-08-20
+        expect(nextWorkingDayAfter('2026-08-19', [])).toBe('2026-08-20')
+    })
+
+    it('Friday → Monday (weekend skipped)', () => {
+        // Fri 2026-08-21 → Mon 2026-08-24
+        expect(nextWorkingDayAfter('2026-08-21', [])).toBe('2026-08-24')
+    })
+
+    it('day before a weekday holiday → day after the holiday', () => {
+        // Thu 2026-04-30 → Fri 2026-05-01 is a holiday → Sat/Sun skipped,
+        // Sun 2026-05-03 is also a holiday (already non-working) → Mon 2026-05-04
+        expect(nextWorkingDayAfter('2026-04-30', HOLIDAYS)).toBe('2026-05-04')
+    })
+
+    it('empty holidays list degrades to weekend-only skipping', () => {
+        // Sat 2026-05-02 → Sun skipped → Mon 2026-05-04
+        expect(nextWorkingDayAfter('2026-05-02', [])).toBe('2026-05-04')
     })
 })

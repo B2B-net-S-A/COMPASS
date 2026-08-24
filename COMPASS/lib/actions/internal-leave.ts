@@ -21,10 +21,10 @@ import {
 } from '@/lib/email'
 import { createLeaveEvent, deleteLeaveEvent } from '@/lib/calendar/graph-events'
 import {
-    buildDefaultOofMessages,
     disableOutOfOffice,
     setOutOfOffice,
 } from '@/lib/mailbox/graph-oof'
+import { buildDefaultOofMessages, shouldSetOofForLeave } from '@/lib/mailbox/oof-template'
 import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sync'
 import { createForwardRule } from '@/lib/mailbox/graph-inbox-rules'
 import { planForwardRuleEdit, shouldForwardBeActive } from '@/lib/oof/forward-window'
@@ -38,7 +38,7 @@ import {
     VACATION_POOL_TYPES,
     type LeaveSpan,
 } from '@/lib/hr/leave-balance'
-import { type PublicHolidayDate } from '@/lib/hr/working-days'
+import { nextWorkingDayAfter, type PublicHolidayDate } from '@/lib/hr/working-days'
 import {
     splitLeaveWorkingDays,
     PAID_LEAVE_ENTRY_SOURCE,
@@ -46,7 +46,7 @@ import {
     type PaidLeaveDay,
 } from '@/lib/hr/leave-timesheet-split'
 import { computeTimesheetHash, type TimesheetEntryForHash } from '@/lib/hr/timesheet-hash'
-import { endOfMonth, format } from 'date-fns'
+import { addDays, endOfMonth, format, parseISO } from 'date-fns'
 
 export type LeaveType =
     | 'vacation' // Urlop wypoczynkowy
@@ -258,6 +258,78 @@ async function persistOofResult(args: OofPersistArgs): Promise<void> {
         })
     }
     // skipReason='no_credentials' → silent (dev/local).
+}
+
+/**
+ * Phase 53 — assemble the default OOF texts for a leave. Beyond what the row
+ * carries, the template needs the return date (first working day after
+ * end_date, public_holidays-aware) and — when no substitute is assigned — the
+ * employee's manager as the urgent-contact fallback. Soft-fail everywhere:
+ * a failed lookup degrades to weekend-only return date / office contact,
+ * because building a default text must never block the approval flow.
+ */
+async function buildOofDefaultsFor(args: {
+    admin: ReturnType<typeof createServiceClient>
+    userId: string
+    employeeName: string
+    endDate: string
+    substituteName: string | null
+    substituteEmail: string | null
+}): Promise<{ internal: string; external: string }> {
+    let holidays: PublicHolidayDate[] = []
+    try {
+        // 40 days covers every possible PL non-working streak after endDate.
+        const horizon = format(addDays(parseISO(args.endDate), 40), 'yyyy-MM-dd')
+        const { data } = await args.admin
+            .from('public_holidays')
+            .select('date, name_pl')
+            .gte('date', args.endDate)
+            .lte('date', horizon)
+        holidays = (data ?? []) as PublicHolidayDate[]
+    } catch (e) {
+        logCompat.error('[buildOofDefaultsFor] holidays fetch failed:', e)
+    }
+
+    let managerName: string | null = null
+    let managerEmail: string | null = null
+    if (!args.substituteEmail) {
+        try {
+            const { data: prof } = await args.admin
+                .from('profiles')
+                .select('manager_id')
+                .eq('id', args.userId)
+                .maybeSingle<{ manager_id: string | null }>()
+            if (prof?.manager_id) {
+                const { data: mgr } = await args.admin
+                    .from('profiles')
+                    .select('full_name, email, employment_status')
+                    .eq('id', prof.manager_id)
+                    .maybeSingle<{
+                        full_name: string | null
+                        email: string | null
+                        employment_status: string | null
+                    }>()
+                // An archived manager would be a dead-end contact (Phase 43:
+                // "here and now" people lists exclude exited).
+                if (mgr?.email && mgr.employment_status !== 'exited') {
+                    managerName = mgr.full_name ?? mgr.email
+                    managerEmail = mgr.email
+                }
+            }
+        } catch (e) {
+            logCompat.error('[buildOofDefaultsFor] manager lookup failed:', e)
+        }
+    }
+
+    return buildDefaultOofMessages({
+        employeeName: args.employeeName,
+        endDate: args.endDate,
+        returnDate: nextWorkingDayAfter(args.endDate, holidays),
+        substituteName: args.substituteName,
+        substituteEmail: args.substituteEmail,
+        managerName,
+        managerEmail,
+    })
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -1306,34 +1378,51 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
             }
         }
 
-        const defaults = buildDefaultOofMessages({
-            employeeName: targetDisplayName,
-            endDate: input.endDate,
-            substituteName,
-            substituteEmail,
-        })
+        // Phase 53 — jednodniowy półdniowy urlop nie dostaje całodniowego auto-reply.
+        if (
+            shouldSetOofForLeave({
+                startDate: input.startDate,
+                endDate: input.endDate,
+                halfDay: input.halfDay ?? null,
+            })
+        ) {
+            const defaults = await buildOofDefaultsFor({
+                admin,
+                userId: input.targetUserId,
+                employeeName: targetDisplayName,
+                endDate: input.endDate,
+                substituteName,
+                substituteEmail,
+            })
 
-        setOutOfOffice({
-            userEmail: target.email,
-            startDate: input.startDate,
-            endDate: input.endDate,
-            internalReply: defaults.internal,
-            externalReply: defaults.external,
-        })
-            .then((r) =>
-                persistOofResult({
-                    admin,
-                    leaveRequestId: inserted.id,
-                    actorUserId: ctx.userId,
-                    targetUserId: input.targetUserId,
-                    result: r,
-                    auditExtra: {
-                        has_substitute: Boolean(input.substituteId),
-                        via: 'on_behalf',
-                    },
-                }),
-            )
-            .catch((e) => logCompat.error('[createLeaveOnBehalf] OOF set failed:', e))
+            setOutOfOffice({
+                userEmail: target.email,
+                startDate: input.startDate,
+                endDate: input.endDate,
+                internalReply: defaults.internal,
+                externalReply: defaults.external,
+            })
+                .then((r) =>
+                    persistOofResult({
+                        admin,
+                        leaveRequestId: inserted.id,
+                        actorUserId: ctx.userId,
+                        targetUserId: input.targetUserId,
+                        result: r,
+                        auditExtra: {
+                            has_substitute: Boolean(input.substituteId),
+                            via: 'on_behalf',
+                        },
+                    }),
+                )
+                .catch((e) => logCompat.error('[createLeaveOnBehalf] OOF set failed:', e))
+        } else {
+            await logAudit(ctx.userId, 'LEAVE_OOF_SKIPPED_HALF_DAY', {
+                leave_id: inserted.id,
+                target_user_id: input.targetUserId,
+                via: 'on_behalf',
+            })
+        }
 
         if (substituteEmail) {
             sendSubstituteAssigned(
@@ -2311,6 +2400,73 @@ export async function previewLeaveSplit(input: {
     }
 }
 
+export interface OofMessagesPreview {
+    internal: string
+    external: string
+    /** False for a single-day half-day leave — no auto-reply will be set at all. */
+    willSetOof: boolean
+}
+
+/**
+ * Phase 53 — live preview of the DEFAULT auto-reply for the leave form.
+ * Runs the exact same pipeline approveLeaveRequest would use when the custom
+ * text fields stay empty (same builder, same manager fallback, same
+ * return-date math), so the preview never drifts from the real thing.
+ * Read-only, self-only: nothing is persisted.
+ */
+export async function previewOofMessages(input: {
+    startDate: string
+    endDate: string
+    halfDay: 'morning' | 'afternoon' | null
+    substituteId?: string | null
+}): Promise<OofMessagesPreview> {
+    const ctx = await requireInternalOrAdminAction()
+    validateDateString(input.startDate, 'start_date')
+    validateDateString(input.endDate, 'end_date')
+    if (input.endDate < input.startDate) {
+        throw new Error('Data końca musi być >= data początku.')
+    }
+
+    const admin = createServiceClient()
+    const me = await fetchUserContact(ctx.userId)
+    const employeeName = me?.full_name ?? me?.email ?? 'Pracownik'
+
+    let substituteName: string | null = null
+    let substituteEmail: string | null = null
+    if (input.substituteId) {
+        // Mirrors listEligibleSubstitutes' "here and now" rule: an archived
+        // profile is never a valid substitute, so it never shows in a preview.
+        const { data: sub } = await admin
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', input.substituteId)
+            .neq('employment_status', 'exited')
+            .maybeSingle<{ full_name: string | null; email: string }>()
+        if (sub) {
+            substituteName = sub.full_name ?? sub.email
+            substituteEmail = sub.email
+        }
+    }
+
+    const defaults = await buildOofDefaultsFor({
+        admin,
+        userId: ctx.userId,
+        employeeName,
+        endDate: input.endDate,
+        substituteName,
+        substituteEmail,
+    })
+
+    return {
+        ...defaults,
+        willSetOof: shouldSetOofForLeave({
+            startDate: input.startDate,
+            endDate: input.endDate,
+            halfDay: input.halfDay,
+        }),
+    }
+}
+
 // ─── Admin: listPendingLeaveRequests ─────────────────────────────────────────
 
 export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
@@ -2441,7 +2597,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
 
     const { data: row, error: fetchErr } = await admin
         .from('leave_requests')
-        .select('id, user_id, leave_type, start_date, end_date, status, substitute_id, oof_internal_message, oof_external_message, forward_mail_enabled')
+        .select('id, user_id, leave_type, start_date, end_date, half_day, status, substitute_id, oof_internal_message, oof_external_message, forward_mail_enabled')
         .eq('id', id)
         .single<
             Pick<
@@ -2451,6 +2607,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                 | 'leave_type'
                 | 'start_date'
                 | 'end_date'
+                | 'half_day'
                 | 'status'
                 | 'substitute_id'
                 | 'oof_internal_message'
@@ -2536,12 +2693,21 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
             }
         }
 
-        // Phase 25 — Outlook Out-of-Office auto-reply (skip for half-day single-day urlopy,
-        // ale ustawiamy nawet bez substitute — fallback "kontakt z managerem").
-        // Sick leave (L4) ma auto-approve flow; OOF też ustawiamy bo to opisany urlop.
-        const shouldSetOof = row.start_date !== row.end_date || !row.start_date.includes('XXX')
-        if (shouldSetOof) {
-            const defaults = buildDefaultOofMessages({
+        // Phase 25 — Outlook Out-of-Office auto-reply. Ustawiamy nawet bez substitute
+        // (fallback: manager pracownika, potem biuro). Sick leave (L4) też dostaje OOF —
+        // szablon celowo milczy o typie nieobecności.
+        // Phase 53 — skip dla jednodniowego półdniowego urlopu w końcu DZIAŁA: stary
+        // warunek (`!start_date.includes('XXX')`) był tautologią i nigdy nie skipował.
+        if (
+            shouldSetOofForLeave({
+                startDate: row.start_date,
+                endDate: row.end_date,
+                halfDay: row.half_day ?? null,
+            })
+        ) {
+            const defaults = await buildOofDefaultsFor({
+                admin,
+                userId: row.user_id,
                 employeeName: userInfo.full_name ?? userInfo.email,
                 endDate: row.end_date,
                 substituteName,
@@ -2568,18 +2734,24 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                     }),
                 )
                 .catch((e) => logCompat.error('[approveLeaveRequest] OOF set failed:', e))
+        } else {
+            await logAudit(ctx.userId, 'LEAVE_OOF_SKIPPED_HALF_DAY', {
+                leave_id: id,
+                target_user_id: row.user_id,
+            })
+        }
 
-            // Email do zastępcy (fire-and-forget).
-            if (substituteEmail) {
-                sendSubstituteAssigned(
-                    substituteEmail,
-                    substituteName ?? substituteEmail,
-                    userInfo.full_name ?? userInfo.email,
-                    userInfo.email,
-                    row.start_date,
-                    row.end_date,
-                ).catch((e) => logCompat.error('[approveLeaveRequest] substitute notify failed:', e))
-            }
+        // Email do zastępcy (fire-and-forget). Phase 53: poza gate'em OOF —
+        // zastępca półdniowego urlopu nadal zastępuje, choć auto-reply nie ustawiamy.
+        if (substituteEmail) {
+            sendSubstituteAssigned(
+                substituteEmail,
+                substituteName ?? substituteEmail,
+                userInfo.full_name ?? userInfo.email,
+                userInfo.email,
+                row.start_date,
+                row.end_date,
+            ).catch((e) => logCompat.error('[approveLeaveRequest] substitute notify failed:', e))
         }
 
         // Phase 41 — forward incoming mail to the substitute for the leave's duration.
@@ -3331,7 +3503,7 @@ export async function retryLeaveGraphSync(
     const { data: row, error: fetchErr } = await admin
         .from('leave_requests')
         .select(`
-            id, user_id, start_date, end_date, leave_type, status,
+            id, user_id, start_date, end_date, leave_type, half_day, status,
             substitute_id, oof_internal_message, oof_external_message,
             outlook_event_id, outlook_forward_rule_id, forward_mail_enabled
         `)
@@ -3342,6 +3514,7 @@ export async function retryLeaveGraphSync(
             start_date: string
             end_date: string
             leave_type: LeaveType
+            half_day: 'morning' | 'afternoon' | null
             status: LeaveStatus
             substitute_id: string | null
             oof_internal_message: string | null
@@ -3373,49 +3546,64 @@ export async function retryLeaveGraphSync(
         }
     }
 
-    const defaults = buildDefaultOofMessages({
-        employeeName: userInfo.full_name ?? userInfo.email,
-        endDate: row.end_date,
-        substituteName,
-        substituteEmail,
-    })
-
     let oofOk = false
     let oofSkipReason: string | null = null
     let calOk = false
     let forwardOk = false
     const errors: string[] = []
 
-    const oofRes = await setOutOfOffice({
-        userEmail: userInfo.email,
-        startDate: row.start_date,
-        endDate: row.end_date,
-        internalReply: row.oof_internal_message?.trim() || defaults.internal,
-        externalReply: row.oof_external_message?.trim() || defaults.external,
-    })
-    if (oofRes.success && !oofRes.skipped) {
+    // Phase 53 — mirror the approve flow: a single-day half-day leave gets no
+    // auto-reply, so there is nothing to (re)set here either.
+    if (
+        !shouldSetOofForLeave({
+            startDate: row.start_date,
+            endDate: row.end_date,
+            halfDay: row.half_day ?? null,
+        })
+    ) {
         oofOk = true
-        await admin
-            .from('leave_requests')
-            .update({
-                graph_oof_set: true,
-                graph_oof_set_at: new Date().toISOString(),
-                graph_oof_skip_reason: null,
-            } as never)
-            .eq('id', id)
-    } else if (oofRes.success && oofRes.skipped && oofRes.skipReason === 'user_custom') {
-        // Phase 25d — user has their own OOF; respect it. Retry treats this as success.
-        oofOk = true
-        oofSkipReason = 'user_custom'
-        await admin
-            .from('leave_requests')
-            .update({ graph_oof_skip_reason: 'user_custom' } as never)
-            .eq('id', id)
-    } else if (oofRes.success && oofRes.skipped) {
-        // no_credentials — dev/local; nothing to persist, nothing to retry.
-        oofOk = true
-    } else if (oofRes.error) {
-        errors.push(`oof: ${oofRes.error}`)
+        oofSkipReason = 'half_day'
+    } else {
+        const defaults = await buildOofDefaultsFor({
+            admin,
+            userId: row.user_id,
+            employeeName: userInfo.full_name ?? userInfo.email,
+            endDate: row.end_date,
+            substituteName,
+            substituteEmail,
+        })
+
+        const oofRes = await setOutOfOffice({
+            userEmail: userInfo.email,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            internalReply: row.oof_internal_message?.trim() || defaults.internal,
+            externalReply: row.oof_external_message?.trim() || defaults.external,
+        })
+        if (oofRes.success && !oofRes.skipped) {
+            oofOk = true
+            await admin
+                .from('leave_requests')
+                .update({
+                    graph_oof_set: true,
+                    graph_oof_set_at: new Date().toISOString(),
+                    graph_oof_skip_reason: null,
+                } as never)
+                .eq('id', id)
+        } else if (oofRes.success && oofRes.skipped && oofRes.skipReason === 'user_custom') {
+            // Phase 25d — user has their own OOF; respect it. Retry treats this as success.
+            oofOk = true
+            oofSkipReason = 'user_custom'
+            await admin
+                .from('leave_requests')
+                .update({ graph_oof_skip_reason: 'user_custom' } as never)
+                .eq('id', id)
+        } else if (oofRes.success && oofRes.skipped) {
+            // no_credentials — dev/local; nothing to persist, nothing to retry.
+            oofOk = true
+        } else if (oofRes.error) {
+            errors.push(`oof: ${oofRes.error}`)
+        }
     }
 
     if (!row.outlook_event_id) {

@@ -1641,6 +1641,53 @@ trasę równolegle codziennie 1.–5. i wychodzi z tego jeden mail.
    w nagłówku [coolify-ops.yml](.github/workflows/coolify-ops.yml).
 5. Brak nowych env-varów.
 
+## Phase 53 — autoresponder OOF: nowe szablony + fallback managera + podgląd (2026-08-24)
+
+Przepisanie domyślnej treści auto-reply Out-of-Office (jedyny mechanizm piszący maile „w imieniu
+użytkownika", Phase 25). Stary tekst miał: dwuznaczne „do 20 sierpnia" (endDate jest inclusive —
+czytelnik rozumiał „20-go już jestem"), polską datę wklejoną do akapitu EN („out of office until
+20 sierpnia 2026"), slashową formę „nieobecny/-a", błąd gramatyczny „kontakt z **Anna Nowak**"
+(mianownik po „z") i ślepy zaułek „kontakt z managerem zespołu" bez nazwiska i maila.
+
+**Szablony żyją w [oof-template.ts](COMPASS/lib/mailbox/oof-template.ts)** — czysty moduł bez
+zależności serwerowych (wydzielony z graph-oof.ts), więc testowalny wprost i importowalny przez
+akcję podglądu. Wewnętrzny reply: krótki PL. Zewnętrzny: PL + EN (daty EN przez
+`Intl.DateTimeFormat('en-GB')`), formalniejszy, z podpisem „B2B Network". Oba podają datę końca
+**włącznie** ORAZ konkretną datę powrotu = pierwszy dzień roboczy po endDate
+(`nextWorkingDayAfter` w working-days.ts, `public_holidays`-aware).
+
+**Cztery ograniczenia projektowe — nie cofać, nie znając powodu:**
+1. **Tekst milczy o typie nieobecności.** OOF ustawia się też dla L4 (komentarz przy approve) —
+   „jestem na urlopie" byłoby tam fałszem, a różnicowanie treści per typ ujawniałoby dane
+   o zdrowiu (RODO). Stąd neutralne „jestem poza biurem" (przy okazji: bez formy płciowej,
+   której i tak nie dałoby się wyliczyć — `profiles` nie ma płci).
+2. **Nazwiska zostają w mianowniku** („zastępuje mnie Anna Nowak", „proszę o kontakt: Marta
+   Wiśniewska") — programowa odmiana nazwisk to pułapka; frazuj tak, żeby nie była potrzebna.
+3. **Mail zastępcy celowo JEST w odpowiedzi zewnętrznej** — to służbowy adres, a wskazanie
+   zastępcy klientom to biznesowy sens zastępstwa (komplementarne do forwardingu Phase 41).
+   Podział internal/external to język i forma, nie ukrywanie kontaktu.
+4. **Łańcuch kontaktu awaryjnego: zastępca → manager pracownika → biuro**
+   (`OFFICE_CONTACT_EMAIL` = administracja@b2bnetwork.pl, stała w oof-template.ts). Manager
+   dociągany w [buildOofDefaultsFor](COMPASS/lib/actions/internal-leave.ts) tylko przy braku
+   zastępcy; zarchiwizowany (`exited`) manager odpada (reguła Phase 43). Wszystko soft-fail —
+   budowa domyślnego tekstu nigdy nie blokuje akceptacji urlopu.
+
+**Naprawiona tautologia `shouldSetOof`** — stary warunek `!start_date.includes('XXX')` był
+zawsze true, więc obiecany w komentarzu skip dla jednodniowego półdniowego urlopu nigdy nie
+działał. Teraz `shouldSetOofForLeave` (oof-template.ts, czysta): jednodniowy half-day → brak
+auto-reply (pracownik jest w pracy część dnia), audyt `LEAVE_OOF_SKIPPED_HALF_DAY`. Gate objął
+wszystkie 3 call-sites (approve / on-behalf / retry); `sendSubstituteAssigned` wyniesiony POZA
+gate — zastępca półdniowego urlopu nadal dostaje powiadomienie.
+
+**Podgląd w formularzu wniosku** — `previewOofMessages` (server action, wzorzec
+`previewLeaveSplit`, debounce 350 ms) renderuje w rozwijanej sekcji OOF dokładnie ten sam
+default, który ustawi approve (ten sam builder + fallback managera + data powrotu), więc podgląd
+nie może się rozjechać z rzeczywistością. Render przez `dangerouslySetInnerHTML` — bezpieczne,
+bo wszystkie interpolacje szablonu przechodzą przez `escapeHtml`.
+
+**Bez migracji** (nowa akcja audytu to tylko rozszerzenie unii TS). Własny tekst użytkownika
+(`oof_internal_message`/`oof_external_message`) ma nadal pierwszeństwo przed generatorem.
+
 ## Observability
 
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
