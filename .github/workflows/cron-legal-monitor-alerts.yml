@@ -1,0 +1,67 @@
+name: Legal monitor alerts (daily cron)
+
+# Phase 54 — dzienne alerty + digesty monitoringu prawnego.
+#
+# Harmonogram żyje TUTAJ, nie w Coolify — i to nie jest kwestia gustu. 2026-08-24
+# wyszło na jaw, że scheduler Coolify wykonuje wyłącznie zadania utworzone przez
+# samo Coolify (natywne krótkie uuid, np. consultant-success-plan — strzela co do
+# sekundy), a wiersze wstawione do `scheduled_tasks` bezpośrednio (DB INSERT /
+# akcja cron-add) NIE odpalają się WCALE — nawet z poprawnym container='app'
+# i po `docker restart coolify`. Zweryfikowane sondą: zadanie-klon `35 16 * * *`
+# na /api/cron/oof-reconcile (endpoint z bezwarunkowym heartbeatem w audit_logs)
+# nie zostawiło śladu. Skutek: cron `legal-monitor-alerts` zaplanowany w Phase 50
+# nigdy nie istniał, a dodany dziś — nie strzelał. Zadanie w Coolify zostało
+# wyłączone (enabled=f, ślad w scheduled_tasks); jedynym schedulerem jest ten plik.
+#
+# JEDEN scheduler, nie dwa: tygodniowy digest (sekcja 5 trasy) nie ma dedupu
+# per-dzień, więc drugi harmonogram na poniedziałek = podwójny mail do finanse+admin.
+# Nie dodawaj równoległego zadania w Coolify bez wcześniejszego stempla dla
+# tygodniowego digestu (dzienny digest i pozostałe sekcje są deduplikowane).
+#
+# Wielokrotne wywołanie tego samego dnia jest bezpieczne poza poniedziałkowym
+# digestem: czerwone stempluje `alerted_at`, cisza ma marker, zaległe reakcje
+# dedup dobowy, dzienny digest stempel `legal_monitor_daily_digest_last_sent_at`.
+#
+# Brak sekretu daje ostrzeżenie i zielony przebieg zamiast czerwonego — wzorzec
+# z cron-timesheet-reminder.yml. Rotacja wartości: action=cron-secret-ciphertext
+# w workflow „Coolify Ops".
+
+on:
+  schedule:
+    # Codziennie 08:00 UTC (≈ 09:00/10:00 w Warszawie zależnie od DST),
+    # po porannym przebiegu pipeline'u (~05:30 UTC w dni robocze).
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legal-monitor-alerts
+  cancel-in-progress: false
+
+jobs:
+  trigger-alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Curl /api/cron/legal-monitor-alerts
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::error::Brak zmiennej APP_URL — ustaw ją w ustawieniach repo."
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::Pominięte — brak sekretu CRON_SECRET. Bez niego alerty monitoringu prawnego NIE wychodzą (to jedyny scheduler tej trasy)."
+            exit 0
+          fi
+          echo "Calling $APP_URL/api/cron/legal-monitor-alerts"
+          # Bearer, nie ?secret= — sekret w query trafia do logów CF/proxy/Sentry.
+          curl -fsSL --retry 3 --retry-delay 10 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/legal-monitor-alerts" | tee /tmp/result.json
+          echo
+          echo "✅ Legal monitor alerts cron completed."
