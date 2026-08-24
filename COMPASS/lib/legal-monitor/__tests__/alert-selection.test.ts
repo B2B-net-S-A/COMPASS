@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
+    dailyDigestWindowStart,
     digestWindowStart,
     isDigestDay,
     selectOverdueFollowUps,
     selectRedAlerts,
+    shouldSendDailyDigest,
     sourceFailureStreaks,
     sourcesCrossingFailureThreshold,
     SOURCE_FAILURE_STREAK_THRESHOLD,
@@ -163,5 +165,34 @@ describe('isDigestDay / digestWindowStart', () => {
 
     it('okno digestu to tydzień wstecz', () => {
         expect(digestWindowStart(new Date('2026-08-10T09:00:00Z'))).toBe('2026-08-03')
+    })
+})
+
+describe('shouldSendDailyDigest / dailyDigestWindowStart', () => {
+    it('bez stempla wysyła, okno cofa się o dobę', () => {
+        const now = new Date('2026-08-24T08:00:00Z')
+        expect(shouldSendDailyDigest(null, now)).toBe(true)
+        expect(dailyDigestWindowStart(null, now)).toBe('2026-08-23T08:00:00.000Z')
+    })
+
+    it('nie dubluje wysyłki tego samego dnia warszawskiego', () => {
+        expect(shouldSendDailyDigest('2026-08-24T06:05:00Z', new Date('2026-08-24T11:00:00Z'))).toBe(false)
+    })
+
+    it('następnego dnia wysyła, a okno zaczyna się dokładnie na stemplu', () => {
+        const now = new Date('2026-08-25T08:00:00Z')
+        expect(shouldSendDailyDigest('2026-08-24T08:00:00Z', now)).toBe(true)
+        expect(dailyDigestWindowStart('2026-08-24T08:00:00Z', now)).toBe('2026-08-24T08:00:00Z')
+    })
+
+    it('granica doby liczona w Warszawie: 23:30 UTC to już następny dzień', () => {
+        // stempel 24.08 21:00 UTC = 23:00 w Warszawie; now 24.08 23:30 UTC = 25.08 01:30 w Warszawie
+        expect(shouldSendDailyDigest('2026-08-24T21:00:00Z', new Date('2026-08-24T23:30:00Z'))).toBe(true)
+    })
+
+    it('zepsuty stempel traktuje jak brak stempla — wysyła zamiast zamilknąć', () => {
+        const now = new Date('2026-08-24T08:00:00Z')
+        expect(shouldSendDailyDigest('nie-data', now)).toBe(true)
+        expect(dailyDigestWindowStart('nie-data', now)).toBe('2026-08-23T08:00:00.000Z')
     })
 })

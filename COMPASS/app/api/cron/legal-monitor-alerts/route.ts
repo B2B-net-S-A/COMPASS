@@ -4,6 +4,7 @@ import { withCronAuth } from '@/lib/api/with-auth'
 import { logAudit } from '@/lib/actions/audit'
 import { logger } from '@/lib/logger'
 import {
+    sendLegalMonitorDailyDigest,
     sendLegalMonitorDigest,
     sendLegalMonitorDue,
     sendLegalMonitorOps,
@@ -11,12 +12,16 @@ import {
 } from '@/lib/email'
 import { computeMonitorHealth } from '@/lib/legal-monitor/health'
 import {
+    DAILY_DIGEST_LAST_SENT_KEY,
+    DAILY_DIGEST_RECIPIENTS_KEY,
+    dailyDigestWindowStart,
     digestWindowStart,
     isDigestDay,
     OPS_RECIPIENTS_KEY,
     RED_RECIPIENTS_KEY,
     selectOverdueFollowUps,
     selectRedAlerts,
+    shouldSendDailyDigest,
     sourcesCrossingFailureThreshold,
     SOURCE_FAILURE_STREAK_THRESHOLD,
 } from '@/lib/legal-monitor/alert-selection'
@@ -53,6 +58,8 @@ export const maxDuration = 180
  *  4. zaległa reakcja — wpis „do reakcji" po terminie
  *  5. poniedziałek: tygodniowy digest (żółte i zielone nie zasługują na alert
  *     per sztuka przy 0-4 wpisach dziennie)
+ *  6. dzienny digest emailowy dla jawnie wpisanych osób (Phase 54) — opt-in,
+ *     kadencja tygodniowa zostaje domyślna dla reszty
  *
  * Coolify cron: `0 8 * * *` — po przebiegu pipeline'u (~7:30 czasu warszawskiego).
  *
@@ -62,7 +69,7 @@ export const maxDuration = 180
 export const GET = withCronAuth(async (_request, { admin }) => {
     const now = new Date()
     const errors: string[] = []
-    const stats = { red: 0, silent: 0, sourceFailures: 0, due: 0, digest: 0 }
+    const stats = { red: 0, silent: 0, sourceFailures: 0, due: 0, digest: 0, dailyDigest: 0 }
 
     await logAudit(null, 'LEGAL_MONITOR_ALERTS_RUN', { phase: 'start' })
 
@@ -113,6 +120,10 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         const fallback = await allFinanseAndAdmins(admin)
         const redRecipients = await resolveRecipients(admin, RED_RECIPIENTS_KEY, fallback)
         const opsRecipients = await resolveRecipients(admin, OPS_RECIPIENTS_KEY, fallback)
+        // Phase 54: dzienny digest jest opt-in — pusty fallback, żeby bez jawnego
+        // wpisu w `system_settings` sekcja 6 była no-opem dla wszystkich.
+        const dailyDigestRecipients = await resolveRecipients(admin, DAILY_DIGEST_RECIPIENTS_KEY, [])
+        const dailyDigestSet = new Set(dailyDigestRecipients)
 
         // ── 1. Czerwone wpisy ────────────────────────────────────────────────
         for (const item of selectRedAlerts(items)) {
@@ -249,10 +260,13 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                 green: fresh.filter((i) => i.severity === 'green').length,
                 pending: items.filter((i) => i.status === 'new').length,
             }
+            // Odbiorcy dziennego digestu nie dostają tygodniowego — widzieli już
+            // każdy dzień z osobna, drugi mail w poniedziałek byłby duplikatem.
+            const weeklyRecipients = redRecipients.filter((id) => !dailyDigestSet.has(id))
             // Pusty tydzień + pusta skrzynka = nie ma o czym pisać.
-            if (counts.total > 0 || counts.pending > 0) {
+            if (weeklyRecipients.length > 0 && (counts.total > 0 || counts.pending > 0)) {
                 try {
-                    await dispatchLegalMonitorAlert(admin, redRecipients, {
+                    await dispatchLegalMonitorAlert(admin, weeklyRecipients, {
                         type: 'legal_monitor_digest',
                         titlePl: `Monitoring prawny — podsumowanie tygodnia (${counts.total})`,
                         titleEn: `Legal monitor — weekly summary (${counts.total})`,
@@ -272,6 +286,87 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                     stats.digest += 1
                 } catch (e) {
                     errors.push(`digest: ${e instanceof Error ? e.message : String(e)}`)
+                }
+            }
+        }
+
+        // ── 6. Dzienny digest (opt-in per osoba, Phase 54) ───────────────────
+        // Wyłącznie mailem — o ten kanał chodziło; dzwonek i push zostają dla
+        // alertów, codzienny digest by je zaszumił. Okno = od stempla ostatniej
+        // wysyłki, więc nic nie ginie i nic się nie powtarza; cichy dzień (zero
+        // nowych pozycji — pipeline chodzi pn–pt) = brak maila, nie „pusty mail".
+        if (dailyDigestRecipients.length > 0) {
+            const { data: stampRow } = await admin
+                .from('system_settings')
+                .select('value')
+                .eq('key', DAILY_DIGEST_LAST_SENT_KEY)
+                .maybeSingle()
+            const lastSentAt = (stampRow as { value?: string } | null)?.value ?? null
+            if (shouldSendDailyDigest(lastSentAt, now)) {
+                const windowStart = Date.parse(dailyDigestWindowStart(lastSentAt, now))
+                const fresh = items.filter((i) => Date.parse(i.created_at) > windowStart)
+                const counts = {
+                    total: fresh.length,
+                    red: fresh.filter((i) => i.severity === 'red').length,
+                    yellow: fresh.filter((i) => i.severity === 'yellow').length,
+                    green: fresh.filter((i) => i.severity === 'green').length,
+                    pending: items.filter((i) => i.status === 'new').length,
+                }
+                if (counts.total > 0) {
+                    // Czerwone przodem — po dłuższej przerwie okno może mieć >10
+                    // pozycji, a limit tytułów nie ma prawa uciąć akurat czerwonych.
+                    // Sort stabilny, więc wewnątrz koloru zostaje najnowsze-pierwsze.
+                    const severityOrder: Record<string, number> = { red: 0, yellow: 1, green: 2 }
+                    const titles = fresh
+                        .slice()
+                        .sort((a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3))
+                        .slice(0, 10)
+                        .map((i) => i.title)
+                    const { data: recipientProfiles } = await admin
+                        .from('profiles')
+                        .select('id, email, full_name')
+                        .in('id', dailyDigestRecipients)
+                    let sent = 0
+                    let attempted = 0
+                    for (const profile of (recipientProfiles ?? []) as Array<{
+                        id: string
+                        email: string | null
+                        full_name: string | null
+                    }>) {
+                        if (!profile.email) continue
+                        attempted += 1
+                        try {
+                            const result = await sendLegalMonitorDailyDigest(
+                                profile.email,
+                                profile.full_name ?? 'Zespół',
+                                counts,
+                                titles,
+                            )
+                            if (result.success) sent += 1
+                            else errors.push(`dzienny digest ${profile.id}: wysyłka nieudana`)
+                        } catch (e) {
+                            errors.push(
+                                `dzienny digest ${profile.id}: ${e instanceof Error ? e.message : String(e)}`,
+                            )
+                        }
+                    }
+                    // Skonfigurowani odbiorcy bez profilu/emaila = digest po cichu
+                    // nie wychodzi w ogóle — to ma być widoczne w audycie, nie nieme.
+                    if (attempted === 0) {
+                        errors.push('dzienny digest: żaden skonfigurowany odbiorca nie ma profilu z emailem')
+                    }
+                    // Stempel dopiero po ≥1 udanej wysyłce — totalna awaria kanału
+                    // ma się ponowić następnym przebiegiem, nie zniknąć po cichu.
+                    if (sent > 0) {
+                        const { error } = await admin
+                            .from('system_settings')
+                            .upsert(
+                                { key: DAILY_DIGEST_LAST_SENT_KEY, value: now.toISOString() },
+                                { onConflict: 'key' },
+                            )
+                        if (error) errors.push(`stempel dziennego digestu: ${error.message}`)
+                        stats.dailyDigest = sent
+                    }
                 }
             }
         }

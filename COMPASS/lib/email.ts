@@ -1976,3 +1976,31 @@ export async function sendLegalMonitorDigest(
     `
     return sendLegalMonitorMail(recipientEmail, subject, 'Monitoring prawny', '#3b82f6', bodyHtml, 'legal-monitor-digest')
 }
+
+/**
+ * Dzienny digest (Phase 54) — jak tygodniowy, ale okno „od ostatniego
+ * podsumowania" (zwykle wczoraj; po weekendzie dłużej, bo cichy dzień nie
+ * wysyła maila i nie przesuwa stempla). Accent niebieski.
+ */
+export async function sendLegalMonitorDailyDigest(
+    recipientEmail: string,
+    recipientName: string,
+    counts: { total: number; red: number; yellow: number; green: number; pending: number },
+    titles: string[],
+): Promise<{ success: boolean }> {
+    const subject = `[COMPASS] Monitoring prawny — podsumowanie dnia (${counts.total})`
+    const list = titles.length > 0
+        ? `<ul style="color:#d1d5db;font-size:14px;line-height:1.6;">${titles
+              .map((t) => `<li>${escapeHtml(t)}</li>`)
+              .join('')}</ul>`
+        : ''
+    const bodyHtml = `
+        <p style="color:#d1d5db;font-size:14px;">Cześć ${escapeHtml(recipientName)},</p>
+        <p style="color:#d1d5db;font-size:14px;">Od ostatniego podsumowania monitoring dopisał <strong>${counts.total}</strong> pozycji
+           (${counts.red} mogących wymagać decyzji, ${counts.yellow} do omówienia, ${counts.green} kontekstowych).</p>
+        ${list}
+        <p style="color:#d1d5db;font-size:14px;">Nieprzejrzanych w skrzynce łącznie: <strong>${counts.pending}</strong>.</p>
+        <p style="font-size:14px;"><a href="${LEGAL_MONITOR_URL}" style="color:#60a5fa;">Otwórz skrzynkę</a></p>
+    `
+    return sendLegalMonitorMail(recipientEmail, subject, 'Monitoring prawny', '#3b82f6', bodyHtml, 'legal-monitor-daily-digest')
+}

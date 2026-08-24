@@ -1538,6 +1538,45 @@ widać od razu, a filtr Excela łapie jedno i drugie. **To zmiana kolejności ko
 generowany od nowa przy każdym kliknięciu i nie ma automatycznego konsumenta, ale gdyby ktoś oparł
 o niego szablon arkusza, to jest miejsce, które go ruszyło.
 
+## Phase 54 — Monitoring prawny: dzienny digest emailowy, opt-in per osoba (2026-08-24)
+
+Prośba Artura: Zbigniew Twardowski ma dostawać podsumowanie monitoringu **codziennie na email**,
+a nie czekać na poniedziałkowy digest tygodniowy. Nowa sekcja 6 w cronie `legal-monitor-alerts`
+(bez nowego zadania Coolify, bez migracji — sterowanie przez `system_settings`).
+
+**Klucz `legal_monitor_daily_digest_recipients`** (CSV UUID) — kto jest wpisany, dostaje digest
+codziennie. **Świadomie BEZ fallbacku** (w odróżnieniu od `legal_monitor_red_recipients`): Phase 50
+wybrał kadencję tygodniową jako domyślną, bo codzienny mail dla wszystkich to szum. Pusty klucz =
+sekcja jest no-opem.
+
+Cztery decyzje, które łatwo cofnąć nie znając powodu:
+1. **Tylko email, bez dzwonka i push** — o ten kanał chodziło w prośbie; codzienny wpis
+   w dzwonku dublowałby licznik na zakładce i uczyłby ignorowania alertów per-sztuka.
+2. **Okno = od stempla ostatniej wysyłki** (`legal_monitor_daily_digest_last_sent_at`, pełny ISO
+   timestamp), nie „ostatnie 24 h" — kolejne okna sklejają się bez szpar i bez powtórek. Dedup
+   dobowy po dacie warszawskiej (ręczne wyzwolenie crona nie zdubluje maila); stempel rośnie
+   dopiero po ≥1 udanej wysyłce, więc awaria kanału ponawia się następnym przebiegiem.
+3. **Cichy dzień = brak maila, nie „pusty mail"** — wysyłka tylko gdy od ostatniego digestu
+   przybyły wpisy (`total > 0`). Pipeline chodzi pn–pt, więc w weekendy nic nie przychodzi;
+   po weekendzie okno samo się wydłuża i poniedziałkowy mail niesie wszystko zaległe.
+4. **Odbiorcy dziennego digestu są wyłączani z tygodniowego** — widzieli już każdy dzień
+   z osobna, drugi mail w poniedziałek byłby duplikatem. Czerwone alerty per-sztuka i
+   przypomnienia o zaległych reakcjach dostają nadal (to inne strumienie).
+
+Czysta logika (`shouldSendDailyDigest` / `dailyDigestWindowStart`) w
+[alert-selection.ts](COMPASS/lib/legal-monitor/alert-selection.ts) + testy; szablon
+`sendLegalMonitorDailyDigest` w lib/email.ts (accent niebieski, ta sama treść co tygodniowy,
+ale „od ostatniego podsumowania"). Statystyka `dailyDigest` w `LEGAL_MONITOR_ALERTS_RUN`.
+
+**Ops:** na prod wpisany Zbigniew Twardowski (`ae147f25-a1d9-4630-a7b1-56d4a1de131d`):
+```sql
+INSERT INTO system_settings (key, value, description)
+VALUES ('legal_monitor_daily_digest_recipients', '<uuid>', '...')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+```
+Dopisanie kolejnej osoby = dopisanie UUID po przecinku. Zdjęcie z listy = usunięcie UUID
+(wraca do samego tygodniowego).
+
 ## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
 
 Nagłówki obu strumieni pracy People Ops były nieedytowalne, a oba brały tytuł z cudzych danych:
