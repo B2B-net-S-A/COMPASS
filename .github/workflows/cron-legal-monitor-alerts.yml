@@ -2,16 +2,20 @@ name: Legal monitor alerts (daily cron)
 
 # Phase 54 — dzienne alerty + digesty monitoringu prawnego.
 #
-# Harmonogram żyje TUTAJ, nie w Coolify — i to nie jest kwestia gustu. 2026-08-24
-# wyszło na jaw, że scheduler Coolify wykonuje wyłącznie zadania utworzone przez
-# samo Coolify (natywne krótkie uuid, np. consultant-success-plan — strzela co do
-# sekundy), a wiersze wstawione do `scheduled_tasks` bezpośrednio (DB INSERT /
-# akcja cron-add) NIE odpalają się WCALE — nawet z poprawnym container='app'
-# i po `docker restart coolify`. Zweryfikowane sondą: zadanie-klon `35 16 * * *`
-# na /api/cron/oof-reconcile (endpoint z bezwarunkowym heartbeatem w audit_logs)
-# nie zostawiło śladu. Skutek: cron `legal-monitor-alerts` zaplanowany w Phase 50
-# nigdy nie istniał, a dodany dziś — nie strzelał. Zadanie w Coolify zostało
-# wyłączone (enabled=f, ślad w scheduled_tasks); jedynym schedulerem jest ten plik.
+# Harmonogram żyje TUTAJ, bo cron `legal-monitor-alerts` zaplanowany w Phase 50
+# NIGDY nie został dodany w Coolify — przez 2 tygodnie żaden alert modułu nie
+# wyszedł. Przy naprawie (2026-08-24) padła najpierw błędna diagnoza „scheduler
+# Coolify nie wykonuje zadań wstawianych do bazy" — oparta na braku heartbeatów
+# `*_RUN` w audit_logs o zaplanowanych porach. Brak śladu nie był brakiem
+# przebiegu: `logAudit` pisze klientem cookie'owym, a RLS na `audit_logs` wymaga
+# `auth.uid() IS NOT NULL`, więc KAŻDY heartbeat z crona (anon) jest po cichu
+# odrzucany. Sonda pisząca service-clientem (klon zadania → consultant-success-plan,
+# `contractor_success_job_state.last_started_at` = 17:40:05) potwierdziła, że
+# scheduler wykonuje także zadania z DB INSERT / akcji cron-add.
+#
+# GH Actions zostaje schedulerem tej trasy świadomie: to przebieg zweryfikowany
+# end-to-end (pierwszy run 2026-08-24: red=4, digest=1, dailyDigest=1, errors=[]),
+# widoczny w UI Actions bez SSH — a bliźniacze zadanie w Coolify jest WYŁĄCZONE.
 #
 # JEDEN scheduler, nie dwa: tygodniowy digest (sekcja 5 trasy) nie ma dedupu
 # per-dzień, więc drugi harmonogram na poniedziałek = podwójny mail do finanse+admin.
