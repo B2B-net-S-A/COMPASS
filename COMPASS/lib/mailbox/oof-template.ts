@@ -137,19 +137,30 @@ ${contactLineEn(contact)}
     return { internal, external }
 }
 
-/** "2026-08-20" → "20 sierpnia 2026" (genitive month after a day number). */
+/**
+ * "2026-08-20" → "20 sierpnia 2026" (genitive month after a day number).
+ * A malformed input falls back to the raw string — an auto-reply saying
+ * "2026-13-05" beats one saying "20 undefined 2026".
+ */
 function formatPolishDate(iso: string): string {
     const months = [
         'stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca',
         'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia',
     ]
     const [year, month, day] = iso.split('-')
-    return `${parseInt(day, 10)} ${months[parseInt(month, 10) - 1]} ${year}`
+    const monthName = months[parseInt(month, 10) - 1]
+    if (!year || !day || !monthName) return iso
+    return `${parseInt(day, 10)} ${monthName} ${year}`
 }
 
-/** "2026-08-20" → "20 August 2026". UTC-anchored so the calendar date never shifts. */
+/**
+ * "2026-08-20" → "20 August 2026". UTC-anchored so the calendar date never
+ * shifts. Malformed input falls back to the raw string — Intl.format would
+ * THROW a RangeError on an Invalid Date.
+ */
 function formatEnglishDate(iso: string): string {
     const d = new Date(`${iso}T00:00:00Z`)
+    if (Number.isNaN(d.getTime())) return iso
     return new Intl.DateTimeFormat('en-GB', {
         day: 'numeric',
         month: 'long',

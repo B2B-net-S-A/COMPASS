@@ -3698,7 +3698,9 @@ export async function retryLeaveGraphSync(
         oofOk && calOk && forwardOk
             ? oofSkipReason === 'user_custom'
                 ? 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
-                : 'LEAVE_OOF_SET'
+                : oofSkipReason === 'half_day'
+                    ? 'LEAVE_OOF_SKIPPED_HALF_DAY'
+                    : 'LEAVE_OOF_SET'
             : 'LEAVE_OOF_FAILED'
     await logAudit(ctx.userId, auditAction, {
         leave_id: id,

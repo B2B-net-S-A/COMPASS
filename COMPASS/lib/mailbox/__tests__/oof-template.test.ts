@@ -114,6 +114,21 @@ describe('buildDefaultOofMessages — urgent-contact fallback chain', () => {
     })
 })
 
+describe('buildDefaultOofMessages — malformed dates', () => {
+    it('falls back to the raw ISO string instead of "undefined" / an Intl throw', () => {
+        const { internal, external } = buildDefaultOofMessages({
+            ...BASE,
+            endDate: '2026-13-05', // passes validateDateString's \d{2} but is no month
+            returnDate: '2026-13-06',
+        })
+        for (const text of [internal, external]) {
+            expect(text).toContain('2026-13-05')
+            expect(text).not.toContain('undefined')
+        }
+        expect(enHalf(external)).toContain('2026-13-06')
+    })
+})
+
 describe('buildDefaultOofMessages — HTML safety', () => {
     it('escapes HTML in interpolated names', () => {
         const { internal } = buildDefaultOofMessages({
