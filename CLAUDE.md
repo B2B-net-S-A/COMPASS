@@ -1583,17 +1583,24 @@ Dopisanie kolejnej osoby = dopisanie UUID po przecinku. Zdjęcie z listy = usuni
 
 **Scheduler tej trasy to GH Actions (`cron-legal-monitor-alerts.yml`, `0 8 * * *`), NIE
 Coolify.** Przy wdrażaniu 2026-08-24 wyszło na jaw, że cron `legal-monitor-alerts` z tabeli
-Phase 50 **nigdy nie został dodany** (zero przebiegów w audycie od startu modułu — ani
-czerwonych alertów, ani tygodniowych digestów), a co gorsza scheduler Coolify **w ogóle nie
-wykonuje zadań wstawianych do `scheduled_tasks` z zewnątrz** (DB INSERT / akcja cron-add):
-natywne zadania strzelają co do sekundy (`consultant-success-plan`, run_count 13/13), wiersze
-UUID-owe — wcale, nawet z `container='app'` i po `docker restart coolify` (zweryfikowane
-sondą na `/api/cron/oof-reconcile`). Zadanie `legal-monitor-alerts` w Coolify istnieje, ale
-jest **wyłączone** — nie włączać bez stempla dedupu dla tygodniowego digestu (podwójny mail
-w poniedziałki). Uwaga: `action=cron-enable` w „Coolify Ops" włącza WSZYSTKIE zadania, więc
-po takim przebiegu trzeba je wyłączyć ponownie (ta sama pułapka co `inbox-ingest`, Phase 44).
-Systemowy skutek dla pozostałych ~13 UUID-owych zadań (oof-reconcile, tc-sync, lifecycle-*,
-placement-*, tech-map-project-end…) — osobny follow-up, nie ruszany tutaj.
+Phase 50 **nigdy nie został dodany** — przez 2 tygodnie nie wyszedł ani jeden czerwony alert
+(4 zaległe), ani tygodniowy digest. Pierwsza wersja tej notatki twierdziła ponadto, że
+scheduler Coolify nie wykonuje zadań wstawianych do bazy — to była **błędna diagnoza**,
+oparta na braku heartbeatów `*_RUN` w audycie. Prawdziwy powód ich braku: **`logAudit`
+pisze klientem cookie'owym, a RLS na `audit_logs` wymaga `auth.uid() IS NOT NULL` — każdy
+heartbeat z crona (anon) jest po cichu odrzucany**, więc wpisy `*_RUN` pochodzą wyłącznie
+z przebiegów w kontekście zalogowanym (stąd „dziwne godziny"). Sonda pisząca
+service-clientem (klon zadania → `/api/cron/consultant-success-plan`,
+`contractor_success_job_state.last_started_at` = 17:40:05, run_count +1) potwierdziła, że
+scheduler wykonuje również zadania z DB INSERT / akcji cron-add. Wnioski operacyjne:
+1. **Weryfikując crony, nie patrz na `audit_logs`** — szukaj śladów pisanych
+   service-clientem (stemple `system_settings`, `alerted_at`, `job_state`); naprawa
+   `logAudit` dla kontekstu bez sesji = osobny follow-up.
+2. GH Actions zostaje schedulerem tej trasy (przebieg zweryfikowany end-to-end, widoczny
+   w UI Actions); bliźniacze zadanie `legal-monitor-alerts` w Coolify jest **wyłączone** —
+   nie włączać drugiego schedulera bez stempla dedupu dla tygodniowego digestu (podwójny
+   mail w poniedziałki). `action=cron-enable` w „Coolify Ops" włącza WSZYSTKIE zadania,
+   więc po takim przebiegu trzeba je wyłączyć ponownie (pułapka jak `inbox-ingest`, Phase 44).
 
 ## Phase 49 — edytowalne tytuły rozmów i zgłoszeń (2026-08-10)
 
