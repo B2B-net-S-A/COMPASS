@@ -12,6 +12,15 @@ export const RED_RECIPIENTS_KEY = 'legal_monitor_red_recipients'
 export const OPS_RECIPIENTS_KEY = 'legal_monitor_ops_recipients'
 
 /**
+ * Odbiorcy DZIENNEGO digestu (CSV UUID) — opt-in, ŚWIADOMIE bez fallbacku.
+ * Phase 50 wybrał kadencję tygodniową jako domyślną (codzienny mail dla
+ * wszystkich to szum); dzienna jest wyłącznie dla jawnie wpisanych osób.
+ */
+export const DAILY_DIGEST_RECIPIENTS_KEY = 'legal_monitor_daily_digest_recipients'
+/** Stempel ostatniej wysyłki dziennego digestu (ISO timestamp) — dedup dobowy + początek okna. */
+export const DAILY_DIGEST_LAST_SENT_KEY = 'legal_monitor_daily_digest_last_sent_at'
+
+/**
  * Ile przebiegów z rzędu musi zgłosić `fail` dla tego samego źródła, zanim
  * wyślemy alert. Pojedyncze `partial` zdarza się rutynowo (api.sejm.gov.pl bywa
  * nieosiągalne — 2 z 3 pierwszych przebiegów na prodzie), a alert o każdym z nich
@@ -120,4 +129,25 @@ export function isDigestDay(now: Date): boolean {
 /** Początek okna digestu (ISO date, włącznie) — `DIGEST_DAYS` wstecz od dzisiaj. */
 export function digestWindowStart(now: Date, days: number = DIGEST_DAYS): string {
     return warsawDate(new Date(now.getTime() - days * 86_400_000))
+}
+
+/**
+ * Czy dzienny digest ma dziś jeszcze wyjść? Dedup po dacie warszawskiej — cron
+ * chodzi raz dziennie, ale ręczne wyzwolenie nie ma prawa zdublować maila.
+ * Zepsuty stempel traktujemy jak jego brak (lepiej wysłać, niż zamilknąć na zawsze).
+ */
+export function shouldSendDailyDigest(lastSentAt: string | null, now: Date): boolean {
+    if (!lastSentAt || Number.isNaN(Date.parse(lastSentAt))) return true
+    return warsawDate(new Date(lastSentAt)) < warsawDate(now)
+}
+
+/**
+ * Początek okna dziennego digestu = poprzedni stempel (pełny ISO timestamp, nie
+ * data — kolejne okna muszą sklejać się bez szpar i bez powtórek). Stempel rośnie
+ * tylko przy realnej wysyłce, więc po cichych dniach (weekend — pipeline chodzi
+ * pn–pt) okno samo się wydłuża i żaden wpis nie ginie. Bez stempla: doba wstecz.
+ */
+export function dailyDigestWindowStart(lastSentAt: string | null, now: Date): string {
+    if (lastSentAt && !Number.isNaN(Date.parse(lastSentAt))) return lastSentAt
+    return new Date(now.getTime() - 86_400_000).toISOString()
 }
