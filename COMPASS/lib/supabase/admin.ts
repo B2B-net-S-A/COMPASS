@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { hardenedFetch } from './fetch-hardening'
 import type { Database } from './database.types'
 
 // ─── Service-role Supabase client ────────────────────────────────────────────
@@ -35,6 +36,9 @@ export function createServiceClient(): SupabaseClient<Database> {
             autoRefreshToken: false,
             persistSession: false,
         },
+        // Incydent 2026-08-25: no-store + retry sieciowych GET-ów — patrz
+        // fetch-hardening.ts (te same zrywane transfery dotyczą service-roli).
+        global: { fetch: hardenedFetch },
     })
 
     return cached

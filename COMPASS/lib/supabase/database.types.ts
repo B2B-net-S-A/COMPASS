@@ -3755,6 +3755,8 @@ export type Database = {
       legal_monitor_items: {
         Row: {
           alerted_at: string | null
+          pinned_at: string | null
+          pinned_by: string | null
           assigned_to: string | null
           due_date: string | null
           reminded_at: string | null
@@ -3778,6 +3780,8 @@ export type Database = {
         }
         Insert: {
           alerted_at?: string | null
+          pinned_at?: string | null
+          pinned_by?: string | null
           assigned_to?: string | null
           due_date?: string | null
           reminded_at?: string | null
@@ -3801,6 +3805,8 @@ export type Database = {
         }
         Update: {
           alerted_at?: string | null
+          pinned_at?: string | null
+          pinned_by?: string | null
           assigned_to?: string | null
           due_date?: string | null
           reminded_at?: string | null
@@ -5617,6 +5623,44 @@ export type Database = {
           },
         ]
       }
+      support_inbox_email_archive: {
+        Row: {
+          archived_at: string
+          email_body_html: string | null
+          email_body_text: string | null
+          email_headers: Json | null
+          email_skip_reason: string | null
+          external_conversation_id: string | null
+          ticket_id: string
+        }
+        Insert: {
+          archived_at?: string
+          email_body_html?: string | null
+          email_body_text?: string | null
+          email_headers?: Json | null
+          email_skip_reason?: string | null
+          external_conversation_id?: string | null
+          ticket_id: string
+        }
+        Update: {
+          archived_at?: string
+          email_body_html?: string | null
+          email_body_text?: string | null
+          email_headers?: Json | null
+          email_skip_reason?: string | null
+          external_conversation_id?: string | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_inbox_email_archive_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: true
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       support_inbox_meta: {
         Row: {
           client_name: string | null
@@ -5626,14 +5670,9 @@ export type Database = {
           contractor_id: string | null
           created_at: string
           due_date: string
-          email_body_html: string | null
-          email_body_text: string | null
           email_from: string | null
-          email_headers: Json | null
           email_received_at: string | null
-          email_skip_reason: string | null
           email_subject: string | null
-          external_conversation_id: string | null
           external_message_id: string | null
           priority_level: string
           source: string
@@ -5647,14 +5686,9 @@ export type Database = {
           contractor_id?: string | null
           created_at?: string
           due_date: string
-          email_body_html?: string | null
-          email_body_text?: string | null
           email_from?: string | null
-          email_headers?: Json | null
           email_received_at?: string | null
-          email_skip_reason?: string | null
           email_subject?: string | null
-          external_conversation_id?: string | null
           external_message_id?: string | null
           priority_level?: string
           source?: string
@@ -5668,14 +5702,9 @@ export type Database = {
           contractor_id?: string | null
           created_at?: string
           due_date?: string
-          email_body_html?: string | null
-          email_body_text?: string | null
           email_from?: string | null
-          email_headers?: Json | null
           email_received_at?: string | null
-          email_skip_reason?: string | null
           email_subject?: string | null
-          external_conversation_id?: string | null
           external_message_id?: string | null
           priority_level?: string
           source?: string
