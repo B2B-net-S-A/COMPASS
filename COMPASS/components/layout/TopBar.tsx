@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation'
 import { useTranslation } from '@/lib/i18n/context'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 import { Logo } from '@/components/common/Logo'
-import { Menu, Sun, Moon } from 'lucide-react'
+import { Sun, Moon } from 'lucide-react'
 import { useTheme } from '@/lib/contexts/ThemeContext'
 import { ThemeMenu } from './ThemeMenu'
 
@@ -26,10 +26,13 @@ interface TopBarProps {
         email?: string | null
         avatar_url?: string | null
     } | null
-    onMenuToggle?: () => void
 }
 
-export function TopBar({ user, onMenuToggle }: TopBarProps) {
+// Audyt 2026-08 (UI): usunięty prop `onMenuToggle` i schowany za nim hamburger.
+// Nikt go nigdy nie przekazywał (AppLayout renderuje <TopBar user={user} />), więc
+// przycisk nie renderował się ani razu. Nawigacja mobilna to dolny pasek
+// (components/layout/MobileMenu.tsx) — szuflada z Sidebarem nie została wdrożona.
+export function TopBar({ user }: TopBarProps) {
     const router = useRouter()
     const supabase = createClient()
     const { t } = useTranslation()
@@ -52,11 +55,6 @@ export function TopBar({ user, onMenuToggle }: TopBarProps) {
     return (
         <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b bg-card px-4 md:px-6">
             <div className="flex items-center gap-3 md:hidden">
-                {onMenuToggle && (
-                    <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuToggle}>
-                        <Menu className="w-5 h-5" />
-                    </Button>
-                )}
                 <Logo size="sm" showText={true} />
             </div>
 

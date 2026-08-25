@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
 import { computeKpiSnapshot } from '@/lib/admin/snapshot-metrics'
 import { timingSafeEqual } from 'node:crypto'
@@ -62,12 +62,10 @@ export async function GET(req: Request): Promise<Response> {
         return NextResponse.json({ ...cachedSnapshot.data, auth_mode: authMode, cached: true })
     }
 
-    // Use service-role client for counts (bypass RLS)
-    const serviceClient = createServiceClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-        process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-        { auth: { persistSession: false } },
-    )
+    // Service-role client (bypass RLS) — współdzielona instancja z lib/supabase/admin:
+    // hardenedFetch (no-store + retry, incydent 2026-08-25) i jawny błąd przy braku
+    // env zamiast cichego klienta z pustym URL-em.
+    const serviceClient = createServiceClient()
 
     const startedAt = Date.now()
     let dbCheck: 'healthy' | 'unhealthy' = 'healthy'

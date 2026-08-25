@@ -1,6 +1,5 @@
 'use server'
 
-import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
 
@@ -75,44 +74,25 @@ export async function getSkillGaps(): Promise<ProjectsAnalysis> {
         .from('projects')
         .select('*', { count: 'exact', head: true })
 
-    // 3. For admin with no skills — try to get skills from candidates table (first record as demo)
-    let effectiveSkills = userSkills
-    let candidateSkillsUsed = false
+    // 3. Kompetencje do dopasowania — wprost z profilu użytkownika.
+    const effectiveSkills = userSkills
 
-    if (userSkills.size === 0 && ['admin'].includes(profile?.role || '')) {
-        // Admin doesn't have personal skills — use aggregate from candidates to show system works
-        // `candidates` is a legacy ATS table absent from the regenerated types; cast preserves behavior.
-        const { data: sampleCandidate } = await (supabase as any)
-            .from('candidates')
-            .select('skills')
-            .not('skills', 'is', null)
-            .limit(1)
-            .single()
-
-        if (sampleCandidate?.skills && Array.isArray(sampleCandidate.skills) && sampleCandidate.skills.length > 0) {
-            effectiveSkills = new Set(sampleCandidate.skills.map((s: string) => getCanonicalSkill(s)))
-            candidateSkillsUsed = true
-        }
-    }
+    // Audyt 2026-08 — stała tu gałąź „admin bez kompetencji pożycza je od pierwszego
+    // kandydata z ATS". Tabela `candidates` NIE ISTNIEJE na produkcji (sprawdzone
+    // w information_schema), więc zapytanie tylko po cichu zwracało błąd, a flaga
+    // `candidateSkillsUsed` nigdy nie wstawała. Usunięte: admin bez kompetencji dostaje
+    // teraz uczciwe „uzupełnij profil" zamiast cudzej listy podanej jako własna.
 
     // 4. Try embedding-based matching first
     let matchedProjects: any[] = []
 
-    if (profile?.embedding) {
-        try {
-            // match_projects RPC is absent from the regenerated types; cast preserves behavior.
-            const { data: projects } = await (supabase as any).rpc('match_projects', {
-                query_embedding: profile.embedding,
-                match_threshold: 0.3,    // Lower threshold for more results
-                match_count: 20,
-            })
-            matchedProjects = projects || []
-        } catch (e) {
-            logCompat.warn('Embedding match failed:', e)
-        }
-    }
+    // Audyt 2026-08 — dopasowanie semantyczne przez RPC `match_projects` zostało usunięte:
+    // funkcja NIE ISTNIEJE w bazie (sprawdzone w pg_proc), a supabase-js nie rzuca przy
+    // brakującym RPC — zwraca błąd w polu `error`, które kod ignorował. Efektem był zawsze
+    // pusty wynik i cichy zjazd do dopasowania po kompetencjach niżej. Zostaje samo
+    // dopasowanie po kompetencjach; żeby wrócić do wektorów, trzeba najpierw dodać funkcję.
 
-    // 5. Fallback: if no embedding matches, get projects with required_skills that overlap user skills
+    // 5. Dopasowanie po pokryciu wymaganych kompetencji
     if (matchedProjects.length === 0 && effectiveSkills.size > 0) {
         const { data: allProjects } = await supabase
             .from('projects')
@@ -195,9 +175,7 @@ export async function getSkillGaps(): Promise<ProjectsAnalysis> {
 
     // Build diagnostics
     let diagnostics: string | undefined
-    if (candidateSkillsUsed) {
-        diagnostics = 'Analiza na bazie umiejętności przykładowego konsultanta (konto admin nie posiada własnych umiejętności)'
-    } else if (userSkillsRaw.length === 0 && effectiveSkills.size === 0) {
+    if (userSkillsRaw.length === 0 && effectiveSkills.size === 0) {
         diagnostics = 'Brak umiejętności w profilu — uzupełnij sekcję "Umiejętności" aby uzyskać spersonalizowaną analizę'
     }
 

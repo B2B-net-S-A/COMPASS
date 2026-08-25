@@ -1,3 +1,9 @@
+> ⚠ **ARCHIWUM — specyfikacja sprzed wdrożenia, NIE opis stanu aplikacji.**
+> Napisana przed implementacją dla produktu o ówczesnej nazwie „Qualrix"; dziś aplikacja nazywa się
+> **COMPASS** i część opisanych tu modułów nigdy nie powstała albo powstała inaczej. Nie traktuj
+> nazw tabel, tras ani przepływów z tego pliku jako faktów — sprawdź w kodzie.
+> Kontekst: [`docs/modules/README.md`](README.md) · stan faktyczny: `CLAUDE.md`, `docs/historia-faz.md`.
+
 # Moduł M13: Zarządzanie Alumni
 
 **Wersja:** 1.0

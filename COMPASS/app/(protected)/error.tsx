@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { AlertCircle } from 'lucide-react'
+import * as Sentry from '@sentry/nextjs'
 import { logger } from '@/lib/logger'
 
 export default function Error({
@@ -14,6 +15,9 @@ export default function Error({
 }) {
     useEffect(() => {
         logger.error({ event: 'protected_error_boundary', error, digest: error.digest })
+        // Audyt 2026-08: sam logger nie dojeżdża do Sentry — błędy renderu po
+        // stronie klienta były widoczne WYŁĄCZNIE w konsoli przeglądarki użytkownika.
+        Sentry.captureException(error, { tags: { boundary: 'react' } })
     }, [error])
 
     return (

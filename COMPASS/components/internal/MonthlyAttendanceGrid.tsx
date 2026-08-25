@@ -128,10 +128,10 @@ export function MonthlyAttendanceGrid({ data }: Props) {
                 </CardTitle>
                 <div className="flex gap-2 items-center">
                     {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)} disabled={pending}>
+                    <Button variant="outline" size="icon" aria-label="Poprzedni miesiąc" onClick={() => navigateMonth(-1)} disabled={pending}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(1)} disabled={pending}>
+                    <Button variant="outline" size="icon" aria-label="Następny miesiąc" onClick={() => navigateMonth(1)} disabled={pending}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>

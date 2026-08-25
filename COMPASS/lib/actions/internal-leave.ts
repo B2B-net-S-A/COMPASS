@@ -47,7 +47,10 @@ import {
     PAID_LEAVE_ENTRY_DESCRIPTION,
     type PaidLeaveDay,
 } from '@/lib/hr/leave-timesheet-split'
-import { computeTimesheetHash, type TimesheetEntryForHash } from '@/lib/hr/timesheet-hash'
+import { recomputeTimesheetHashIfSet } from '@/lib/hr/recompute-timesheet-hash'
+import { selectInChunks } from '@/lib/supabase/select-in-chunks'
+// Audyt 2026-08 — lista wspólna z blokadą godzin w timesheecie (jedno źródło prawdy).
+import { LEAVE_ATTENDANCE_STATUSES } from '@/lib/hr/leave-attendance-statuses'
 import { addDays, endOfMonth, format, parseISO } from 'date-fns'
 
 export type LeaveType =
@@ -615,6 +618,27 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<Actio
         }
 
         const supabase = createClient()
+
+        // Audyt 2026-08 — kontrola nakładania istniała TYLKO w ścieżce „wpisz za pracownika",
+        // a w samoobsługowej nie było jej ani w akcji, ani w bazie. Dwa wnioski na ten sam
+        // dzień zjadały pulę podwójnie, a przy anulowaniu jednego sprzątanie attendance
+        // (kasujące po ZAKRESIE DAT) kasowało też dni drugiego. Bierzemy też `pending` —
+        // dubel czekający na akceptację jest dokładnie tym, co chcemy złapać u wnioskodawcy.
+        const { data: overlapping, error: overlapErr } = await supabase
+            .from('leave_requests')
+            .select('start_date, end_date, status')
+            .eq('user_id', ctx.userId)
+            .in('status', ['approved', 'pending'])
+            .gte('end_date', input.startDate)
+            .lte('start_date', input.endDate)
+        if (overlapErr) throw new Error(`Błąd sprawdzania kolizji urlopów: ${overlapErr.message}`)
+        if (overlapping && overlapping.length > 0) {
+            const first = overlapping[0] as { start_date: string; end_date: string; status: string }
+            throw new ExpectedError(
+                `Masz już ${first.status === 'approved' ? 'zatwierdzony' : 'oczekujący'} wniosek `
+                    + `nakładający się na ten zakres (${first.start_date} – ${first.end_date}).`,
+            )
+        }
 
         // Phase 29 — B2B / zlecenie mogą wnioskować tylko o 'vacation'. Friendly
         // error message; DB trigger enforce_b2b_zlecenie_vacation_only jest ostatnią
@@ -2178,6 +2202,46 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
             )
         }
 
+        // Audyt 2026-08 — podział płatny/bezpłatny (Faza 30) był zamrożony na wartościach
+        // z chwili złożenia wniosku. Po zmianie zakresu lub typu `paid_days` zostawało stare,
+        // a to WŁAŚNIE z niego syncAttendanceFromLeave wylicza, które dni blokują timesheet,
+        // a które dostają auto-wpis 8h. Wydłużony urlop rozliczał się więc według krótszego.
+        // Bieżący wniosek wykluczamy z „już zabookowanych", żeby nie liczyć go dwa razy.
+        let paidDays: number | null = null
+        let unpaidDays: number | null = null
+        if (spanChanged) {
+            const split = await computeLeaveRequestSplit(
+                admin,
+                row.user_id,
+                newType,
+                newStart,
+                newEnd,
+                newHalfDay,
+                { excludeRequestId: input.id },
+            )
+            // UoP ma pulę jako twardy limit (Faza 27k) — ta sama reguła co przy składaniu
+            // i przy wpisie za pracownika, inaczej edycją dałoby się ją obejść.
+            if (
+                split.snapshot.employmentType === 'uop'
+                && split.snapshot.entitlementDays != null
+                && split.workingDays > 0
+            ) {
+                const remainingBefore =
+                    split.snapshot.entitlementDays
+                    + split.snapshot.carriedOverDays
+                    - split.snapshot.usedInitialDays
+                    - split.snapshot.alreadyBookedDaysInYear
+                if (split.workingDays > remainingBefore + 1e-9) {
+                    throw new ExpectedError(
+                        `Po tej zmianie wniosek przekracza limit urlopu wypoczynkowego: pozostało `
+                            + `${remainingBefore.toFixed(1)} dni, a zmieniony zakres to ${split.workingDays} dni roboczych.`,
+                    )
+                }
+            }
+            paidDays = split.paid
+            unpaidDays = split.unpaid
+        }
+
         const { error: updErr } = await admin
             .from('leave_requests')
             .update({
@@ -2187,7 +2251,8 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
                 half_day: newHalfDay,
                 note: newNote,
                 substitute_id: newSubstituteId,
-            })
+                ...(spanChanged ? { paid_days: paidDays, unpaid_days: unpaidDays } : {}),
+            } as never)
             .eq('id', input.id)
         if (updErr) throw new Error(`Błąd zapisu zmian: ${updErr.message}`)
 
@@ -2604,18 +2669,26 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
         const years = Array.from(new Set(userYearValues.map((v) => v.year)))
         const minYear = Math.min(...years)
         const maxYear = Math.max(...years)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: usage } = await (admin.from('leave_requests') as any)
-            .select('user_id, start_date, paid_days')
-            .in('user_id', userIds)
-            .eq('status', 'approved')
-            .gte('start_date', `${minYear}-01-01`)
-            .lte('start_date', `${maxYear}-12-31`)
-        const usageRows = (usage ?? []) as unknown as Array<{
+        // Audyt 2026-08 — TREŚĆ, nie dekoracja: z tego wychodzi „Pula 2026: 15/20"
+        // pokazywane akceptującemu W MOMENCIE decyzji o urlopie. Cicha awaria
+        // pokazywała 0 zużytych dni jako fakt, czyli zachęcała do zatwierdzenia
+        // wniosku ponad limit. Paczkujemy id — lista rośnie z liczbą wniosków.
+        const usageRows = await selectInChunks<{
             user_id: string
             start_date: string
             paid_days: number | string | null
-        }>
+        }>({
+            source: 'leave_requests (zużycie puli)',
+            column: 'user_id',
+            ids: userIds,
+            query: () =>
+                admin
+                    .from('leave_requests')
+                    .select('user_id, start_date, paid_days')
+                    .eq('status', 'approved')
+                    .gte('start_date', `${minYear}-01-01`)
+                    .lte('start_date', `${maxYear}-12-31`),
+        })
         for (const u of usageRows) {
             const y = Number(u.start_date.slice(0, 4))
             const key = `${u.user_id}-${y}`
@@ -3014,12 +3087,6 @@ async function fetchUserContact(userId: string): Promise<{ email: string; full_n
     return { email: data.email, full_name: data.full_name }
 }
 
-// Phase 30b — statusy attendance pochodzące z wniosków urlopowych (do czyszczenia).
-const LEAVE_ATTENDANCE_STATUSES = [
-    'vacation', 'on_demand', 'occasional', 'childcare', 'care_leave', 'force_majeure',
-    'sick_leave', 'maternity', 'paternity', 'parental_leave', 'childrearing',
-    'unpaid_leave', 'blood_donation', 'training', 'holiday_in_lieu', 'other',
-] as const
 
 /** Phase 30b — getOrCreate timesheet (service client) dla auto-wpisu płatnego urlopu. */
 async function getOrCreateTimesheetForAutoFill(
@@ -3052,25 +3119,6 @@ async function getOrCreateTimesheetForAutoFill(
  * Phase 30b — po zmianie wpisów: jeśli timesheet ma pdf_hash (był approved), przelicz
  * go, żeby walidacja integralności w PDF route nie zwracała 409 (H2.8 tamper check).
  */
-async function recomputeTimesheetHashIfSet(
-    admin: ReturnType<typeof createServiceClient>,
-    timesheetId: string,
-): Promise<void> {
-    const { data: ts } = await admin
-        .from('timesheets')
-        .select('pdf_hash')
-        .eq('id', timesheetId)
-        .maybeSingle<{ pdf_hash: string | null }>()
-    if (!ts?.pdf_hash) return
-    const { data: entries } = await admin
-        .from('timesheet_entries')
-        .select('work_date, hours, project, description')
-        .eq('timesheet_id', timesheetId)
-    const newHash = computeTimesheetHash((entries ?? []) as TimesheetEntryForHash[])
-    if (newHash !== ts.pdf_hash) {
-        await admin.from('timesheets').update({ pdf_hash: newHash } as never).eq('id', timesheetId)
-    }
-}
 
 /**
  * Phase 30b — auto-wpis płatnego urlopu (z puli) do timesheet jako godziny.

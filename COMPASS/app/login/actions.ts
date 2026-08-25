@@ -13,6 +13,7 @@ import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
 import { syncRole } from '@/lib/auth/sync-role'
 import { ARCHIVED_ACCOUNT_MESSAGE_PL, isArchivedAccount } from '@/lib/auth/employment-access'
 import { logger } from '@/lib/logger'
+import { PASSWORD_POLICY_ERROR_PL, isPasswordStrongEnough } from '@/lib/auth/password-policy'
 
 // ─── Friendly Error Messages ────────────────────────────────────────────────
 // Maps raw Supabase/system errors to user-friendly Polish messages
@@ -205,11 +206,11 @@ export async function signup(formData: FormData) {
         return { error: 'Rejestracja dozwolona tylko dla domeny @b2bnetwork.pl' }
     }
 
-    // 2. Password Strength Validation
-    // Min 10 chars, 1 Uppercase, 1 Digit
-    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{10,}$/
-    if (!passwordRegex.test(password)) {
-        return { error: 'Hasło musi mieć min. 10 znaków, zawierać wielką literę i cyfrę.' }
+    // 2. Password Strength Validation — reguła w lib/auth/password-policy.ts,
+    // wspólna z samoobsługową zmianą hasła (ta ścieżka miała własną, słabszą:
+    // minLength=6 i nic poza tym).
+    if (!isPasswordStrongEnough(password)) {
+        return { error: PASSWORD_POLICY_ERROR_PL }
     }
 
     // 3. GDPR Consent Validation

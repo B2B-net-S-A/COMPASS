@@ -315,10 +315,10 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                             Archiwum
                         </Button>
                     </Link>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)} disabled={pending}>
+                    <Button variant="outline" size="icon" aria-label="Poprzedni miesiąc" onClick={() => navigateMonth(-1)} disabled={pending}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(1)} disabled={pending}>
+                    <Button variant="outline" size="icon" aria-label="Następny miesiąc" onClick={() => navigateMonth(1)} disabled={pending}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
@@ -459,6 +459,8 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-7 w-7"
+                                                    aria-label={`Edytuj wpis z ${e.work_date}`}
+                                                    title="Edytuj wpis"
                                                     onClick={() => setEditingEntry(e)}
                                                     disabled={pending}
                                                 >
@@ -468,6 +470,8 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                    aria-label={`Usuń wpis z ${e.work_date}`}
+                                                    title="Usuń wpis"
                                                     onClick={() => handleDelete(e)}
                                                     disabled={pending}
                                                 >

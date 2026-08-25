@@ -566,17 +566,17 @@ Grupowane po pliku, najpilniejsze pliki na górze.
 
 <details><summary><code>CLAUDE.md</code> — 11 poz.</summary>
 
-- ☐ 🟠 WYS — CLAUDE.md nadal opisuje rotację bloków i cron tech-map-rotation jako żywe — usunięte 4 miesiące temu
-- ☐ 🟠 WYS — CLAUDE.md i komentarz w compose twierdzą, że Alloy jest odgrodzony profilem — guard usunięto commitem 4d75c0e
-- ☐ 🟠 WYS — Procedura rollbacku w CLAUDE.md opiera się o zmienną IMAGE_TAG, której nie ma w compose
-- ☐ 🟡 ŚR — Rozjazd macierzy trasa × harmonogram:
-- ☐ 🟡 ŚR — Sekcja healthcheck w CLAUDE.md przeczy sekcji Observability tego samego pliku i wskazuje usunięty workflow
-- ☐ 🟡 ŚR — Consultant Success Hub — ~4300 linii kodu, 2 crony i 5 flag środowiskowych bez ani jednej sekcji w CLAUDE.md
-- ☐ 🟡 ŚR — Pięć cronów produkcyjnych nie występuje w CLAUDE.md ani razu — nie da się zweryfikować, czy mają zadania w Coolify
-- ☐ 🟡 ŚR — CLAUDE.md:
-- ☐ ⚪ NIS — CLAUDE.md odsyła do raportu w docs/, którego tam nie ma (leży w COMPASS/docs/)
-- ☐ ⚪ NIS — CLAUDE.md w sekcji „Specyfika tej apki” każe sprawdzić katalog i plik, które nie istnieją
-- ☐ ⚪ NIS — CLAUDE.md twierdzi, że w kodzie zostało ~100 niezmigrowanych console.* — są dwa
+- ☑ 🟠 WYS — CLAUDE.md nadal opisuje rotację bloków i cron tech-map-rotation jako żywe — usunięte 4 miesiące temu · **nieaktualne po C9** (skrót CLAUDE.md: zero trafień `tech-map-rotation`). Ostrzeżenie „nie odtwarzaj zadania w Coolify" dopisane w CLAUDE.md (crony, pułapka 2) i w `docs/historia-faz.md` przy tabeli Fazy 46.
+- ☑ 🟠 WYS — CLAUDE.md i komentarz w compose twierdzą, że Alloy jest odgrodzony profilem — guard usunięto commitem 4d75c0e · komentarz w `docker-compose.yml` poprawiony (z powodem usunięcia guardu), bullet w CLAUDE.md przeredagowany na twierdzenie wprost + zakaz przywracania `profiles:`
+- ☑ 🟠 WYS — Procedura rollbacku w CLAUDE.md opiera się o zmienną IMAGE_TAG, której nie ma w compose · **nieaktualne po C9** — dziś rollback to Redeploy w panelu albo `git revert`, zero trafień `IMAGE_TAG`
+- ☑ 🟡 ŚR — Rozjazd macierzy trasa × harmonogram: · CLAUDE.md świadomie nie trzyma kopii listy tras/harmonogramów (źródłem `ls app/api/cron` + `scheduled_tasks`); dopisana lista zadań **bez trasy**, które muszą zostać wyłączone
+- ☑ 🟡 ŚR — Sekcja healthcheck w CLAUDE.md przeczy sekcji Observability tego samego pliku i wskazuje usunięty workflow · **nieaktualne po C9** — zero trafień `deploy-hetzner.yml` i „Faza 1.B", sekcja opisuje `GIT_SHA`/`BUILT_AT` poprawnie
+- ☑ 🟡 ŚR — Consultant Success Hub — ~4300 linii kodu, 2 crony i 5 flag środowiskowych bez ani jednej sekcji w CLAUDE.md · dopisana sekcja „Odwrotna pułapka" z dowodem z prod (`contractor_success_job_state.consultant_success_plan`, run_count=15) — moduł jest WŁĄCZONY mimo domyślnie `false` w `flags.ts`; nic nie wysyła, bo wszystkie 683 wiersze `contractor_success_settings` mają `monitoring_status='inactive'`
+- ☑ 🟡 ŚR — Pięć cronów produkcyjnych nie występuje w CLAUDE.md ani razu — nie da się zweryfikować, czy mają zadania w Coolify · **nieaktualne po C9** — świadoma decyzja: lista tras to `ls app/api/cron`, harmonogramy to `scheduled_tasks` w `coolify-db`; kopia w pliku i tak się rozjeżdżała
+- ☑ 🟡 ŚR — CLAUDE.md: · **zrobione w C9** — 1780 linii/156 KB → 434 linie/27 KB, historia w `docs/historia-faz.md`
+- ☑ ⚪ NIS — CLAUDE.md odsyła do raportu w docs/, którego tam nie ma (leży w COMPASS/docs/) · odwołanie przeniosło się do `docs/historia-faz.md` (Faza 38) i **tam** ścieżkę poprawiono; wszystkie pozostałe linki `docs/*.md` z obu plików sprawdzone — istnieją
+- ☑ ⚪ NIS — CLAUDE.md w sekcji „Specyfika tej apki” każe sprawdzić katalog i plik, które nie istnieją · **nieaktualne po C9** — sekcji nie ma, zero trafień „akademia" w CLAUDE.md i w historii faz
+- ☑ ⚪ NIS — CLAUDE.md twierdzi, że w kodzie zostało ~100 niezmigrowanych console.* — są dwa · **nieaktualne po C9** — twierdzenia nie ma; realnie 4 wystąpienia w `lib/`+`app/`+`components/`
 
 </details>
 
@@ -1222,13 +1222,13 @@ Grupowane po pliku, najpilniejsze pliki na górze.
 
 <details><summary><code>docs/next-15-16-migration-plan.md</code> — 1 poz.</summary>
 
-- ☐ 🟡 ŚR — Plan migracji Next.js uzasadnia odkładanie łatek wersją 14.2.36, która nie istnieje
+- ☑ 🟡 ŚR — Plan migracji Next.js uzasadnia odkładanie łatek wersją 14.2.36, która nie istnieje · potwierdzone (`npm view next dist-tags` → `next-14: 14.2.35`); punkt przekreślony ze sprostowaniem + ostrzeżenie w TL;DR, że **nie ma ścieżki patcha w obrębie 14**
 
 </details>
 
 <details><summary><code>docs/modules/DOC-M12_Right_to_Hire.md</code> — 1 poz.</summary>
 
-- ☐ 🟡 ŚR — docs/modules — 13 specyfikacji modułów opisuje produkt „Qualrix”, trzy z nich nie mają śladu w kodzie
+- ☑ 🟡 ŚR — docs/modules — 13 specyfikacji modułów opisuje produkt „Qualrix”, trzy z nich nie mają śladu w kodzie · dodany `docs/modules/README.md` + banner ARCHIWUM na 13 plikach `DOC-M*` i na `docs/architecture/DOC-0`. Usunięcie/przeniesienie do `docs/archiwum/` zostawione właścicielowi produktu
 
 </details>
 
@@ -1348,7 +1348,7 @@ Grupowane po pliku, najpilniejsze pliki na górze.
 
 <details><summary><code>docs/operations/PROCEDURA_TESTY.md</code> — 1 poz.</summary>
 
-- ☐ ⚪ NIS — docs/operations/PROCEDURA_TESTY.md instruuje `npm run sync` — takiego skryptu nie ma; mówi też o 3 testach E2E zamiast 59
+- ☑ ⚪ NIS — docs/operations/PROCEDURA_TESTY.md instruuje `npm run sync` — takiego skryptu nie ma; mówi też o 3 testach E2E zamiast 59 · plik przepisany: PR-flow zamiast push na `main` (ochrona `enforce_admins`), `test:unit`/`test:e2e`, 8 plików ~41 testów, jawny zakaz `git stash` i `git-sync-push.sh`, usunięta sekcja o nieistniejącym `scripts/debug/`
 
 </details>
 
@@ -1431,3 +1431,4 @@ Format: `RRRR-MM-DD · ID · co zrobione · jak zweryfikowane · commit/PR`
 | 2026-08-25 | A0.1–A0.6, A4.2–A4.4 | Kod Etapu A | `tsc` czysty, 1278/1278 testów, 6 nowych testów `safeNextPath`, przegląd 6 obiektywów | PR „Etap A" |
 | 2026-08-25 | A1.1, A2.1, A2.2, A3.1, A3.2, A4.1 | Migracje napisane, **niezaaplikowane** | walidacja składni + `DO $$` self-check w plikach | 5 plików `supabase/migrations/20260825140*` |
 | 2026-08-25 | — | Flaky `legal-monitor.test.ts` naprawiony u przyczyny (rozgrzewka importu w `beforeAll`) | 3× pełny przebieg zielony | PR „Etap A" |
+| 2026-08-25 | Zał. 2 · dokumentacja | Triaż 14 pozycji z obszaru „dokumentacja": 7 nieaktualnych po C9, 7 naprawionych | grep na żywych plikach, `npm view next dist-tags`, odczyt `contractor_success_job_state` z prod | `CLAUDE.md`, `docker-compose.yml` (komentarz), `docs/next-15-16-migration-plan.md`, `docs/historia-faz.md`, `docs/operations/PROCEDURA_TESTY.md`, `docs/modules/README.md` + bannery |

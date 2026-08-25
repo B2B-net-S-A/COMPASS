@@ -9,8 +9,15 @@ export const dynamic = 'force-dynamic'
 /**
  * A1.5: Course inactivity reminder cron.
  *
- * Trigger: codziennie o 09:00 (configure in Coolify cron).
- *   curl -X GET "https://compass.dynaminds.pl/api/cron/course-inactivity?secret=$CRON_SECRET"
+ * Trigger: codziennie o 09:00 (zadanie w Coolify).
+ *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+ *     "https://compass.dynaminds.pl/api/cron/course-inactivity"
+ *
+ * Nagłówek Bearer, NIE `?secret=` — sekret w URL-u ląduje w logach Cloudflare,
+ * proxy i śladach Sentry. Wariant z query nadal działa (z ostrzeżeniem w logu),
+ * ale nie jest tu polecany: przez to, że był JEDYNĄ udokumentowaną formą, kolejne
+ * zadania cron kopiowały właśnie ją. Bearer daje też heartbeat w `audit_logs`
+ * (`logAudit` przechodzi wtedy na service-rolę) — `?secret=` nie zostawia śladu.
  *
  * Logic:
  *  - Foreach active enrollment (completed_at IS NULL, progress > 0%)

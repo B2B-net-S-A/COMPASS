@@ -55,7 +55,13 @@ import { ExpectedError } from '@/lib/actions/expected-error'
 import { requireRows, selectInChunks, type SelectInChunksOptions } from '@/lib/supabase/select-in-chunks'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
-const HUB = '/internal/kontraktorzy'
+// Audyt 2026-08 — `/internal/kontraktorzy` to od Fazy 38/45 sama przekierowująca
+// zaślepka (app/(protected)/internal/kontraktorzy/page.tsx robi redirect), więc
+// revalidatePath na nią nie odświeżał NICZEGO. Realne listy kontraktorów żyją
+// w hubie People Ops. Karta szczegółu `/internal/kontraktorzy/{id}` nadal istnieje
+// jako prawdziwa strona — stąd osobna stała.
+const HUB = '/internal/people'
+const CONTRACTOR_DETAIL = '/internal/kontraktorzy'
 
 // ─── Interview file uploads (Phase 38) ───────────────────────────────────────
 // Bucket + prefixes provisioned in Phase 33c. Writes/reads go through the service client after the
@@ -284,7 +290,7 @@ export async function updateContractor(
     if (error) throw new Error(`Nie udało się zaktualizować: ${error.message}`)
     await logAudit(ctx.userId, 'CONTRACTOR_UPDATED', { contractor_id: id, fields: Object.keys(patch) })
     revalidatePath(HUB)
-    revalidatePath(`${HUB}/${id}`)
+    revalidatePath(`${CONTRACTOR_DETAIL}/${id}`)
 }
 
 // ─── Conversation log ───────────────────────────────────────────────────────
@@ -374,7 +380,7 @@ export async function addConversation(input: {
         status: input.status,
     })
     revalidatePath(HUB)
-    revalidatePath(`${HUB}/${input.contractorId}`)
+    revalidatePath(`${CONTRACTOR_DETAIL}/${input.contractorId}`)
     return data as { id: string }
 }
 
@@ -441,7 +447,7 @@ export async function createOnboardingInterview(input: {
         contractor_id: input.contractorId,
         interview_id: (data as { id: string }).id,
     })
-    revalidatePath(`${HUB}/${input.contractorId}`)
+    revalidatePath(`${CONTRACTOR_DETAIL}/${input.contractorId}`)
     return data as { id: string }
 }
 
@@ -514,7 +520,7 @@ export async function createExitInterview(input: {
         contractor_id: input.contractorId,
         interview_id: (data as { id: string }).id,
     })
-    revalidatePath(`${HUB}/${input.contractorId}`)
+    revalidatePath(`${CONTRACTOR_DETAIL}/${input.contractorId}`)
     return data as { id: string }
 }
 
@@ -992,8 +998,19 @@ async function resolveOrCreateContractor(
     if (name.length < 2) throw new Error('Brak imienia i nazwiska kontraktora — nie mogę powiązać wywiadu.')
 
     // Match on normalized name (case/whitespace-insensitive) among existing contractors.
+    //
+    // Audyt 2026-08 — prefiltr `.ilike('full_name', name)` był OSTRZEJSZY niż porównanie
+    // w JS, które robi się dwie linijki niżej: ilike ignoruje wielkość liter, ale NIE
+    // skleja wielokrotnych spacji, a normalizeContractorName owszem. Kontraktor zapisany
+    // w bazie jako „Jan  Kowalski" (dwie spacje z Excela) nie znajdował się dla „Jan
+    // Kowalski" i zakładaliśmy DUPLIKAT. Prefiltr jest teraz szerszy (spacje → %),
+    // a rozstrzyga dokładne porównanie znormalizowanych nazw.
     const norm = normalizeContractorName(name)
-    const { data: candidates } = await admin.from('contractors').select('id, full_name').ilike('full_name', name)
+    const likePattern = norm.replace(/[%_\\]/g, (ch) => `\\${ch}`).split(' ').join('%')
+    const { data: candidates } = await admin
+        .from('contractors')
+        .select('id, full_name')
+        .ilike('full_name', likePattern)
     let contractorId = ((candidates ?? []) as Array<{ id: string; full_name: string }>)
         .find((c) => normalizeContractorName(c.full_name) === norm)?.id ?? null
 
@@ -1011,7 +1028,9 @@ async function resolveOrCreateContractor(
             .single()
         if (error || !created) {
             if (error?.code === '23505') {
-                const { data: again } = await admin.from('contractors').select('id').ilike('full_name', name).limit(1)
+                // Ten sam szerszy wzorzec co wyżej — inaczej wyścig o unikalny indeks kończył się
+                // błędem „nie udało się utworzyć" mimo istniejącego wiersza z inną liczbą spacji.
+                const { data: again } = await admin.from('contractors').select('id').ilike('full_name', likePattern).limit(1)
                 contractorId = ((again ?? []) as Array<{ id: string }>)[0]?.id ?? null
             }
             if (!contractorId) throw new Error(`Nie udało się utworzyć kontraktora: ${error?.message ?? 'unknown'}`)
@@ -1118,7 +1137,7 @@ export async function uploadContractorInterviewFile(formData: FormData): Promise
         size: attachment.size,
     })
     revalidatePath(HUB)
-    revalidatePath(`${HUB}/${contractorId}`)
+    revalidatePath(`${CONTRACTOR_DETAIL}/${contractorId}`)
     return { contractorId, attachment }
 }
 
@@ -1143,7 +1162,7 @@ export async function removeContractorInterviewFile(kind: InterviewKind, contrac
     await admin.storage.from(INTERVIEW_BUCKET).remove([path]).catch(() => undefined)
     await logAudit(ctx.userId, 'CONTRACTOR_INTERVIEW_FILE_REMOVED', { contractor_id: contractorId, kind, path })
     revalidatePath(HUB)
-    revalidatePath(`${HUB}/${contractorId}`)
+    revalidatePath(`${CONTRACTOR_DETAIL}/${contractorId}`)
 }
 
 /** Short-lived signed URL to view/download an uploaded interview attachment. */

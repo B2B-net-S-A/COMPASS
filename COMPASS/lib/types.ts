@@ -82,6 +82,13 @@ export interface ProjectReferral {
 }
 
 // Notifications System
+//
+// Audyt 2026-08-25: unia była o 26 wartości za bazą i zawierała `role_change`,
+// którego CHECK nigdy nie dopuszczał — typ obiecywał wartość, po której insert
+// odbiłby się od bazy, a jednocześnie milczał o 25 realnie zapisywanych typach.
+// Lista poniżej jest 1:1 z `notifications_type_check` na prodzie (38 wartości,
+// kolejność jak w CHECK-u). Dodając nowy typ powiadomienia: najpierw migracja
+// rozszerzająca CHECK, potem ta unia — inaczej insert padnie w runtime.
 export type NotificationType =
     | 'contract_ending'
     | 'health_score_low'
@@ -91,13 +98,41 @@ export type NotificationType =
     | 'document_uploaded'
     | 'system_announcement'
     | 'payment_received'
-    | 'role_change'
-    // Phase 22 — Premie
+    | 'course_completed'
+    | 'course_approved'
+    | 'course_rejected'
+    | 'support_ticket_assigned'
+    | 'support_ticket_replied'
+    | 'support_ticket_resolved'
+    | 'news_published'
+    | 'incubator_pitch_status_changed'
+    | 'incubator_application_received'
+    | 'incubator_application_status_changed'
+    | 'inbox_ticket_assigned'
+    | 'inbox_sla_breach'
+    // Phase 22/26 — Premie
     | 'bonus_proposed'
     | 'bonus_cancelled'
     | 'bonus_linked'
+    | 'bonus_assigned'
+    | 'bonus_updated'
+    // Phase 44 — auto-import maili usunięty; wartości zostają dla wierszy historycznych
+    | 'inbox_email_arrived'
+    | 'inbox_email_reopened'
+    | 'rate_changed'
+    | 'placement_reminder'
+    | 'champions_league_assigned'
+    | 'contractor_followup'
+    // Phase 46c — mapa technologiczna
+    | 'tech_map_demand'
+    | 'tech_map_project_end'
     // Phase 47 — anulowanie urlopu (approver + zastępca)
     | 'leave_cancelled'
+    // Phase 50 — monitoring prawny
+    | 'legal_monitor_red'
+    | 'legal_monitor_silent'
+    | 'legal_monitor_due'
+    | 'legal_monitor_digest'
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent'
 

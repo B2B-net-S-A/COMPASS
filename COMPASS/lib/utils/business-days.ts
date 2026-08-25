@@ -1,10 +1,13 @@
-import { isWeekend, addDays } from 'date-fns'
+import { format, isWeekend, addDays } from 'date-fns'
 
 // Polish public holidays — refresh annually before each new year.
-// 2026: Nowy Rok, Trzech Króli, Wielkanoc Pn, 1.05, 3.05, Boże Ciało, 15.08, 1.11, 11.11, 25-26.12.
-// 2027: Wielkanoc Pn = 2027-03-29, Boże Ciało = 2027-05-27, reszta jest fixed-date.
-// Source: public_holidays table (migration 20260507120001_phase11b_hr_internal_schema.sql).
-// TODO(2027-12): Add 2028 entries before 2028-01-01.
+// Ruchome: Wielkanoc (i Poniedziałek Wielkanocny = +1) oraz Boże Ciało (= Wielkanoc +60);
+// reszta ma stałą datę. 2026: 5.04 / 4.06 · 2027: 28.03 / 27.05 · 2028: 16.04 / 15.06 ·
+// 2029: 1.04 / 31.05 · 2030: 21.04 / 20.06.
+// Source: public_holidays table (migracje 20260507120001_phase11b_hr_internal_schema.sql
+// + 20260825180000_audit_db1_public_holidays_2028_2030.sql — obie listy MUSZĄ mieć te
+// same daty; ta jest kopią na potrzeby czystych helperów bez dostępu do bazy).
+// TODO(2030-12): Add 2031 entries before 2031-01-01.
 const POLISH_HOLIDAYS: ReadonlySet<string> = new Set([
     // 2026
     '2026-01-01',
@@ -32,10 +35,56 @@ const POLISH_HOLIDAYS: ReadonlySet<string> = new Set([
     '2027-11-11',
     '2027-12-25',
     '2027-12-26',
+    // 2028
+    '2028-01-01',
+    '2028-01-06',
+    '2028-04-16', // Niedziela Wielkanocna
+    '2028-04-17', // Poniedziałek Wielkanocny
+    '2028-05-01',
+    '2028-05-03',
+    '2028-06-15', // Boże Ciało
+    '2028-08-15',
+    '2028-11-01',
+    '2028-11-11',
+    '2028-12-25',
+    '2028-12-26',
+    // 2029
+    '2029-01-01',
+    '2029-01-06',
+    '2029-04-01', // Niedziela Wielkanocna
+    '2029-04-02', // Poniedziałek Wielkanocny
+    '2029-05-01',
+    '2029-05-03',
+    '2029-05-31', // Boże Ciało
+    '2029-08-15',
+    '2029-11-01',
+    '2029-11-11',
+    '2029-12-25',
+    '2029-12-26',
+    // 2030
+    '2030-01-01',
+    '2030-01-06',
+    '2030-04-21', // Niedziela Wielkanocna
+    '2030-04-22', // Poniedziałek Wielkanocny
+    '2030-05-01',
+    '2030-05-03',
+    '2030-06-20', // Boże Ciało
+    '2030-08-15',
+    '2030-11-01',
+    '2030-11-11',
+    '2030-12-25',
+    '2030-12-26',
 ])
 
+/**
+ * Audyt 2026-08: data brana z KALENDARZA LOKALNEGO, nie z UTC. `toISOString()`
+ * cofał o dobę każdą datę zbudowaną jako lokalna północ (`parseISO('2028-01-06')`
+ * na maszynie w Europe/Warsaw = 2028-01-05T23:00Z), przez co święto potrafiło
+ * zniknąć. Produkcja chodzi w UTC, więc tam oba warianty dawały to samo — różnica
+ * była widoczna wyłącznie lokalnie, czyli tam, gdzie się testuje.
+ */
 export function isPolishHoliday(date: Date): boolean {
-    return POLISH_HOLIDAYS.has(date.toISOString().slice(0, 10))
+    return POLISH_HOLIDAYS.has(format(date, 'yyyy-MM-dd'))
 }
 
 /**

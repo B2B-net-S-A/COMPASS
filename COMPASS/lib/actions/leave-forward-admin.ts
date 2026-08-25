@@ -21,6 +21,7 @@ import { shouldForwardBeActive } from '@/lib/oof/forward-window'
 import { HR_ROLES } from '@/lib/oof/reconcile'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { activeRoster } from '@/lib/hr/employment-window'
+import { warsawDate } from '@/lib/oof/oof-dates'
 
 /** Ten sam limit co w uzgodnieniu — skan nie może rosnąć w nieskończoność. */
 const MAX_MAILBOXES = 100
@@ -285,7 +286,10 @@ export async function listActiveForwardRules(): Promise<ForwardRulesOverview> {
 
 function describeOrphan(leave: LeaveJoin | undefined, now: Date): string {
     if (!leave) return 'Reguła nie pasuje do żadnego wniosku w bazie.'
-    const today = now.toISOString().slice(0, 10)
+    // Audyt 2026-08 — data musi być liczona w strefie warszawskiej, tak jak liczy ją
+    // shouldForwardBeActive, które rozstrzyga, czy reguła to sierota. Przy `toISOString()`
+    // wieczorami (po 22:00 latem) opis mijał się z werdyktem o jedną dobę.
+    const today = warsawDate(now)
     if (!leave.forward_mail_enabled) return 'Przekierowanie zostało wyłączone, reguła nadal działa.'
     if (leave.status !== 'approved') return `Wniosek ma status "${leave.status}".`
     if (leave.end_date < today) return `Urlop skończył się ${leave.end_date}.`

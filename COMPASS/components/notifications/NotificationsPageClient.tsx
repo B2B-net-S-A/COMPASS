@@ -104,6 +104,7 @@ export function NotificationsPageClient({ notifications: initial }: Notification
                         variant="ghost"
                         size="icon"
                         className="text-muted-foreground hover:text-foreground"
+                        aria-label="Wróć"
                         onClick={() => router.back()}
                     >
                         <ArrowLeft className="w-5 h-5" />

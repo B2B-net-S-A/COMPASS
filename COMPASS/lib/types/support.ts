@@ -208,6 +208,21 @@ export const INBOX_PRIORITY_LABEL: Record<InboxPriorityLevel, string> = {
     P3: 'P3 (10 dni)',
 }
 
+// Rodzina „skrzynka administracja@" jest w kodzie zdefiniowana DWA razy i te dwie
+// definicje nie są ze sobą spięte:
+//   1. ta lista — używana przez `.in('slug', …)` w kanbanie, na stronie /admin/inbox
+//      i w kaflu Spraw w People Ops,
+//   2. prefiks `slug LIKE 'inbox_%'` — używany w layoucie strefy chronionej oraz
+//      (razem z `contractor_%`) do WYKLUCZANIA skrzynki z helpdesku.
+// Skutek rozjazdu jest cichy i jednokierunkowo groźny: kategoria dodana w bazie,
+// ale nie dopisana tutaj, zniknie z kanbana (lista jej nie obejmie), a jednocześnie
+// wypadnie z helpdesku (prefiks ją złapie) — zgłoszenie nie pokaże się nigdzie.
+// Historia potwierdza, że to realne: `inbox_offboarding` i `inbox_onboarding`
+// dochodziły do bazy osobnymi migracjami (05/2026) i lista była poprawiana ręcznie.
+// Odwrotny kierunek jest nieszkodliwy i występuje dziś: `inbox_wypowiedzenie` jest
+// tu wymienione, ale na prodzie takiej kategorii NIE MA (`support_categories` zna
+// 5 slugów `inbox_%`) — `.in()` po prostu jej nie dopasuje.
+// Ujednolicenie (wszędzie prefiks) dotyka plików spoza `lib/types` — patrz raport audytu.
 export const INBOX_CATEGORY_SLUGS = [
     'inbox_negocjacje',
     'inbox_wypowiedzenie',

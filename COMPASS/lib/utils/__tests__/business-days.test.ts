@@ -8,6 +8,22 @@ describe('isPolishHoliday', () => {
         expect(isPolishHoliday(new Date('2026-12-25T00:00:00Z'))).toBe(true)
     })
 
+    it('zna święta 2028-2030 — lista nie kończy się na 2027', () => {
+        // Kalendarz miał twardy koniec na 2027-12-26; od 2028-01-01 każde święto
+        // liczyło się jako zwykły dzień roboczy (SLA, prognoza 168h).
+        expect(isPolishHoliday(new Date('2028-04-17T00:00:00Z'))).toBe(true) // Wielkanocny Pn
+        expect(isPolishHoliday(new Date('2028-06-15T00:00:00Z'))).toBe(true) // Boże Ciało
+        expect(isPolishHoliday(new Date('2029-05-31T00:00:00Z'))).toBe(true)
+        expect(isPolishHoliday(new Date('2030-06-20T00:00:00Z'))).toBe(true)
+    })
+
+    it('czyta datę z kalendarza lokalnego, nie z UTC', () => {
+        // `new Date(2026, 0, 6)` to lokalna północ. Przez `toISOString()` w strefie
+        // Europe/Warsaw wychodziło z tego 2026-01-05 i święto znikało.
+        expect(isPolishHoliday(new Date(2026, 0, 6))).toBe(true)
+        expect(isPolishHoliday(new Date(2026, 3, 6))).toBe(true)
+    })
+
     it('returns false for ordinary days', () => {
         expect(isPolishHoliday(new Date('2026-05-06T00:00:00Z'))).toBe(false)
         expect(isPolishHoliday(new Date('2026-07-15T00:00:00Z'))).toBe(false)

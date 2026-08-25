@@ -161,6 +161,8 @@ export function TimesheetTemplatesManager({ initialTemplates }: Props) {
                                         <Button
                                             size="icon"
                                             variant="ghost"
+                                            aria-label={`Edytuj szablon „${t.name}”`}
+                                            title="Edytuj szablon"
                                             onClick={() => openEdit(t)}
                                             disabled={pending}
                                         >
@@ -169,6 +171,8 @@ export function TimesheetTemplatesManager({ initialTemplates }: Props) {
                                         <Button
                                             size="icon"
                                             variant="ghost"
+                                            aria-label={`Usuń szablon „${t.name}”`}
+                                            title="Usuń szablon"
                                             onClick={() => handleDelete(t)}
                                             disabled={pending}
                                             className="text-muted-foreground hover:text-destructive"

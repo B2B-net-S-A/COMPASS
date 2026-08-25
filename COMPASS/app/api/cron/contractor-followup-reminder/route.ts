@@ -13,6 +13,12 @@ import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { sendPushToUserId } from '@/lib/push/dispatch'
+import { excludeExited } from '@/lib/hr/employment-window'
+import {
+    DEFAULT_REMINDER_CADENCE_DAYS,
+    loadLastReminderSentAt,
+    pickDueRecipients,
+} from '@/lib/notifications/reminder-cadence'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -41,7 +47,7 @@ export const GET = withCronAuth(withCronHeartbeat('CONTRACTOR_FOLLOWUP_REMINDER_
             .or(`status.in.(pilne,potrzebny_kontakt),follow_up_date.lte.${today}`)
         if (error) throw new Error(error.message)
         const due = (data ?? []) as DueConv[]
-        if (due.length === 0) return NextResponse.json({ ok: true, due: 0, notified: 0 })
+        if (due.length === 0) return NextResponse.json({ ok: true, due: 0, notified: 0, skipped: 0 })
 
         // Resolve contractor names + owner TCMs.
         const contractorIds = Array.from(new Set(due.map((c) => c.contractor_id)))
@@ -52,7 +58,12 @@ export const GET = withCronAuth(withCronHeartbeat('CONTRACTOR_FOLLOWUP_REMINDER_
         // Fallback recipients (TCM + admin) only if some conversation has no owner and no tcm.
         let fallback: string[] = []
         if (due.some((c) => !cMap.get(c.contractor_id)?.owner_tcm_id && !c.tcm_id)) {
-            const { data: tcms } = await admin.from('profiles').select('id').in('role', ['admin', 'talent_community'])
+            // Fallback nie może celować w osoby zarchiwizowane — archiwizacja nie
+            // zmienia roli, więc bez tego filtra ktoś, kto odszedł, dostawałby
+            // powiadomienia do końca świata (reguła „tu i teraz", Phase 43).
+            const { data: tcms } = await excludeExited(
+                admin.from('profiles').select('id').in('role', ['admin', 'talent_community']),
+            )
             fallback = ((tcms ?? []) as Array<{ id: string }>).map((t) => t.id)
         }
 
@@ -67,15 +78,31 @@ export const GET = withCronAuth(withCronHeartbeat('CONTRACTOR_FOLLOWUP_REMINDER_
             }
         }
 
+        const candidates = Array.from(perUser.keys())
+        const lastSent = await loadLastReminderSentAt(
+            admin,
+            'contractor_followup',
+            candidates,
+            DEFAULT_REMINDER_CADENCE_DAYS,
+        )
+        const dueRecipients = new Set(pickDueRecipients(candidates, lastSent, new Date()))
+        const skipped = candidates.length - dueRecipients.size
+
         let notified = 0
+        const errors: string[] = []
         for (const [uid, info] of Array.from(perUser.entries())) {
+            if (!dueRecipients.has(uid)) continue
             const bodyPl = info.count === 1
                 ? `${info.sample} — rozmowa wymaga kontaktu / follow-upu.`
                 : `${info.count} rozmów z kontraktorami wymaga kontaktu / follow-upu.`
             const bodyEn = info.count === 1
                 ? `${info.sample} — a conversation needs follow-up.`
                 : `${info.count} contractor conversations need follow-up.`
-            await admin.from('notifications').insert({
+            // Wpis w dzwonku jest tu podwójnie ważny: to jedyny TRWAŁY kanał (push
+            // bywa bez subskrypcji) i jednocześnie dziennik, z którego liczy się
+            // kadencja. Nieudany insert nie ma prawa policzyć się jako wysłany —
+            // inaczej odpowiedź mówi „notified: 6", a nie dotarło nic.
+            const { error: insErr } = await admin.from('notifications').insert({
                 user_id: uid,
                 type: 'contractor_followup',
                 title_pl: 'Follow-up z kontraktorem',
@@ -85,6 +112,10 @@ export const GET = withCronAuth(withCronHeartbeat('CONTRACTOR_FOLLOWUP_REMINDER_
                 action_url: '/internal/kontraktorzy',
                 priority: 'normal',
             })
+            if (insErr) {
+                errors.push(`${uid}: ${insErr.message}`)
+                continue
+            }
             await sendPushToUserId(uid, {
                 title: 'Follow-up z kontraktorem',
                 body: bodyPl,
@@ -94,8 +125,8 @@ export const GET = withCronAuth(withCronHeartbeat('CONTRACTOR_FOLLOWUP_REMINDER_
             notified += 1
         }
 
-        logger.info({ event: 'contractor.followup_reminder', due: due.length, notified })
-        return NextResponse.json({ ok: true, due: due.length, notified })
+        logger.info({ event: 'contractor.followup_reminder', due: due.length, notified, skipped })
+        return NextResponse.json({ ok: true, due: due.length, notified, skipped, errors: errors.slice(0, 10) })
     } catch (err) {
         const message = err instanceof Error ? err.message : 'unknown_error'
         logger.error({ event: 'contractor.followup_reminder.exception', error: message })

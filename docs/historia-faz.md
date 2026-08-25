@@ -790,7 +790,7 @@ Konsolidacja rozsypanego people-ops (Talent Community/Lifecycle/Kontraktorzy + 3
 > i to przekierowaniem **do drugiego przekierowania**, które gubi `?tab=onboarding`.
 > Ten opis zostaje jako zapis, jak wyglądało to w czerwcu.
 
-Rozbicie people-ops kontraktorskiego (Phase 37 scaliło je w Zgłoszenia + Onboarding&Exit) z powrotem na **5 dedykowanych elementów** wg ścieżki życia kontraktora, wszystkie w sidebarze. **Bez migracji** — reużywa tabel Phase 33 + bucketu `lifecycle-docs` (Phase 33c). Pełny raport: `docs/talent-community-5-elementow-completion-report.md`.
+Rozbicie people-ops kontraktorskiego (Phase 37 scaliło je w Zgłoszenia + Onboarding&Exit) z powrotem na **5 dedykowanych elementów** wg ścieżki życia kontraktora, wszystkie w sidebarze. **Bez migracji** — reużywa tabel Phase 33 + bucketu `lifecycle-docs` (Phase 33c). Pełny raport: `COMPASS/docs/talent-community-5-elementow-completion-report.md` (uwaga: ten jeden leży w `COMPASS/docs/`, nie w `docs/` w root repo).
 
 **Sidebar (TCM + admin):**
 - **Talent Community** = Rozmowy / Onboarding / Exit / Kontraktorzy (zakładki huba `/internal/kontraktorzy?tab=…`) + **Analityka** (osobny route `/internal/analityka`) → 5 linków.
@@ -1134,7 +1134,12 @@ w `audit_logs` — `start` bez `done` = przebieg ubity w locie, brak `start` = c
 
 | Nazwa | Schedule | Komenda |
 |---|---|---|
-| `tech-map-rotation` | `30 5 * * *` | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/tech-map-rotation"` |
+| ~~`tech-map-rotation`~~ | ~~`30 5 * * *`~~ | ~~`curl … /api/cron/tech-map-rotation`~~ |
+
+> ⚠ **Rotacja bloków i cała ta trasa NIE ISTNIEJĄ od Fazy 46d (2026-08-04)** — patrz niżej.
+> Powyższy opis (`block-rotation.ts`, `rotation-sweep.ts`, `RotationAdminSection`, zadanie w Coolify)
+> zostawiono jako zapis historyczny. **Nie odtwarzaj z niego zadania w Coolify** — włączone tikałoby
+> w 404. Aktualna lista tras: `ls COMPASS/app/api/cron`.
 
 ### Etap 3 — alerty + KPI + flaga sprzedaży (2026-08-04, migracja 46c)
 

@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 import { loginAs, TEST_USERS } from './helpers/test-users'
 
 /**
- * Smoke E2E for the 3 role accounts created via scripts/setup-test-users.ts.
+ * Smoke E2E dla 3 kont rolowych z .env.test (zakładanych ręcznie — patrz
+ * e2e/helpers/test-users.ts; skryptu setup-test-users.ts nie ma w repo).
  * Verifies that login works and that role-appropriate UI elements appear post-login.
  * Roles: consultant (Konsultant IT) | internal (Konsultant biurowy) | admin (Super Admin).
  * Legacy roles `centrala` and `administrator` were dropped in Phase 16 (PR #27).

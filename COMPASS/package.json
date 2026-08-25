@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run && playwright test",
+    "test": "vitest run",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -18,7 +18,6 @@
     "test:smoke": "playwright test e2e/01-smoke.spec.ts",
     "test:auth": "playwright test e2e/02-auth.spec.ts",
     "test:rls": "playwright test e2e/04-rls-database.spec.ts",
-    "test:communicator": "playwright test e2e/03-communicator.spec.ts",
     "test:eval": "tsx scripts/eval_matching.ts",
     "db:types": "supabase gen types typescript --project-id shduiynzemftkqqefscd --schema public > lib/supabase/database.types.ts",
     "ship": "bash scripts/git-ship.sh"

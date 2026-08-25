@@ -114,6 +114,17 @@ export async function syncProfileFromGraph(
             // External / guest accounts may not exist in the tenant. That's
             // a config issue (someone joined via a different domain), not
             // an outage — log info and bail without escalating to Sentry.
+            //
+            // Audyt 2026-08: wychodziliśmy stąd BEZ stempla `m365_synced_at`, więc
+            // takie konto zostawało na zawsze w koszyku „nigdy nie synchronizowane"
+            // crona `m365-profile-resync` i zjadało slot z limitu MAX_PER_RUN przy
+            // każdym tygodniowym przebiegu. Stempel przesuwa je do koszyka
+            // „przeterminowane", czyli ponowimy za STALE_DAYS zamiast co przebieg.
+            // Konto spoza tenanta to stan konfiguracji, nie chwilowa awaria.
+            await admin
+                .from('profiles')
+                .update({ m365_synced_at: new Date().toISOString() })
+                .eq('id', userId)
             logger.info({
                 event: 'm365.people.user_not_found',
                 userId,

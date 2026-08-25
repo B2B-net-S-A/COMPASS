@@ -1468,7 +1468,7 @@ export async function uploadBonusAttachment(
                 attachment_filename: file.name,
                 attachment_size_bytes: file.size,
                 attachment_mime: mime,
-            } as unknown as never)
+            })
             .eq('id', bonusId)
         if (updateErr) {
             // Best-effort cleanup if metadata update fails.
@@ -1600,7 +1600,7 @@ export async function removeBonusAttachment(bonusId: string): Promise<ActionResu
                 attachment_filename: null,
                 attachment_size_bytes: null,
                 attachment_mime: null,
-            } as unknown as never)
+            })
             .eq('id', bonusId)
         if (updateErr) throw new Error(`Błąd czyszczenia metadanych: ${updateErr.message}`)
 

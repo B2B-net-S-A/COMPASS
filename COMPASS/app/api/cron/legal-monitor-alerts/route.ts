@@ -22,8 +22,10 @@ import {
     selectOverdueFollowUps,
     selectRedAlerts,
     shouldSendDailyDigest,
+    shouldSendWeeklyDigest,
     sourcesCrossingFailureThreshold,
     SOURCE_FAILURE_STREAK_THRESHOLD,
+    WEEKLY_DIGEST_LAST_SENT_KEY,
 } from '@/lib/legal-monitor/alert-selection'
 import {
     allFinanseAndAdmins,
@@ -282,7 +284,16 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         }
 
         // ── 5. Digest (poniedziałki) ─────────────────────────────────────────
-        if (isDigestDay(now)) {
+        // Stempel (audyt 2026-08): sam `isDigestDay` nie chroni przed drugim
+        // przebiegiem TEGO SAMEGO poniedziałku (ręczny curl, rerun w GH Actions,
+        // przypadkowo włączone bliźniacze zadanie w Coolify).
+        const { data: weeklyStampRow } = await admin
+            .from('system_settings')
+            .select('value')
+            .eq('key', WEEKLY_DIGEST_LAST_SENT_KEY)
+            .maybeSingle()
+        const weeklyLastSentAt = (weeklyStampRow as { value?: string } | null)?.value ?? null
+        if (isDigestDay(now) && shouldSendWeeklyDigest(weeklyLastSentAt, now)) {
             const from = digestWindowStart(now)
             const fresh = items.filter((i) => i.created_at.slice(0, 10) >= from)
             const counts = {
@@ -321,6 +332,15 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                     if (delivered === 0) {
                         errors.push('digest: nie dotarł do żadnego odbiorcy')
                     } else {
+                        // Stempel dopiero po realnej wysyłce — totalna awaria kanału
+                        // ma się ponowić, nie zniknąć po cichu na tydzień.
+                        const { error } = await admin
+                            .from('system_settings')
+                            .upsert(
+                                { key: WEEKLY_DIGEST_LAST_SENT_KEY, value: now.toISOString() },
+                                { onConflict: 'key' },
+                            )
+                        if (error) errors.push(`stempel tygodniowego digestu: ${error.message}`)
                         stats.digest += delivered
                     }
                 } catch (e) {

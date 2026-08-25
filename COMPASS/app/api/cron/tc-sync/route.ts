@@ -16,7 +16,8 @@ export const dynamic = 'force-dynamic'
 // timeout per żądanie na proxy (Traefik/Cloudflare) i limity samych wywołań.
 export const maxDuration = 240
 
-const HUB = '/internal/kontraktorzy'
+// Audyt 2026-08 — patrz komentarz w lib/actions/contractors.ts: stara trasa to redirect.
+const HUB = '/internal/people'
 
 /**
  * Phase 39 — daily Talent Community sync. Downloads the canonical SharePoint workbook

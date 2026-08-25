@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
     DB_ROLES,
+    HR_ZONE_ROLES,
     canAccessInternalZone,
     canApproveTimesheets,
     canEditNews,
     canManageCompliance,
     canManageInbox,
+    canManageLifecycle,
     canManagerApproveInvoice,
+    canProposeBonus,
+    canReadAllBonuses,
     canReviewInvoices,
     canSubmitOwnInvoice,
     isAdminLike,
     isFinance,
+    isHrZoneRole,
     isInternalEmployee,
     isManager,
     isTalentCommunity,
@@ -157,6 +162,79 @@ describe('canSubmitOwnInvoice (Phase 20)', () => {
     })
     it('denies consultant IT', () => {
         expect(canSubmitOwnInvoice('consultant')).toBe(false)
+    })
+})
+
+// Audyt 2026-08-25: trzy reguły autoryzacji były jedynymi predykatami w tym
+// pliku bez testu — w tym `canProposeBonus`, czyli jedyne miejsce mówiące, kto
+// w ogóle może przyznać premię.
+
+describe('canProposeBonus (Phase 22/26)', () => {
+    it('allows admin and manager', () => {
+        expect(canProposeBonus('admin')).toBe(true)
+        expect(canProposeBonus('manager')).toBe(true)
+    })
+    it('denies everyone else (scope zespołu i tak sprawdza akcja + RLS)', () => {
+        expect(canProposeBonus('finanse')).toBe(false)
+        expect(canProposeBonus('internal')).toBe(false)
+        expect(canProposeBonus('talent_community')).toBe(false)
+        expect(canProposeBonus('consultant')).toBe(false)
+        expect(canProposeBonus(null)).toBe(false)
+        expect(canProposeBonus(undefined)).toBe(false)
+    })
+})
+
+describe('canReadAllBonuses (Phase 22)', () => {
+    it('allows admin and finanse', () => {
+        expect(canReadAllBonuses('admin')).toBe(true)
+        expect(canReadAllBonuses('finanse')).toBe(true)
+    })
+    it('denies manager (widzi tylko swój zespół przez RLS) and the rest', () => {
+        expect(canReadAllBonuses('manager')).toBe(false)
+        expect(canReadAllBonuses('internal')).toBe(false)
+        expect(canReadAllBonuses('talent_community')).toBe(false)
+        expect(canReadAllBonuses('consultant')).toBe(false)
+        expect(canReadAllBonuses(null)).toBe(false)
+    })
+})
+
+describe('canManageLifecycle (Phase 22)', () => {
+    it('allows admin and talent_community', () => {
+        expect(canManageLifecycle('admin')).toBe(true)
+        expect(canManageLifecycle('talent_community')).toBe(true)
+    })
+    it('denies the remaining roles', () => {
+        expect(canManageLifecycle('manager')).toBe(false)
+        expect(canManageLifecycle('finanse')).toBe(false)
+        expect(canManageLifecycle('internal')).toBe(false)
+        expect(canManageLifecycle('consultant')).toBe(false)
+        expect(canManageLifecycle(null)).toBe(false)
+    })
+})
+
+describe('isHrZoneRole / HR_ZONE_ROLES', () => {
+    it('covers every role except Konsultant IT', () => {
+        expect([...HR_ZONE_ROLES].sort()).toEqual([
+            'admin',
+            'finanse',
+            'internal',
+            'manager',
+            'talent_community',
+        ])
+        for (const role of HR_ZONE_ROLES) {
+            expect(isHrZoneRole(role)).toBe(true)
+        }
+    })
+    it('excludes consultant and unknown values', () => {
+        expect(isHrZoneRole('consultant')).toBe(false)
+        expect(isHrZoneRole('root')).toBe(false)
+        expect(isHrZoneRole(null)).toBe(false)
+        expect(isHrZoneRole(undefined)).toBe(false)
+    })
+    it('stays in sync with canAccessInternalZone', () => {
+        for (const role of DB_ROLES) {
+            expect(isHrZoneRole(role)).toBe(canAccessInternalZone(role))
+        }
     })
 })
 

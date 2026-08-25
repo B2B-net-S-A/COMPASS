@@ -45,6 +45,7 @@ import {
     buildCopyEntries,
 } from '@/lib/rates/progression'
 import { activeRoster } from '@/lib/hr/employment-window'
+import type { Json } from '@/lib/supabase/database.types'
 
 // ─── Validation ──────────────────────────────────────────────────────────
 
@@ -98,9 +99,7 @@ export async function setUserRate(input: SetUserRateInput): Promise<UserRateRow>
 
     // Fetch previous active rate (for "old rate" in notification).
     const { data: prevRate } = await admin
-        // Phase 27c — database.types.ts not yet regenerated; cast table name.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .select('hourly_rate, currency')
         .eq('user_id', input.user_id)
         .is('effective_to', null)
@@ -116,9 +115,7 @@ export async function setUserRate(input: SetUserRateInput): Promise<UserRateRow>
 
     // Insert new rate (trigger closes the previous one).
     const { data: inserted, error: insertErr } = await admin
-        // Phase 27c — database.types.ts not yet regenerated; cast table name.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .insert({
             user_id: input.user_id,
             hourly_rate: input.hourly_rate,
@@ -208,9 +205,7 @@ export async function listUserRateHistory(userId: string): Promise<UserRateWithU
 
     const supabase = createClient()
     const { data, error } = await supabase
-        // Phase 27c — database.types.ts not yet regenerated; cast table name.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .select('*')
         .eq('user_id', userId)
         .order('effective_from', { ascending: false })
@@ -226,9 +221,7 @@ export async function getMyCurrentRate(): Promise<UserRateRow | null> {
     const ctx = await requireInternalOrAdminAction()
     const supabase = createClient()
     const { data, error } = await supabase
-        // Phase 27c — database.types.ts not yet regenerated; cast table name.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .select('*')
         .eq('user_id', ctx.userId)
         .is('effective_to', null)
@@ -245,9 +238,7 @@ export async function getCurrentRateForUser(userId: string): Promise<UserRateRow
     await requireInternalOrAdminAction()
     const supabase = createClient()
     const { data, error } = await supabase
-        // Phase 27c — database.types.ts not yet regenerated; cast table name.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .select('*')
         .eq('user_id', userId)
         .is('effective_to', null)
@@ -297,9 +288,7 @@ export async function listUserRateDirectory(): Promise<UserRateDirectoryRow[]> {
     const thisMonthFirst = addMonths(firstDayOfNextMonth(), -1)
     const [ratesRes, managersRes] = await Promise.all([
         admin
-            // Phase 27c — database.types.ts not yet regenerated; cast table name.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .from('user_rates' as any)
+            .from('user_rates')
             .select('user_id, hourly_rate, currency, effective_from, effective_to')
             .in('user_id', userIds)
             .order('effective_from', { ascending: true }),
@@ -410,8 +399,7 @@ interface OpenRate {
 /** The user's open rate (effective_to IS NULL) = their latest scheduled row (max effective_from). */
 async function fetchOpenRate(admin: AdminClient, userId: string): Promise<OpenRate | null> {
     const { data } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .select('hourly_rate, currency, effective_from')
         .eq('user_id', userId)
         .is('effective_to', null)
@@ -444,14 +432,18 @@ interface InsertProgressionParams {
 async function insertProgressionAndNotify(params: InsertProgressionParams): Promise<number> {
     const { admin, ctx, target, currency, changePoints, reason, auditAction, prevRate, extraAudit } = params
 
-    // database.types.ts not yet regenerated for this RPC — cast client for the call.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: insertedCount, error } = await (admin as any).rpc('set_user_rate_progression', {
+    // Audyt 2026-08 — wcześniej rzutowany był CAŁY klient (`(admin as any).rpc(...)`),
+    // co wyłączało sprawdzanie także nazwy funkcji i reszty argumentów. Typy są już
+    // zregenerowane, więc rzutujemy wyłącznie dwa argumenty, których generator nie
+    // opisuje wiernie: `p_entries` to jsonb (tablica obiektów nie spełnia `Json`
+    // przez brak index signature), a `p_reason` jest w SQL zwykłym `text`, czyli
+    // dopuszcza NULL — generator zawsze typuje argumenty jako non-null.
+    const { data: insertedCount, error } = await admin.rpc('set_user_rate_progression', {
         p_user_id: target.id,
         p_currency: currency,
-        p_entries: changePoints,
+        p_entries: changePoints as unknown as Json,
         p_set_by: ctx.userId,
-        p_reason: reason,
+        p_reason: reason as unknown as string,
     })
     if (error) throw new Error(`Błąd zapisu progresji: ${error.message}`)
 
@@ -560,8 +552,7 @@ export async function listScheduledRateChanges(userId: string): Promise<RateProg
     const admin = createServiceClient()
     const thisMonthFirst = addMonths(firstDayOfNextMonth(), -1)
     const { data, error } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .select('hourly_rate, effective_from')
         .eq('user_id', userId)
         .gt('effective_from', thisMonthFirst)
@@ -626,8 +617,7 @@ interface ComputedCopy {
 async function computeCopy(input: CopyProgressionInput, admin: AdminClient): Promise<ComputedCopy> {
     const nextMonthFirst = firstDayOfNextMonth()
     const { data: srcData } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_rates' as any)
+        .from('user_rates')
         .select('hourly_rate, currency, effective_from')
         .eq('user_id', input.from_user_id)
         .gte('effective_from', nextMonthFirst)

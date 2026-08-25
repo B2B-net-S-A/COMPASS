@@ -15,6 +15,37 @@ import {
 // wszystko idzie przez lib/email/sender.ts, czyli Microsoft Graph (sendMail).
 // Sam kanał Resend został usunięty; nazwa i kształt `{ data, error }` zostają,
 // żeby 14 szablonów poniżej i ich `if (error) { ... }` pozostały nietknięte.
+/**
+ * Escapowanie tekstu wstawianego do HTML-a maila.
+ *
+ * Audyt 2026-08: funkcja istniała, ale dopiero w okolicy linii 1700 i używały jej
+ * wyłącznie szablony monitoringu prawnego. Wszystko powyżej — imiona, notatki
+ * z wniosków urlopowych, uzasadnienia odrzuceń, treść ogłoszeń, opis zgłoszenia
+ * sprzętowego — trafiało do HTML-a surowe. Autorem tego tekstu jest zalogowany
+ * pracownik, więc nie jest to droga do przejęcia konta, ale wystarcza, żeby
+ * wstawić własny link albo formatowanie do maila, który wygląda na firmowy.
+ *
+ * Escapujemy też apostrof: w repo krążyły dwa warianty tej funkcji różniące się
+ * właśnie nim, a atrybuty w tych szablonach bywają cytowane pojedynczo.
+ *
+ * STAN PRZEGLĄDU (żeby nikt nie uznał tematu za zamknięty): objęte są nagłówek
+ * i eyebrow każdego maila (escapowane wewnątrz `wrapHrEmail`, czyli wszystkie
+ * wywołania naraz) oraz pola, które użytkownik WPISUJE: notatka wniosku
+ * urlopowego, uzasadnienie odrzucenia, treść ogłoszenia, opis zgłoszenia
+ * sprzętowego i deklaracji benefitu. NIEobjęte zostają imiona i nazwiska
+ * wstawiane w treść (`requesterName`, `substituteName` i podobne, ~40 miejsc) —
+ * to `profiles.full_name`, więc ta sama klasa ryzyka, tylko rzadziej ruszana.
+ * Przy dopisywaniu nowego szablonu: każdy tekst od człowieka przechodzi tędy.
+ */
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
 function getResend(): {
     emails: {
         send: (args: {
@@ -83,13 +114,13 @@ export async function sendEquipmentRequestEmail(
     const bodyHtml = `
         <p style="color: #d1d5db; font-size: 14px;">Nowe zgłoszenie sprzętowe do rozpatrzenia:</p>
         <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
-            <li><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</li>
-            <li><strong>Typ:</strong> ${data.itemName}</li>
-            <li><strong>Kategoria:</strong> ${data.category}</li>
-            <li><strong>ID zgłoszenia:</strong> ${data.requestId}</li>
+            <li><strong>Użytkownik:</strong> ${escapeHtml(data.userName)} (${escapeHtml(data.userEmail)})</li>
+            <li><strong>Typ:</strong> ${escapeHtml(data.itemName)}</li>
+            <li><strong>Kategoria:</strong> ${escapeHtml(data.category)}</li>
+            <li><strong>ID zgłoszenia:</strong> ${escapeHtml(data.requestId)}</li>
         </ul>
         <p style="color: #d1d5db; font-size: 14px; margin-bottom: 8px;"><strong>Szczegóły:</strong></p>
-        <div style="color: #d1d5db; font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: #0f1320; border: 1px solid #232a3b; border-radius: 8px; padding: 14px;">${data.details}</div>
+        <div style="color: #d1d5db; font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: #0f1320; border: 1px solid #232a3b; border-radius: 8px; padding: 14px;">${escapeHtml(data.details)}</div>
     `
     try {
         const { error } = await getResend().emails.send({
@@ -124,10 +155,10 @@ export async function sendBenefitDeclarationEmail(
     const bodyHtml = `
         <p style="color: #d1d5db; font-size: 14px;">Nowa deklaracja benefitowa do rozpatrzenia:</p>
         <ul style="color: #d1d5db; font-size: 14px; line-height: 1.6;">
-            <li><strong>Użytkownik:</strong> ${data.userName} (${data.userEmail})</li>
-            <li><strong>Typ benefitu:</strong> ${benefitTypeLabel}</li>
-            <li><strong>Wybrany wariant:</strong> ${data.variantName}</li>
-            <li><strong>ID deklaracji:</strong> ${data.declarationId}</li>
+            <li><strong>Użytkownik:</strong> ${escapeHtml(data.userName)} (${escapeHtml(data.userEmail)})</li>
+            <li><strong>Typ benefitu:</strong> ${escapeHtml(benefitTypeLabel)}</li>
+            <li><strong>Wybrany wariant:</strong> ${escapeHtml(data.variantName)}</li>
+            <li><strong>ID deklaracji:</strong> ${escapeHtml(data.declarationId)}</li>
         </ul>
     `
     try {
@@ -174,7 +205,7 @@ export async function sendRoleChangeEmail(
 
     const accentColor = isAdded ? '#22d3ee' : '#f59e0b'
     const bodyHtml = `
-        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">Cześć <strong>${escapeHtml(recipientName)}</strong>,</p>
         <p style="color: #d1d5db; font-size: 14px; line-height: 1.6;">${body}</p>
     `
 
@@ -219,8 +250,8 @@ export async function sendBroadcastEmail(
                 heading: title,
                 accent: '#fbbf24',
                 bodyHtml: `
-                    <div style="color: #d1d5db; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${content}</div>
-                    <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">Nadawca: <strong>${senderName}</strong></p>
+                    <div style="color: #d1d5db; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(content)}</div>
+                    <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">Nadawca: <strong>${escapeHtml(senderName)}</strong></p>
                 `,
             }),
         })
@@ -274,8 +305,15 @@ export const HR_LEAVE_TYPE_LABEL: Record<string, string> = {
  */
 export function wrapHrEmail(opts: { tag: string; heading: string; bodyHtml: string; accent?: string }): string {
     const accent = opts.accent ?? '#22d3ee'
-    const heading = opts.heading.replace(/^\s*\[[^\]]*]\s*/, '').trim() || opts.heading
-    const preheader = heading.replace(/<[^>]*>/g, '')
+    // Audyt 2026-08: `tag` i `heading` lądują wprost w HTML-u. `heading` to zwykle
+    // temat maila, a ten sklejany jest z imieniem i nazwiskiem albo tytułem
+    // ogłoszenia — czyli z treścią wpisaną przez człowieka. Escapujemy TU, bo to
+    // jedno miejsce zamyka wszystkie 33 wywołania; żaden wołający nie przekazuje
+    // w nagłówku HTML-a (sprawdzone), więc nie ma czego zepsuć.
+    const rawHeading = opts.heading.replace(/^\s*\[[^\]]*]\s*/, '').trim() || opts.heading
+    const heading = escapeHtml(rawHeading)
+    const preheader = escapeHtml(rawHeading.replace(/<[^>]*>/g, ''))
+    const tag = escapeHtml(opts.tag)
     const font = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`
     return `<!doctype html>
 <html lang="pl" xmlns="http://www.w3.org/1999/xhtml">
@@ -311,7 +349,7 @@ export function wrapHrEmail(opts: { tag: string; heading: string; bodyHtml: stri
         </tr>
         <tr>
           <td class="cp-body cp-pad" style="padding:30px 32px 8px 32px;font-family:${font};color:#d1d5db;font-size:14px;line-height:1.6;">
-            <p style="margin:0 0 10px 0;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${accent};">${opts.tag}</p>
+            <p style="margin:0 0 10px 0;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:${accent};">${tag}</p>
             <h1 style="margin:0 0 4px 0;font-size:21px;line-height:1.35;font-weight:700;color:#ffffff;">${heading}</h1>
             ${opts.bodyHtml}
           </td>
@@ -352,7 +390,7 @@ export async function sendLeaveRequestSubmitted(
             <li><strong>Od:</strong> ${startDate}</li>
             <li><strong>Do:</strong> ${endDate}</li>
             ${substituteLine}
-            ${note ? `<li><strong>Notatka:</strong> ${note}</li>` : ''}
+            ${note ? `<li><strong>Notatka:</strong> ${escapeHtml(note)}</li>` : ''}
         </ul>
         <p style="color: #d1d5db; font-size: 14px;">Zaakceptuj/odrzuć w panelu administracyjnym.</p>
     `
@@ -612,7 +650,7 @@ export async function sendLeaveCreatedOnBehalf(
             <li><strong>Typ:</strong> ${typeLabel}</li>
             <li><strong>Od:</strong> ${startDate}</li>
             <li><strong>Do:</strong> ${endDate}</li>
-            ${note ? `<li><strong>Notatka:</strong> ${note}</li>` : ''}
+            ${note ? `<li><strong>Notatka:</strong> ${escapeHtml(note)}</li>` : ''}
         </ul>
         ${sideEffectsNote}
         <p style="color: #d1d5db; font-size: 14px;">
@@ -769,7 +807,7 @@ export async function sendInvoiceDecision(
             Twoja faktura <strong>${invoiceNumber}</strong> za <strong>${periodLabel}</strong> została
             <strong>${isApproved ? 'zaakceptowana' : 'odrzucona'}</strong>.
         </p>
-        ${rejectionReason ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Komentarz:</strong> ${rejectionReason}</p>` : ''}
+        ${rejectionReason ? `<p style="color: #d1d5db; font-size: 14px;"><strong>Komentarz:</strong> ${escapeHtml(rejectionReason)}</p>` : ''}
         ${!isApproved ? `<p style="color: #d1d5db; font-size: 14px;">Możesz poprawić i wysłać ponownie w sekcji <strong>Faktury</strong>.</p>` : ''}
     `
     try {
@@ -1692,15 +1730,6 @@ export async function sendTechMapProjectEnd(
 // ─── Phase 50 — Monitoring prawny ────────────────────────────────────────────
 
 const LEGAL_MONITOR_URL = 'https://compass.dynaminds.pl/internal/admin?tab=legal-monitor'
-
-/** Escape treści od pipeline'u AI — leci do HTML maila, więc nie ufamy jej. */
-function escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-}
 
 async function sendLegalMonitorMail(
     recipientEmail: string,

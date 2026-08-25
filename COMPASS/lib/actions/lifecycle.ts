@@ -29,14 +29,50 @@ import type {
     OffboardingTask,
     OnboardingDetail,
     OnboardingProgress,
+    OnboardingCategory,
     OnboardingTask,
     OnboardingTemplate,
     OnboardingTemplateItem,
     ResponsibleRole,
 } from '@/lib/types/lifecycle'
+import { ONBOARDING_CATEGORIES, RESPONSIBLE_ROLES } from '@/lib/types/lifecycle'
 import { excludeExited, isActiveNow } from '@/lib/hr/employment-window'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
+
+// Audyt 2026-08 — walidacja wejścia zadań onboardingowych.
+//
+// `addAdhocOnboardingTask` rzutowała surowy string z FormData na typ enumu przez `as`,
+// więc jedyną obroną był CHECK w bazie. Odrzucenie z bazy wracało do użytkownika jako
+// „Nie udało się dodać zadania." — komunikat, z którego nie wynikało ani co jest złe,
+// ani które pole. Whitelista robi to samo co CHECK, tylko po polsku i przed zapisem.
+const TASK_TITLE_MAX = 200
+
+function parseOnboardingCategory(raw: string | undefined): OnboardingCategory {
+    const value = (raw ?? 'other').trim()
+    if ((ONBOARDING_CATEGORIES as readonly string[]).includes(value)) {
+        return value as OnboardingCategory
+    }
+    throw new Error(`Nieznana kategoria zadania: "${value}".`)
+}
+
+function parseResponsibleRole(raw: string | undefined): ResponsibleRole {
+    const value = (raw ?? 'employee').trim()
+    if ((RESPONSIBLE_ROLES as readonly string[]).includes(value)) {
+        return value as ResponsibleRole
+    }
+    throw new Error(`Nieznana rola odpowiedzialna: "${value}".`)
+}
+
+/** Wspólna walidacja tytułu zadania/pozycji szablonu (NOT NULL w bazie, bez limitu długości). */
+function validateTaskTitle(raw: string | undefined | null): string {
+    const trimmed = (raw ?? '').trim()
+    if (trimmed.length < 1) throw new Error('Tytuł zadania jest wymagany.')
+    if (trimmed.length > TASK_TITLE_MAX) {
+        throw new Error(`Tytuł zadania za długi (max ${TASK_TITLE_MAX} znaków).`)
+    }
+    return trimmed
+}
 const BUCKET = 'lifecycle-docs'
 const MAX_ONBOARDING_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
 const MAX_EXIT_FILE_BYTES = 25 * 1024 * 1024 // 25 MB
@@ -497,18 +533,28 @@ export async function addTemplateItem(templateId: string, input: TemplateItemInp
         .maybeSingle()
     const nextPos = (maxPos?.position ?? -1) + 1
 
+    // Audyt 2026-08 — server action przyjmuje payload z sieci, więc typ `TemplateItemInput`
+    // niczego nie gwarantuje w runtime. Te same reguły co przy zadaniu ad-hoc, żeby
+    // odrzucenie z CHECK-a nie wracało jako bezradne „Nie udało się dodać items szablonu.".
+    const category = parseOnboardingCategory(input.category)
+    const responsibleRole = parseResponsibleRole(input.responsible_role)
+    const title = validateTaskTitle(input.title)
+    if (!Number.isInteger(input.due_offset_days)) {
+        throw new Error('Termin (dni od startu) musi być liczbą całkowitą.')
+    }
+
     const { data, error } = await supabase
         .from('onboarding_template_items')
         .insert({
             template_id: templateId,
             position: nextPos,
-            category: input.category,
-            title: input.title,
+            category,
+            title,
             description: input.description ?? null,
             due_offset_days: input.due_offset_days,
             requires_file: input.requires_file ?? false,
             course_slug: input.course_slug ?? null,
-            responsible_role: input.responsible_role,
+            responsible_role: responsibleRole,
             is_required: input.is_required ?? true,
         })
         .select('id')
@@ -524,13 +570,14 @@ export async function updateTemplateItem(itemId: string, updates: Partial<Templa
     const supabase = createClient()
 
     const patch: Record<string, unknown> = {}
-    if (updates.category !== undefined) patch.category = updates.category
-    if (updates.title !== undefined) patch.title = updates.title
+    // Patrz addTemplateItem — pola enumowe i tytuł walidujemy przed zapisem, nie po CHECK-u.
+    if (updates.category !== undefined) patch.category = parseOnboardingCategory(updates.category)
+    if (updates.title !== undefined) patch.title = validateTaskTitle(updates.title)
     if (updates.description !== undefined) patch.description = updates.description
     if (updates.due_offset_days !== undefined) patch.due_offset_days = updates.due_offset_days
     if (updates.requires_file !== undefined) patch.requires_file = updates.requires_file
     if (updates.course_slug !== undefined) patch.course_slug = updates.course_slug
-    if (updates.responsible_role !== undefined) patch.responsible_role = updates.responsible_role
+    if (updates.responsible_role !== undefined) patch.responsible_role = parseResponsibleRole(updates.responsible_role)
     if (updates.is_required !== undefined) patch.is_required = updates.is_required
 
     if (Object.keys(patch).length === 0) return
@@ -816,15 +863,14 @@ export async function completeOnboardingTask(formData: FormData): Promise<void> 
 export async function addAdhocOnboardingTask(formData: FormData): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
     const progressId = formData.get('progressId')?.toString()
-    const title = formData.get('title')?.toString()
-    const category = (formData.get('category')?.toString() ?? 'other') as OnboardingTask['category']
-    const responsibleRole = (formData.get('responsibleRole')?.toString() ?? 'employee') as ResponsibleRole
+    if (!progressId) throw new Error('progressId jest wymagany.')
+    const title = validateTaskTitle(formData.get('title')?.toString())
+    const category = parseOnboardingCategory(formData.get('category')?.toString())
+    const responsibleRole = parseResponsibleRole(formData.get('responsibleRole')?.toString())
     const dueDate = formData.get('dueDate')?.toString() || null
     const description = formData.get('description')?.toString() || null
     const requiresFile = formData.get('requiresFile') === 'true'
     const isRequired = formData.get('isRequired') !== 'false'
-
-    if (!progressId || !title) throw new Error('progressId i title są wymagane.')
 
     const supabase = createClient()
     const { data: maxPos } = await supabase

@@ -52,12 +52,18 @@ test('GET /support returns 200', async ({ page }) => {
     expect(response?.status()).toBe(200)
 })
 
-test('GET /api/health returns {status: "ok"}', async ({ request }) => {
+test('GET /api/health zwraca kontrakt healthcheck', async ({ request }) => {
+    // Audyt 2026-08: test sprawdzał `status === 'ok'` i pole `uptime`, których
+    // endpoint NIGDY nie zwracał (app/api/health/route.ts oddaje
+    // `{status: 'healthy'|'unhealthy', version, deployedAt, checks}`), więc opisywał
+    // kontrakt inny niż smoke test wdrożenia i inny niż `/api/health/__tests__`.
     const response = await request.get('/api/health')
     expect(response.status()).toBe(200)
     const body = await response.json()
-    expect(body.status).toBe('ok')
-    expect(typeof body.uptime).toBe('number')
+    expect(['healthy', 'degraded']).toContain(body.status)
+    expect(typeof body.version).toBe('string')
+    expect(typeof body.deployedAt).toBe('string')
+    expect(body.checks?.supabase).toBe('healthy')
 })
 
 test('GET /nonexistent-page-12345 returns 404 (or proper not-found)', async ({ page }) => {

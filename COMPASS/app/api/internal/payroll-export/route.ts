@@ -8,8 +8,10 @@ export const dynamic = 'force-dynamic'
 /**
  * H3.5: Payroll JSON export — strukturyzowane dane do payroll/Centrali.
  *
- * GET /api/internal/payroll-export?secret=$CRON_SECRET&year=2026&month=5
- *   - Wymaga CRON_SECRET (auth)
+ * GET /api/internal/payroll-export?year=2026&month=5
+ *   - Wymaga CRON_SECRET w nagłówku `Authorization: Bearer` (nie w URL-u —
+ *     query trafia do logów CF/proxy/Sentry; wariant `?secret=` wciąż działa,
+ *     ale tylko jako przeżytek, z ostrzeżeniem w logu)
  *   - Zwraca JSON z agregatami per pracownik dla danego miesiąca:
  *       - approved timesheet hours
  *       - approved leave days (per type: vacation, sick, parental, etc)
@@ -17,7 +19,8 @@ export const dynamic = 'force-dynamic'
  *       - payroll-ready summary
  *
  * Cron użycie (Coolify):
- *   curl -X GET "https://compass.dynaminds.pl/api/internal/payroll-export?secret=$CRON_SECRET&year=2026&month=5" \
+ *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+ *     "https://compass.dynaminds.pl/api/internal/payroll-export?year=2026&month=5" \
  *     -o /tmp/payroll-2026-05.json
  *
  * Format:
@@ -114,7 +117,7 @@ export const GET = withCronAuth(async (request, { admin }) => {
             .in('user_id', userIds),
         admin
             .from('attendance_records')
-            .select('user_id, date, status')
+            .select('user_id, date, status, location')
             .gte('date', monthStart)
             .lte('date', monthEnd)
             .in('user_id', userIds),
@@ -143,6 +146,7 @@ export const GET = withCronAuth(async (request, { admin }) => {
         user_id: string
         date: string
         status: string
+        location: 'onsite' | 'remote' | null
     }
     type HolidayRow = { date: string; name_pl: string }
 
@@ -208,14 +212,16 @@ export const GET = withCronAuth(async (request, { admin }) => {
             leaveDaysByType[l.leave_type] = (leaveDaysByType[l.leave_type] ?? 0) + count
         }
 
-        // Phase 18.7: kolumna hours_worked nie istnieje w attendance_records.
-        // Filtruję po samym status='present' (granularność: dzień obecny lub
-        // nie). Dokładniejsze hours przychodzą z timesheet_entries (osobne pole).
+        // Dzień obecności to `status='active'`, a miejsce pracy trzyma `location`
+        // (constraint `attendance_location_only_when_active`: location NOT NULL
+        // wyłącznie dla 'active'). Wcześniej filtrowaliśmy po statusie 'present',
+        // którego nie ma w `attendance_records_status_check` — obie kolumny
+        // eksportu były więc zawsze zerowe, mimo realnych danych w bazie.
+        // Godzin tu nie liczymy (brak kolumny) — te przychodzą z timesheet_entries.
+        const presentDays = empAtt.filter((a) => a.status === 'active')
         const attendanceDays = {
-            onsite: empAtt.filter((a) => a.status === 'present')
-                .filter((a) => empLeaves.every((l) => !(a.date >= l.start_date && a.date <= l.end_date)))
-                .length,
-            remote: empAtt.filter((a) => a.status === 'present').length,
+            onsite: presentDays.filter((a) => a.location === 'onsite').length,
+            remote: presentDays.filter((a) => a.location === 'remote').length,
         }
 
         return {

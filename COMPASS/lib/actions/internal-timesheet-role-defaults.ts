@@ -14,9 +14,9 @@ import { requireAdminAction, requireInternalOrAdminAction } from '@/lib/auth/int
 import { logAudit } from '@/lib/actions/audit'
 import { format } from 'date-fns'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
+import { blocksTimesheetHours } from '@/lib/hr/leave-attendance-statuses'
 import type { AppRole } from '@/lib/types/role'
 
-const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'holiday_in_lieu']
 
 export interface TimesheetRoleDefault {
     id: string
@@ -262,7 +262,7 @@ export async function applyDefaultsToTimesheet(
     const holidays = (holidaysRes.data ?? []) as PublicHolidayDate[]
     const blockedDates = new Set(
         ((attendanceRes.data ?? []) as Array<{ date: string; status: string }>)
-            .filter((a) => HOURS_BLOCKING_STATUSES.includes(a.status))
+            .filter((a) => blocksTimesheetHours(a.status))
             .map((a) => a.date),
     )
     const existingDates = new Set(

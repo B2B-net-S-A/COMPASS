@@ -146,6 +146,36 @@ describe('graph client', () => {
         }
     })
 
+    // Audyt 2026-08: `headers` na błędzie z SDK to surowy obiekt `Headers` z fetcha
+    // (GraphErrorHandler przypisuje `rawResponse.headers`), a nie zwykły rekord —
+    // odczyt indeksem zwracał zawsze undefined i `Retry-After` z throttlingu 429
+    // nigdy nie docierał do pętli ponowień.
+    describe('extractGraphErrorInfo', () => {
+        it('czyta Retry-After z obiektu Headers (kształt realnego SDK)', async () => {
+            const { extractGraphErrorInfo } = await loadClient()
+            const err = { statusCode: 429, headers: new Headers({ 'Retry-After': '180' }) }
+            expect(extractGraphErrorInfo(err)).toEqual({ statusCode: 429, retryAfterMs: 180_000 })
+        })
+
+        it('czyta Retry-After ze zwykłego rekordu, niezależnie od wielkości liter', async () => {
+            const { extractGraphErrorInfo } = await loadClient()
+            expect(extractGraphErrorInfo({ statusCode: 503, headers: { 'Retry-After': '30' } }))
+                .toEqual({ statusCode: 503, retryAfterMs: 30_000 })
+            expect(extractGraphErrorInfo({ statusCode: 429, headers: { 'retry-after': '5' } }))
+                .toEqual({ statusCode: 429, retryAfterMs: 5_000 })
+        })
+
+        it('pomija wartości bezużyteczne zamiast rzucać', async () => {
+            const { extractGraphErrorInfo } = await loadClient()
+            expect(extractGraphErrorInfo({ statusCode: 429 })).toEqual({ statusCode: 429 })
+            expect(extractGraphErrorInfo({ statusCode: 429, headers: new Headers() })).toEqual({ statusCode: 429 })
+            expect(extractGraphErrorInfo({ statusCode: 429, headers: { 'retry-after': '0' } })).toEqual({ statusCode: 429 })
+            expect(extractGraphErrorInfo({ statusCode: 429, headers: { 'retry-after': 'nigdy' } })).toEqual({ statusCode: 429 })
+            expect(extractGraphErrorInfo(null)).toEqual({})
+            expect(extractGraphErrorInfo('boom')).toEqual({})
+        })
+    })
+
     it('deadline obejmuje też łańcuch select()/responseType()', async () => {
         vi.useFakeTimers()
         process.env.GRAPH_REQUEST_TIMEOUT_MS = '1000'

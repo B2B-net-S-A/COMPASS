@@ -198,12 +198,43 @@ export interface GraphErrorInfo {
     retryAfterMs?: number
 }
 
+/**
+ * Audyt 2026-08: `headers` NIE jest zwykłym obiektem. GraphErrorHandler robi
+ * `gError.headers = rawResponse.headers` (node_modules/@microsoft/microsoft-graph-client/
+ * lib/src/GraphErrorHandler.js), czyli przypina surowy obiekt `Headers` z fetcha.
+ * Odczyt przez `headers['retry-after']` zwracał więc ZAWSZE undefined i wszystkie
+ * pętle ponowień (kalendarz, OOF, reguły skrzynki, wysyłka maili) cofały się do
+ * własnego backoffu, ignorując `Retry-After: 180` przy throttlingu 429.
+ *
+ * Czytamy trzy kształty, bo SDK bywa też mockowany zwykłym obiektem w testach:
+ * `Headers` (ma `.get`), `Map` i zwykły rekord. Nagłówki HTTP są case-insensitive,
+ * więc rekord przeglądamy po znormalizowanym kluczu.
+ */
+function readHeader(headers: unknown, name: string): string | undefined {
+    if (!headers || typeof headers !== 'object') return undefined
+    const lower = name.toLowerCase()
+
+    const getter = (headers as { get?: unknown }).get
+    if (typeof getter === 'function') {
+        const value = (getter as (k: string) => unknown).call(headers, lower)
+        return typeof value === 'string' ? value : undefined
+    }
+
+    for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+        if (key.toLowerCase() !== lower) continue
+        if (typeof value === 'string') return value
+        if (typeof value === 'number') return String(value)
+        if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+    }
+    return undefined
+}
+
 export function extractGraphErrorInfo(err: unknown): GraphErrorInfo {
     if (typeof err !== 'object' || err === null) return {}
-    const e = err as { statusCode?: unknown; headers?: Record<string, unknown> }
+    const e = err as { statusCode?: unknown; headers?: unknown }
     const info: GraphErrorInfo = {}
     if (typeof e.statusCode === 'number') info.statusCode = e.statusCode
-    const retryAfterRaw = e.headers?.['retry-after'] ?? e.headers?.['Retry-After']
+    const retryAfterRaw = readHeader(e.headers, 'retry-after')
     if (typeof retryAfterRaw === 'string') {
         const seconds = Number.parseInt(retryAfterRaw, 10)
         if (Number.isFinite(seconds) && seconds > 0) {

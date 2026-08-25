@@ -46,10 +46,20 @@ export function ConsultantTypeahead({
         let cancelled = false
         const timer = setTimeout(async () => {
             setIsLoading(true)
-            const res = await searchConsultants(query)
-            if (cancelled) return
-            setIsLoading(false)
-            if (res.success) setResults(res.data)
+            // Audyt 2026-08 (UI): bez try/finally rzut z akcji zostawiał wieczne
+            // „Wyszukiwanie...". Rzuca realnie w dwóch sytuacjach: zerwana sieć
+            // oraz rozjazd deployu (stara karta woła nieistniejącą już akcję —
+            // wtedy `res` bywa `undefined`, a `res.success` samo w sobie rzuca).
+            try {
+                const res = await searchConsultants(query)
+                if (cancelled) return
+                if (res?.success) setResults(res.data)
+                else setResults([])
+            } catch {
+                if (!cancelled) setResults([])
+            } finally {
+                if (!cancelled) setIsLoading(false)
+            }
         }, 300)
         return () => {
             cancelled = true

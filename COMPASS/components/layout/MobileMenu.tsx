@@ -45,11 +45,18 @@ export function MobileMenu({ role }: MobileMenuProps) {
     const { t } = useTranslation()
     const [moreOpen, setMoreOpen] = useState(false)
 
+    // Audyt 2026-08 (UI): pierwszy kafelek prowadził do /home niezależnie od roli,
+    // a middleware (middleware.ts:135) odsyła z /home na /internal cztery role ze
+    // strefy HR (internal, finanse, manager, talent_community). Efekt: gwarantowane
+    // przekierowanie przy każdym kliknięciu i kafelek, który nigdy nie podświetlał
+    // się jako aktywny. Kierujemy je od razu tam, gdzie i tak lądują.
+    const landingHref = role === 'admin' || role === 'consultant' ? '/home' : '/internal'
+
     // 4 fixed bottom-nav slots + More drawer (5th slot).
     // Learning + League są coming-soon, więc bottom nav promuje pozostałe
     // platform modules: Incubator + Support (przeniesione z drawer'a).
     const bottomNav: NavItem[] = [
-        { name: t('mobile_home'), href: '/home', icon: LayoutDashboard },
+        { name: t('mobile_home'), href: landingHref, icon: LayoutDashboard },
         { name: t('mobile_news'), href: '/news', icon: Newspaper },
         { name: t('mobile_incubator'), href: '/incubator', icon: Lightbulb },
         { name: t('mobile_support'), href: '/support', icon: LifeBuoy },

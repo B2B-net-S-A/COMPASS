@@ -16,6 +16,9 @@ import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/push/dispatch'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
+import { blocksTimesheetHours } from '@/lib/hr/leave-attendance-statuses'
+import { recomputeTimesheetHashIfSet } from '@/lib/hr/recompute-timesheet-hash'
+import { selectInChunks } from '@/lib/supabase/select-in-chunks'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
 import {
     buildTimesheetRosterView,
@@ -78,7 +81,6 @@ export interface TimesheetWithEntriesAndUser extends TimesheetWithEntries {
     user_email: string
 }
 
-const HOURS_BLOCKING_STATUSES = ['vacation', 'sick_leave', 'parental_leave', 'unpaid_leave', 'holiday_in_lieu']
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -115,7 +117,7 @@ async function checkAttendanceAllowsWork(
         .eq('user_id', userId)
         .eq('date', workDate)
         .maybeSingle<{ status: string }>()
-    if (data && HOURS_BLOCKING_STATUSES.includes(data.status)) {
+    if (blocksTimesheetHours(data?.status)) {
         throw new ExpectedError(
             `Nie możesz logować godzin na ${workDate} — ten dzień ma status urlopowy/L4. Anuluj wniosek lub wybierz inny dzień.`,
         )
@@ -374,7 +376,7 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<Action
         const holidays = (holidaysRes.data ?? []) as PublicHolidayDate[]
         const blockedDates = new Set(
             ((attendanceRes.data ?? []) as Array<{ date: string; status: string }>)
-                .filter((a) => HOURS_BLOCKING_STATUSES.includes(a.status))
+                .filter((a) => blocksTimesheetHours(a.status))
                 .map((a) => a.date),
         )
         const existingDates = new Set(
@@ -457,10 +459,47 @@ export interface UpdateEntryInput {
     overtimeReason?: string | null
 }
 
+/**
+ * Audyt 2026-08 — wspólny guard dla self-service edycji/usuwania wpisu.
+ *
+ * `addEntry` sprawdzało właściciela i status „draft"; `updateEntry` i `deleteEntry`
+ * nie czytały nagłówka w ogóle i opierały się wyłącznie na RLS. Polityki
+ * `entries_update_via_draft_timesheet` / `entries_delete_via_draft_timesheet`
+ * mają jednak gałąź `OR is_admin()`, więc administrator (np. edytując WŁASNY
+ * zaakceptowany timesheet) omijał ograniczenie statusu i unieważniał `pdf_hash`.
+ * Do edycji cudzych timesheetów w statusie „submitted" służy ścieżka approvera.
+ */
+async function loadOwnEditableEntry(
+    supabase: ReturnType<typeof createClient>,
+    ctx: InternalAuthContext,
+    entryId: string,
+): Promise<{ timesheetId: string; userId: string }> {
+    const { data, error } = await supabase
+        .from('timesheet_entries')
+        .select('id, timesheet_id, timesheets!inner(user_id, status)')
+        .eq('id', entryId)
+        .single<{
+            id: string
+            timesheet_id: string
+            timesheets: { user_id: string; status: TimesheetStatus }
+        }>()
+    if (error || !data) throw new ExpectedError('Wpis nie istnieje.')
+    if (data.timesheets.user_id !== ctx.userId && !ctx.isAdmin) {
+        throw new ExpectedError('To nie jest Twój timesheet.')
+    }
+    if (data.timesheets.status !== 'draft') {
+        throw new ExpectedError(
+            'Można edytować tylko timesheet w statusie "draft". Zaakceptowany najpierw odblokuj.',
+        )
+    }
+    return { timesheetId: data.timesheet_id, userId: data.timesheets.user_id }
+}
+
 export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult<void>> {
     return runAction('updateEntry', async () => {
         const ctx = await requireInternalOrAdminAction()
         const supabase = createClient()
+        await loadOwnEditableEntry(supabase, ctx, input.entryId)
         const updates: Record<string, unknown> = {}
         if (input.workDate !== undefined) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
@@ -500,8 +539,9 @@ export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult
 
 export async function deleteEntry(entryId: string): Promise<ActionResult<void>> {
     return runAction('deleteEntry', async () => {
-        await requireInternalOrAdminAction()
+        const ctx = await requireInternalOrAdminAction()
         const supabase = createClient()
+        await loadOwnEditableEntry(supabase, ctx, entryId)
         const { error } = await supabase.from('timesheet_entries').delete().eq('id', entryId)
         if (error) throw new Error(`Błąd usunięcia wpisu: ${error.message}`)
     })
@@ -853,7 +893,7 @@ async function assertApproverDateNotBlocked(
         .eq('user_id', userId)
         .eq('date', workDate)
         .maybeSingle<{ status: string }>()
-    if (data && HOURS_BLOCKING_STATUSES.includes(data.status)) {
+    if (blocksTimesheetHours(data?.status)) {
         throw new ExpectedError(
             `Nie można logować godzin na ${workDate} — ten dzień ma status urlopowy/L4.`,
         )
@@ -1203,7 +1243,7 @@ export async function copyPreviousMonthEntries(
                 .in('date', inserts.map((i) => i.work_date))
             const blockedDates = new Set(
                 ((blockedRes.data ?? []) as Array<{ date: string; status: string }>)
-                    .filter((a) => HOURS_BLOCKING_STATUSES.includes(a.status))
+                    .filter((a) => blocksTimesheetHours(a.status))
                     .map((a) => a.date),
             )
             const filtered = inserts.filter((i) => !blockedDates.has(i.work_date))
@@ -1394,14 +1434,26 @@ export async function listAllTimesheetsForMonth(
 
     const headers = (data ?? []) as Array<TimesheetHeader & { profiles: { full_name: string | null; email: string } | null }>
 
-    // Fetch entries per timesheet (sequential for simplicity; small N)
+    // Audyt 2026-08 — było jedno zapytanie NA KAŻDY timesheet (przy pełnej firmie
+    // ~46 round-tripów na otwarcie kolejki). Teraz jedno zapytanie na paczkę id,
+    // paczkowane tak, żeby nie rozdąć URL-a (incydent kanbanu z 2026-08-25).
+    const entriesByTimesheet = new Map<string, TimesheetEntryRow[]>()
+    if (headers.length > 0) {
+        const rows = await selectInChunks<TimesheetEntryRow>({
+            source: 'timesheet_entries',
+            column: 'timesheet_id',
+            ids: headers.map((h) => h.id),
+            query: () => admin.from('timesheet_entries').select('*').order('work_date'),
+        })
+        for (const e of rows) {
+            const bucket = entriesByTimesheet.get(e.timesheet_id)
+            if (bucket) bucket.push(e)
+            else entriesByTimesheet.set(e.timesheet_id, [e])
+        }
+    }
+
     const existing: TimesheetWithEntriesAndUser[] = []
     for (const h of headers) {
-        const { data: entries } = await admin
-            .from('timesheet_entries')
-            .select('*')
-            .eq('timesheet_id', h.id)
-            .order('work_date')
         existing.push({
             id: h.id,
             user_id: h.user_id,
@@ -1415,9 +1467,7 @@ export async function listAllTimesheetsForMonth(
             pdf_hash: h.pdf_hash,
             created_at: h.created_at,
             updated_at: h.updated_at,
-            // Phase 27a — cast through `unknown` because Supabase-generated types
-            // don't yet know about override_* columns (regenerated after migration apply).
-            entries: ((entries ?? []) as unknown) as TimesheetEntryRow[],
+            entries: entriesByTimesheet.get(h.id) ?? [],
             user_full_name: h.profiles?.full_name ?? null,
             user_email: h.profiles?.email ?? '',
         })
@@ -1627,6 +1677,12 @@ export async function adminOverrideTimesheetEntry(
             .eq('id', input.entryId)
         if (error) throw new Error(`Błąd zapisania nadgodzin: ${error.message}`)
 
+        // Audyt 2026-08 — korekta godzin na ZAAKCEPTOWANYM timesheecie unieważniała
+        // `pdf_hash` z H2.8: trasa PDF zwracała 409 i logowała TIMESHEET_HASH_MISMATCH,
+        // jakby ktoś grzebał w bazie. Hash odświeżamy tak samo, jak robi to moduł
+        // urlopowy przy auto-wpisach (no-op dla szkiców).
+        await recomputeTimesheetHashIfSet(admin, entry.timesheet_id)
+
         await logAudit(ctx.userId, 'TIMESHEET_OVERTIME_OVERRIDE', {
             entry_id: input.entryId,
             target_user_id: entry.timesheets.user_id,
@@ -1686,6 +1742,9 @@ export async function clearOvertimeOverride(entryId: string): Promise<ActionResu
             })
             .eq('id', entryId)
         if (error) throw new Error(`Błąd cofnięcia override: ${error.message}`)
+
+        // Patrz komentarz w adminOverrideTimesheetEntry — ta sama pułapka z pdf_hash.
+        await recomputeTimesheetHashIfSet(admin, entry.timesheet_id)
 
         await logAudit(ctx.userId, 'TIMESHEET_OVERTIME_OVERRIDE_CLEARED', {
             entry_id: entryId,

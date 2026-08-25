@@ -7,6 +7,25 @@ import type { DbRole } from '@/lib/types/role'
 export const EMPLOYMENT_STATUSES = ['pending', 'onboarding', 'active', 'offboarding', 'exited'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number]
 
+/**
+ * Role, dla których wolno zdefiniować szablon onboardingu.
+ *
+ * Audyt 2026-08-25: pole `target_role` było typowane jako pełne `DbRole`, a
+ * `onboarding_templates_target_role_check` na prodzie NIE dopuszcza `admin`.
+ * Typ obiecywał więc wartość, po której insert odbiłby się od bazy — a w prod
+ * błąd akcji serwerowej jest maskowany do nieczytelnego „Server Components
+ * render", więc przyczyna byłaby droga do znalezienia. Lista poniżej jest 1:1
+ * z CHECK-iem; `satisfies` pilnuje, że każda pozycja to nadal realna rola.
+ */
+export const ONBOARDING_TARGET_ROLES = [
+    'consultant',
+    'internal',
+    'finanse',
+    'manager',
+    'talent_community',
+] as const satisfies readonly DbRole[]
+export type OnboardingTargetRole = (typeof ONBOARDING_TARGET_ROLES)[number]
+
 // ─── Onboarding ──────────────────────────────────────────────────────────
 export const ONBOARDING_CATEGORIES = ['docs', 'access', 'training', 'meeting', 'equipment', 'other'] as const
 export type OnboardingCategory = (typeof ONBOARDING_CATEGORIES)[number]
@@ -17,7 +36,7 @@ export type ResponsibleRole = (typeof RESPONSIBLE_ROLES)[number]
 export interface OnboardingTemplate {
     id: string
     name: string
-    target_role: DbRole
+    target_role: OnboardingTargetRole
     description: string | null
     is_default: boolean
     is_archived: boolean

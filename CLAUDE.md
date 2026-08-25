@@ -366,8 +366,10 @@ z ostrzeżeniem). Nowa trasa cron **zawsze** przez `withCronHeartbeat` — patrz
 1. **Zadanie Coolify wymaga nazwy kontenera.** Compose ma >1 serwis; puste `scheduled_tasks.container`
    = zadanie pada mimo działającego schedulera. To była przyczyna martwych cronów przez tygodnie.
 2. **`action=cron-enable` w workflow „Coolify Ops" włącza WSZYSTKIE zadania naraz.** Po każdym takim
-   przebiegu trzeba ręcznie wyłączyć te, które mają zostać martwe (`inbox-ingest`,
-   bliźniak `legal-monitor-alerts`).
+   przebiegu trzeba ręcznie wyłączyć te, które mają zostać martwe. Lista zadań **bez trasy**
+   (włączone tikają w 404): `inbox-ingest` (Faza 44), `tech-map-rotation` (Faza 46d),
+   `clock-*` (audyt C3) oraz bliźniak `legal-monitor-alerts` (harmonogram żyje w GH Actions).
+   Zanim uznasz, że któreś zadanie jest potrzebne — sprawdź `ls COMPASS/app/api/cron`.
 3. **Nie stawiaj drugiego schedulera dla trasy bez dedupu.** Tygodniowy digest monitoringu prawnego
    nie ma stempla — dwa schedulery = dwa maile. Przypomnienie o timesheecie **ma** rezerwację
    w `timesheet_reminder_log` (UNIQUE per user/rok/miesiąc), więc tam redundancja jest darmowa.
@@ -404,11 +406,12 @@ Odstępstwa Compassa:
 - **`GIT_SHA`:** `deploy.yml` PATCH-uje env vault Coolify przy każdym pushu (nie magic var).
 - **CSP:** `next.config.mjs` wystawia `Content-Security-Policy` (enforced) + `…-Report-Only`
   obok HSTS / X-Frame-Options / nosniff / Referrer-Policy / Permissions-Policy.
-- **Alloy (log shipper do Loki):** komentarz w `docker-compose.yml` mówi o bramkowaniu profilem,
-  ale ⚠ **w pliku NIE MA klucza `profiles:`** — usługa nie jest profilowana i wstaje przy każdym
-  `docker compose up`, niezależnie od `COMPOSE_PROFILES`. Bez `GRAFANA_LOKI_*` w env vault
-  kontener nie ma dokąd wysyłać logów. Zanim zaczniesz debugować „czemu nie ma logów w Loki",
-  sprawdź jedno i drugie.
+- **Alloy (log shipper do Loki) NIE jest bramkowany profilem.** W `docker-compose.yml` nie ma
+  klucza `profiles:` — guard usunięto świadomie w `4d75c0e` („Coolify doesn't honor
+  COMPOSE_PROFILES"), więc kontener wstaje przy każdym `docker compose up`, niezależnie od
+  `COMPOSE_PROFILES`. **Nie przywracaj `profiles:`** — poprzednio to po cichu wyłączyło shipping.
+  Bez `GRAFANA_LOKI_*` w env vault kontener nie ma dokąd wysyłać logów. Zanim zaczniesz debugować
+  „czemu nie ma logów w Loki", sprawdź jedno i drugie.
 
 ---
 
@@ -422,6 +425,31 @@ Odstępstwa Compassa:
 | **Hub Kontraktorów** (`/internal/kontraktorzy`) | sam `redirect()` | bieżący ekran to **People Ops** (`/internal/people`). Panele `KontraktorzyHub` (~840 lin.) są nieosiągalne. |
 | **Compliance** (`/admin/compliance`) | redirect na `/home` | tabele `um_*` zostały (RODO). |
 | **Work Clock** | **USUWANY** (audyt C3) | UI, trasy `app/api/clock/*` i crony `clock-*` znikają. Tabele `work_clock_*` zostają w bazie (eksport RODO w `lib/gdpr/subject-data.ts` z nich czyta). ⚠ Po deployu **wyłącz zadania `clock-*` w Coolify** — inaczej tikają w 404. |
+
+### Odwrotna pułapka: Consultant Success **żyje** na produkcji
+
+`lib/consultant-success/` + `components/consultant-success/` + 2 trasy cron ≈ **4000 linii**.
+Domyślne wartości flag w `lib/consultant-success/flags.ts` to `false`, więc z samego kodu moduł
+wygląda na wyłączony — **na produkcji jest włączony i tika**. Dowód (odczyt z prod 2026-08-25):
+`contractor_success_job_state` ma wiersz `consultant_success_plan`, `run_count = 15`,
+`last_success_at = 2026-08-25 04:10`. Obie trasy stemplują `job_state` **dopiero po** przejściu
+guardu flag, więc ten wiersz dowodzi, że `CONSULTANT_SUCCESS_ENABLED`
+i `CONSULTANT_SUCCESS_AUTOMATIONS_ENABLED` są w vaulcie ustawione na `true`.
+
+Dziś nic z tego nie wychodzi na zewnątrz, ale **nie dlatego, że kod jest martwy — dlatego, że nikt
+nie jest objęty monitoringiem**: `contractor_success_settings` ma 683 wiersze i **wszystkie**
+z `monitoring_status = 'inactive'`, a planner wybiera wyłącznie `'active'`
+(`planner.ts`, `.eq('monitoring_status','active')`). Stąd `contractor_success_deliveries` /
+`contractor_pulse_requests` / `contractor_pulse_responses` = **0 wierszy**.
+**Przełączenie jednego kontraktora na `active` uruchamia realną wysyłkę maili do ludzi.**
+
+Czego z bazy **nie widać**: stanu `CONSULTANT_SUCCESS_SHADOW_MODE` i tego, czy
+`consultant-success-dispatch` ma w ogóle zadanie w Coolify (nie ma własnego wiersza w `job_state`,
+co pasuje zarówno do „brak zadania", jak i do „wychodzi na `skipped`"). Sprawdź w env vault
+i w `scheduled_tasks`, zanim cokolwiek włączysz.
+
+⚠ **Nie kasuj tego katalogu jako „martwego kodu" na podstawie domyślnych wartości flag.**
+Stan flag jest w env vault Coolify, nie w `flags.ts`.
 
 ---
 

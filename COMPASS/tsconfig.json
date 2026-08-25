@@ -1,5 +1,10 @@
 {
   "compilerOptions": {
+    // Audyt 2026-08: brak `target` = domyślny ES5, przez co `for...of` po Set/Map
+    // wywalało się na TS2802 i w repo narosło ~46 obejść `Array.from(...)`.
+    // `noEmit: true` + kompilacja przez SWC (Next) znaczy, że ta wartość steruje
+    // WYŁĄCZNIE typecheckiem — nie zmienia ani jednego bajtu bundla.
+    "target": "es2022",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,

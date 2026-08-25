@@ -6,7 +6,11 @@ const sendPushToUserId = vi.fn(async () => ({ sent: 1, failed: 0 }))
 vi.mock('@/lib/push/dispatch', () => ({ sendPushToUserId: (...a: unknown[]) => sendPushToUserId(...(a as [])) }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 
-import { dispatchGenericAlert, type GenericAlertPayload } from '@/lib/notifications/alert-dispatch'
+import {
+    dispatchGenericAlert,
+    resolveAlertRecipients,
+    type GenericAlertPayload,
+} from '@/lib/notifications/alert-dispatch'
 
 interface FakeOpts {
     profiles?: Array<{ id: string; email: string | null; full_name: string | null }>
@@ -100,5 +104,66 @@ describe('dispatchGenericAlert — attempted vs delivered', () => {
         })
         const res = await dispatchGenericAlert(admin, ['u1', 'u1', 'u2', ''], payload(true), 'ev')
         expect(res).toEqual({ attempted: 2, delivered: 2 })
+    })
+})
+
+
+/**
+ * Audyt 2026-08 — lista odbiorców to CSV z UUID-ami w `system_settings`, bez
+ * klucza obcego. Nikt jej nie czyści, kiedy człowiek odchodzi z firmy.
+ */
+describe('resolveAlertRecipients — konfiguracja kontra rzeczywistość', () => {
+    const CSV = (raw: string | null | undefined) =>
+        (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+
+    function settingsAdmin(value: string | null, profiles: Array<{ id: string; employment_status: string | null }>) {
+        return {
+            from(table: string) {
+                if (table === 'system_settings') {
+                    return {
+                        select: () => ({
+                            eq: () => ({ maybeSingle: async () => ({ data: value === null ? null : { value }, error: null }) }),
+                        }),
+                    }
+                }
+                return { select: () => ({ in: async () => ({ data: profiles, error: null }) }) }
+            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+    }
+
+    it('odsiewa zarchiwizowanych i nieistniejących, zostawia aktywnych', async () => {
+        const admin = settingsAdmin('aktywny,odszedl,duch', [
+            { id: 'aktywny', employment_status: 'active' },
+            { id: 'odszedl', employment_status: 'exited' },
+        ])
+        expect(await resolveAlertRecipients(admin, 'klucz', ['zapas'], CSV)).toEqual(['aktywny'])
+    })
+
+    it('gdy po odsianiu nie zostaje nikt — wraca fallback, alert nie ginie', async () => {
+        const admin = settingsAdmin('odszedl', [{ id: 'odszedl', employment_status: 'exited' }])
+        expect(await resolveAlertRecipients(admin, 'klucz', ['zapas'], CSV)).toEqual(['zapas'])
+    })
+
+    it('pusta konfiguracja = fallback (bez odpytywania profili)', async () => {
+        const admin = settingsAdmin(null, [])
+        expect(await resolveAlertRecipients(admin, 'klucz', ['zapas', 'zapas', ''], CSV)).toEqual(['zapas'])
+    })
+
+    it('awaria odczytu profili nie wycisza alertu — jedzie wg konfiguracji', async () => {
+        const admin = {
+            from(table: string) {
+                if (table === 'system_settings') {
+                    return {
+                        select: () => ({
+                            eq: () => ({ maybeSingle: async () => ({ data: { value: 'a,b' }, error: null }) }),
+                        }),
+                    }
+                }
+                return { select: () => ({ in: async () => ({ data: null, error: { message: 'boom' } }) }) }
+            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+        expect(await resolveAlertRecipients(admin, 'klucz', ['zapas'], CSV)).toEqual(['a', 'b'])
     })
 })

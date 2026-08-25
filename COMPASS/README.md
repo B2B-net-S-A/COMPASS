@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# COMPASS
 
-## Getting Started
+Wewnętrzna aplikacja HR B2B Network: karta pracy, urlopy, premie, onboarding
+i exit, mapa technologiczna klientów, skrzynka zgłoszeń, monitoring prawny.
+Next.js 14 (App Router) + Supabase. Produkcja: **https://compass.dynaminds.pl**.
 
-First, run the development server:
+> Poprzednia wersja tego pliku była nietkniętym szablonem `create-next-app` —
+> mówiła o porcie 3000, edytowaniu `app/page.tsx` i wdrażaniu na Vercela.
+> Żadna z tych rzeczy nie jest prawdą o tym repozytorium.
+
+## Gdzie co jest
+
+| | |
+|---|---|
+| Aplikacja | `COMPASS/` (to ten katalog — repozytorium ma jeszcze `docker-compose.yml` i `.github/` w korzeniu) |
+| Zasady projektu, fazy, pułapki | [`../CLAUDE.md`](../CLAUDE.md) — czytaj PRZED zmianami |
+| Historia faz | [`../docs/historia-faz.md`](../docs/historia-faz.md) |
+| Migracje SQL | `supabase/migrations/` (nigdy nie edytuj już zaaplikowanej) |
+
+## Uruchomienie lokalne
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+cp .env.local.example .env.local   # uzupełnij klucze Supabase
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Aplikacja w kontenerze słucha na **10000** (`APP_PORT` w compose); `npm run dev`
+zostaje na domyślnym porcie Next.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Kontrola jakości
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint        # next lint
+npx tsc --noEmit    # typecheck
+npm test            # testy jednostkowe (Vitest)
+npm run test:e2e    # Playwright — WYMAGA .env.test, patrz niżej
+```
 
-## Learn More
+CI (`.github/workflows/build-check.yml`) bramkuje lint + typecheck + testy + build
+i jest wymagany do merge'a. `next build` ma świadomie wyłączony typecheck
+(`next.config.mjs`) — faza sprawdzania typów OOM-owała na build-hoście, więc
+odpowiada za nią wyłącznie CI.
 
-To learn more about Next.js, take a look at the following resources:
+**E2E nie mają osobnego środowiska.** Zestaw zawiera testy piszące, a `.env.test`
+wskazany na produkcję oznacza testy na danych 46 pracowników. Konta testowe
+zakłada się ręcznie — patrz `.env.test.example` i `e2e/helpers/test-users.ts`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Wdrożenie
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`git push origin main` → GitHub Actions woła webhook Coolify → Coolify buduje obraz
+z repozytorium i restartuje → smoke test `/api/health` sprawdza zgodność `version`
+z wdrażanym commitem. Rollback: panel Coolify → Deployments → Redeploy poprzedniego.
+Szczegóły i procedury operacyjne: `CLAUDE.md` w korzeniu repozytorium.

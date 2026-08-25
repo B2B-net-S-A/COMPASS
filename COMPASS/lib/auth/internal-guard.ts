@@ -5,6 +5,7 @@
 import { ExpectedError, SessionExpiredError } from '@/lib/actions/expected-error'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { perRequestCache } from '@/lib/utils/request-cache'
 import {
     canAccessInternalZone,
     canManageInbox,
@@ -47,7 +48,16 @@ interface AuthContextBase {
     canViewLegalMonitor: boolean
 }
 
-async function loadAuthContext(): Promise<AuthContextBase | null> {
+/**
+ * Audyt 2026-08: owinięte w `cache()` Reacta, czyli memoizacja NA ŻĄDANIE.
+ * Jeden render zakładki strefy HR woła kilka guardów (layout + strona + sekcje),
+ * a każdy z nich robił własne `auth.getUser()` plus własny SELECT po `profiles` —
+ * do sześciu par zapytań na jedno wejście na stronę, wszystkie z identycznym wynikiem.
+ * Poza zakresem żądania `cache` po prostu nie memoizuje, więc najgorszy przypadek
+ * to dzisiejsze zachowanie; nie ma tu ryzyka przeterminowanego kontekstu, bo rola
+ * nie zmienia się w trakcie obsługi jednego żądania.
+ */
+const loadAuthContext = perRequestCache(async function loadAuthContext(): Promise<AuthContextBase | null> {
     const supabase = createClient()
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user || !user.email) return null
@@ -74,7 +84,7 @@ async function loadAuthContext(): Promise<AuthContextBase | null> {
         canViewTechMap: profile?.can_view_tech_map === true,
         canViewLegalMonitor: profile?.can_view_legal_monitor === true,
     }
-}
+})
 
 function buildCtx(base: AuthContextBase): InternalAuthContext {
     return {

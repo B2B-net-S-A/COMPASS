@@ -1,6 +1,15 @@
 /**
- * Test user credential helpers.
- * Loads from .env.test (gitignored) — populated by scripts/setup-test-users.ts.
+ * Dane logowania kont testowych. Czytane z `.env.test` (poza repo).
+ *
+ * Audyt 2026-08: i ten plik, i `.env.test.example` odsyłały do
+ * `scripts/setup-test-users.ts`, którego w repo NIE MA — nie da się więc
+ * przygotować zestawu wg instrukcji. Konta zakłada się dziś ręcznie
+ * (Administracja HR → Pracownicy → zaproś, albo Supabase Dashboard → Auth),
+ * a ich adresy i hasło wpisuje do `.env.test`.
+ *
+ * UWAGA: nie ma środowiska testowego. Wskazanie `.env.test` na produkcję
+ * oznacza testy przeciw danym 46 pracowników, a zestaw zawiera testy PISZĄCE
+ * (e2e/04-rls-database.spec.ts robi POST /auth/v1/signup).
  */
 
 import { type Page } from '@playwright/test'
@@ -14,7 +23,10 @@ export interface TestUser {
 function need(name: string): string {
     const v = process.env[name]
     if (!v || v.startsWith('TODO')) {
-        throw new Error(`Missing ${name} in .env.test — run scripts/setup-test-users.ts first`)
+        throw new Error(
+            `Brak ${name} w .env.test — załóż konta testowe ręcznie i uzupełnij plik ` +
+            `(wzór: .env.test.example).`,
+        )
     }
     return v
 }

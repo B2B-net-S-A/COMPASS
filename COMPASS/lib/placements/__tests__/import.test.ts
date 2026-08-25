@@ -40,9 +40,16 @@ describe('computeBonusFields', () => {
         expect(f.recruiterBonusAmount).toBe(1500)
     })
 
-    it('eligibility date = start + 21 business days (weekends skipped)', () => {
-        // 2026-04-01 is a Wednesday → +21 business days = 2026-04-30 (Thursday).
-        expect(computeBonusFields(row()).bonusEligibleDate).toBe('2026-04-30')
+    it('eligibility date = start + 21 dni roboczych (weekendy ORAZ święta)', () => {
+        // 2026-04-01 to środa. Samo pomijanie weekendów dawało 2026-04-30 — ale
+        // w oknie są trzy święta (6.04 Poniedziałek Wielkanocny, 1.05, 3.05 w niedzielę),
+        // więc realny 21. dzień roboczy to poniedziałek 2026-05-04.
+        expect(computeBonusFields(row()).bonusEligibleDate).toBe('2026-05-04')
+    })
+
+    it('okno bez świąt zachowuje się jak dotąd', () => {
+        // 2026-09-01 (wt) + 21 dni roboczych — wrzesień nie ma świąt.
+        expect(computeBonusFields(row({ startDate: '2026-09-01' })).bonusEligibleDate).toBe('2026-09-30')
     })
 
     it('recruiter tier boundaries: <=40 → tier1/1000, =50 → tier3/2000', () => {
