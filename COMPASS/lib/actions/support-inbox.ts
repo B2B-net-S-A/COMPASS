@@ -82,6 +82,9 @@ export async function listInboxTickets(filter?: {
 
         const { data: tickets, error } = await query
         if (error) throw error
+        // Jak niżej przy meta: null bez błędu ≠ pusta lista — to sygnał, że
+        // odpowiedź nie zmaterializowała się w runtime (incydent 2026-08-25).
+        if (tickets === null) throw new Error('Brak odpowiedzi z support_tickets (data=null bez błędu)')
 
         const ticketRows = (tickets ?? []) as Array<{
             id: string
