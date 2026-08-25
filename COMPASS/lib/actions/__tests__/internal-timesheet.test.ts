@@ -27,7 +27,7 @@ vi.mock('@/lib/email', () => ({
     sendTimesheetSubmitted: vi.fn(async () => ({ success: true })),
 }))
 vi.mock('@/lib/teams/webhook', () => ({ postToTeamsAlert: vi.fn(async () => {}) }))
-vi.mock('@/lib/actions/push-subscriptions', () => ({
+vi.mock('@/lib/push/dispatch', () => ({
     sendPushToUserId: vi.fn(async () => ({ success: true })),
 }))
 

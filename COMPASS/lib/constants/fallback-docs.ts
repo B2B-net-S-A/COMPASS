@@ -47,7 +47,7 @@ export const FALLBACK_DOCS: Record<string, FallbackDoc> = {
 <li><strong>Recommendation</strong> SUBMIT / REVIEW / HOLD / REJECT</li>
 </ul>
 <h2>Komunikacja</h2>
-<p>Pisz do Centrali przez zakładkę „Wiadomości". Konsultanci nie mogą bezpośrednio pisać do siebie nawzajem — kontakt zawsze przez Centralę lub w broadcast'ach.</p>
+<p>W sprawach bieżących pisz na <strong>administracja@b2bnetwork.pl</strong> albo złóż zgłoszenie w Support Center. Konsultanci nie kontaktują się bezpośrednio między sobą — zawsze przez Centralę.</p>
 <h2>Faktury</h2>
 <p>Faktury B2B przesyłaj w PDF (max 10 MB) przez „Dokumenty → Faktury". Status: złożona → zweryfikowana → zatwierdzona → opłacona.</p>
 <h2>Program lojalnościowy M3</h2>

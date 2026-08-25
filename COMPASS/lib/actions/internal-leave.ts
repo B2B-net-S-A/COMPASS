@@ -10,6 +10,7 @@ import {
     requireLeaveApproverAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { logSystemAudit } from '@/lib/audit/system-log'
 import {
     HR_LEAVE_TYPE_LABEL,
     sendLeaveCancelledByUser,
@@ -29,7 +30,7 @@ import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sy
 import { createForwardRule } from '@/lib/mailbox/graph-inbox-rules'
 import { planForwardRuleEdit, shouldForwardBeActive } from '@/lib/oof/forward-window'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import {
     totalVacationDaysUsed,
     workingDaysInLeave,
@@ -535,6 +536,45 @@ export async function uploadLeaveProof(formData: FormData): Promise<{ path: stri
     if (error) throw new Error(`Upload nieudany: ${error.message}`)
 
     return { path }
+}
+
+/**
+ * Audyt 2026-08 (A4.1): `leave_requests.documentation_url` trzyma GOŁĄ ścieżkę
+ * w prywatnym buckecie `documents`, a LeaveQueue renderowała ją wprost w href —
+ * kadry klikały „Załącznik" i dostawały 404. Upload i odczyt muszą być naprawione
+ * razem, inaczej funkcja nadal nie działa, tylko w drugą stronę.
+ *
+ * Dostęp: właściciel wniosku albo osoba akceptująca (admin / manager / finanse) —
+ * to one weryfikują zwolnienie przy decyzji. Link ważny 5 minut, jak w module
+ * kontraktorów (getContractorInterviewFileUrl).
+ */
+export async function getLeaveProofSignedUrl(leaveId: string): Promise<string> {
+    const ctx = await requireInternalOrAdminAction()
+    const admin = createServiceClient()
+
+    const { data: leave, error } = await admin
+        .from('leave_requests')
+        .select('user_id, documentation_url')
+        .eq('id', leaveId)
+        .single<{ user_id: string; documentation_url: string | null }>()
+
+    if (error || !leave) throw new Error('Nie znaleziono wniosku urlopowego.')
+    if (!leave.documentation_url) throw new Error('Ten wniosek nie ma załącznika.')
+
+    const isOwner = leave.user_id === ctx.userId
+    const isApprover = ctx.isAdmin || ctx.isManager || ctx.role === 'finanse'
+    if (!isOwner && !isApprover) {
+        throw new Error('Brak uprawnień do tego załącznika.')
+    }
+
+    const { data, error: signError } = await admin.storage
+        .from('documents')
+        .createSignedUrl(leave.documentation_url, 300)
+
+    if (signError || !data?.signedUrl) {
+        throw new Error('Nie udało się wygenerować linku do załącznika.')
+    }
+    return data.signedUrl
 }
 
 // ─── createLeaveRequest ──────────────────────────────────────────────────────
@@ -3072,7 +3112,7 @@ async function autoFillPaidLeaveEntries(
 
         if (changed) {
             if (ts.status !== 'draft') {
-                await logAudit(userId, 'TIMESHEET_PAID_LEAVE_AUTOFILL', {
+                await logSystemAudit(userId, 'TIMESHEET_PAID_LEAVE_AUTOFILL', {
                     timesheet_id: ts.id,
                     year,
                     month,
@@ -3178,7 +3218,7 @@ async function removeConflictingWorkEntries(
     const affectedIds = Array.from(new Set(rows.map((r) => r.timesheet_id)))
     for (const tsId of affectedIds) {
         if (statusById.get(tsId) !== 'draft') {
-            await logAudit(userId, 'TIMESHEET_LEAVE_CONFLICT_REMOVED', {
+            await logSystemAudit(userId, 'TIMESHEET_LEAVE_CONFLICT_REMOVED', {
                 timesheet_id: tsId,
                 status: statusById.get(tsId),
                 removed: rows

@@ -3,7 +3,21 @@ import dotenv from 'dotenv'
 
 dotenv.config({ path: '.env.test' })
 
-const BASE_URL = process.env.BASE_URL || process.env.PLAYWRIGHT_BASE_URL || 'https://compass.dynaminds.pl'
+// Audyt 2026-08 (A0.5): tu był fallback na 'https://compass.dynaminds.pl', czyli
+// PRODUKCJĘ. Zestaw e2e zawiera testy piszące (e2e/04-rls-database.spec.ts robi
+// POST /auth/v1/signup), a w produkcyjnym auth.users siedzi konto
+// e2e+consultant@b2bnetwork.pl z logowaniem 2026-04-29 — czyli to już się działo.
+// Brak stagingu jest świadomą decyzją, więc jedyną obroną jest wymóg jawnego adresu:
+// kto chce puścić testy przeciw produkcji, musi to napisać wprost.
+const BASE_URL = process.env.BASE_URL || process.env.PLAYWRIGHT_BASE_URL
+
+if (!BASE_URL) {
+    throw new Error(
+        'Brak BASE_URL. Ustaw adres testowanej instancji, np. BASE_URL=http://localhost:10000 ' +
+            '(lokalnie) albo skopiuj .env.test.example do .env.test. ' +
+            'Fallback na produkcję został usunięty — zestaw e2e zawiera testy piszące.',
+    )
+}
 
 export default defineConfig({
     testDir: './e2e',

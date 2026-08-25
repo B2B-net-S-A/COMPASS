@@ -19,6 +19,7 @@ import {
     requireFinanseOrAdminAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { filterEmployedInMonth, monthStart } from '@/lib/hr/employment-window'
 import type {
     PayrollSummary,
     PayrollBonusLine,
@@ -281,13 +282,24 @@ export async function getPayrollSummaryForManager(
         throw new Error('Wymagane uprawnienia: manager lub administrator.')
     }
     const admin = createServiceClient()
-    const { data: team } = await admin
+    const { data: team, error: teamError } = await admin
         .from('profiles')
-        .select('id, employment_status')
+        // Audyt 2026-08 (A4.2): `termination_date` MUSI być w selekcie — bez niego
+        // isEmployedInMonth spada na fallback `employment_status !== 'exited'`
+        // i podmiana filtra jest no-opem.
+        .select('id, employment_status, termination_date')
         .eq('manager_id', ctx.userId)
-    const memberIds = (((team ?? []) as unknown) as Array<{ id: string; employment_status: string | null }>)
-        .filter((p) => p.employment_status !== 'exited')
-        .map((p) => p.id)
+    if (teamError) throw new Error(`Błąd pobierania zespołu: ${teamError.message}`)
+    // Raport MIESIĘCZNY: kto odszedł 20-go, ma zostać w rozliczeniu TEGO miesiąca.
+    // Reguła „tu i teraz" (neq exited) wycinała go z miesiąca, który przepracował.
+    const memberIds = filterEmployedInMonth(
+        ((team ?? []) as unknown) as Array<{
+            id: string
+            employment_status: string | null
+            termination_date: string | null
+        }>,
+        monthStart(year, month),
+    ).map((p) => p.id)
     if (memberIds.length === 0) return []
     const results: PayrollSummary[] = []
     for (const uid of memberIds) {
@@ -311,7 +323,7 @@ export async function getPayrollSummaryAll(
     const admin = createServiceClient()
     let q = admin
         .from('profiles')
-        .select('id, employment_status, role, manager_id')
+        .select('id, employment_status, termination_date, role, manager_id')
         .in('role', ['admin', 'internal', 'finanse', 'manager', 'talent_community', 'consultant'])
         .order('full_name')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -319,12 +331,15 @@ export async function getPayrollSummaryAll(
     if (filters?.manager_id) q = q.eq('manager_id', filters.manager_id)
     const { data: profiles, error } = await q
     if (error) throw new Error(`Błąd pobierania profili: ${error.message}`)
-    const ids = ((profiles ?? []) as unknown as Array<{
-        id: string
-        employment_status: string | null
-    }>)
-        .filter((p) => p.employment_status !== 'exited')
-        .map((p) => p.id)
+    // Patrz komentarz w getPayrollSummaryForManager — ta sama reguła miesięczna.
+    const ids = filterEmployedInMonth(
+        (profiles ?? []) as unknown as Array<{
+            id: string
+            employment_status: string | null
+            termination_date: string | null
+        }>,
+        monthStart(year, month),
+    ).map((p) => p.id)
     if (ids.length === 0) return []
     const results: PayrollSummary[] = []
     for (const uid of ids) {

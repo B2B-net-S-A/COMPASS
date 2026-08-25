@@ -10,7 +10,7 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { logAudit } from '@/lib/actions/audit'
 import { sendBonusAssigned, sendBonusCancelled } from '@/lib/email'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { differenceInCalendarDays } from 'date-fns'
 import {
     bonusPeriodFromEligibleDate,

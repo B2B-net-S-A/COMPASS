@@ -48,3 +48,15 @@ export function filterEmployedInMonth<T extends EmploymentWindowFields>(
 ): T[] {
     return members.filter((m) => isEmployedInMonth(m, monthStart))
 }
+
+/**
+ * Pierwszy dzień miesiąca w formacie ISO — kanoniczne wejście dla
+ * `isEmployedInMonth` / `filterEmployedInMonth`.
+ *
+ * Audyt 2026-08: ten szablon był powielany inline w każdym miejscu liczącym
+ * okno miesięczne. Jedno źródło zmniejsza szansę, że kolejne wywołanie dostanie
+ * datę w innym formacie i porównanie stringów zacznie po cichu kłamać.
+ */
+export function monthStart(year: number, month: number): string {
+    return `${year}-${String(month).padStart(2, '0')}-01`
+}

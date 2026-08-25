@@ -17,7 +17,7 @@ import {
     sendChampionsLeagueAssigned,
     sendChampionsLeagueCancelled,
 } from '@/lib/email'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { requireInvoicesEnabled } from '@/lib/feature-flags'
 // Formularz premii ma w dropdownie klientów opcję „Inny (wpisz ręcznie)", więc nazwa może
 // przyjść jako wolny tekst — kanonizujemy ją tak samo jak przy imporcie TC (Phase 42a),

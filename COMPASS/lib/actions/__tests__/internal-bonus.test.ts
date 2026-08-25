@@ -37,7 +37,7 @@ vi.mock('@/lib/email', () => ({
     sendBonusAssigned: vi.fn(async () => ({ success: true })),
     sendBonusUpdated: vi.fn(async () => ({ success: true })),
 }))
-vi.mock('@/lib/actions/push-subscriptions', () => ({
+vi.mock('@/lib/push/dispatch', () => ({
     sendPushToUserId: vi.fn(async () => ({ success: true })),
 }))
 vi.mock('@/lib/feature-flags', () => ({

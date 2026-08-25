@@ -26,7 +26,7 @@ vi.mock('@/lib/email', () => ({
     sendInvoiceSubmitted: vi.fn(async () => ({ success: true })),
     sendInvoiceDecision: vi.fn(async () => ({ success: true })),
 }))
-vi.mock('@/lib/actions/push-subscriptions', () => ({
+vi.mock('@/lib/push/dispatch', () => ({
     sendPushToUserId: vi.fn(async () => ({ success: true })),
 }))
 

@@ -1,11 +1,22 @@
 name: E2E tests (Playwright)
 
+# Audyt 2026-08 (A0.5): `BASE_URL` był ustawiany na sekret NEXT_PUBLIC_APP_URL,
+# czyli PRODUKCJĘ — a zestaw zawiera testy piszące (e2e/04-rls-database.spec.ts
+# robi POST /auth/v1/signup). Automatyczny wyzwalacz i tak nie działa od
+# 2026-05-04: nasłuchuje workflow o nazwie "Deploy to Hetzner", która wtedy
+# zniknęła (realna to "Deploy"). NIE naprawiamy go tutaj — naprawa włączyłaby
+# testy piszące przeciw produkcji po każdym merge'u. Trigger wraca dopiero
+# razem z osobnym środowiskiem testowym (pozycja B5 planu naprawy).
+#
+# Zostaje ręczne uruchomienie, ale adres trzeba podać JAWNIE — bez domyślnej
+# produkcji.
 on:
-  workflow_run:
-    workflows: ["Deploy to Hetzner"]
-    types:
-      - completed
   workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Adres testowanej instancji (WYMAGANY). Uwaga: zestaw zawiera testy piszące — nie wskazuj produkcji bez świadomej decyzji.'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,7 +25,6 @@ jobs:
   playwright:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     defaults:
       run:
         working-directory: ./COMPASS
@@ -33,7 +43,7 @@ jobs:
 
       - name: Run Playwright smoke tests
         env:
-          BASE_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          BASE_URL: ${{ inputs.base_url }}
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
         run: npx playwright test

@@ -4,7 +4,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
-import { logLoginAttempt } from '@/lib/auth/security'
+import { checkRateLimit, logLoginAttempt } from '@/lib/auth/security'
+import { RATE_LIMIT_MESSAGE_PL } from '@/lib/constants/auth'
 import { logAudit } from '@/lib/actions/audit'
 import { cookies } from 'next/headers'
 
@@ -116,6 +117,19 @@ export async function login(formData: FormData) {
 
     const supabase = createClient()
 
+    // Audyt 2026-08 (A4.3): checkRateLimit i logLoginAttempt istniały od Fazy 18.1,
+    // ale NIE BYŁY WOŁANE — logLoginAttempt był tylko zaimportowany. Tabela
+    // login_attempts miała 0 wierszy, a dokument serwowany użytkownikom
+    // (app/api/migrate-compliance/route.ts:157) deklarował „po 5 próbach blokada
+    // na 15 min". Jedyną realną ochroną było wbudowane zabezpieczenie GoTrue.
+    const rate = await checkRateLimit(email)
+    if (!rate.allowed) {
+        // Nie logujemy tej próby ponownie — okno i tak jest już przekroczone,
+        // a dopisywanie wierszy przedłużałoby blokadę w nieskończoność.
+        logger.warn({ event: 'auth.login.rate_limited', email })
+        return { error: RATE_LIMIT_MESSAGE_PL }
+    }
+
     // 1. Sign in
     const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -123,9 +137,12 @@ export async function login(formData: FormData) {
     })
 
     if (error) {
+        await logLoginAttempt(email, false)
         logger.error({ event: 'auth.login.failed', error, email })
         return { error: friendlyLoginError(error.message) }
     }
+
+    await logLoginAttempt(email, true)
 
     // 2. Get user
     const { data: { user } } = await supabase.auth.getUser()
@@ -152,7 +169,7 @@ export async function login(formData: FormData) {
     const currentRole = profile?.role || 'consultant'
 
     // 4. Sync role from access lists (single source of truth)
-    const role = await syncRole(supabase, user.id, email, currentRole)
+    const role = await syncRole(user.id, email, currentRole)
 
     // 5a. Set onboarding cookie
     if (profile?.onboarding_completed || role !== 'consultant') {

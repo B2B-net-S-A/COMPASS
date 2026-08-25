@@ -16,7 +16,7 @@ import {
     sendOffboardingChecklistToManager,
     sendOnboardingWelcome,
 } from '@/lib/email'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { businessTodayISO, isDateOverdue } from '@/lib/utils/business-date'
 import { computeDueDate } from '@/lib/utils/sla'
 import { roleLabelPl, type DbRole } from '@/lib/types/role'

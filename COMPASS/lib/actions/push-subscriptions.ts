@@ -3,12 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/admin'
-import {
-    sendPushToUser,
-    type PushPayload,
-    type PushSubscriptionRecord,
-} from '@/lib/push/web-push-helper'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 
 // ============================================================
 // H3.3 — Push Subscription server actions
@@ -80,51 +75,6 @@ export async function unsubscribePush(endpoint: string): Promise<{ success: bool
         const msg = error instanceof Error ? error.message : 'Błąd unsubscribe'
         logCompat.error('[unsubscribePush]', error)
         return { success: false, error: msg }
-    }
-}
-
-/**
- * Wysyła push do wszystkich subscriptions usera + cleanup gone subscriptions.
- * Server-only — używane przez triggery (np. po approveLeaveRequest).
- *
- * Bezpieczne wywołanie nawet gdy VAPID nie skonfigurowane (no-op).
- */
-export async function sendPushToUserId(
-    userId: string,
-    payload: PushPayload,
-): Promise<{ sent: number; failed: number }> {
-    try {
-        const admin = createServiceClient()
-        const { data: subs } = await admin
-            .from('push_subscriptions')
-            .select('id, endpoint, p256dh, auth')
-            .eq('user_id', userId)
-        const subsList = (subs ?? []) as PushSubscriptionRecord[]
-        if (subsList.length === 0) return { sent: 0, failed: 0 }
-
-        const result = await sendPushToUser(subsList, payload)
-
-        // Cleanup gone subs
-        if (result.goneSubIds.length > 0) {
-            await admin.from('push_subscriptions').delete().in('id', result.goneSubIds)
-        }
-
-        // Update last_used_at na sub które zadziałały
-        if (result.sent > 0) {
-            const goneSet = new Set(result.goneSubIds)
-            const succeededIds = subsList.filter((s) => !goneSet.has(s.id)).map((s) => s.id)
-            if (succeededIds.length > 0) {
-                await admin
-                    .from('push_subscriptions')
-                    .update({ last_used_at: new Date().toISOString() })
-                    .in('id', succeededIds)
-            }
-        }
-
-        return { sent: result.sent, failed: result.failed }
-    } catch (error: unknown) {
-        logCompat.error('[sendPushToUserId]', error)
-        return { sent: 0, failed: 0 }
     }
 }
 

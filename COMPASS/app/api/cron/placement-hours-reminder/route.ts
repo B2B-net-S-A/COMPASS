@@ -11,7 +11,7 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'

@@ -9,7 +9,7 @@
 // Plain module (NIE 'use server'), ale ciągnie server-only (admin client) i
 // use-server (push) — NIE importować z komponentu klienckiego ani testu.
 
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { logger } from '@/lib/logger'
 import type { createServiceClient } from '@/lib/supabase/admin'
 

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createMockSupabaseClient, type MockSupabase, type MockSupabaseConfig } from '@/test/mocks/supabase'
 
 let currentClient: MockSupabase
@@ -66,6 +66,16 @@ function exportableItem(overrides: Record<string, unknown> = {}) {
 function itemsTable(rows: Array<Record<string, unknown>>): MockSupabaseConfig {
     return { tables: { legal_monitor_items: rows } }
 }
+
+// Audyt 2026-08: pierwszy test w tym pliku płacił cały koszt zimnego
+// `await import('../legal-monitor')` (477 linii, ciągnie next/cache, supabase
+// i 6 modułów lib) i przekraczał testTimeout=10s przy obciążonej maszynie —
+// zestaw był czerwony lokalnie, choć na runnerach GH przechodził.
+// Rozgrzewamy moduł RAZ, poza pomiarem pojedynczego testu: koszt importu
+// przestaje obciążać ten test, który akurat jest pierwszy w kolejce.
+beforeAll(async () => {
+    await import('../legal-monitor')
+}, 30_000)
 
 afterEach(() => {
     vi.clearAllMocks()

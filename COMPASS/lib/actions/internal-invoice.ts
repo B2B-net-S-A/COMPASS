@@ -11,7 +11,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { sendInvoiceDecision, sendInvoiceSubmitted } from '@/lib/email'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { requireInvoicesEnabled } from '@/lib/feature-flags'
 
 // ─── Types ──────────────────────────────────────────────────────────────────

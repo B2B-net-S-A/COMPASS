@@ -78,41 +78,53 @@ Automat tego nie sprawdzi, bo E2E są martwe do czasu B5.
 
 ## ETAP A — ugasić (dni)
 
+> **STAN 2026-08-25 (PR „Etap A"):** kod `[x]` — zmergowany i wdrożony przez zwykły deploy.
+> Migracje `[~]` — pliki są w repo, ale **NIE SĄ ZAAPLIKOWANE**; repo nie ma auto-apply.
+> Aplikować ręcznie przez MCP `apply_migration` dopiero **po** zielonym smoke-teście
+> `/api/health` z nowym SHA, w kolejności **A1 → A2 → A3 → A3.2 → A4**.
+> Przed A3 potwierdzić, że `auth.uid()` wywołane kluczem service-role zwraca `NULL`
+> (gdyby zwracało wartość, trigger cicho cofałby zmiany ról — patrz nagłówek migracji).
+> Poza zakresem tego PR-a: **A4.5** (wyłączenie martwych zadań cron w Coolify) i
+> **A4.6** (limity rozmiaru/MIME na bucketach) — to operacje po stronie panelu i Storage API,
+> nie zmiany w repo.
+>
+> **Legenda:** `[x]` zrobione i zweryfikowane · `[~]` napisane, czeka na ręczne zastosowanie · `[ ]` do zrobienia
+
 ### A0 · Paczka kodu — jeden PR, deploy jako pierwszy
 
-- [ ] **A0.1 — `syncRole` wołany service-rolą** ⚠️ *blokuje A2*
+- [x] **A0.1 — `syncRole` wołany service-rolą** ⚠️ *blokuje A2*
   `lib/auth/sync-role.ts:16` przyjmuje klienta argumentem → podmienić na `createServiceClient()`
   w `app/login/actions.ts:155` i `app/auth/callback/route.ts:66`.
   **Weryfikacja:** zaloguj się hasłem i przez SSO; sprawdź, że rola w `profiles` się nie zmieniła.
 
-- [ ] **A0.2 — usunąć trasę `calendar.ics`** 🟠
+- [x] **A0.2 — usunąć trasę `calendar.ics`** 🟠
   `app/api/internal/calendar.ics/route.ts:21` — „token" to goły UUID profilu, service-role,
   poza matcherem middleware. W zasięgu 72 urlopy + 1368 wpisów timesheet. **Zero linków w repo.**
   **Weryfikacja:** `curl -I https://compass.dynaminds.pl/api/internal/calendar.ics?token=<uuid>` → 404/410.
 
-- [ ] **A0.3 — walidacja `?next=` w callbacku** 🟡
+- [x] **A0.3 — walidacja `?next=` w callbacku** 🟡
   `app/auth/callback/route.ts:84` skleja `${origin}${next}` bez walidacji; `?next=@evil.com`
   przenosi host. Blok `if (code)` jest pomijany bez kodu, więc goły link działa dla każdego.
   Przyjmować wyłącznie `/^\/(?!\/)/` albo sprawdzać `new URL(next, origin).origin === origin`.
   **Weryfikacja:** `curl -sI ".../auth/callback?next=@evil.com" | grep -i location` → host własny.
 
-- [ ] **A0.4 — `sendPushToUserId` przestaje być publicznym endpointem** 🟡
+- [x] **A0.4 — `sendPushToUserId` przestaje być publicznym endpointem** 🟡
   `lib/actions/push-subscriptions.ts:92` — eksport z `'use server'`, service-rolą, na dowolnym
   `userId` i dowolnym `payload.url`, który `public/push-sw.js:49` otwiera przez `clients.openWindow`.
   Przenieść do `lib/push/dispatch.ts` **bez** `'use server'` (wzorzec: `lib/notifications/alert-dispatch.ts`).
   **Weryfikacja:** `grep -rn "sendPushToUserId" app lib components` — zero wywołań przez `'use server'`.
 
-- [ ] **A0.5 — E2E przestaje celować w produkcję** 🟡 ⚠️ *blokuje naprawę triggera E2E w B5*
+- [x] **A0.5 — E2E przestaje celować w produkcję** 🟡 ⚠️ *blokuje naprawę triggera E2E w B5*
   `playwright.config.ts:6` — usunąć fallback `'https://compass.dynaminds.pl'`, wymagać jawnego
   `BASE_URL`; poprawić `.env.test.example:7-8`. Zestaw zawiera testy **piszące** (`e2e/04` robi `POST /auth/v1/signup`).
   **Weryfikacja:** `npx playwright test --list` bez `BASE_URL` → czytelny błąd, nie cichy start na prod.
 
-- [ ] **A0.6 — nie odsyłać ludzi do martwego modułu** ⚪
+- [x] **A0.6 — nie odsyłać ludzi do martwego modułu** ⚪
   `lib/constants/fallback-docs.ts:50` odsyła do „zakładki Wiadomości", a komunikator nie ma RPC w bazie.
 
 ### A1 · Odciąć anonimowy odczyt `profiles` 🔴 — *niezależne, ryzyko zero, rób pierwsze*
 
-- [ ] **A1.1 — `ALTER POLICY … TO authenticated` + `REVOKE ALL … FROM anon`**
+- [~] **A1.1 — `ALTER POLICY … TO authenticated` + `REVOKE ALL … FROM anon`**
   `supabase/migrations/20240502000000_initial_schema.sql:16`. Polityka `"Public profiles are viewable
   by everyone."` ma `roles=PUBLIC` + `USING(true)`, a `anon` ma `GRANT SELECT`. Klucz anon jest w bundlu
   (`lib/supabase/client.ts:17-19`) → 69 kolumn × 46 osób bez logowania.
@@ -123,13 +135,13 @@ Automat tego nie sprawdzi, bo E2E są martwe do czasu B5.
 
 ### A2 · Zamknąć RPC z `EXECUTE` dla `authenticated` 🔴 — *wymaga wdrożonego A0.1*
 
-- [ ] **A2.1 — `REVOKE EXECUTE ON FUNCTION sync_user_role(uuid,text,boolean) FROM authenticated`**
+- [~] **A2.1 — `REVOKE EXECUTE ON FUNCTION sync_user_role(uuid,text,boolean) FROM authenticated`**
   `supabase/migrations/20260516000004_phase20d_sync_user_role_v3.sql:69`. `SECURITY DEFINER`,
   a `p_user_id`, `p_email` i `p_is_super_admin` to parametry od wywołującego — zero sprawdzenia `auth.uid()`.
   Trzy nadużycia: `p_is_super_admin=true` → admin; `p_email` z `admin_access_list` → admin bez booleana;
   cudzy `p_user_id` + obcy mail → **degradacja istniejącego admina** do `consultant`.
 
-- [ ] **A2.2 — to samo dla dwóch funkcji lifecycle**
+- [~] **A2.2 — to samo dla dwóch funkcji lifecycle**
   `supabase/migrations/20260517000005_phase22e_helpers_and_seeds.sql:130-131, :236-237` —
   `start_offboarding_for_user` i `start_onboarding_for_user`, obie `SECURITY DEFINER` z `EXECUTE`
   dla `authenticated` i bez sprawdzania uprawnień. Dowolny pracownik może ustawić dowolnej osobie
@@ -140,7 +152,7 @@ Automat tego nie sprawdzi, bo E2E są martwe do czasu B5.
 
 ### A3 · Zablokować samodzielne nadanie sobie roli 🔴 — *wymaga A2*
 
-- [ ] **A3.1 — trigger `BEFORE UPDATE` pinujący 13 kolumn uprawnień**
+- [~] **A3.1 — trigger `BEFORE UPDATE` pinujący 13 kolumn uprawnień**
   `supabase/migrations/20240502000000_initial_schema.sql:22`. RLS jest **wierszowa**, a `authenticated`
   ma `GRANT UPDATE` na wszystkich 69 kolumnach. Jedyny trigger na tabeli
   (`trg_profile_offboarding_reversal`) pilnuje wyłącznie `employment_status`.
@@ -151,7 +163,7 @@ Automat tego nie sprawdzi, bo E2E są martwe do czasu B5.
   ⚠️ Patrz **Z3** i **Z5**. Gotowy kod: `hotfix_rls.sql`, krok 3.
   **Weryfikacja:** bramka bezpieczeństwa, blok 2 (rola ma zostać `consultant`).
 
-- [ ] **A3.2 — `audit_logs`: `WITH CHECK (auth.uid() = user_id)`** 🟠
+- [~] **A3.2 — `audit_logs`: `WITH CHECK (auth.uid() = user_id)`** 🟠
   `supabase/migrations/20260218_auth_v1.sql:52`. Dzisiejszy `WITH CHECK` sprowadza się do
   `auth.uid() IS NOT NULL` → każdy zalogowany dopisuje wpis z **cudzym** `user_id`.
   Poza fałszowaniem dowodów HR to wektor sterujący: throttle samoleczenia forwardów
@@ -161,14 +173,14 @@ Automat tego nie sprawdzi, bo E2E są martwe do czasu B5.
 
 ### A4 · Reszta gaszenia
 
-- [ ] **A4.1 — polityka INSERT dla prefiksu `leave-proofs`** 🔴
+- [~] **A4.1 — polityka INSERT dla prefiksu `leave-proofs`** 🔴
   `lib/actions/internal-leave.ts:531-534` wgrywa **klientem użytkownika** pod `leave-proofs/{uid}/…`
   w buckecie `documents`, który ma polityki INSERT tylko dla `cvs`, `app-docs`, `candidates`, `specs`.
   **Dowód: bucket ma 0 obiektów — zwolnienia L4 nigdy nie dało się załączyć.**
   Ten sam problem: `referrals/` (`lib/actions/files.ts:270`) i `public/` (`lib/actions/documents.ts:47,:143`).
   **Weryfikacja:** wgraj PDF przez formularz urlopowy jako konsultant → `SELECT count(*) FROM storage.objects WHERE bucket_id='documents'` > 0.
 
-- [ ] **A4.2 — payroll gubi osobę, która odeszła w trakcie miesiąca** 🟠
+- [x] **A4.2 — payroll gubi osobę, która odeszła w trakcie miesiąca** 🟠
   `lib/actions/internal-payroll.ts:326` i `:289` filtrują `employment_status !== 'exited'`
   zamiast `filterEmployedInMonth` (`lib/hr/employment-window.ts:45`).
   ⚠️ **Sama podmiana filtra to no-op** — zapytania w liniach 285 i 311 nie pobierają
@@ -176,14 +188,14 @@ Automat tego nie sprawdzi, bo E2E są martwe do czasu B5.
   **Weryfikacja:** Elza Grabińska (`termination_date` 2026-06-30, approved 128 h/czerwiec, 152 h/maj)
   ma się pojawić w rozliczeniu obu miesięcy na `/internal/payroll`.
 
-- [ ] **A4.3 — podpiąć `checkRateLimit` do logowania** 🟠
+- [x] **A4.3 — podpiąć `checkRateLimit` do logowania** 🟠
   `lib/auth/security.ts:16` i `:47` — obie funkcje martwe; `logLoginAttempt` zaimportowane
   w `app/login/actions.ts:7` i nigdy nie wywołane. `login_attempts` ma **0 wierszy**.
   Osobno: dokument serwowany użytkownikom (`app/api/migrate-compliance/route.ts:157`) deklaruje
   „po 5 próbach blokada na 15 min" — albo podepnij, albo popraw dokument.
   **Weryfikacja:** 6 błędnych logowań → `SELECT count(*) FROM login_attempts` > 0 i szóste odrzucone.
 
-- [ ] **A4.4 — bramki roli na `/admin/*`** 🟡
+- [x] **A4.4 — bramki roli na `/admin/*`** 🟡
   Katalog `app/(protected)/admin/` ma tylko `error.tsx`/`loading.tsx`; nadrzędny layout sprawdza
   wyłącznie zalogowanie. Helper `requireAdminLayout()` już istnieje (`lib/auth/internal-guard.ts:143`).
   ⚠️ **Nie dawać jednego layoutu na `/admin`** — `inbox`, `compliance`, `news` są celowo otwarte
@@ -1378,3 +1390,6 @@ Format: `RRRR-MM-DD · ID · co zrobione · jak zweryfikowane · commit/PR`
 | Data | ID | Co | Weryfikacja | Ślad |
 |---|---|---|---|---|
 | 2026-08-25 | — | Audyt wykonany, nic nie zmienione | 94 agenty, 70 znalezisk zweryfikowanych adwersaryjnie | `docs/audyt-2026-08-plan-naprawy.md` |
+| 2026-08-25 | A0.1–A0.6, A4.2–A4.4 | Kod Etapu A | `tsc` czysty, 1278/1278 testów, 6 nowych testów `safeNextPath`, przegląd 6 obiektywów | PR „Etap A" |
+| 2026-08-25 | A1.1, A2.1, A2.2, A3.1, A3.2, A4.1 | Migracje napisane, **niezaaplikowane** | walidacja składni + `DO $$` self-check w plikach | 5 plików `supabase/migrations/20260825140*` |
+| 2026-08-25 | — | Flaky `legal-monitor.test.ts` naprawiony u przyczyny (rozgrzewka importu w `beforeAll`) | 3× pełny przebieg zielony | PR „Etap A" |

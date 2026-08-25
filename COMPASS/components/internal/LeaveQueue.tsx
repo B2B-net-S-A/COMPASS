@@ -19,7 +19,7 @@ import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { approveLeaveRequest, rejectLeaveRequest, type PendingLeaveRow } from '@/lib/actions/internal-leave'
+import { approveLeaveRequest, getLeaveProofSignedUrl, rejectLeaveRequest, type PendingLeaveRow } from '@/lib/actions/internal-leave'
 
 interface Props {
     requests: PendingLeaveRow[]
@@ -48,7 +48,25 @@ export function LeaveQueue({ requests }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
+    const [proofLoadingId, setProofLoadingId] = useState<string | null>(null)
     const [rejectTarget, setRejectTarget] = useState<PendingLeaveRow | null>(null)
+
+    // Audyt 2026-08 (A4.1): `documentation_url` to ścieżka w PRYWATNYM buckecie,
+    // więc wstawiona wprost w href zwracała 404. Podpisany link generujemy dopiero
+    // na kliknięcie — nie trzyma się w HTML-u i wygasa po 5 minutach.
+    async function openProof(leaveId: string) {
+        setProofLoadingId(leaveId)
+        try {
+            const url = await getLeaveProofSignedUrl(leaveId)
+            window.open(url, '_blank', 'noopener,noreferrer')
+        } catch (e) {
+            logCompat.error('[LeaveQueue] nie udało się otworzyć załącznika', e)
+            alert(e instanceof Error ? e.message : 'Nie udało się otworzyć załącznika.')
+        } finally {
+            setProofLoadingId(null)
+        }
+    }
+
     const [rejectReason, setRejectReason] = useState('')
     // H2.2: bulk selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -287,14 +305,14 @@ export function LeaveQueue({ requests }: Props) {
                                                     </p>
                                                 )}
                                                 {req.documentation_url && (
-                                                    <a
-                                                        href={req.documentation_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-xs text-primary underline mt-1 inline-block"
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void openProof(req.id)}
+                                                        disabled={proofLoadingId === req.id}
+                                                        className="text-xs text-primary underline mt-1 inline-block disabled:opacity-60"
                                                     >
-                                                        Załącznik
-                                                    </a>
+                                                        {proofLoadingId === req.id ? 'Otwieram…' : 'Załącznik'}
+                                                    </button>
                                                 )}
                                                 {/* Phase 25d — substitute display */}
                                                 {req.substitute_full_name && (

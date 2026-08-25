@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { syncRole } from "@/lib/auth/sync-role";
+import { safeNextPath } from "@/lib/auth/safe-next-path";
 import { ARCHIVED_ACCOUNT_ERROR_CODE, isArchivedAccount } from "@/lib/auth/employment-access";
 import { syncProfileFromGraph } from "@/lib/m365/people-sync";
 import { logger } from "@/lib/logger";
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
 
             const currentRole = profile?.role ?? 'consultant';
             try {
-                syncedRole = await syncRole(supabase, user.id, user.email, currentRole);
+                syncedRole = await syncRole(user.id, user.email, currentRole);
             } catch (e) {
                 logger.error({ event: 'auth.callback.sync_role_failed', error: e, userId: user.id });
                 syncedRole = currentRole;
@@ -81,6 +82,6 @@ export async function GET(request: Request) {
     // Konsultant biurowy ląduje na /internal (HR Hub) jeśli explicit next nie zostal podany.
     // Honorujemy ?next= jeśli przekazany (np. invitation link który chce specyficznie /onboarding).
     const fallback = syncedRole === 'internal' ? '/internal' : '/home';
-    const next = nextParam || fallback;
+    const next = safeNextPath(nextParam, fallback);
     return NextResponse.redirect(`${origin}${next}`);
 }

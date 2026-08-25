@@ -13,7 +13,7 @@ import {
 import { logAudit } from '@/lib/actions/audit'
 import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
 import {
