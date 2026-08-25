@@ -37,7 +37,7 @@ export function createServiceClient(): SupabaseClient<Database> {
             persistSession: false,
         },
         // Incydent 2026-08-25: no-store + retry sieciowych GET-ów — patrz
-        // fetch-hardening.ts (te same zrywane transfery dotyczą service-roli).
+        // fetch-hardening.ts (zatruty Data Cache dotyczył i tej ścieżki).
         global: { fetch: hardenedFetch },
     })
 

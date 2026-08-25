@@ -36,8 +36,9 @@ export function createClient() {
         // ─── Normal authenticated flow ─────────────────────────────────
         // Phase 18.5: typed with Database from generated types.
         // Incydent 2026-08-25: hardenedFetch = no-store (zapytania per-user nie
-        // mogą lądować we współdzielonym Data Cache Next.js) + retry sieciowych
-        // GET-ów (zrywane transfery dużych odpowiedzi) — patrz fetch-hardening.ts.
+        // mogą lądować we współdzielonym Data Cache Next.js, który potrafił
+        // odtwarzać nieudany rezultat bez sieci) + retry sieciowych GET-ów.
+        // Patrz fetch-hardening.ts — tam też, czego ten moduł NIE naprawia.
         const client = createServerClient<Database>(
         url,
         key,
