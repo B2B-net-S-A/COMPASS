@@ -110,8 +110,19 @@ export async function listInboxTickets(filter?: {
             ...ticketRows.map((t) => t.assignee_id).filter((x): x is string => !!x),
         ]))
 
+        // KRYTYCZNE: jawna lista kolumn, NIE select('*'). Tabela niesie martwe
+        // kolumny po usuniętym auto-imporcie maili (Phase 44): email_body_html /
+        // email_body_text / email_headers — łącznie ~4 MB na 397 wierszy
+        // (pojedyncze wiersze po 441 kB). select('*') ciągnął to wszystko przy
+        // każdym renderze tablicy; 2026-08-25 tak spuchnięta odpowiedź przestała
+        // się materializować w runtime i tablica renderowała się pusta.
+        // Lista kolumn = dokładnie interfejs SupportInboxMeta (literał — supabase-js
+        // wywodzi typ wiersza ze stringa w select()).
         const [metasRes, profilesRes, categoriesRes] = await Promise.all([
-            supabase.from('support_inbox_meta').select('*').in('ticket_id', ticketIds),
+            supabase
+                .from('support_inbox_meta')
+                .select('ticket_id, source, external_message_id, consultant_id, consultant_name, consultant_phone, client_name, contractor_id, priority_level, due_date, email_from, email_subject, email_received_at, created_at')
+                .in('ticket_id', ticketIds),
             supabase.from('profiles').select('id, full_name').in('id', userIds),
             supabase.from('support_categories').select('id, slug, name_pl').in('id', inboxCategoryIds),
         ])
@@ -119,7 +130,10 @@ export async function listInboxTickets(filter?: {
         // Meta jest warunkiem renderowania karty (`if (!meta) continue` niżej) —
         // cicha awaria tego zapytania wycinała WSZYSTKIE tickety z tablicy bez
         // żadnego błędu (incydent 2026-08-25). Rzucamy, żeby UI dostał jawny baner.
+        // `data === null` bez `error` traktujemy tak samo — dla wielowierszowego
+        // selecta poprawna odpowiedź to zawsze tablica (choćby pusta).
         if (metasRes.error) throw metasRes.error
+        if (metasRes.data === null) throw new Error('Brak odpowiedzi z support_inbox_meta (data=null bez błędu)')
         const metas = metasRes.data
         // Profile i kategorie są tylko dekoracją (nazwiska, etykiety) — ich awaria
         // degraduje wyświetlanie do null/'', ale nie może chować ticketów.
