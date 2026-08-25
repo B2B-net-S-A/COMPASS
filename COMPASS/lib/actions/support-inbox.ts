@@ -27,6 +27,22 @@ interface ProfileLite {
     email: string
 }
 
+/**
+ * Komunikat błędu także z obiektów nie-Error — postgrest-js po odrzuceniu fetch
+ * (zerwany transfer) zwraca ZWYKŁY obiekt { message, details, ... }, nie instancję
+ * Error. Sam `instanceof Error` maskował wtedy przyczynę generycznym fallbackiem
+ * (incydent 2026-08-25: baner mówił „Błąd pobierania zgłoszeń" zamiast
+ * „TypeError: fetch failed").
+ */
+function errorMessage(error: unknown, fallback: string): string {
+    if (error instanceof Error) return error.message
+    if (error && typeof error === 'object' && 'message' in error) {
+        const m = (error as { message: unknown }).message
+        if (typeof m === 'string' && m.length > 0) return m
+    }
+    return fallback
+}
+
 async function isCallerHandler(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase
         .from('profiles')
@@ -206,7 +222,7 @@ export async function listInboxTickets(filter?: {
 
         return { success: true, data: grouped }
     } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania zgłoszeń'
+        const msg = errorMessage(error, 'Błąd pobierania zgłoszeń')
         logCompat.error('[listInboxTickets]', error)
         return { success: false, error: msg }
     }
@@ -727,7 +743,7 @@ export async function getInboxSummary(): Promise<SupportActionResult<InboxSummar
             },
         }
     } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania podsumowania skrzynki'
+        const msg = errorMessage(error, 'Błąd pobierania podsumowania skrzynki')
         logCompat.error('[getInboxSummary]', error)
         return { success: false, error: msg }
     }

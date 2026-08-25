@@ -2,6 +2,7 @@ import { logCompat } from '@/lib/logger'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createMockSupabaseClient, getBypassEmail, isSupabaseConfigured, BYPASS_USER } from './mock-client'
+import { hardenedFetch } from './fetch-hardening'
 import type { Database } from './database.types'
 
 export function createClient() {
@@ -34,10 +35,14 @@ export function createClient() {
 
         // ─── Normal authenticated flow ─────────────────────────────────
         // Phase 18.5: typed with Database from generated types.
+        // Incydent 2026-08-25: hardenedFetch = no-store (zapytania per-user nie
+        // mogą lądować we współdzielonym Data Cache Next.js) + retry sieciowych
+        // GET-ów (zrywane transfery dużych odpowiedzi) — patrz fetch-hardening.ts.
         const client = createServerClient<Database>(
         url,
         key,
         {
+            global: { fetch: hardenedFetch },
             cookies: {
                 getAll() {
                     return cookieStore.getAll()
