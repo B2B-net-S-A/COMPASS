@@ -19,12 +19,19 @@ export default async function AdminInboxPage() {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('role, is_inbox_handler')
+        .select('role, is_inbox_handler, has_tcm_access')
         .eq('id', user.id)
         .single()
 
     // Rola talent_community implikuje dostęp (2026-08-25) — lustro is_inbox_handler().
-    const isAuthorized = profile?.role === 'admin' || profile?.role === 'talent_community' || profile?.is_inbox_handler === true
+    //
+    // Audyt 2026-08 (UI): `has_tcm_access` brakowało TYLKO tutaj. Middleware
+    // (middleware.ts:122) i szczegół zgłoszenia (./[id]/page.tsx) wpuszczały
+    // posiadacza grantu, więc mógł otworzyć ticket, ale lista odsyłała go na
+    // /home — łącznie z linkiem „wstecz" z tego ticketu. Na produkcji dotyczyło
+    // to 4 kont z rolą `finanse` i grantem. Warunek musi być lustrem tamtych.
+    const isAuthorized = profile?.role === 'admin' || profile?.role === 'talent_community'
+        || profile?.is_inbox_handler === true || profile?.has_tcm_access === true
     if (!isAuthorized) redirect('/home')
 
     const [ticketsRes, handlersRes, categoriesRes] = await Promise.all([

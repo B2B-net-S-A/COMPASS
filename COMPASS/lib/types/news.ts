@@ -48,7 +48,11 @@ export interface UpdateNewsPostPatch {
     publish?: boolean
 }
 
-export type NewsActionResult<T> = { success: true; data: T } | { success: false; error: string }
+// Audyt 2026-08 (B1): ten sam kształt był zdefiniowany niezależnie w trzech
+// plikach typów. Kanoniczna definicja mieszka teraz w lib/actions/action-result.ts
+// razem z `runAction` i `ExpectedError`; ten alias zostaje, żeby nie przepisywać
+// całych modułów naraz. Nowy kod importuje bezpośrednio stamtąd.
+export type NewsActionResult<T> = import('@/lib/actions/action-result').ActionResult<T>
 
 export const REACTION_LABEL: Record<ReactionKind, string> = {
     like: '👍',

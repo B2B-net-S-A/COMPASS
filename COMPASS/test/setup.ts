@@ -8,7 +8,6 @@ beforeEach(() => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
     process.env.SUPER_ADMIN_EMAILS = 'super@compass.test'
-    process.env.RESEND_API_KEY = 'test-resend-key'
     process.env.CRON_SECRET = 'test-cron-secret'
     process.env.NEXT_PUBLIC_APP_URL = 'https://compass.test'
     // @ts-expect-error NODE_ENV typed as readonly literal in Next.js, but process.env is mutable at runtime

@@ -27,6 +27,7 @@ import {
     Briefcase,
     HeartHandshake,
     Radar,
+    FileSpreadsheet,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
@@ -53,15 +54,12 @@ export interface SidebarBadgeCounts {
 interface SidebarProps {
     // Phase 20: extended to 6 roles. Server-side filter decides which links are visible.
     role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
-    isOpen?: boolean
-    setIsOpen?: (isOpen: boolean) => void
     user: {
         email?: string | null
         full_name?: string | null
         avatar_url?: string | null
     } | null
     permissions?: Record<PermissionFeature, PermissionValue>
-    forMobile?: boolean
     badges?: SidebarBadgeCounts
     // Phase 36: gate the "Skrzynka administracja@" link to inbox handlers / admin
     // (others get redirected away from /admin/inbox). Computed server-side in the layout.
@@ -90,8 +88,8 @@ export function Sidebar({
     role,
     user: _user,
     permissions,
-    forMobile = false,
     badges,
+    isInboxHandler = false,
     consultantSuccessEnabled = false,
     hasTcmAccess = false,
 }: SidebarProps) {
@@ -222,7 +220,15 @@ export function Sidebar({
     const internalAdminGroup: NavGroup = {
         heading: t('group_internal_admin'),
         links: [
-            { name: t('nav_internal_admin_hub'), href: '/internal/admin', icon: Users, feature: null },
+            // exactMatch, żeby hub nie zostawał podświetlony na podstronie /internal/admin/role-defaults.
+            { name: t('nav_internal_admin_hub'), href: '/internal/admin', icon: Users, feature: null, exactMatch: true },
+            // Audyt 2026-08 (UI): /internal/admin/role-defaults to pełny CRUD (Faza 24),
+            // do którego nie prowadził ŻADEN link — a przycisk „Wypełnij defaultem"
+            // w edytorze timesheetu czyta właśnie te wpisy. Na produkcji tabela
+            // timesheet_role_defaults miała 0 wierszy, bo nie było gdzie ich dodać.
+            ...(isAdmin
+                ? [{ name: 'Domyślne opisy timesheet', href: '/internal/admin/role-defaults', icon: FileSpreadsheet, feature: null }]
+                : []),
         ],
     }
 
@@ -237,7 +243,9 @@ export function Sidebar({
         heading: 'Mój zespół',
         links: [
             { name: 'Wnioski urlopowe zespołu', href: '/internal/admin?tab=leave-requests', icon: Plane, feature: null },
-            { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets&scope=team', icon: Users, feature: null },
+            // Audyt 2026-08 (UI): usunięty `&scope=team` — strona czyta `scope` wyłącznie
+            // dla panelu faktur, a zakres zespołu i tak wymusza serwer (listAllTimesheetsForMonth).
+            { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets', icon: Users, feature: null },
             ...(invoicesUiOn
                 ? [{ name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null }]
                 : []),
@@ -298,6 +306,25 @@ export function Sidebar({
         ],
     }
 
+    // Audyt 2026-08 (UI): prop `isInboxHandler` był deklarowany, przekazywany przez
+    // trzy warstwy (layout → AppLayout → Sidebar) i NIGDY nie destrukturyzowany, więc
+    // link, który miał bramkować, w ogóle nie istniał. Skutek: obsługujący skrzynkę
+    // BEZ dostępu do People Ops nie miał jak wejść na /admin/inbox — łącznie z linkiem
+    // „wstecz" ze szczegółu zgłoszenia. Pokazujemy go tylko tym, którzy nie dostają
+    // People Ops (tam ta sama tablica żyje jako zakładka Sprawy — Faza 38).
+    const inboxOnlyGroup: NavGroup = {
+        heading: 'Komunikacja',
+        links: [
+            {
+                name: 'Skrzynka administracja@',
+                href: '/admin/inbox',
+                icon: Mailbox,
+                feature: null,
+                badgeCount: badges?.adminInbox,
+            },
+        ],
+    }
+
     // Phase 22 / 34 — standalone Onboarding & Exit link for non-TCM/admin HR-zone roles
     // (internal / finanse / manager) so they can still reach their own / their team's
     // lifecycle forms. TCM + admin get this link inside talentCommunityGroup instead.
@@ -326,9 +353,12 @@ export function Sidebar({
         // Phase 38 — Talent Community = five contractor-lifecycle elements (TCM + admin), then the
         // separate Komunikacja group (administracja@ inbox/helpdesk + News composer).
         // Phase 45: a per-user has_tcm_access grant opens People Ops for a non-TCM role (e.g. a manager).
-        if (isTalentCommunity || isAdmin || hasTcmAccess) {
+        const hasPeopleOps = isTalentCommunity || isAdmin || hasTcmAccess
+        if (hasPeopleOps) {
             out.push(peopleOpsGroup)
             out.push(komunikacjaGroup)
+        } else if (isInboxHandler) {
+            out.push(inboxOnlyGroup)
         }
         // Internal-employee onboarding/exit (DIFFERENT population from contractors) — osobny link tylko dla
         // HR-zone BEZ TCM/admin (manager/internal/finanse). TCM+admin (i grant has_tcm_access) mają to w module People Ops.
@@ -351,7 +381,7 @@ export function Sidebar({
     return (
         <div className={cn(
             "border-r border-sidebar-border bg-sidebar text-sidebar-foreground h-screen sticky top-0 left-0 overflow-y-auto transition-colors duration-300",
-            forMobile ? 'flex flex-col w-full' : 'hidden md:block md:w-64 lg:w-72',
+            'hidden md:block md:w-64 lg:w-72',
         )}>
             <div className="flex h-20 items-center px-6 border-b border-sidebar-border gap-3">
                 <Logo size="md" />
@@ -368,12 +398,14 @@ export function Sidebar({
                             </div>
                             {visibleLinks.map((link) => {
                                 const Icon = link.icon
-                                // Phase 38 — tab deep-links (e.g. /internal/kontraktorzy?tab=onboarding) are
-                                // "active" only for the matching tab; default (no ?tab) maps to 'rozmowy'.
+                                // Deep-linki z ?tab= są „aktywne" tylko dla swojej zakładki.
+                                // Audyt 2026-08 (UI): fallback `?? 'rozmowy'` to pozostałość po
+                                // usuniętym hubie Kontraktorów — żaden hub nie ma dziś takiej
+                                // zakładki, więc porównanie i tak zawsze wychodziło fałszywe.
                                 const [linkPath, linkQuery] = link.href.split('?')
                                 const isActive = linkQuery
                                     ? pathname === linkPath
-                                        && (searchParams.get('tab') ?? 'rozmowy') === new URLSearchParams(linkQuery).get('tab')
+                                        && searchParams.get('tab') === new URLSearchParams(linkQuery).get('tab')
                                     : link.exactMatch
                                         ? pathname === link.href
                                         : pathname === link.href || pathname.startsWith(`${link.href}/`)

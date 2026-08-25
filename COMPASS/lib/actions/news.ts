@@ -13,6 +13,7 @@ import type {
     ReactionKind,
     UpdateNewsPostPatch,
 } from '@/lib/types/news'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
@@ -182,7 +183,9 @@ export async function createNewsPost(input: CreateNewsPostInput): Promise<NewsAc
         if (input.publish) {
             const targetRoles = audience ?? ['consultant', 'admin']
             // Powiadomienia o newsie nie idą do byłych pracowników.
-            const { data: targets } = await supabase.from('profiles').select('id').in('role', targetRoles as unknown as ('consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community')[]).neq('employment_status', 'exited')
+            const { data: targets } = await excludeExited(
+                supabase.from('profiles').select('id').in('role', targetRoles as unknown as ('consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community')[]),
+            )
             const ids = ((targets ?? []) as Array<{ id: string }>).map((p) => p.id)
             if (ids.length > 0) {
                 const rows = ids.map((uid) => ({

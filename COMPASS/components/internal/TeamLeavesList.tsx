@@ -94,11 +94,13 @@ export function TeamLeavesList({ leaves, candidates }: Props) {
         setBusyId(leave.id)
         startTransition(async () => {
             try {
-                await cancelTeamLeave(leave.id)
+                const res = await cancelTeamLeave(leave.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się anulować urlopu.')
+                    return
+                }
                 toastSuccess('Urlop anulowany')
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setBusyId(null)
             }
@@ -272,21 +274,21 @@ function EditTeamLeaveDialog({ leave, candidates, onClose, onSaved }: EditDialog
             return
         }
         startTransition(async () => {
-            try {
-                await updateTeamLeave({
-                    id: leave.id,
-                    leaveType,
-                    startDate,
-                    endDate,
-                    halfDay: showHalfDay && halfDay ? halfDay : null,
-                    note: note.trim() || null,
-                    substituteId: substituteId || null,
-                })
-                toastSuccess('Urlop zaktualizowany — pracownik dostał powiadomienie.')
-                onSaved()
-            } catch (err: unknown) {
-                toast.error(err instanceof Error ? err.message : 'Błąd')
+            const res = await updateTeamLeave({
+                id: leave.id,
+                leaveType,
+                startDate,
+                endDate,
+                halfDay: showHalfDay && halfDay ? halfDay : null,
+                note: note.trim() || null,
+                substituteId: substituteId || null,
+            })
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Nie udało się zapisać zmian.')
+                return
             }
+            toastSuccess('Urlop zaktualizowany — pracownik dostał powiadomienie.')
+            onSaved()
         })
     }
 

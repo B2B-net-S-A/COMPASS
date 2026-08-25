@@ -9,7 +9,8 @@
 // Plain module (NIE 'use server'), ale ciągnie server-only (admin client) i
 // use-server (push) — NIE importować z komponentu klienckiego ani testu.
 
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
+import { activeRoster } from '@/lib/hr/employment-window'
 import { logger } from '@/lib/logger'
 import type { createServiceClient } from '@/lib/supabase/admin'
 
@@ -31,6 +32,18 @@ export interface GenericAlertPayload {
 /**
  * Odbiorcy alertu: z `system_settings` (CSV UUID) jeśli ustawione; inaczej fallback.
  * Wzorzec z contractor-followup-reminder.
+ *
+ * Audyt 2026-08: lista to zwykły tekst w tabeli klucz-wartość — nie ma i nie może
+ * mieć klucza obcego, więc UUID nie znika, kiedy człowiek odchodzi z firmy. Bez
+ * sprawdzenia alert szedł do konta ZARCHIWIZOWANEGO (które od Fazy 43 nie może
+ * się nawet zalogować), a wpis UUID-a nieistniejącego odbijał się o klucz obcy
+ * `notifications` gdzieś w środku wysyłki. Dlatego skonfigurowaną listę
+ * konfrontujemy z `profiles`: zostają tylko konta istniejące i nie-`exited`.
+ *
+ * Gdy po tym filtrze nie zostaje nikt, wracamy do fallbacku (właściciel sprawy /
+ * wszyscy admini) — alert ma dojść do KOGOŚ. Odsiane UUID-y lądują w logu, bo
+ * cicha korekta listy odbiorców to dokładnie ten rodzaj zmiany, którego nikt
+ * później nie umie wytłumaczyć.
  */
 export async function resolveAlertRecipients(
     admin: ServiceClient,
@@ -44,22 +57,67 @@ export async function resolveAlertRecipients(
         .eq('key', settingKey)
         .maybeSingle()
     const configured = parseCsv((data as { value?: string } | null)?.value ?? null)
-    if (configured.length > 0) return configured
+
+    if (configured.length > 0) {
+        const { data: rows, error } = await admin
+            .from('profiles')
+            .select('id, employment_status')
+            .in('id', configured)
+
+        // Nie udało się sprawdzić = nie zgadujemy. Lepiej wysłać wg konfiguracji
+        // niż wyciszyć alert z powodu chwilowej awarii odczytu.
+        if (error) return configured
+
+        const usable = activeRoster(
+            (rows ?? []) as Array<{ id: string; employment_status: string | null }>,
+        ).map((p) => p.id)
+        const usableSet = new Set(usable)
+        const dropped = configured.filter((id) => !usableSet.has(id))
+        if (dropped.length > 0) {
+            logger.warn({
+                event: 'alerts.recipients.dropped',
+                settingKey,
+                dropped,
+                msg: 'UUID z system_settings nie wskazuje na aktywny profil — pomijam',
+            })
+        }
+        if (usable.length > 0) return usable
+    }
+
     return Array.from(new Set(fallbackUserIds.filter(Boolean)))
+}
+
+export interface AlertDispatchResult {
+    /** Odbiorcy, do których poszła próba. */
+    attempted: number
+    /**
+     * Odbiorcy, do których alert faktycznie dotarł TRWAŁYM kanałem (dzwonek lub email).
+     *
+     * Push jest z założenia best-effort (brak subskrypcji = cisza, a `.catch` niżej
+     * zamienia awarię w rozwiązaną obietnicę), więc sam z siebie nie liczy się jako
+     * dostarczenie — inaczej alert „dostarczony" mógłby nie zostawić po sobie nic,
+     * co da się później zobaczyć.
+     */
+    delivered: number
 }
 
 /**
  * Wysyła alert do odbiorców trzema kanałami, każdy w Promise.allSettled — awaria
- * kanału jest logowana, nie rzuca. Zwraca liczbę odbiorców, do których poszła próba.
+ * kanału jest logowana, nie rzuca.
+ *
+ * Audyt 2026-08 (C11.2): funkcja zwracała samą liczbę PRÓB, a wołający brał ją (albo
+ * sam brak wyjątku) za dowód dostarczenia i stemplował dedup `alerted_at`/`reminded_at`.
+ * Nieudany alert nigdy się więc nie ponawiał — cisza wyglądała identycznie jak sukces.
+ * Stąd rozdzielenie `attempted` / `delivered`: stempluj wyłącznie po `delivered > 0`.
  */
 export async function dispatchGenericAlert(
     admin: ServiceClient,
     recipientIds: string[],
     payload: GenericAlertPayload,
     logEvent: string,
-): Promise<number> {
+): Promise<AlertDispatchResult> {
     const ids = Array.from(new Set(recipientIds.filter(Boolean)))
-    if (ids.length === 0) return 0
+    if (ids.length === 0) return { attempted: 0, delivered: 0 }
 
     const { data: profiles } = await admin
         .from('profiles')
@@ -71,7 +129,8 @@ export async function dispatchGenericAlert(
         ),
     )
 
-    let notified = 0
+    let attempted = 0
+    let delivered = 0
     for (const uid of ids) {
         const profile = byId.get(uid)
 
@@ -118,7 +177,24 @@ export async function dispatchGenericAlert(
                 })
             }
         })
-        notified += 1
+
+        const [inAppResult, , emailResult] = results
+        const inAppOk = inAppResult.status === 'fulfilled'
+        // Wysyłka maila NIE rzuca przy porażce — zwraca `{ success: false }`. Sam
+        // `fulfilled` nic więc nie mówi; liczy się dopiero flaga w wyniku.
+        const emailOk = emailResult.status === 'fulfilled' && emailResult.value.success === true
+
+        attempted += 1
+        if (inAppOk || emailOk) delivered += 1
+        else {
+            logger.error({
+                event: logEvent,
+                channel: 'all',
+                type: payload.type,
+                user_id: uid,
+                error: 'żaden trwały kanał nie dostarczył alertu',
+            })
+        }
     }
-    return notified
+    return { attempted, delivered }
 }

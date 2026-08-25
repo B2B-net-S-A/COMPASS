@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import * as Sentry from '@sentry/nextjs'
 import { logger } from '@/lib/logger'
 
 export default function Error({
@@ -12,6 +13,9 @@ export default function Error({
 }) {
     useEffect(() => {
         logger.error({ event: 'admin_error_boundary', error, digest: error.digest })
+        // Audyt 2026-08: sam logger nie dojeżdża do Sentry — błędy renderu po
+        // stronie klienta były widoczne WYŁĄCZNIE w konsoli przeglądarki użytkownika.
+        Sentry.captureException(error, { tags: { boundary: 'react' } })
     }, [error])
 
     return (

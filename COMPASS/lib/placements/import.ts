@@ -1,7 +1,8 @@
 // Phase 28 — Placementy: pure import logic (bonus compute, name resolution, diff).
 // No I/O here — all functions are deterministic and unit-tested.
 
-import { addBusinessDays, format, parseISO } from 'date-fns'
+import { format, parseISO } from 'date-fns'
+import { addPolishBusinessDays } from '@/lib/utils/business-days'
 import { recruiterTierForMargin } from '@/lib/types/bonus'
 import {
     DL_BONUS_PERCENT,
@@ -36,8 +37,13 @@ export function computeBonusFields(row: ParsedPlacementRow): PlacementBonusField
         )
     }
 
+    // Audyt 2026-08: było `addBusinessDays` z date-fns, które pomija WYŁĄCZNIE
+    // soboty i niedziele. Prognoza „168h przepracowane" wypadała więc o tyle dni
+    // za wcześnie, ile świąt trafiało w okno — a to ta data budzi crona
+    // `placement-hours-reminder`, czyli prosi managera o potwierdzenie premii.
+    // `addPolishBusinessDays` pomija też święta (lib/utils/business-days.ts).
     const bonusEligibleDate = format(
-        addBusinessDays(parseISO(row.startDate), PLACEMENT_ELIGIBLE_BUSINESS_DAYS),
+        addPolishBusinessDays(parseISO(row.startDate), PLACEMENT_ELIGIBLE_BUSINESS_DAYS),
         'yyyy-MM-dd',
     )
 

@@ -38,7 +38,7 @@ export function isEmployedInMonth(
 
     // No date recorded: only an explicit `exited` removes them (defensive —
     // legacy archives predating termination_date tracking).
-    return member.employment_status !== 'exited'
+    return member.employment_status !== EXITED
 }
 
 /** Drop everyone whose employment ended before the given month began. */
@@ -48,3 +48,103 @@ export function filterEmployedInMonth<T extends EmploymentWindowFields>(
 ): T[] {
     return members.filter((m) => isEmployedInMonth(m, monthStart))
 }
+
+/**
+ * Pierwszy dzień miesiąca w formacie ISO — kanoniczne wejście dla
+ * `isEmployedInMonth` / `filterEmployedInMonth`.
+ *
+ * Audyt 2026-08: ten szablon był powielany inline w każdym miejscu liczącym
+ * okno miesięczne. Jedno źródło zmniejsza szansę, że kolejne wywołanie dostanie
+ * datę w innym formacie i porównanie stringów zacznie po cichu kłamać.
+ */
+export function monthStart(year: number, month: number): string {
+    return `${year}-${String(month).padStart(2, '0')}-01`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DWIE REGUŁY „kto jest na liście" — i dlaczego pomyłka boli w OBIE strony
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 1) `activeRoster` — listy „TU I TERAZ": adresaci wiadomości, dropdowny
+//    przypisania, odbiorcy powiadomień i maili z cronów, katalogi ludzi.
+//    Pytanie brzmi „czy ta osoba dziś u nas pracuje".
+//
+// 2) `employedInMonth` — widoki i raporty MIESIĘCZNE: payroll, kalendarz
+//    zespołu, ewidencja. Pytanie brzmi „czy ta osoba pracowała W TYM miesiącu".
+//
+// Użycie złej reguły boli w obie strony:
+//   • reguła miesięczna na liście „tu i teraz" → osoba, która odeszła pół roku
+//     temu, zostaje w dropdownie i na kalendarzu na zawsze (tak wyglądał bug
+//     kalendarza zespołu);
+//   • reguła „tu i teraz" w raporcie miesięcznym → kto odszedł 20-go, znika
+//     z rozliczenia miesiąca, który w większości przepracował (ta sama pułapka
+//     w payrollu — cichy błąd w wypłacie, nie w widoku).
+//
+// Rozstrzyga PRZEZNACZENIE wyniku, nie to, z której tabeli pochodzi.
+
+const EXITED = 'exited'
+const OFFBOARDING = 'offboarding'
+
+export interface ActiveRosterOptions {
+    /**
+     * Pomija także osoby w trakcie offboardingu. Domyślnie `false`, bo do
+     * ostatniego dnia pracy taka osoba normalnie pracuje i normalnie jest
+     * adresatem. Włączane świadomie tam, gdzie lista dotyczy czegoś, co ma
+     * przeżyć odejście (np. zakładanie reguł w skrzynce pocztowej).
+     */
+    excludeOffboarding?: boolean
+}
+
+/** Reguła „tu i teraz" dla POJEDYNCZEJ osoby (walidacja pola, guard, warunek w UI). */
+export function isActiveNow(
+    member: EmploymentWindowFields,
+    options: ActiveRosterOptions = {},
+): boolean {
+    if (member.employment_status === EXITED) return false
+    if (options.excludeOffboarding && member.employment_status === OFFBOARDING) return false
+    return true
+}
+
+/**
+ * Lista „tu i teraz" — patrz komentarz wyżej. NIE używaj w raportach
+ * miesięcznych; tam jest `employedInMonth`.
+ */
+export function activeRoster<T extends EmploymentWindowFields>(
+    members: readonly T[],
+    options: ActiveRosterOptions = {},
+): T[] {
+    return members.filter((m) => isActiveNow(m, options))
+}
+
+/**
+ * Ta sama reguła „tu i teraz", ale nałożona po stronie bazy — dla zapytań,
+ * które i tak nie pobierają `employment_status` do pamięci.
+ *
+ * Jedno miejsce z literałem `'exited'` znaczy, że zmiana reguły (np. nowy
+ * status „zawieszony") nie wymaga polowania na ~20 rozsypanych `.neq(...)`.
+ */
+export function excludeExited<Q extends { neq: unknown }>(query: Q): Q {
+    // Ograniczenie sprawdza tylko OBECNOŚĆ pola `neq`, nie jego sygnaturę — i to
+    // jest tu istotne, nie kosmetyka. Pełna sygnatura (`neq(column, value): unknown`)
+    // zmuszała kompilator do zinstancjonowania generycznej metody buildera PostgREST
+    // przy każdym z ~20 wywołań; przy dłuższym łańcuchu (`.in(...)` + `.order(...)`
+    // na kliencie użytkownika) budżet się wyczerpywał i tsc padał z TS2589.
+    // Błąd zależał od kolejności instancjacji, więc pojawiał się i znikał między
+    // przebiegami — stąd sprzeczne diagnozy „to preexisting" / „to zniknęło samo".
+    //
+    // Sam kształt nadal odrzuca oczywiste pomyłki (null, string, obiekt bez `neq`),
+    // a wywołanie idzie przez wąskie rzutowanie poniżej.
+    return (query as unknown as ExitFilterableQuery).neq('employment_status', EXITED) as Q
+}
+
+/** Wąski kontrakt wywołania — tylko to, czego `excludeExited` faktycznie używa. */
+interface ExitFilterableQuery {
+    neq(column: 'employment_status', value: string): unknown
+}
+
+/**
+ * Reguła MIESIĘCZNA — patrz komentarz wyżej. Kanoniczna nazwa, parzysta do
+ * `activeRoster`, żeby przy czytaniu kodu od razu było widać, którą z dwóch
+ * reguł wybrano.
+ */
+export const employedInMonth = filterEmployedInMonth

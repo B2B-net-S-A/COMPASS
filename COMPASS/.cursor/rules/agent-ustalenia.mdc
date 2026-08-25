@@ -1,54 +1,61 @@
 ---
-description: Compass agent operating rules (Cursor)
+description: COMPASS — ustalenia dla agentów (Cursor)
 globs:
 alwaysApply: true
 ---
 
-# Compass — ustalenia dla agentów
+# COMPASS — ustalenia dla agentów
 
-## Struktura projektu
+> Ten plik wchodzi do KAŻDEJ sesji (`alwaysApply`), więc musi być prawdziwy.
+> Audyt 2026-08 zastał tu opis sprzed rebrandu z maja: katalog `APK-COMPASS/`,
+> workflow `deploy-hetzner`, healthcheck zwracający `{"status":"ok"}` i zakaz
+> `ignoreBuildErrors` — czyli cztery rzeczy, których agent nie znajdzie w repo
+> albo znajdzie w odwrotnej postaci.
+>
+> **Źródłem prawdy jest `CLAUDE.md` w korzeniu repozytorium.** Tu tylko skrót.
+
+## Struktura
 
 ```
-Compass/
-├── APK-COMPASS/             # Next.js app (source of truth)
-│   ├── app/                 # App Router + API routes
-│   ├── components/          # React components
-│   ├── lib/                 # Actions, utilities, Supabase clients
-│   ├── supabase/migrations/ # SQL migrations
-│   └── Dockerfile           # Multi-stage build, standalone output
-├── docs/                    # Docs + deployment guides
-├── docker-compose.yml       # Root compose (context: ./APK-COMPASS)
-└── .github/workflows/       # build-check, deploy-hetzner, e2e-tests
+compass/
+├── COMPASS/                 # aplikacja Next.js 14 (App Router)
+│   ├── app/ components/ lib/
+│   ├── supabase/migrations/
+│   └── Dockerfile           # multistage, standalone
+├── docs/                    # dokumentacja, raporty, historia faz
+├── docker-compose.yml       # kontekst budowania: ./COMPASS
+└── .github/workflows/       # build-check, deploy, claude-review, crony
 ```
 
-## Infrastruktura
+## Workflow zmiany
 
-Konkretne URL/ID są w secretach (CI) lub lokalnym `.env`:
-- Produkcja — Hetzner (`NEXT_PUBLIC_APP_URL`)
-- Supabase — managed (`NEXT_PUBLIC_SUPABASE_URL`)
-- Repo — `github.com/artur-t-96/compass`
-
-## Workflow dla zmian
-
-1. Przed edycją: przeczytać wszystkie powiązane pliki
-2. Dla SQL: dodać migrację do `APK-COMPASS/supabase/migrations/<YYYYMMDD>_opis.sql`, nigdy nie edytować istniejących
-3. Po zmianie: `npx tsc --noEmit` + `npm run build` — musi być 0 errors
-4. Commit w j. polskim, format: `<typ>: <opis>` (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`)
-5. Push na `main` — GitHub Actions odpala build-check + deploy-hetzner
-6. Po deployu: weryfikacja `/api/health` zwraca `{"status":"ok"}`
+1. Przeczytaj `CLAUDE.md` i pliki, których dotyczy zmiana — komentarze w kodzie
+   zapisują POWÓD decyzji; cofnięcie ich bez czytania to najczęstsza regresja.
+2. SQL: nowa migracja w `COMPASS/supabase/migrations/<YYYYMMDDHHMMSS>_opis.sql`.
+   Nigdy nie edytuj już zaaplikowanej.
+3. Sprawdzenie: `npx tsc --noEmit` + `npm test` (Vitest) — oba na zero błędów.
+4. Commit po polsku, `<typ>: <opis>` (feat/fix/chore/docs/refactor/test).
+5. Zmiany wchodzą przez PR — `main` jest chroniony i wymaga zielonego CI.
+6. Po wdrożeniu `/api/health` zwraca `{"status":"healthy", "version": "<sha>", …}`
+   (NIE `"ok"` — to kontrakt smoke testu wdrożenia).
 
 ## Czego NIE robić
 
-- Nie commitować `.env*` (oprócz `.env.*.example`)
-- Nie wprowadzać `console.log` do kodu produkcyjnego (lib/, app/api/)
-- Nie dodawać `ignoreBuildErrors: true` — TS jest blocking
-- Nie hardkodować adresów email, URL-i, sekretów ani ID projektów
-- Nie wyłączać RLS w migracjach bez zgody
-- Nie robić `git push --force` na `main`
+- Nie commitować `.env*` (poza `.env.*.example`).
+- Nie zostawiać `console.log` w kodzie produkcyjnym (`lib/`, `app/api/`).
+- Nie włączać typechecku w `next build`: `ignoreBuildErrors: true` w
+  `next.config.mjs` jest ŚWIADOMY — faza sprawdzania typów OOM-owała na
+  build-hoście. Typy bramkuje CI i to jest tam wymagany check.
+- Nie hardkodować adresów e-mail, URL-i, sekretów ani identyfikatorów projektów.
+- Nie wyłączać RLS w migracjach.
+- Nie robić `git push --force` na `main`.
 
-## Bezpieczeństwo (checklist przed commitem)
+## Bezpieczeństwo — przed commitem
 
-- [ ] Żadnych `eyJhbGc`, `sk-proj-`, `re_`, `SUPABASE_SERVICE_ROLE_KEY` w diffie
-- [ ] Żadnych adresów email ani nazwisk w kodzie produkcyjnym
-- [ ] `process.env.*` używane zamiast hardkodowanych wartości
-- [ ] Jeśli dodany server action — sprawdzony auth/authz na początku funkcji
+- [ ] W diffie nie ma `eyJhbGc`, `sk-proj-`, `SUPABASE_SERVICE_ROLE_KEY`.
+- [ ] Brak nazwisk i adresów e-mail w kodzie produkcyjnym.
+- [ ] Wartości z `process.env.*`, nie wpisane na sztywno.
+- [ ] Nowa akcja serwerowa zaczyna się od guardu autoryzacji
+      (`lib/auth/internal-guard.ts`), a nie sprawdza uprawnień „po drodze".
+- [ ] Nowe zapytanie listowe wymienia kolumny jawnie i obsługuje błąd — pusta
+      tablica po cichej awarii wygląda jak „brak danych".

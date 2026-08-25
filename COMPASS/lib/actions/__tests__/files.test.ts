@@ -12,6 +12,13 @@ vi.mock('@/lib/ai/embeddings', () => ({
     generateEmbedding: vi.fn(async (text: string) => deterministicEmbedding(text)),
 }))
 
+// Audyt 2026-08 (B3) — akcje admin* są teraz za guardem. Domyślnie przepuszcza,
+// żeby nie zmieniać istniejących testów uploadu użytkownika.
+const guard = vi.hoisted(() => ({
+    requireAdminAction: vi.fn(async () => ({ userId: 'admin-1' })),
+}))
+vi.mock('@/lib/auth/internal-guard', () => guard)
+
 function setup(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)
     return currentClient
@@ -82,5 +89,23 @@ describe('uploadCV — auth & size validation', () => {
         const small = new File(['x'], 'cv.pdf', { type: 'application/pdf' })
         const { uploadCV } = await import('../files')
         await expect(uploadCV(makeFormData(small))).rejects.toThrow(/zalogowany/)
+    })
+})
+
+describe('akcje administracyjne — guard', () => {
+    it('adminUploadCV odrzuca wywołanie bez uprawnień administratora', async () => {
+        setup({})
+        guard.requireAdminAction.mockRejectedValueOnce(new Error('Wymagane uprawnienia administratora.'))
+        const { adminUploadCV } = await import('../files')
+        const pdf = new File(['cv'], 'cv.pdf', { type: 'application/pdf' })
+        await expect(adminUploadCV(makeFormData(pdf), 'cand-1')).rejects.toThrow(/administratora/)
+    })
+
+    it('adminGenerateProfileFromCV nie sięga do Storage ani do LLM bez uprawnień', async () => {
+        const client = setup({})
+        guard.requireAdminAction.mockRejectedValueOnce(new Error('Wymagane uprawnienia administratora.'))
+        const { adminGenerateProfileFromCV } = await import('../files')
+        await expect(adminGenerateProfileFromCV('cand-1', 'documents/cudze/cv.pdf')).rejects.toThrow(/administratora/)
+        expect(client.storage.from).not.toHaveBeenCalled()
     })
 })

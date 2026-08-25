@@ -32,10 +32,19 @@ export default async function PrivacyPolicyPage() {
           </p>
         </>
       ) : (
+        // Audyt 2026-08 (C5): treść polityki leży w bazie i renderuje się wyżej.
+        // Ta gałąź to już tylko awaria odczytu — komunikat „w przygotowaniu" był
+        // przy niej podwójnie mylący, bo regulamin warunkuje rejestrację akceptacją
+        // TEJ polityki, a aplikacja przetwarza dane kadrowe. Kto tu trafia, musi
+        // dostać drogę do treści, nie zapowiedź.
         <>
           <h1 className="text-2xl font-bold mb-4">Polityka prywatności</h1>
+          <p className="text-muted-foreground mb-2">
+            Nie udało się teraz wczytać treści polityki prywatności. Spróbuj odświeżyć stronę za chwilę.
+          </p>
           <p className="text-muted-foreground mb-6">
-            Strona w przygotowaniu. Treść polityki prywatności i informacje o przetwarzaniu danych osobowych (RODO) zostaną udostępnione wkrótce.
+            Kopię obowiązującej polityki i informacje o przetwarzaniu danych osobowych (RODO) otrzymasz od
+            inspektora ochrony danych: <a className="text-primary underline" href="mailto:iod@b2bnetwork.pl">iod@b2bnetwork.pl</a>.
           </p>
         </>
       )}

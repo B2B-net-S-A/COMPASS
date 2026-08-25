@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
 import type { DbRole } from '@/lib/types/role'
 
@@ -11,15 +11,25 @@ import type { DbRole } from '@/lib/types/role'
 //   - admin_access_list lub SUPER_ADMIN_EMAILS  → admin
 //   - currentRole === 'internal' (Phase 11a)    → internal (preserved)
 //   - else                                       → consultant
+//
+// Audyt 2026-08: klient jest tworzony TUTAJ (service-role), a nie przyjmowany
+// od wywołującego. Powód: `public.sync_user_role` to SECURITY DEFINER, które
+// przyjmuje p_user_id / p_email / p_is_super_admin jako parametry i nie sprawdza
+// auth.uid(). Dopóki EXECUTE miała rola `authenticated`, dowolny zalogowany
+// mógł jednym POST /rest/v1/rpc/sync_user_role nadać sobie (albo komukolwiek)
+// rolę admin — lub zdegradować cudzego admina do consultant.
+// Po odebraniu tego uprawnienia migracją funkcja jest osiągalna WYŁĄCZNIE
+// service-rolą, więc ścieżka logowania musi ją wołać właśnie tak.
+// Nie przywracaj parametru `supabase` — to cofnęłoby całą naprawę.
 
 export async function syncRole(
-    supabase: SupabaseClient,
     userId: string,
     email: string,
     _currentRole: string,
 ): Promise<DbRole> {
     const emailLower = email.toLowerCase()
     const isSuperAdminFlag = isSuperAdmin(emailLower)
+    const supabase = createServiceClient()
 
     const { data, error } = await supabase.rpc('sync_user_role', {
         p_user_id: userId,

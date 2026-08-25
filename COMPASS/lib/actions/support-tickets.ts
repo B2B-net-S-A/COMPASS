@@ -22,6 +22,28 @@ async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: 
     return data?.role === 'admin'
 }
 
+// Phase 37 zlało trzy populacje w jedną tabelę `support_tickets`: helpdesk konsultantów,
+// skrzynkę administracja@ (kategorie `inbox_%`) i lustro spraw kontraktorskich
+// (`contractor_%`, usunięte krokiem audytu C2). Rodziny rozróżnia WYŁĄCZNIE prefiks
+// sluga kategorii. Pominięcie jednego z prefiksów wlało kiedyś rozmowy TCM do listy
+// helpdesku (hotfix #217) — ale tamta poprawka objęła samą listę. Akcje operujące po
+// gołym `ticketId` (szczegół, komentarz, status, przypisanie) bariery nie miały, więc
+// zgłoszeniem ze skrzynki dawało się sterować ścieżką helpdesku, z pominięciem audytu
+// i kolejki inboxu. Prefiks `contractor_` zostaje w liście świadomie: kosztuje jedno
+// porównanie, a chroni przed powrotem lustra tylnymi drzwiami.
+const NON_HELPDESK_CATEGORY_PREFIXES = ['inbox_', 'contractor_'] as const
+
+function isHelpdeskSlug(slug: string): boolean {
+    if (!slug) return false
+    return !NON_HELPDESK_CATEGORY_PREFIXES.some((prefix) => slug.startsWith(prefix))
+}
+
+async function isHelpdeskCategory(supabase: ReturnType<typeof createClient>, categoryId: string): Promise<boolean> {
+    const { data } = await supabase.from('support_categories').select('slug').eq('id', categoryId).single()
+    // Nieznana kategoria = nie potrafimy potwierdzić, że to helpdesk → odmawiamy.
+    return isHelpdeskSlug((data as { slug?: string } | null)?.slug ?? '')
+}
+
 async function notifyUsers(
     supabase: ReturnType<typeof createClient>,
     userIds: string[],
@@ -59,7 +81,10 @@ export async function listSupportCategories(opts: { includeInactive?: boolean } 
         }
         const { data, error } = await query
         if (error) throw error
-        return { success: true, data: (data ?? []) as SupportCategory[] }
+        // Kategorie skrzynki i spraw kontraktorskich nie należą do helpdesku — nie mogą
+        // trafić ani do formularza zgłoszenia, ani do bazy wiedzy.
+        const rows = (data ?? []) as SupportCategory[]
+        return { success: true, data: rows.filter((c) => isHelpdeskSlug(c.slug)) }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd pobierania kategorii'
         return { success: false, error: msg }
@@ -83,6 +108,10 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportAct
         }
         if (!input.body_md || input.body_md.trim().length < minBody) {
             return { success: false, error: `Wiadomość musi mieć co najmniej ${minBody} ${minBody === 1 ? 'znak' : 'znaki'}` }
+        }
+
+        if (!(await isHelpdeskCategory(supabase, input.category_id))) {
+            return { success: false, error: 'Nieprawidłowa kategoria zgłoszenia' }
         }
 
         const insertPayload: TablesInsert<'support_tickets'> = {
@@ -244,6 +273,12 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
 
         if (ticketErr || !ticket) return { success: false, error: 'Ticket nie istnieje lub brak dostępu' }
 
+        // Ten sam komunikat co przy braku dostępu — ścieżka helpdesku nie ma potwierdzać,
+        // że zgłoszenie o danym id istnieje w skrzynce.
+        if (!(await isHelpdeskCategory(supabase, ticket.category_id))) {
+            return { success: false, error: 'Ticket nie istnieje lub brak dostępu' }
+        }
+
         const isAdmin = await isCallerAdmin(supabase, user.id)
         const isAssignee = ticket.assignee_id === user.id
         const isOwner = ticket.user_id === user.id
@@ -331,8 +366,11 @@ export async function addComment(ticketId: string, body: string, isInternal = fa
             return { success: false, error: 'Treść komentarza jest wymagana' }
         }
 
-        const { data: ticket } = await supabase.from('support_tickets').select('user_id, assignee_id, subject').eq('id', ticketId).single()
+        const { data: ticket } = await supabase.from('support_tickets').select('user_id, assignee_id, subject, category_id').eq('id', ticketId).single()
         if (!ticket) return { success: false, error: 'Ticket nie istnieje' }
+        if (!(await isHelpdeskCategory(supabase, ticket.category_id))) {
+            return { success: false, error: 'Ticket nie istnieje' }
+        }
 
         const { data, error } = await supabase
             .from('support_ticket_comments')
@@ -381,10 +419,15 @@ export async function changeTicketStatus(ticketId: string, status: TicketStatus)
 
         const { data: ticket } = await supabase
             .from('support_tickets')
-            .select('user_id, assignee_id, subject, status')
+            .select('user_id, assignee_id, subject, status, category_id')
             .eq('id', ticketId)
             .single()
         if (!ticket) return { success: false, error: 'Ticket nie istnieje' }
+        // Statusem zgłoszenia ze skrzynki steruje moveInboxTicket (audyt + kolejka),
+        // nie helpdeskowa zmiana statusu.
+        if (!(await isHelpdeskCategory(supabase, ticket.category_id))) {
+            return { success: false, error: 'Ticket nie istnieje' }
+        }
 
         const isAdmin = await isCallerAdmin(supabase, user.id)
         const isAssignee = ticket.assignee_id === user.id
@@ -435,9 +478,15 @@ export async function assignTicket(ticketId: string, assigneeId: string | null):
 
         const { data: ticket } = await supabase
             .from('support_tickets')
-            .select('subject')
+            .select('subject, category_id')
             .eq('id', ticketId)
             .single()
+        if (!ticket) return { success: false, error: 'Ticket nie istnieje' }
+        // Przypisaniem w skrzynce zarządza assignInboxTicket — tamta ścieżka pilnuje
+        // uprawnień handlera i zostawia ślad w audycie.
+        if (!(await isHelpdeskCategory(supabase, ticket.category_id))) {
+            return { success: false, error: 'Ticket nie istnieje' }
+        }
 
         const { error } = await supabase.from('support_tickets').update(updates).eq('id', ticketId)
         if (error) throw error

@@ -10,6 +10,7 @@
   - **Faza A: 14 → 15.4.x** (najnowsza stabilna 15.x w momencie migracji) — async API, Sentry SDK bump, fetch cache audit. **~20–30h.**
   - **Faza B: 15.4.x → 16.2.x** — React 18 → 19, Turbopack ergonomics, drobne config cleanup. **~12–16h.**
 - **Łączny effort: 32–46h pracy + smoke** (Dependabot proponował "8-16h" jak na patch, ale to nierealistyczne dla 70+ plików dotkniętych async API).
+- ⚠ **Nie ma ścieżki patcha w obrębie 14.** Gałąź 14.x kończy się na **14.2.35** (`npm view next dist-tags` → `next-14: 14.2.35`); zapowiadana niżej wersja 14.2.36 nie istnieje. Każdy CVE w 14.2.35 zostaje otwarty do czasu Fazy A — patrz sprostowanie w sekcji „Decyzja".
 
 ## Decyzja: dlaczego nie merge PR #48
 
@@ -17,7 +18,13 @@ PR #48 = Dependabot 14.2.35 → 16.2.6 (skok przez dwie major). Powody zamknięc
 
 1. **CI failed** (Typecheck + Lint + Test + Build) — potwierdzenie że nie jest to drop-in upgrade.
 2. **Pominięcie wersji 15** = pominięcie testu integracyjnego z każdą wersją osobno. Jeśli 16 coś zepsuje, nie wiemy czy regresja przyszła z 14→15 czy 15→16. Diagnostyka pozioma.
-3. **Bezpieczeństwo** (CVE'y w 14.2.35) — wiele ich łata już **Next 14.2.36+** (LTS branch). Jeśli urgent security fix potrzebny → bump do 14.2.36 jako oddzielny patch PR, nie skok do 16.
+3. ~~**Bezpieczeństwo** (CVE'y w 14.2.35) — wiele ich łata już **Next 14.2.36+** (LTS branch). Jeśli urgent security fix potrzebny → bump do 14.2.36 jako oddzielny patch PR, nie skok do 16.~~
+   > ⚠ **SPROSTOWANIE (audyt 2026-08-25). Wersja 14.2.36 nie istnieje i nigdy nie istniała.**
+   > `npm view next dist-tags` → `next-14: 14.2.35` — gałąź 14.x kończy się na 14.2.35, nie ma
+   > „LTS branch", z którego przyszłyby łatki. To znaczy, że **nie ma ścieżki patcha w obrębie 14**:
+   > jedyne wyjście dla CVE to migracja do 15 (Faza A). Ten punkt był jednym z czterech powodów
+   > zamknięcia PR #48 i przez trzy miesiące uzasadniał odkładanie łatek obietnicą wersji, której
+   > nie ma. **Zanim zapiszesz „poczekamy na wersję X", sprawdź `npm view <pkg> dist-tags`.**
 4. Dependabot widzi tylko `package.json` + lockfile — nie audytuje semantyki API. Decyzja merge'a jest człowieka.
 
 ## Audyt zakresu w Compass (stan 2026-05-11)

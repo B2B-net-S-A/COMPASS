@@ -220,3 +220,19 @@ describe('planForwardRuleEdit', () => {
         }
     })
 })
+
+// Audyt 2026-08 (B4): regresja, którą łatwo wprowadzić z powrotem.
+// Roster skrzynek dla OOF i przekierowań NIE MOŻE wykluczać `offboarding` —
+// ta osoba do ostatniego dnia pracuje i bierze urlop, a wykluczenie znaczyło,
+// że wniosek przechodzi, ale poczta nie jest przekierowana do zastępcy.
+describe('roster skrzynek a offboarding', () => {
+    it('osoba w offboardingu zostaje w rosterze, zarchiwizowana wypada', async () => {
+        const { activeRoster } = await import('@/lib/hr/employment-window')
+        const roster = [
+            { id: 'aktywny', employment_status: 'active' },
+            { id: 'offboarding', employment_status: 'offboarding' },
+            { id: 'zarchiwizowany', employment_status: 'exited' },
+        ]
+        expect(activeRoster(roster).map((m) => m.id)).toEqual(['aktywny', 'offboarding'])
+    })
+})

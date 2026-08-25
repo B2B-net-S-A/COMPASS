@@ -10,7 +10,7 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { logAudit } from '@/lib/actions/audit'
 import { sendBonusAssigned, sendBonusCancelled } from '@/lib/email'
-import { sendPushToUserId } from '@/lib/actions/push-subscriptions'
+import { sendPushToUserId } from '@/lib/push/dispatch'
 import { differenceInCalendarDays } from 'date-fns'
 import {
     bonusPeriodFromEligibleDate,
@@ -44,6 +44,8 @@ import {
     type ExistingPlacementKey,
     type ProfileLite,
 } from '@/lib/placements/import'
+import { ensureContractors } from '@/lib/contractors/import-core'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -62,11 +64,12 @@ async function fileFromForm(formData: FormData): Promise<ArrayBuffer> {
 }
 
 async function loadProfilesForMatching(admin: ServiceClient): Promise<ProfileLite[]> {
-    const { data } = await admin
-        .from('profiles')
-        .select('id, full_name, role')
-        .not('full_name', 'is', null)
-        .neq('employment_status', 'exited')
+    const { data } = await excludeExited(
+        admin
+            .from('profiles')
+            .select('id, full_name, role')
+            .not('full_name', 'is', null),
+    )
     return ((data ?? []) as ProfileLite[]).filter((p) => (p.full_name ?? '').trim().length > 0)
 }
 
@@ -243,6 +246,19 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
     const categoryId = (cat as { id: string } | null)?.id ?? null
 
     const batchId = crypto.randomUUID()
+
+    // Audyt 2026-08-25 (C12.1): placement MUSI wskazywać kontraktora, inaczej nie pokaże
+    // się ani na jego profilu, ani w Consultant Success. Na `placements` nie ma triggera,
+    // a jedyne zapełnienie FK to jednorazowy backfill Fazy 33a — 0/52 placementów z późniejszych
+    // importów było podpiętych. Ten sam helper co importer Wejść/Zejść (idempotentny, sam
+    // rozstrzyga wyścig o `contractors` przez unikalny indeks na lower(trim(full_name))).
+    const { map: contractorMap, created: contractorsCreated } = await ensureContractors(
+        admin,
+        parsed.rows.map((r) => ({ fullName: r.consultantName, client: r.clientName, position: r.position })),
+        ctx.userId,
+        batchId,
+    )
+
     let created = 0
     let updated = 0
     let ticketsCreated = 0
@@ -253,6 +269,7 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
         const key = placementNaturalKey(r.consultantName, r.clientName, r.startDate)
         const ex = existingByKey.get(key)
         const base = {
+            contractor_id: contractorMap.get(normalizePersonName(r.consultantName)) ?? null,
             consultant_name: r.consultantName,
             client_name: r.clientName,
             position: r.position,
@@ -342,6 +359,7 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
         updated,
         tickets: ticketsCreated,
         cancelled,
+        contractors_created: contractorsCreated,
         row_errors: rowErrors.length > 0 ? rowErrors : undefined,
     })
     if (aliasRows.length > 0) {

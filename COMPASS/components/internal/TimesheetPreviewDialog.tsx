@@ -134,8 +134,8 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         ])
             .then(([data, blocked]) => {
                 if (!cancelled) {
-                    setLeaves(data)
-                    setBlockedLeaveDates(blocked)
+                    setLeaves(data?.success ? data.data : [])
+                    setBlockedLeaveDates(blocked?.success ? blocked.data : [])
                     setLeavesLoadedId(timesheet.id)
                 }
             })
@@ -173,12 +173,14 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         setCancellingLeaveId(leave.id)
         startTransition(async () => {
             try {
-                await cancelTeamLeave(leave.id)
+                const res = await cancelTeamLeave(leave.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się anulować urlopu.')
+                    return
+                }
                 setLeaves((prev) => prev.filter((l) => l.id !== leave.id))
                 toastSuccess('Urlop anulowany')
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setCancellingLeaveId(null)
             }
@@ -189,7 +191,11 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         if (!timesheet) return
         startTransition(async () => {
             try {
-                await approveTimesheet(timesheet.id)
+                const res = await approveTimesheet(timesheet.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się zaakceptować timesheetu.')
+                    return
+                }
                 toastSuccess(`Zaakceptowano ${timesheet.user_email}`)
                 onOpenChange(false)
                 router.refresh()
@@ -203,7 +209,11 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         if (!timesheet) return
         startTransition(async () => {
             try {
-                await unlockTimesheet(timesheet.id)
+                const res = await unlockTimesheet(timesheet.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się odblokować timesheetu.')
+                    return
+                }
                 toastSuccess('Odblokowano — pracownik może edytować')
                 onOpenChange(false)
                 router.refresh()
@@ -223,7 +233,14 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         if (!timesheet) return
         startTransition(async () => {
             try {
-                const created = await approverAddEntry({ timesheetId: timesheet.id, ...values })
+                const res = await approverAddEntry({ timesheetId: timesheet.id, ...values })
+                // Lista lokalna jest optymistyczna — bez tego guardu pokazałaby wpis,
+                // którego serwer nie zapisał.
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się dodać wpisu.')
+                    return
+                }
+                const created = res.data
                 setLocalEntries((prev) =>
                     [...prev, created].sort((a, b) => a.work_date.localeCompare(b.work_date)),
                 )
@@ -247,7 +264,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         const id = editingEntry.id
         startTransition(async () => {
             try {
-                const updated = await approverUpdateEntry({
+                const res = await approverUpdateEntry({
                     entryId: id,
                     workDate: values.workDate,
                     hours: values.hours,
@@ -255,6 +272,11 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                     description: values.description,
                     overtimeReason: values.overtimeReason,
                 })
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się zapisać wpisu.')
+                    return
+                }
+                const updated = res.data
                 setLocalEntries((prev) =>
                     prev
                         .map((e) => (e.id === id ? updated : e))
@@ -279,7 +301,11 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         if (!ok) return
         startTransition(async () => {
             try {
-                await approverDeleteEntry(entry.id)
+                const res = await approverDeleteEntry(entry.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się usunąć wpisu.')
+                    return
+                }
                 setLocalEntries((prev) => prev.filter((e) => e.id !== entry.id))
                 toastSuccess('Usunięto')
                 router.refresh()
@@ -439,24 +465,6 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                                 {e.description}
                                             </p>
                                             <div className="flex flex-wrap gap-1 mt-1">
-                                                {(e.source === 'clock_suggested' ||
-                                                    e.source === 'clock_accepted') && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-info">
-                                                        <Clock className="h-3 w-3" />
-                                                        z zegara
-                                                        {e.tracked_hours != null && (
-                                                            <span className="ml-1 text-muted-foreground">
-                                                                ({Number(e.tracked_hours).toFixed(2)}h)
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                )}
-                                                {e.correction_required && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-warning">
-                                                        <AlertTriangle className="h-3 w-3" />
-                                                        wymaga korekty
-                                                    </span>
-                                                )}
                                                 {e.is_overtime_override && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-primary">
                                                         <Clock className="h-3 w-3" />

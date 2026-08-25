@@ -67,7 +67,11 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
         setBusyId(t.id)
         startTransition(async () => {
             try {
-                await approveTimesheet(t.id)
+                const res = await approveTimesheet(t.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się zaakceptować timesheetu.')
+                    return
+                }
                 toastSuccess(`Zaakceptowano ${t.user_email}`)
                 router.refresh()
             } catch (e: unknown) {
@@ -87,7 +91,11 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
         setBusyId(target.id)
         startTransition(async () => {
             try {
-                await rejectTimesheet(target.id, reason)
+                const res = await rejectTimesheet(target.id, reason)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się odrzucić timesheetu.')
+                    return
+                }
                 toastSuccess(`Odrzucono ${target.user_email}`)
                 router.refresh()
             } catch (e: unknown) {
@@ -102,7 +110,11 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
         setBusyId(t.id)
         startTransition(async () => {
             try {
-                await unlockTimesheet(t.id)
+                const res = await unlockTimesheet(t.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się odblokować timesheetu.')
+                    return
+                }
                 toastSuccess('Odblokowano — pracownik może edytować')
                 router.refresh()
             } catch (e: unknown) {
@@ -123,8 +135,12 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
         setBusyId(t.user_id)
         startTransition(async () => {
             try {
-                const real = await ensureTeamTimesheet(t.user_id, year, month)
-                setPreviewTarget(real)
+                const res = await ensureTeamTimesheet(t.user_id, year, month)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się otworzyć timesheetu pracownika.')
+                    return
+                }
+                setPreviewTarget(res.data)
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {

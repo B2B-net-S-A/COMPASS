@@ -24,10 +24,6 @@ import {
 } from '@/lib/actions/internal-timesheet'
 import { applyDefaultsToTimesheet } from '@/lib/actions/internal-timesheet-role-defaults'
 import { getTimesheetBlockedDates } from '@/lib/actions/internal-leave'
-import {
-    clearAutoFilledTimesheet,
-    suggestTimesheetEntriesFromClock,
-} from '@/lib/actions/internal-clock'
 import { Sparkles } from 'lucide-react'
 import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 
@@ -65,8 +61,8 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
     useEffect(() => {
         let cancelled = false
         getTimesheetBlockedDates(timesheet.year, timesheet.month)
-            .then((dates) => {
-                if (!cancelled) setBlockedLeaveDates(dates)
+            .then((res) => {
+                if (!cancelled) setBlockedLeaveDates(res?.success ? res.data : [])
             })
             .catch(() => {
                 if (!cancelled) setBlockedLeaveDates([])
@@ -98,7 +94,11 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
     function handleAdd(values: { workDate: string; hours: number; project: string | null; description: string; overtimeReason: string | null }) {
         startTransition(async () => {
             try {
-                await addEntry({ timesheetId: timesheet.id, ...values })
+                const res = await addEntry({ timesheetId: timesheet.id, ...values })
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się dodać wpisu.')
+                    return
+                }
                 toastSuccess('Wpis dodany')
                 setCreating(false)
                 router.refresh()
@@ -113,7 +113,7 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         const id = editingEntry.id
         startTransition(async () => {
             try {
-                await updateEntry({
+                const res = await updateEntry({
                     entryId: id,
                     workDate: values.workDate,
                     hours: values.hours,
@@ -121,6 +121,10 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                     description: values.description,
                     overtimeReason: values.overtimeReason,
                 })
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się zapisać wpisu.')
+                    return
+                }
                 toastSuccess('Zaktualizowano')
                 setEditingEntry(null)
                 router.refresh()
@@ -140,7 +144,11 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         if (!ok) return
         startTransition(async () => {
             try {
-                await deleteEntry(entry.id)
+                const res = await deleteEntry(entry.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się usunąć wpisu.')
+                    return
+                }
                 toastSuccess('Usunięto')
                 router.refresh()
             } catch (e: unknown) {
@@ -158,42 +166,12 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         if (!ok) return
         startTransition(async () => {
             try {
-                await submitTimesheet(timesheet.id)
-                toastSuccess('Timesheet złożony')
-                router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
-            }
-        })
-    }
-
-    async function handleFillFromClock() {
-        const hasSuggestions = timesheet.entries.some(
-            (e) => e.source === 'clock_suggested' || e.source === 'clock_accepted',
-        )
-        const ok = await confirm({
-            title: hasSuggestions ? 'Odśwież propozycje z zegara?' : 'Wypełnij z trackingu zegara?',
-            description: hasSuggestions
-                ? `Usunie istniejące wpisy oznaczone „z zegara" i wstawi je ponownie z aktualnych danych. Wpisy ręczne pozostaną nietknięte.`
-                : `${format(ref, 'LLLL yyyy', { locale: pl })}: wstawi propozycje wpisów na podstawie sesji z work clock. Pomija dni z urlopem/L4 i dni z istniejącymi wpisami. Możesz potem edytować — każda zmiana >1h od trackingu zostanie oznaczona jako wymagająca akceptacji admina.`,
-            confirmLabel: hasSuggestions ? 'Odśwież' : 'Wypełnij',
-        })
-        if (!ok) return
-        startTransition(async () => {
-            try {
-                const res = await suggestTimesheetEntriesFromClock({
-                    timesheetId: timesheet.id,
-                    overwriteSuggestions: hasSuggestions,
-                })
-                if (res.inserted === 0 && res.total_days_with_tracking === 0) {
-                    toast.warning('Brak danych z trackingu w tym miesiącu')
-                } else {
-                    const parts = [`Dodano ${res.inserted} wpisów z trackingu`]
-                    if (res.skipped_existing > 0) {
-                        parts.push(`pominięto ${res.skipped_existing} (już istniały)`)
-                    }
-                    toastSuccess(parts.join(' · '))
+                const res = await submitTimesheet(timesheet.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się złożyć timesheetu.')
+                    return
                 }
+                toastSuccess('Timesheet złożony')
                 router.refresh()
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd')
@@ -211,17 +189,22 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         startTransition(async () => {
             try {
                 const res = await copyPreviousMonthEntries(timesheet.id)
-                if (res.skipped_no_source) {
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się skopiować opisów.')
+                    return
+                }
+                const copied = res.data
+                if (copied.skipped_no_source) {
                     toast.warning(
                         'Brak poprzedniego zaakceptowanego miesiąca — nie ma czego skopiować.',
                     )
-                } else if (res.inserted === 0) {
+                } else if (copied.inserted === 0) {
                     toast.warning(
-                        `Wszystkie dni miały już wpisy lub były zablokowane (${res.skipped_existing} pominięte).`,
+                        `Wszystkie dni miały już wpisy lub były zablokowane (${copied.skipped_existing} pominięte).`,
                     )
                 } else {
                     toastSuccess(
-                        `Skopiowano ${res.inserted} dni z ${res.source_year}-${String(res.source_month).padStart(2, '0')}.`,
+                        `Skopiowano ${copied.inserted} dni z ${copied.source_year}-${String(copied.source_month).padStart(2, '0')}.`,
                     )
                 }
                 router.refresh()
@@ -279,40 +262,18 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                     hoursPerDay: 8,
                     overwrite: hasEntries,
                 })
-                const parts = [`Dodano ${res.inserted} dni × 8h`]
-                if (res.skipped_leave > 0) parts.push(`${res.skipped_leave} pominięte (urlop)`)
-                if (res.skipped_pending_leave > 0)
-                    parts.push(`${res.skipped_pending_leave} pominięte (oczekujący wniosek urlopowy)`)
-                if (res.skipped_existing > 0) parts.push(`${res.skipped_existing} pominięte (już istniały)`)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się wypełnić miesiąca.')
+                    return
+                }
+                const filled = res.data
+                const parts = [`Dodano ${filled.inserted} dni × 8h`]
+                if (filled.skipped_leave > 0) parts.push(`${filled.skipped_leave} pominięte (urlop)`)
+                if (filled.skipped_pending_leave > 0)
+                    parts.push(`${filled.skipped_pending_leave} pominięte (oczekujący wniosek urlopowy)`)
+                if (filled.skipped_existing > 0)
+                    parts.push(`${filled.skipped_existing} pominięte (już istniały)`)
                 toastSuccess(parts.join(' · '))
-                router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
-            }
-        })
-    }
-
-    // R8: detect auto-filled draft to show banner
-    const wasAutoFilled =
-        timesheet.status === 'draft' &&
-        Boolean(timesheet.auto_filled_at) &&
-        timesheet.entries.some(
-            (e) => e.source === 'clock_suggested' || e.source === 'clock_accepted',
-        )
-
-    async function handleClearAutoFill() {
-        const ok = await confirm({
-            title: 'Wyczyścić auto-fill?',
-            description:
-                'Usunie wpisy oznaczone „z zegara". Wpisy ręczne pozostaną. System nie będzie regenerować propozycji w tym miesiącu.',
-            confirmLabel: 'Wyczyść',
-            variant: 'destructive',
-        })
-        if (!ok) return
-        startTransition(async () => {
-            try {
-                await clearAutoFilledTimesheet(timesheet.id)
-                toastSuccess('Auto-fill wyczyszczony')
                 router.refresh()
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd')
@@ -333,21 +294,6 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                     <p className="text-sm text-muted-foreground mt-1">
                         Suma: <strong>{totalHours.toFixed(2)} h</strong> / {timesheet.entries.length} wpisów
                     </p>
-                    {wasAutoFilled && (
-                        <div className="mt-2 inline-flex items-center gap-2 text-xs bg-info/10 border border-info/30 text-info rounded px-3 py-1.5">
-                            <Sparkles className="h-3.5 w-3.5" />
-                            <span>
-                                Draft gotowy z trackingu — przejrzyj, edytuj jeśli trzeba i złóż.
-                            </span>
-                            <button
-                                onClick={handleClearAutoFill}
-                                disabled={pending}
-                                className="text-info hover:text-info/80 underline ml-1"
-                            >
-                                Wyczyść auto-fill
-                            </button>
-                        </div>
-                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     {timesheet.status === 'approved' && (
@@ -369,10 +315,10 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                             Archiwum
                         </Button>
                     </Link>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)} disabled={pending}>
+                    <Button variant="outline" size="icon" aria-label="Poprzedni miesiąc" onClick={() => navigateMonth(-1)} disabled={pending}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="icon" onClick={() => navigateMonth(1)} disabled={pending}>
+                    <Button variant="outline" size="icon" aria-label="Następny miesiąc" onClick={() => navigateMonth(1)} disabled={pending}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
@@ -503,32 +449,6 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                                         </td>
                                         <td className="py-2 pr-2 text-xs max-w-[400px]">
                                             <span className="line-clamp-2">{e.description}</span>
-                                            {(e.source === 'clock_suggested' || e.source === 'clock_accepted') && (
-                                                <span
-                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-info"
-                                                    title={
-                                                        e.tracked_hours != null
-                                                            ? `Z trackingu: ${Number(e.tracked_hours).toFixed(2)}h`
-                                                            : 'Wpis z trackingu'
-                                                    }
-                                                >
-                                                    <Clock className="h-3 w-3" />
-                                                    z zegara
-                                                </span>
-                                            )}
-                                            {e.correction_required && (
-                                                <span
-                                                    className="inline-flex items-center gap-1 ml-2 text-[10px] text-warning"
-                                                    title={
-                                                        e.tracked_hours != null
-                                                            ? `Różnica vs tracking: ${(Number(e.hours) - Number(e.tracked_hours)).toFixed(2)}h`
-                                                            : 'Wymaga zatwierdzenia korekty'
-                                                    }
-                                                >
-                                                    <AlertTriangle className="h-3 w-3" />
-                                                    wymaga korekty
-                                                </span>
-                                            )}
                                         </td>
                                         <td className="py-2 pr-2 text-right font-mono text-xs">
                                             {Number(e.hours).toFixed(2)}
@@ -539,6 +459,8 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-7 w-7"
+                                                    aria-label={`Edytuj wpis z ${e.work_date}`}
+                                                    title="Edytuj wpis"
                                                     onClick={() => setEditingEntry(e)}
                                                     disabled={pending}
                                                 >
@@ -548,6 +470,8 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                    aria-label={`Usuń wpis z ${e.work_date}`}
+                                                    title="Usuń wpis"
                                                     onClick={() => handleDelete(e)}
                                                     disabled={pending}
                                                 >
@@ -593,15 +517,6 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                         >
                             <Wand2 className="h-4 w-4 mr-2" />
                             Wypełnij miesiąc 8h
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={handleFillFromClock}
-                            disabled={pending}
-                            title="Wstawi propozycje wpisów na podstawie zarejestrowanych sesji pracy. Wpisy >1h różnicy od trackingu wymagają akceptacji admina."
-                        >
-                            <Clock className="h-4 w-4 mr-2" />
-                            Wypełnij z trackingu
                         </Button>
                         <Button
                             variant="outline"

@@ -84,9 +84,12 @@ describe('<BonusesAdminClient /> edit flow', () => {
     it('reflects the saved amount and reason in the list after editing', async () => {
         const bonus = buildBonus()
         mockUpdateBonus.mockResolvedValue({
-            ...bonus,
-            amount: 1500,
-            reason: 'Nowe uzasadnienie premii',
+            success: true,
+            data: {
+                ...bonus,
+                amount: 1500,
+                reason: 'Nowe uzasadnienie premii',
+            },
         })
 
         render(

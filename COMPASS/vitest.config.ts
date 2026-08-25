@@ -7,6 +7,12 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, '.'),
+            // `server-only` rzuca przy imporcie z modułu klienckiego — to guard
+            // bundlera Next, a nie kontrakt runtime'u. Vitest chodzi na happy-dom
+            // (środowisko klienckie) i nie ma podziału na bundle serwerowy/kliencki,
+            // więc bez tego stubu KAŻDY moduł serwerowy jest nietestowalny.
+            // Guard nadal obowiązuje tam, gdzie coś znaczy: w `next build`.
+            'server-only': path.resolve(__dirname, 'test/stubs/server-only.ts'),
         },
     },
     test: {

@@ -28,8 +28,12 @@ ENV NEXT_PUBLIC_GIT_SHA=$NEXT_PUBLIC_GIT_SHA
 # Sentry source maps) can exceed Node's default old-space limit, so reserve
 # up to 3 GB for the builder while leaving headroom for BuildKit and Coolify.
 ENV NODE_OPTIONS="--max-old-space-size=3072"
-# SENTRY_AUTH_TOKEN is consumed by withSentryConfig at build time only.
-# Not exported as ENV so it never leaks into the runtime image.
+# SENTRY_AUTH_TOKEN zużywa withSentryConfig przy budowaniu (upload map źródeł).
+# ENV ustawiamy ŚWIADOMIE i tylko w tym etapie — Next czyta token z env, nie z ARG.
+# Do obrazu produkcyjnego token nie trafia, bo etap `runner` niżej startuje od
+# nowego FROM i nie dziedziczy ENV z buildera; kopiujemy stamtąd wyłącznie artefakty.
+# (Poprzedni komentarz twierdził „Not exported as ENV" bezpośrednio nad linią,
+# która robi dokładnie to — czytelnik nie wiedział, której wersji wierzyć.)
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 
 COPY . .

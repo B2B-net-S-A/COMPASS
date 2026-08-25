@@ -231,7 +231,12 @@ export function InterviewCardForm(props: Props) {
         }
         setAddingDict(true)
         try {
-            const created = await createClientForTechMap(name)
+            const res = await createClientForTechMap(name)
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Nie udało się dodać klienta.')
+                return
+            }
+            const created = res.data
             setClients((prev) =>
                 prev.some((c) => c.id === created.id)
                     ? prev
@@ -259,7 +264,12 @@ export function InterviewCardForm(props: Props) {
         }
         setAddingDict(true)
         try {
-            const created = await createClientArea(clientId, name)
+            const res = await createClientArea(clientId, name)
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Nie udało się dodać obszaru.')
+                return
+            }
+            const created = res.data
             setAreas((prev) => (prev.some((a) => a.id === created.id) ? prev : [...prev, created]))
             setClientAreaId(created.id)
             setNewAreaName(null)
@@ -290,9 +300,21 @@ export function InterviewCardForm(props: Props) {
         setSaving(kind)
         try {
             if (props.mode === 'create') {
-                const { id } = await createCardDraft(input)
+                const draft = await createCardDraft(input)
+                if (!draft?.success) {
+                    toast.error(draft?.error ?? 'Nie udało się zapisać karty.')
+                    return
+                }
+                const id = draft.data.id
                 if (kind === 'final') {
-                    await finalizeCard(id, input)
+                    const finalized = await finalizeCard(id, input)
+                    if (!finalized?.success) {
+                        // Draft już powstał — zabierz na jego stronę, żeby wypełniona
+                        // karta nie przepadła razem z komunikatem o błędzie.
+                        toast.error(finalized?.error ?? 'Nie udało się sfinalizować karty.')
+                        router.replace(`/internal/people/mapa/karta/${id}`)
+                        return
+                    }
                     toast.success('Karta sfinalizowana.')
                     router.push('/internal/people?tab=mapa')
                 } else {
@@ -301,11 +323,19 @@ export function InterviewCardForm(props: Props) {
                 }
             } else {
                 if (kind === 'final') {
-                    await finalizeCard(props.cardId!, input)
+                    const res = await finalizeCard(props.cardId!, input)
+                    if (!res?.success) {
+                        toast.error(res?.error ?? 'Nie udało się sfinalizować karty.')
+                        return
+                    }
                     toast.success(props.isDraft ? 'Karta sfinalizowana.' : 'Zapisano zmiany.')
                     router.push('/internal/people?tab=mapa')
                 } else {
-                    await saveCard(props.cardId!, input)
+                    const res = await saveCard(props.cardId!, input)
+                    if (!res?.success) {
+                        toast.error(res?.error ?? 'Nie udało się zapisać karty.')
+                        return
+                    }
                     toast.success('Zapisano.')
                     router.refresh()
                 }
@@ -609,7 +639,13 @@ export function InterviewCardForm(props: Props) {
                             onChange={setTechnologyIds}
                             placeholder="Szukaj technologii (np. k8s, Java)…"
                             onCreate={async (name) => {
-                                const row = await createTechnologyUnverified(name)
+                                // TagMultiSelect oczekuje wyjątku przy niepowodzeniu
+                                // (sam pokazuje toast), więc tu tłumaczymy ActionResult na rzut.
+                                const res = await createTechnologyUnverified(name)
+                                if (!res?.success) {
+                                    throw new Error(res?.error ?? 'Nie udało się dodać technologii.')
+                                }
+                                const row = res.data
                                 return {
                                     id: row.id,
                                     label: row.name,
@@ -756,8 +792,15 @@ export function InterviewCardForm(props: Props) {
                             onChange={setVendorIds}
                             placeholder="Szukaj dostawcy…"
                             onCreate={async (name) => {
-                                const row = await createVendorUnverified(name)
-                                return { id: row.id, label: row.name, unverified: !row.is_verified }
+                                const res = await createVendorUnverified(name)
+                                if (!res?.success) {
+                                    throw new Error(res?.error ?? 'Nie udało się dodać dostawcy.')
+                                }
+                                return {
+                                    id: res.data.id,
+                                    label: res.data.name,
+                                    unverified: !res.data.is_verified,
+                                }
                             }}
                         />
                     </div>

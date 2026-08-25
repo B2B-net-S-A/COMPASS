@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email/sender'
 import { logger } from '@/lib/logger'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,7 @@ interface AlertSummary {
  *
  * Auth: Bearer CRON_SECRET (same pattern as other crons).
  */
-export const GET = withCronAuth(async () => {
+export const GET = withCronAuth(withCronHeartbeat('SECRET_EXPIRY_CHECK_RUN', async () => {
     const expiresAtRaw = process.env.AZURE_CLIENT_SECRET_EXPIRES_AT?.trim()
 
     if (!expiresAtRaw) {
@@ -43,11 +44,20 @@ export const GET = withCronAuth(async () => {
             recipients: 0,
             error: 'AZURE_CLIENT_SECRET_EXPIRES_AT env not set',
         }
-        logger.warn({
+        logger.error({
             event: 'cron.secret_expiry.env_missing',
             msg: 'AZURE_CLIENT_SECRET_EXPIRES_AT not configured — cannot check Azure secret expiry',
         })
-        return NextResponse.json(summary, { status: 200 })
+        // Audyt 2026-08: to była najcichsza z możliwych awarii — jedyny strażnik
+        // sekretu Graph (bez niego przestaje działać CAŁA poczta wychodząca)
+        // zwracał 200 i szedł spać. Zadanie, które nie potrafi wykonać swojej
+        // jedynej pracy, musi krzyczeć kodem odpowiedzi i wpisem w Sentry;
+        // heartbeat sam z siebie pokaże tylko, że przebieg „się odbył".
+        Sentry.captureMessage('azure_secret_expiry_not_configured', {
+            level: 'error',
+            tags: { kind: 'cron_secret_expiry' },
+        })
+        return NextResponse.json(summary, { status: 500 })
     }
 
     const expiresAt = new Date(expiresAtRaw)
@@ -64,7 +74,13 @@ export const GET = withCronAuth(async () => {
             event: 'cron.secret_expiry.invalid_date',
             value: expiresAtRaw,
         })
-        return NextResponse.json(summary, { status: 200 })
+        // Jak wyżej: zła data znaczy, że alarm nigdy nie zadziała.
+        Sentry.captureMessage('azure_secret_expiry_invalid_date', {
+            level: 'error',
+            tags: { kind: 'cron_secret_expiry' },
+            extra: { value: expiresAtRaw },
+        })
+        return NextResponse.json(summary, { status: 500 })
     }
 
     const now = new Date()
@@ -127,7 +143,7 @@ export const GET = withCronAuth(async () => {
         alertSent: true,
         recipients: sentCount,
     } satisfies AlertSummary)
-})
+}))
 
 function parseSuperAdmins(): string[] {
     const raw = process.env.SUPER_ADMIN_EMAILS ?? ''

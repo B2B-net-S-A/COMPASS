@@ -26,7 +26,8 @@ import {
     parseZejsciaWorkbook,
 } from '@/lib/contractors/parse'
 
-const HUB = '/internal/kontraktorzy'
+// Audyt 2026-08 — patrz komentarz w lib/actions/contractors.ts: stara trasa to redirect.
+const HUB = '/internal/people'
 
 // Re-export the shared result type so existing consumers (ImportDialog) keep importing it from here.
 export type { ImportResult } from '@/lib/contractors/import-core'

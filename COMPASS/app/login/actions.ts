@@ -4,7 +4,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
-import { logLoginAttempt } from '@/lib/auth/security'
+import { checkRateLimit, logLoginAttempt } from '@/lib/auth/security'
+import { RATE_LIMIT_MESSAGE_PL } from '@/lib/constants/auth'
 import { logAudit } from '@/lib/actions/audit'
 import { cookies } from 'next/headers'
 
@@ -12,6 +13,7 @@ import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
 import { syncRole } from '@/lib/auth/sync-role'
 import { ARCHIVED_ACCOUNT_MESSAGE_PL, isArchivedAccount } from '@/lib/auth/employment-access'
 import { logger } from '@/lib/logger'
+import { PASSWORD_POLICY_ERROR_PL, isPasswordStrongEnough } from '@/lib/auth/password-policy'
 
 // ─── Friendly Error Messages ────────────────────────────────────────────────
 // Maps raw Supabase/system errors to user-friendly Polish messages
@@ -116,6 +118,19 @@ export async function login(formData: FormData) {
 
     const supabase = createClient()
 
+    // Audyt 2026-08 (A4.3): checkRateLimit i logLoginAttempt istniały od Fazy 18.1,
+    // ale NIE BYŁY WOŁANE — logLoginAttempt był tylko zaimportowany. Tabela
+    // login_attempts miała 0 wierszy, a dokument serwowany użytkownikom
+    // (app/api/migrate-compliance/route.ts:157) deklarował „po 5 próbach blokada
+    // na 15 min". Jedyną realną ochroną było wbudowane zabezpieczenie GoTrue.
+    const rate = await checkRateLimit(email)
+    if (!rate.allowed) {
+        // Nie logujemy tej próby ponownie — okno i tak jest już przekroczone,
+        // a dopisywanie wierszy przedłużałoby blokadę w nieskończoność.
+        logger.warn({ event: 'auth.login.rate_limited', email })
+        return { error: RATE_LIMIT_MESSAGE_PL }
+    }
+
     // 1. Sign in
     const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -123,9 +138,12 @@ export async function login(formData: FormData) {
     })
 
     if (error) {
+        await logLoginAttempt(email, false)
         logger.error({ event: 'auth.login.failed', error, email })
         return { error: friendlyLoginError(error.message) }
     }
+
+    await logLoginAttempt(email, true)
 
     // 2. Get user
     const { data: { user } } = await supabase.auth.getUser()
@@ -152,7 +170,7 @@ export async function login(formData: FormData) {
     const currentRole = profile?.role || 'consultant'
 
     // 4. Sync role from access lists (single source of truth)
-    const role = await syncRole(supabase, user.id, email, currentRole)
+    const role = await syncRole(user.id, email, currentRole)
 
     // 5a. Set onboarding cookie
     if (profile?.onboarding_completed || role !== 'consultant') {
@@ -188,11 +206,11 @@ export async function signup(formData: FormData) {
         return { error: 'Rejestracja dozwolona tylko dla domeny @b2bnetwork.pl' }
     }
 
-    // 2. Password Strength Validation
-    // Min 10 chars, 1 Uppercase, 1 Digit
-    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{10,}$/
-    if (!passwordRegex.test(password)) {
-        return { error: 'Hasło musi mieć min. 10 znaków, zawierać wielką literę i cyfrę.' }
+    // 2. Password Strength Validation — reguła w lib/auth/password-policy.ts,
+    // wspólna z samoobsługową zmianą hasła (ta ścieżka miała własną, słabszą:
+    // minLength=6 i nic poza tym).
+    if (!isPasswordStrongEnough(password)) {
+        return { error: PASSWORD_POLICY_ERROR_PL }
     }
 
     // 3. GDPR Consent Validation

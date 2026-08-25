@@ -41,6 +41,15 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      # Report-only (audyt B6). Sygnalizuje, nie blokuje — w chwili dodania
+      # zostało 8 podatności i WSZYSTKIE wiszą na migracji Next 14→16
+      # (docs/next-15-16-migration-plan.md). Blokujący próg zamurowałby każdy
+      # PR do czasu tej migracji, więc `continue-on-error` zostaje do momentu
+      # rozładowania zatoru — wtedy zdejmij tę linię, żeby próg zaczął działać.
+      - name: npm audit (report-only)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: ESLint (next lint)
         run: npm run lint
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
-import { logAudit } from '@/lib/actions/audit'
+import { logSystemAudit } from '@/lib/audit/system-log'
 import { logger } from '@/lib/logger'
 import {
     sendLegalMonitorDailyDigest,
@@ -22,8 +22,10 @@ import {
     selectOverdueFollowUps,
     selectRedAlerts,
     shouldSendDailyDigest,
+    shouldSendWeeklyDigest,
     sourcesCrossingFailureThreshold,
     SOURCE_FAILURE_STREAK_THRESHOLD,
+    WEEKLY_DIGEST_LAST_SENT_KEY,
 } from '@/lib/legal-monitor/alert-selection'
 import {
     allFinanseAndAdmins,
@@ -39,6 +41,11 @@ import {
 import type { PublicHolidayDate } from '@/lib/hr/working-days'
 
 export const dynamic = 'force-dynamic'
+// UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
+// tłumaczy go na limit funkcji serverless (Vercel/Lambda); w kontenerze na Coolify nikt
+// go nie egzekwuje, więc nie jest to działająca ochrona przed zawieszonym przebiegiem.
+// Zostaje jako deklaracja intencji na wypadek zmiany hostingu — realnym limitem jest
+// timeout per żądanie na proxy (Traefik/Cloudflare) i limity samych wywołań.
 export const maxDuration = 180
 
 /**
@@ -71,7 +78,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     const errors: string[] = []
     const stats = { red: 0, silent: 0, sourceFailures: 0, due: 0, digest: 0, dailyDigest: 0 }
 
-    await logAudit(null, 'LEGAL_MONITOR_ALERTS_RUN', { phase: 'start' })
+    await logSystemAudit(null, 'LEGAL_MONITOR_ALERTS_RUN', { phase: 'start' })
 
     try {
         const [itemsRes, runsRes, holidaysRes] = await Promise.all([
@@ -128,7 +135,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         // ── 1. Czerwone wpisy ────────────────────────────────────────────────
         for (const item of selectRedAlerts(items)) {
             try {
-                await dispatchLegalMonitorAlert(admin, redRecipients, {
+                const { delivered } = await dispatchLegalMonitorAlert(admin, redRecipients, {
                     type: 'legal_monitor_red',
                     titlePl: 'Monitoring prawny: pozycja może wymagać decyzji',
                     titleEn: 'Legal monitor: item may require a decision',
@@ -146,14 +153,21 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                             item.url,
                         ),
                 })
-                // Dedup: stempluj dopiero po wysyłce. Błąd stempla = ryzyko
-                // duplikatu jutro, więc ląduje w errors, nie znika po cichu.
-                const { error } = await admin
-                    .from('legal_monitor_items')
-                    .update({ alerted_at: new Date().toISOString() })
-                    .eq('id', item.id)
-                if (error) errors.push(`stempel alerted_at ${item.id}: ${error.message}`)
-                stats.red += 1
+                // Dedup: stempluj dopiero po faktycznej DOSTAWIE, nie po samej próbie
+                // (audyt 2026-08, C11.2). Wcześniej stempel szedł bezwarunkowo, więc
+                // alert, który nie dotarł do nikogo — bo odbiorcy nie skonfigurowani,
+                // dzwonek odbity przez CHECK, mail padł — był oznaczany jako wysłany
+                // i nie ponawiał się już nigdy. Brak stempla = jutro próbujemy znowu.
+                if (delivered === 0) {
+                    errors.push(`alert red ${item.id}: nie dotarł do żadnego odbiorcy, brak stempla`)
+                } else {
+                    const { error } = await admin
+                        .from('legal_monitor_items')
+                        .update({ alerted_at: new Date().toISOString() })
+                        .eq('id', item.id)
+                    if (error) errors.push(`stempel alerted_at ${item.id}: ${error.message}`)
+                    stats.red += 1
+                }
             } catch (e) {
                 errors.push(`alert red ${item.id}: ${e instanceof Error ? e.message : String(e)}`)
             }
@@ -177,7 +191,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                         ? 'Monitoring prawny nie zaraportował jeszcze żadnego przebiegu.'
                         : `Monitoring prawny nie odpowiada — ostatni przebieg ${health.lastRunAt}, od tego czasu dni roboczych bez przebiegu: ${health.missedWorkingDays}.`
                 try {
-                    await dispatchLegalMonitorAlert(admin, opsRecipients, {
+                    const { delivered } = await dispatchLegalMonitorAlert(admin, opsRecipients, {
                         type: 'legal_monitor_silent',
                         titlePl: 'Monitoring prawny nie odpowiada',
                         titleEn: 'Legal monitor is silent',
@@ -188,13 +202,20 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                         emailFn: (email, name) =>
                             sendLegalMonitorOps(email, name, 'brak przebiegu', detail),
                     })
-                    await admin
-                        .from('system_settings')
-                        .upsert(
-                            { key: 'legal_monitor_silence_alerted_for', value: marker },
-                            { onConflict: 'key' },
-                        )
-                    stats.silent += 1
+                    // Marker to ten sam dedup co `alerted_at` — zapisany po nieudanej
+                    // wysyłce zamiótłby pod dywan właśnie ten alert, który mówi, że
+                    // monitoring zamilkł. Bez markera jutrzejszy przebieg spróbuje znowu.
+                    if (delivered === 0) {
+                        errors.push('alert ciszy: nie dotarł do żadnego odbiorcy, brak markera')
+                    } else {
+                        await admin
+                            .from('system_settings')
+                            .upsert(
+                                { key: 'legal_monitor_silence_alerted_for', value: marker },
+                                { onConflict: 'key' },
+                            )
+                        stats.silent += 1
+                    }
                 } catch (e) {
                     errors.push(`alert ciszy: ${e instanceof Error ? e.message : String(e)}`)
                 }
@@ -206,7 +227,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
             const label = LEGAL_SOURCE_SHORT_PL[source] ?? source
             const detail = `Źródło ${label} nie odpowiedziało w ${SOURCE_FAILURE_STREAK_THRESHOLD} kolejnych przebiegach monitoringu.`
             try {
-                await dispatchLegalMonitorAlert(admin, opsRecipients, {
+                const { delivered } = await dispatchLegalMonitorAlert(admin, opsRecipients, {
                     type: 'legal_monitor_silent',
                     titlePl: `Monitoring prawny: ${label} niedostępne`,
                     titleEn: `Legal monitor: ${label} unavailable`,
@@ -217,7 +238,13 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                     emailFn: (email, name) =>
                         sendLegalMonitorOps(email, name, `${label} niedostępne`, detail),
                 })
-                stats.sourceFailures += 1
+                // Tu nie ma czego stemplować (próg `=== N` daje jeden strzał na epizod),
+                // więc niedostarczony alert przepada — tym bardziej ma być widoczny.
+                if (delivered === 0) {
+                    errors.push(`alert źródła ${source}: nie dotarł do żadnego odbiorcy`)
+                } else {
+                    stats.sourceFailures += 1
+                }
             } catch (e) {
                 errors.push(`alert źródła ${source}: ${e instanceof Error ? e.message : String(e)}`)
             }
@@ -227,7 +254,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         for (const item of selectOverdueFollowUps(items, now)) {
             const recipients = item.assigned_to ? [item.assigned_to] : redRecipients
             try {
-                await dispatchLegalMonitorAlert(admin, recipients, {
+                const { delivered } = await dispatchLegalMonitorAlert(admin, recipients, {
                     type: 'legal_monitor_due',
                     titlePl: 'Zaległa reakcja na wpis monitoringu',
                     titleEn: 'Overdue legal monitor follow-up',
@@ -238,19 +265,35 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                     emailFn: (email, name) =>
                         sendLegalMonitorDue(email, name, item.title, item.due_date as string),
                 })
-                const { error } = await admin
-                    .from('legal_monitor_items')
-                    .update({ reminded_at: new Date().toISOString() })
-                    .eq('id', item.id)
-                if (error) errors.push(`stempel reminded_at ${item.id}: ${error.message}`)
-                stats.due += 1
+                // Jak przy czerwonych: `reminded_at` znaczy „przypomnieliśmy", a nie
+                // „próbowaliśmy". Stempel po nieudanej wysyłce uciszyłby przypomnienie
+                // o zaległym terminie na zawsze.
+                if (delivered === 0) {
+                    errors.push(`przypomnienie ${item.id}: nie dotarło do żadnego odbiorcy, brak stempla`)
+                } else {
+                    const { error } = await admin
+                        .from('legal_monitor_items')
+                        .update({ reminded_at: new Date().toISOString() })
+                        .eq('id', item.id)
+                    if (error) errors.push(`stempel reminded_at ${item.id}: ${error.message}`)
+                    stats.due += 1
+                }
             } catch (e) {
                 errors.push(`przypomnienie ${item.id}: ${e instanceof Error ? e.message : String(e)}`)
             }
         }
 
         // ── 5. Digest (poniedziałki) ─────────────────────────────────────────
-        if (isDigestDay(now)) {
+        // Stempel (audyt 2026-08): sam `isDigestDay` nie chroni przed drugim
+        // przebiegiem TEGO SAMEGO poniedziałku (ręczny curl, rerun w GH Actions,
+        // przypadkowo włączone bliźniacze zadanie w Coolify).
+        const { data: weeklyStampRow } = await admin
+            .from('system_settings')
+            .select('value')
+            .eq('key', WEEKLY_DIGEST_LAST_SENT_KEY)
+            .maybeSingle()
+        const weeklyLastSentAt = (weeklyStampRow as { value?: string } | null)?.value ?? null
+        if (isDigestDay(now) && shouldSendWeeklyDigest(weeklyLastSentAt, now)) {
             const from = digestWindowStart(now)
             const fresh = items.filter((i) => i.created_at.slice(0, 10) >= from)
             const counts = {
@@ -266,7 +309,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
             // Pusty tydzień + pusta skrzynka = nie ma o czym pisać.
             if (weeklyRecipients.length > 0 && (counts.total > 0 || counts.pending > 0)) {
                 try {
-                    await dispatchLegalMonitorAlert(admin, weeklyRecipients, {
+                    const { delivered } = await dispatchLegalMonitorAlert(admin, weeklyRecipients, {
                         type: 'legal_monitor_digest',
                         titlePl: `Monitoring prawny — podsumowanie tygodnia (${counts.total})`,
                         titleEn: `Legal monitor — weekly summary (${counts.total})`,
@@ -283,7 +326,23 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                                 fresh.slice(0, 10).map((i) => i.title),
                             ),
                     })
-                    stats.digest += 1
+                    // Tygodniowy digest nie ma dedupu (jedzie w poniedziałki), więc
+                    // liczymy realnie dostarczone — statystyka w heartbeacie ma mówić
+                    // o wysyłkach, nie o próbach.
+                    if (delivered === 0) {
+                        errors.push('digest: nie dotarł do żadnego odbiorcy')
+                    } else {
+                        // Stempel dopiero po realnej wysyłce — totalna awaria kanału
+                        // ma się ponowić, nie zniknąć po cichu na tydzień.
+                        const { error } = await admin
+                            .from('system_settings')
+                            .upsert(
+                                { key: WEEKLY_DIGEST_LAST_SENT_KEY, value: now.toISOString() },
+                                { onConflict: 'key' },
+                            )
+                        if (error) errors.push(`stempel tygodniowego digestu: ${error.message}`)
+                        stats.digest += delivered
+                    }
                 } catch (e) {
                     errors.push(`digest: ${e instanceof Error ? e.message : String(e)}`)
                 }
@@ -371,13 +430,13 @@ export const GET = withCronAuth(async (_request, { admin }) => {
             }
         }
 
-        await logAudit(null, 'LEGAL_MONITOR_ALERTS_RUN', { phase: 'done', ...stats, errors })
+        await logSystemAudit(null, 'LEGAL_MONITOR_ALERTS_RUN', { phase: 'done', ...stats, errors })
         return NextResponse.json({ ok: true, ...stats, errors })
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
         logger.error({ event: 'legal_monitor.alerts.failed', error: message })
         Sentry.captureException(e)
-        await logAudit(null, 'LEGAL_MONITOR_ALERTS_RUN', { phase: 'done', failed: true, error: message })
+        await logSystemAudit(null, 'LEGAL_MONITOR_ALERTS_RUN', { phase: 'done', failed: true, error: message })
         return NextResponse.json({ ok: false, error: message }, { status: 500 })
     }
 })

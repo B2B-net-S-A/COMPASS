@@ -51,8 +51,6 @@ function buildPlaceholder(
         pdf_hash: null,
         created_at: '',
         updated_at: '',
-        auto_filled_at: null,
-        user_cleared_auto_fill: false,
         entries: [],
         user_full_name: member.full_name,
         user_email: member.email,

@@ -41,21 +41,6 @@ export type AuditAction =
     | 'TIMESHEET_PAID_LEAVE_AUTOFILL'
     // Phase 30c — usunięcie godzin pracy kolidujących z zatwierdzonym urlopem
     | 'TIMESHEET_LEAVE_CONFLICT_REMOVED'
-    // Phase 17 — Smart Work Clock
-    | 'WORK_CLOCK_CONSENT_ACCEPTED'
-    | 'WORK_CLOCK_CONSENT_REVOKED'
-    | 'WORK_CLOCK_STARTED'
-    | 'WORK_CLOCK_STOPPED'
-    | 'WORK_CLOCK_AUTO_STOPPED'
-    | 'WORK_CLOCK_TRANSFERRED'
-    | 'WORK_CLOCK_TAMPERED'
-    | 'TIMESHEET_CORRECTION_APPROVED'
-    | 'TIMESHEET_CORRECTION_REJECTED'
-    // Phase 17b — R2 (resume modal) + R3 (pause)
-    | 'WORK_CLOCK_RESUME_MERGED'
-    | 'WORK_CLOCK_RESUME_DISCARDED'
-    | 'WORK_CLOCK_PAUSED'
-    | 'WORK_CLOCK_RESUMED'
     // Phase 19 — Invoices (finanse role)
     | 'INVOICE_SUBMITTED'
     | 'INVOICE_APPROVED'
@@ -263,7 +248,47 @@ export type AuditAction =
     // raz w miesiącu, więc cichy brak przebiegu = cały miesiąc bez sygnału do ludzi;
     // ten wpis jest jedynym czytelnym z bazy dowodem, że okno 1.–5. zostało obsłużone.
     | 'TIMESHEET_REMINDER_RUN'
+    // Audyt 2026-08 (A3) — próba nadania sobie roli/flagi grantu, cofnięta przez
+    // trigger na profiles. Wpis powstaje w SQL-u (trigger jest SECURITY DEFINER),
+    // nie przez logAudit — ten wariant jest tu wyłącznie dla kompletności typu.
+    | 'PROFILE_PRIVILEGE_CHANGE_BLOCKED'
+    // Audyt 2026-08 (C11) — heartbeaty pozostałych zadań cyklicznych. Każdy przebieg
+    // zostawia parę wpisów `phase: 'start'` / `phase: 'done'` (patrz
+    // lib/audit/cron-heartbeat.ts), bo bez nich cicha awaria harmonogramu była
+    // niewykrywalna bez SSH. `start` bez `done` = przebieg ubity w locie;
+    // brak `start` = harmonogram nie dosięgnął trasy.
+    | 'CONTRACTOR_FOLLOWUP_REMINDER_RUN'
+    | 'COURSE_INACTIVITY_RUN'
+    | 'LIFECYCLE_CHECKINS_RUN'
+    | 'LIFECYCLE_REMINDERS_RUN'
+    | 'M365_PROFILE_RESYNC_RUN'
+    | 'PLACEMENT_HOURS_REMINDER_RUN'
+    | 'PLACEMENT_STATUS_TICK_RUN'
+    | 'SECRET_EXPIRY_CHECK_RUN'
+    | 'TC_SYNC_RUN'
+    // Audyt 2026-08 (C5) — realizacja praw z RODO. Eksport też jest tu wpisem:
+    // zbudowanie kompletu danych o jednej osobie jest czynnością na danych
+    // osobowych i musi mieć autora. `GDPR_SUBJECT_ANONYMIZED` niesie nazwę
+    // SPRZED zabiegu — bez niej nie da się wykazać, czyje żądanie zrealizowano.
+    | 'GDPR_DATA_EXPORTED'
+    | 'GDPR_SUBJECT_ANONYMIZED'
+    // Retencja dziennika: 12 miesięcy z „Polityki Retencji Danych".
+    | 'AUDIT_LOG_RETENTION_RUN'
 
+/**
+ * Zapis do dziennika audytu w imieniu ZALOGOWANEGO użytkownika.
+ *
+ * ⚠️ Od migracji A3.2 (2026-08) polityka INSERT na audit_logs to
+ * `WITH CHECK (auth.uid() = user_id)`. Przekazanie CUDZEGO `userId` albo `null`
+ * spoza żądania crona kończy się błędem RLS **42501** — sprawdzone na produkcji.
+ * Nie jest to cichy no-op (ten dotyczy UPDATE/DELETE filtrowanych przez USING),
+ * ale wyjątek jest tu połykany i ląduje wyłącznie w logu, więc wpis przepada.
+ *
+ * Jeśli piszesz wpis o CUDZYM dokumencie albo heartbeat maszynowy (`user_id = null`)
+ * poza żądaniem crona — użyj `logSystemAudit` z `@/lib/audit/system-log`.
+ * Ten moduł ma 'use server', więc nie może dostać przełącznika na service-rolę:
+ * byłby wołalny z przeglądarki i pozwoliłby fałszować audyt.
+ */
 export async function logAudit(
     userId: string | null,
     action: AuditAction,

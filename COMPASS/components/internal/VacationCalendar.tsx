@@ -219,10 +219,10 @@ export function VacationCalendar({ data, role, status, todayIso }: Props) {
                         {format(monthStart, 'LLLL yyyy', { locale: pl })}
                     </CardTitle>
                     <div className="flex gap-2 items-center">
-                        <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)}>
+                        <Button variant="outline" size="icon" aria-label="Poprzedni miesiąc" onClick={() => navigateMonth(-1)}>
                             <ChevronLeft className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="icon" onClick={() => navigateMonth(1)}>
+                        <Button variant="outline" size="icon" aria-label="Następny miesiąc" onClick={() => navigateMonth(1)}>
                             <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>

@@ -21,6 +21,19 @@ export const DAILY_DIGEST_RECIPIENTS_KEY = 'legal_monitor_daily_digest_recipient
 export const DAILY_DIGEST_LAST_SENT_KEY = 'legal_monitor_daily_digest_last_sent_at'
 
 /**
+ * Stempel ostatniego TYGODNIOWEGO digestu (Phase 50 go nie miał).
+ *
+ * Audyt 2026-08: sekcja tygodniowa wysyłała bezwarunkowo w każdy poniedziałkowy
+ * przebieg. Dopóki scheduler jest jeden, wychodzi z tego jeden mail — ale trasa
+ * ma trzy drogi do powtórki tego samego dnia: ręczne wywołanie curl-em przy
+ * diagnozie, ponowienie zadania w GH Actions i włączenie bliźniaczego zadania
+ * w Coolify (`action=cron-enable` włącza WSZYSTKIE naraz — pułapka opisana przy
+ * Phase 44/54). Stempel zdejmuje tę pułapkę, więc redundancja schedulerów
+ * przestaje kosztować podwójny mail.
+ */
+export const WEEKLY_DIGEST_LAST_SENT_KEY = 'legal_monitor_weekly_digest_last_sent_at'
+
+/**
  * Ile przebiegów z rzędu musi zgłosić `fail` dla tego samego źródła, zanim
  * wyślemy alert. Pojedyncze `partial` zdarza się rutynowo (api.sejm.gov.pl bywa
  * nieosiągalne — 2 z 3 pierwszych przebiegów na prodzie), a alert o każdym z nich
@@ -139,6 +152,17 @@ export function digestWindowStart(now: Date, days: number = DIGEST_DAYS): string
 export function shouldSendDailyDigest(lastSentAt: string | null, now: Date): boolean {
     if (!lastSentAt || Number.isNaN(Date.parse(lastSentAt))) return true
     return warsawDate(new Date(lastSentAt)) < warsawDate(now)
+}
+
+/**
+ * Czy tygodniowy digest ma dziś jeszcze wyjść? Ta sama reguła co przy dziennym
+ * (dedup po dacie warszawskiej) — o „raz w tygodniu" decyduje `isDigestDay`,
+ * ten stempel pilnuje tylko, żeby drugi przebieg tego samego poniedziałku nie
+ * wysłał maila po raz drugi. Zepsuty stempel = brak stempla (lepiej wysłać niż
+ * zamilknąć na tydzień).
+ */
+export function shouldSendWeeklyDigest(lastSentAt: string | null, now: Date): boolean {
+    return shouldSendDailyDigest(lastSentAt, now)
 }
 
 /**

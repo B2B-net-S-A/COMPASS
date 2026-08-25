@@ -9,6 +9,7 @@ import { AuthShell } from '@/components/blocks/AuthShell'
 import Link from 'next/link'
 import { login, signup, signInWithMicrosoft } from './actions'
 import { ARCHIVED_ACCOUNT_ERROR_CODE, ARCHIVED_ACCOUNT_MESSAGE_PL } from '@/lib/auth/employment-access'
+import { PASSWORD_POLICY_HINT_PL } from '@/lib/auth/password-policy'
 
 // ─── Loading Step Messages ──────────────────────────────────────────────────
 const LOADING_STEPS = [
@@ -284,9 +285,13 @@ export default function LoginPage() {
                                         data-testid="login-password"
                                         className="login-input-glow transition-all duration-200 pr-10"
                                     />
+                                    {/* Audyt 2026-08: przełącznik miał `tabIndex={-1}` i zero
+                                        etykiety — nie dało się go dosięgnąć z klawiatury,
+                                        a czytnik ekranu ogłaszał pusty przycisk. */}
                                     <button
                                         type="button"
-                                        tabIndex={-1}
+                                        aria-label={showPassword ? 'Ukryj hasło' : 'Pokaż hasło'}
+                                        aria-pressed={showPassword}
                                         onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                                     >
@@ -297,7 +302,7 @@ export default function LoginPage() {
                                         )}
                                     </button>
                                 </div>
-                                {isSignUp && <p className="text-xs text-muted-foreground">Min. 10 znaków, 1 duża litera, 1 cyfra.</p>}
+                                {isSignUp && <p className="text-xs text-muted-foreground">{PASSWORD_POLICY_HINT_PL}</p>}
                             </div>
                             )}
 

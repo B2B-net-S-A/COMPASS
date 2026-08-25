@@ -7,6 +7,7 @@
 // zaufaną ścieżką zapisu, RLS to defense-in-depth (wzorzec lib/actions/contractors.ts).
 
 import { revalidatePath } from 'next/cache'
+import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import {
     requireLifecycleManagerAction,
     requireTechMapViewerAction,
@@ -64,13 +65,13 @@ const NAME_MAX = 120
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function requireAdmin(ctx: InternalAuthContext): void {
-    if (!ctx.isAdmin) throw new Error('Tylko administrator może zarządzać słownikiem.')
+    if (!ctx.isAdmin) throw new ExpectedError('Tylko administrator może zarządzać słownikiem.')
 }
 
 function validateDictName(raw: string): string {
     const trimmed = (raw ?? '').trim().replace(/\s+/g, ' ')
-    if (trimmed.length < 2) throw new Error('Nazwa jest za krótka (min 2 znaki).')
-    if (trimmed.length > NAME_MAX) throw new Error(`Nazwa za długa (max ${NAME_MAX} znaków).`)
+    if (trimmed.length < 2) throw new ExpectedError('Nazwa jest za krótka (min 2 znaki).')
+    if (trimmed.length > NAME_MAX) throw new ExpectedError(`Nazwa za długa (max ${NAME_MAX} znaków).`)
     return trimmed
 }
 
@@ -109,44 +110,48 @@ export async function listTechnologies(): Promise<TechnologyRow[]> {
  * Idempotentne: kolizja nazwy/sluga zwraca istniejący wiersz (picker wybiera
  * pozycję kanoniczną zamiast dublować słownik).
  */
-export async function createTechnologyUnverified(name: string): Promise<TechnologyRow> {
-    const ctx = await requireLifecycleManagerAction()
-    const trimmed = validateDictName(name)
-    const slug = generateTechSlug(trimmed)
-    if (!slug) throw new Error('Nazwa nie zawiera znaków, z których można zbudować identyfikator.')
-
-    const admin = createServiceClient()
-    const { data, error } = await admin
-        .from('technologies')
-        .insert({ name: trimmed, slug, is_verified: false, category: 'inne', created_by: ctx.userId })
-        .select('*')
-        .single()
-
-    if (error) {
-        if ((error as { code?: string }).code === '23505') {
-            // Konflikt slug/nazwy → zwróć pozycję kanoniczną. Dwa parametryzowane
-            // lookupy zamiast ręcznie sklejanego .or() — przecinki/nawiasy w nazwie
-            // rozsypałyby parser filtrów PostgREST.
-            const { data: bySlug } = await admin
-                .from('technologies')
-                .select('*')
-                .eq('slug', slug)
-                .maybeSingle()
-            if (bySlug) return bySlug as TechnologyRow
-            const { data: byName } = await admin
-                .from('technologies')
-                .select('*')
-                .ilike('name', ilikeExact(trimmed))
-                .limit(1)
-                .maybeSingle()
-            if (byName) return byName as TechnologyRow
+export async function createTechnologyUnverified(name: string): Promise<ActionResult<TechnologyRow>> {
+    return runAction('createTechnologyUnverified', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        const trimmed = validateDictName(name)
+        const slug = generateTechSlug(trimmed)
+        if (!slug) {
+            throw new ExpectedError('Nazwa nie zawiera znaków, z których można zbudować identyfikator.')
         }
-        throw new Error(`Błąd dodawania technologii: ${error.message}`)
-    }
 
-    const row = data as TechnologyRow
-    await logAudit(ctx.userId, 'TECH_DICT_CREATED', { kind: 'technology', id: row.id, name: trimmed, slug })
-    return row
+        const admin = createServiceClient()
+        const { data, error } = await admin
+            .from('technologies')
+            .insert({ name: trimmed, slug, is_verified: false, category: 'inne', created_by: ctx.userId })
+            .select('*')
+            .single()
+
+        if (error) {
+            if ((error as { code?: string }).code === '23505') {
+                // Konflikt slug/nazwy → zwróć pozycję kanoniczną. Dwa parametryzowane
+                // lookupy zamiast ręcznie sklejanego .or() — przecinki/nawiasy w nazwie
+                // rozsypałyby parser filtrów PostgREST.
+                const { data: bySlug } = await admin
+                    .from('technologies')
+                    .select('*')
+                    .eq('slug', slug)
+                    .maybeSingle()
+                if (bySlug) return bySlug as TechnologyRow
+                const { data: byName } = await admin
+                    .from('technologies')
+                    .select('*')
+                    .ilike('name', ilikeExact(trimmed))
+                    .limit(1)
+                    .maybeSingle()
+                if (byName) return byName as TechnologyRow
+            }
+            throw new Error(`Błąd dodawania technologii: ${error.message}`)
+        }
+
+        const row = data as TechnologyRow
+        await logAudit(ctx.userId, 'TECH_DICT_CREATED', { kind: 'technology', id: row.id, name: trimmed, slug })
+        return row
+    })
 }
 
 /** Admin CRUD — slug jest NIEZMIENNY (stabilny klucz pod sync z NEXUS). */
@@ -156,48 +161,52 @@ export async function updateTechnology(input: {
     category?: TechCategory
     aliases?: string[]
     isVerified?: boolean
-}): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    requireAdmin(ctx)
-    if (!input.id) throw new Error('Brak id technologii.')
+}): Promise<ActionResult<void>> {
+    return runAction('updateTechnology', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        requireAdmin(ctx)
+        if (!input.id) throw new ExpectedError('Brak id technologii.')
 
-    const patch: Record<string, unknown> = {}
-    if (input.name !== undefined) patch.name = validateDictName(input.name)
-    if (input.category !== undefined) patch.category = input.category
-    if (input.aliases !== undefined) {
-        patch.aliases = input.aliases.map((a) => a.trim().toLowerCase()).filter(Boolean)
-    }
-    if (input.isVerified !== undefined) patch.is_verified = input.isVerified
-    if (Object.keys(patch).length === 0) return
-
-    const admin = createServiceClient()
-    const { error } = await admin.from('technologies').update(patch).eq('id', input.id)
-    if (error) {
-        if ((error as { code?: string }).code === '23505') {
-            throw new Error('Technologia o tej nazwie już istnieje.')
+        const patch: Record<string, unknown> = {}
+        if (input.name !== undefined) patch.name = validateDictName(input.name)
+        if (input.category !== undefined) patch.category = input.category
+        if (input.aliases !== undefined) {
+            patch.aliases = input.aliases.map((a) => a.trim().toLowerCase()).filter(Boolean)
         }
-        throw new Error(`Błąd aktualizacji technologii: ${error.message}`)
-    }
-    await logAudit(ctx.userId, 'TECH_DICT_UPDATED', { kind: 'technology', id: input.id, changes: patch })
-    revalidatePath(HUB)
+        if (input.isVerified !== undefined) patch.is_verified = input.isVerified
+        if (Object.keys(patch).length === 0) return
+
+        const admin = createServiceClient()
+        const { error } = await admin.from('technologies').update(patch).eq('id', input.id)
+        if (error) {
+            if ((error as { code?: string }).code === '23505') {
+                throw new ExpectedError('Technologia o tej nazwie już istnieje.')
+            }
+            throw new Error(`Błąd aktualizacji technologii: ${error.message}`)
+        }
+        await logAudit(ctx.userId, 'TECH_DICT_UPDATED', { kind: 'technology', id: input.id, changes: patch })
+        revalidatePath(HUB)
+    })
 }
 
-export async function deleteTechnology(id: string): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    requireAdmin(ctx)
-    if (!id) throw new Error('Brak id technologii.')
-    const admin = createServiceClient()
-    const { error } = await admin.from('technologies').delete().eq('id', id)
-    if (error) {
-        if ((error as { code?: string }).code === '23503') {
-            throw new Error(
-                'Technologia jest użyta na kartach wywiadów — zmień nazwę lub oznacz jako niezweryfikowaną zamiast usuwać.',
-            )
+export async function deleteTechnology(id: string): Promise<ActionResult<void>> {
+    return runAction('deleteTechnology', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        requireAdmin(ctx)
+        if (!id) throw new ExpectedError('Brak id technologii.')
+        const admin = createServiceClient()
+        const { error } = await admin.from('technologies').delete().eq('id', id)
+        if (error) {
+            if ((error as { code?: string }).code === '23503') {
+                throw new ExpectedError(
+                    'Technologia jest użyta na kartach wywiadów — zmień nazwę lub oznacz jako niezweryfikowaną zamiast usuwać.',
+                )
+            }
+            throw new Error(`Błąd usuwania technologii: ${error.message}`)
         }
-        throw new Error(`Błąd usuwania technologii: ${error.message}`)
-    }
-    await logAudit(ctx.userId, 'TECH_DICT_DELETED', { kind: 'technology', id })
-    revalidatePath(HUB)
+        await logAudit(ctx.userId, 'TECH_DICT_DELETED', { kind: 'technology', id })
+        revalidatePath(HUB)
+    })
 }
 
 // ─── Słownik vendorów ───────────────────────────────────────────────────────
@@ -210,70 +219,82 @@ export async function listVendors(): Promise<VendorRow[]> {
     return (data ?? []) as VendorRow[]
 }
 
-export async function createVendorUnverified(name: string): Promise<VendorRow> {
-    const ctx = await requireLifecycleManagerAction()
-    const trimmed = validateDictName(name)
-    const admin = createServiceClient()
-    const { data, error } = await admin
-        .from('vendors')
-        .insert({ name: trimmed, is_verified: false, created_by: ctx.userId })
-        .select('*')
-        .single()
+export async function createVendorUnverified(name: string): Promise<ActionResult<VendorRow>> {
+    return runAction('createVendorUnverified', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        const trimmed = validateDictName(name)
+        const admin = createServiceClient()
+        const { data, error } = await admin
+            .from('vendors')
+            .insert({ name: trimmed, is_verified: false, created_by: ctx.userId })
+            .select('*')
+            .single()
 
-    if (error) {
-        if ((error as { code?: string }).code === '23505') {
-            const { data: existing } = await admin
-                .from('vendors')
-                .select('*')
-                .ilike('name', ilikeExact(trimmed))
-                .limit(1)
-                .maybeSingle()
-            if (existing) return existing as VendorRow
+        if (error) {
+            if ((error as { code?: string }).code === '23505') {
+                const { data: existing } = await admin
+                    .from('vendors')
+                    .select('*')
+                    .ilike('name', ilikeExact(trimmed))
+                    .limit(1)
+                    .maybeSingle()
+                if (existing) return existing as VendorRow
+            }
+            throw new Error(`Błąd dodawania dostawcy: ${error.message}`)
         }
-        throw new Error(`Błąd dodawania dostawcy: ${error.message}`)
-    }
 
-    const row = data as VendorRow
-    await logAudit(ctx.userId, 'TECH_DICT_CREATED', { kind: 'vendor', id: row.id, name: trimmed })
-    return row
+        const row = data as VendorRow
+        await logAudit(ctx.userId, 'TECH_DICT_CREATED', { kind: 'vendor', id: row.id, name: trimmed })
+        return row
+    })
 }
 
-export async function updateVendor(input: { id: string; name?: string; isVerified?: boolean }): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    requireAdmin(ctx)
-    if (!input.id) throw new Error('Brak id dostawcy.')
+export async function updateVendor(input: {
+    id: string
+    name?: string
+    isVerified?: boolean
+}): Promise<ActionResult<void>> {
+    return runAction('updateVendor', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        requireAdmin(ctx)
+        if (!input.id) throw new ExpectedError('Brak id dostawcy.')
 
-    const patch: Record<string, unknown> = {}
-    if (input.name !== undefined) patch.name = validateDictName(input.name)
-    if (input.isVerified !== undefined) patch.is_verified = input.isVerified
-    if (Object.keys(patch).length === 0) return
+        const patch: Record<string, unknown> = {}
+        if (input.name !== undefined) patch.name = validateDictName(input.name)
+        if (input.isVerified !== undefined) patch.is_verified = input.isVerified
+        if (Object.keys(patch).length === 0) return
 
-    const admin = createServiceClient()
-    const { error } = await admin.from('vendors').update(patch).eq('id', input.id)
-    if (error) {
-        if ((error as { code?: string }).code === '23505') {
-            throw new Error('Dostawca o tej nazwie już istnieje.')
+        const admin = createServiceClient()
+        const { error } = await admin.from('vendors').update(patch).eq('id', input.id)
+        if (error) {
+            if ((error as { code?: string }).code === '23505') {
+                throw new ExpectedError('Dostawca o tej nazwie już istnieje.')
+            }
+            throw new Error(`Błąd aktualizacji dostawcy: ${error.message}`)
         }
-        throw new Error(`Błąd aktualizacji dostawcy: ${error.message}`)
-    }
-    await logAudit(ctx.userId, 'TECH_DICT_UPDATED', { kind: 'vendor', id: input.id, changes: patch })
-    revalidatePath(HUB)
+        await logAudit(ctx.userId, 'TECH_DICT_UPDATED', { kind: 'vendor', id: input.id, changes: patch })
+        revalidatePath(HUB)
+    })
 }
 
-export async function deleteVendor(id: string): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    requireAdmin(ctx)
-    if (!id) throw new Error('Brak id dostawcy.')
-    const admin = createServiceClient()
-    const { error } = await admin.from('vendors').delete().eq('id', id)
-    if (error) {
-        if ((error as { code?: string }).code === '23503') {
-            throw new Error('Dostawca jest użyty na kartach wywiadów — zmień nazwę zamiast usuwać.')
+export async function deleteVendor(id: string): Promise<ActionResult<void>> {
+    return runAction('deleteVendor', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        requireAdmin(ctx)
+        if (!id) throw new ExpectedError('Brak id dostawcy.')
+        const admin = createServiceClient()
+        const { error } = await admin.from('vendors').delete().eq('id', id)
+        if (error) {
+            if ((error as { code?: string }).code === '23503') {
+                throw new ExpectedError(
+                    'Dostawca jest użyty na kartach wywiadów — zmień nazwę zamiast usuwać.',
+                )
+            }
+            throw new Error(`Błąd usuwania dostawcy: ${error.message}`)
         }
-        throw new Error(`Błąd usuwania dostawcy: ${error.message}`)
-    }
-    await logAudit(ctx.userId, 'TECH_DICT_DELETED', { kind: 'vendor', id })
-    revalidatePath(HUB)
+        await logAudit(ctx.userId, 'TECH_DICT_DELETED', { kind: 'vendor', id })
+        revalidatePath(HUB)
+    })
 }
 
 // ─── Obszary klienta ────────────────────────────────────────────────────────
@@ -288,34 +309,43 @@ export async function listClientAreas(clientId?: string): Promise<ClientAreaRow[
     return (data ?? []) as ClientAreaRow[]
 }
 
-export async function createClientArea(clientId: string, name: string): Promise<ClientAreaRow> {
-    const ctx = await requireLifecycleManagerAction()
-    if (!clientId) throw new Error('Brak id klienta.')
-    const trimmed = validateDictName(name)
-    const admin = createServiceClient()
-    const { data, error } = await admin
-        .from('client_areas')
-        .insert({ client_id: clientId, name: trimmed, created_by: ctx.userId })
-        .select('*')
-        .single()
+export async function createClientArea(
+    clientId: string,
+    name: string,
+): Promise<ActionResult<ClientAreaRow>> {
+    return runAction('createClientArea', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        if (!clientId) throw new ExpectedError('Brak id klienta.')
+        const trimmed = validateDictName(name)
+        const admin = createServiceClient()
+        const { data, error } = await admin
+            .from('client_areas')
+            .insert({ client_id: clientId, name: trimmed, created_by: ctx.userId })
+            .select('*')
+            .single()
 
-    if (error) {
-        if ((error as { code?: string }).code === '23505') {
-            const { data: existing } = await admin
-                .from('client_areas')
-                .select('*')
-                .eq('client_id', clientId)
-                .ilike('name', ilikeExact(trimmed))
-                .limit(1)
-                .maybeSingle()
-            if (existing) return existing as ClientAreaRow
+        if (error) {
+            if ((error as { code?: string }).code === '23505') {
+                const { data: existing } = await admin
+                    .from('client_areas')
+                    .select('*')
+                    .eq('client_id', clientId)
+                    .ilike('name', ilikeExact(trimmed))
+                    .limit(1)
+                    .maybeSingle()
+                if (existing) return existing as ClientAreaRow
+            }
+            throw new Error(`Błąd dodawania obszaru: ${error.message}`)
         }
-        throw new Error(`Błąd dodawania obszaru: ${error.message}`)
-    }
 
-    const row = data as ClientAreaRow
-    await logAudit(ctx.userId, 'TECH_AREA_CREATED', { area_id: row.id, client_id: clientId, name: trimmed })
-    return row
+        const row = data as ClientAreaRow
+        await logAudit(ctx.userId, 'TECH_AREA_CREATED', {
+            area_id: row.id,
+            client_id: clientId,
+            name: trimmed,
+        })
+        return row
+    })
 }
 
 /**
@@ -324,35 +354,43 @@ export async function createClientArea(clientId: string, name: string): Promise<
  * Nazwa przechodzi kanonizację Phase 42a, wpis jest audytowany, a klient ląduje
  * w TEJ SAMEJ tabeli `clients`, widocznej w panelu admina.
  */
-export async function createClientForTechMap(name: string): Promise<{ id: string; name: string }> {
-    const ctx = await requireLifecycleManagerAction()
-    const normalized = normalizeClientName(name)
-    if (!normalized || normalized.length < 2) throw new Error('Nazwa klienta jest za krótka.')
-    if (normalized.length > NAME_MAX) throw new Error(`Nazwa klienta za długa (max ${NAME_MAX} znaków).`)
-
-    const admin = createServiceClient()
-    const { data, error } = await admin
-        .from('clients')
-        .insert({ name: normalized, created_by: ctx.userId })
-        .select('id, name')
-        .single()
-
-    if (error) {
-        if ((error as { code?: string }).code === '23505') {
-            const { data: existing } = await admin
-                .from('clients')
-                .select('id, name')
-                .ilike('name', ilikeExact(normalized))
-                .limit(1)
-                .maybeSingle()
-            if (existing) return existing as { id: string; name: string }
+export async function createClientForTechMap(
+    name: string,
+): Promise<ActionResult<{ id: string; name: string }>> {
+    return runAction('createClientForTechMap', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        const normalized = normalizeClientName(name)
+        if (!normalized || normalized.length < 2) {
+            throw new ExpectedError('Nazwa klienta jest za krótka.')
         }
-        throw new Error(`Błąd dodawania klienta: ${error.message}`)
-    }
+        if (normalized.length > NAME_MAX) {
+            throw new ExpectedError(`Nazwa klienta za długa (max ${NAME_MAX} znaków).`)
+        }
 
-    const row = data as { id: string; name: string }
-    await logAudit(ctx.userId, 'CLIENT_CREATED_FROM_TECH_MAP', { client_id: row.id, name: normalized })
-    return row
+        const admin = createServiceClient()
+        const { data, error } = await admin
+            .from('clients')
+            .insert({ name: normalized, created_by: ctx.userId })
+            .select('id, name')
+            .single()
+
+        if (error) {
+            if ((error as { code?: string }).code === '23505') {
+                const { data: existing } = await admin
+                    .from('clients')
+                    .select('id, name')
+                    .ilike('name', ilikeExact(normalized))
+                    .limit(1)
+                    .maybeSingle()
+                if (existing) return existing as { id: string; name: string }
+            }
+            throw new Error(`Błąd dodawania klienta: ${error.message}`)
+        }
+
+        const row = data as { id: string; name: string }
+        await logAudit(ctx.userId, 'CLIENT_CREATED_FROM_TECH_MAP', { client_id: row.id, name: normalized })
+        return row
+    })
 }
 
 // ─── Karty wywiadów ─────────────────────────────────────────────────────────
@@ -390,7 +428,7 @@ async function assertAreaBelongsToClient(admin: ServiceClient, input: CardInput)
         .eq('id', input.clientAreaId)
         .maybeSingle()
     if (!data || (data as { client_id: string }).client_id !== input.clientId) {
-        throw new Error('Wybrany obszar nie należy do wybranego klienta.')
+        throw new ExpectedError('Wybrany obszar nie należy do wybranego klienta.')
     }
 }
 
@@ -436,56 +474,58 @@ async function loadCardOrThrow(admin: ServiceClient, cardId: string): Promise<Te
         .eq('id', cardId)
         .maybeSingle()
     if (error) throw new Error(`Błąd pobierania karty: ${error.message}`)
-    if (!data) throw new Error('Karta nie istnieje.')
+    if (!data) throw new ExpectedError('Karta nie istnieje.')
     return data as TechInterviewCardRow
 }
 
-export async function createCardDraft(input: CardInput): Promise<{ id: string }> {
-    const ctx = await requireLifecycleManagerAction()
-    const baseErrors = validateCardBase(input)
-    if (baseErrors.length > 0) throw new Error(baseErrors.join(' '))
+export async function createCardDraft(input: CardInput): Promise<ActionResult<{ id: string }>> {
+    return runAction('createCardDraft', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        const baseErrors = validateCardBase(input)
+        if (baseErrors.length > 0) throw new ExpectedError(baseErrors.join(' '))
 
-    const admin = createServiceClient()
-    await assertAreaBelongsToClient(admin, input)
+        const admin = createServiceClient()
+        await assertAreaBelongsToClient(admin, input)
 
-    // Prefill placementu: najświeższy aktywny placement kontraktora (jeśli jest).
-    // Opcjonalny — błąd lookupa nie blokuje karty, ale zostawia ślad w logach.
-    const { data: placement, error: placementError } = await admin
-        .from('placements')
-        .select('id')
-        .eq('contractor_id', input.contractorId)
-        .in('status', ['upcoming', 'started'])
-        .order('start_date', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    if (placementError) {
-        logCompat.warn('tech-map: prefill placementu nie powiódł się', placementError)
-    }
+        // Prefill placementu: najświeższy aktywny placement kontraktora (jeśli jest).
+        // Opcjonalny — błąd lookupa nie blokuje karty, ale zostawia ślad w logach.
+        const { data: placement, error: placementError } = await admin
+            .from('placements')
+            .select('id')
+            .eq('contractor_id', input.contractorId)
+            .in('status', ['upcoming', 'started'])
+            .order('start_date', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        if (placementError) {
+            logCompat.warn('tech-map: prefill placementu nie powiódł się', placementError)
+        }
 
-    const { data, error } = await admin
-        .from('tech_interview_cards')
-        .insert({
-            ...cardPayloadFromInput(input),
+        const { data, error } = await admin
+            .from('tech_interview_cards')
+            .insert({
+                ...cardPayloadFromInput(input),
+                contractor_id: input.contractorId,
+                placement_id: (placement as { id: string } | null)?.id ?? null,
+                tcm_id: ctx.userId,
+                created_by: ctx.userId,
+                is_draft: true,
+            })
+            .select('id')
+            .single()
+        if (error) throw new Error(`Błąd zapisu karty: ${error.message}`)
+
+        const cardId = (data as { id: string }).id
+        await syncCardRelations(admin, cardId, input)
+
+        await logAudit(ctx.userId, 'TECH_CARD_CREATED', {
+            card_id: cardId,
             contractor_id: input.contractorId,
-            placement_id: (placement as { id: string } | null)?.id ?? null,
-            tcm_id: ctx.userId,
-            created_by: ctx.userId,
-            is_draft: true,
+            client_id: input.clientId,
         })
-        .select('id')
-        .single()
-    if (error) throw new Error(`Błąd zapisu karty: ${error.message}`)
-
-    const cardId = (data as { id: string }).id
-    await syncCardRelations(admin, cardId, input)
-
-    await logAudit(ctx.userId, 'TECH_CARD_CREATED', {
-        card_id: cardId,
-        contractor_id: input.contractorId,
-        client_id: input.clientId,
+        revalidatePath(HUB)
+        return { id: cardId }
     })
-    revalidatePath(HUB)
-    return { id: cardId }
 }
 
 async function saveCardInternal(
@@ -496,9 +536,11 @@ async function saveCardInternal(
     const ctx = await requireLifecycleManagerAction()
     const admin = createServiceClient()
     const card = await loadCardOrThrow(admin, cardId)
-    if (!canEditCard(ctx, card)) throw new Error('Możesz edytować tylko własne karty.')
+    if (!canEditCard(ctx, card)) throw new ExpectedError('Możesz edytować tylko własne karty.')
     if (input.contractorId !== card.contractor_id) {
-        throw new Error('Nie można zmienić konsultanta na istniejącej karcie — utwórz nową kartę.')
+        throw new ExpectedError(
+            'Nie można zmienić konsultanta na istniejącej karcie — utwórz nową kartę.',
+        )
     }
 
     const today = warsawDate(new Date())
@@ -506,7 +548,7 @@ async function saveCardInternal(
     const errors = mustBeComplete
         ? validateCardForFinalize(input, today)
         : validateCardBase(input)
-    if (errors.length > 0) throw new Error(errors.join(' '))
+    if (errors.length > 0) throw new ExpectedError(errors.join(' '))
 
     await assertAreaBelongsToClient(admin, input)
 
@@ -598,13 +640,13 @@ async function fireDemandAlert(
 }
 
 /** Zapis (draft zostaje draftem; karta sfinalizowana musi pozostać kompletna). */
-export async function saveCard(cardId: string, input: CardInput): Promise<void> {
-    await saveCardInternal(cardId, input, { finalize: false })
+export async function saveCard(cardId: string, input: CardInput): Promise<ActionResult<void>> {
+    return runAction('saveCard', () => saveCardInternal(cardId, input, { finalize: false }))
 }
 
 /** Zapis + finalizacja (pełna matryca kompletności). */
-export async function finalizeCard(cardId: string, input: CardInput): Promise<void> {
-    await saveCardInternal(cardId, input, { finalize: true })
+export async function finalizeCard(cardId: string, input: CardInput): Promise<ActionResult<void>> {
+    return runAction('finalizeCard', () => saveCardInternal(cardId, input, { finalize: true }))
 }
 
 export interface CardFilters {
@@ -1079,19 +1121,27 @@ export async function getAlertRecipientsConfig(): Promise<{
 }
 
 /** Zapis listy odbiorców (CSV UUID) do system_settings. Admin only. */
-export async function setAlertRecipients(kind: 'demand' | 'project_end', userIds: string[]): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    requireAdmin(ctx)
-    const key = kind === 'demand' ? DEMAND_RECIPIENTS_KEY : PROJECT_END_RECIPIENTS_KEY
-    const csv = parseRecipientCsv(userIds.join(','))
+export async function setAlertRecipients(
+    kind: 'demand' | 'project_end',
+    userIds: string[],
+): Promise<ActionResult<void>> {
+    return runAction('setAlertRecipients', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        requireAdmin(ctx)
+        const key = kind === 'demand' ? DEMAND_RECIPIENTS_KEY : PROJECT_END_RECIPIENTS_KEY
+        const csv = parseRecipientCsv(userIds.join(','))
 
-    const admin = createServiceClient()
-    const { error } = await admin
-        .from('system_settings')
-        .upsert({ key, value: csv.join(','), updated_at: new Date().toISOString(), updated_by: ctx.userId }, {
-            onConflict: 'key',
+        const admin = createServiceClient()
+        const { error } = await admin
+            .from('system_settings')
+            .upsert({ key, value: csv.join(','), updated_at: new Date().toISOString(), updated_by: ctx.userId }, {
+                onConflict: 'key',
+            })
+        if (error) throw new Error(`Błąd zapisu odbiorców: ${error.message}`)
+        await logAudit(ctx.userId, 'TECH_DICT_UPDATED', {
+            kind: `alert_recipients_${kind}`,
+            count: csv.length,
         })
-    if (error) throw new Error(`Błąd zapisu odbiorców: ${error.message}`)
-    await logAudit(ctx.userId, 'TECH_DICT_UPDATED', { kind: `alert_recipients_${kind}`, count: csv.length })
-    revalidatePath(HUB)
+        revalidatePath(HUB)
+    })
 }

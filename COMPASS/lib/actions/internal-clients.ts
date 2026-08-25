@@ -16,6 +16,7 @@ import {
     requireFinanseOrAdminAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { normalizeClientName } from '@/lib/contractors/name-normalization'
 
 export interface ClientRow {
     id: string
@@ -28,7 +29,11 @@ export interface ClientRow {
 const CLIENT_NAME_MAX = 120
 
 function validateClientName(name: string): string {
-    const trimmed = (name ?? '').trim()
+    // Audyt 2026-08 — kanonizacja Fazy 42a była TYLKO w ścieżce mapy technologicznej
+    // (createClientForTechMap), a panel admina zapisywał nazwę surową. UNIQUE na
+    // clients.name jest case-sensitive, więc obok „NORDEA" wchodziło „Nordea", a lista
+    // klientów zasila dropdown premii — rozjazd wyciekał wprost do danych finansowych.
+    const trimmed = normalizeClientName(name)
     if (trimmed.length < 1) throw new Error('Nazwa klienta jest wymagana.')
     if (trimmed.length > CLIENT_NAME_MAX) {
         throw new Error(`Nazwa klienta za długa (max ${CLIENT_NAME_MAX} znaków).`)
@@ -41,8 +46,7 @@ export async function listClients(): Promise<ClientRow[]> {
     await requireInternalOrAdminAction()
     const supabase = createClient()
     const { data, error } = await supabase
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('clients' as any)
+        .from('clients')
         .select('*')
         .order('name')
     if (error) throw new Error(`Błąd pobierania klientów: ${error.message}`)
@@ -54,8 +58,7 @@ export async function listActiveClients(): Promise<ClientRow[]> {
     await requireInternalOrAdminAction()
     const supabase = createClient()
     const { data, error } = await supabase
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('clients' as any)
+        .from('clients')
         .select('*')
         .eq('is_active', true)
         .order('name')
@@ -69,8 +72,7 @@ export async function createClient_(name: string): Promise<ClientRow> {
     const trimmed = validateClientName(name)
     const admin = createServiceClient()
     const { data, error } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('clients' as any)
+        .from('clients')
         .insert({ name: trimmed, created_by: ctx.userId })
         .select('*')
         .single()
@@ -91,8 +93,7 @@ export async function toggleClientActive(id: string, isActive: boolean): Promise
     if (!id) throw new Error('Brak id klienta.')
     const admin = createServiceClient()
     const { error } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('clients' as any)
+        .from('clients')
         .update({ is_active: isActive })
         .eq('id', id)
     if (error) throw new Error(`Błąd aktualizacji klienta: ${error.message}`)
@@ -106,8 +107,7 @@ export async function renameClient(id: string, name: string): Promise<void> {
     const trimmed = validateClientName(name)
     const admin = createServiceClient()
     const { error } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('clients' as any)
+        .from('clients')
         .update({ name: trimmed })
         .eq('id', id)
     if (error) {
@@ -126,14 +126,12 @@ export async function deleteClient(id: string): Promise<void> {
     const admin = createServiceClient()
     // Capture name for audit.
     const { data: existing } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('clients' as any)
+        .from('clients')
         .select('name')
         .eq('id', id)
         .maybeSingle()
     const { error } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('clients' as any)
+        .from('clients')
         .delete()
         .eq('id', id)
     if (error) {

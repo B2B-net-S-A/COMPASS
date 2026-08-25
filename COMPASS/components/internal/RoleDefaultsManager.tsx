@@ -204,6 +204,8 @@ export function RoleDefaultsManager({ initialDefaults }: Props) {
                                         <Button
                                             size="icon"
                                             variant="ghost"
+                                            aria-label="Edytuj domyślny opis"
+                                            title="Edytuj domyślny opis"
                                             onClick={() => openEdit(d)}
                                             disabled={pending}
                                         >
@@ -212,6 +214,8 @@ export function RoleDefaultsManager({ initialDefaults }: Props) {
                                         <Button
                                             size="icon"
                                             variant="ghost"
+                                            aria-label="Usuń domyślny opis"
+                                            title="Usuń domyślny opis"
                                             onClick={() => handleDelete(d)}
                                             disabled={pending}
                                             className="text-muted-foreground hover:text-destructive"

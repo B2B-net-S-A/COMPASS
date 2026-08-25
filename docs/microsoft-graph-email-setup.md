@@ -19,7 +19,7 @@
 | MAIL_PROVIDER | `graph` | ✅ Coolify env (runtime) |
 | Smoke test | timesheet-reminder mon-nudge | ✅ 7 sent, 0 failed (2026-05-11) |
 
-Po merge PR-E `lib/email/sender.ts` ma adapter Microsoft Graph który czeka na credentials. Bez nich kod fallbackuje do Resend (jeśli RESEND_API_KEY działa) — czyli zero downtime.
+`lib/email/sender.ts` wysyła wyłącznie przez Microsoft Graph. Bez `AZURE_*` w env wysyłka kończy się `success: false` (nie wyjątkiem) — akcja użytkownika przechodzi, mail nie wychodzi.
 
 ## 1. Azure Portal — App Registration permission
 
@@ -152,14 +152,17 @@ ssh root@178.104.220.48 "
 
 ## 7. Rollback
 
-Jeśli Graph nie działa (Azure misconfig, permission scope problem, etc.) — natychmiast wróć do Resend:
+> ⚠️ **Nie ma już rollbacku do Resend.** Kanał Resend (`sendViaResend`, zależność `resend`,
+> `RESEND_API_KEY`, przełącznik `MAIL_PROVIDER=resend`) został usunięty z kodu — zostawał tu
+> martwy przez rok po PR #68, więc ta procedura przełączała produkcję na kanał bez ważnego
+> klucza, czyli w ciszę zamiast w działający e-mail.
 
-```
-# W Coolify env vars:
-MAIL_PROVIDER=resend
-```
-
-Container restart automatyczny → fallback do Resend (potrzebny aktualny `RESEND_API_KEY`).
+Jeśli Graph nie działa (Azure misconfig, wygasły secret, problem z permission scope), maile
+przestają wychodzić i trzeba naprawić samego Graph — patrz kroki 1–5 wyżej. Wywołania
+`sendEmail()` nie rzucają wyjątkiem, więc awaria nie wywraca akcji użytkownika: zwracają
+`success: false`, logują `[email/graph] send failed` i trafiają do Sentry jako
+`email_send_failed:graph`. Gdyby kiedyś potrzebny był drugi dostawca (Postmark, SES), wpina się
+go w `lib/email/sender.ts` — `lib/email.ts` i 14 szablonów zostają bez zmian.
 
 ## Architektura
 
@@ -167,11 +170,9 @@ Container restart automatyczny → fallback do Resend (potrzebny aktualny `RESEN
 Compass server action
   → lib/email.ts (14 templates)
     → lib/email/sender.ts (sendEmail)
-      → resolveProvider():
-          MAIL_PROVIDER=graph → sendViaGraph (Microsoft Graph API)
-          MAIL_PROVIDER=resend → sendViaResend (Resend SDK)
-          undefined + Azure creds set → graph
-          undefined + brak creds → resend (default fallback)
+      → sendViaGraph (Microsoft Graph API, jedyny kanał)
+          + retry 429/503 (3 podejścia) na wypadek throttlingu
+          + twardy budżet czasu per żądanie z lib/graph/client.ts
 ```
 
 ## Effort summary

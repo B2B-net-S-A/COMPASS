@@ -19,7 +19,7 @@ import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { approveLeaveRequest, rejectLeaveRequest, type PendingLeaveRow } from '@/lib/actions/internal-leave'
+import { approveLeaveRequest, getLeaveProofSignedUrl, rejectLeaveRequest, type PendingLeaveRow } from '@/lib/actions/internal-leave'
 
 interface Props {
     requests: PendingLeaveRow[]
@@ -48,7 +48,27 @@ export function LeaveQueue({ requests }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
+    const [proofLoadingId, setProofLoadingId] = useState<string | null>(null)
     const [rejectTarget, setRejectTarget] = useState<PendingLeaveRow | null>(null)
+
+    // Audyt 2026-08 (A4.1): `documentation_url` to ścieżka w PRYWATNYM buckecie,
+    // więc wstawiona wprost w href zwracała 404. Podpisany link generujemy dopiero
+    // na kliknięcie — nie trzyma się w HTML-u i wygasa po 5 minutach.
+    async function openProof(leaveId: string) {
+        setProofLoadingId(leaveId)
+        try {
+            const res = await getLeaveProofSignedUrl(leaveId)
+            if (!res?.success) {
+                logCompat.error('[LeaveQueue] nie udało się otworzyć załącznika', res?.error)
+                toast.error(res?.error ?? 'Nie udało się otworzyć załącznika.')
+                return
+            }
+            window.open(res.data, '_blank', 'noopener,noreferrer')
+        } finally {
+            setProofLoadingId(null)
+        }
+    }
+
     const [rejectReason, setRejectReason] = useState('')
     // H2.2: bulk selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -82,12 +102,14 @@ export function LeaveQueue({ requests }: Props) {
             let ok = 0
             let fail = 0
             for (const id of ids) {
-                try {
-                    await approveLeaveRequest(id)
+                // Akcja nie rzuca — odmowę zwraca jako `{success:false}`. Bez tego
+                // sprawdzenia licznik `ok` rósłby także dla nieudanych wniosków.
+                const res = await approveLeaveRequest(id)
+                if (res?.success) {
                     ok += 1
-                } catch (e: unknown) {
+                } else {
                     fail += 1
-                    logCompat.error('[bulkApprove] failed for', id, e)
+                    logCompat.error('[bulkApprove] failed for', id, res?.error)
                 }
             }
             if (fail === 0) {
@@ -114,12 +136,13 @@ export function LeaveQueue({ requests }: Props) {
             let ok = 0
             let fail = 0
             for (const id of ids) {
-                try {
-                    await rejectLeaveRequest(id, reason)
+                // Jak wyżej: brak rzucania znaczy, że o wyniku decyduje `success`.
+                const res = await rejectLeaveRequest(id, reason)
+                if (res?.success) {
                     ok += 1
-                } catch (e: unknown) {
+                } else {
                     fail += 1
-                    logCompat.error('[bulkReject] failed for', id, e)
+                    logCompat.error('[bulkReject] failed for', id, res?.error)
                 }
             }
             if (fail === 0) {
@@ -145,11 +168,13 @@ export function LeaveQueue({ requests }: Props) {
         setBusyId(req.id)
         startTransition(async () => {
             try {
-                await approveLeaveRequest(req.id)
+                const res = await approveLeaveRequest(req.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się zaakceptować wniosku.')
+                    return
+                }
                 toastSuccess(`Zaakceptowano wniosek ${req.user_email}`)
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setBusyId(null)
             }
@@ -169,11 +194,13 @@ export function LeaveQueue({ requests }: Props) {
         setBusyId(target.id)
         startTransition(async () => {
             try {
-                await rejectLeaveRequest(target.id, reason)
+                const res = await rejectLeaveRequest(target.id, reason)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się odrzucić wniosku.')
+                    return
+                }
                 toastSuccess(`Odrzucono wniosek ${target.user_email}`)
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setBusyId(null)
             }
@@ -287,14 +314,14 @@ export function LeaveQueue({ requests }: Props) {
                                                     </p>
                                                 )}
                                                 {req.documentation_url && (
-                                                    <a
-                                                        href={req.documentation_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-xs text-primary underline mt-1 inline-block"
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void openProof(req.id)}
+                                                        disabled={proofLoadingId === req.id}
+                                                        className="text-xs text-primary underline mt-1 inline-block disabled:opacity-60"
                                                     >
-                                                        Załącznik
-                                                    </a>
+                                                        {proofLoadingId === req.id ? 'Otwieram…' : 'Załącznik'}
+                                                    </button>
                                                 )}
                                                 {/* Phase 25d — substitute display */}
                                                 {req.substitute_full_name && (

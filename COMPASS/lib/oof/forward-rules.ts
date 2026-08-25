@@ -16,7 +16,7 @@
 //
 // Soft-fail per item: one bad mailbox or leave never aborts the run.
 
-import { logAudit } from '@/lib/actions/audit'
+import { logSystemAudit } from '@/lib/audit/system-log'
 import {
     deleteForwardRule,
     listCompassForwardRules,
@@ -25,6 +25,7 @@ import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sy
 import { logger } from '@/lib/logger'
 import { shouldForwardBeActive, warsawToday } from './forward-window'
 import { HR_ROLES } from './reconcile'
+import { activeRoster } from '@/lib/hr/employment-window'
 
 /**
  * Upper bound on mailboxes scanned per run, so a growing roster cannot push the cron
@@ -102,7 +103,7 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
     // Heartbeat: start. The only DB-readable proof the forward half began. logAudit
     // never throws, so this cannot itself break the run. If this row lands but the
     // matching 'done' below never does, the run was killed mid-flight.
-    await logAudit(null, 'FORWARD_RECONCILE_RUN', { phase: 'start', at: now.toISOString() })
+    await logSystemAudit(null, 'FORWARD_RECONCILE_RUN', { phase: 'start', at: now.toISOString() })
 
     // ─── Pass 1: open ────────────────────────────────────────────────────────
     // `start_date <= today` (not `=`) makes this self-healing: a leave whose rule was
@@ -220,14 +221,14 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
         return stats
     }
 
-    // Filter exited/offboarding + missing email in JS (PostgREST NULL-in-NOT-IN pitfall).
-    const roster = ((rosterRaw ?? []) as Array<{
-        id: string
-        email: string | null
-        employment_status: string | null
-    }>).filter(
-        (u) => u.email && u.employment_status !== 'exited' && u.employment_status !== 'offboarding',
-    )
+    // Filtrowanie w JS, nie w PostgREST (pułapka NULL-in-NOT-IN).
+    const roster = activeRoster(
+        (rosterRaw ?? []) as Array<{
+            id: string
+            email: string | null
+            employment_status: string | null
+        }>,
+    ).filter((u) => u.email)
 
     if (roster.length > MAX_SWEEP_PER_RUN) {
         stats.errors.push(
@@ -263,7 +264,7 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
                 .from('leave_requests')
                 .update({ outlook_forward_rule_id: null } as never)
                 .eq('outlook_forward_rule_id', rule.id)
-            await logAudit(null, 'LEAVE_FORWARD_ORPHAN_REMOVED', {
+            await logSystemAudit(null, 'LEAVE_FORWARD_ORPHAN_REMOVED', {
                 leave_id: rule.leaveId,
                 mailbox: email,
                 rule_id: rule.id,
@@ -279,7 +280,7 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
     // Heartbeat: done. Pairs with the 'start' row so a mid-flight kill is detectable,
     // and carries the outcome so the run can be diagnosed straight from audit_logs
     // without the CRON_SECRET-gated HTTP response.
-    await logAudit(null, 'FORWARD_RECONCILE_RUN', {
+    await logSystemAudit(null, 'FORWARD_RECONCILE_RUN', {
         phase: 'done',
         opened: stats.opened,
         closed: stats.closed,

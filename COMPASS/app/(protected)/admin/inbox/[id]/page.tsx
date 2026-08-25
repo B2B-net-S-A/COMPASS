@@ -11,6 +11,7 @@ import { SlaCountdownBadge } from '@/components/inbox/SlaCountdownBadge'
 import { getInboxTicketDetail } from '@/lib/actions/support-inbox'
 import { TicketToTaskButton } from '@/components/inbox/TicketToTaskButton'
 import { InboxTicketTitle } from '@/components/inbox/InboxTicketTitle'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +47,7 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
     if (canCreateTask) {
         // Operatorzy TCM: talent_community LUB grant has_tcm_access (bez bare-adminów) — patrz listTcmProfiles.
         const [{ data: tcm }, { data: cs }] = await Promise.all([
-            supabase.from('profiles').select('id, full_name').or('role.eq.talent_community,has_tcm_access.eq.true').neq('employment_status', 'exited').order('full_name'),
+            excludeExited(supabase.from('profiles').select('id, full_name').or('role.eq.talent_community,has_tcm_access.eq.true')).order('full_name'),
             supabase.from('contractors').select('id, full_name').order('full_name'),
         ])
         taskTcmProfiles = ((tcm ?? []) as Array<{ id: string; full_name: string | null }>).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))

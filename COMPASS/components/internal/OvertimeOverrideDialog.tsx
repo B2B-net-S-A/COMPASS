@@ -118,11 +118,15 @@ export function OvertimeOverrideDialog({
         if (!selectedEntry || !canSubmit) return
         setSaving(true)
         try {
-            await adminOverrideTimesheetEntry({
+            const res = await adminOverrideTimesheetEntry({
                 entryId: selectedEntry.id,
                 hours: hoursNum,
                 reason: reasonTrimmed,
             })
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Błąd zapisu nadgodzin')
+                return
+            }
             toast.success(`Wpisano ${hoursNum}h nadgodzin za ${selectedEntry.work_date}.`)
             onSuccess?.()
             onOpenChange(false)
@@ -142,7 +146,11 @@ export function OvertimeOverrideDialog({
         if (!ok) return
         setSaving(true)
         try {
-            await clearOvertimeOverride(selectedEntry.id)
+            const res = await clearOvertimeOverride(selectedEntry.id)
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Błąd cofania override')
+                return
+            }
             toast.success('Override cofnięty.')
             onSuccess?.()
             onOpenChange(false)

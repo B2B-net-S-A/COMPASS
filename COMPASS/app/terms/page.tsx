@@ -32,10 +32,16 @@ export default async function TermsPage() {
           </p>
         </>
       ) : (
+        // Jak w /privacy-policy: regulamin jest w bazie, więc ta gałąź oznacza
+        // awarię odczytu, a nie brak dokumentu.
         <>
-          <h1 className="text-2xl font-bold mb-4">Terms of Service / Regulamin</h1>
+          <h1 className="text-2xl font-bold mb-4">Regulamin</h1>
+          <p className="text-muted-foreground mb-2">
+            Nie udało się teraz wczytać treści regulaminu. Spróbuj odświeżyć stronę za chwilę.
+          </p>
           <p className="text-muted-foreground mb-6">
-            Strona w przygotowaniu. Regulamin korzystania z usługi COMPASS zostanie udostępniony wkrótce.
+            Kopię obowiązującego regulaminu otrzymasz pod adresem{' '}
+            <a className="text-primary underline" href="mailto:administracja@b2bnetwork.pl">administracja@b2bnetwork.pl</a>.
           </p>
         </>
       )}

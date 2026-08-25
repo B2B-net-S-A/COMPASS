@@ -29,8 +29,7 @@ export async function listContractDocuments(userId: string): Promise<ContractDoc
     const admin = createServiceClient()
     const { data, error } = await admin
         // user_contract_documents not yet in database.types.ts — cast table name.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_contract_documents' as any)
+        .from('user_contract_documents')
         .select(DOC_COLUMNS)
         .eq('user_id', userId)
         .order('signed_date', { ascending: false, nullsFirst: false })
@@ -83,8 +82,7 @@ export async function uploadContractDocument(
     if (uploadErr) throw new Error(`Błąd uploadu: ${uploadErr.message}`)
 
     const { data: inserted, error: insErr } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_contract_documents' as any)
+        .from('user_contract_documents')
         .insert({
             user_id: userId,
             doc_type: docType,
@@ -95,7 +93,7 @@ export async function uploadContractDocument(
             file_size_bytes: file.size,
             file_mime: mime,
             uploaded_by: ctx.userId,
-        } as unknown as never)
+        })
         .select(DOC_COLUMNS)
         .single<ContractDocument>()
     if (insErr || !inserted) {
@@ -121,8 +119,7 @@ export async function getContractDocumentSignedUrl(documentId: string): Promise<
     if (!documentId) throw new Error('Brak id dokumentu.')
     const admin = createServiceClient()
     const { data: doc, error } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_contract_documents' as any)
+        .from('user_contract_documents')
         .select('file_path')
         .eq('id', documentId)
         .single<{ file_path: string }>()
@@ -142,8 +139,7 @@ export async function deleteContractDocument(documentId: string): Promise<void> 
     if (!documentId) throw new Error('Brak id dokumentu.')
     const admin = createServiceClient()
     const { data: doc, error } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_contract_documents' as any)
+        .from('user_contract_documents')
         .select('id, user_id, file_path, file_name')
         .eq('id', documentId)
         .single<{ id: string; user_id: string; file_path: string; file_name: string }>()
@@ -153,8 +149,7 @@ export async function deleteContractDocument(documentId: string): Promise<void> 
     if (rmErr) logCompat.error('[deleteContractDocument] storage remove failed:', rmErr)
 
     const { error: delErr } = await admin
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from('user_contract_documents' as any)
+        .from('user_contract_documents')
         .delete()
         .eq('id', documentId)
     if (delErr) throw new Error(`Błąd usuwania dokumentu: ${delErr.message}`)

@@ -20,6 +20,7 @@ import {
     updateTechnology,
     updateVendor,
 } from '@/lib/actions/tech-map'
+import type { ActionResult } from '@/lib/actions/action-result'
 import {
     TECH_CATEGORIES,
     TECH_CATEGORY_PL,
@@ -55,10 +56,17 @@ export function DictionaryAdminSection({
     const techSorted = useMemo(() => sortDict(technologies), [technologies])
     const vendorSorted = useMemo(() => sortDict(vendors), [vendors])
 
-    async function run(key: string, fn: () => Promise<unknown>, okMsg: string) {
+    // Akcje zwracają ActionResult — nieudana operacja NIE rzuca, więc bez sprawdzenia
+    // `success` toast pokazałby sukces mimo braku zapisu. Optional chaining chroni
+    // przed deploy skew (stara karta wołająca nową akcję może dostać undefined).
+    async function run(key: string, fn: () => Promise<ActionResult<unknown>>, okMsg: string) {
         setBusy(key)
         try {
-            await fn()
+            const res = await fn()
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Operacja nie powiodła się.')
+                return
+            }
             toast.success(okMsg)
             router.refresh()
         } catch (e) {
@@ -245,13 +253,17 @@ export function DictionaryAdminSection({
                                 void run(
                                     'add-tech',
                                     async () => {
-                                        const row = await createTechnologyUnverified(newTech)
-                                        await updateTechnology({
-                                            id: row.id,
+                                        // Dwa kroki: dodanie pozycji, potem kategoria + weryfikacja.
+                                        // Nieudany pierwszy krok musi przerwać łańcuch — akcje już nie rzucają.
+                                        const created = await createTechnologyUnverified(newTech)
+                                        if (!created?.success) return created
+                                        const updated = await updateTechnology({
+                                            id: created.data.id,
                                             category: newTechCategory,
                                             isVerified: true,
                                         })
-                                        setNewTech('')
+                                        if (updated?.success) setNewTech('')
+                                        return updated
                                     },
                                     'Dodano technologię.',
                                 )
@@ -281,9 +293,14 @@ export function DictionaryAdminSection({
                                 void run(
                                     'add-vendor',
                                     async () => {
-                                        const row = await createVendorUnverified(newVendor)
-                                        await updateVendor({ id: row.id, isVerified: true })
-                                        setNewVendor('')
+                                        const created = await createVendorUnverified(newVendor)
+                                        if (!created?.success) return created
+                                        const updated = await updateVendor({
+                                            id: created.data.id,
+                                            isVerified: true,
+                                        })
+                                        if (updated?.success) setNewVendor('')
+                                        return updated
                                     },
                                     'Dodano dostawcę.',
                                 )

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    activeRoster,
+    employedInMonth,
+    excludeExited,
     filterEmployedInMonth,
+    isActiveNow,
     isEmployedInMonth,
 } from '@/lib/hr/employment-window'
 
@@ -92,5 +96,77 @@ describe('filterEmployedInMonth', () => {
         ]
 
         expect(filterEmployedInMonth(roster, JULY).map((m) => m.id)).toEqual(['active', 'leaving'])
+    })
+})
+
+describe('activeRoster — reguła „tu i teraz"', () => {
+    const roster = [
+        { id: 'active', employment_status: 'active', termination_date: null },
+        { id: 'leaving', employment_status: 'offboarding', termination_date: '2026-07-27' },
+        { id: 'gone', employment_status: 'exited', termination_date: '2026-06-30' },
+    ]
+
+    it('zostawia osoby w trakcie offboardingu — do ostatniego dnia pracują', () => {
+        expect(activeRoster(roster).map((m) => m.id)).toEqual(['active', 'leaving'])
+    })
+
+    it('pomija offboarding tylko na wyraźne życzenie', () => {
+        expect(activeRoster(roster, { excludeOffboarding: true }).map((m) => m.id)).toEqual(['active'])
+    })
+
+    it('ignoruje termination_date — data zejścia sama nie zdejmuje z listy', () => {
+        // Wpisana z wyprzedzeniem data zejścia NIE może usunąć kogoś z dropdownów,
+        // dopóki realnie pracuje; od tego jest dopiero archiwizacja.
+        expect(isActiveNow({ employment_status: 'active', termination_date: '2020-01-01' })).toBe(true)
+    })
+
+    it('brak statusu nie wyklucza (świeży profil bez wypełnionego pola)', () => {
+        expect(isActiveNow({})).toBe(true)
+    })
+})
+
+describe('dwie reguły rozjeżdżają się tam, gdzie to boli', () => {
+    it('kto odszedł 20-go, wypada z listy „tu i teraz", ale zostaje w rozliczeniu miesiąca', () => {
+        const roster = [{ id: 'gone', employment_status: 'exited', termination_date: '2026-07-20' }]
+
+        expect(activeRoster(roster)).toEqual([])
+        expect(employedInMonth(roster, JULY).map((m) => m.id)).toEqual(['gone'])
+        expect(employedInMonth(roster, '2026-08-01')).toEqual([])
+    })
+
+    it('employedInMonth to ta sama funkcja co historyczne filterEmployedInMonth', () => {
+        expect(employedInMonth).toBe(filterEmployedInMonth)
+    })
+})
+
+describe('excludeExited — ta sama reguła po stronie zapytania', () => {
+    // Jedyna z pary funkcja, której `tsc` NIE weryfikuje: rzutowanie `as Q`
+    // (obejście TS2589) przyjęłoby też implementację, która nic nie filtruje
+    // albo gubi zwracany builder. Bez tego testu ciche zdjęcie `.neq(...)`
+    // przywróciłoby zarchiwizowanych do 17 list — w tym do adresatów maili z cronów.
+    function fakeQuery() {
+        const calls: Array<[string, string]> = []
+        const q = {
+            calls,
+            neq(column: 'employment_status', value: string) {
+                calls.push([column, value])
+                return q
+            },
+        }
+        return q
+    }
+
+    it('nakłada neq na employment_status z wartością "exited"', () => {
+        const q = fakeQuery()
+
+        excludeExited(q)
+
+        expect(q.calls).toEqual([['employment_status', 'exited']])
+    })
+
+    it('zwraca ten sam builder — inaczej wywołujący traciłby filtr przy .order()/.await', () => {
+        const q = fakeQuery()
+
+        expect(excludeExited(q)).toBe(q)
     })
 })

@@ -10,7 +10,15 @@
 // sync-issues queue and the retry button already key off.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { logAudit } from '@/lib/actions/audit'
+// Audyt 2026-08 (A3.2): polityka INSERT na audit_logs wymaga teraz
+// auth.uid() = user_id. Ten moduł pisze audyt również z `actorUserId: null`
+// („system" — przebieg reconcile/samoleczenia) oraz spoza żądania crona
+// (maybeSelfHealForwardRules odpala się przy renderze kolejki wniosków pod
+// sesją admina). W obu przypadkach logAudit klientem cookie odbiłby się o RLS,
+// a przy heartbeacie FORWARD_RECONCILE_RUN cichy brak wpisu zdejmuje zamek
+// chroniący przed pełnym skanem ~37 skrzynek Graph przy każdym wejściu na ekran.
+// Moduł nie ma 'use server', więc zapis service-rolą nie jest wołalny z klienta.
+import { logSystemAudit } from '@/lib/audit/system-log'
 import { createForwardRule, deleteForwardRule } from '@/lib/mailbox/graph-inbox-rules'
 import type { Database } from '@/lib/supabase/database.types'
 
@@ -53,7 +61,7 @@ export async function openForwardRule(args: OpenForwardRuleArgs): Promise<boolea
             .from('leave_requests')
             .update({ outlook_forward_rule_id: result.ruleId } as never)
             .eq('id', leaveId)
-        await logAudit(actorUserId, 'LEAVE_FORWARD_SET', {
+        await logSystemAudit(actorUserId, 'LEAVE_FORWARD_SET', {
             leave_id: leaveId,
             target_user_id: targetUserId,
             substitute_email: substituteEmail,
@@ -66,7 +74,7 @@ export async function openForwardRule(args: OpenForwardRuleArgs): Promise<boolea
         .from('leave_requests')
         .update({ graph_sync_error: `forward: ${result.error}` } as never)
         .eq('id', leaveId)
-    await logAudit(actorUserId, 'LEAVE_FORWARD_FAILED', {
+    await logSystemAudit(actorUserId, 'LEAVE_FORWARD_FAILED', {
         leave_id: leaveId,
         target_user_id: targetUserId,
         error: result.error,
@@ -117,7 +125,7 @@ export async function closeForwardRule(args: CloseForwardRuleArgs): Promise<bool
             .from('leave_requests')
             .update({ graph_sync_error: `forward: ${result.error}` } as never)
             .eq('id', leaveId)
-        await logAudit(actorUserId, 'LEAVE_FORWARD_FAILED', {
+        await logSystemAudit(actorUserId, 'LEAVE_FORWARD_FAILED', {
             leave_id: leaveId,
             error: result.error,
             stage: 'delete',
@@ -131,7 +139,7 @@ export async function closeForwardRule(args: CloseForwardRuleArgs): Promise<bool
         .from('leave_requests')
         .update({ outlook_forward_rule_id: null } as never)
         .eq('id', leaveId)
-    await logAudit(actorUserId, 'LEAVE_FORWARD_DISABLED', {
+    await logSystemAudit(actorUserId, 'LEAVE_FORWARD_DISABLED', {
         leave_id: leaveId,
         reason,
         ...auditExtra,

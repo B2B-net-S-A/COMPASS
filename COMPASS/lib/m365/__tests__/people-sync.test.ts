@@ -383,6 +383,22 @@ describe('syncProfileFromGraph — existing PR4 behavior preserved', () => {
 
         expect(result).toEqual({ success: false, error: 'user_not_found_in_tenant' })
         expect(mockStorageUpload).not.toHaveBeenCalled()
-        expect(mockProfilesUpdate).not.toHaveBeenCalled()
+    })
+
+    it('stempluje m365_synced_at przy 404, żeby konto nie blokowało slotu crona', async () => {
+        // Audyt 2026-08: bez stempla profil zostawał na zawsze w koszyku
+        // „nigdy nie synchronizowany" i przy KAŻDYM tygodniowym przebiegu zjadał
+        // jeden z MAX_PER_RUN slotów. Stempel = ponowimy za STALE_DAYS.
+        const { syncProfileFromGraph } = await import('@/lib/m365/people-sync')
+        const { client } = makeGraphStub({ user: { statusCode: 404 } })
+        mockGetGraphClient.mockResolvedValue(client)
+
+        await syncProfileFromGraph('user-7', 'ghost@b2bnetwork.pl')
+
+        expect(mockProfilesUpdate).toHaveBeenCalledTimes(1)
+        const payload = mockProfilesUpdate.mock.calls[0][0] as Record<string, unknown>
+        expect(Object.keys(payload)).toEqual(['m365_synced_at'])
+        expect(typeof payload.m365_synced_at).toBe('string')
+        expect(mockProfilesEq).toHaveBeenCalledWith('id', 'user-7')
     })
 })

@@ -13,6 +13,11 @@ import { parseBooleanEnv } from '@/lib/consultant-success/scheduling'
 import type { SuccessAdminClient } from '@/lib/consultant-success/types'
 
 export const dynamic = 'force-dynamic'
+// UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
+// tłumaczy go na limit funkcji serverless (Vercel/Lambda); w kontenerze na Coolify nikt
+// go nie egzekwuje, więc nie jest to działająca ochrona przed zawieszonym przebiegiem.
+// Zostaje jako deklaracja intencji na wypadek zmiany hostingu — realnym limitem jest
+// timeout per żądanie na proxy (Traefik/Cloudflare) i limity samych wywołań.
 export const maxDuration = 240
 
 const JOB_NAME = 'consultant_success_dispatch'

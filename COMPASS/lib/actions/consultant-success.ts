@@ -47,6 +47,11 @@ import type {
     SuccessTcmOption,
     UpdateSuccessTaskInput,
 } from '@/lib/types/consultant-success'
+import { excludeExited } from '@/lib/hr/employment-window'
+// Audyt 2026-08 — `.in()` po liście zebranej z zapytania z `limit(5000)` to ta sama
+// pułapka, która 2026-08-25 wygasiła kanban skrzynki: URL rośnie liniowo z liczbą id
+// i przy kilkuset check-inach zaczyna być zrywany po drodze. Paczkujemy.
+import { selectInChunks } from '@/lib/supabase/select-in-chunks'
 
 const SUCCESS_ROOT = '/internal/people/success'
 const DAY_MS = 86_400_000
@@ -130,13 +135,10 @@ function healthFromSettings(row: DbRow | undefined, profileNames: Map<string, st
 }
 
 async function loadTcmOptions(db = successDb()): Promise<{ options: SuccessTcmOption[]; names: Map<string, string> }> {
-    const { data, error } = await db
-        .from('profiles')
-        .select('id, full_name')
-        .in('role', ['talent_community', 'admin'])
-        // Jak w listTcmProfiles — byli opiekunowie znikają z wyboru.
-        .neq('employment_status', 'exited')
-        .order('full_name')
+    // Jak w listTcmProfiles — byli opiekunowie znikają z wyboru.
+    const { data, error } = await excludeExited(
+        db.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']),
+    ).order('full_name')
     assertDb(error, 'Nie udało się pobrać opiekunów TCM')
     const options = ((data ?? []) as DbRow[]).map((row) => ({
         id: String(row.id),
@@ -228,25 +230,37 @@ async function loadSuccessCheckIns(contractorId?: string): Promise<SuccessCheckI
 
     const contractorIds = Array.from(new Set(rows.map((row) => String(row.contractor_id))))
     const checkInIds = rows.map((row) => String(row.id))
-    const [contractorsRes, tasksRes, pulsesRes, tcms] = await Promise.all([
-        db.from('contractors').select('id, full_name, current_client, owner_tcm_id').in('id', contractorIds),
-        db.from('contractor_tasks').select('source_check_in_id, status').in('source_check_in_id', checkInIds),
-        db.from('contractor_pulse_requests').select('source_check_in_id, status').in('source_check_in_id', checkInIds),
+    const [contractorRows, taskRows, pulseRows, tcms] = await Promise.all([
+        selectInChunks<DbRow>({
+            source: 'contractors',
+            column: 'id',
+            ids: contractorIds,
+            query: () => db.from('contractors').select('id, full_name, current_client, owner_tcm_id'),
+        }),
+        selectInChunks<DbRow>({
+            source: 'contractor_tasks',
+            column: 'source_check_in_id',
+            ids: checkInIds,
+            query: () => db.from('contractor_tasks').select('source_check_in_id, status'),
+        }),
+        selectInChunks<DbRow>({
+            source: 'contractor_pulse_requests',
+            column: 'source_check_in_id',
+            ids: checkInIds,
+            query: () => db.from('contractor_pulse_requests').select('source_check_in_id, status'),
+        }),
         loadTcmOptions(db),
     ])
-    assertDb(contractorsRes.error, 'Nie udało się pobrać danych konsultantów')
-    assertDb(tasksRes.error, 'Nie udało się pobrać działań check-inu')
-    assertDb(pulsesRes.error, 'Nie udało się pobrać ankiet check-inu')
 
-    const contractors = new Map(((contractorsRes.data ?? []) as DbRow[]).map((row) => [String(row.id), row]))
+    const contractors = new Map(contractorRows.map((row) => [String(row.id), row]))
     const taskCount = new Map<string, number>()
-    for (const row of (tasksRes.data ?? []) as DbRow[]) {
+    for (const row of taskRows) {
         if (!row.source_check_in_id || row.status === 'done' || row.status === 'cancelled') continue
         const id = String(row.source_check_in_id)
         taskCount.set(id, (taskCount.get(id) ?? 0) + 1)
     }
     const pulseStatus = new Map<string, SuccessCheckInListItem['pulseStatus']>()
-    for (const row of (pulsesRes.data ?? []) as DbRow[]) {
+    for (const row of pulseRows) {
         if (!row.source_check_in_id) continue
         const id = String(row.source_check_in_id)
         pulseStatus.set(id, row.status === 'completed' ? 'completed' : 'pending')
@@ -396,15 +410,17 @@ export async function getSuccessConsultantDetail(contractorId: string): Promise<
     const checkIns = await loadSuccessCheckIns(contractorId)
     const requests = (requestsRes.data ?? []) as DbRow[]
     const requestIds = requests.map((row) => String(row.id))
-    const responsesRes = requestIds.length > 0
-        ? await db.from('contractor_pulse_responses').select('*').in('request_id', requestIds)
-        : { data: [], error: null }
-    assertDb(responsesRes.error, 'Nie udało się pobrać odpowiedzi ankiet')
+    const responseRows = await selectInChunks<DbRow>({
+        source: 'contractor_pulse_responses',
+        column: 'request_id',
+        ids: requestIds,
+        query: () => db.from('contractor_pulse_responses').select('*'),
+    })
     const requestMap = new Map(requests.map((row) => [String(row.id), row]))
 
     const feedback = ((feedbackRes.data ?? []) as DbRow[]).map((row) => mapFeedback(row, tcms.names))
     const tasks = ((tasksRes.data ?? []) as DbRow[]).map((row) => mapTask(row, tcms.names))
-    const pulseResponses = ((responsesRes.data ?? []) as DbRow[])
+    const pulseResponses = responseRows
         .map((row) => ({ row, request: requestMap.get(String(row.request_id)) }))
         .filter((item): item is { row: DbRow; request: DbRow } => Boolean(item.request))
         .map(({ row, request }) => mapPulseResponse(row, request))

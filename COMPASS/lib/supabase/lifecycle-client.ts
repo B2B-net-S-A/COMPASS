@@ -1,31 +1,24 @@
-// Phase 22 (2026-05-17) — Untyped Supabase clients for the lifecycle module.
+// Phase 22 (2026-05-17) → audyt 2026-08-25 (C12.3).
 //
-// New tables (onboarding_*, exit_interviews, offboarding_*, lifecycle_events) and
-// RPCs (start_onboarding_for_user, start_offboarding_for_user) are not yet in the
-// generated database.types.ts. Until `supabase gen types` runs post-deploy, the
-// strict typed client refuses these table names.
+// Moduł powstał, gdy tabele lifecycle'u (onboarding_*, exit_interviews, offboarding_*,
+// lifecycle_*) i RPC (start_onboarding_for_user, start_offboarding_for_user) nie były
+// jeszcze w wygenerowanym database.types.ts — typowany klient odrzucał ich nazwy, więc
+// wrappery zwracały `any`, żeby nie zasypywać wywołań rzutowaniami.
 //
-// This module provides explicit `any`-typed wrappers so server actions / pages
-// can call new tables/RPCs without `as any` noise on every line. Removal plan:
-// 1. Apply migrations to production.
-// 2. Run `supabase gen types typescript --linked --schema public` to refresh types.
-// 3. Replace `createLifecycleClient` / `createLifecycleAdminClient` with the strict
-//    `createClient` / `createServiceClient` and drop this file.
-//
-// Server-side guards + RLS still enforce authorization — type erosion is purely
-// TypeScript-level and does not affect runtime safety.
+// Powód wygasł: wszystkie te tabele i RPC są już w database.types.ts, więc wrappery
+// zwracają w pełni typowane klienty. Zostają jako cienki alias — importuje je 7 plików
+// lifecycle'u, a przemianowanie ich na `createClient`/`createServiceClient` byłoby
+// zmianą bez wartości. Nowy kod może wołać oryginały wprost.
 
 import 'server-only'
 
 import { createClient as createTyped } from '@/lib/supabase/server'
 import { createServiceClient as createServiceTyped } from '@/lib/supabase/admin'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createLifecycleClient(): any {
+export function createLifecycleClient() {
     return createTyped()
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createLifecycleAdminClient(): any {
+export function createLifecycleAdminClient() {
     return createServiceTyped()
 }

@@ -30,6 +30,8 @@ interface QueryState {
     single?: boolean
     maybeSingle?: boolean
     selectAfterMutation?: boolean
+    onConflict?: string
+    ignoreDuplicates?: boolean
 }
 
 export interface MockSupabaseUser {
@@ -152,6 +154,47 @@ function buildQueryBuilder(state: QueryState, tables: TableData) {
     return builder
 }
 
+/**
+ * Kolumny rozstrzygające konflikt. Jawny `onConflict` wygrywa; bez niego
+ * odwzorowujemy PostgREST, który idzie po kluczu głównym — u nas `id`, o ile
+ * ładunek go niesie. Bez jednego i drugiego `upsert` degraduje się do `insert`,
+ * tak jak wcześniej.
+ */
+function upsertConflictKeys(state: QueryState, payload: Row[]): string[] {
+    if (state.onConflict) {
+        return state.onConflict.split(',').map((c) => c.trim()).filter(Boolean)
+    }
+    return payload.every((r) => r && 'id' in r) ? ['id'] : []
+}
+
+/**
+ * Rzutowanie na listę kolumn z `select(...)`.
+ *
+ * Audyt 2026-08: atrapa listę kolumn tylko ZAPISYWAŁA i zwracała pełne wiersze
+ * z fixtury. Kod czytający pole, którego nie ma w `select(...)`, działał więc
+ * w testach bez zarzutu, a na produkcji dostawał `undefined` — dokładnie ta klasa
+ * wywróciła skrzynkę 2026-08-25 (patrz `lib/supabase/fetch-hardening.ts`).
+ * Teraz brak kolumny w `select` = brak pola w wyniku, tak jak w PostgREST.
+ *
+ * Świadomie NIE ruszamy zapytań z osadzeniem (`profil:profiles(...)`) ani `*` —
+ * odwzorowanie zagnieżdżeń to osobna praca, a udawana połowiczna obsługa byłaby
+ * gorsza od jawnego przepuszczenia całego wiersza.
+ */
+function applyProjection(rows: Row[], columns?: string): Row[] {
+    if (!columns) return rows
+    const spec = columns.trim()
+    if (spec === '' || spec === '*' || spec.includes('(')) return rows
+    const keys = spec.split(',').map(c => c.trim()).filter(Boolean).map(c => {
+        const alias = c.match(/^([^:]+):(.+)$/)
+        return alias ? { out: alias[1].trim(), src: alias[2].trim() } : { out: c, src: c }
+    })
+    return rows.map(r => {
+        const out: Row = {}
+        for (const k of keys) { if (k.src in r) out[k.out] = r[k.src] }
+        return out
+    })
+}
+
 async function execute(state: QueryState, tables: TableData): Promise<{ data: any; error: any }> {
     const rows = tables[state.table] || []
     if (state.operation === 'select') {
@@ -175,20 +218,41 @@ async function execute(state: QueryState, tables: TableData): Promise<{ data: an
         if (state.headOnly) {
             return { data: null, error: null, count: state.countMode ? totalCount : null } as any
         }
+        const projected = applyProjection(filtered, state.columns)
         if (state.single) {
-            if (filtered.length === 0) return { data: null, error: { code: 'PGRST116', message: 'No rows', details: null } }
-            return { data: filtered[0], error: null }
+            if (projected.length === 0) return { data: null, error: { code: 'PGRST116', message: 'No rows', details: null } }
+            return { data: projected[0], error: null }
         }
         if (state.maybeSingle) {
-            return { data: filtered[0] || null, error: null }
+            return { data: projected[0] || null, error: null }
         }
-        return { data: filtered, error: null, count: state.countMode ? totalCount : null } as any
+        return { data: projected, error: null, count: state.countMode ? totalCount : null } as any
     }
     if (state.operation === 'insert' || state.operation === 'upsert') {
         const payload = Array.isArray(state.payload) ? state.payload : [state.payload!]
         const inserted: Row[] = []
+        // Audyt 2026-08: `upsert` zachowywał się jak zwykły `insert` — ignorował
+        // `onConflict` i `ignoreDuplicates`, więc każdy wiersz „wchodził". Testy
+        // widziały sukces tam, gdzie realny Postgres odbija kolizję kluczem
+        // unikalnym: rezerwacja „jeden mail na miesiąc", idempotencja importów po
+        // `external_key`, dedup alertów. Gwarancje oparte o ON CONFLICT były więc
+        // nietestowalne — mock potwierdzał każdą z nich niezależnie od kodu.
+        const conflictKeys = state.operation === 'upsert' ? upsertConflictKeys(state, payload) : []
         for (const r of payload) {
             const cloned = cloneRow(r as Row)
+            if (conflictKeys.length > 0) {
+                const idx = rows.findIndex((existing) =>
+                    conflictKeys.every((k) => existing[k] === cloned[k]),
+                )
+                if (idx !== -1) {
+                    // `ignoreDuplicates: true` = DO NOTHING — wiersz nie wraca
+                    // z `.select()`, i to jest właśnie sygnał „ktoś mnie ubiegł".
+                    if (state.ignoreDuplicates) continue
+                    rows[idx] = { ...rows[idx], ...cloned }
+                    inserted.push(cloneRow(rows[idx]))
+                    continue
+                }
+            }
             rows.push(cloned)
             inserted.push(cloned)
         }
@@ -245,9 +309,14 @@ export function createMockSupabaseClient(config: MockSupabaseConfig = {}) {
             state.operation = 'delete'
             return buildQueryBuilder(state, tables)
         }
-        baseBuilder.upsert = (payload: Row | Row[]) => {
+        baseBuilder.upsert = (
+            payload: Row | Row[],
+            opts?: { onConflict?: string; ignoreDuplicates?: boolean },
+        ) => {
             state.operation = 'upsert'
             state.payload = payload
+            state.onConflict = opts?.onConflict
+            state.ignoreDuplicates = opts?.ignoreDuplicates === true
             return buildQueryBuilder(state, tables)
         }
         return baseBuilder

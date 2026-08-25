@@ -336,8 +336,6 @@ export interface ClientDepartureRow {
 // ─── Action / display shapes (kept here so 'use server' modules export only fns) ──
 export interface ContractorListItem extends ContractorRow {
     owner_tcm_name: string | null
-    open_conversations: number
-    last_conversation_date: string | null
 }
 
 export interface ContractorFilters {
@@ -372,16 +370,6 @@ export interface ContractorDetail {
     entries: ClientEntryRow[]
     departures: ClientDepartureRow[]
     placements: Array<{ id: string; client_name: string; position: string | null; start_date: string; status: string }>
-}
-
-export interface EntryListItem {
-    id: string
-    source: 'archive' | 'placement'
-    consultant_name: string
-    client_name: string
-    position: string | null
-    start_date: string | null
-    recruiter: string | null
 }
 
 export interface ContractorDashboard {
@@ -438,36 +426,6 @@ export interface ContractorTaskListItem extends ContractorTaskRow {
     source_ticket_subject: string | null
 }
 
-export interface ContractorTaskFilters {
-    status?: ContractorTaskStatus
-    assignedTcmId?: string
-    contractorId?: string
-}
-
-// ─── Phase 34: Retencja (at-risk derivation) ─────────────────────────────────
-/** A contractor with one or more OPEN risk conversations + its most recent risk signal. */
-export interface AtRiskContractor {
-    contractor_id: string
-    contractor_name: string
-    client_snapshot: string | null
-    tcm_name: string | null
-    latest: ConversationListItem
-    open_count: number
-    /** Soonest follow-up date among open risk conversations (for overdue highlighting). */
-    earliest_follow_up: string | null
-}
-
-/**
- * Open retention-risk signal: a non-resolved conversation that is either about a
- * departure / extension negotiation (`zejscie`/`przedluzenie`) or flagged urgent /
- * needs-contact (`pilne`/`potrzebny_kontakt`). Pure — derives from already-loaded data.
- */
-export function isRetentionRisk(c: ConversationListItem): boolean {
-    if (c.status === 'rozwiazane') return false
-    const riskCategory = c.category === 'zejscie' || c.category === 'przedluzenie'
-    const riskStatus = c.status === 'pilne' || c.status === 'potrzebny_kontakt'
-    return riskCategory || riskStatus
-}
 
 /**
  * "Open" conversation for the daily worklist: urgent / needs-contact, or a follow-up
@@ -479,64 +437,6 @@ export function isOpenConversation(c: ConversationListItem, today: string): bool
     return c.follow_up_date != null && c.follow_up_date <= today && c.status !== 'rozwiazane'
 }
 
-/** Group open risk conversations by contractor, newest first, most-open first. */
-export function deriveAtRisk(conversations: ConversationListItem[]): AtRiskContractor[] {
-    const byContractor = new Map<string, ConversationListItem[]>()
-    for (const c of conversations) {
-        if (!isRetentionRisk(c)) continue
-        const arr = byContractor.get(c.contractor_id) ?? []
-        arr.push(c)
-        byContractor.set(c.contractor_id, arr)
-    }
-    const out: AtRiskContractor[] = []
-    for (const [contractor_id, convs] of Array.from(byContractor.entries())) {
-        const sorted = [...convs].sort((a, b) =>
-            (b.conversation_date ?? '').localeCompare(a.conversation_date ?? ''),
-        )
-        const latest = sorted[0]
-        const followUps = convs
-            .map((c) => c.follow_up_date)
-            .filter((d): d is string => Boolean(d))
-            .sort()
-        out.push({
-            contractor_id,
-            contractor_name: latest.contractor_name,
-            client_snapshot: latest.client_snapshot,
-            tcm_name: latest.tcm_name,
-            latest,
-            open_count: convs.length,
-            earliest_follow_up: followUps[0] ?? null,
-        })
-    }
-    return out.sort(
-        (a, b) =>
-            b.open_count - a.open_count ||
-            (b.latest.conversation_date ?? '').localeCompare(a.latest.conversation_date ?? ''),
-    )
-}
-
-// ─── Phase 34: journey-stage queue shapes (hub Onboarding / Exit tabs) ───────
-export interface OnboardingQueueItem {
-    contractor_id: string
-    full_name: string
-    current_client: string | null
-    current_position: string | null
-    status: ContractorStatus
-    owner_tcm_name: string | null
-    /** Latest onboarding-interview status, or null when none exists yet. */
-    interview_status: InterviewStatus | null
-}
-
-export interface ExitQueueItem {
-    interview_id: string
-    contractor_id: string
-    contractor_name: string
-    client_snapshot: string | null
-    status: InterviewStatus
-    scheduled_for: string | null
-    submitted_at: string | null
-    formal_reason: string | null
-}
 
 // ─── Phase 38: 5-element Talent Community hub (Rozmowy / Onboarding / Exit / Kontraktorzy) ──
 /**

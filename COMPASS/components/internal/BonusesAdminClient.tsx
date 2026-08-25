@@ -126,10 +126,12 @@ function AttachmentButton({ bonus }: { bonus: BonusWithUsers }) {
     async function open() {
         setLoading(true)
         try {
-            const url = await getBonusAttachmentSignedUrl(bonus.id)
-            window.open(url, '_blank', 'noopener,noreferrer')
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Błąd pobierania załącznika')
+            const res = await getBonusAttachmentSignedUrl(bonus.id)
+            if (!res.success) {
+                toast.error(res.error)
+                return
+            }
+            window.open(res.data, '_blank', 'noopener,noreferrer')
         } finally {
             setLoading(false)
         }
@@ -610,14 +612,13 @@ function CancelBonusDialog({ bonus, onOpenChange, onCancelled }: CancelDialogPro
         }
 
         startTransition(async () => {
-            try {
-                await cancelBonus({ id: bonus.id, cancellation_reason: reason.trim() })
-                onCancelled(bonus.id, reason.trim())
-                toastSuccess('Premia anulowana — pracownik dostał notyfikację.')
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Nie udało się anulować.'
-                toast.error(msg)
+            const res = await cancelBonus({ id: bonus.id, cancellation_reason: reason.trim() })
+            if (!res.success) {
+                toast.error(res.error)
+                return
             }
+            onCancelled(bonus.id, reason.trim())
+            toastSuccess('Premia anulowana — pracownik dostał notyfikację.')
         })
     }
 

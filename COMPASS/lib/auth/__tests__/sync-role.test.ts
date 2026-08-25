@@ -4,11 +4,21 @@ vi.mock('@/lib/auth/super-admins', () => ({
     isSuperAdmin: vi.fn(),
 }))
 
+// Audyt 2026-08: syncRole tworzy klienta service-role SAM (patrz komentarz
+// w lib/auth/sync-role.ts). Test musi więc mockować fabrykę, a nie wstrzykiwać
+// klienta — inaczej przechodziłby, mimo że produkcyjna ścieżka woła RPC
+// kluczem użytkownika, któremu migracja odbiera EXECUTE.
+vi.mock('@/lib/supabase/admin', () => ({
+    createServiceClient: vi.fn(),
+}))
+
 import { syncRole } from '../sync-role'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const mockedIsSuperAdmin = vi.mocked(isSuperAdmin)
+const mockedCreateServiceClient = vi.mocked(createServiceClient)
 
 // Phase 18.3: syncRole jest teraz cienkim wrapperem nad RPC `sync_user_role`
 // (atomic w bazie). Mockujemy `supabase.rpc()` zamiast od skomplikowanego
@@ -45,6 +55,7 @@ function buildMockSupabase(): MockSupabase {
 describe('syncRole', () => {
     beforeEach(() => {
         mockedIsSuperAdmin.mockReset()
+        mockedCreateServiceClient.mockReset()
     })
 
     it('calls sync_user_role RPC with super-admin flag', async () => {
@@ -52,7 +63,9 @@ describe('syncRole', () => {
         const m = buildMockSupabase()
         m.setRpcReturn('admin')
 
-        const result = await syncRole(m.client, 'user-1', 'super@b2bnetwork.pl', 'consultant')
+        mockedCreateServiceClient.mockReturnValue(m.client as never)
+
+        const result = await syncRole('user-1', 'super@b2bnetwork.pl', 'consultant')
 
         expect(result).toBe('admin')
         expect(m.rpcCalls).toHaveLength(1)
@@ -71,7 +84,9 @@ describe('syncRole', () => {
         const m = buildMockSupabase()
         m.setRpcReturn('admin')
 
-        const result = await syncRole(m.client, 'user-2', 'admin@b2bnetwork.pl', 'admin')
+        mockedCreateServiceClient.mockReturnValue(m.client as never)
+
+        const result = await syncRole('user-2', 'admin@b2bnetwork.pl', 'admin')
 
         expect(result).toBe('admin')
         expect(m.rpcCalls[0].args).toEqual({
@@ -86,7 +101,9 @@ describe('syncRole', () => {
         const m = buildMockSupabase()
         m.setRpcReturn('internal')
 
-        const result = await syncRole(m.client, 'user-3', 'olaf@b2bnetwork.pl', 'internal')
+        mockedCreateServiceClient.mockReturnValue(m.client as never)
+
+        const result = await syncRole('user-3', 'olaf@b2bnetwork.pl', 'internal')
 
         expect(result).toBe('internal')
     })
@@ -96,7 +113,9 @@ describe('syncRole', () => {
         const m = buildMockSupabase()
         m.setRpcReturn('consultant')
 
-        await syncRole(m.client, 'user-4', 'OLAF@B2BNETWORK.PL', 'consultant')
+        mockedCreateServiceClient.mockReturnValue(m.client as never)
+
+        await syncRole('user-4', 'OLAF@B2BNETWORK.PL', 'consultant')
 
         expect(mockedIsSuperAdmin).toHaveBeenCalledWith('olaf@b2bnetwork.pl')
         expect(m.rpcCalls[0].args.p_email).toBe('olaf@b2bnetwork.pl')
@@ -107,7 +126,9 @@ describe('syncRole', () => {
         const m = buildMockSupabase()
         m.setRpcReturn(null, { message: 'profile not found' })
 
-        await expect(syncRole(m.client, 'user-5', 'missing@b2bnetwork.pl', 'consultant'))
+        mockedCreateServiceClient.mockReturnValue(m.client as never)
+
+        await expect(syncRole('user-5', 'missing@b2bnetwork.pl', 'consultant'))
             .rejects.toThrow('sync_user_role failed: profile not found')
     })
 
@@ -116,7 +137,9 @@ describe('syncRole', () => {
         const m = buildMockSupabase()
         m.setRpcReturn('consultant')
 
-        await syncRole(m.client, 'user-6', 'consultant@b2bnetwork.pl', 'consultant')
+        mockedCreateServiceClient.mockReturnValue(m.client as never)
+
+        await syncRole('user-6', 'consultant@b2bnetwork.pl', 'consultant')
 
         // Tylko 1 call do bazy, nie 2. Atomiczność po stronie Postgresa.
         expect(m.rpcCalls).toHaveLength(1)

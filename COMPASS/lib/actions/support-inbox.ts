@@ -13,13 +13,14 @@ import {
     TICKET_SUBJECT_MIN,
     type ConsultantSearchResult,
     type CreateInboxTicketInput,
-    type InboxSummary,
     type InboxTicketWithMeta,
     type SupportActionResult,
     type SupportComment,
     type SupportInboxMeta,
     type TicketStatus,
 } from '@/lib/types/support'
+import { excludeExited } from '@/lib/hr/employment-window'
+import { requireRows, selectInChunks } from '@/lib/supabase/select-in-chunks'
 
 interface ProfileLite {
     id: string
@@ -674,13 +675,13 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
         // is_inbox_handler (np. manager). Bare-admini świadomie POZA listą —
         // właściciele firmy nie obsługują skrzynki (zgłoszenie Dominika);
         // admin, który chce obsługiwać, ustawia sobie flagę.
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, role, is_inbox_handler')
-            .or('is_inbox_handler.eq.true,role.eq.talent_community')
-            // Ticket przypisany osobie, która odeszła, nie ma kto obsłużyć.
-            .neq('employment_status', 'exited')
-            .order('full_name', { ascending: true })
+        // Ticket przypisany osobie, która odeszła, nie ma kto obsłużyć.
+        const { data, error } = await excludeExited(
+            supabase
+                .from('profiles')
+                .select('id, full_name, email, role, is_inbox_handler')
+                .or('is_inbox_handler.eq.true,role.eq.talent_community'),
+        ).order('full_name', { ascending: true })
 
         if (error) throw error
         const items = ((data ?? []) as Array<ProfileLite & { role: string; is_inbox_handler: boolean }>).map((p) => ({
@@ -734,54 +735,3 @@ export async function searchConsultants(query: string): Promise<SupportActionRes
     }
 }
 
-// Phase 34 — lightweight inbox counts for the Talent Community Pulpit (open / overdue / unassigned).
-export async function getInboxSummary(): Promise<SupportActionResult<InboxSummary>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-        if (!(await isCallerHandler(supabase, user.id))) {
-            return { success: false, error: 'Niewystarczające uprawnienia' }
-        }
-
-        const inboxCategoryIds = await getInboxCategoryIds(supabase)
-        if (inboxCategoryIds.length === 0) {
-            return { success: true, data: { open: 0, overdue: 0, unassigned: 0 } }
-        }
-
-        // Jak w listInboxTickets: awaria zapytania nie może udawać „0 spraw".
-        const { data: tickets, error: ticketsErr } = await supabase
-            .from('support_tickets')
-            .select('id, status, assignee_id')
-            .in('category_id', inboxCategoryIds)
-        if (ticketsErr) throw ticketsErr
-        const rows = (tickets ?? []) as Array<{ id: string; status: TicketStatus; assignee_id: string | null }>
-        const openRows = rows.filter((t) => t.status !== 'resolved' && t.status !== 'closed')
-
-        // Overdue = open tickets whose inbox meta due_date is in the past.
-        let overdue = 0
-        const openIds = openRows.map((t) => t.id)
-        if (openIds.length > 0) {
-            const { data: metas } = await supabase
-                .from('support_inbox_meta')
-                .select('ticket_id, due_date')
-                .in('ticket_id', openIds)
-            const nowIso = new Date().toISOString()
-            overdue = ((metas ?? []) as Array<{ ticket_id: string; due_date: string | null }>)
-                .filter((m) => m.due_date != null && m.due_date < nowIso).length
-        }
-
-        return {
-            success: true,
-            data: {
-                open: openRows.length,
-                overdue,
-                unassigned: openRows.filter((t) => t.assignee_id == null).length,
-            },
-        }
-    } catch (error: unknown) {
-        const msg = errorMessage(error, 'Błąd pobierania podsumowania skrzynki')
-        logCompat.error('[getInboxSummary]', error)
-        return { success: false, error: msg }
-    }
-}

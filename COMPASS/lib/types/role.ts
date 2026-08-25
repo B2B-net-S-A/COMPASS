@@ -14,6 +14,17 @@
 // team-scoped HR approval (Manager) and Talent Community Manager
 // (tickets + news + compliance + own HR).
 
+import type { Database } from '@/lib/supabase/database.types'
+
+// Audyt 2026-08-25: `DbRole` jest teraz brany WPROST z wygenerowanego enuma
+// `user_role`, a lista poniżej sprawdzana przez `satisfies`. Wcześniej była to
+// ręczna kopia — rola dodana do enuma i zregenerowane typy nie dawały żadnego
+// sygnału, a to właśnie pominięcie roli w liście wyłączyło kiedyś sekcję HR na
+// telefonie (komentarz przy HR_ZONE_ROLES). Po regeneracji typów: nowa wartość
+// w enumie automatycznie wchodzi do `DbRole`, więc mapy `Record<DbRole, …>`
+// (np. etykiety ról) przestają się kompilować, dopóki nie dopiszesz jej tutaj.
+export type DbRole = Database['public']['Enums']['user_role']
+
 export const DB_ROLES = [
     'consultant',
     'admin',
@@ -21,12 +32,32 @@ export const DB_ROLES = [
     'finanse',
     'manager',
     'talent_community',
-] as const
-export type DbRole = (typeof DB_ROLES)[number]
+] as const satisfies readonly DbRole[]
 
 // Currently identical to DbRole (no app-only aliases). Kept as separate name
 // to leave room for future read-only display roles.
 export type AppRole = DbRole
+
+/**
+ * Role strefy HR — mają dostęp do /internal i wspólnych sekcji.
+ * Konsultant IT jest poza: widzi platformę, nie widzi HR.
+ *
+ * Audyt 2026-08 (C7): ta lista była przepisywana ręcznie w komponentach
+ * nawigacji i w MobileMenu wypadły z niej `manager` i `talent_community` —
+ * dwie z pięciu ról nie widziały na telefonie własnej sekcji. Jedno źródło
+ * usuwa całą klasę takich pominięć.
+ */
+export const HR_ZONE_ROLES: readonly DbRole[] = [
+    'admin',
+    'internal',
+    'finanse',
+    'manager',
+    'talent_community',
+] as const
+
+export function isHrZoneRole(role: string | null | undefined): boolean {
+    return HR_ZONE_ROLES.includes(role as DbRole)
+}
 
 export function isAdminLike(role: string | null | undefined): boolean {
     return role === 'admin'

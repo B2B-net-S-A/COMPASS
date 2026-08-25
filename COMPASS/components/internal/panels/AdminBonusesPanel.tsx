@@ -10,6 +10,7 @@ import {
 } from '@/lib/actions/internal-bonus'
 import { BonusesAdminClient } from '@/components/internal/BonusesAdminClient'
 import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
+import { unwrap } from '@/lib/actions/action-result'
 
 export async function AdminBonusesPanel() {
     const ctx = await requireInternalAdminAreaLayout()
@@ -21,7 +22,9 @@ export async function AdminBonusesPanel() {
     const [bonuses, candidates] = await Promise.all([
         ctx.role === 'finanse' && !ctx.isAdmin
             ? listAllBonusesForFinance()
-            : listTeamBonuses(),
+            // Panel jest już za guardem strefy HR, więc odmowa z samej akcji to stan
+            // wyjątkowy — rozpakowujemy do wyjątku zamiast renderować pustą tabelę.
+            : listTeamBonuses().then(unwrap),
         canAssign ? listEligibleEmployeesForBonus() : Promise.resolve([]),
     ])
 

@@ -59,11 +59,13 @@ services:
         # Tag is consumed by Grafana Alloy (PR #10) as `service`/`app` labels in Loki.
         tag: "{{.ImageName}}/{{.Name}}/{{.ID}}"
 
-  # Grafana Alloy log shipper. Profiled so the service only starts when
-  # Coolify (or local dev) sets COMPOSE_PROFILES=observability — keeps
-  # this PR safe to merge before Grafana Cloud credentials are provisioned
-  # in the env vault. Once GRAFANA_LOKI_* are set, flip the profile and
-  # logs start flowing.
+  # Grafana Alloy log shipper.
+  # UWAGA: ta usluga NIE jest bramkowana profilem. Guard `profiles: [observability]`
+  # zostal swiadomie usuniety w 4d75c0e ("Coolify doesn't honor COMPOSE_PROFILES"),
+  # wiec kontener wstaje przy kazdym `docker compose up`, niezaleznie od COMPOSE_PROFILES.
+  # Bez GRAFANA_LOKI_URL/_USER/_TOKEN w env vault nie ma dokad wysylac logow — startuje,
+  # ale nic nie shipuje. Nie dopisuj tu z powrotem `profiles:` bez sprawdzenia, czy Coolify
+  # juz je honoruje; poprzednio to wylaczylo shipping po cichu.
   alloy:
     image: grafana/alloy:latest
     container_name: compass-alloy

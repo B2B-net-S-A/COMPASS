@@ -5,6 +5,7 @@ import { logCompat } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import { CURRENT_TERMS_VERSION } from '@/lib/constants/compliance'
 import { getFallbackDoc } from '@/lib/constants/fallback-docs'
+import { SLUG_TO_DOCUMENT_TYPE } from '@/lib/constants/legal-documents'
 import { headers } from 'next/headers'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -120,22 +121,12 @@ export async function saveUserConsents(input: SaveConsentsInput): Promise<{ erro
 // ─── Get Legal Document ────────────────────────────────────────────────────────
 
 /**
- * Compatibility layer: prod schema uses `document_type` (enum-constrained) +
- * `content` columns. Newer code expects `slug` + `content_html`. We map between
- * them here so callers don't have to know.
+ * Warstwa zgodności: produkcja używa kolumn `document_type` (ograniczonej CHECK-iem)
+ * + `content`, a nowszy kod oczekuje `slug` + `content_html`. Mapowanie mieszka
+ * w `lib/constants/legal-documents.ts` — wspólnie z kodem SEEDUJĄCYM tabelę
+ * (audyt 2026-08 C5: dwie prywatne kopie tej mapy były przyczyną seeda, który
+ * zwracał sukces i nic nie wgrywał).
  */
-const SLUG_TO_DOC_TYPE: Record<string, string> = {
-  'privacy-policy': 'privacy_policy',
-  'terms': 'terms_of_service',
-  'help': 'help_center',                // not yet allowed by CHECK constraint — falls through to null
-  'ai-notice': 'ai_notice',
-  'security': 'security',
-  'cooperation': 'cooperation',
-  'electronic-signature': 'electronic_signature',
-  'access-management': 'access_management',
-  'incident-response': 'incident_response',
-  'data-retention': 'data_retention',
-}
 
 interface LegalDocumentRow {
   id?: string
@@ -189,7 +180,7 @@ export async function getLegalDocument(slug: string): Promise<LegalDocument | nu
   }
 
   // Fallback 1: try `document_type` (older / prod schema)
-  const docType = SLUG_TO_DOC_TYPE[slug] ?? slug
+  const docType = SLUG_TO_DOCUMENT_TYPE[slug] ?? slug
   const typeAttempt = await supabase
     .from('um_legal_documents')
     .select('*')

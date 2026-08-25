@@ -21,6 +21,7 @@ import {
 import type { PublicHolidayDate } from '@/lib/hr/working-days'
 import { computeMissingRuns, oofScheduledToDates, type OofDateRange } from './oof-dates'
 import { logger } from '@/lib/logger'
+import { activeRoster } from '@/lib/hr/employment-window'
 
 const COMPASS_OOF_MARKER = 'compass-managed-oof-v1'
 /** Roles whose mailboxes Compass touches. Shared with the Phase 41 forwarding sweep. */
@@ -81,10 +82,16 @@ export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats
         stats.errors.push(`roster: ${rosterErr.message}`)
         return stats
     }
-    // Filter exited/offboarding + missing email in JS (avoids PostgREST NULL-in-NOT-IN pitfall).
-    const roster = ((rosterRaw ?? []) as ProfileRow[]).filter(
-        (u) => u.email && u.employment_status !== 'exited' && u.employment_status !== 'offboarding',
-    )
+    // Filtrowanie w JS, nie w PostgREST (pułapka NULL-in-NOT-IN).
+// Audyt 2026-08 (B4): NIE wykluczamy `offboarding`. Ta osoba do ostatniego dnia
+// normalnie pracuje i normalnie bierze urlop — self-service createLeaveRequest
+// jej nie blokuje, a lib/auth/employment-access.ts:20 mówi wprost, że offboarding
+// nie odbiera dostępu. Wykluczenie jej stąd znaczyło, że wniosek urlopowy
+// przechodzi, ale COMPASS nie ustawi jej Out-of-Office ani nie przekieruje poczty
+// do zastępcy — czyli dokładnie w okresie, gdy przekazanie obowiązków jest
+// najważniejsze. Odcina dopiero `exited` (Phase 43).
+    const roster = activeRoster((rosterRaw ?? []) as ProfileRow[])
+        .filter((u) => u.email)
 
     // leave_requests.created_by is NOT NULL → use a system actor (env override or first admin).
     let actorId = process.env.OOF_RECONCILE_ACTOR_ID ?? ''

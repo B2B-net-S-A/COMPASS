@@ -413,6 +413,8 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                                                 size="icon"
                                                                 variant="ghost"
                                                                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                                aria-label="Pobierz tę wersję dokumentu"
+                                                                title="Pobierz tę wersję"
                                                                 asChild
                                                             >
                                                                 <a href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${ver.file_url}`} target="_blank" rel="noopener noreferrer">
