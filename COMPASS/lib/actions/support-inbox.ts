@@ -38,10 +38,16 @@ async function isCallerHandler(supabase: ReturnType<typeof createClient>, userId
 }
 
 async function getInboxCategoryIds(supabase: ReturnType<typeof createClient>): Promise<string[]> {
-    const { data } = await supabase
+    // Incydent 2026-08-25 („zniknął nam cały kanban"): awaria tego zapytania była
+    // po cichu połykana — `data = null` → `[]` → caller zwracał sukces z pustymi
+    // kolumnami i tablica renderowała się pusta BEZ żadnego komunikatu. Awaria
+    // zapytania ≠ brak kategorii — rzucamy, żeby caller pokazał jawny błąd
+    // (audyt P1.1/P1.7: odmowa dostępu / awaria zapytania ≠ pusta lista).
+    const { data, error } = await supabase
         .from('support_categories')
         .select('id')
         .in('slug', INBOX_CATEGORY_SLUGS as unknown as string[])
+    if (error) throw error
     return (data ?? []).map((c: { id: string }) => c.id)
 }
 
@@ -76,6 +82,9 @@ export async function listInboxTickets(filter?: {
 
         const { data: tickets, error } = await query
         if (error) throw error
+        // Jak niżej przy meta: null bez błędu ≠ pusta lista — to sygnał, że
+        // odpowiedź nie zmaterializowała się w runtime (incydent 2026-08-25).
+        if (tickets === null) throw new Error('Brak odpowiedzi z support_tickets (data=null bez błędu)')
 
         const ticketRows = (tickets ?? []) as Array<{
             id: string
@@ -104,11 +113,35 @@ export async function listInboxTickets(filter?: {
             ...ticketRows.map((t) => t.assignee_id).filter((x): x is string => !!x),
         ]))
 
-        const [{ data: metas }, { data: profiles }, { data: categories }] = await Promise.all([
-            supabase.from('support_inbox_meta').select('*').in('ticket_id', ticketIds),
+        // KRYTYCZNE: jawna lista kolumn, NIE select('*'). Tabela niesie martwe
+        // kolumny po usuniętym auto-imporcie maili (Phase 44): email_body_html /
+        // email_body_text / email_headers — łącznie ~4 MB na 397 wierszy
+        // (pojedyncze wiersze po 441 kB). select('*') ciągnął to wszystko przy
+        // każdym renderze tablicy; 2026-08-25 tak spuchnięta odpowiedź przestała
+        // się materializować w runtime i tablica renderowała się pusta.
+        // Lista kolumn = dokładnie interfejs SupportInboxMeta (literał — supabase-js
+        // wywodzi typ wiersza ze stringa w select()).
+        const [metasRes, profilesRes, categoriesRes] = await Promise.all([
+            supabase
+                .from('support_inbox_meta')
+                .select('ticket_id, source, external_message_id, consultant_id, consultant_name, consultant_phone, client_name, contractor_id, priority_level, due_date, email_from, email_subject, email_received_at, created_at')
+                .in('ticket_id', ticketIds),
             supabase.from('profiles').select('id, full_name').in('id', userIds),
             supabase.from('support_categories').select('id, slug, name_pl').in('id', inboxCategoryIds),
         ])
+
+        // Meta jest warunkiem renderowania karty (`if (!meta) continue` niżej) —
+        // cicha awaria tego zapytania wycinała WSZYSTKIE tickety z tablicy bez
+        // żadnego błędu (incydent 2026-08-25). Rzucamy, żeby UI dostał jawny baner.
+        // `data === null` bez `error` traktujemy tak samo — dla wielowierszowego
+        // selecta poprawna odpowiedź to zawsze tablica (choćby pusta).
+        if (metasRes.error) throw metasRes.error
+        if (metasRes.data === null) throw new Error('Brak odpowiedzi z support_inbox_meta (data=null bez błędu)')
+        const metas = metasRes.data
+        // Profile i kategorie są tylko dekoracją (nazwiska, etykiety) — ich awaria
+        // degraduje wyświetlanie do null/'', ale nie może chować ticketów.
+        const profiles = profilesRes.data
+        const categories = categoriesRes.data
 
         const metaMap = new Map<string, SupportInboxMeta>()
         for (const m of (metas ?? []) as SupportInboxMeta[]) metaMap.set(m.ticket_id, m)
@@ -663,10 +696,12 @@ export async function getInboxSummary(): Promise<SupportActionResult<InboxSummar
             return { success: true, data: { open: 0, overdue: 0, unassigned: 0 } }
         }
 
-        const { data: tickets } = await supabase
+        // Jak w listInboxTickets: awaria zapytania nie może udawać „0 spraw".
+        const { data: tickets, error: ticketsErr } = await supabase
             .from('support_tickets')
             .select('id, status, assignee_id')
             .in('category_id', inboxCategoryIds)
+        if (ticketsErr) throw ticketsErr
         const rows = (tickets ?? []) as Array<{ id: string; status: TicketStatus; assignee_id: string | null }>
         const openRows = rows.filter((t) => t.status !== 'resolved' && t.status !== 'closed')
 
