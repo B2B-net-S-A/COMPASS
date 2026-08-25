@@ -1590,8 +1590,9 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 Dopisanie kolejnej osoby = dopisanie UUID po przecinku. Zdjęcie z listy = usunięcie UUID
 (wraca do samego tygodniowego).
 
-**Scheduler tej trasy to GH Actions (`cron-legal-monitor-alerts.yml`, `0 8 * * *`), NIE
-Coolify.** Przy wdrażaniu 2026-08-24 wyszło na jaw, że cron `legal-monitor-alerts` z tabeli
+**Scheduler tej trasy to GH Actions (`cron-legal-monitor-alerts.yml`, `23 8 * * *` —
+minuta :23 celowo, bo pełna godzina trafia w szczyt GH i pierwsza próba `0 8` w ogóle
+nie odpaliła), NIE Coolify.** Przy wdrażaniu 2026-08-24 wyszło na jaw, że cron `legal-monitor-alerts` z tabeli
 Phase 50 **nigdy nie został dodany** — przez 2 tygodnie nie wyszedł ani jeden czerwony alert
 (4 zaległe), ani tygodniowy digest. Pierwsza wersja tej notatki twierdziła ponadto, że
 scheduler Coolify nie wykonuje zadań wstawianych do bazy — to była **błędna diagnoza**,
