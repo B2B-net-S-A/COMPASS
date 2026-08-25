@@ -3,17 +3,42 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMockSupabaseClient, type MockSupabase, type MockSupabaseConfig } from '@/test/mocks/supabase'
 
 let currentClient: MockSupabase
+let currentServiceClient: MockSupabase
 
 vi.mock('@/lib/supabase/server', () => ({
     createClient: () => currentClient,
 }))
 
+// Wybór klienta w logAudit (cookie vs service) zależy od nagłówka Authorization,
+// więc ten plik nadpisuje globalny mock next/headers (puste Headers z setup.ts)
+// wersją z mutowalną mapą nagłówków.
+const requestHeaders = new Map<string, string>()
+
+vi.mock('next/headers', () => ({
+    headers: () => ({
+        get: (name: string) => requestHeaders.get(name.toLowerCase()) ?? null,
+    }),
+    cookies: () => ({
+        get: () => undefined,
+        getAll: () => [],
+        set: () => {},
+        delete: () => {},
+        has: () => false,
+    }),
+}))
+
+vi.mock('@/lib/supabase/admin', () => ({
+    createServiceClient: () => currentServiceClient,
+}))
+
 function setup(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)
+    currentServiceClient = createMockSupabaseClient({ tables: { audit_logs: [] } })
     return currentClient
 }
 
 afterEach(() => {
+    requestHeaders.clear()
     vi.clearAllMocks()
 })
 
@@ -62,5 +87,53 @@ describe('logAudit', () => {
             await logAudit('u1', a)
         }
         expect(currentClient._tables.audit_logs.map((r: any) => r.action)).toEqual([...actions])
+    })
+})
+
+// Kontekst crona: żądanie z Bearer CRON_SECRET nie ma sesji, więc heartbeat musi
+// iść service-rolą (RLS na audit_logs wymaga auth.uid() IS NOT NULL i po cichu
+// odrzucał wpisy anon — ślepe heartbeaty odkryte 2026-08-24, Phase 54).
+describe('logAudit — wybór klienta w kontekście crona', () => {
+    // setup.ts ustawia process.env.CRON_SECRET = 'test-cron-secret' w beforeEach.
+
+    it('żądanie z Bearer CRON_SECRET pisze service-rolą', async () => {
+        setup({ tables: { audit_logs: [] } })
+        requestHeaders.set('authorization', 'Bearer test-cron-secret')
+        const { logAudit } = await import('../audit')
+        await logAudit(null, 'LOGIN', { via: 'cron' })
+        expect(currentServiceClient._tables.audit_logs).toHaveLength(1)
+        expect(currentClient._tables.audit_logs).toHaveLength(0)
+    })
+
+    it('zły bearer pisze klientem cookie\'owym — RLS zostaje strażnikiem', async () => {
+        setup({ tables: { audit_logs: [] } })
+        requestHeaders.set('authorization', 'Bearer zly-sekret')
+        const { logAudit } = await import('../audit')
+        await logAudit(null, 'LOGIN')
+        expect(currentClient._tables.audit_logs).toHaveLength(1)
+        expect(currentServiceClient._tables.audit_logs).toHaveLength(0)
+    })
+
+    it('brak CRON_SECRET w env wyłącza ścieżkę service-role całkowicie', async () => {
+        setup({ tables: { audit_logs: [] } })
+        const prev = process.env.CRON_SECRET
+        delete process.env.CRON_SECRET
+        try {
+            requestHeaders.set('authorization', 'Bearer test-cron-secret')
+            const { logAudit } = await import('../audit')
+            await logAudit(null, 'LOGIN')
+            expect(currentClient._tables.audit_logs).toHaveLength(1)
+            expect(currentServiceClient._tables.audit_logs).toHaveLength(0)
+        } finally {
+            process.env.CRON_SECRET = prev
+        }
+    })
+
+    it('parsing nagłówka jak w withCronAuth — "bearer" case-insensitive', async () => {
+        setup({ tables: { audit_logs: [] } })
+        requestHeaders.set('authorization', 'bearer test-cron-secret')
+        const { logAudit } = await import('../audit')
+        await logAudit(null, 'LOGIN')
+        expect(currentServiceClient._tables.audit_logs).toHaveLength(1)
     })
 })
