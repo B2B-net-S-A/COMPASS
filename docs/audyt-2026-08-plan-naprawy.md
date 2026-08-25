@@ -202,12 +202,12 @@ Automat tego nie sprawdzi, bo E2E są martwe do czasu B5.
   dla TCM i grantów (`middleware.ts:120-131`). Dodać 6 osobnych `layout.tsx`:
   `dashboard`, `incubator`, `learning`, `projects`, `settings`, `support`.
 
-- [ ] **A4.5 — wyłączyć martwe zadania cron w Coolify** ⚪
+- [x] **A4.5 — wyłączyć martwe zadania cron w Coolify** ⚪
   `inbox-ingest` (endpoint usunięty w Fazie 44, tyka 404 co 5 min) i `tech-map-rotation` (usunięty w 46d).
   `gh workflow run "Coolify Ops" -f action=cron-disable-task -f task_name=…`
   ⚠️ `action=cron-enable` włącza **wszystkie** naraz — po każdym takim przebiegu wyłączyć ponownie.
 
-- [ ] **A4.6 — limity rozmiaru i MIME na bucketach** 🟡
+- [x] **A4.6 — limity rozmiaru i MIME na bucketach** 🟡
   Wszystkie 9 bucketów ma `file_size_limit = null` i `allowed_mime_types = null`; limity istnieją
   wyłącznie w kodzie, więc żądanie prosto do Storage REST je omija. Polityka UPDATE na publicznym
   `avatars` nie sprawdza właściciela, bo `files.ts:30` zapisuje `user_id` w **nazwie pliku**,
@@ -233,11 +233,15 @@ A0.5 (BASE_URL)                   ──► B5 (naprawa triggera E2E)
 
 ---
 
-## ETAP B — zatrzymać krwawienie (1–2 tygodnie)
+## ETAP B — zatrzymać krwawienie ✅ ZROBIONE
+
+> **STAN 2026-08-25:** wszystkie pozycje wykonane i zacommitowane na gałęzi
+> `claude/app-audit-technical-debt-96f0cd`. B5 (testy RLS) czeka na zastosowanie
+> migracji — bez nich nie ma czego testować.
 
 Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwestycji.
 
-- [ ] **B1 · Jeden wrapper server actions** — *wysiłek M+L, kolejność 1*
+- [x] **B1 · Jeden wrapper server actions** — *wysiłek M+L, kolejność 1*
   Dwie klasy, jedna przyczyna: `throw` z `'use server'` jest w prod zamieniany na „An error occurred
   in the Server Components render", a `@sentry/nextjs` 8.55.2 **nie instrumentuje** `'use server'`
   (wrapping loader zna tylko page/api-route/server-component/route-handler/middleware;
@@ -249,7 +253,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   z ustawionym limitem), `internal-timesheet.ts`, `internal-bonus.ts`, `tech-map.ts`.
   **Weryfikacja:** przekrocz limit urlopu w UI na produkcji → widzisz treść komunikatu, nie bełkot.
 
-- [ ] **B2 · Jeden wzorzec zapytań listowych** — *wysiłek M+L, kolejność 2, po B1 (patrz Z7)*
+- [x] **B2 · Jeden wzorzec zapytań listowych** — *wysiłek M+L, kolejność 2, po B1 (patrz Z7)*
   Naprawa incydentu z 25.08 objęła **jeden plik** (`support-inbox.ts:173-186`: `META_CHUNK=60`
   + `if (err) throw` + `if (data === null) throw`). Reszta repo ma wzorzec-anty:
   - **150** wywołań `.in()` w `lib/actions/*.ts`, chunkowanie tylko w `support-inbox.ts`.
@@ -263,7 +267,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   Zrobić: helper `selectInChunks(table, column, ids, columns)` w `lib/supabase/` + zasada
   „jawne kolumny, chunk ≤60, `if (error) throw`". Sweep **po jednym ekranie**, nie całym repo naraz.
 
-- [ ] **B3 · Guard-by-default dla akcji i tras** — *wysiłek M, kolejność 3*
+- [x] **B3 · Guard-by-default dla akcji i tras** — *wysiłek M, kolejność 3*
   **42 eksporty akcji bez guarda.** Po odsianiu fałszywych trafień zostają m.in.:
   `knowledge-base.ts:16` `createEmbedding()` (publiczny endpoint palący OpenAI — koszt/DoS) ·
   `course-embeddings.ts:47` `regenerateCourseEmbedding()` (service-role + OpenAI) ·
@@ -274,14 +278,23 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   **Dołożyć krok w CI**, który wywala build, gdy nowy eksport w `lib/actions/` nie woła guarda —
   inaczej za dwa miesiące lista znów urośnie.
 
-- [ ] **B4 · Jedna reguła „kto jest na liście"** — *wysiłek M, kolejność 4, po A4.2*
+- [x] **B4 · Jedna reguła „kto jest na liście"** — *wysiłek M, kolejność 4, po A4.2*
   **36** ręcznych filtrów (`neq('employment_status','exited')`) wobec **2** użyć kanonicznego
   `filterEmployedInMonth`. Obie reguły są potrzebne i **mylenie ich boli w obie strony** (A4.2 to
   dokładnie ten błąd). Wystawić dwie jawne funkcje w `lib/hr/employment-window.ts`:
   `activeRoster()` („tu i teraz": adresaci, dropdowny, crony) i `employedInMonth()` (raporty miesięczne),
   potem przejść 36 miejsc z jawną decyzją.
 
-- [ ] **B5 · Testy pilnujące etapu A** — *wysiłek S, po A1–A3*
+- [~] **B5 · Testy pilnujące etapu A** — *napisane, uruchomić PO zastosowaniu migracji*
+  Zestaw asercji: `COMPASS/supabase/verify-rls-audit.sql`. Cały skrypt działa
+  w transakcji zakończonej `ROLLBACK`, więc niczego nie zmienia — uruchom go przez
+  MCP `execute_sql` zaraz po A1→A2→A3→A3.2→A4. Sukces = same `OK`; pierwsza
+  złamana asercja przerywa skrypt z `RAISE EXCEPTION`.
+  Nie da się tego zrobić testem Vitest (nie łączy się z bazą) ani E2E (wyłączone
+  do czasu osobnego środowiska testowego — patrz A0.5).
+  Pokrywa: A1 (anon nie czyta profiles), A3 (rola i flagi grantów nie do podniesienia
+  przez UPDATE), A2 (trzy RPC bez EXECUTE dla authenticated), A3.2 (audyt
+  nie do podrobienia), A4 (polityka dla leave-proofs), A4.6 (limity bucketów).
   Jeden plik testowy jako `anon`/`authenticated`: (a) `profiles` dla anon → 0 wierszy,
   (b) `rpc('sync_user_role', {p_is_super_admin:true})` → odmowa, (c) `UPDATE profiles SET role='admin'`
   własnego wiersza → rola niezmieniona. **Bez tego pierwsza „porządkująca" migracja RLS cicho odtworzy dziurę.**
@@ -290,7 +303,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   bo `e2e/04-rls-database.spec.ts:14` woła `requireEnv` **na poziomie modułu** i kładzie kolekcję
   wszystkich 59 testów. ⚠️ Nie naprawiać triggera przed A0.5 — włączysz testy piszące przeciw produkcji.
 
-- [ ] **B6 · Odblokować zależności** — *wysiłek M*
+- [x] **B6 · Odblokować zależności** — *wysiłek M*
   Najpierw **skasować błędną notatkę w `CLAUDE.md:1775`** („`@sentry/nextjs ^9` wymagałoby Next 15" —
   peer dep Sentry 9 i 10 to `^13.2 || ^14 || ^15 || ^16`). Ta jedna linijka zamraża **20 z 43 podatności**
   i spowodowała odrzucenie PR-ów #228, #278, #307.
@@ -300,7 +313,12 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
 
 ---
 
-## ETAP C — spłata strukturalna (w tle, po jednej pozycji między pracą produktową)
+## ETAP C — spłata strukturalna ✅ ZROBIONE (poza C1)
+
+> **STAN 2026-08-25:** C2–C12 wykonane. **C1 (baseline migracji) świadomie NIE** —
+> wymaga `supabase db dump` z produkcji i przepięcia całego katalogu migracji,
+> czyli operacji, której nie da się zweryfikować bez zastosowania. Do zrobienia
+> osobno, po wdrożeniu tej paczki, gdy rejestr będzie już zawierał migracje audytu.
 
 - [ ] **C1 · Migracje odtwarzalne** — *wysiłek L, po całym etapie A*
   210 plików / 152 wpisy w rejestrze / **2 wersje wspólne**. Bazy **nie da się odtworzyć z repo**:
@@ -310,7 +328,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   (historia, nie ścieżka wykonania), i jedna reguła od teraz: `apply_migration` przez MCP + commit
   pliku o **tej samej** wersji, którą zwrócił rejestr.
 
-- [ ] **C2 · Domknąć Fazę 37** — *wysiłek M*
+- [x] **C2 · Domknąć Fazę 37** — *wysiłek M*
   Mirror vs legacy: `onboarding_cases` 2 = `onboarding_progress` 2, `exit_cases` 4 = `exit_interviews` 4,
   `support_contractor_meta` 147 = `contractor_conversations` 147. Utrzymuje to 6 triggerów, a backend
   czyta legacy — **mirror ma zero czytelników**. Przy 6 wierszach lifecycle tańsze jest **usunięcie
@@ -318,7 +336,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   ⚠️ `support_tickets` (544) miesza trzy populacje — każdy szeroki czytelnik poza inboxem/analityką
   musi wykluczać `inbox_%` **i** `contractor_%`.
 
-- [ ] **C3 · Martwy kod** — *wysiłek M*
+- [x] **C3 · Martwy kod** — *wysiłek M*
   ~52 pliki / ~7,2 tys. linii nieosiągalnych z żadnego page/layout/route/middleware.
   Klastry: **Work Clock** (~2,9 tys. lin. — UI wyłączone w `app/(protected)/layout.tsx:24-25,157`,
   ale 5 tras `app/api/clock/*` i 4 crony **żywe**, więc obszar jest większy, nie mniejszy) ·
@@ -331,7 +349,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   ⚠️ `RetencjaPanel` jest jedynym konsumentem agregatu z `contractors.ts:141-153` — usuwając panel,
   usuń też agregat (tańsze niż chunkowanie tego zapytania w B2).
 
-- [ ] **C4 · Decyzja o komunikatorze** — *wysiłek S–M*
+- [x] **C4 · Decyzja o komunikatorze** — *wysiłek S–M*
   `create_direct_conversation` i `create_broadcast_conversation` **nie istnieją w bazie** —
   migracja `20260223_fix_communicator_rls_v2.sql` nigdy nie weszła (brak w rejestrze, nietypowy
   8-cyfrowy prefiks). `conversations`/`messages` = 0 wierszy, `/messages` bez linku w nawigacji,
@@ -367,19 +385,19 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   dlatego `um_user_consents` = **0 wierszy** mimo działającej strony `/consent`. Włączenie bramki to
   decyzja biznesowa (46 osób zobaczy ekran zgód przy najbliższym logowaniu), nie refaktor.
 
-- [ ] **C6 · Wydajność bazy** — *453 trafienia advisora*
+- [x] **C6 · Wydajność bazy** — *453 trafienia advisora*
   145× `auth.uid()` bez `(select …)` na 66 tabelach (re-ewaluacja per wiersz) · 134 nieindeksowane
   klucze obce · 113 nieużywanych indeksów · 59 zdublowanych polityk permisywnych · limit 10 połączeń Auth.
   Objaw: `support_categories` — 1,13 mln skanów sekwencyjnych i 11 mln odczytanych krotek
   na **13-wierszowej** tabeli, bo polityka `support_tickets` woła dwie funkcje per wiersz.
   Przy 46 użytkownikach nie boli, ale koszt rośnie z każdą dopisaną polityką.
 
-- [ ] **C7 · Nawigacja mobilna** — *wysiłek S*
+- [x] **C7 · Nawigacja mobilna** — *wysiłek S*
   `components/layout/MobileMenu.tsx:130` deklaruje 6 ról, renderuje linki dla 3 — pomija `manager`
   i `talent_community`; `AppLayout.tsx:72` nie przekazuje `hasTcmAccess`/`isInboxHandler`.
   Osobno `:151-162` renderuje martwy link „Faktury do akceptacji" do wyłączonego modułu. 8 osób na prodzie.
 
-- [ ] **C8 · Nagłówki bezpieczeństwa i konfiguracja builda** — *wysiłek S*
+- [x] **C8 · Nagłówki bezpieczeństwa i konfiguracja builda** — *wysiłek S*
   `next.config.mjs:96-107` ustawia HSTS, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy —
   **bez `Content-Security-Policy`** (0 trafień w całym repo).
   `next.config.mjs:8-9` ma `ignoreDuringBuilds` i `ignoreBuildErrors` z **uczciwym uzasadnieniem**
@@ -387,14 +405,14 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   omijająca CI (redeploy z panelu Coolify, `workflow_dispatch`) buduje bez sprawdzenia typów.
   `:16` dopuszcza obrazy z `txzflesacqvlyhxwfjxk.supabase.co` — **innego projektu** niż produkcyjny.
 
-- [ ] **C9 · `CLAUDE.md` (156 KB, 54 fazy)** — *wysiłek M*
+- [x] **C9 · `CLAUDE.md` (156 KB, 54 fazy)** — *wysiłek M*
   Rozdzielić na żywe reguły (zostają) i historię faz (do `docs/historia-faz.md`).
   Zweryfikowane rozjazdy do naprawy przy okazji: notatka o Sentry (B6) · „Alloy sidecar: profile-gated"
   (w `docker-compose.yml` nie ma klucza `profiles:`) · komentarz `user-admin.ts:338` o `sync_user_role` ·
   komentarz `communicator.ts:167` („funkcja istnieje, brakuje w typach" — nie istnieje) ·
   „Faza 38" opisująca hub Kontraktorów jako żywy · tabela cronów Fazy 50 z zadaniem, którego nigdy nie dodano.
 
-- [ ] **C10 · Odporność integracji zewnętrznych** — *5 znalezisk*
+- [x] **C10 · Odporność integracji zewnętrznych** — *5 znalezisk*
   `lib/graph/client.ts:57-58` — `Client.init()` bez middleware i **bez per-request timeoutu**;
   jedyny `AbortSignal` w całej warstwie integracji jest w `lib/teams/webhook.ts:98`. Konsumenci to
   sekwencyjne pętle po ~37 skrzynkach, więc jedna zawieszona zjada budżet czasu całej trasy —
@@ -407,7 +425,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   `lib/email/sender.ts:66,101-117` — martwy kanał Resend nadal w kodzie i w `package.json`,
   mimo że `docs/microsoft-graph-email-setup.md` ogłasza go usuniętym.
 
-- [ ] **C11 · Obserwowalność zadań cyklicznych** — *4 znaleziska*
+- [x] **C11 · Obserwowalność zadań cyklicznych** — *4 znaleziska*
   **13 z 19 tras cron nie zostawia w bazie żadnego śladu wykonania** — cicha awaria harmonogramu
   jest niewykrywalna bez SSH. Dodać heartbeat `*_RUN` (`phase: start` / `done`) wzorem
   `FORWARD_RECONCILE_RUN`; od 2026-08-25 `logAudit` pisze service-rolą przy Bearer `CRON_SECRET`,
@@ -420,7 +438,7 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   Next 14.2.35 czyta ten eksport tylko w czasie builda i tylko dla platform serverless.
   W kontenerze nie robi nic, więc ochrona przed ubiciem żądania jest pozorna.
 
-- [ ] **C12 · Integralność danych kontraktorów** — *3 znaleziska*
+- [x] **C12 · Integralność danych kontraktorów** — *3 znaleziska*
   `lib/actions/placements.ts:253-288` — `commitPlacementImport` **nie ustawia `contractor_id`**,
   w odróżnieniu od importera Wejść/Zejść (`lib/contractors/import-core.ts:196`). Na `placements`
   nie ma triggera, więc jedyne wypełnienie FK to jednorazowy backfill z Fazy 33a.
