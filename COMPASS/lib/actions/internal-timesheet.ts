@@ -42,11 +42,10 @@ export interface TimesheetHeader {
     created_at: string
     updated_at: string
     // Phase 17b R8 (PR-B): auto-fill default flow flags
-    auto_filled_at?: string | null
-    user_cleared_auto_fill?: boolean
 }
 
-export type TimesheetEntrySource = 'manual' | 'clock_suggested' | 'clock_accepted'
+/** `leave_paid` — auto-wpis za płatny dzień z puli urlopowej (Faza 30b). */
+export type TimesheetEntrySource = 'manual' | 'leave_paid'
 
 export interface TimesheetEntryRow {
     id: string
@@ -56,10 +55,7 @@ export interface TimesheetEntryRow {
     project: string | null
     description: string
     created_at: string
-    // Phase 17 — work clock integration
     source: TimesheetEntrySource
-    tracked_hours: number | null
-    correction_required: boolean
     // Phase 27a — overtime override (admin-only flow)
     is_overtime_override: boolean
     override_reason: string | null
@@ -493,41 +489,12 @@ export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult
         }
         if (Object.keys(updates).length === 0) return
 
-        // Phase 17: when user edits hours, transition source clock_suggested → clock_accepted
-        // (signals the user actively reviewed the suggestion).
-        if (input.hours !== undefined) {
-            const { data: existing } = await supabase
-                .from('timesheet_entries')
-                .select('source')
-                .eq('id', input.entryId)
-                .maybeSingle<{ source: string }>()
-            if (existing?.source === 'clock_suggested') {
-                updates.source = 'clock_accepted'
-            }
-        }
-
         const { error } = await supabase
             .from('timesheet_entries')
             .update(updates)
             .eq('id', input.entryId)
         if (error) throw new Error(`Błąd aktualizacji wpisu: ${error.message}`)
 
-        // Phase 17: discrepancy detection — fire-and-forget after successful update.
-        if (input.hours !== undefined) {
-            const { data: row } = await supabase
-                .from('timesheet_entries')
-                .select('hours, tracked_hours')
-                .eq('id', input.entryId)
-                .maybeSingle<{ hours: number; tracked_hours: number | null }>()
-            if (row) {
-                const { applyCorrectionFlag } = await import('./internal-clock')
-                applyCorrectionFlag({
-                    entryId: input.entryId,
-                    declaredHours: Number(row.hours),
-                    trackedHours: row.tracked_hours == null ? null : Number(row.tracked_hours),
-                }).catch((e) => logCompat.error('[updateEntry] correction flag failed:', e))
-            }
-        }
     })
 }
 
@@ -1492,8 +1459,7 @@ async function fetchTimesheetRoster(
  * Phase 27g — get-or-create a team member's timesheet so the approver can fill
  * it on their behalf. Used when opening a placeholder row from the HR queue.
  * Re-checks team scope server-side (admin pomija). The created row is a normal
- * empty draft — the employee's own auto-fill-from-clock still triggers later
- * (it keys on auto_filled_at, which stays null here).
+ * empty draft.
  */
 export async function ensureTeamTimesheet(
     targetUserId: string,

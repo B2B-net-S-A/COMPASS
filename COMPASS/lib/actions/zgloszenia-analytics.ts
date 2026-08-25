@@ -1,7 +1,11 @@
 'use server'
 
 // Phase 37 — ticket-type analytics for the unified "Analityka" hub. Reads support_tickets,
-// which after the merge holds inbox + helpdesk + contractor sprawy → "jakie typy zgłoszeń spływają".
+// which holds inbox + helpdesk → "jakie typy zgłoszeń spływają".
+//
+// Świadomie BEZ wykluczania rodzin kategorii: to jedyne miejsce, które ma pokazywać
+// przekrój wszystkich zgłoszeń. Lustro spraw kontraktorskich (`contractor_%`) zniknęło
+// z tej tabeli krokiem audytu C2 — rozmowy i zadania TCM czyta się z ich własnych tabel.
 
 import { createClient } from '@/lib/supabase/server'
 import { requireTalentCommunityOrAdminAction } from '@/lib/auth/internal-guard'

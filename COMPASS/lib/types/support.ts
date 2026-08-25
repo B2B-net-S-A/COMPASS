@@ -277,13 +277,3 @@ export const ALLOWED_MATERIAL_MIME = [
 
 export type AllowedMaterialMime = (typeof ALLOWED_MATERIAL_MIME)[number]
 
-// ─── Phase 34: inbox summary (Talent Community Pulpit KPI) ───────────────────
-/** Lightweight counts of the administracja@ inbox queue for the TC dashboard. */
-export interface InboxSummary {
-    /** Tickets not yet resolved/closed. */
-    open: number
-    /** Open tickets past their SLA due_date. */
-    overdue: number
-    /** Open tickets with no assignee. */
-    unassigned: number
-}

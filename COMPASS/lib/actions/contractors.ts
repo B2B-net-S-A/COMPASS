@@ -42,18 +42,12 @@ import type {
     ConversationListItem,
     ConversationStatus,
     ContractorStatus,
-    ContractorTaskFilters,
-    ContractorTaskListItem,
-    ContractorTaskRow,
     ContractorTaskStatus,
-    EntryListItem,
     ExitDepartureItem,
-    ExitQueueItem,
     InterviewAttachment,
     InterviewKind,
     InterviewStatus,
     OnboardingEntryItem,
-    OnboardingQueueItem,
     WhoResigned,
 } from '@/lib/types/contractor'
 import { excludeExited } from '@/lib/hr/employment-window'
@@ -152,29 +146,6 @@ export async function listTcmProfiles(): Promise<Array<{ id: string; fullName: s
 }
 
 // ─── Contractors ──────────────────────────────────────────────────────────────
-interface ConversationBadgeRow {
-    contractor_id: string
-    status: ConversationStatus
-    conversation_date: string
-}
-
-/**
- * Licznik otwartych rozmów + data ostatniej, doklejane do katalogu kontraktorów.
- *
- * DEKORACJA: awaria gasi odznaki, ale NIE może chować kontraktorów — dlatego
- * degradujemy do pustki z logiem zamiast rzucać. Paczkami, bo katalog liczy 683
- * pozycje, a `.in()` z tyloma id budowało URL ~26 kB — powyżej progu, na którym
- * zapytanie ginęło po cichu (incydent 2026-08-25).
- */
-async function conversationBadges(admin: ServiceClient, contractorIds: string[]): Promise<ConversationBadgeRow[]> {
-    return await decorationRows<ConversationBadgeRow>({
-        source: 'contractor_conversations',
-        column: 'contractor_id',
-        ids: contractorIds,
-        query: () => admin.from('contractor_conversations').select('contractor_id, status, conversation_date'),
-    })
-}
-
 export async function listContractors(filters: ContractorFilters = {}): Promise<ContractorListItem[]> {
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
@@ -188,27 +159,17 @@ export async function listContractors(filters: ContractorFilters = {}): Promise<
     const contractors = requireRows('contractors', await q) as ContractorRow[]
     if (contractors.length === 0) return []
 
-    const ids = contractors.map((c) => c.id)
-    const [ownerMap, convRows] = await Promise.all([
-        loadProfilesByIds(admin, contractors.map((c) => c.owner_tcm_id ?? '').filter(Boolean)),
-        conversationBadges(admin, ids),
-    ])
-
-    const open = new Map<string, number>()
-    const last = new Map<string, string>()
-    for (const r of convRows) {
-        if (r.status === 'potrzebny_kontakt' || r.status === 'pilne') {
-            open.set(r.contractor_id, (open.get(r.contractor_id) ?? 0) + 1)
-        }
-        const prev = last.get(r.contractor_id)
-        if (!prev || r.conversation_date > prev) last.set(r.contractor_id, r.conversation_date)
-    }
+    // Agregat rozmów (open_conversations / last_conversation_date) zniknął razem
+    // z RetencjaPanelem — był jego jedynym czytelnikiem. Bez niego katalog nie
+    // przeciąga już całej tabeli contractor_conversations przy każdym otwarciu.
+    const ownerMap = await loadProfilesByIds(
+        admin,
+        contractors.map((c) => c.owner_tcm_id ?? '').filter(Boolean),
+    )
 
     return contractors.map((c) => ({
         ...c,
         owner_tcm_name: c.owner_tcm_id ? ownerMap.get(c.owner_tcm_id)?.full_name ?? null : null,
-        open_conversations: open.get(c.id) ?? 0,
-        last_conversation_date: last.get(c.id) ?? null,
     }))
 }
 
@@ -591,103 +552,6 @@ export async function reviewExitInterview(id: string, note: string): Promise<voi
     revalidatePath(HUB)
 }
 
-// ─── Departures ───────────────────────────────────────────────────────────────
-export async function addDeparture(input: {
-    contractorId?: string | null
-    placementId?: string | null
-    consultantName: string
-    clientName: string
-    position?: string | null
-    startDate?: string | null
-    departureDate?: string | null
-    lastNoticeDay?: string | null
-    whoResigned?: WhoResigned | null
-    reason?: string | null
-    transferred?: boolean
-    replacement?: boolean
-    comment?: string | null
-    monthlyMargin?: number | null
-}): Promise<{ id: string }> {
-    const ctx = await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-    const { data, error } = await admin
-        .from('client_departures')
-        .insert({
-            contractor_id: input.contractorId || null,
-            placement_id: input.placementId || null,
-            consultant_name: input.consultantName.trim(),
-            client_name: input.clientName.trim(),
-            position: input.position?.trim() || null,
-            start_date: input.startDate || null,
-            departure_date: input.departureDate || null,
-            last_notice_day: input.lastNoticeDay || null,
-            who_resigned: input.whoResigned || null,
-            reason: input.reason?.trim() || null,
-            transferred: input.transferred ?? false,
-            replacement: input.replacement ?? false,
-            comment: input.comment?.trim() || null,
-            monthly_margin: input.monthlyMargin ?? null,
-            source: 'manual',
-            created_by: ctx.userId,
-        })
-        .select('id')
-        .single()
-    if (error || !data) throw new Error(`Nie udało się zapisać zejścia: ${error?.message ?? 'unknown'}`)
-    await logAudit(ctx.userId, 'CLIENT_DEPARTURE_RECORDED', {
-        departure_id: (data as { id: string }).id,
-        consultant: input.consultantName,
-        client: input.clientName,
-        who_resigned: input.whoResigned,
-    })
-    revalidatePath(HUB)
-    return data as { id: string }
-}
-
-export async function listDepartures(filters: { client?: string; whoResigned?: WhoResigned } = {}): Promise<ClientDepartureRow[]> {
-    await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-    let q = admin.from('client_departures').select('*').order('departure_date', { ascending: false, nullsFirst: false })
-    if (filters.client) q = q.ilike('client_name', `%${filters.client}%`)
-    if (filters.whoResigned) q = q.eq('who_resigned', filters.whoResigned)
-    // TREŚĆ — patrz listExitDepartures.
-    return requireRows('client_departures', await q) as ClientDepartureRow[]
-}
-
-/** Combined "Wejścia" view: historical archive (client_entries) + live placements. */
-export async function listEntries(filters: { client?: string } = {}): Promise<EntryListItem[]> {
-    await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-    let eq = admin.from('client_entries').select('*').order('start_date', { ascending: false, nullsFirst: false })
-    if (filters.client) eq = eq.ilike('client_name', `%${filters.client}%`)
-    let pq = admin.from('placements').select('id, consultant_name, client_name, position, start_date, recruiter_raw, status').order('start_date', { ascending: false })
-    if (filters.client) pq = pq.ilike('client_name', `%${filters.client}%`)
-    const [entries, placements] = await Promise.all([eq, pq])
-
-    // TREŚĆ — feed Wejść składa się z obu źródeł; cicha pustka po jednej stronie
-    // dawałaby listę niepełną, ale wyglądającą na kompletną.
-    const fromArchive = (requireRows('client_entries', entries) as ClientEntryRow[]).map((e) => ({
-        id: e.id,
-        source: 'archive' as const,
-        consultant_name: e.consultant_name,
-        client_name: e.client_name,
-        position: e.position,
-        start_date: e.start_date,
-        recruiter: e.recruiter_raw,
-    }))
-    const fromPlacements = (requireRows('placements', placements) as Array<{ id: string; consultant_name: string; client_name: string; position: string | null; start_date: string; recruiter_raw: string; status: string }>)
-        .filter((p) => p.status !== 'cancelled')
-        .map((p) => ({
-            id: p.id,
-            source: 'placement' as const,
-            consultant_name: p.consultant_name,
-            client_name: p.client_name,
-            position: p.position,
-            start_date: p.start_date,
-            recruiter: p.recruiter_raw,
-        }))
-    return [...fromPlacements, ...fromArchive].sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''))
-}
-
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export async function getContractorDashboard(): Promise<ContractorDashboard> {
     await requireLifecycleManagerAction()
@@ -857,144 +721,6 @@ export async function exportDeparturesCsv(input: DepartureAnalyticsInput = {}): 
     return [header.join(','), ...rows].join('\n')
 }
 
-// ─── Phase 34: journey-stage queues (Onboarding / Exit tabs) ──────────────────
-/** Contractors still in prospect/onboarding + their latest onboarding-interview status. */
-export async function listOnboardingQueue(): Promise<OnboardingQueueItem[]> {
-    await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-    const queued = admin
-        .from('contractors')
-        .select('id, full_name, current_client, current_position, status, owner_tcm_id')
-        .in('status', ['prospect', 'onboarding'])
-        .order('full_name', { ascending: true })
-    // TREŚĆ — kolejka onboardingu.
-    const rows = requireRows('contractors', await queued) as Array<{
-        id: string; full_name: string; current_client: string | null
-        current_position: string | null; status: ContractorStatus; owner_tcm_id: string | null
-    }>
-    if (rows.length === 0) return []
-
-    const ids = rows.map((r) => r.id)
-    const [ownerMap, interviews] = await Promise.all([
-        loadProfilesByIds(admin, rows.map((r) => r.owner_tcm_id ?? '').filter(Boolean)),
-        // DEKORACJA — odznaka statusu wywiadu przy pozycji kolejki. Dzielimy po tej
-        // samej kolumnie, po której grupujemy, więc „pierwszy wiersz per kontraktor"
-        // nadal jest najnowszy.
-        decorationRows<{ contractor_id: string; status: InterviewStatus; created_at: string }>({
-            source: 'contractor_onboarding_interviews',
-            column: 'contractor_id',
-            ids,
-            query: () => admin
-                .from('contractor_onboarding_interviews')
-                .select('contractor_id, status, created_at')
-                .order('created_at', { ascending: false }),
-        }),
-    ])
-    // First row per contractor is the latest interview (ordered created_at desc).
-    const interviewStatus = new Map<string, InterviewStatus>()
-    for (const r of interviews) {
-        if (!interviewStatus.has(r.contractor_id)) interviewStatus.set(r.contractor_id, r.status)
-    }
-    return rows.map((r) => ({
-        contractor_id: r.id,
-        full_name: r.full_name,
-        current_client: r.current_client,
-        current_position: r.current_position,
-        status: r.status,
-        owner_tcm_name: r.owner_tcm_id ? ownerMap.get(r.owner_tcm_id)?.full_name ?? null : null,
-        interview_status: interviewStatus.get(r.id) ?? null,
-    }))
-}
-
-/** Scheduled or submitted exit interviews awaiting action, with contractor context. */
-export async function listExitInterviewQueue(): Promise<ExitQueueItem[]> {
-    await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-    const queued = admin
-        .from('contractor_exit_interviews')
-        .select('id, contractor_id, client_snapshot, status, scheduled_for, submitted_at, formal_reason')
-        .in('status', ['scheduled', 'submitted'])
-        .order('scheduled_for', { ascending: true, nullsFirst: false })
-    // TREŚĆ — kolejka exit interview.
-    const rows = requireRows('contractor_exit_interviews', await queued) as Array<{
-        id: string; contractor_id: string; client_snapshot: string | null
-        status: InterviewStatus; scheduled_for: string | null; submitted_at: string | null; formal_reason: string | null
-    }>
-    if (rows.length === 0) return []
-
-    // DEKORACJA — nazwisko przy pozycji kolejki.
-    const cs = await decorationRows<{ id: string; full_name: string }>({
-        source: 'contractors',
-        column: 'id',
-        ids: rows.map((r) => r.contractor_id),
-        query: () => admin.from('contractors').select('id, full_name'),
-    })
-    const nameMap = new Map<string, string>()
-    for (const c of cs) nameMap.set(c.id, c.full_name)
-    return rows.map((r) => ({
-        interview_id: r.id,
-        contractor_id: r.contractor_id,
-        contractor_name: nameMap.get(r.contractor_id) ?? '—',
-        client_snapshot: r.client_snapshot,
-        status: r.status,
-        scheduled_for: r.scheduled_for,
-        submitted_at: r.submitted_at,
-        formal_reason: r.formal_reason,
-    }))
-}
-
-// ─── Phase 34: Zadania (department task list) ─────────────────────────────────
-export async function listTasks(filters: ContractorTaskFilters = {}): Promise<ContractorTaskListItem[]> {
-    await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-    let q = admin.from('contractor_tasks').select('*').order('created_at', { ascending: false })
-    if (filters.status) q = q.eq('status', filters.status)
-    if (filters.assignedTcmId) q = q.eq('assigned_tcm_id', filters.assignedTcmId)
-    if (filters.contractorId) q = q.eq('contractor_id', filters.contractorId)
-    // TREŚĆ — lista zadań działu.
-    const rows = requireRows('contractor_tasks', await q) as ContractorTaskRow[]
-    if (rows.length === 0) return []
-
-    const [assigneeMap, contractorMap, ticketMap] = await Promise.all([
-        loadProfilesByIds(admin, rows.map((r) => r.assigned_tcm_id ?? '').filter(Boolean)),
-        (async () => {
-            // DEKORACJA — nazwisko kontraktora przy zadaniu.
-            const ids = rows.map((r) => r.contractor_id ?? '').filter(Boolean)
-            const m = new Map<string, string>()
-            if (ids.length === 0) return m
-            const cs = await decorationRows<{ id: string; full_name: string }>({
-                source: 'contractors',
-                column: 'id',
-                ids,
-                query: () => admin.from('contractors').select('id, full_name'),
-            })
-            for (const c of cs) m.set(c.id, c.full_name)
-            return m
-        })(),
-        (async () => {
-            // DEKORACJA — temat zgłoszenia źródłowego.
-            const ids = rows.map((r) => r.source_ticket_id ?? '').filter(Boolean)
-            const m = new Map<string, string>()
-            if (ids.length === 0) return m
-            const ts = await decorationRows<{ id: string; subject: string }>({
-                source: 'support_tickets',
-                column: 'id',
-                ids,
-                query: () => admin.from('support_tickets').select('id, subject'),
-            })
-            for (const t of ts) m.set(t.id, t.subject)
-            return m
-        })(),
-    ])
-
-    return rows.map((r) => ({
-        ...r,
-        assigned_tcm_name: r.assigned_tcm_id ? assigneeMap.get(r.assigned_tcm_id)?.full_name ?? null : null,
-        contractor_name: r.contractor_id ? contractorMap.get(r.contractor_id) ?? null : null,
-        source_ticket_subject: r.source_ticket_id ? ticketMap.get(r.source_ticket_id) ?? null : null,
-    }))
-}
-
 export async function createTask(input: {
     title: string
     description?: string | null
@@ -1059,15 +785,6 @@ export async function updateTask(
     const { error } = await admin.from('contractor_tasks').update(patch).eq('id', id)
     if (error) throw new Error(`Nie udało się zaktualizować zadania: ${error.message}`)
     await logAudit(ctx.userId, 'CONTRACTOR_TASK_UPDATED', { task_id: id, fields: Object.keys(patch) })
-    revalidatePath(HUB)
-}
-
-export async function deleteTask(id: string): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    const admin = createServiceClient()
-    const { error } = await admin.from('contractor_tasks').delete().eq('id', id)
-    if (error) throw new Error(`Nie udało się usunąć zadania: ${error.message}`)
-    await logAudit(ctx.userId, 'CONTRACTOR_TASK_DELETED', { task_id: id })
     revalidatePath(HUB)
 }
 

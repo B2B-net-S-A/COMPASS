@@ -465,24 +465,6 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                                                 {e.description}
                                             </p>
                                             <div className="flex flex-wrap gap-1 mt-1">
-                                                {(e.source === 'clock_suggested' ||
-                                                    e.source === 'clock_accepted') && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-info">
-                                                        <Clock className="h-3 w-3" />
-                                                        z zegara
-                                                        {e.tracked_hours != null && (
-                                                            <span className="ml-1 text-muted-foreground">
-                                                                ({Number(e.tracked_hours).toFixed(2)}h)
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                )}
-                                                {e.correction_required && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-warning">
-                                                        <AlertTriangle className="h-3 w-3" />
-                                                        wymaga korekty
-                                                    </span>
-                                                )}
                                                 {e.is_overtime_override && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-primary">
                                                         <Clock className="h-3 w-3" />

@@ -10,9 +10,6 @@ import { MyBonusesPanel } from '@/components/internal/panels/MyBonusesPanel'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 import { DB_ROLES } from '@/lib/types/role'
 import type { CalendarStatusFilter } from '@/components/internal/VacationCalendar'
-// Smart Work Clock (Phase 17) UI disabled — to re-enable, restore Clock icon + ClockPanel import + tab + render below.
-// import { Clock } from 'lucide-react'
-// import { ClockPanel } from '@/components/internal/panels/ClockPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +21,6 @@ const ALL_TABS: ReadonlyArray<HubTab> = [
     { id: 'timesheet', label: 'Timesheet', icon: Receipt },
     { id: 'invoices', label: 'Faktury', icon: FileText },
     { id: 'bonuses', label: 'Premie', icon: Gift },
-    // { id: 'clock', label: 'Zegar', icon: Clock },
 ]
 
 const TABS: ReadonlyArray<HubTab> = ALL_TABS.filter(
@@ -95,7 +91,6 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
             {tab === 'timesheet' && <TimesheetPanel year={year} month={month} />}
             {tab === 'invoices' && isInvoicesEnabled() && <InvoicesPanel />}
             {tab === 'bonuses' && <MyBonusesPanel />}
-            {/* {tab === 'clock' && <ClockPanel year={year} month={month} />} */}
         </div>
     )
 }

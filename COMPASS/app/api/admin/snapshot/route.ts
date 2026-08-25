@@ -82,9 +82,8 @@ export async function GET(req: Request): Promise<Response> {
     } catch {
         dbCheck = 'unhealthy'
         kpis = {
-            profiles: { total: 0, active: 0 },
+            profiles: { total: 0 },
             contracts: { active: 0 },
-            centrala: { benefit_declarations: 0, referrals: 0, equipment_requests: 0, invoices: 0 },
             audit_logs: { last_24h: 0 },
         }
     }

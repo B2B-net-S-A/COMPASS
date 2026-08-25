@@ -22,8 +22,6 @@ function realRow(
         pdf_hash: null,
         created_at: '2026-05-01T00:00:00Z',
         updated_at: '2026-05-01T00:00:00Z',
-        auto_filled_at: null,
-        user_cleared_auto_fill: false,
         entries: [],
         user_full_name: null,
         user_email: `${overrides.user_id}@b2bnetwork.pl`,

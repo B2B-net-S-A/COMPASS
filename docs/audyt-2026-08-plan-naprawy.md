@@ -339,13 +339,33 @@ Każda pozycja kasuje **całą klasę** błędów. Kolejność wg zwrotu z inwes
   Albo zaaplikować migrację i usunąć `as any`, albo usunąć moduł. **Nie zostawiać stanu pośredniego** —
   dziś testy jednostkowe są zielone, bo mockują nieistniejące RPC.
 
-- [ ] **C5 · Warstwa RODO** — *ryzyko prawne, nie techniczne*
-  `app/privacy-policy/page.tsx:38` mówi „Strona w przygotowaniu", choć regulamin warunkuje rejestrację
-  akceptacją tej polityki. `um_user_consents` = **0 wierszy**. `um_legal_documents` ma **inny schemat
-  niż kod, który go zasila** (`migrate-compliance/route.ts:172-176` robi `upsert` po nieistniejącej
-  kolumnie `slug`) → seed pada. **Brak jakiegokolwiek mechanizmu usuwania danych osoby** przy
-  deklaracji „prawo do zapomnienia: usunięcie w 30 dni". `audit_logs` rośnie bez retencji przy
-  deklarowanych 12 miesiącach.
+- [x] **C5 · Warstwa RODO** — *ryzyko prawne, nie techniczne* — **zrobione 2026-08-25 (część techniczna)**
+  Było: `migrate-compliance/route.ts` robił `upsert` po nieistniejącej kolumnie `slug` (produkcja ma
+  `document_type` + `content` + `effective_date`), a błąd 42703 lądował w polu `results[]` przy
+  `success: true` — seed był „zielony" i nie wgrywał nic. Pierwszym krokiem trasy było `rpc('exec_sql')`
+  z kluczem service-role, czyli dowolny SQL spoza migracji (funkcja na produkcji **nie istnieje**).
+  Do tego zero mechanizmu realizacji art. 15 i art. 17 oraz `audit_logs` bez retencji.
+  Zrobione:
+  • mapa slug ↔ `document_type` w jednym module (`lib/constants/legal-documents.ts`) — używają jej
+    oba końce (seed i `lib/actions/compliance.ts`); dwie prywatne kopie były przyczyną rozjazdu;
+  • seed pisze do realnego schematu, **wstawia brakujące i nigdy nie nadpisuje** (na produkcji leżą
+    wersje dłuższe i z aktualną identyfikacją spółki), dokumenty spoza CHECK-a pomija z podaniem powodu,
+    a błąd zapisu zwraca statusem 500 zamiast chować w JSON-ie; krok `exec_sql` usunięty;
+  • `lib/gdpr/subject-data.ts` (czyste, otestowane) + `lib/actions/gdpr.ts`: `exportPersonalData`
+    (art. 15) i `anonymizePersonalData` (art. 17) pod `requireAdminAction`, zacieranie zamiast
+    kasowania — wzorzec anonimowego wywiadu wyjściowego z Fazy 22; raport wymienia, co zostaje
+    i dlaczego, oraz czego automat NIE zrobi (Storage, `auth.users`, arkusze na SharePoint, PITR);
+  • cron `audit-log-retention` (12 miesięcy, heartbeat `AUDIT_LOG_RETENTION_RUN`, `?dryRun=1`);
+  • gałąź „Strona w przygotowaniu" w `/privacy-policy` i `/terms` zastąpiona komunikatem o awarii
+    odczytu z drogą do treści (treść jest w bazie i renderuje się normalnie).
+  **Ops po wdrożeniu:** dodać zadanie cykliczne
+  `audit-log-retention` — `0 4 * * *` —
+  `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "https://compass.dynaminds.pl/api/cron/audit-log-retention"`
+  (najpierw raz z `&dryRun=1`, żeby zobaczyć zasięg; na 2026-08-25 kwalifikuje się **0 z 2316** wpisów).
+  ⚠️ Zostaje **poza kodem**: treść polityki prywatności (zadanie dla prawnika — lista wymaganych
+  elementów w raporcie z tej pozycji) oraz **bramka zgód**: `middleware.ts:157` ma ją wyłączoną,
+  dlatego `um_user_consents` = **0 wierszy** mimo działającej strony `/consent`. Włączenie bramki to
+  decyzja biznesowa (46 osób zobaczy ekran zgód przy najbliższym logowaniu), nie refaktor.
 
 - [ ] **C6 · Wydajność bazy** — *453 trafienia advisora*
   145× `auth.uid()` bez `(select …)` na 66 tabelach (re-ewaluacja per wiersz) · 134 nieindeksowane
