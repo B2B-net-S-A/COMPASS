@@ -451,6 +451,33 @@ describe('listInboxTickets', () => {
         expect(res.data.open.map(t => t.id)).toEqual(['t1'])
     })
 
+    // Incydent 2026-08-25 (część sieciowa): tickety pobierane stronami po 30,
+    // meta paczkami po 60 — tablica musi skleić WSZYSTKIE strony bez dziur.
+    it('paginates tickets and meta chunks without losing rows (65 tickets = 3 pages)', async () => {
+        const N = 65
+        const tickets = Array.from({ length: N }, (_, i) => ({
+            id: `t${i}`, user_id: 'handler1', category_id: 'cat-adm', status: 'open',
+            subject: `T${i}`, body_md: 'b', priority: 'normal', assignee_id: null,
+            resolved_at: null, created_at: '2026-05-01', updated_at: `2026-05-01T00:00:${String(i % 60).padStart(2, '0')}Z`,
+        }))
+        const metas = tickets.map((t) => ({
+            ticket_id: t.id, source: 'manual_paste', priority_level: 'P2', due_date: '2026-05-15',
+            consultant_id: null, external_message_id: null, email_from: null,
+            email_subject: t.subject, email_received_at: null, created_at: '2026-05-01',
+        }))
+        setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables({ support_tickets: tickets, support_inbox_meta: metas }),
+        })
+        const { listInboxTickets } = await import('../support-inbox')
+        const res = await listInboxTickets()
+        expect(res.success).toBe(true)
+        if (!res.success) return
+        expect(res.data.open).toHaveLength(N)
+        // brak duplikatów po sklejeniu stron
+        expect(new Set(res.data.open.map((t) => t.id)).size).toBe(N)
+    })
+
     // Incydent 2026-08-25: awaria zapytania po cichu zamieniała tablicę w pustą
     // (sukces + zero kolumn, bez banera). Awaria źródła MUSI wracać jako błąd.
     it('returns error (not empty board) when the categories query fails', async () => {
