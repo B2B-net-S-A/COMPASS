@@ -82,7 +82,9 @@ function applyFilters(rows: Row[], filters: QueryFilter[]): Row[] {
             })
         } else if (f.kind === 'or' && f.orExprs) {
             out = out.filter(r => f.orExprs!.some(expr => {
-                if (expr.op === 'eq') return r[expr.column] === expr.value
+                // PostgREST `eq.true` dopasowuje boolean true — porównujemy po
+                // stringifikacji (wcześniej strict === gubił boole z fixtur).
+                if (expr.op === 'eq') return String(r[expr.column]) === expr.value
                 const re = new RegExp(`^${expr.value.replace(/%/g, '.*')}$`, 'i')
                 return re.test(String(r[expr.column] ?? ''))
             }))

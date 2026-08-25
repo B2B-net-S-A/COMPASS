@@ -46,11 +46,20 @@ function errorMessage(error: unknown, fallback: string): string {
 async function isCallerHandler(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase
         .from('profiles')
-        .select('role, is_inbox_handler')
+        .select('role, is_inbox_handler, has_tcm_access')
         .eq('id', userId)
         .single()
     if (!data) return false
-    return data.role === 'admin' || data.is_inbox_handler === true
+    // Decyzja Artura 2026-08-25: rola talent_community implikuje dostęp do
+    // skrzynki, a grant has_tcm_access (Phase 45 — People Ops dla nie-TCM,
+    // np. finanse/Dominik) otwiera też kanban Spraw — lustro SQL
+    // is_inbox_handler(). Grant bramkowany do HR-zone (nie-konsultant), jak
+    // w has_lifecycle_access(). Flaga is_inbox_handler zostaje jako
+    // per-osoba „obsługuję skrzynkę" (lista osób odpowiedzialnych).
+    return data.role === 'admin'
+        || data.role === 'talent_community'
+        || data.is_inbox_handler === true
+        || (data.has_tcm_access === true && data.role !== 'consultant')
 }
 
 async function getInboxCategoryIds(supabase: ReturnType<typeof createClient>): Promise<string[]> {
@@ -653,14 +662,15 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 
-        // Osoby odpowiedzialne = faktyczni operatorzy skrzynki (is_inbox_handler).
-        // Wcześniej dokładaliśmy tu WSZYSTKICH adminów (role.eq.admin) — właściciele
-        // firmy trafiali do listy „osoba odpowiedzialna" mimo że skrzynki nie obsługują
-        // (zgłoszenie Dominika). Admin, który chce obsługiwać, ustawia is_inbox_handler.
+        // Osoby odpowiedzialne = faktyczni operatorzy skrzynki: cały zespół TCM
+        // (rola implikuje obsługę — decyzja Artura 2026-08-25) + osoby z flagą
+        // is_inbox_handler (np. manager). Bare-admini świadomie POZA listą —
+        // właściciele firmy nie obsługują skrzynki (zgłoszenie Dominika);
+        // admin, który chce obsługiwać, ustawia sobie flagę.
         const { data, error } = await supabase
             .from('profiles')
             .select('id, full_name, email, role, is_inbox_handler')
-            .eq('is_inbox_handler', true)
+            .or('is_inbox_handler.eq.true,role.eq.talent_community')
             // Ticket przypisany osobie, która odeszła, nie ma kto obsłużyć.
             .neq('employment_status', 'exited')
             .order('full_name', { ascending: true })
