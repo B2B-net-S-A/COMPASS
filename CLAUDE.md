@@ -1475,6 +1475,15 @@ Odbiorcy alertów (opcjonalnie — bez nich fallback na wszystkich finanse+admin
 klucze `legal_monitor_red_recipients` (czerwone + digest) i `legal_monitor_ops_recipients` (cisza,
 awarie źródeł), oba jako CSV z UUID.
 
+> **2026-08-25 — odbiorcy zawężeni (decyzja Artura): powiadomienia z monitoringu prawnego idą
+> WYŁĄCZNIE do Zbigniewa Twardowskiego i Artura Twardowskiego.** Oba klucze ustawione na prodzie
+> na te dwa UUID (`ae147f25-…` + `e44f933f-…`), więc fallback „wszyscy finanse+admin" (do tej
+> daty: dodatkowo 4 osoby z rolą finanse) już się nie stosuje. Dzienny digest bez zmian — sam
+> Zbigniew (Phase 54; Artur dostaje digest tygodniowy, bo nie jest wpisany do dziennego).
+> Przypomnienie o zaległej reakcji z ustawionym `assigned_to` nadal idzie do przypisanej osoby —
+> to jawna decyzja przeglądającego, nie fallback. Zmiana listy = UPDATE tych kluczy w
+> `system_settings` (żaden deploy nie jest potrzebny).
+
 ## Phase 51 — Monitoring prawny: skrzynka grupowana po dacie otrzymania (2026-08-12)
 
 Przeglądający wchodzi codziennie i pyta „co przyszło nowego", a lista była płaska i posortowana
