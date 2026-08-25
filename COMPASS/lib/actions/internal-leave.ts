@@ -561,9 +561,23 @@ export async function getLeaveProofSignedUrl(leaveId: string): Promise<string> {
     if (error || !leave) throw new Error('Nie znaleziono wniosku urlopowego.')
     if (!leave.documentation_url) throw new Error('Ten wniosek nie ma załącznika.')
 
+    // Zakres jest WĄSKI celowo: załącznikiem bywa skan zwolnienia L4, czyli dane
+    // o zdrowiu (art. 9 RODO). `ctx.isManager` znaczy tylko „ma rolę manager",
+    // a nie „jest przełożonym TEJ osoby" — bez sprawdzenia manager_id kierownik
+    // zespołu A mógłby pobrać podpisany link do L4 pracownika z zespołu B.
     const isOwner = leave.user_id === ctx.userId
-    const isApprover = ctx.isAdmin || ctx.isManager || ctx.role === 'finanse'
-    if (!isOwner && !isApprover) {
+    let allowed = isOwner || ctx.isAdmin || ctx.role === 'finanse'
+
+    if (!allowed && ctx.isManager) {
+        const { data: target } = await admin
+            .from('profiles')
+            .select('manager_id')
+            .eq('id', leave.user_id)
+            .single<{ manager_id: string | null }>()
+        allowed = target?.manager_id === ctx.userId
+    }
+
+    if (!allowed) {
         throw new Error('Brak uprawnień do tego załącznika.')
     }
 

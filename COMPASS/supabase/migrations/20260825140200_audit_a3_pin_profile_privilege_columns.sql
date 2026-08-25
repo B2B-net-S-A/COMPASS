@@ -32,6 +32,37 @@ BEGIN
     -- public.is_admin()   → lib/actions/admin-management.ts:115 i :153 zmieniają rolę
     --                       klientem cookie zalogowanego admina — przepuszczamy.
     IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+        -- Zostaw ślad, ale TYLKO gdy ktoś faktycznie próbował ruszyć kolumnę
+        -- uprawnień — inaczej każda zmiana avatara zaśmiecałaby dziennik.
+        -- Bez tego wpisu cofnięcie jest całkowicie ciche: atakujący dostaje 200
+        -- z niezmienionym wierszem, a my nie mamy jak wykryć próby.
+        -- Trigger jest SECURITY DEFINER (właściciel: postgres), więc ten INSERT
+        -- omija RLS na audit_logs i nie potrzebuje dblink ani pg_notify.
+        IF NEW.role IS DISTINCT FROM OLD.role
+            OR NEW.manager_id IS DISTINCT FROM OLD.manager_id
+            OR NEW.employment_status IS DISTINCT FROM OLD.employment_status
+            OR NEW.is_inbox_handler IS DISTINCT FROM OLD.is_inbox_handler
+            OR NEW.has_tcm_access IS DISTINCT FROM OLD.has_tcm_access
+            OR NEW.can_log_overtime IS DISTINCT FROM OLD.can_log_overtime
+            OR NEW.can_view_tech_map IS DISTINCT FROM OLD.can_view_tech_map
+            OR NEW.can_view_legal_monitor IS DISTINCT FROM OLD.can_view_legal_monitor
+            OR NEW.leave_entitlement_days IS DISTINCT FROM OLD.leave_entitlement_days
+            OR NEW.termination_date IS DISTINCT FROM OLD.termination_date
+        THEN
+            INSERT INTO public.audit_logs (user_id, action, details, ip_address)
+            VALUES (
+                auth.uid(),
+                'PROFILE_PRIVILEGE_CHANGE_BLOCKED',
+                jsonb_build_object(
+                    'target_user_id', NEW.id,
+                    'attempted_role', NEW.role,
+                    'current_role', OLD.role,
+                    'attempted_employment_status', NEW.employment_status
+                ),
+                'trigger'
+            );
+        END IF;
+
         NEW.role                    := OLD.role;
         NEW.manager_id              := OLD.manager_id;
         NEW.employment_status       := OLD.employment_status;
