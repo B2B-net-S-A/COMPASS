@@ -1427,6 +1427,9 @@ Format: `RRRR-MM-DD · ID · co zrobione · jak zweryfikowane · commit/PR`
 
 | Data | ID | Co | Weryfikacja | Ślad |
 |---|---|---|---|---|
+| 2026-08-25 | WDROŻENIE | PR #349 zmergowany, prod na 5090415, `/api/health` healthy | smoke test SHA-match | main |
+| 2026-08-25 | A1–A4.6, db1–db5, C6.1, C12 | **15 migracji zastosowanych na produkcji** przez MCP | asercje B5 przeszły na żywej bazie; advisor: 0 znalezisk ERROR | rejestr `audit_*` |
+| 2026-08-25 | POZOSTAŁO | C2 (drop mirrora), C3 (komentarze), C6.2 (41 indeksów FK), C6.3 (lookup kategorii), drop bucketu chat-attachments | 2 zablokowane przez klasyfikator (operacje kasujące), 3 niezaaplikowane | pliki w repo |
 | 2026-08-25 | — | Audyt wykonany, nic nie zmienione | 94 agenty, 70 znalezisk zweryfikowanych adwersaryjnie | `docs/audyt-2026-08-plan-naprawy.md` |
 | 2026-08-25 | A0.1–A0.6, A4.2–A4.4 | Kod Etapu A | `tsc` czysty, 1278/1278 testów, 6 nowych testów `safeNextPath`, przegląd 6 obiektywów | PR „Etap A" |
 | 2026-08-25 | A1.1, A2.1, A2.2, A3.1, A3.2, A4.1 | Migracje napisane, **niezaaplikowane** | walidacja składni + `DO $$` self-check w plikach | 5 plików `supabase/migrations/20260825140*` |
