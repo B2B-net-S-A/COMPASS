@@ -88,21 +88,17 @@ export async function listInboxTickets(filter?: {
             }
         }
 
-        let query = supabase
-            .from('support_tickets')
-            .select('*')
-            .in('category_id', inboxCategoryIds)
-            .order('updated_at', { ascending: false })
-
-        if (filter?.assignee_id) query = query.eq('assignee_id', filter.assignee_id)
-
-        const { data: tickets, error } = await query
-        if (error) throw error
-        // Jak niżej przy meta: null bez błędu ≠ pusta lista — to sygnał, że
-        // odpowiedź nie zmaterializowała się w runtime (incydent 2026-08-25).
-        if (tickets === null) throw new Error('Brak odpowiedzi z support_tickets (data=null bez błędu)')
-
-        const ticketRows = (tickets ?? []) as Array<{
+        // Incydent 2026-08-25 (część sieciowa): transfer odpowiedzi > ~100 kB
+        // z PostgREST do kontenera bywa zrywany w locie (TypeError: fetch failed
+        // mimo retry w hardenedFetch), podczas gdy odpowiedzi do ~25 kB przechodzą
+        // niezawodnie (Pulpit ~544 wierszy działa). Do czasu naprawy sieci hosta
+        // tablica pobiera dane PARTIAMI mieszczącymi się pod progiem:
+        // tickety stronami po 30 (≈20 kB z body_md), meta paczkami po 60 id
+        // (≈22 kB po odchudzeniu tabeli). Mechanizm poprawny także na zdrowej
+        // sieci — tylko kilka żądań więcej.
+        const TICKETS_PAGE_SIZE = 30
+        const TICKETS_PAGE_CAP = 40 // twardy sufit 1200 ticketów — pętla nie może być nieskończona
+        type TicketRow = {
             id: string
             user_id: string
             assignee_id: string | null
@@ -114,7 +110,31 @@ export async function listInboxTickets(filter?: {
             resolved_at: string | null
             created_at: string
             updated_at: string
-        }>
+        }
+
+        const ticketRows: TicketRow[] = []
+        for (let page = 0; page < TICKETS_PAGE_CAP; page++) {
+            let query = supabase
+                .from('support_tickets')
+                .select('*')
+                .in('category_id', inboxCategoryIds)
+                .order('updated_at', { ascending: false })
+                .range(page * TICKETS_PAGE_SIZE, (page + 1) * TICKETS_PAGE_SIZE - 1)
+            if (filter?.assignee_id) query = query.eq('assignee_id', filter.assignee_id)
+
+            const { data: pageRows, error } = await query
+            if (error) throw error
+            // null bez błędu ≠ pusta lista — sygnał, że odpowiedź nie
+            // zmaterializowała się w runtime (incydent 2026-08-25).
+            if (pageRows === null) throw new Error('Brak odpowiedzi z support_tickets (data=null bez błędu)')
+            ticketRows.push(...(pageRows as TicketRow[]))
+            if (pageRows.length < TICKETS_PAGE_SIZE) break
+            if (page === TICKETS_PAGE_CAP - 1) {
+                logCompat.warn('[listInboxTickets] osiągnięto sufit stron — tablica może być niepełna', {
+                    cap: TICKETS_PAGE_CAP * TICKETS_PAGE_SIZE,
+                })
+            }
+        }
 
         if (ticketRows.length === 0) {
             return {
@@ -129,31 +149,31 @@ export async function listInboxTickets(filter?: {
             ...ticketRows.map((t) => t.assignee_id).filter((x): x is string => !!x),
         ]))
 
-        // KRYTYCZNE: jawna lista kolumn, NIE select('*'). Tabela niesie martwe
-        // kolumny po usuniętym auto-imporcie maili (Phase 44): email_body_html /
-        // email_body_text / email_headers — łącznie ~4 MB na 397 wierszy
-        // (pojedyncze wiersze po 441 kB). select('*') ciągnął to wszystko przy
-        // każdym renderze tablicy; 2026-08-25 tak spuchnięta odpowiedź przestała
-        // się materializować w runtime i tablica renderowała się pusta.
-        // Lista kolumn = dokładnie interfejs SupportInboxMeta (literał — supabase-js
-        // wywodzi typ wiersza ze stringa w select()).
-        const [metasRes, profilesRes, categoriesRes] = await Promise.all([
-            supabase
+        // KRYTYCZNE: jawna lista kolumn, NIE select('*') (incydent 2026-08-25 —
+        // martwe kolumny email z Phase 44 pompowały odpowiedź do ~4 MB; zdjęte
+        // migracją inbox_email_archive_and_drop, lista zostaje jako pas
+        // bezpieczeństwa i dokumentacja kształtu = interfejs SupportInboxMeta).
+        // Meta pobierane PACZKAMI po 60 id (≈22 kB) — patrz komentarz sieciowy wyżej.
+        const META_CHUNK = 60
+        const metas: SupportInboxMeta[] = []
+        for (let i = 0; i < ticketIds.length; i += META_CHUNK) {
+            const chunkIds = ticketIds.slice(i, i + META_CHUNK)
+            const { data: metaChunk, error: metaErr } = await supabase
                 .from('support_inbox_meta')
                 .select('ticket_id, source, external_message_id, consultant_id, consultant_name, consultant_phone, client_name, contractor_id, priority_level, due_date, email_from, email_subject, email_received_at, created_at')
-                .in('ticket_id', ticketIds),
+                .in('ticket_id', chunkIds)
+            // Meta jest warunkiem renderowania karty (`if (!meta) continue` niżej) —
+            // cicha awaria wycinała WSZYSTKIE tickety bez błędu. Rzucamy, żeby UI
+            // dostał jawny baner; null bez błędu traktujemy tak samo.
+            if (metaErr) throw metaErr
+            if (metaChunk === null) throw new Error('Brak odpowiedzi z support_inbox_meta (data=null bez błędu)')
+            metas.push(...(metaChunk as unknown as SupportInboxMeta[]))
+        }
+
+        const [profilesRes, categoriesRes] = await Promise.all([
             supabase.from('profiles').select('id, full_name').in('id', userIds),
             supabase.from('support_categories').select('id, slug, name_pl').in('id', inboxCategoryIds),
         ])
-
-        // Meta jest warunkiem renderowania karty (`if (!meta) continue` niżej) —
-        // cicha awaria tego zapytania wycinała WSZYSTKIE tickety z tablicy bez
-        // żadnego błędu (incydent 2026-08-25). Rzucamy, żeby UI dostał jawny baner.
-        // `data === null` bez `error` traktujemy tak samo — dla wielowierszowego
-        // selecta poprawna odpowiedź to zawsze tablica (choćby pusta).
-        if (metasRes.error) throw metasRes.error
-        if (metasRes.data === null) throw new Error('Brak odpowiedzi z support_inbox_meta (data=null bez błędu)')
-        const metas = metasRes.data
         // Profile i kategorie są tylko dekoracją (nazwiska, etykiety) — ich awaria
         // degraduje wyświetlanie do null/'', ale nie może chować ticketów.
         const profiles = profilesRes.data
