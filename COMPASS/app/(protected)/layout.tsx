@@ -10,7 +10,6 @@ import { getPermissions } from '@/lib/actions/permissions'
 import { getUnreadNewsCount } from '@/lib/actions/news'
 import { listTickets } from '@/lib/actions/support-tickets'
 import { listAllPitchesAdmin } from '@/lib/actions/incubator'
-import { getUnreadGuardianMessages } from '@/lib/actions/communicator'
 import { getLifecycleSidebarCount } from '@/lib/actions/lifecycle'
 import { getActiveLeavesCount } from '@/lib/actions/internal-leave'
 import type { PermissionRole, PermissionsMap } from '@/lib/types/permissions'
@@ -117,7 +116,10 @@ export default async function ProtectedLayout({
             getUnreadNewsCount(),
             isAdminLike ? listTickets({ scope: 'all', status: 'open', limit: 1 }) : Promise.resolve({ success: false as const, error: 'skip' }),
             isAdminLike ? listAllPitchesAdmin('submitted') : Promise.resolve({ success: false as const, error: 'skip' }),
-            !isAdminLike ? getUnreadGuardianMessages() : Promise.resolve(0),
+            // Audyt 2026-08 (C4): komunikator usunięty — nie miał RPC w bazie,
+            // zera wierszy i żadnego wejścia z nawigacji. Badge zostaje na 0,
+            // bo `consultantSupport` jest częścią kontraktu SidebarBadgeCounts.
+            Promise.resolve(0),
             isInboxHandler ? countOpenInboxTickets(supabase) : Promise.resolve(0),
             isHrZoneUser
                 ? getLifecycleSidebarCount().catch(() => ({ total: 0 } as { total: number }))
