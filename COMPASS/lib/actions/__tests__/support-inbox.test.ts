@@ -478,6 +478,44 @@ describe('listInboxTickets', () => {
         expect(new Set(res.data.open.map((t) => t.id)).size).toBe(N)
     })
 
+    // Decyzja Artura 2026-08-25: rola talent_community implikuje dostęp do
+    // skrzynki — TCM bez flagi is_inbox_handler też widzi kanban, a lista
+    // „osoba odpowiedzialna" obejmuje cały zespół TCM (bare-admini nadal poza).
+    it('lists all TCM (with or without flag) + flagged non-TCM as handlers, excludes bare admin', async () => {
+        const tables = baseTables({
+            profiles: [
+                { id: 'tcm-noflag', email: 'olaf@b2bnetwork.pl', full_name: 'Olaf', role: 'talent_community', is_inbox_handler: false, employment_status: 'active' },
+                { id: 'tcm-flag', email: 'blazej@b2bnetwork.pl', full_name: 'Błażej', role: 'talent_community', is_inbox_handler: true, employment_status: 'active' },
+                { id: 'mgr-flag', email: 'dominik@b2bnetwork.pl', full_name: 'Dominik', role: 'manager', is_inbox_handler: true, employment_status: 'active' },
+                { id: 'admin-bare', email: 'admin@b2bnetwork.pl', full_name: 'Admin', role: 'admin', is_inbox_handler: false, employment_status: 'active' },
+            ],
+        })
+        setupClient({
+            user: { id: 'admin-bare', email: 'admin@b2bnetwork.pl' },
+            tables,
+        })
+        const { listInboxHandlers } = await import('../support-inbox')
+        const res = await listInboxHandlers()
+        expect(res.success).toBe(true)
+        if (!res.success) return
+        expect(res.data.map((h) => h.id).sort()).toEqual(['mgr-flag', 'tcm-flag', 'tcm-noflag'])
+    })
+
+    it('grants access to talent_community role without the handler flag', async () => {
+        const tables = baseTables({
+            profiles: [
+                { id: 'tcm-noflag', email: 'olaf@b2bnetwork.pl', full_name: 'Olaf', role: 'talent_community', is_inbox_handler: false },
+            ],
+        })
+        setupClient({
+            user: { id: 'tcm-noflag', email: 'olaf@b2bnetwork.pl' },
+            tables,
+        })
+        const { listInboxTickets } = await import('../support-inbox')
+        const res = await listInboxTickets()
+        expect(res.success).toBe(true)
+    })
+
     // Incydent 2026-08-25: awaria zapytania po cichu zamieniała tablicę w pustą
     // (sukces + zero kolumn, bez banera). Awaria źródła MUSI wracać jako błąd.
     it('returns error (not empty board) when the categories query fails', async () => {

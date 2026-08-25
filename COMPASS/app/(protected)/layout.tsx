@@ -99,7 +99,8 @@ export default async function ProtectedLayout({
         // Phase 9: unread guardian messages for consultants (Support Center badge).
         // Phase 10: inbox kanban open ticket count for handlers (admin or is_inbox_handler).
         const isAdminLike = role === 'admin'
-        const isInboxHandler = isAdminLike || profile?.is_inbox_handler === true
+        // Rola talent_community implikuje obsługę skrzynki (2026-08-25) — badge widzi cały TCM.
+        const isInboxHandler = isAdminLike || role === 'talent_community' || profile?.is_inbox_handler === true
         // Phase 45: per-user grant — additive Talent Community / People Ops access on top of role.
         const hasTcmAccess = profile?.has_tcm_access === true
         // Phase 22: lifecycle count for HR-zone roles only (consultant IT has no lifecycle module).

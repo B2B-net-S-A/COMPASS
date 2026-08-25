@@ -23,7 +23,8 @@ export default async function AdminInboxPage() {
         .eq('id', user.id)
         .single()
 
-    const isAuthorized = profile?.role === 'admin' || profile?.is_inbox_handler === true
+    // Rola talent_community implikuje dostęp (2026-08-25) — lustro is_inbox_handler().
+    const isAuthorized = profile?.role === 'admin' || profile?.role === 'talent_community' || profile?.is_inbox_handler === true
     if (!isAuthorized) redirect('/home')
 
     const [ticketsRes, handlersRes, categoriesRes] = await Promise.all([
