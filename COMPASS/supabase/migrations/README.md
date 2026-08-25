@@ -83,33 +83,36 @@ mcp__supabase__list_migrations(project_id=shduiynzemftkqqefscd)
 supabase migration list
 ```
 
-## Stan po Phase 18 (2026-05-12)
+## Reconciliation P1 (2026-07-13)
 
-- **55 migracji** w prod (zobacz output `list_migrations`)
-- **~140 plików** w `supabase/migrations/` — rozjazd: część plików w repo
-  nigdy nie była aplikowana (była wywołana ad-hoc przez SQL editor), część
-  jest aplikowana ale pod inną nazwą (Supabase wzbogaca nazwę migracji
-  o timestamp przy push)
-- TODO: audyt repo↔prod sync — wytrzeć dead migracje lub przepisać do
-  prawidłowego formatu
+- Repo zawiera **180 aktywnych migracji bazowych** z unikalną, 14-cyfrową
+  wersją oraz trzy udokumentowane tombstony `.sql.disabled`.
+- Pełny fresh replay i pgTAP przechodzą lokalnie.
+- Stan ledgeru produkcji nadal wymaga read-only preflightu i świadomego
+  `migration repair`. Samo `db push --include-all` jest zabronione.
+- Mapowanie starych i nowych wersji oraz procedura produkcyjna:
+  `docs/database/migration-reconciliation-runbook.md`.
+- Checker blokuje brakujące wiersze mapowania przez porównanie z zablokowanym
+  commitem bazowym `0c3f266530dc0cd1653c0d555645468935469a49`, a także
+  identity-specific DML, seedy haseł i wykonywalny SQL w tombstonach.
 
 ## Workflow
 
 ```bash
-# Nowa zmiana schematu:
-TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
-touch supabase/migrations/${TIMESTAMP}_<feature>_<verb>.sql
+# Nowa zmiana schematu (CLI tworzy poprawną wersję):
+npx --yes supabase@2.109.1 migration new <feature>_<verb>
 
 # Pisz idempotent SQL...
 
-# Apply do prod via MCP:
-# mcp__supabase__apply_migration(name, query)
+# Lokalna weryfikacja historii + fresh replay:
+npm run db:migrations:check
+npx --yes supabase@2.109.1 db reset --local --no-seed
+npx --yes supabase@2.109.1 test db --local supabase/tests
 
 # Aktualizuj DB types:
 npm run db:types
 
-# Verify advisors (po RLS / SECURITY changes):
-# mcp__supabase__get_advisors(type='security')
+# Verify lint/advisors po RLS / SECURITY changes.
 ```
 
 ## See also

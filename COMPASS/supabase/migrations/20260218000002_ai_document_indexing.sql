@@ -10,6 +10,22 @@ ADD COLUMN IF NOT EXISTS ai_indexed BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS ai_indexed_at TIMESTAMP WITH TIME ZONE,
 ADD COLUMN IF NOT EXISTS description TEXT;
 
+-- Supabase Postgres does not ship a built-in Polish dictionary. Keep the
+-- existing application contract while using the deterministic `simple`
+-- tokenizer (no language stemming) on every environment.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_ts_config AS cfg
+        JOIN pg_catalog.pg_namespace AS ns ON ns.oid = cfg.cfgnamespace
+        WHERE ns.nspname = 'public' AND cfg.cfgname = 'polish'
+    ) THEN
+        CREATE TEXT SEARCH CONFIGURATION public.polish (COPY = pg_catalog.simple);
+    END IF;
+END
+$$;
+
 -- 2. Full-text search index (GIN) na text_content
 CREATE INDEX IF NOT EXISTS idx_app_documents_text_search
 ON app_documents USING GIN (to_tsvector('polish', COALESCE(text_content, '') || ' ' || COALESCE(title, '') || ' ' || COALESCE(description, '')));

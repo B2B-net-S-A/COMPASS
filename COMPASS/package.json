@@ -20,6 +20,7 @@
     "test:rls": "playwright test e2e/04-rls-database.spec.ts",
     "test:communicator": "playwright test e2e/03-communicator.spec.ts",
     "test:eval": "tsx scripts/eval_matching.ts",
+    "db:migrations:check": "node scripts/check-migration-history.mjs",
     "db:types": "supabase gen types typescript --project-id shduiynzemftkqqefscd --schema public > lib/supabase/database.types.ts",
     "ship": "bash scripts/git-ship.sh"
   },
@@ -92,6 +93,7 @@
     "pg": "^8.18.0",
     "playwright": "^1.58.2",
     "postcss": "^8",
+    "supabase": "2.109.1",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.21.0",
     "typescript": "^5",
