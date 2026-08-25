@@ -1602,9 +1602,14 @@ z przebiegów w kontekście zalogowanym (stąd „dziwne godziny"). Sonda piszą
 service-clientem (klon zadania → `/api/cron/consultant-success-plan`,
 `contractor_success_job_state.last_started_at` = 17:40:05, run_count +1) potwierdziła, że
 scheduler wykonuje również zadania z DB INSERT / akcji cron-add. Wnioski operacyjne:
-1. **Weryfikując crony, nie patrz na `audit_logs`** — szukaj śladów pisanych
-   service-clientem (stemple `system_settings`, `alerted_at`, `job_state`); naprawa
-   `logAudit` dla kontekstu bez sesji = osobny follow-up.
+1. **Heartbeaty z cronów działają od 2026-08-25** — `logAudit` pisze service-rolą, gdy
+   żądanie niesie `Authorization: Bearer CRON_SECRET` (ten sam parsing co `withCronAuth`;
+   RLS bez zmian, więc anonimowe wywołanie akcji dalej nie sfałszuje audytu; legacy
+   `?secret=` nie zostawia heartbeatu). Procedury „start bez done / brak start" z Phase
+   41b/46/50/52 znów mają sens, ALE wpisy `*_RUN` **sprzed 2026-08-25** dokumentują
+   wyłącznie przebiegi z kontekstu zalogowanego — nie wyciągaj z ich braku wniosków
+   o historii cronów. Przy wątpliwościach nadal działa weryfikacja po śladach
+   service-clienta (stemple `system_settings`, `alerted_at`, `job_state`).
 2. GH Actions zostaje schedulerem tej trasy (przebieg zweryfikowany end-to-end, widoczny
    w UI Actions); bliźniacze zadanie `legal-monitor-alerts` w Coolify jest **wyłączone** —
    nie włączać drugiego schedulera bez stempla dedupu dla tygodniowego digestu (podwójny

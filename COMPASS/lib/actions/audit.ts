@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 
 export type AuditAction =
@@ -269,9 +270,23 @@ export async function logAudit(
     details?: Record<string, any>
 ) {
     try {
-        const supabase = createClient()
         const headerStore = headers()
         const ip = headerStore.get('x-forwarded-for') || 'unknown'
+
+        // Żądanie crona (Bearer CRON_SECRET) nie ma sesji użytkownika, więc
+        // klient cookie'owy pisze jako anon — a polityka INSERT na audit_logs
+        // wymaga auth.uid() IS NOT NULL, przez co insert był po cichu odrzucany
+        // i heartbeaty *_RUN z realnych przebiegów cronów nigdy nie lądowały
+        // w bazie (odkryte 2026-08-24, Phase 54). Service-rola WYŁĄCZNIE dla
+        // żądań uwierzytelnionych sekretem crona (ten sam parsing co
+        // withCronAuth): bezpośrednie anonimowe wywołanie tej akcji dalej
+        // odbija się o RLS, więc nie da się nią fałszować audytu. Legacy
+        // `?secret=` (deprecated) nie jest tu honorowane — heartbeat wymaga
+        // nagłówka Bearer.
+        const cronSecret = process.env.CRON_SECRET
+        const bearer = headerStore.get('authorization')?.replace(/^Bearer\s+/i, '')
+        const isCronRequest = Boolean(cronSecret) && bearer === cronSecret
+        const supabase = isCronRequest ? createServiceClient() : createClient()
 
         const { error } = await supabase.from('audit_logs').insert({
             user_id: userId,
