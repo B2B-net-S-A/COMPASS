@@ -1,14 +1,18 @@
 // ─── Utwardzony fetch dla serwerowych klientów Supabase ──────────────────────
-// Incydent 2026-08-25 („zniknął nam cały kanban"): dwie współdziałające awarie
-// sprawiały, że tablica Zgłoszeń renderowała się pusta mimo zdrowego API:
+// Incydent 2026-08-25 („zniknął nam cały kanban"). Uwaga na kolejność faktów,
+// bo pierwsza diagnoza była błędna:
 //
-// 1. Transfer dużych odpowiedzi PostgREST do kontenera bywał zrywany w locie
-//    (edge logował 200 + pełny content-range, a fetch w kontenerze padał).
-// 2. Next.js Data Cache potrafił zapamiętać taki zepsuty rezultat dla URL-a
-//    zapytania i odtwarzać go przy KOLEJNYCH renderach bez dotykania sieci —
-//    świeży kontener psuł się po pierwszym nieudanym fetchu i już takim zostawał.
+// - PRZYCZYNĄ incydentu okazała się DŁUGOŚĆ URL-a zapytania (`.in()` z 397 id
+//   → query string ~15 kB, ucinany na trasie do kontenera). Naprawa siedzi
+//   w listInboxTickets (pytanie paczkami), NIE tutaj.
+// - Ten moduł powstał wcześniej, gdy podejrzenie padało na rozmiar odpowiedzi.
+//   Zostaje, bo rozwiązuje realny, osobny problem: Next.js Data Cache potrafił
+//   zapamiętać nieudany rezultat dla URL-a i odtwarzać go przy KOLEJNYCH
+//   renderach bez dotykania sieci (rendery z błędem, dla których w edge logach
+//   nie było ani jednego zapytania) — świeży kontener psuł się po pierwszym
+//   nieudanym fetchu i już taki zostawał.
 //
-// Ten moduł adresuje obie warstwy:
+// Dwie rzeczy, które ten moduł faktycznie daje:
 // - `cache: 'no-store'` — zapytania uwierzytelnione per-user NIGDY nie mogą być
 //   cache'owane współdzielonym Data Cache (klucz cache to URL bez nagłówków,
 //   więc wpis jednego użytkownika serwowałby dane innym); wymuszamy jawnie
@@ -16,7 +20,9 @@
 // - retry z krótkim backoffem na SIECIOWE błędy żądań idempotentnych (GET/HEAD)
 //   — undici po padzie niszczy socket, więc ponowienie idzie po świeżym
 //   połączeniu. Mutacje (POST/PATCH/DELETE) świadomie BEZ retry (podwójny
-//   insert gorszy niż widoczny błąd).
+//   insert gorszy niż widoczny błąd). Uwaga: retry NIE ratuje żądania z za
+//   długim URL-em (każda próba pada tak samo — potwierdzone w produkcji);
+//   od tego jest pytanie paczkami po stronie wywołującego.
 //
 // Czysty moduł (bez zależności serwerowych) — testowalny wprost.
 

@@ -1,12 +1,15 @@
 -- ============================================================================
 -- Archiwum treści maili z auto-importu + DROP martwych kolumn z support_inbox_meta
 -- ============================================================================
--- Incydent 2026-08-25 („zniknął nam cały kanban"): select('*') w listInboxTickets
--- ciągnął przy każdym renderze tablicy ~4,1 MB martwych treści maili z usuniętego
--- auto-importu (Phase 44) — email_body_html / email_body_text / email_headers,
--- pojedyncze wiersze do 441 kB. Tak spuchnięta odpowiedź przestawała się
--- materializować w runtime kontenera i tablica renderowała się pusta.
--- Kod naprawiony jawną listą kolumn (PR #343); ta migracja usuwa samą bombę.
+-- Kontekst: podczas incydentu 2026-08-25 („zniknął nam cały kanban") wyszło na
+-- jaw, że select('*') w listInboxTickets ciągnął przy KAŻDYM renderze tablicy
+-- ~4,1 MB martwych treści maili z usuniętego auto-importu (Phase 44) —
+-- email_body_html / email_body_text / email_headers, pojedyncze wiersze do 441 kB.
+--
+-- UWAGA na atrybucję: to over-fetch był realnym problemem wydajnościowym, ale
+-- NIE był przyczyną pustej tablicy — tą okazała się długość URL-a zapytania
+-- (`.in()` z 397 id). Ta migracja usuwa martwy balast; naprawa incydentu siedzi
+-- w listInboxTickets (pytanie paczkami).
 --
 -- Decyzja Artura (2026-08-25): ARCHIWUM + DROP — treści maili zostają odzyskiwalne
 -- (Phase 44: „martwe, ale celowo zachowane, do odzyskania"), ale wyprowadzone do
