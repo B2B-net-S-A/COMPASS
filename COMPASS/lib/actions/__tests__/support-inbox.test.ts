@@ -28,6 +28,23 @@ function setupClient(cfg: MockSupabaseConfig = {}): MockSupabase {
     return currentClient
 }
 
+/**
+ * Zapytanie, które kończy się błędem po stronie PostgREST — dowolny łańcuch
+ * builderów (.select().in().order()...) zwraca samego siebie, a await rozwiązuje
+ * się do { data: null, error } jak w supabase-js (PostgrestError dziedziczy
+ * z Error, stąd new Error — komunikat ma dotrzeć do UI).
+ */
+function failingQuery(message: string) {
+    const q: Record<string, unknown> = {}
+    const chain = () => q
+    for (const m of ['select', 'in', 'eq', 'neq', 'order', 'limit', 'single', 'maybeSingle', 'ilike', 'or', 'range']) {
+        q[m] = chain
+    }
+    q.then = (resolve: (v: { data: null; error: Error }) => void) =>
+        Promise.resolve({ data: null, error: new Error(message) }).then(resolve)
+    return q
+}
+
 afterEach(() => {
     vi.clearAllMocks()
 })
@@ -432,5 +449,49 @@ describe('listInboxTickets', () => {
         expect(res.success).toBe(true)
         if (!res.success) return
         expect(res.data.open.map(t => t.id)).toEqual(['t1'])
+    })
+
+    // Incydent 2026-08-25: awaria zapytania po cichu zamieniała tablicę w pustą
+    // (sukces + zero kolumn, bez banera). Awaria źródła MUSI wracać jako błąd.
+    it('returns error (not empty board) when the categories query fails', async () => {
+        const client = setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables(),
+        })
+        const realFrom = client.from.bind(client)
+        client.from = ((table: string) => {
+            if (table === 'support_categories') return failingQuery('categories boom')
+            return realFrom(table)
+        }) as typeof client.from
+        const { listInboxTickets } = await import('../support-inbox')
+        const res = await listInboxTickets()
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toContain('categories boom')
+    })
+
+    it('returns error (not empty board) when the inbox meta query fails', async () => {
+        const tables = baseTables({
+            support_tickets: [
+                { id: 't1', user_id: 'handler1', category_id: 'cat-adm', status: 'open', subject: 'A', body_md: 'b', priority: 'normal', assignee_id: 'handler1', resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+            ],
+            support_inbox_meta: [
+                { ticket_id: 't1', source: 'manual_paste', priority_level: 'P1', due_date: '2026-05-08', consultant_id: null, external_message_id: null, email_from: null, email_subject: 'A', email_received_at: null, created_at: '2026-05-01' },
+            ],
+        })
+        const client = setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables,
+        })
+        const realFrom = client.from.bind(client)
+        client.from = ((table: string) => {
+            if (table === 'support_inbox_meta') return failingQuery('meta boom')
+            return realFrom(table)
+        }) as typeof client.from
+        const { listInboxTickets } = await import('../support-inbox')
+        const res = await listInboxTickets()
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toContain('meta boom')
     })
 })

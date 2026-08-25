@@ -38,10 +38,16 @@ async function isCallerHandler(supabase: ReturnType<typeof createClient>, userId
 }
 
 async function getInboxCategoryIds(supabase: ReturnType<typeof createClient>): Promise<string[]> {
-    const { data } = await supabase
+    // Incydent 2026-08-25 („zniknął nam cały kanban"): awaria tego zapytania była
+    // po cichu połykana — `data = null` → `[]` → caller zwracał sukces z pustymi
+    // kolumnami i tablica renderowała się pusta BEZ żadnego komunikatu. Awaria
+    // zapytania ≠ brak kategorii — rzucamy, żeby caller pokazał jawny błąd
+    // (audyt P1.1/P1.7: odmowa dostępu / awaria zapytania ≠ pusta lista).
+    const { data, error } = await supabase
         .from('support_categories')
         .select('id')
         .in('slug', INBOX_CATEGORY_SLUGS as unknown as string[])
+    if (error) throw error
     return (data ?? []).map((c: { id: string }) => c.id)
 }
 
@@ -104,11 +110,21 @@ export async function listInboxTickets(filter?: {
             ...ticketRows.map((t) => t.assignee_id).filter((x): x is string => !!x),
         ]))
 
-        const [{ data: metas }, { data: profiles }, { data: categories }] = await Promise.all([
+        const [metasRes, profilesRes, categoriesRes] = await Promise.all([
             supabase.from('support_inbox_meta').select('*').in('ticket_id', ticketIds),
             supabase.from('profiles').select('id, full_name').in('id', userIds),
             supabase.from('support_categories').select('id, slug, name_pl').in('id', inboxCategoryIds),
         ])
+
+        // Meta jest warunkiem renderowania karty (`if (!meta) continue` niżej) —
+        // cicha awaria tego zapytania wycinała WSZYSTKIE tickety z tablicy bez
+        // żadnego błędu (incydent 2026-08-25). Rzucamy, żeby UI dostał jawny baner.
+        if (metasRes.error) throw metasRes.error
+        const metas = metasRes.data
+        // Profile i kategorie są tylko dekoracją (nazwiska, etykiety) — ich awaria
+        // degraduje wyświetlanie do null/'', ale nie może chować ticketów.
+        const profiles = profilesRes.data
+        const categories = categoriesRes.data
 
         const metaMap = new Map<string, SupportInboxMeta>()
         for (const m of (metas ?? []) as SupportInboxMeta[]) metaMap.set(m.ticket_id, m)
@@ -663,10 +679,12 @@ export async function getInboxSummary(): Promise<SupportActionResult<InboxSummar
             return { success: true, data: { open: 0, overdue: 0, unassigned: 0 } }
         }
 
-        const { data: tickets } = await supabase
+        // Jak w listInboxTickets: awaria zapytania nie może udawać „0 spraw".
+        const { data: tickets, error: ticketsErr } = await supabase
             .from('support_tickets')
             .select('id, status, assignee_id')
             .in('category_id', inboxCategoryIds)
+        if (ticketsErr) throw ticketsErr
         const rows = (tickets ?? []) as Array<{ id: string; status: TicketStatus; assignee_id: string | null }>
         const openRows = rows.filter((t) => t.status !== 'resolved' && t.status !== 'closed')
 
