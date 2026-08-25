@@ -94,3 +94,17 @@ CREATE TRIGGER trg_pin_profile_privilege_columns
     BEFORE UPDATE ON public.profiles
     FOR EACH ROW
     EXECUTE FUNCTION public.pin_profile_privilege_columns();
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = 'profiles'
+          AND t.tgname = 'trg_pin_profile_privilege_columns'
+          AND NOT t.tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'A3 nie zadziałał — trigger trg_pin_profile_privilege_columns nie istnieje';
+    END IF;
+END $$;

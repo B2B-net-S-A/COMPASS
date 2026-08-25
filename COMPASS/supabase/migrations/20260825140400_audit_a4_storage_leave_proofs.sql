@@ -48,3 +48,20 @@ CREATE POLICY "leave_proofs_delete_own"
         AND (storage.foldername(name))[1] = 'leave-proofs'
         AND (auth.uid())::text = (storage.foldername(name))[2]
     );
+
+DO $$
+DECLARE v_missing text;
+BEGIN
+    SELECT string_agg(want, ', ') INTO v_missing
+    FROM unnest(ARRAY['leave_proofs_insert_own','leave_proofs_select_own_or_hr','leave_proofs_delete_own']) AS want
+    WHERE NOT EXISTS (
+        SELECT 1 FROM pg_policy p
+        JOIN pg_class c ON c.oid = p.polrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'storage' AND c.relname = 'objects' AND p.polname = want
+    );
+
+    IF v_missing IS NOT NULL THEN
+        RAISE EXCEPTION 'A4 nie zadziałał — brakuje polityk: %', v_missing;
+    END IF;
+END $$;

@@ -21,3 +21,23 @@
 ALTER POLICY "Authenticated users can insert audit logs"
     ON public.audit_logs
     WITH CHECK (auth.uid() = user_id);
+
+DO $$
+DECLARE v_check text;
+BEGIN
+    SELECT pg_get_expr(p.polwithcheck, p.polrelid) INTO v_check
+    FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'audit_logs'
+      AND p.polname = 'Authenticated users can insert audit logs';
+
+    IF v_check IS NULL THEN
+        RAISE EXCEPTION 'A3.2: nie znaleziono polityki INSERT na audit_logs';
+    END IF;
+    -- Martwy człon `OR auth.uid() IS NOT NULL` musi zniknąć — to on sprowadzał
+    -- warunek do „ktokolwiek zalogowany".
+    IF v_check ILIKE '%IS NOT NULL%' THEN
+        RAISE EXCEPTION 'A3.2 nie zadziałał — WITH CHECK nadal przepuszcza cudzy user_id: %', v_check;
+    END IF;
+END $$;
