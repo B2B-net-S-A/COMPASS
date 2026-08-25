@@ -145,87 +145,125 @@ jobs:
             echo "✅ $key set (HTTP $http)"
           done
 
-      - name: Trigger deployment
-        id: trigger
+      - name: Deploy (trigger + wait, with retry on server-side build failure)
         if: ${{ steps.precheck.outputs.skip != 'true' }}
         run: |
-          # One unified retry loop, 20 attempts × 30s ≈ 10 min ceiling:
-          #  - HTTP 429 (queue full) needs to outlast an in-flight ARM build
-          #    (4-6 min cold), not a few quick retries.
-          #  - HTTP 5xx (flaky webhook) heals within one or two 30s waits.
-          http_code=""
-          response=""
-          for attempt in $(seq 1 20); do
-            raw=$(curl -sS -X GET \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-              -H "Accept: application/json" \
-              -w $'\nHTTP_CODE:%{http_code}' \
-              "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=false" \
-              2>&1 || true)
-            http_code=$(echo "$raw" | grep -oE 'HTTP_CODE:[0-9]+' | tail -1 | cut -d: -f2)
-            response=$(echo "$raw" | sed -E 's/HTTP_CODE:[0-9]+$//')
-            if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
-              echo "Coolify responded $http_code on attempt $attempt"
-              break
-            fi
-            echo "::warning::Attempt $attempt/20 — Coolify HTTP $http_code, body: $response"
-            if [ $attempt -lt 20 ]; then
-              sleep 30
-            fi
-          done
-          if [ "$http_code" != "200" ] && [ "$http_code" != "201" ]; then
-            echo "::error::Coolify deploy webhook failed after 20 attempts (last HTTP $http_code). If it was 429 the queue is stuck — run the 'Coolify Ops' workflow (action=list, then cancel the wedged deployment UUIDs) and re-dispatch Deploy."
-            exit 1
-          fi
-          echo "Response: $response"
-          deployment_uuid=$(echo "$response" | jq -r '.deployments[0].deployment_uuid')
-          if [ -z "$deployment_uuid" ] || [ "$deployment_uuid" = "null" ]; then
-            echo "::error::Failed to start deployment (no deployment_uuid in response)"
-            exit 1
-          fi
-          echo "Deployment queued: $deployment_uuid"
-          echo "deployment_uuid=$deployment_uuid" >> $GITHUB_OUTPUT
+          # ─── Dlaczego całość jest w pętli retry ──────────────────────────────
+          # Build po stronie Coolify bywa flaky: 4 z 30 przebiegów (13%) padły
+          # z `exit code 255` na `docker compose build`, zwykle po ~75-85 s —
+          # czyli na wczesnym etapie (pobieranie zależności), nie w kompilacji,
+          # która trwa ~13 min. Za każdym razem ręczny re-dispatch przechodził.
+          #
+          # Ponowienie jest bezpieczne, bo TEN SAM kod zbudował się już na
+          # runnerze: `Typecheck + Lint + Test + Build` to required check przed
+          # merge. Build padający dopiero w Coolify to więc praktycznie zawsze
+          # infrastruktura, nie kod — a jeśli byłby to jednak kod, druga próba
+          # padnie tak samo i job i tak skończy się czerwony.
+          MAX_ATTEMPTS=2
+          RETRY_BACKOFF_S=30
 
-      - name: Wait for deployment to finish (fail fast on server-side failure)
-        if: ${{ steps.precheck.outputs.skip != 'true' }}
-        run: |
-          # Poll the exact deployment we queued instead of blind-sleeping.
-          # Statuses: queued | in_progress | finished | failed | cancelled-by-user.
-          # 60 × 15s = 15 min ceiling (cold ARM build with heavy native deps).
-          DEPLOYMENT_UUID="${{ steps.trigger.outputs.deployment_uuid }}"
-          status=""
-          for i in $(seq 1 60); do
-            resp=$(curl -sS \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-              -H "Accept: application/json" \
-              "${{ secrets.COOLIFY_URL }}/api/v1/deployments/$DEPLOYMENT_UUID" 2>/dev/null || echo '')
-            status=$(echo "$resp" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
-            case "$status" in
-              finished)
-                echo "✅ Deployment $DEPLOYMENT_UUID finished after ~$((i * 15))s"
-                exit 0
-                ;;
-              failed|cancelled*|cancelled-by-user)
-                echo "::error::Deployment $DEPLOYMENT_UUID ended with status=$status — server-side log tail below"
-                # .logs is a JSON-encoded array of {output,type,hidden,...}.
-                # Print the last non-hidden entries; fall back to a raw tail if
-                # the shape ever changes. Build logs carry no secret values.
-                logs=$(echo "$resp" | jq -r '.logs // ""' 2>/dev/null || echo '')
-                if [ -n "$logs" ]; then
-                  echo "$logs" | jq -r '.[-30:][] | select(.hidden != true) | "[\(.type // "out")] \((.output // "") | .[0:400])"' 2>/dev/null \
-                    || echo "$logs" | tail -c 3000
-                else
-                  echo "(no logs returned by API)"
-                fi
+          for deploy_attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "───── Deploy attempt $deploy_attempt/$MAX_ATTEMPTS ─────"
+
+            # ── Trigger ──
+            # 20 prób × 30 s ≈ 10 min:
+            #  - HTTP 429 (kolejka pełna) musi przeczekać trwający build ARM
+            #    (4-6 min na zimno), nie kilka szybkich ponowień.
+            #  - HTTP 5xx (flaky webhook) goi się po jednym-dwóch odczekaniach.
+            http_code=""
+            response=""
+            for attempt in $(seq 1 20); do
+              raw=$(curl -sS -X GET \
+                -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+                -H "Accept: application/json" \
+                -w $'\nHTTP_CODE:%{http_code}' \
+                "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=false" \
+                2>&1 || true)
+              http_code=$(echo "$raw" | grep -oE 'HTTP_CODE:[0-9]+' | tail -1 | cut -d: -f2)
+              response=$(echo "$raw" | sed -E 's/HTTP_CODE:[0-9]+$//')
+              if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+                echo "Coolify responded $http_code on attempt $attempt"
+                break
+              fi
+              echo "::warning::Attempt $attempt/20 — Coolify HTTP $http_code, body: $response"
+              if [ $attempt -lt 20 ]; then
+                sleep 30
+              fi
+            done
+            if [ "$http_code" != "200" ] && [ "$http_code" != "201" ]; then
+              echo "::error::Coolify deploy webhook failed after 20 attempts (last HTTP $http_code). If it was 429 the queue is stuck — run the 'Coolify Ops' workflow (action=list, then cancel the wedged deployment UUIDs) and re-dispatch Deploy."
+              exit 1
+            fi
+            DEPLOYMENT_UUID=$(echo "$response" | jq -r '.deployments[0].deployment_uuid')
+            if [ -z "$DEPLOYMENT_UUID" ] || [ "$DEPLOYMENT_UUID" = "null" ]; then
+              echo "::error::Failed to start deployment (no deployment_uuid in response)"
+              exit 1
+            fi
+            echo "Deployment queued: $DEPLOYMENT_UUID"
+
+            # ── Wait ──
+            # Odpytujemy konkretny deployment zamiast ślepego sleepa.
+            # Statusy: queued | in_progress | finished | failed | cancelled-by-user.
+            # 60 × 15 s = 15 min sufitu (zimny build ARM z ciężkimi natywnymi zależnościami).
+            status=""
+            outcome="timeout"
+            for i in $(seq 1 60); do
+              resp=$(curl -sS \
+                -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+                -H "Accept: application/json" \
+                "${{ secrets.COOLIFY_URL }}/api/v1/deployments/$DEPLOYMENT_UUID" 2>/dev/null || echo '')
+              status=$(echo "$resp" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+              case "$status" in
+                finished)
+                  echo "✅ Deployment $DEPLOYMENT_UUID finished after ~$((i * 15))s (attempt $deploy_attempt)"
+                  exit 0
+                  ;;
+                failed|cancelled*|cancelled-by-user)
+                  echo "::warning::Deployment $DEPLOYMENT_UUID ended with status=$status after ~$((i * 15))s — server-side log tail below"
+                  # .logs to JSON z tablicą {output,type,hidden,...}. Drukujemy
+                  # ostatnie widoczne wpisy; przy zmianie kształtu — surowy ogon.
+                  # Logi builda nie niosą sekretów. 60 wpisów × 1200 znaków:
+                  # przy 30×400 prawdziwa przyczyna (npm/docker) nie mieściła się
+                  # w oknie i w logach zostawała sama komenda `docker compose build`.
+                  logs=$(echo "$resp" | jq -r '.logs // ""' 2>/dev/null || echo '')
+                  if [ -n "$logs" ]; then
+                    echo "$logs" | jq -r '.[-60:][] | select(.hidden != true) | "[\(.type // "out")] \((.output // "") | .[0:1200])"' 2>/dev/null \
+                      || echo "$logs" | tail -c 8000
+                  else
+                    echo "(no logs returned by API)"
+                  fi
+                  outcome="$status"
+                  break
+                  ;;
+                *)
+                  echo "Attempt $i/60: status=$status, retrying in 15s..."
+                  sleep 15
+                  ;;
+              esac
+            done
+
+            # Anulowanie przez człowieka respektujemy — ponowienie działałoby
+            # wbrew intencji osoby, która nacisnęła „cancel".
+            case "$outcome" in
+              cancelled*|cancelled-by-user)
+                echo "::error::Deployment $DEPLOYMENT_UUID was cancelled — not retrying."
                 exit 1
                 ;;
-              *)
-                echo "Attempt $i/60: status=$status, retrying in 15s..."
-                sleep 15
+              timeout)
+                # Build wisi (>15 min). Kolejna próba tylko zatkałaby kolejkę
+                # obok wciąż działającego builda — wymaga ręcznej inspekcji.
+                echo "::error::Deployment $DEPLOYMENT_UUID still '$status' after 15 min — treating as failed, not retrying. Run the 'Coolify Ops' workflow to inspect/cancel it."
+                exit 1
                 ;;
             esac
+
+            if [ "$deploy_attempt" -lt "$MAX_ATTEMPTS" ]; then
+              echo "::warning::Build failed server-side (attempt $deploy_attempt/$MAX_ATTEMPTS) — retrying in ${RETRY_BACKOFF_S}s. Ta klasa awarii (exit 255 po ~75 s) historycznie przechodzi za drugim razem."
+              sleep "$RETRY_BACKOFF_S"
+            fi
           done
-          echo "::error::Deployment $DEPLOYMENT_UUID still '$status' after 15 min — treating as failed. Run the 'Coolify Ops' workflow to inspect/cancel it."
+
+          echo "::error::Deployment failed on all $MAX_ATTEMPTS attempts — this is unlikely to be flake. Sprawdź log powyżej (pełniejszy niż wcześniej: 60 wpisów × 1200 znaków)."
           exit 1
 
   smoke-test:
