@@ -176,7 +176,11 @@ export interface RecommendedCourse {
     reason: string
 }
 
-export type ActionResult<T> = { success: true; data: T } | { success: false; error: string }
+// Audyt 2026-08 (B1): ten sam kształt był zdefiniowany niezależnie w trzech
+// plikach typów. Kanoniczna definicja mieszka teraz w lib/actions/action-result.ts
+// razem z `runAction` i `ExpectedError`; ten alias zostaje, żeby nie przepisywać
+// całych modułów naraz. Nowy kod importuje bezpośrednio stamtąd.
+export type ActionResult<T> = import('@/lib/actions/action-result').ActionResult<T>
 
 // Quiz constraints
 export const QUIZ_MIN_QUESTIONS = 4

@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n/context'
+import { isInvoicesEnabled } from '@/lib/feature-flags'
+import { isHrZoneRole } from '@/lib/types/role'
 import {
     LayoutDashboard,
     GraduationCap,
@@ -127,7 +129,11 @@ export function MobileMenu({ role }: MobileMenuProps) {
                             )
                         })}
                     </nav>
-                    {(role === 'admin' || role === 'internal' || role === 'finanse') && (
+                    {/* Audyt 2026-08 (C7): brama wymieniała 3 role z 5 należących do strefy HR —
+                        manager i talent_community w ogóle nie widzieli tej sekcji na telefonie.
+                        Wejście do /internal działało (middleware przekierowuje /home → /internal),
+                        więc to nie była awaria, tylko brak skrótów do własnych narzędzi. */}
+                    {isHrZoneRole(role) && (
                         <div className="border-t pt-4 pb-2">
                             <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                                 {t('group_internal')}
@@ -140,7 +146,8 @@ export function MobileMenu({ role }: MobileMenuProps) {
                                 <CalendarCheck className="h-5 w-5" />
                                 {t('nav_internal_hub')}
                             </Link>
-                            {role === 'admin' && (
+                            {/* Manager: kolejka timesheetów i wniosków zespołu żyje w tym samym hubie. */}
+                            {(role === 'admin' || role === 'manager') && (
                                 <Link
                                     href="/internal/admin"
                                     onClick={() => setMoreOpen(false)}
@@ -150,8 +157,11 @@ export function MobileMenu({ role }: MobileMenuProps) {
                                     {t('nav_internal_admin_hub')}
                                 </Link>
                             )}
-                            {/* Phase 19a/d — Finanse: dedicated link to invoice-review panel. */}
-                            {role === 'finanse' && (
+                            {/* Phase 19a/d — Finanse: panel akceptacji faktur.
+                                Audyt 2026-08 (C7): moduł faktur jest wyłączony flagą od 2026-05-19,
+                                a link prowadził w pustkę. Bramkujemy go tą samą flagą co resztę UI,
+                                żeby wrócił sam, gdy faktury zostaną włączone. */}
+                            {role === 'finanse' && isInvoicesEnabled() && (
                                 <Link
                                     href="/internal/admin?tab=invoices"
                                     onClick={() => setMoreOpen(false)}

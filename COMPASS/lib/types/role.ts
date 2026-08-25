@@ -28,6 +28,27 @@ export type DbRole = (typeof DB_ROLES)[number]
 // to leave room for future read-only display roles.
 export type AppRole = DbRole
 
+/**
+ * Role strefy HR — mają dostęp do /internal i wspólnych sekcji.
+ * Konsultant IT jest poza: widzi platformę, nie widzi HR.
+ *
+ * Audyt 2026-08 (C7): ta lista była przepisywana ręcznie w komponentach
+ * nawigacji i w MobileMenu wypadły z niej `manager` i `talent_community` —
+ * dwie z pięciu ról nie widziały na telefonie własnej sekcji. Jedno źródło
+ * usuwa całą klasę takich pominięć.
+ */
+export const HR_ZONE_ROLES: readonly DbRole[] = [
+    'admin',
+    'internal',
+    'finanse',
+    'manager',
+    'talent_community',
+] as const
+
+export function isHrZoneRole(role: string | null | undefined): boolean {
+    return HR_ZONE_ROLES.includes(role as DbRole)
+}
+
 export function isAdminLike(role: string | null | undefined): boolean {
     return role === 'admin'
 }

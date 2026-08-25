@@ -1,5 +1,36 @@
 import { withSentryConfig } from '@sentry/nextjs'
 
+
+// ─── Content-Security-Policy (audyt 2026-08, C8) ────────────────────────────
+// Dyrektywy, których włączenie jest bezpieczne od ręki: żadna nie dotyka
+// skryptów, stylów ani połączeń sieciowych, więc nie ma czego zepsuć.
+const ENFORCED_CSP = [
+    "base-uri 'self'",        // blokuje wstrzyknięcie <base> przekierowującego zasoby
+    "object-src 'none'",      // <object>/<embed> — wektor legacy, aplikacja ich nie używa
+    "frame-ancestors 'none'", // clickjacking; dubluje X-Frame-Options dla nowszych przeglądarek
+].join('; ');
+
+// Pełna polityka — na razie TYLKO raportowana.
+// Uwagi do zawartości:
+//  • 'unsafe-inline' i 'unsafe-eval' w script-src są wymagane przez bootstrap
+//    hydratacji Next 14; zdjęcie ich wymaga nonce'ów, czyli osobnej pracy.
+//  • connect-src musi obejmować Supabase (REST + realtime po WSS) i Sentry,
+//    inaczej zniknie zapis danych i raportowanie błędów.
+//  • Microsoft w form-action/frame-src — logowanie SSO przechodzi przez login.microsoftonline.com.
+const REPORT_ONLY_CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://*.supabase.co https://*.microsoft.com",
+    "font-src 'self' data:",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://login.microsoftonline.com",
+    "frame-src 'self' https://login.microsoftonline.com",
+    "form-action 'self' https://login.microsoftonline.com",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+].join('; ');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
@@ -77,6 +108,20 @@ const nextConfig = {
                     { key: 'X-Content-Type-Options', value: 'nosniff' },
                     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
                     { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+                    // Audyt 2026-08 (C8): brakowało Content-Security-Policy — grep za
+                    // „content-security-policy" po całym repo dawał 0 trafień.
+                    //
+                    // Wdrożenie jest DWUSTOPNIOWE, bo nie ma środowiska stagingowego:
+                    // pełna CSP puszczona na ślepo dla 46 osób potrafi wyłączyć
+                    // aplikację, a błąd wyszedłby dopiero u użytkownika.
+                    //
+                    // 1) EGZEKWOWANA jest tylko część, która nie może niczego zepsuć:
+                    //    nic tu nie ogranicza skryptów, stylów ani połączeń.
+                    { key: 'Content-Security-Policy', value: ENFORCED_CSP },
+                    // 2) RAPORTUJĄCA niesie pełną politykę — przeglądarka zgłasza,
+                    //    co BY zablokowała, ale niczego nie blokuje. Po tygodniu bez
+                    //    naruszeń przenieś jej treść do nagłówka egzekwowanego.
+                    { key: 'Content-Security-Policy-Report-Only', value: REPORT_ONLY_CSP },
                 ],
             },
         ];
