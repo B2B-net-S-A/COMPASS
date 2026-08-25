@@ -48,6 +48,10 @@ BEGIN
             OR NEW.can_view_legal_monitor IS DISTINCT FROM OLD.can_view_legal_monitor
             OR NEW.leave_entitlement_days IS DISTINCT FROM OLD.leave_entitlement_days
             OR NEW.termination_date IS DISTINCT FROM OLD.termination_date
+            OR NEW.leave_carried_over_days IS DISTINCT FROM OLD.leave_carried_over_days
+            OR NEW.leave_used_initial_days IS DISTINCT FROM OLD.leave_used_initial_days
+            OR NEW.hired_at IS DISTINCT FROM OLD.hired_at
+            OR NEW.is_external IS DISTINCT FROM OLD.is_external
         THEN
             INSERT INTO public.audit_logs (user_id, action, details, ip_address)
             VALUES (
