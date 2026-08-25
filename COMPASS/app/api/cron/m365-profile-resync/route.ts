@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { syncProfileFromGraph } from '@/lib/m365/people-sync'
 import { logger } from '@/lib/logger'
 
@@ -22,7 +23,7 @@ const MAX_PER_RUN = 100
  *
  * Coolify cron suggestion: `0 4 * * 0` (Sunday 04:00 UTC).
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('M365_PROFILE_RESYNC_RUN', async (_request, { admin }) => {
     const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
     // Stale = never synced OR last sync older than STALE_DAYS.
@@ -73,4 +74,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         failed,
         skipped,
     })
-})
+}))

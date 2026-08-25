@@ -2,6 +2,7 @@ import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { sendCourseInactivityReminder } from '@/lib/email'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +20,7 @@ export const dynamic = 'force-dynamic'
  * Anty-spam: max 1 email / enrollment / tydzień.
  * Anty-noise: tylko enrollments z >0% progress (nie polecaj kursu który user nigdy nie tknął).
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('COURSE_INACTIVITY_RUN', async (_request, { admin }) => {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://compass.dynaminds.pl'
@@ -141,4 +142,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         failed,
         skipped,
     })
-})
+}))

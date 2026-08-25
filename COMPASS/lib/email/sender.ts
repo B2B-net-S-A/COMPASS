@@ -13,23 +13,15 @@ import {
 // and only runs from server actions / API routes).
 //
 // Single send function used by all higher-level templates in lib/email.ts.
-// Provider chosen at runtime by MAIL_PROVIDER env var:
-//   - 'graph'  → Microsoft Graph API (sendMail) — preferred long-term
-//   - 'resend' → Resend SDK — legacy fallback
-//   - undefined / anything else → falls back to whatever is configured
 //
-// Both providers share the same EmailMessage shape, so swap is transparent.
-//
-// Why a thin abstraction:
-//   1. Lets us roll out Graph gradually (set MAIL_PROVIDER=graph in Coolify
-//      AFTER Azure App permission + consent are in place; revert to 'resend'
-//      instantly if Graph misbehaves)
-//   2. Keeps lib/email.ts (14 templates) untouched — they call sendEmail() once
-//   3. Future providers (Postmark, SES) plug in here
+// Jedyny kanał to Microsoft Graph (sendMail). Resend był tu przejściowym
+// fallbackiem na czas wdrożenia Graph i został wyłączony razem z PR #68
+// (docs/microsoft-graph-email-setup.md) — kod jednak został, więc awaryjne
+// `MAIL_PROVIDER=resend` z runbooka cicho przełączyłoby produkcję na kanał
+// bez ważnego klucza. Cienka warstwa zostaje: kolejny dostawca (Postmark, SES)
+// wpina się tutaj, a lib/email.ts (14 szablonów) nadal woła tylko sendEmail().
 
-import type { Resend } from 'resend'
-
-export type MailProvider = 'graph' | 'resend'
+export type MailProvider = 'graph'
 
 export interface EmailMessage {
     /** Single recipient address (most templates send 1:1). For broadcast use sendEmailMany. */
@@ -49,36 +41,18 @@ export interface EmailMessage {
 
 export interface SendResult {
     success: boolean
-    /** Provider-specific message id when available (Resend id / Graph internetMessageId). */
+    /** Provider-specific message id when available (Graph internetMessageId). */
     messageId?: string
     /** Error message when success=false. */
     error?: string
 }
 
 function resolveProvider(): MailProvider {
-    const envValue = process.env.MAIL_PROVIDER?.toLowerCase().trim()
-    if (envValue === 'graph') return 'graph'
-    if (envValue === 'resend') return 'resend'
-    // Default: Graph if Azure creds are set, otherwise Resend
-    if (process.env.AZURE_TENANT_ID && process.env.AZURE_CLIENT_ID && process.env.AZURE_CLIENT_SECRET) {
-        return 'graph'
-    }
-    return 'resend'
+    return 'graph'
 }
 
 function getDefaultFrom(): string {
     return process.env.MAIL_FROM ?? 'COMPASS System <noreply@compass.b2bnetwork.pl>'
-}
-
-// ─── Lazy singletons ─────────────────────────────────────────────────────────
-
-let _resend: Resend | null = null
-async function getResend(): Promise<Resend> {
-    if (!_resend) {
-        const { Resend } = await import('resend')
-        _resend = new Resend(process.env.RESEND_API_KEY)
-    }
-    return _resend
 }
 
 // ─── Retry helpers ───────────────────────────────────────────────────────────
@@ -97,24 +71,6 @@ function recipientDomain(addr: string): string {
 }
 
 // ─── Provider implementations ────────────────────────────────────────────────
-
-async function sendViaResend(msg: EmailMessage): Promise<SendResult> {
-    try {
-        const resend = await getResend()
-        const { data, error } = await resend.emails.send({
-            from: msg.from ?? getDefaultFrom(),
-            to: msg.to,
-            subject: msg.subject,
-            html: msg.html,
-        })
-        if (error) {
-            return { success: false, error: error.message }
-        }
-        return { success: true, messageId: data?.id }
-    } catch (err) {
-        return { success: false, error: err instanceof Error ? err.message : 'unknown_resend_error' }
-    }
-}
 
 /**
  * Microsoft Graph sendMail.
@@ -138,9 +94,9 @@ async function sendViaGraph(msg: EmailMessage): Promise<SendResult> {
     }
 
     // Graph requires a REAL mailbox in the tenant as sender. The hardcoded
-    // `from` in legacy templates (noreply@compass.b2bnetwork.pl, a Resend-only
-    // subdomain) is invalid here. Always use MAIL_FROM env var when set, falling
-    // back to msg.from only when MAIL_FROM is missing (Resend backwards compat).
+    // `from` in legacy templates (noreply@compass.b2bnetwork.pl) is invalid
+    // here. Always use MAIL_FROM env var when set, falling back to msg.from
+    // only when MAIL_FROM is missing.
     const fromHeader = process.env.MAIL_FROM ?? msg.from ?? getDefaultFrom()
     const fromAddress = fromHeader.replace(/^.*<([^>]+)>.*$/, '$1').trim() // strip "Name <addr>" → "addr"
     const payload = {
@@ -200,8 +156,7 @@ async function sendViaGraph(msg: EmailMessage): Promise<SendResult> {
  */
 export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
     const provider = resolveProvider()
-    const result =
-        provider === 'graph' ? await sendViaGraph(msg) : await sendViaResend(msg)
+    const result = await sendViaGraph(msg)
     if (!result.success) {
         // Single console line keeps Sentry breadcrumbs clean and grep-able
         logCompat.error(`[email/${provider}] send failed`, {
@@ -227,9 +182,8 @@ export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
 }
 
 /**
- * Send the same message to many recipients. Sequential by default to avoid
- * Graph throttling (Resend has its own batch endpoint; we do simple loop for
- * provider parity). Returns aggregate counts.
+ * Send the same message to many recipients. Sequential to avoid Graph
+ * throttling. Returns aggregate counts.
  */
 export async function sendEmailMany(
     msg: Omit<EmailMessage, 'to'> & { to: string[] },

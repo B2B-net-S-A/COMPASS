@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
-import { logAudit } from '@/lib/actions/audit'
+import { logSystemAudit } from '@/lib/audit/system-log'
 import { logger } from '@/lib/logger'
 import { warsawDate } from '@/lib/oof/oof-dates'
 import { sendTechMapProjectEnd } from '@/lib/email'
@@ -16,6 +16,11 @@ import {
 } from '@/lib/tech-map/alerts'
 
 export const dynamic = 'force-dynamic'
+// UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
+// tłumaczy go na limit funkcji serverless (Vercel/Lambda); w kontenerze na Coolify nikt
+// go nie egzekwuje, więc nie jest to działająca ochrona przed zawieszonym przebiegiem.
+// Zostaje jako deklaracja intencji na wypadek zmiany hostingu — realnym limitem jest
+// timeout per żądanie na proxy (Traefik/Cloudflare) i limity samych wywołań.
 export const maxDuration = 120
 
 /**
@@ -45,7 +50,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         const alerts = selectProjectEndAlerts(cards, todayISO, PROJECT_END_ALERT_DAYS)
 
         if (alerts.length === 0) {
-            await logAudit(null, 'TECH_MAP_PROJECT_END_RUN', {
+            await logSystemAudit(null, 'TECH_MAP_PROJECT_END_RUN', {
                 scanned: cards.length,
                 alerted: 0,
             })
@@ -91,7 +96,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                           : fallbackAll
                 const clientName = contractor.current_client ?? 'klient'
 
-                await dispatchAlert(admin, recipients, {
+                const { delivered } = await dispatchAlert(admin, recipients, {
                     type: 'tech_map_project_end',
                     titlePl: `Koniec projektu: ${contractor.full_name}`,
                     titleEn: `Project ending: ${contractor.full_name}`,
@@ -110,9 +115,16 @@ export const GET = withCronAuth(async (_request, { admin }) => {
                         ),
                 })
 
-                // Dedup: stempluj kartę, żeby jutrzejszy przebieg jej nie powtórzył.
+                // Dedup: stempluj kartę, żeby jutrzejszy przebieg jej nie powtórzył —
+                // ale WYŁĄCZNIE gdy alert faktycznie dotarł (audyt 2026-08, C11.2).
+                // Stempel po samej próbie uciszał alert o końcu projektu na zawsze.
                 // Błąd stempla = ryzyko duplikatu jutro — logujemy do errors (Sentry
                 // + heartbeat), żeby nie zniknął po cichu.
+                if (delivered === 0) {
+                    errors.push(`${alert.cardId}: alert nie dotarł do żadnego odbiorcy, brak stempla`)
+                    continue
+                }
+
                 const { error: stampError } = await admin
                     .from('tech_interview_cards')
                     .update({ project_end_alerted_at: new Date().toISOString() })
@@ -127,7 +139,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
             }
         }
 
-        await logAudit(null, 'TECH_MAP_PROJECT_END_RUN', {
+        await logSystemAudit(null, 'TECH_MAP_PROJECT_END_RUN', {
             scanned: cards.length,
             alerted,
             errors: errors.slice(0, 15),

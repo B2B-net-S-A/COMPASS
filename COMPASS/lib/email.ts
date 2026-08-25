@@ -11,13 +11,10 @@ import {
 
 // Phase 17b PR-E — Provider-agnostic email send.
 //
-// `getResend()` is kept as a backwards-compatible shim so all 14 templates
-// below stay unchanged. Under the hood it routes through lib/email/sender.ts
-// which picks the active provider (Microsoft Graph vs Resend) at runtime via
-// MAIL_PROVIDER env var. Default fallback = Resend if Azure creds are not set.
-//
-// The shim returns the same `{ data, error }` shape as Resend SDK so existing
-// `if (error) { ... }` handlers keep working without any change.
+// `getResend()` to już tylko historyczna nazwa przejściówki — pod spodem
+// wszystko idzie przez lib/email/sender.ts, czyli Microsoft Graph (sendMail).
+// Sam kanał Resend został usunięty; nazwa i kształt `{ data, error }` zostają,
+// żeby 14 szablonów poniżej i ich `if (error) { ... }` pozostały nietknięte.
 function getResend(): {
     emails: {
         send: (args: {
@@ -28,8 +25,7 @@ function getResend(): {
             /**
              * When true, Graph saves to Sent Items in the sender mailbox.
              * Set for compliance-relevant templates (leave decision, timesheet
-             * decision, role change, broadcast). Default false. Resend ignores
-             * this flag (it always archives in Resend dashboard).
+             * decision, role change, broadcast). Default false.
              */
             saveToSentItems?: boolean
         }) => Promise<{ data: { id?: string } | null; error: { message: string } | null }>

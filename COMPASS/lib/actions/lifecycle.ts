@@ -56,7 +56,9 @@ async function fileSha256(file: File): Promise<string> {
     return createHash('sha256').update(buffer).digest('hex')
 }
 
-async function fetchUserContact(userId: string): Promise<{ email: string; full_name: string | null; role: DbRole; manager_id: string | null } | null> {
+// `profiles.role` jest w bazie nullowalne (świeżo zaproszone konto przed sync-em roli),
+// więc typ to odzwierciedla; jedyny konsument, roleLabelPl, przyjmuje null.
+async function fetchUserContact(userId: string): Promise<{ email: string; full_name: string | null; role: DbRole | null; manager_id: string | null } | null> {
     const supabase = createServiceClient()
     const { data, error } = await supabase
         .from('profiles')
@@ -286,7 +288,7 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
         return []
     }
 
-    const userIds = profiles.map((p: { id: string }) => p.id)
+    const userIds = profiles.map((p) => p.id)
 
     const [{ data: progressRows }, { data: exitRows }] = await Promise.all([
         supabase.from('onboarding_progress').select('user_id, completed_at').in('user_id', userIds),
@@ -294,20 +296,19 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
     ])
 
     const activeOnboardingSet = new Set<string>(
-        (progressRows ?? []).filter((p: { completed_at: string | null }) => p.completed_at === null).map((p: { user_id: string }) => p.user_id),
+        (progressRows ?? []).filter((p) => p.completed_at === null).map((p) => p.user_id),
     )
-    const activeExitSet = new Set<string>((exitRows ?? []).map((e: { user_id: string }) => e.user_id))
+    // exit_interviews.user_id jest nullowalne — anonimizacja ankiety zeruje autora.
+    const activeExitSet = new Set<string>(
+        (exitRows ?? []).map((e) => e.user_id).filter((id): id is string => id !== null),
+    )
 
-    const all: EligibleEmployee[] = profiles.map((p: {
-        id: string; email: string; full_name: string | null; role: DbRole;
-        hired_at: string | null; work_start_date: string | null;
-        employment_status: string; manager_id: string | null;
-        is_external: boolean | null; external_notes: string | null
-    }) => ({
+    const all: EligibleEmployee[] = profiles.map((p) => ({
         id: p.id,
         email: p.email,
         full_name: p.full_name,
-        role: p.role,
+        // Zapytanie filtruje `.in('role', …)`, więc NULL-a tu nie ma mimo nullowalnej kolumny.
+        role: p.role as DbRole,
         hired_at: p.hired_at,
         work_start_date: p.work_start_date,
         employment_status: p.employment_status,
@@ -404,9 +405,12 @@ export async function startOnboardingWithOptions(input: {
         if (updErr) throw new Error(`Nie udało się ustawić hired_at: ${updErr.message}`)
     }
 
+    // `undefined`, nie `null`: parametry RPC z DEFAULT NULL są w wygenerowanych typach
+    // opcjonalne, a JSON.stringify pomija undefined — PostgREST bierze wtedy default
+    // z bazy. Jawny null nie przechodzi typowania i niczego by nie zmieniał.
     const { data, error } = await supabase.rpc('start_onboarding_for_user', {
         p_user_id: input.userId,
-        p_template_id: input.templateId ?? null,
+        p_template_id: input.templateId ?? undefined,
         p_actor_id: ctx.userId,
     })
     if (error || !data) {
@@ -572,7 +576,7 @@ export async function startOnboarding(userId: string, templateId?: string | null
 
     const { data, error } = await supabase.rpc('start_onboarding_for_user', {
         p_user_id: userId,
-        p_template_id: templateId ?? null,
+        p_template_id: templateId ?? undefined,
         p_actor_id: ctx.userId,
     })
     if (error || !data) {
@@ -733,7 +737,9 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
 
     return {
         progress,
-        template,
+        // `target_role` / `category` to w bazie TEXT z CHECK-iem — wygenerowane typy
+        // widzą `string`, zawężenie do unii jest tu bezpieczne (constraint pilnuje bazy).
+        template: template as OnboardingTemplate,
         tasks: (tasks ?? []) as OnboardingTask[],
         employee: employee as OnboardingDetail['employee'],
         buddy,
@@ -979,7 +985,7 @@ export async function scheduleExitInterview(
     const { data, error } = await supabase.rpc('start_offboarding_for_user', {
         p_user_id: userId,
         p_termination_date: terminationDate,
-        p_scheduled_for: scheduledFor ?? null,
+        p_scheduled_for: scheduledFor ?? undefined,
         p_actor_id: ctx.userId,
     })
     if (error || !data) {
@@ -1848,7 +1854,7 @@ export async function createExternalEmployee(input: CreateExternalEmployeeInput)
         try {
             const { data, error } = await supabase.rpc('start_onboarding_for_user', {
                 p_user_id: userId,
-                p_template_id: input.templateId ?? null,
+                p_template_id: input.templateId ?? undefined,
                 p_actor_id: ctx.userId,
             })
             if (!error && data) {
@@ -1916,12 +1922,13 @@ export async function listLifecycleNotes(userId: string): Promise<LifecycleNote[
         logCompat.error('listLifecycleNotes error:', error)
         return []
     }
-    return (data ?? []).map((row: { id: string; user_id: string; author_id: string | null; author: { full_name: string | null } | null; category: 'general' | 'onboarding' | 'exit' | 'flag'; content: string; is_private: boolean; created_at: string; updated_at: string }) => ({
+    return (data ?? []).map((row) => ({
         id: row.id,
         user_id: row.user_id,
         author_id: row.author_id,
         author_name: row.author?.full_name ?? null,
-        category: row.category,
+        // Kolumna to TEXT z CHECK-iem — wygenerowane typy widzą `string`.
+        category: row.category as LifecycleNote['category'],
         content: row.content,
         is_private: row.is_private,
         created_at: row.created_at,
@@ -2022,7 +2029,7 @@ export interface AuditEntry {
     id: string
     action: string
     details: Record<string, unknown> | null
-    created_at: string
+    created_at: string | null
     actor_name: string | null
 }
 
@@ -2031,9 +2038,15 @@ export async function listAuditLogForUser(userId: string, limit = 50): Promise<A
     const supabase = createServiceClient()
 
     // Match by user_id (actor) AND details.target_user_id / user_id (subject)
+    //
+    // Audyt 2026-08-25 (C12.3): było tu `actor:profiles!user_id(full_name)`, ale
+    // `audit_logs.user_id` ma FK do `auth.users`, NIE do `profiles` — PostgREST nie miał
+    // po czym złączyć, zwracał PGRST200, a funkcja po cichu oddawała pustą historię.
+    // Ukrywał to nietypowany klient. Dwa zapytania zamiast embedu (ten sam wzorzec co
+    // przy self-FK w Fazie 26).
     const { data, error } = await supabase
         .from('audit_logs')
-        .select('id, action, details, created_at, user_id, actor:profiles!user_id(full_name)')
+        .select('id, action, details, created_at, user_id')
         .or(`user_id.eq.${userId},details->>target_user_id.eq.${userId},details->>user_id.eq.${userId}`)
         .order('created_at', { ascending: false })
         .limit(limit)
@@ -2042,12 +2055,20 @@ export async function listAuditLogForUser(userId: string, limit = 50): Promise<A
         return []
     }
 
-    return (data ?? []).map((row: { id: string; action: string; details: Record<string, unknown> | null; created_at: string; actor: { full_name: string | null } | null }) => ({
+    const rows = data ?? []
+    const actorIds = Array.from(new Set(rows.map((r) => r.user_id).filter((id): id is string => id !== null)))
+    const actorNames = new Map<string, string | null>()
+    if (actorIds.length > 0) {
+        const { data: actors } = await supabase.from('profiles').select('id, full_name').in('id', actorIds)
+        for (const a of actors ?? []) actorNames.set(a.id, a.full_name)
+    }
+
+    return rows.map((row) => ({
         id: row.id,
         action: row.action,
-        details: row.details,
+        details: (row.details ?? null) as Record<string, unknown> | null,
         created_at: row.created_at,
-        actor_name: row.actor?.full_name ?? null,
+        actor_name: row.user_id ? actorNames.get(row.user_id) ?? null : null,
     }))
 }
 
@@ -2157,7 +2178,16 @@ export async function listCompletedOnboardings(limit = 100): Promise<Array<{
         return []
     }
 
-    return (data as Array<{
+    // Rzutowanie przez `unknown`, bo generator typów Supabase nie rozwiązuje tego
+    // selecta: kolumny wychodzą jako `any`, a embed `user` jako TABLICA — hint po
+    // nazwie kolumny (`!user_id`) dopasowuje się w runtime, ale nie w typach, które
+    // szukają nazwy constraintu. Przejście na `!onboarding_progress_user_id_fkey`
+    // sprawdziłem: typu nie naprawia (parser i tak degraduje select do `any`), więc
+    // zostaje forma, która od Fazy 22.3 działa na produkcji.
+    //
+    // Runtime zwraca OBIEKT albo null: `onboarding_progress_user_id_fkey` jest
+    // jedyną relacją z `user_id` i jest one-to-one (zweryfikowane na produkcji).
+    return (data as unknown as Array<{
         id: string; user_id: string; started_at: string; completed_at: string | null;
         cancelled_at: string | null; cancellation_reason: string | null;
         user: { full_name: string | null; email: string; role: DbRole } | null

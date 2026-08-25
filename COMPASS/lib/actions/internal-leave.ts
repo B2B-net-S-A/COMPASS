@@ -3691,7 +3691,11 @@ export async function retryLeaveGraphSync(
                 endDate: row.end_date,
                 leaveType: row.leave_type,
                 note: null,
-                transactionId: `leave-retry-${id}-${Date.now()}`,
+                // Ten sam identyfikator co przy akceptacji — retry ma trafić w to
+                // samo zdarzenie. Z `Date.now()` każde ponowienie było dla Graph
+                // nową transakcją, więc wpis, który powstał, ale którego id nie
+                // udało się zapisać, dorabiał w kalendarzu kolejną kopię urlopu.
+                transactionId: `leave-${id}`,
             })
             if (calRes.success) {
                 calOk = true

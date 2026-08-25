@@ -267,6 +267,24 @@ export type AuditAction =
     // trigger na profiles. Wpis powstaje w SQL-u (trigger jest SECURITY DEFINER),
     // nie przez logAudit — ten wariant jest tu wyłącznie dla kompletności typu.
     | 'PROFILE_PRIVILEGE_CHANGE_BLOCKED'
+    // Audyt 2026-08 (C11) — heartbeaty pozostałych zadań cyklicznych. Każdy przebieg
+    // zostawia parę wpisów `phase: 'start'` / `phase: 'done'` (patrz
+    // lib/audit/cron-heartbeat.ts), bo bez nich cicha awaria harmonogramu była
+    // niewykrywalna bez SSH. `start` bez `done` = przebieg ubity w locie;
+    // brak `start` = harmonogram nie dosięgnął trasy.
+    | 'CLOCK_DAILY_CUTOFF_RUN'
+    | 'CLOCK_DAILY_SUMMARY_RUN'
+    | 'CLOCK_IDLE_REAPER_RUN'
+    | 'CLOCK_ROUTE_RETENTION_RUN'
+    | 'CONTRACTOR_FOLLOWUP_REMINDER_RUN'
+    | 'COURSE_INACTIVITY_RUN'
+    | 'LIFECYCLE_CHECKINS_RUN'
+    | 'LIFECYCLE_REMINDERS_RUN'
+    | 'M365_PROFILE_RESYNC_RUN'
+    | 'PLACEMENT_HOURS_REMINDER_RUN'
+    | 'PLACEMENT_STATUS_TICK_RUN'
+    | 'SECRET_EXPIRY_CHECK_RUN'
+    | 'TC_SYNC_RUN'
 
 /**
  * Zapis do dziennika audytu w imieniu ZALOGOWANEGO użytkownika.

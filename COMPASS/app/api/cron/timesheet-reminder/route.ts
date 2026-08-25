@@ -4,7 +4,7 @@ import * as Sentry from '@sentry/nextjs'
 import { sendTimesheetReminder } from '@/lib/email'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { withCronAuth } from '@/lib/api/with-auth'
-import { logAudit } from '@/lib/actions/audit'
+import { logSystemAudit } from '@/lib/audit/system-log'
 import { warsawDate } from '@/lib/oof/oof-dates'
 import {
     closedMonthFor,
@@ -172,7 +172,7 @@ export const GET = withCronAuth(async (request, { admin }) => {
         }
     }
 
-    await logAudit(null, 'TIMESHEET_REMINDER_RUN', {
+    await logSystemAudit(null, 'TIMESHEET_REMINDER_RUN', {
         year: targetYear,
         month: targetMonth,
         today: todayIso,

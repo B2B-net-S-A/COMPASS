@@ -123,12 +123,23 @@ export function activeRoster<T extends EmploymentWindowFields>(
  * Jedno miejsce z literałem `'exited'` znaczy, że zmiana reguły (np. nowy
  * status „zawieszony") nie wymaga polowania na ~20 rozsypanych `.neq(...)`.
  */
-export function excludeExited<
-    Q extends { neq(column: 'employment_status', value: string): unknown },
->(query: Q): Q {
-    // `neq` w supabase-js zwraca `this`; rzutowanie tylko po to, żeby generyk nie
-    // był samozwrotny (rekurencyjne ograniczenie wywalało tsc: TS2589).
-    return query.neq('employment_status', EXITED) as Q
+export function excludeExited<Q extends { neq: unknown }>(query: Q): Q {
+    // Ograniczenie sprawdza tylko OBECNOŚĆ pola `neq`, nie jego sygnaturę — i to
+    // jest tu istotne, nie kosmetyka. Pełna sygnatura (`neq(column, value): unknown`)
+    // zmuszała kompilator do zinstancjonowania generycznej metody buildera PostgREST
+    // przy każdym z ~20 wywołań; przy dłuższym łańcuchu (`.in(...)` + `.order(...)`
+    // na kliencie użytkownika) budżet się wyczerpywał i tsc padał z TS2589.
+    // Błąd zależał od kolejności instancjacji, więc pojawiał się i znikał między
+    // przebiegami — stąd sprzeczne diagnozy „to preexisting" / „to zniknęło samo".
+    //
+    // Sam kształt nadal odrzuca oczywiste pomyłki (null, string, obiekt bez `neq`),
+    // a wywołanie idzie przez wąskie rzutowanie poniżej.
+    return (query as unknown as ExitFilterableQuery).neq('employment_status', EXITED) as Q
+}
+
+/** Wąski kontrakt wywołania — tylko to, czego `excludeExited` faktycznie używa. */
+interface ExitFilterableQuery {
+    neq(column: 'employment_status', value: string): unknown
 }
 
 /**

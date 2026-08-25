@@ -11,10 +11,16 @@
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { sendPushToUserId } from '@/lib/push/dispatch'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
+// UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
+// tłumaczy go na limit funkcji serverless (Vercel/Lambda); w kontenerze na Coolify nikt
+// go nie egzekwuje, więc nie jest to działająca ochrona przed zawieszonym przebiegiem.
+// Zostaje jako deklaracja intencji na wypadek zmiany hostingu — realnym limitem jest
+// timeout per żądanie na proxy (Traefik/Cloudflare) i limity samych wywołań.
 export const maxDuration = 120
 
 interface DueConv {
@@ -25,7 +31,7 @@ interface DueConv {
     follow_up_date: string | null
 }
 
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('CONTRACTOR_FOLLOWUP_REMINDER_RUN', async (_request, { admin }) => {
     const today = new Date().toISOString().slice(0, 10)
     try {
         const { data, error } = await admin
@@ -96,4 +102,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         Sentry.captureException(err, { tags: { kind: 'contractor_followup_reminder' } })
         return NextResponse.json({ ok: false, error: message }, { status: 500 })
     }
-})
+}))

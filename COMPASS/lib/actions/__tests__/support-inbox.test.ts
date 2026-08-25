@@ -560,3 +560,59 @@ describe('listInboxTickets', () => {
         expect(res.error).toContain('meta boom')
     })
 })
+
+describe('getInboxSummary', () => {
+    const handler = { id: 'handler1', email: 'blazej@b2bnetwork.pl' }
+
+    const summaryTables = () => baseTables({
+        support_tickets: [
+            { id: 't1', user_id: 'handler1', category_id: 'cat-adm', status: 'open', subject: 'A', body_md: 'b', priority: 'normal', assignee_id: 'handler1', resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+            { id: 't2', user_id: 'handler1', category_id: 'cat-adm', status: 'in_progress', subject: 'B', body_md: 'b', priority: 'normal', assignee_id: null, resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+            { id: 't3', user_id: 'handler1', category_id: 'cat-adm', status: 'closed', subject: 'C', body_md: 'b', priority: 'normal', assignee_id: 'handler1', resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+        ],
+        support_inbox_meta: [
+            { ticket_id: 't1', source: 'manual_paste', priority_level: 'P2', due_date: '2020-01-01T00:00:00.000Z', consultant_id: null, external_message_id: null, email_from: null, email_subject: 'x', email_received_at: null, created_at: '2026-05-01' },
+            { ticket_id: 't2', source: 'manual_paste', priority_level: 'P2', due_date: null, consultant_id: null, external_message_id: null, email_from: null, email_subject: 'x', email_received_at: null, created_at: '2026-05-01' },
+        ],
+    })
+
+    it('liczy otwarte, po terminie i nieprzypisane', async () => {
+        setupClient({ user: handler, tables: summaryTables() })
+        const { getInboxSummary } = await import('../support-inbox')
+        const res = await getInboxSummary()
+        expect(res.success).toBe(true)
+        if (!res.success) return
+        // t3 jest zamknięty → poza wszystkimi licznikami.
+        expect(res.data).toEqual({ open: 2, overdue: 1, unassigned: 1 })
+    })
+
+    // Incydent 2026-08-25: „0 spraw" musi znaczyć „zero spraw", a nie „nie udało
+    // się sprawdzić" — inaczej KPI uspokaja prowadzącego skrzynkę nieprawdą.
+    it('zwraca błąd zamiast zerowego podsumowania, gdy padnie zapytanie o zgłoszenia', async () => {
+        const client = setupClient({ user: handler, tables: summaryTables() })
+        const realFrom = client.from.bind(client)
+        client.from = ((table: string) => (
+            table === 'support_tickets' ? failingQuery('tickets boom') : realFrom(table)
+        )) as typeof client.from
+        const { getInboxSummary } = await import('../support-inbox')
+        const res = await getInboxSummary()
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toContain('tickets boom')
+    })
+
+    // Cicha awaria meta dawała `overdue: 0` — najbardziej uspokajającą z możliwych
+    // odpowiedzi, i nieprawdziwą.
+    it('zwraca błąd zamiast „nic po terminie", gdy padnie zapytanie o meta', async () => {
+        const client = setupClient({ user: handler, tables: summaryTables() })
+        const realFrom = client.from.bind(client)
+        client.from = ((table: string) => (
+            table === 'support_inbox_meta' ? failingQuery('meta boom') : realFrom(table)
+        )) as typeof client.from
+        const { getInboxSummary } = await import('../support-inbox')
+        const res = await getInboxSummary()
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toContain('meta boom')
+    })
+})

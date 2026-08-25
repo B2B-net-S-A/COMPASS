@@ -2,6 +2,7 @@ import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { sendExitInterviewReminder, sendOnboardingReminderToManager } from '@/lib/email'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,7 @@ export const dynamic = 'force-dynamic'
  */
 // Phase 22 tables not yet in generated types — cast admin to any for now.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const GET = withCronAuth(async (_request, { admin: adminTyped }) => {
+export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_REMINDERS_RUN', async (_request, { admin: adminTyped }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = adminTyped as any
     const todayIso = new Date().toISOString().split('T')[0]
@@ -142,4 +143,4 @@ export const GET = withCronAuth(async (_request, { admin: adminTyped }) => {
         exit_reminders_sent: exitRemindersSent,
         errors: errors.slice(0, 10),
     })
-})
+}))

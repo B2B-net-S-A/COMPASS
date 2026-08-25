@@ -1,6 +1,7 @@
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export const dynamic = 'force-dynamic'
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-route-retention" \
  *        -H "Authorization: Bearer $CRON_SECRET"
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('CLOCK_ROUTE_RETENTION_RUN', async (_request, { admin }) => {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
     const { count, error } = await admin
@@ -31,4 +32,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     }
 
     return NextResponse.json({ ok: true, cutoff, deleted: count ?? 0 })
-})
+}))

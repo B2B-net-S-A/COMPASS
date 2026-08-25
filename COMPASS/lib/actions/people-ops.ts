@@ -145,8 +145,14 @@ export async function getPeopleOpsMonthlySummary(
     const { start, end } = monthBounds(year, month)
 
     try {
-        const inWindow = (qb: ReturnType<typeof db.from>, col: string) =>
-            qb.gte(col, start).lt(col, end)
+        // Ograniczenie strukturalne, nie `ReturnType<typeof db.from>`: `gte`/`lt`
+        // w supabase-js zwracają `this`, a builder zapytania po `.select()` to już
+        // inny typ niż ten z `.from()`. Generyk przepuszcza konkretny builder dalej,
+        // dzięki czemu `.neq()`/`.in()` dopięte po `inWindow` wciąż się typują.
+        const inWindow = <Q extends { gte(col: string, value: string): Q; lt(col: string, value: string): Q }>(
+            qb: Q,
+            col: string,
+        ): Q => qb.gte(col, start).lt(col, end)
 
         const [
             empOnbDue,
@@ -185,7 +191,7 @@ export async function getPeopleOpsMonthlySummary(
             // --- ATTENTION / DATA QUALITY ---
             readCount(db.from('profiles').select('id', { count: 'exact', head: true }).eq('employment_status', 'offboarding').is('termination_date', null)),
             readCount(db.from('client_departures').select('id', { count: 'exact', head: true }).is('departure_date', null)),
-            readCount(excludeExited(db.from('profiles').select('id', { count: 'exact', head: true }).is('hired_at', null).in('role', HR_ZONE_ROLES as unknown as string[]))),
+            readCount(excludeExited(db.from('profiles').select('id', { count: 'exact', head: true }).is('hired_at', null).in('role', HR_ZONE_ROLES))),
             // --- AKTYWNE PROCESY (informacja, nie alert — audyt P1.5) ---
             readCount(db.from('onboarding_progress').select('id', { count: 'exact', head: true }).is('completed_at', null).is('cancelled_at', null)),
             readCount(db.from('exit_interviews').select('id', { count: 'exact', head: true }).eq('status', 'scheduled')),

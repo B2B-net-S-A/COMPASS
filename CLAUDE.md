@@ -1772,8 +1772,11 @@ bo wszystkie interpolacje szablonu przechodzą przez `escapeHtml`.
 Zobacz `~/.claude/rules/observability.md` dla pełnego standardu (Sentry + Grafana Cloud + Cloudflare). Per-Compass odstępstwa:
 
 - **JSON logger utility** — `COMPASS/lib/logger.ts` (zero-dep) używany zamiast `console.error`. ~50 lokalizacji zmigrowanych w PR #32. Pozostałe ~100 w `lib/actions/` i `components/` migrowane stopniowo gdy pliki są edytowane (hook PostToolUse blokuje nowe `console.*`).
-- **Sentry projekt:** `compass` (Next.js 14, App Router + middleware Edge runtime). SDK: `@sentry/nextjs ^8` (^9 wymagałoby Next 15).
-- **Source maps:** `withSentryConfig` z `hideSourceMaps: true` + upload przez `SENTRY_AUTH_TOKEN` (build-time only, nigdy w runtime image).
+- **Sentry projekt:** `compass` (Next.js 14, App Router + middleware Edge runtime). SDK: `@sentry/nextjs ^10`.
+
+  > ⚠ **Sprostowanie (audyt B6, 2026-08-25).** Do tej daty stało tu, że „^9 wymagałoby Next 15". **To była nieprawda** — `peerDependencies` SDK 9 i 10 to `next: ^13.2 || ^14 || ^15 || ^16`, więc Next 14 był wspierany przez cały czas. Ta jedna linijka zamroziła SDK na 8.55.2 na pół roku: trzymała **20 z 43** podatności zgłaszanych przez `npm audit` (cały łańcuch `@sentry/node` → `@opentelemetry/*` → `rollup`) i posłużyła jako uzasadnienie odrzucenia trzech PR-ów dependabota (#228, #278, #307). Po podniesieniu do 10.71 (plus `npm audit fix` w zakresie semver) zostało **7** podatności — wszystkie wymagają majora: `next`/`postcss` i `eslint-config-next` czekają na migrację Next 14→16, `uuid` wisi pod `exceljs` 4.4.0 (najnowszym), którego jedyna „naprawa" to downgrade do 3.4.0. Wniosek: zanim zapiszesz „X wymaga Y", sprawdź `npm view <pkg> peerDependencies` — notatka bez źródła żyje dłużej niż powód, dla którego powstała.
+
+- **Source maps:** `withSentryConfig` + upload przez `SENTRY_AUTH_TOKEN` (build-time only, nigdy w runtime image). Od SDK 10 zamiast `hideSourceMaps: true` (opcja usunięta) jest `sourcemaps.deleteSourcemapsAfterUpload: true` — ten sam efekt: `.map` nie zostaje w artefakcie produkcyjnym.
 - **GIT_SHA propagation:** `deploy.yml` PATCH-uje Coolify env vault na każdym pushu (nie magic var Coolify). `BUILT_AT = $(date -u +%Y-%m-%dT%H:%M:%SZ)` per deploy. `/api/health` zwraca prawdziwy short SHA, smoke test prefix-match przechodzi bez retry.
 - **Replay privacy:** `maskAllText: true, blockAllMedia: true` — Compass trzyma dane HR (RODO).
 - **Compose `logging:`** — `json-file 10MB×5 + tag` per service (już ma).

@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
+import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { downloadSharedWorkbook } from '@/lib/graph/sharepoint'
 import { importWejsciaFromBuffer, importZejsciaFromBuffer } from '@/lib/contractors/import-core'
 import { seedBenchFromRecentDepartures } from '@/lib/contractors/bench-seed'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
+// UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
+// tłumaczy go na limit funkcji serverless (Vercel/Lambda); w kontenerze na Coolify nikt
+// go nie egzekwuje, więc nie jest to działająca ochrona przed zawieszonym przebiegiem.
+// Zostaje jako deklaracja intencji na wypadek zmiany hostingu — realnym limitem jest
+// timeout per żądanie na proxy (Traefik/Cloudflare) i limity samych wywołań.
 export const maxDuration = 240
 
 const HUB = '/internal/kontraktorzy'
@@ -24,11 +31,23 @@ const HUB = '/internal/kontraktorzy'
  *                          the earliest admin)
  *
  * Coolify cron suggestion: `0 5 * * *` (05:00 UTC daily).
+ *
+ * Audyt 2026-08 (C11.3): awaria konfiguracji i pobrania pliku zwracały HTTP 200 z
+ * `ok:false` i nie raportowały nic do Sentry — dla każdego monitoringu patrzącego na
+ * kod odpowiedzi wyglądało to jak udany przebieg, więc sync mógł stać tygodniami.
+ * Teraz każda z tych ścieżek kończy się 500 + wpisem w Sentry, a ślad w bazie zostawia
+ * heartbeat `TC_SYNC_RUN` (statystyki = ciało odpowiedzi).
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('TC_SYNC_RUN', async (_request, { admin }) => {
     const fileUrl = process.env.TC_SYNC_FILE_URL
     if (!fileUrl) {
-        return NextResponse.json({ ok: false, error: 'TC_SYNC_FILE_URL nie skonfigurowany' })
+        const error = 'TC_SYNC_FILE_URL nie skonfigurowany'
+        logger.error({ event: 'cron.tc_sync.not_configured', error })
+        Sentry.captureMessage('tc_sync_not_configured', {
+            level: 'error',
+            tags: { kind: 'cron_tc_sync' },
+        })
+        return NextResponse.json({ ok: false, stage: 'config', error }, { status: 500 })
     }
 
     // System actor (imported_by / audit). client_entries etc. allow NULL, but a real id is better
@@ -44,7 +63,13 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         actorUserId = ((data ?? []) as Array<{ id: string }>)[0]?.id ?? null
     }
     if (!actorUserId) {
-        return NextResponse.json({ ok: false, error: 'Brak aktora importu (ustaw TC_SYNC_USER_ID)' })
+        const error = 'Brak aktora importu (ustaw TC_SYNC_USER_ID)'
+        logger.error({ event: 'cron.tc_sync.no_actor', error })
+        Sentry.captureMessage('tc_sync_no_actor', {
+            level: 'error',
+            tags: { kind: 'cron_tc_sync' },
+        })
+        return NextResponse.json({ ok: false, stage: 'config', error }, { status: 500 })
     }
 
     let buffer: Buffer
@@ -53,7 +78,8 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     } catch (e) {
         const error = e instanceof Error ? e.message : 'pobranie pliku nie powiodło się'
         logger.error({ event: 'cron.tc_sync.download_failed', error })
-        return NextResponse.json({ ok: false, stage: 'download', error })
+        Sentry.captureException(e, { tags: { kind: 'cron_tc_sync' } })
+        return NextResponse.json({ ok: false, stage: 'download', error }, { status: 500 })
     }
 
     const out: Record<string, unknown> = { ok: true, bytes: buffer.length }
@@ -64,12 +90,14 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     } catch (e) {
         out.wejscia = { error: e instanceof Error ? e.message : 'import wejść nie powiódł się' }
         out.ok = false
+        Sentry.captureException(e, { tags: { kind: 'cron_tc_sync', sheet: 'wejscia' } })
     }
     try {
         out.zejscia = await importZejsciaFromBuffer(admin, buffer, actorUserId)
     } catch (e) {
         out.zejscia = { error: e instanceof Error ? e.message : 'import zejść nie powiódł się' }
         out.ok = false
+        Sentry.captureException(e, { tags: { kind: 'cron_tc_sync', sheet: 'zejscia' } })
     }
 
     // Bench seeduje się tu (jawny job), nie przy renderze listy — audyt 2026-07-16 P1.8.
@@ -82,5 +110,7 @@ export const GET = withCronAuth(async (_request, { admin }) => {
 
     revalidatePath(HUB)
     logger.info({ event: 'cron.tc_sync.done', ...out })
-    return NextResponse.json(out)
-})
+    // Padnięty arkusz to nadal padnięty sync — kod odpowiedzi musi to powiedzieć,
+    // inaczej `ok:false` w ciele przeczyta wyłącznie ten, kto zna CRON_SECRET.
+    return NextResponse.json(out, { status: out.ok === false ? 500 : 200 })
+}))

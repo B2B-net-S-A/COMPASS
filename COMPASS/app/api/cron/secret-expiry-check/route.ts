@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email/sender'
 import { logger } from '@/lib/logger'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,7 @@ interface AlertSummary {
  *
  * Auth: Bearer CRON_SECRET (same pattern as other crons).
  */
-export const GET = withCronAuth(async () => {
+export const GET = withCronAuth(withCronHeartbeat('SECRET_EXPIRY_CHECK_RUN', async () => {
     const expiresAtRaw = process.env.AZURE_CLIENT_SECRET_EXPIRES_AT?.trim()
 
     if (!expiresAtRaw) {
@@ -127,7 +128,7 @@ export const GET = withCronAuth(async () => {
         alertSent: true,
         recipients: sentCount,
     } satisfies AlertSummary)
-})
+}))
 
 function parseSuperAdmins(): string[] {
     const raw = process.env.SUPER_ADMIN_EMAILS ?? ''

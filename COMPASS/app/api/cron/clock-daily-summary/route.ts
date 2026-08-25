@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { findPeakActivityWindow } from '@/lib/clock/aggregation'
 import { sendClockDailySummary, type ClockDailySummary } from '@/lib/email'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { excludeExited } from '@/lib/hr/employment-window'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,7 @@ export const dynamic = 'force-dynamic'
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-daily-summary" \
  *        -H "Authorization: Bearer $CRON_SECRET"
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('CLOCK_DAILY_SUMMARY_RUN', async (_request, { admin }) => {
     // Compute "yesterday" UTC date
     const now = new Date()
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
@@ -180,4 +181,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         skipped,
         failed,
     })
-})
+}))

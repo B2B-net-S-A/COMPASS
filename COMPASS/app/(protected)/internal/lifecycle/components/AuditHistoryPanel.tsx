@@ -67,7 +67,7 @@ export async function AuditHistoryPanel({ userId }: Props) {
                             </div>
                             <div className="text-xs text-muted-foreground text-right shrink-0">
                                 <div>{e.actor_name ?? 'system'}</div>
-                                <div>{new Date(e.created_at).toLocaleString('pl-PL')}</div>
+                                <div>{e.created_at ? new Date(e.created_at).toLocaleString('pl-PL') : '—'}</div>
                             </div>
                         </div>
                     </li>

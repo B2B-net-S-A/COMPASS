@@ -48,18 +48,37 @@ export async function resolveAlertRecipients(
     return Array.from(new Set(fallbackUserIds.filter(Boolean)))
 }
 
+export interface AlertDispatchResult {
+    /** Odbiorcy, do których poszła próba. */
+    attempted: number
+    /**
+     * Odbiorcy, do których alert faktycznie dotarł TRWAŁYM kanałem (dzwonek lub email).
+     *
+     * Push jest z założenia best-effort (brak subskrypcji = cisza, a `.catch` niżej
+     * zamienia awarię w rozwiązaną obietnicę), więc sam z siebie nie liczy się jako
+     * dostarczenie — inaczej alert „dostarczony" mógłby nie zostawić po sobie nic,
+     * co da się później zobaczyć.
+     */
+    delivered: number
+}
+
 /**
  * Wysyła alert do odbiorców trzema kanałami, każdy w Promise.allSettled — awaria
- * kanału jest logowana, nie rzuca. Zwraca liczbę odbiorców, do których poszła próba.
+ * kanału jest logowana, nie rzuca.
+ *
+ * Audyt 2026-08 (C11.2): funkcja zwracała samą liczbę PRÓB, a wołający brał ją (albo
+ * sam brak wyjątku) za dowód dostarczenia i stemplował dedup `alerted_at`/`reminded_at`.
+ * Nieudany alert nigdy się więc nie ponawiał — cisza wyglądała identycznie jak sukces.
+ * Stąd rozdzielenie `attempted` / `delivered`: stempluj wyłącznie po `delivered > 0`.
  */
 export async function dispatchGenericAlert(
     admin: ServiceClient,
     recipientIds: string[],
     payload: GenericAlertPayload,
     logEvent: string,
-): Promise<number> {
+): Promise<AlertDispatchResult> {
     const ids = Array.from(new Set(recipientIds.filter(Boolean)))
-    if (ids.length === 0) return 0
+    if (ids.length === 0) return { attempted: 0, delivered: 0 }
 
     const { data: profiles } = await admin
         .from('profiles')
@@ -71,7 +90,8 @@ export async function dispatchGenericAlert(
         ),
     )
 
-    let notified = 0
+    let attempted = 0
+    let delivered = 0
     for (const uid of ids) {
         const profile = byId.get(uid)
 
@@ -118,7 +138,24 @@ export async function dispatchGenericAlert(
                 })
             }
         })
-        notified += 1
+
+        const [inAppResult, , emailResult] = results
+        const inAppOk = inAppResult.status === 'fulfilled'
+        // Wysyłka maila NIE rzuca przy porażce — zwraca `{ success: false }`. Sam
+        // `fulfilled` nic więc nie mówi; liczy się dopiero flaga w wyniku.
+        const emailOk = emailResult.status === 'fulfilled' && emailResult.value.success === true
+
+        attempted += 1
+        if (inAppOk || emailOk) delivered += 1
+        else {
+            logger.error({
+                event: logEvent,
+                channel: 'all',
+                type: payload.type,
+                user_id: uid,
+                error: 'żaden trwały kanał nie dostarczył alertu',
+            })
+        }
     }
-    return notified
+    return { attempted, delivered }
 }

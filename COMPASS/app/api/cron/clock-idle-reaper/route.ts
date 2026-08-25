@@ -4,6 +4,7 @@ import { aggregateHeartbeats } from '@/lib/clock/aggregation'
 import { logAudit } from '@/lib/actions/audit'
 import { sendClockAutoStopped } from '@/lib/email'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,7 @@ export const dynamic = 'force-dynamic'
  * Legacy query-based fallback (deprecated, withCronAuth loguje warning):
  *   curl -X GET "https://compass.dynaminds.pl/api/cron/clock-idle-reaper?secret=$CRON_SECRET"
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('CLOCK_IDLE_REAPER_RUN', async (_request, { admin }) => {
     const stalenessTs = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     const nowTs = new Date().toISOString()
 
@@ -106,4 +107,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         closed,
         emailed,
     })
-})
+}))

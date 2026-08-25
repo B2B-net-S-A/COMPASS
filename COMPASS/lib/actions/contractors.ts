@@ -57,6 +57,8 @@ import type {
     WhoResigned,
 } from '@/lib/types/contractor'
 import { excludeExited } from '@/lib/hr/employment-window'
+import { ExpectedError } from '@/lib/actions/expected-error'
+import { requireRows, selectInChunks, type SelectInChunksOptions } from '@/lib/supabase/select-in-chunks'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 const HUB = '/internal/kontraktorzy'
@@ -99,12 +101,34 @@ interface ProfileLite {
 }
 
 // ─── Shared lookups ──────────────────────────────────────────────────────────
+/**
+ * `selectInChunks` dla zapytań DEKORACYJNYCH — nazwisk, etykiet, odznak.
+ *
+ * Awaria degraduje wzbogacenie do pustki (z logiem), zamiast gasić listę, której
+ * te dane tylko towarzyszą. Rozstrzygnięcie TREŚĆ vs DEKORACJA opisuje
+ * lib/supabase/select-in-chunks.ts; nazwa tej funkcji ma czynić wybór widocznym
+ * w miejscu wywołania, żeby dało się go zweryfikować bez wchodzenia w ciało.
+ */
+async function decorationRows<T>(options: SelectInChunksOptions): Promise<T[]> {
+    try {
+        return await selectInChunks<T>(options)
+    } catch (error) {
+        logCompat.warn(`Dane pomocnicze niedostępne (${options.source}) — lista bez wzbogacenia`, error)
+        return []
+    }
+}
+
 async function loadProfilesByIds(admin: ServiceClient, ids: string[]): Promise<Map<string, ProfileLite>> {
     const unique = Array.from(new Set(ids.filter(Boolean)))
     const map = new Map<string, ProfileLite>()
     if (unique.length === 0) return map
-    const { data } = await admin.from('profiles').select('id, full_name, email, role').in('id', unique)
-    for (const p of (data ?? []) as ProfileLite[]) map.set(p.id, p)
+    const rows = await decorationRows<ProfileLite>({
+        source: 'profiles',
+        column: 'id',
+        ids: unique,
+        query: () => admin.from('profiles').select('id, full_name, email, role'),
+    })
+    for (const p of rows) map.set(p.id, p)
     return map
 }
 
@@ -117,16 +141,40 @@ export async function listTcmProfiles(): Promise<Array<{ id: string; fullName: s
     // wypisywani — zaśmiecali listę „przypisane" (zgłoszenie Dominika). Admin, który
     // realnie prowadzi TCM, dostaje grant has_tcm_access.
     // Opiekun, który odszedł, nie jest opiekunem — nie oferuj go w dropdownie.
-    const { data } = await excludeExited(
+    const q = excludeExited(
         admin
             .from('profiles')
             .select('id, full_name, role')
             .or('role.eq.talent_community,has_tcm_access.eq.true'),
     ).order('full_name', { ascending: true })
-    return ((data ?? []) as ProfileLite[]).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))
+    // TREŚĆ — pusty dropdown mówi „nie ma komu przypisać", a nie „nie udało się sprawdzić".
+    return (requireRows('profiles', await q) as ProfileLite[]).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))
 }
 
 // ─── Contractors ──────────────────────────────────────────────────────────────
+interface ConversationBadgeRow {
+    contractor_id: string
+    status: ConversationStatus
+    conversation_date: string
+}
+
+/**
+ * Licznik otwartych rozmów + data ostatniej, doklejane do katalogu kontraktorów.
+ *
+ * DEKORACJA: awaria gasi odznaki, ale NIE może chować kontraktorów — dlatego
+ * degradujemy do pustki z logiem zamiast rzucać. Paczkami, bo katalog liczy 683
+ * pozycje, a `.in()` z tyloma id budowało URL ~26 kB — powyżej progu, na którym
+ * zapytanie ginęło po cichu (incydent 2026-08-25).
+ */
+async function conversationBadges(admin: ServiceClient, contractorIds: string[]): Promise<ConversationBadgeRow[]> {
+    return await decorationRows<ConversationBadgeRow>({
+        source: 'contractor_conversations',
+        column: 'contractor_id',
+        ids: contractorIds,
+        query: () => admin.from('contractor_conversations').select('contractor_id, status, conversation_date'),
+    })
+}
+
 export async function listContractors(filters: ContractorFilters = {}): Promise<ContractorListItem[]> {
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
@@ -136,22 +184,19 @@ export async function listContractors(filters: ContractorFilters = {}): Promise<
     if (filters.ownerTcmId) q = q.eq('owner_tcm_id', filters.ownerTcmId)
     if (filters.client) q = q.ilike('current_client', `%${filters.client}%`)
     if (filters.search) q = q.ilike('full_name', `%${filters.search}%`)
-    const { data } = await q
-    const contractors = (data ?? []) as ContractorRow[]
+    // TREŚĆ — katalog kontraktorów. Awaria nie może udawać „nikogo nie ma".
+    const contractors = requireRows('contractors', await q) as ContractorRow[]
     if (contractors.length === 0) return []
 
     const ids = contractors.map((c) => c.id)
-    const [ownerMap, convAgg] = await Promise.all([
+    const [ownerMap, convRows] = await Promise.all([
         loadProfilesByIds(admin, contractors.map((c) => c.owner_tcm_id ?? '').filter(Boolean)),
-        admin
-            .from('contractor_conversations')
-            .select('contractor_id, status, conversation_date')
-            .in('contractor_id', ids),
+        conversationBadges(admin, ids),
     ])
 
     const open = new Map<string, number>()
     const last = new Map<string, string>()
-    for (const r of (convAgg.data ?? []) as Array<{ contractor_id: string; status: ConversationStatus; conversation_date: string }>) {
+    for (const r of convRows) {
         if (r.status === 'potrzebny_kontakt' || r.status === 'pilne') {
             open.set(r.contractor_id, (open.get(r.contractor_id) ?? 0) + 1)
         }
@@ -171,8 +216,18 @@ export async function getContractorDetail(contractorId: string): Promise<Contrac
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
 
-    const { data: cRaw } = await admin.from('contractors').select('*').eq('id', contractorId).single()
-    if (!cRaw) throw new Error('Kontraktor nie znaleziony.')
+    // Rozróżnienie „nie ma takiego kontraktora" od „zapytanie padło" jest tu
+    // nośne: strona karty łapie brak rekordu i renderuje 404. Gdyby awaria szła
+    // tą samą drogą, TCM zobaczyłby „nie znaleziono" — twierdzenie o DANYCH —
+    // zamiast informacji o awarii, i mógłby uznać, że rekord skasowano.
+    // Stąd `maybeSingle`: brak wiersza to `data === null` BEZ błędu.
+    const { data: cRaw, error: cErr } = await admin
+        .from('contractors')
+        .select('*')
+        .eq('id', contractorId)
+        .maybeSingle()
+    if (cErr) throw new Error(`Nie udało się pobrać kontraktora: ${cErr.message}`)
+    if (!cRaw) throw new ExpectedError('Kontraktor nie znaleziony.')
     const contractor = cRaw as ContractorRow
 
     const [convs, onb, exit, entries, deps, placements] = await Promise.all([
@@ -190,11 +245,13 @@ export async function getContractorDetail(contractorId: string): Promise<Contrac
         contractor,
         ownerTcmName: contractor.owner_tcm_id ? ownerMap.get(contractor.owner_tcm_id)?.full_name ?? null : null,
         conversations: convs,
-        onboardingInterviews: (onb.data ?? []) as unknown as ContractorOnboardingInterviewRow[],
-        exitInterviews: (exit.data ?? []) as unknown as ContractorExitInterviewRow[],
-        entries: (entries.data ?? []) as ClientEntryRow[],
-        departures: (deps.data ?? []) as ClientDepartureRow[],
-        placements: (placements.data ?? []) as ContractorDetail['placements'],
+        // TREŚĆ — każda z tych list jest osobną sekcją karty kontraktora; pusta
+        // sekcja to twierdzenie „nic tu nie ma", nie „nie udało się sprawdzić".
+        onboardingInterviews: requireRows('contractor_onboarding_interviews', onb) as unknown as ContractorOnboardingInterviewRow[],
+        exitInterviews: requireRows('contractor_exit_interviews', exit) as unknown as ContractorExitInterviewRow[],
+        entries: requireRows('client_entries', entries) as ClientEntryRow[],
+        departures: requireRows('client_departures', deps) as ClientDepartureRow[],
+        placements: requireRows('placements', placements) as ContractorDetail['placements'],
     }
 }
 
@@ -284,16 +341,21 @@ export async function listConversations(filters: ConversationFilters = {}): Prom
     if (filters.category) q = q.eq('category', filters.category)
     if (filters.status) q = q.eq('status', filters.status)
     if (filters.client) q = q.ilike('client_snapshot', `%${filters.client}%`)
-    const { data } = await q
-    const rows = (data ?? []) as ContractorConversationRow[]
+    // TREŚĆ — log rozmów.
+    const rows = requireRows('contractor_conversations', await q) as ContractorConversationRow[]
     if (rows.length === 0) return []
 
     const [contractorMap, tcmMap] = await Promise.all([
         (async () => {
-            const ids = Array.from(new Set(rows.map((r) => r.contractor_id)))
-            const { data: cs } = await admin.from('contractors').select('id, full_name, phone').in('id', ids)
+            // DEKORACJA — nazwisko i telefon dopisywane do wpisu rozmowy.
+            const cs = await decorationRows<{ id: string; full_name: string; phone: string | null }>({
+                source: 'contractors',
+                column: 'id',
+                ids: rows.map((r) => r.contractor_id),
+                query: () => admin.from('contractors').select('id, full_name, phone'),
+            })
             const m = new Map<string, { full_name: string; phone: string | null }>()
-            for (const c of (cs ?? []) as Array<{ id: string; full_name: string; phone: string | null }>) m.set(c.id, c)
+            for (const c of cs) m.set(c.id, c)
             return m
         })(),
         loadProfilesByIds(admin, rows.map((r) => r.tcm_id ?? '').filter(Boolean)),
@@ -587,8 +649,8 @@ export async function listDepartures(filters: { client?: string; whoResigned?: W
     let q = admin.from('client_departures').select('*').order('departure_date', { ascending: false, nullsFirst: false })
     if (filters.client) q = q.ilike('client_name', `%${filters.client}%`)
     if (filters.whoResigned) q = q.eq('who_resigned', filters.whoResigned)
-    const { data } = await q
-    return (data ?? []) as ClientDepartureRow[]
+    // TREŚĆ — patrz listExitDepartures.
+    return requireRows('client_departures', await q) as ClientDepartureRow[]
 }
 
 /** Combined "Wejścia" view: historical archive (client_entries) + live placements. */
@@ -601,7 +663,9 @@ export async function listEntries(filters: { client?: string } = {}): Promise<En
     if (filters.client) pq = pq.ilike('client_name', `%${filters.client}%`)
     const [entries, placements] = await Promise.all([eq, pq])
 
-    const fromArchive = ((entries.data ?? []) as ClientEntryRow[]).map((e) => ({
+    // TREŚĆ — feed Wejść składa się z obu źródeł; cicha pustka po jednej stronie
+    // dawałaby listę niepełną, ale wyglądającą na kompletną.
+    const fromArchive = (requireRows('client_entries', entries) as ClientEntryRow[]).map((e) => ({
         id: e.id,
         source: 'archive' as const,
         consultant_name: e.consultant_name,
@@ -610,7 +674,7 @@ export async function listEntries(filters: { client?: string } = {}): Promise<En
         start_date: e.start_date,
         recruiter: e.recruiter_raw,
     }))
-    const fromPlacements = ((placements.data ?? []) as Array<{ id: string; consultant_name: string; client_name: string; position: string | null; start_date: string; recruiter_raw: string; status: string }>)
+    const fromPlacements = (requireRows('placements', placements) as Array<{ id: string; consultant_name: string; client_name: string; position: string | null; start_date: string; recruiter_raw: string; status: string }>)
         .filter((p) => p.status !== 'cancelled')
         .map((p) => ({
             id: p.id,
@@ -637,11 +701,13 @@ export async function getContractorDashboard(): Promise<ContractorDashboard> {
         admin.from('client_departures').select('who_resigned, client_name'),
     ])
 
-    const cRows = (contractors.data ?? []) as Array<{ status: ContractorStatus }>
-    const convRows = (convs.data ?? []) as Array<{ status: ConversationStatus; tcm_id: string | null; tcm_raw: string | null }>
-    const entryRows = (entries.data ?? []) as Array<{ id: string }>
-    const placRows = (placements.data ?? []) as Array<{ status: string }>
-    const depRows = (deps.data ?? []) as Array<{ who_resigned: WhoResigned | null; client_name: string }>
+    // TREŚĆ — KPI. „0 zejść" to konkretne twierdzenie o firmie, a nie brak odpowiedzi;
+    // cicha awaria zamieniała tu awarię w fałszywy wynik pokazany jako fakt.
+    const cRows = requireRows('contractors', contractors) as Array<{ status: ContractorStatus }>
+    const convRows = requireRows('contractor_conversations', convs) as Array<{ status: ConversationStatus; tcm_id: string | null; tcm_raw: string | null }>
+    const entryRows = requireRows('client_entries', entries) as Array<{ id: string }>
+    const placRows = requireRows('placements', placements) as Array<{ status: string }>
+    const depRows = requireRows('client_departures', deps) as Array<{ who_resigned: WhoResigned | null; client_name: string }>
 
     const tcmIds = Array.from(new Set(convRows.map((r) => r.tcm_id ?? '').filter(Boolean)))
     const tcmMap = await loadProfilesByIds(admin, tcmIds)
@@ -719,6 +785,8 @@ async function loadDeparturesForAnalytics(input: DepartureAnalyticsInput): Promi
         logCompat.error('loadDeparturesForAnalytics error:', error)
         throw new Error('Nie udało się pobrać zejść.')
     }
+    // null bez błędu ≠ brak zejść — patrz lib/supabase/select-in-chunks.ts.
+    if (data === null) throw new Error('Brak odpowiedzi z client_departures (data=null bez błędu)')
 
     const period: DeparturePeriod = DEPARTURE_PERIODS.includes(input.period as DeparturePeriod)
         ? (input.period as DeparturePeriod)
@@ -794,12 +862,13 @@ export async function exportDeparturesCsv(input: DepartureAnalyticsInput = {}): 
 export async function listOnboardingQueue(): Promise<OnboardingQueueItem[]> {
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
-    const { data } = await admin
+    const queued = admin
         .from('contractors')
         .select('id, full_name, current_client, current_position, status, owner_tcm_id')
         .in('status', ['prospect', 'onboarding'])
         .order('full_name', { ascending: true })
-    const rows = (data ?? []) as Array<{
+    // TREŚĆ — kolejka onboardingu.
+    const rows = requireRows('contractors', await queued) as Array<{
         id: string; full_name: string; current_client: string | null
         current_position: string | null; status: ContractorStatus; owner_tcm_id: string | null
     }>
@@ -808,15 +877,22 @@ export async function listOnboardingQueue(): Promise<OnboardingQueueItem[]> {
     const ids = rows.map((r) => r.id)
     const [ownerMap, interviews] = await Promise.all([
         loadProfilesByIds(admin, rows.map((r) => r.owner_tcm_id ?? '').filter(Boolean)),
-        admin
-            .from('contractor_onboarding_interviews')
-            .select('contractor_id, status, created_at')
-            .in('contractor_id', ids)
-            .order('created_at', { ascending: false }),
+        // DEKORACJA — odznaka statusu wywiadu przy pozycji kolejki. Dzielimy po tej
+        // samej kolumnie, po której grupujemy, więc „pierwszy wiersz per kontraktor"
+        // nadal jest najnowszy.
+        decorationRows<{ contractor_id: string; status: InterviewStatus; created_at: string }>({
+            source: 'contractor_onboarding_interviews',
+            column: 'contractor_id',
+            ids,
+            query: () => admin
+                .from('contractor_onboarding_interviews')
+                .select('contractor_id, status, created_at')
+                .order('created_at', { ascending: false }),
+        }),
     ])
     // First row per contractor is the latest interview (ordered created_at desc).
     const interviewStatus = new Map<string, InterviewStatus>()
-    for (const r of (interviews.data ?? []) as Array<{ contractor_id: string; status: InterviewStatus; created_at: string }>) {
+    for (const r of interviews) {
         if (!interviewStatus.has(r.contractor_id)) interviewStatus.set(r.contractor_id, r.status)
     }
     return rows.map((r) => ({
@@ -834,21 +910,27 @@ export async function listOnboardingQueue(): Promise<OnboardingQueueItem[]> {
 export async function listExitInterviewQueue(): Promise<ExitQueueItem[]> {
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
-    const { data } = await admin
+    const queued = admin
         .from('contractor_exit_interviews')
         .select('id, contractor_id, client_snapshot, status, scheduled_for, submitted_at, formal_reason')
         .in('status', ['scheduled', 'submitted'])
         .order('scheduled_for', { ascending: true, nullsFirst: false })
-    const rows = (data ?? []) as Array<{
+    // TREŚĆ — kolejka exit interview.
+    const rows = requireRows('contractor_exit_interviews', await queued) as Array<{
         id: string; contractor_id: string; client_snapshot: string | null
         status: InterviewStatus; scheduled_for: string | null; submitted_at: string | null; formal_reason: string | null
     }>
     if (rows.length === 0) return []
 
-    const ids = Array.from(new Set(rows.map((r) => r.contractor_id)))
-    const { data: cs } = await admin.from('contractors').select('id, full_name').in('id', ids)
+    // DEKORACJA — nazwisko przy pozycji kolejki.
+    const cs = await decorationRows<{ id: string; full_name: string }>({
+        source: 'contractors',
+        column: 'id',
+        ids: rows.map((r) => r.contractor_id),
+        query: () => admin.from('contractors').select('id, full_name'),
+    })
     const nameMap = new Map<string, string>()
-    for (const c of (cs ?? []) as Array<{ id: string; full_name: string }>) nameMap.set(c.id, c.full_name)
+    for (const c of cs) nameMap.set(c.id, c.full_name)
     return rows.map((r) => ({
         interview_id: r.id,
         contractor_id: r.contractor_id,
@@ -869,26 +951,38 @@ export async function listTasks(filters: ContractorTaskFilters = {}): Promise<Co
     if (filters.status) q = q.eq('status', filters.status)
     if (filters.assignedTcmId) q = q.eq('assigned_tcm_id', filters.assignedTcmId)
     if (filters.contractorId) q = q.eq('contractor_id', filters.contractorId)
-    const { data } = await q
-    const rows = (data ?? []) as ContractorTaskRow[]
+    // TREŚĆ — lista zadań działu.
+    const rows = requireRows('contractor_tasks', await q) as ContractorTaskRow[]
     if (rows.length === 0) return []
 
     const [assigneeMap, contractorMap, ticketMap] = await Promise.all([
         loadProfilesByIds(admin, rows.map((r) => r.assigned_tcm_id ?? '').filter(Boolean)),
         (async () => {
-            const ids = Array.from(new Set(rows.map((r) => r.contractor_id ?? '').filter(Boolean)))
+            // DEKORACJA — nazwisko kontraktora przy zadaniu.
+            const ids = rows.map((r) => r.contractor_id ?? '').filter(Boolean)
             const m = new Map<string, string>()
             if (ids.length === 0) return m
-            const { data: cs } = await admin.from('contractors').select('id, full_name').in('id', ids)
-            for (const c of (cs ?? []) as Array<{ id: string; full_name: string }>) m.set(c.id, c.full_name)
+            const cs = await decorationRows<{ id: string; full_name: string }>({
+                source: 'contractors',
+                column: 'id',
+                ids,
+                query: () => admin.from('contractors').select('id, full_name'),
+            })
+            for (const c of cs) m.set(c.id, c.full_name)
             return m
         })(),
         (async () => {
-            const ids = Array.from(new Set(rows.map((r) => r.source_ticket_id ?? '').filter(Boolean)))
+            // DEKORACJA — temat zgłoszenia źródłowego.
+            const ids = rows.map((r) => r.source_ticket_id ?? '').filter(Boolean)
             const m = new Map<string, string>()
             if (ids.length === 0) return m
-            const { data: ts } = await admin.from('support_tickets').select('id, subject').in('id', ids)
-            for (const t of (ts ?? []) as Array<{ id: string; subject: string }>) m.set(t.id, t.subject)
+            const ts = await decorationRows<{ id: string; subject: string }>({
+                source: 'support_tickets',
+                column: 'id',
+                ids,
+                query: () => admin.from('support_tickets').select('id, subject'),
+            })
+            for (const t of ts) m.set(t.id, t.subject)
             return m
         })(),
     ])
@@ -979,6 +1073,13 @@ export async function deleteTask(id: string): Promise<void> {
 
 // ─── Phase 38: Onboarding / Exit / Roster lists for the 5-element hub ──────────
 /** Latest interview (id, status, attachments) per contractor for a given kind. */
+interface InterviewLookupRow {
+    id: string
+    contractor_id: string
+    status: InterviewStatus
+    attachments: InterviewAttachment[] | null
+}
+
 async function latestInterviewByContractor(
     admin: ServiceClient,
     kind: InterviewKind,
@@ -988,12 +1089,25 @@ async function latestInterviewByContractor(
     const ids = Array.from(new Set(contractorIds.filter(Boolean)))
     if (ids.length === 0) return map
     const table = kind === 'onboarding' ? 'contractor_onboarding_interviews' : 'contractor_exit_interviews'
-    const { data } = await admin
-        .from(table)
-        .select('id, contractor_id, status, attachments, created_at')
-        .in('contractor_id', ids)
-        .order('created_at', { ascending: false })
-    for (const r of (data ?? []) as Array<{ id: string; contractor_id: string; status: InterviewStatus; attachments: InterviewAttachment[] | null }>) {
+
+    // DEKORACJA (odznaka statusu + kafelki plików): ścieżka uploadu sama wyszukuje
+    // najnowszy wywiad, więc pusty wynik nie grozi założeniem duplikatu — degradujemy
+    // zamiast gasić tabelę Wejść/Zejść. Paczkami, bo trafia tu ~350 id (URL ~13 kB).
+    //
+    // Sortowanie działa w obrębie paczki, ale dzielimy po TEJ SAMEJ kolumnie, po której
+    // grupujemy — wszystkie wywiady kontraktora lądują w jednej paczce, więc „pierwszy
+    // wiersz per kontraktor" nadal jest tym najnowszym.
+    const rows = await decorationRows<InterviewLookupRow>({
+        source: table,
+        column: 'contractor_id',
+        ids,
+        query: () => admin
+            .from(table)
+            .select('id, contractor_id, status, attachments, created_at')
+            .order('created_at', { ascending: false }),
+    })
+
+    for (const r of rows) {
         if (!map.has(r.contractor_id)) {
             map.set(r.contractor_id, { id: r.id, status: r.status, attachments: r.attachments ?? [] })
         }
@@ -1023,7 +1137,8 @@ export async function listOnboardingEntries(filters: { client?: string } = {}): 
     const [entries, placements] = await Promise.all([eq, pq])
 
     const rows: Array<Omit<OnboardingEntryItem, 'interview_id' | 'interview_status' | 'attachments'>> = [
-        ...((placements.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; position: string | null; recruiter_raw: string | null; start_date: string | null }>).map((p) => ({
+        // TREŚĆ — tabela Onboardingu składa się z obu źródeł.
+        ...(requireRows('placements', placements) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; position: string | null; recruiter_raw: string | null; start_date: string | null }>).map((p) => ({
             entry_id: p.id,
             source: 'placement' as const,
             consultant_name: p.consultant_name,
@@ -1033,7 +1148,7 @@ export async function listOnboardingEntries(filters: { client?: string } = {}): 
             start_date: p.start_date,
             contractor_id: p.contractor_id,
         })),
-        ...((entries.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; position: string | null; recruiter_raw: string | null; start_date: string | null }>).map((e) => ({
+        ...(requireRows('client_entries', entries) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; position: string | null; recruiter_raw: string | null; start_date: string | null }>).map((e) => ({
             entry_id: e.id,
             source: 'archive' as const,
             consultant_name: e.consultant_name,
@@ -1058,8 +1173,10 @@ export async function listExitDepartures(filters: { client?: string } = {}): Pro
     const admin = createServiceClient()
     let q = admin.from('client_departures').select('*').order('departure_date', { ascending: false, nullsFirst: false })
     if (filters.client) q = q.ilike('client_name', `%${filters.client}%`)
-    const { data } = await q
-    const rows = (data ?? []) as ClientDepartureRow[]
+    // TREŚĆ tabeli Zejść. Bez sprawdzenia błędu `rows.length === 0 → return []`
+    // zamieniało awarię w pustą tabelę bez słowa komunikatu — dokładnie ten
+    // mechanizm ukrył incydent 2026-08-25 na kanbanie.
+    const rows = requireRows('client_departures', await q) as ClientDepartureRow[]
     if (rows.length === 0) return []
 
     const interviews = await latestInterviewByContractor(admin, 'exit', rows.map((r) => r.contractor_id ?? ''))
@@ -1089,11 +1206,16 @@ export async function listContractorRoster(filters: { client?: string; search?: 
             .order('start_date', { ascending: false, nullsFirst: false }),
     ])
 
+    // TREŚĆ — roster ze stawkami. Cicha pustka po jednej stronie dawałaby listę
+    // niepełną, ale wyglądającą na kompletną (dedup i tak scala oba źródła).
+    const placementRows = requireRows('placements', placements)
+    const entryRows = requireRows('client_entries', entries)
+
     const naturalKey = (consultant: string, client: string, start: string | null) =>
         `${consultant.trim().toLowerCase()}|${client.trim().toLowerCase()}|${start ?? ''}`
     const byKey = new Map<string, ContractorRosterItem>()
 
-    for (const p of (placements.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; recruiter_raw: string | null; delivery_lead_raw: string | null; start_date: string | null; revenue_rate: number | null; cost_rate: number | null; monthly_margin: number | null }>) {
+    for (const p of placementRows as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; recruiter_raw: string | null; delivery_lead_raw: string | null; start_date: string | null; revenue_rate: number | null; cost_rate: number | null; monthly_margin: number | null }>) {
         byKey.set(naturalKey(p.consultant_name, p.client_name, p.start_date), {
             id: p.id,
             source: 'placement',
@@ -1108,7 +1230,7 @@ export async function listContractorRoster(filters: { client?: string; search?: 
             contractor_id: p.contractor_id,
         })
     }
-    for (const e of (entries.data ?? []) as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; recruiter_raw: string | null; delivery_lead_raw: string | null; start_date: string | null; revenue_rate: number | null; cost_rate: number | null; monthly_margin: number | null }>) {
+    for (const e of entryRows as Array<{ id: string; contractor_id: string | null; consultant_name: string; client_name: string; recruiter_raw: string | null; delivery_lead_raw: string | null; start_date: string | null; revenue_rate: number | null; cost_rate: number | null; monthly_margin: number | null }>) {
         const key = naturalKey(e.consultant_name, e.client_name, e.start_date)
         if (byKey.has(key)) continue // placement wins
         byKey.set(key, {
@@ -1224,14 +1346,17 @@ export async function uploadContractorInterviewFile(formData: FormData): Promise
     const table = kind === 'onboarding' ? 'contractor_onboarding_interviews' : 'contractor_exit_interviews'
 
     // Latest interview for this contractor + kind, or create one carrying the contractor snapshot.
-    const { data: existing } = await admin
+    // TREŚĆ, mimo że to lookup: wynik decyduje, czy zakładamy NOWY wywiad. Tabela nie ma
+    // UNIQUE per kontraktor, więc cicha awaria dokłada pusty wywiad, który wygrywa
+    // `order created_at desc limit 1` — i plik wgrany wcześniej znika z widoku.
+    const existing = requireRows(table, await admin
         .from(table)
         .select('id, attachments')
         .eq('contractor_id', contractorId)
         .order('created_at', { ascending: false })
-        .limit(1)
-    let interviewId = ((existing ?? []) as Array<{ id: string; attachments: InterviewAttachment[] | null }>)[0]?.id ?? null
-    let attachments = ((existing ?? []) as Array<{ id: string; attachments: InterviewAttachment[] | null }>)[0]?.attachments ?? []
+        .limit(1)) as Array<{ id: string; attachments: InterviewAttachment[] | null }>
+    let interviewId = existing[0]?.id ?? null
+    let attachments = existing[0]?.attachments ?? []
 
     if (!interviewId) {
         const { data: c } = await admin.from('contractors').select('current_client, current_position').eq('id', contractorId).single()
@@ -1285,13 +1410,14 @@ export async function removeContractorInterviewFile(kind: InterviewKind, contrac
     const ctx = await requireLifecycleManagerAction()
     const admin = createServiceClient()
     const table = kind === 'onboarding' ? 'contractor_onboarding_interviews' : 'contractor_exit_interviews'
-    const { data } = await admin
+    // Bez sprawdzenia błędu awaria zapytania meldowała „Wywiad nie znaleziony" — nieprawdę.
+    const found = requireRows(table, await admin
         .from(table)
         .select('id, attachments')
         .eq('contractor_id', contractorId)
         .order('created_at', { ascending: false })
-        .limit(1)
-    const row = ((data ?? []) as Array<{ id: string; attachments: InterviewAttachment[] | null }>)[0]
+        .limit(1)) as Array<{ id: string; attachments: InterviewAttachment[] | null }>
+    const row = found[0]
     if (!row) throw new Error('Wywiad nie znaleziony.')
     const next = (row.attachments ?? []).filter((a) => a.path !== path)
     const removePatch: Record<string, unknown> = { attachments: next, updated_at: new Date().toISOString() }
@@ -1333,7 +1459,8 @@ export async function listBench(): Promise<BenchItem[]> {
         logCompat.error('listBench error:', error)
         throw new Error('Nie udało się pobrać benchu.')
     }
-    return (data ?? []) as BenchItem[]
+    if (data === null) throw new Error('Brak odpowiedzi z contractor_bench (data=null bez błędu)')
+    return data as BenchItem[]
 }
 
 /** Manually add a person to the bench (hybrid — for someone outside the auto-seed window). */

@@ -1,0 +1,44 @@
+version: 2
+
+# Audyt B6 (2026-08-25) — zastępuje `renovate.json`, który przez trzy miesiące
+# nie wygenerował ANI JEDNEGO PR-a: aplikacja Renovate nigdy nie została
+# zainstalowana na repo (zero PR-ów od `renovate[bot]`, brak issue „Dependency
+# Dashboard"), więc plik konfiguracyjny wyglądał na działającą automatykę,
+# nie będąc nią. Dependabot na tym repo działa naprawdę — dotąd tylko
+# w trybie security (alerty), bez tego pliku nie robił aktualizacji wersji.
+#
+# Dwa boty naraz robiłyby te same PR-y podwójnie, dlatego Renovate został
+# usunięty zamiast naprawiony.
+
+updates:
+  - package-ecosystem: npm
+    directory: /COMPASS
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      # Jeden PR na miesiąc zamiast kilkunastu. Same patche i minory —
+      # major idzie osobno, bo wymaga przeczytania changeloga.
+      npm-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Rdzeń frameworka aktualizuje się razem, w ramach migracji Next 14→16
+      # (docs/next-15-16-migration-plan.md), nie pojedynczym PR-em od bota.
+      # Dependabot i tak zgłosi te paczki osobno, gdy pojawi się CVE —
+      # `ignore` nie wycisza aktualizacji bezpieczeństwa.
+      - dependency-name: next
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: eslint-config-next
+      - dependency-name: tailwindcss
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      # Akcje są przypięte po SHA (wymóg z ci-cd-unified.md) — Dependabot
+      # podnosi SHA i aktualizuje komentarz z wersją.
+      actions:
+        patterns: ['*']

@@ -137,15 +137,22 @@ export default withSentryConfig(nextConfig, {
     project: 'compass',
     // Suppress logs locally; let CI logs surface them.
     silent: !process.env.CI,
-    // Hide .map files from prod assets (uploaded to Sentry only).
-    hideSourceMaps: true,
     // Disable Sentry SDK's own logger to avoid console noise.
-    disableLogger: true,
+    // (SDK 10: `disableLogger` przeniesione tutaj i deprecated na starym miejscu.)
+    webpack: {
+        treeshake: { removeDebugLogging: true },
+    },
     // Auth token for source maps upload — Coolify provides at build time.
     authToken: process.env.SENTRY_AUTH_TOKEN,
-    // Skip upload entirely if no auth token (still wraps for runtime hooks).
     sourcemaps: {
+        // Skip upload entirely if no auth token (still wraps for runtime hooks).
         disable: !process.env.SENTRY_AUTH_TOKEN,
+        // Zastępuje `hideSourceMaps: true` z SDK 8 (opcja zniknęła w 9/10).
+        // Cel ten sam: .map powstają na czas builda, lecą do Sentry i znikają
+        // z artefaktu — nikt nie pobierze źródeł z produkcji. To jest domyślne
+        // zachowanie w 10.x, ustawione jawnie, żeby zmiana domyślnej wartości
+        // po stronie SDK nie wystawiła map po cichu.
+        deleteSourcemapsAfterUpload: true,
     },
     // Resilience: Sentry release create/upload occasionally returns 5xx
     // (504 gateway timeout — `sentry-cli releases new` then aborts the

@@ -9,6 +9,7 @@
 import {
     dispatchGenericAlert,
     resolveAlertRecipients,
+    type AlertDispatchResult,
     type GenericAlertPayload,
 } from '@/lib/notifications/alert-dispatch'
 import type { createServiceClient } from '@/lib/supabase/admin'
@@ -49,10 +50,14 @@ export async function resolveRecipients(
     return resolveAlertRecipients(admin, settingKey, fallbackUserIds, parseRecipientCsv)
 }
 
+/**
+ * Zwraca `{ attempted, delivered }`. Stempel dedupu (`alerted_at` / `reminded_at`,
+ * marker ciszy) MUSI zależeć od `delivered` — patrz audyt 2026-08 (C11.2).
+ */
 export async function dispatchLegalMonitorAlert(
     admin: ServiceClient,
     recipientIds: string[],
     payload: GenericAlertPayload,
-): Promise<number> {
+): Promise<AlertDispatchResult> {
     return dispatchGenericAlert(admin, recipientIds, payload, LOG_EVENT)
 }

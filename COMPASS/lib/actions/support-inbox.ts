@@ -21,6 +21,7 @@ import {
     type TicketStatus,
 } from '@/lib/types/support'
 import { excludeExited } from '@/lib/hr/employment-window'
+import { requireRows, selectInChunks } from '@/lib/supabase/select-in-chunks'
 
 interface ProfileLite {
     id: string
@@ -736,6 +737,11 @@ export async function searchConsultants(query: string): Promise<SupportActionRes
 }
 
 // Phase 34 — lightweight inbox counts for the Talent Community Pulpit (open / overdue / unassigned).
+interface InboxMetaDue {
+    ticket_id: string
+    due_date: string | null
+}
+
 export async function getInboxSummary(): Promise<SupportActionResult<InboxSummary>> {
     try {
         const supabase = createClient()
@@ -751,26 +757,24 @@ export async function getInboxSummary(): Promise<SupportActionResult<InboxSummar
         }
 
         // Jak w listInboxTickets: awaria zapytania nie może udawać „0 spraw".
-        const { data: tickets, error: ticketsErr } = await supabase
+        const rows = requireRows('support_tickets', await supabase
             .from('support_tickets')
             .select('id, status, assignee_id')
-            .in('category_id', inboxCategoryIds)
-        if (ticketsErr) throw ticketsErr
-        const rows = (tickets ?? []) as Array<{ id: string; status: TicketStatus; assignee_id: string | null }>
+            .in('category_id', inboxCategoryIds)) as Array<{ id: string; status: TicketStatus; assignee_id: string | null }>
         const openRows = rows.filter((t) => t.status !== 'resolved' && t.status !== 'closed')
 
         // Overdue = open tickets whose inbox meta due_date is in the past.
-        let overdue = 0
-        const openIds = openRows.map((t) => t.id)
-        if (openIds.length > 0) {
-            const { data: metas } = await supabase
-                .from('support_inbox_meta')
-                .select('ticket_id, due_date')
-                .in('ticket_id', openIds)
-            const nowIso = new Date().toISOString()
-            overdue = ((metas ?? []) as Array<{ ticket_id: string; due_date: string | null }>)
-                .filter((m) => m.due_date != null && m.due_date < nowIso).length
-        }
+        // TREŚĆ — „0 po terminie" to konkretne twierdzenie, którym KPI uspokaja
+        // prowadzącego skrzynkę; awaria nie może go udawać. Paczkami, bo lista
+        // otwartych spraw rośnie z ruchem (mechanizm incydentu 2026-08-25).
+        const metas = await selectInChunks<InboxMetaDue>({
+            source: 'support_inbox_meta',
+            column: 'ticket_id',
+            ids: openRows.map((t) => t.id),
+            query: () => supabase.from('support_inbox_meta').select('ticket_id, due_date'),
+        })
+        const nowIso = new Date().toISOString()
+        const overdue = metas.filter((m) => m.due_date != null && m.due_date < nowIso).length
 
         return {
             success: true,

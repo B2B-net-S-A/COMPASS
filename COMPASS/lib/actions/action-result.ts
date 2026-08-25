@@ -16,11 +16,14 @@ import { logger } from '@/lib/logger'
 //    (TEAM_SIZE_MAX, CARD_TITLE_MAX); trzecia taka łatka była sygnałem,
 //    że potrzebny jest wspólny mechanizm.
 //
-// 2. ŚLEPOTA SENTRY. @sentry/nextjs 8.55.2 NIE instrumentuje plików
+// 2. ŚLEPOTA SENTRY. @sentry/nextjs NIE instrumentuje plików
 //    'use server' — jego wrapping loader zna tylko page / api-route /
 //    server-component / route-handler / middleware, a `onRequestError`
 //    z instrumentation.ts to hook Next 15, martwy na 14.2.35. Żaden wyjątek
-//    z 810 `throw` w lib/actions nie generował zdarzenia.
+//    z 810 `throw` w lib/actions nie generował zdarzenia. Sprawdzone ponownie
+//    na SDK 10.71 (audyt B6): lista wrapowanych rodzajów plików się nie
+//    zmieniła, więc wywołanie `captureException` niżej wciąż jest jedyną
+//    drogą, którą awaria server action trafia do Sentry.
 //
 // ROZRÓŻNIENIE JEST ISTOTNE — bez niego Sentry utonie w szumie i wypali
 // limit 5k zdarzeń/mies. na darmowym planie:
