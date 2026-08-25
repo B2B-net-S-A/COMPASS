@@ -97,14 +97,20 @@ export async function listInboxTickets(filter?: {
             }
         }
 
-        // Incydent 2026-08-25 (część sieciowa): transfer odpowiedzi > ~100 kB
-        // z PostgREST do kontenera bywa zrywany w locie (TypeError: fetch failed
-        // mimo retry w hardenedFetch), podczas gdy odpowiedzi do ~25 kB przechodzą
-        // niezawodnie (Pulpit ~544 wierszy działa). Do czasu naprawy sieci hosta
-        // tablica pobiera dane PARTIAMI mieszczącymi się pod progiem:
-        // tickety stronami po 30 (≈20 kB z body_md), meta paczkami po 60 id
-        // (≈22 kB po odchudzeniu tabeli). Mechanizm poprawny także na zdrowej
-        // sieci — tylko kilka żądań więcej.
+        // ─── Incydent 2026-08-25: dlaczego partiami, a nie jednym zapytaniem ───
+        // Przyczyną pustej tablicy była DŁUGOŚĆ URL-a zapytania, NIE rozmiar
+        // odpowiedzi. `support_inbox_meta?ticket_id=in.(397 UUID)` daje query
+        // string ~15 kB — takie żądania są ucinane na trasie do kontenera:
+        // Supabase odpowiadał 200 z kompletem 397 wierszy (widoczne w edge logach,
+        // trzy próby pod rząd z retry hardenedFetch), a fetch i tak rzucał
+        // `TypeError: fetch failed`. W tym samym renderze zapytanie o tickety
+        // (`category_id=in.(5 UUID)`, krótki URL, odpowiedź 259 kB) przechodziło
+        // za pierwszym razem, a zakładki Exit/Onboarding/Mapa renderowały 0,8–1 MB
+        // bez problemu — więc teza „za duża odpowiedź" jest obalona.
+        //
+        // REGUŁA: nie wrzucaj setek id do `.in()`. Paczki po 60 dają URL ~2,5 kB.
+        // Stronicowanie ticketów jest tu profilaktyczne (URL i tak krótki), ale
+        // trzyma pojedyncze odpowiedzi małe i mechanizm jednolity.
         const TICKETS_PAGE_SIZE = 30
         const TICKETS_PAGE_CAP = 40 // twardy sufit 1200 ticketów — pętla nie może być nieskończona
         type TicketRow = {
@@ -162,7 +168,8 @@ export async function listInboxTickets(filter?: {
         // martwe kolumny email z Phase 44 pompowały odpowiedź do ~4 MB; zdjęte
         // migracją inbox_email_archive_and_drop, lista zostaje jako pas
         // bezpieczeństwa i dokumentacja kształtu = interfejs SupportInboxMeta).
-        // Meta pobierane PACZKAMI po 60 id (≈22 kB) — patrz komentarz sieciowy wyżej.
+        // Meta pobierane PACZKAMI po 60 id → URL ~2,5 kB zamiast ~15 kB przy
+        // wszystkich naraz. To TA zmiana przywróciła tablicę — patrz komentarz wyżej.
         const META_CHUNK = 60
         const metas: SupportInboxMeta[] = []
         for (let i = 0; i < ticketIds.length; i += META_CHUNK) {
