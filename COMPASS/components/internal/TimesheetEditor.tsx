@@ -65,8 +65,8 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
     useEffect(() => {
         let cancelled = false
         getTimesheetBlockedDates(timesheet.year, timesheet.month)
-            .then((dates) => {
-                if (!cancelled) setBlockedLeaveDates(dates)
+            .then((res) => {
+                if (!cancelled) setBlockedLeaveDates(res?.success ? res.data : [])
             })
             .catch(() => {
                 if (!cancelled) setBlockedLeaveDates([])
@@ -98,7 +98,11 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
     function handleAdd(values: { workDate: string; hours: number; project: string | null; description: string; overtimeReason: string | null }) {
         startTransition(async () => {
             try {
-                await addEntry({ timesheetId: timesheet.id, ...values })
+                const res = await addEntry({ timesheetId: timesheet.id, ...values })
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się dodać wpisu.')
+                    return
+                }
                 toastSuccess('Wpis dodany')
                 setCreating(false)
                 router.refresh()
@@ -113,7 +117,7 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         const id = editingEntry.id
         startTransition(async () => {
             try {
-                await updateEntry({
+                const res = await updateEntry({
                     entryId: id,
                     workDate: values.workDate,
                     hours: values.hours,
@@ -121,6 +125,10 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                     description: values.description,
                     overtimeReason: values.overtimeReason,
                 })
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się zapisać wpisu.')
+                    return
+                }
                 toastSuccess('Zaktualizowano')
                 setEditingEntry(null)
                 router.refresh()
@@ -140,7 +148,11 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         if (!ok) return
         startTransition(async () => {
             try {
-                await deleteEntry(entry.id)
+                const res = await deleteEntry(entry.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się usunąć wpisu.')
+                    return
+                }
                 toastSuccess('Usunięto')
                 router.refresh()
             } catch (e: unknown) {
@@ -158,7 +170,11 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         if (!ok) return
         startTransition(async () => {
             try {
-                await submitTimesheet(timesheet.id)
+                const res = await submitTimesheet(timesheet.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się złożyć timesheetu.')
+                    return
+                }
                 toastSuccess('Timesheet złożony')
                 router.refresh()
             } catch (e: unknown) {
@@ -211,17 +227,22 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
         startTransition(async () => {
             try {
                 const res = await copyPreviousMonthEntries(timesheet.id)
-                if (res.skipped_no_source) {
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się skopiować opisów.')
+                    return
+                }
+                const copied = res.data
+                if (copied.skipped_no_source) {
                     toast.warning(
                         'Brak poprzedniego zaakceptowanego miesiąca — nie ma czego skopiować.',
                     )
-                } else if (res.inserted === 0) {
+                } else if (copied.inserted === 0) {
                     toast.warning(
-                        `Wszystkie dni miały już wpisy lub były zablokowane (${res.skipped_existing} pominięte).`,
+                        `Wszystkie dni miały już wpisy lub były zablokowane (${copied.skipped_existing} pominięte).`,
                     )
                 } else {
                     toastSuccess(
-                        `Skopiowano ${res.inserted} dni z ${res.source_year}-${String(res.source_month).padStart(2, '0')}.`,
+                        `Skopiowano ${copied.inserted} dni z ${copied.source_year}-${String(copied.source_month).padStart(2, '0')}.`,
                     )
                 }
                 router.refresh()
@@ -279,11 +300,17 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                     hoursPerDay: 8,
                     overwrite: hasEntries,
                 })
-                const parts = [`Dodano ${res.inserted} dni × 8h`]
-                if (res.skipped_leave > 0) parts.push(`${res.skipped_leave} pominięte (urlop)`)
-                if (res.skipped_pending_leave > 0)
-                    parts.push(`${res.skipped_pending_leave} pominięte (oczekujący wniosek urlopowy)`)
-                if (res.skipped_existing > 0) parts.push(`${res.skipped_existing} pominięte (już istniały)`)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się wypełnić miesiąca.')
+                    return
+                }
+                const filled = res.data
+                const parts = [`Dodano ${filled.inserted} dni × 8h`]
+                if (filled.skipped_leave > 0) parts.push(`${filled.skipped_leave} pominięte (urlop)`)
+                if (filled.skipped_pending_leave > 0)
+                    parts.push(`${filled.skipped_pending_leave} pominięte (oczekujący wniosek urlopowy)`)
+                if (filled.skipped_existing > 0)
+                    parts.push(`${filled.skipped_existing} pominięte (już istniały)`)
                 toastSuccess(parts.join(' · '))
                 router.refresh()
             } catch (e: unknown) {

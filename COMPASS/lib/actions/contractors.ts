@@ -56,6 +56,7 @@ import type {
     OnboardingQueueItem,
     WhoResigned,
 } from '@/lib/types/contractor'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 const HUB = '/internal/kontraktorzy'
@@ -115,13 +116,13 @@ export async function listTcmProfiles(): Promise<Array<{ id: string; fullName: s
     // grant has_tcm_access (Phase 45). Bare-admini (właściciele firmy) NIE są tu
     // wypisywani — zaśmiecali listę „przypisane" (zgłoszenie Dominika). Admin, który
     // realnie prowadzi TCM, dostaje grant has_tcm_access.
-    const { data } = await admin
-        .from('profiles')
-        .select('id, full_name, role')
-        .or('role.eq.talent_community,has_tcm_access.eq.true')
-        // Opiekun, który odszedł, nie jest opiekunem — nie oferuj go w dropdownie.
-        .neq('employment_status', 'exited')
-        .order('full_name', { ascending: true })
+    // Opiekun, który odszedł, nie jest opiekunem — nie oferuj go w dropdownie.
+    const { data } = await excludeExited(
+        admin
+            .from('profiles')
+            .select('id, full_name, role')
+            .or('role.eq.talent_community,has_tcm_access.eq.true'),
+    ).order('full_name', { ascending: true })
     return ((data ?? []) as ProfileLite[]).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))
 }
 

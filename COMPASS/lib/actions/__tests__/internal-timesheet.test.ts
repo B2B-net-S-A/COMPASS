@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ExpectedError } from '@/lib/actions/expected-error'
+import type { ActionResult } from '@/lib/actions/action-result'
+
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
 const authContextMock = vi.hoisted(() => ({
@@ -15,7 +18,8 @@ vi.mock('@/lib/auth/internal-guard', () => ({
     requireAdminAction: async () => authContextMock,
     requireTimesheetApproverAction: async () => {
         if (!authContextMock.isAdmin && !authContextMock.isManager && authContextMock.role !== 'finanse') {
-            throw new Error('Wymagane uprawnienia: administrator, manager lub finanse.')
+            // Prawdziwe guardy rzucają ExpectedError — treść ma dojść do użytkownika.
+            throw new ExpectedError('Wymagane uprawnienia: administrator, manager lub finanse.')
         }
         return authContextMock
     },
@@ -128,6 +132,22 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { approverAddEntry, ensureTeamTimesheet } from '@/lib/actions/internal-timesheet'
 
+// Audyt 2026-08 (B1) — akcje zwracają ActionResult, odmowa to `{ success: false }`
+// z treścią dla użytkownika, nie wyjątek.
+async function expectSuccess<T>(call: Promise<ActionResult<T>>): Promise<T> {
+    const res = await call
+    if (!res.success) throw new Error(`oczekiwano sukcesu, dostałem: ${res.error}`)
+    return res.data
+}
+
+async function expectRejection(
+    call: Promise<ActionResult<unknown>>,
+    pattern: RegExp,
+): Promise<void> {
+    const res = await call
+    expect(res).toEqual({ success: false, error: expect.stringMatching(pattern) })
+}
+
 beforeEach(() => {
     authContextMock.userId = 'manager-1'
     authContextMock.role = 'manager'
@@ -146,7 +166,7 @@ describe('ensureTeamTimesheet (Phase 27g)', () => {
     it('creates an empty draft for a team member without a timesheet', async () => {
         state.existingTimesheet = null
 
-        const result = await ensureTeamTimesheet('emp-1', 2026, 5)
+        const result = await expectSuccess(ensureTeamTimesheet('emp-1', 2026, 5))
 
         expect(state.insertedTimesheet).toMatchObject({ user_id: 'emp-1', year: 2026, month: 5 })
         expect(result.id).toBe('ts-new')
@@ -172,7 +192,7 @@ describe('ensureTeamTimesheet (Phase 27g)', () => {
             updated_at: '2026-05-01T00:00:00Z',
         }
 
-        const result = await ensureTeamTimesheet('emp-1', 2026, 5)
+        const result = await expectSuccess(ensureTeamTimesheet('emp-1', 2026, 5))
 
         expect(result.id).toBe('ts-existing')
         expect(result.status).toBe('submitted')
@@ -182,7 +202,7 @@ describe('ensureTeamTimesheet (Phase 27g)', () => {
     it('rejects a manager targeting someone outside their team', async () => {
         state.targetManagerId = 'other-manager'
 
-        await expect(ensureTeamTimesheet('emp-1', 2026, 5)).rejects.toThrow(/swojego zespołu/i)
+        await expectRejection(ensureTeamTimesheet('emp-1', 2026, 5), /swojego zespołu/i)
         expect(state.insertedTimesheet).toBeNull()
     })
 
@@ -192,14 +212,14 @@ describe('ensureTeamTimesheet (Phase 27g)', () => {
         authContextMock.role = 'admin'
         state.targetManagerId = null // not on admin's team — admin still allowed
 
-        const result = await ensureTeamTimesheet('emp-9', 2026, 5)
+        const result = await expectSuccess(ensureTeamTimesheet('emp-9', 2026, 5))
 
         expect(result.id).toBe('ts-new')
         expect(state.insertedTimesheet).toMatchObject({ user_id: 'emp-9' })
     })
 
     it('rejects an invalid month', async () => {
-        await expect(ensureTeamTimesheet('emp-1', 2026, 13)).rejects.toThrow(/Miesiąc/i)
+        await expectRejection(ensureTeamTimesheet('emp-1', 2026, 13), /Miesiąc/i)
     })
 })
 
@@ -228,7 +248,9 @@ describe('approverAddEntry — admin overtime > 8h (Phase 33b)', () => {
         authContextMock.role = 'admin'
         authContextMock.userId = 'admin-1'
 
-        await approverAddEntry({ ...baseInput, hours: 10, overtimeReason: 'Awaria u klienta w weekend' })
+        await expectSuccess(
+            approverAddEntry({ ...baseInput, hours: 10, overtimeReason: 'Awaria u klienta w weekend' }),
+        )
 
         expect(state.insertedEntry).toMatchObject({
             hours: 10,
@@ -244,9 +266,10 @@ describe('approverAddEntry — admin overtime > 8h (Phase 33b)', () => {
         authContextMock.isManager = false
         authContextMock.role = 'admin'
 
-        await expect(
+        await expectRejection(
             approverAddEntry({ ...baseInput, hours: 10, overtimeReason: 'x' }),
-        ).rejects.toThrow(/Uzasadnienie/i)
+            /Uzasadnienie/i,
+        )
         expect(state.insertedEntry).toBeNull()
     })
 
@@ -255,17 +278,19 @@ describe('approverAddEntry — admin overtime > 8h (Phase 33b)', () => {
         authContextMock.isManager = false
         authContextMock.role = 'admin'
 
-        await expect(
+        await expectRejection(
             approverAddEntry({ ...baseInput, hours: 17, overtimeReason: 'Long incident bridge' }),
-        ).rejects.toThrow(/16/)
+            /16/,
+        )
         expect(state.insertedEntry).toBeNull()
     })
 
     it('a non-admin approver (manager) is blocked from > 8h', async () => {
         // default ctx = manager, manager-of-team
-        await expect(
+        await expectRejection(
             approverAddEntry({ ...baseInput, hours: 10, overtimeReason: 'Weekend deploy' }),
-        ).rejects.toThrow(/tylko administrator/i)
+            /tylko administrator/i,
+        )
         expect(state.insertedEntry).toBeNull()
     })
 
@@ -274,7 +299,7 @@ describe('approverAddEntry — admin overtime > 8h (Phase 33b)', () => {
         authContextMock.isManager = false
         authContextMock.role = 'admin'
 
-        await approverAddEntry({ ...baseInput, hours: 8, overtimeReason: null })
+        await expectSuccess(approverAddEntry({ ...baseInput, hours: 8, overtimeReason: null }))
 
         expect(state.insertedEntry).toMatchObject({
             hours: 8,

@@ -23,6 +23,7 @@ export {
     type ProjectEndAlert,
 } from './alert-selection'
 import { parseRecipientCsv } from './alert-selection'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 // ─── Odbiorcy ────────────────────────────────────────────────────────────────
 
@@ -41,11 +42,9 @@ export async function resolveRecipients(
 
 /** Wszyscy admin + talent_community (poza exited) — ostateczny fallback. */
 export async function allTcmAndAdmins(admin: ServiceClient): Promise<string[]> {
-    const { data } = await admin
-        .from('profiles')
-        .select('id')
-        .in('role', ['admin', 'talent_community'])
-        .neq('employment_status', 'exited')
+    const { data } = await excludeExited(
+        admin.from('profiles').select('id').in('role', ['admin', 'talent_community']),
+    )
     return ((data ?? []) as Array<{ id: string }>).map((p) => p.id)
 }
 

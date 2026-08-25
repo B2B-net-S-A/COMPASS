@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Wrench, Mail, Crown, KeyRound } from 'lucide-react'
+import { Mail, Crown, KeyRound } from 'lucide-react'
 import { checkIsSuperAdmin } from '@/lib/actions/admin-management'
 
 interface NavItem {
@@ -39,16 +39,6 @@ const settingsGroups: NavGroup[] = [
                 href: "/admin/settings/users",
                 icon: KeyRound,
                 superAdminOnly: true,
-            },
-        ]
-    },
-    {
-        label: "Narzędzia",
-        items: [
-            {
-                title: "Konserwacja",
-                href: "/admin/settings",
-                icon: Wrench,
             },
         ]
     }

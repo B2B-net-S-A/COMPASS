@@ -2,6 +2,7 @@
 // Phase 19a (2026-05-14): added `requireInvoiceReviewerAction/Layout` for admin OR finanse.
 // Phase 20 (2026-05-16): added manager + talent_community guards + extended InternalAuthContext.
 
+import { ExpectedError, SessionExpiredError } from '@/lib/actions/expected-error'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -118,10 +119,10 @@ export async function requireInternalOrAdminLayout(): Promise<InternalAuthContex
  */
 export async function requireInternalOrAdminAction(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
-    if (!ctx) throw new Error('Unauthorized')
+    if (!ctx) throw new SessionExpiredError()
 
     if (!canAccessInternalZone(ctx.role)) {
-        throw new Error('Wymagane uprawnienia: pracownik wewnętrzny lub administrator.')
+        throw new ExpectedError('Wymagane uprawnienia: pracownik wewnętrzny lub administrator.')
     }
 
     return buildCtx(ctx)
@@ -133,7 +134,7 @@ export async function requireInternalOrAdminAction(): Promise<InternalAuthContex
  */
 export async function requireAdminAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
-    if (!ctx.isAdmin) throw new Error('Wymagane uprawnienia administratora.')
+    if (!ctx.isAdmin) throw new ExpectedError('Wymagane uprawnienia administratora.')
     return ctx
 }
 
@@ -154,7 +155,7 @@ export async function requireAdminLayout(): Promise<InternalAuthContext> {
 export async function requireTimesheetApproverAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!ctx.isAdmin && !ctx.isManager && ctx.role !== 'finanse') {
-        throw new Error('Wymagane uprawnienia: administrator, manager lub finanse.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator, manager lub finanse.')
     }
     return ctx
 }
@@ -167,7 +168,7 @@ export async function requireTimesheetApproverAction(): Promise<InternalAuthCont
 export async function requireLeaveApproverAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!ctx.isAdmin && !ctx.isManager) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
     }
     return ctx
 }
@@ -180,7 +181,7 @@ export async function requireLeaveApproverAction(): Promise<InternalAuthContext>
 export async function requireManagerInvoiceApproverAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!canManagerApproveInvoice(ctx.role)) {
-        throw new Error('Wymagane uprawnienia: administrator, manager lub finanse.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator, manager lub finanse.')
     }
     return ctx
 }
@@ -192,7 +193,7 @@ export async function requireManagerInvoiceApproverAction(): Promise<InternalAut
 export async function requireInvoiceReviewerAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!canReviewInvoices(ctx.role)) {
-        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator lub finanse.')
     }
     return ctx
 }
@@ -213,10 +214,10 @@ export async function requireInvoiceReviewerLayout(): Promise<InternalAuthContex
  */
 export async function requireTalentCommunityOrAdminAction(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
-    if (!ctx) throw new Error('Unauthorized')
+    if (!ctx) throw new SessionExpiredError()
     // Phase 45: per-user has_tcm_access grant unlocks TCM without the role (HR-zone only).
     if (!canManageInbox(ctx.role) && !hasEffectiveTcmAccess(ctx)) {
-        throw new Error('Wymagane uprawnienia: administrator lub Talent Community Manager.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator lub Talent Community Manager.')
     }
     return buildCtx(ctx)
 }
@@ -258,10 +259,10 @@ export async function requireInternalAdminAreaLayout(): Promise<InternalAuthCont
  */
 export async function requireLegalMonitorViewerAction(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
-    if (!ctx) throw new Error('Unauthorized')
+    if (!ctx) throw new SessionExpiredError()
     const isFinanseOrAdmin = ctx.role === 'admin' || ctx.role === 'finanse'
     if (!isFinanseOrAdmin && !(ctx.canViewLegalMonitor && ctx.role !== 'consultant')) {
-        throw new Error('Brak uprawnień do monitoringu prawnego.')
+        throw new ExpectedError('Brak uprawnień do monitoringu prawnego.')
     }
     return buildCtx(ctx)
 }
@@ -273,10 +274,10 @@ export async function requireLegalMonitorViewerAction(): Promise<InternalAuthCon
  */
 export async function requireLifecycleManagerAction(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
-    if (!ctx) throw new Error('Unauthorized')
+    if (!ctx) throw new SessionExpiredError()
     // Phase 45: per-user has_tcm_access grant unlocks lifecycle CRUD without the role (HR-zone only).
     if (!canManageLifecycle(ctx.role) && !hasEffectiveTcmAccess(ctx)) {
-        throw new Error('Wymagane uprawnienia: administrator lub Talent Community Manager.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator lub Talent Community Manager.')
     }
     return buildCtx(ctx)
 }
@@ -289,9 +290,9 @@ export async function requireLifecycleManagerAction(): Promise<InternalAuthConte
  */
 export async function requireTechMapViewerAction(): Promise<InternalAuthContext> {
     const ctx = await loadAuthContext()
-    if (!ctx) throw new Error('Unauthorized')
+    if (!ctx) throw new SessionExpiredError()
     if (!canManageLifecycle(ctx.role) && !hasEffectiveTcmAccess(ctx) && !ctx.canViewTechMap) {
-        throw new Error('Brak uprawnień do mapy technologicznej.')
+        throw new ExpectedError('Brak uprawnień do mapy technologicznej.')
     }
     return buildCtx(ctx)
 }
@@ -320,7 +321,7 @@ export async function requireLifecycleHubLayout(): Promise<InternalAuthContext> 
 export async function requireBonusProposerAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!canProposeBonus(ctx.role)) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
     }
     return ctx
 }
@@ -332,7 +333,7 @@ export async function requireBonusProposerAction(): Promise<InternalAuthContext>
 export async function requireBonusReadAllAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!canReadAllBonuses(ctx.role)) {
-        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator lub finanse.')
     }
     return ctx
 }
@@ -344,7 +345,7 @@ export async function requireBonusReadAllAction(): Promise<InternalAuthContext> 
 export async function requireFinanseOrAdminAction(): Promise<InternalAuthContext> {
     const ctx = await requireInternalOrAdminAction()
     if (!ctx.isAdmin && ctx.role !== 'finanse') {
-        throw new Error('Wymagane uprawnienia: administrator lub finanse.')
+        throw new ExpectedError('Wymagane uprawnienia: administrator lub finanse.')
     }
     return ctx
 }

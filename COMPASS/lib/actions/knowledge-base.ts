@@ -4,6 +4,7 @@ import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/ai/embeddings'
+import { requireAdminAction } from '@/lib/auth/internal-guard'
 
 export type KnowledgeDocument = {
     id: string
@@ -13,13 +14,27 @@ export type KnowledgeDocument = {
     created_at: string
 }
 
-export async function createEmbedding(text: string): Promise<number[]> {
+// Audyt 2026-08 (B3) — wersja wewnętrzna, BEZ guarda i BEZ 'export'. Dzięki temu
+// nie jest osobnym endpointem server action, a pętla indeksująca plik nie odpytuje
+// bazy o sesję przy każdym fragmencie tekstu.
+async function embed(text: string): Promise<number[]> {
     return await generateEmbedding(text)
 }
 
+/**
+ * Baza wiedzy jest treścią administracyjną (asystent AI), a każde wywołanie to
+ * płatny request do dostawcy embeddingów — bez guarda był to publiczny endpoint
+ * palący budżet dowolnemu anonimowi.
+ */
+export async function createEmbedding(text: string): Promise<number[]> {
+    await requireAdminAction()
+    return await embed(text)
+}
+
 export async function addKnowledgeDocument(content: string, category: string, metadata: Record<string, any> = {}) {
+    await requireAdminAction()
     const supabase = createClient()
-    const embedding = await createEmbedding(content.replace(/\n/g, ' '))
+    const embedding = await embed(content.replace(/\n/g, ' '))
 
     const { data, error } = await supabase
         .from('compass_assist_knowledge')
@@ -42,6 +57,7 @@ export async function addKnowledgeDocument(content: string, category: string, me
 }
 
 export async function getKnowledgeHistory(category?: string) {
+    await requireAdminAction()
     const supabase = createClient()
     // Explicitly select columns WITHOUT embedding (vector(1536) is too large for serialization)
     // `metadata` is not in the regenerated types for this legacy AI-assistant table; cast preserves behavior.
@@ -63,6 +79,7 @@ export async function getKnowledgeHistory(category?: string) {
 }
 
 export async function deleteKnowledgeDocument(id: string) {
+    await requireAdminAction()
     const supabase = createClient()
     const { error } = await supabase
         .from('compass_assist_knowledge')
@@ -80,6 +97,12 @@ export async function uploadKnowledgeFile(
     formData: FormData,
     category: string
 ): Promise<{ success: boolean; chunksIndexed: number; fileName: string; error?: string }> {
+    try {
+        await requireAdminAction()
+    } catch (err: any) {
+        return { success: false, chunksIndexed: 0, fileName: '', error: err?.message ?? 'Brak uprawnień.' }
+    }
+
     const file = formData.get('file') as File
     if (!file) return { success: false, chunksIndexed: 0, fileName: '', error: 'Brak pliku' }
 
@@ -119,7 +142,7 @@ export async function uploadKnowledgeFile(
             if (chunkText.length < 30) continue // Skip very short chunks
 
             try {
-                const embedding = await createEmbedding(chunkText.replace(/\n/g, ' '))
+                const embedding = await embed(chunkText.replace(/\n/g, ' '))
 
                 const { error: insertError } = await supabase
                     .from('compass_assist_knowledge')
@@ -190,8 +213,9 @@ function splitTextIntoChunks(text: string, chunkSize: number, overlap: number): 
 }
 
 export async function searchKnowledge(query: string, category?: string) {
+    await requireAdminAction()
     const supabase = createClient()
-    const embedding = await createEmbedding(query.replace(/\n/g, ' '))
+    const embedding = await embed(query.replace(/\n/g, ' '))
 
     // match_assist_knowledge expects a string vector + optional category; cast preserves the exact
     // call shape (number[] embedding, null category) without changing runtime behavior.

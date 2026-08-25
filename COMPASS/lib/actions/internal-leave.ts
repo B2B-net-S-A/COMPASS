@@ -11,6 +11,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { logSystemAudit } from '@/lib/audit/system-log'
+import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import {
     HR_LEAVE_TYPE_LABEL,
     sendLeaveCancelledByUser,
@@ -337,7 +338,7 @@ async function buildOofDefaultsFor(args: {
 
 function validateDateString(value: string, label: string): void {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        throw new Error(`${label} musi być w formacie YYYY-MM-DD.`)
+        throw new ExpectedError(`${label} musi być w formacie YYYY-MM-DD.`)
     }
 }
 
@@ -354,7 +355,7 @@ const SELF_SERVICE_LEAVE_TYPES: LeaveType[] = [
  */
 function assertHolidayInLieuEligible(employmentType: string | null, forSelf: boolean): void {
     if (employmentType === 'uop') return
-    throw new Error(
+    throw new ExpectedError(
         forSelf
             ? 'Odbiór dnia za święto przysługuje tylko pracownikom na umowie o pracę (UoP).'
             : 'Odbiór dnia za święto można wpisać tylko pracownikowi na umowie o pracę (UoP).',
@@ -378,7 +379,7 @@ function assertB2bZlecenieVacationOnly(
     if (leaveType === 'vacation') return
     if (employmentType !== 'b2b' && employmentType !== 'zlecenie') return
     const label = employmentType === 'b2b' ? 'B2B' : 'umowie zlecenie'
-    throw new Error(
+    throw new ExpectedError(
         forSelf
             ? `Na umowie ${label} możesz wnioskować wyłącznie o urlop wypoczynkowy.`
             : `Pracownikowi na umowie ${label} możesz wpisać wyłącznie urlop wypoczynkowy (vacation).`,
@@ -387,7 +388,7 @@ function assertB2bZlecenieVacationOnly(
 
 function validateLeaveType(value: string): asserts value is LeaveType {
     if (!(SELF_SERVICE_LEAVE_TYPES as string[]).includes(value)) {
-        throw new Error(`Nieprawidłowy typ urlopu: ${value}`)
+        throw new ExpectedError(`Nieprawidłowy typ urlopu: ${value}`)
     }
 }
 
@@ -512,30 +513,32 @@ const MAX_DOC_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
  * Bucket: `documents`. Path format: `leave-proofs/{user_id}/{timestamp}_{safe_filename}`.
  * Auth: tylko zalogowani internal/admin.
  */
-export async function uploadLeaveProof(formData: FormData): Promise<{ path: string }> {
-    const ctx = await requireInternalOrAdminAction()
-    const file = formData.get('file')
-    if (!(file instanceof File)) {
-        throw new Error('Brak pliku.')
-    }
-    if (file.size === 0) {
-        throw new Error('Plik jest pusty.')
-    }
-    if (file.size > MAX_DOC_SIZE_BYTES) {
-        throw new Error('Plik jest za duży (max 5 MB).')
-    }
-    if (!ALLOWED_DOC_MIME_TYPES.includes(file.type as (typeof ALLOWED_DOC_MIME_TYPES)[number])) {
-        throw new Error('Dozwolone formaty: PDF, JPG, PNG, WebP.')
-    }
+export async function uploadLeaveProof(formData: FormData): Promise<ActionResult<{ path: string }>> {
+    return runAction('uploadLeaveProof', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        const file = formData.get('file')
+        if (!(file instanceof File)) {
+            throw new ExpectedError('Brak pliku.')
+        }
+        if (file.size === 0) {
+            throw new ExpectedError('Plik jest pusty.')
+        }
+        if (file.size > MAX_DOC_SIZE_BYTES) {
+            throw new ExpectedError('Plik jest za duży (max 5 MB).')
+        }
+        if (!ALLOWED_DOC_MIME_TYPES.includes(file.type as (typeof ALLOWED_DOC_MIME_TYPES)[number])) {
+            throw new ExpectedError('Dozwolone formaty: PDF, JPG, PNG, WebP.')
+        }
 
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80)
-    const path = `leave-proofs/${ctx.userId}/${Date.now()}_${safeName}`
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80)
+        const path = `leave-proofs/${ctx.userId}/${Date.now()}_${safeName}`
 
-    const supabase = createClient()
-    const { error } = await supabase.storage.from('documents').upload(path, file)
-    if (error) throw new Error(`Upload nieudany: ${error.message}`)
+        const supabase = createClient()
+        const { error } = await supabase.storage.from('documents').upload(path, file)
+        if (error) throw new Error(`Upload nieudany: ${error.message}`)
 
-    return { path }
+        return { path }
+    })
 }
 
 /**
@@ -548,254 +551,258 @@ export async function uploadLeaveProof(formData: FormData): Promise<{ path: stri
  * to one weryfikują zwolnienie przy decyzji. Link ważny 5 minut, jak w module
  * kontraktorów (getContractorInterviewFileUrl).
  */
-export async function getLeaveProofSignedUrl(leaveId: string): Promise<string> {
-    const ctx = await requireInternalOrAdminAction()
-    const admin = createServiceClient()
+export async function getLeaveProofSignedUrl(leaveId: string): Promise<ActionResult<string>> {
+    return runAction('getLeaveProofSignedUrl', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        const admin = createServiceClient()
 
-    const { data: leave, error } = await admin
-        .from('leave_requests')
-        .select('user_id, documentation_url')
-        .eq('id', leaveId)
-        .single<{ user_id: string; documentation_url: string | null }>()
+        const { data: leave, error } = await admin
+            .from('leave_requests')
+            .select('user_id, documentation_url')
+            .eq('id', leaveId)
+            .single<{ user_id: string; documentation_url: string | null }>()
 
-    if (error || !leave) throw new Error('Nie znaleziono wniosku urlopowego.')
-    if (!leave.documentation_url) throw new Error('Ten wniosek nie ma załącznika.')
+        if (error || !leave) throw new ExpectedError('Nie znaleziono wniosku urlopowego.')
+        if (!leave.documentation_url) throw new ExpectedError('Ten wniosek nie ma załącznika.')
 
-    // Zakres jest WĄSKI celowo: załącznikiem bywa skan zwolnienia L4, czyli dane
-    // o zdrowiu (art. 9 RODO). `ctx.isManager` znaczy tylko „ma rolę manager",
-    // a nie „jest przełożonym TEJ osoby" — bez sprawdzenia manager_id kierownik
-    // zespołu A mógłby pobrać podpisany link do L4 pracownika z zespołu B.
-    const isOwner = leave.user_id === ctx.userId
-    let allowed = isOwner || ctx.isAdmin || ctx.role === 'finanse'
+        // Zakres jest WĄSKI celowo: załącznikiem bywa skan zwolnienia L4, czyli dane
+        // o zdrowiu (art. 9 RODO). `ctx.isManager` znaczy tylko „ma rolę manager",
+        // a nie „jest przełożonym TEJ osoby" — bez sprawdzenia manager_id kierownik
+        // zespołu A mógłby pobrać podpisany link do L4 pracownika z zespołu B.
+        const isOwner = leave.user_id === ctx.userId
+        let allowed = isOwner || ctx.isAdmin || ctx.role === 'finanse'
 
-    if (!allowed && ctx.isManager) {
-        const { data: target } = await admin
-            .from('profiles')
-            .select('manager_id')
-            .eq('id', leave.user_id)
-            .single<{ manager_id: string | null }>()
-        allowed = target?.manager_id === ctx.userId
-    }
+        if (!allowed && ctx.isManager) {
+            const { data: target } = await admin
+                .from('profiles')
+                .select('manager_id')
+                .eq('id', leave.user_id)
+                .single<{ manager_id: string | null }>()
+            allowed = target?.manager_id === ctx.userId
+        }
 
-    if (!allowed) {
-        throw new Error('Brak uprawnień do tego załącznika.')
-    }
+        if (!allowed) {
+            throw new ExpectedError('Brak uprawnień do tego załącznika.')
+        }
 
-    const { data, error: signError } = await admin.storage
-        .from('documents')
-        .createSignedUrl(leave.documentation_url, 300)
+        const { data, error: signError } = await admin.storage
+            .from('documents')
+            .createSignedUrl(leave.documentation_url, 300)
 
-    if (signError || !data?.signedUrl) {
-        throw new Error('Nie udało się wygenerować linku do załącznika.')
-    }
-    return data.signedUrl
+        if (signError || !data?.signedUrl) {
+            throw new Error('Nie udało się wygenerować linku do załącznika.')
+        }
+        return data.signedUrl
+    })
 }
 
 // ─── createLeaveRequest ──────────────────────────────────────────────────────
 
-export async function createLeaveRequest(input: CreateLeaveInput): Promise<{ id: string; autoApproved: boolean }> {
-    const ctx = await requireInternalOrAdminAction()
-    validateDateString(input.startDate, 'start_date')
-    validateDateString(input.endDate, 'end_date')
-    validateLeaveType(input.leaveType)
-    if (input.endDate < input.startDate) {
-        throw new Error('Data końca musi być >= data początku.')
-    }
-    if (input.halfDay && input.startDate !== input.endDate) {
-        throw new Error('Half-day można zaznaczyć tylko gdy start_date == end_date.')
-    }
-    if (input.halfDay && !['morning', 'afternoon'].includes(input.halfDay)) {
-        throw new Error('half_day musi być "morning" lub "afternoon".')
-    }
-
-    const supabase = createClient()
-
-    // Phase 29 — B2B / zlecenie mogą wnioskować tylko o 'vacation'. Friendly
-    // error message; DB trigger enforce_b2b_zlecenie_vacation_only jest ostatnią
-    // linią obrony. Skip fetch gdy już vacation (szybki happy path).
-    if (input.leaveType !== 'vacation') {
-        const { data: empRow } = await supabase
-            .from('profiles')
-            .select('employment_type')
-            .eq('id', ctx.userId)
-            .maybeSingle<{ employment_type: string | null }>()
-        assertB2bZlecenieVacationOnly(empRow?.employment_type ?? null, input.leaveType, true)
-    }
-
-    // Phase 27k + 30 — vacation-pool split + UoP hard-limit. Liczymy paid/unpaid dla
-    // wniosku (vacation/on_demand only); non-pool types → 0/0. Dla UoP z ustawionym
-    // entitlement: hard-limit (throw gdy wniosek > remaining). Dla B2B/zlecenie z pulą:
-    // auto-split (paid z puli + unpaid reszta w jednym leave_request).
-    const split = await computeLeaveRequestSplit(
-        supabase,
-        ctx.userId,
-        input.leaveType,
-        input.startDate,
-        input.endDate,
-        input.halfDay ?? null,
-    )
-
-    // UoP hard-limit (zachowanie Phase 27k bez zmian).
-    if (
-        split.snapshot.employmentType === 'uop'
-        && split.snapshot.entitlementDays != null
-        && split.workingDays > 0
-    ) {
-        const remainingBefore =
-            split.snapshot.entitlementDays
-            + split.snapshot.carriedOverDays
-            - split.snapshot.usedInitialDays
-            - split.snapshot.alreadyBookedDaysInYear
-        if (split.workingDays > remainingBefore + 1e-9) {
-            const initialNote =
-                split.snapshot.usedInitialDays > 0
-                    ? ` − ${split.snapshot.usedInitialDays} zaległo zużyte`
-                    : ''
-            throw new Error(
-                `Przekroczono limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
-                    + `(wymiar ${split.snapshot.entitlementDays} + zaległe ${split.snapshot.carriedOverDays}${initialNote}), `
-                    + `a ten wniosek to ${split.workingDays} dni roboczych. `
-                    + `Dla nadwyżki użyj typu "Urlop bezpłatny".`,
-            )
+export async function createLeaveRequest(input: CreateLeaveInput): Promise<ActionResult<{ id: string; autoApproved: boolean }>> {
+    return runAction('createLeaveRequest', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        validateDateString(input.startDate, 'start_date')
+        validateDateString(input.endDate, 'end_date')
+        validateLeaveType(input.leaveType)
+        if (input.endDate < input.startDate) {
+            throw new ExpectedError('Data końca musi być >= data początku.')
         }
-    }
-
-    // "Odbiór dnia za święto" — tylko dla pracowników na UoP.
-    if (input.leaveType === 'holiday_in_lieu') {
-        const { data: meRow } = await supabase
-            .from('profiles')
-            .select('employment_type')
-            .eq('id', ctx.userId)
-            .maybeSingle<{ employment_type: string | null }>()
-        assertHolidayInLieuEligible(meRow?.employment_type ?? null, true)
-    }
-
-    // Phase 25a: validate substitute (must be a real HR-zone employee in tenant,
-    // not the requester himself). Optional — sick_leave / single-day urlopy
-    // mogą iść bez.
-    let substituteName: string | null = null
-    if (input.substituteId) {
-        if (input.substituteId === ctx.userId) {
-            throw new Error('Nie możesz wybrać siebie jako zastępcy.')
+        if (input.halfDay && input.startDate !== input.endDate) {
+            throw new ExpectedError('Half-day można zaznaczyć tylko gdy start_date == end_date.')
         }
-        const adminClient = createServiceClient()
-        const { data: sub } = await adminClient
-            .from('profiles')
-            .select('id, role, full_name, email')
-            .eq('id', input.substituteId)
-            .maybeSingle<{ id: string; role: string; full_name: string | null; email: string | null }>()
-        if (!sub) {
-            throw new Error('Wybrany zastępca nie istnieje.')
-        }
-        if (!['admin', 'internal', 'manager', 'finanse', 'talent_community'].includes(sub.role)) {
-            throw new Error('Zastępca musi mieć dostęp do strefy HR (internal/manager/admin/finanse/TCM).')
-        }
-        substituteName = sub.full_name ?? sub.email ?? null
-    }
-
-    const { data: inserted, error } = await supabase
-        .from('leave_requests')
-        .insert({
-            user_id: ctx.userId,
-            start_date: input.startDate,
-            end_date: input.endDate,
-            leave_type: input.leaveType,
-            half_day: input.halfDay ?? null,
-            note: input.note ?? null,
-            documentation_url: input.documentationUrl ?? null,
-            substitute_id: input.substituteId ?? null,
-            oof_internal_message: input.oofInternalMessage?.trim() || null,
-            oof_external_message: input.oofExternalMessage?.trim() || null,
-            // Phase 41c — consent only counts alongside a substitute; without one there
-            // is nobody to forward to, and a stray true would confuse the admin panel.
-            forward_mail_enabled: Boolean(input.substituteId && input.forwardMail),
-            created_by: ctx.userId,
-            created_on_behalf: false,
-            // Phase 30 — auto-split płatny (z puli) / bezpłatny.
-            paid_days: split.paid,
-            unpaid_days: split.unpaid,
-        } as never)
-        .select('id, status')
-        .single<{ id: string; status: LeaveStatus }>()
-
-    if (error || !inserted) {
-        throw new Error(`Błąd zapisu wniosku: ${error?.message ?? 'unknown'}`)
-    }
-
-    if (input.substituteId) {
-        await logAudit(ctx.userId, 'LEAVE_SUBSTITUTE_ASSIGNED', {
-            leave_id: inserted.id,
-            substitute_id: input.substituteId,
-        })
-    }
-
-    const autoApproved = inserted.status === 'approved'
-
-    if (autoApproved) {
-        await syncAttendanceFromLeave(inserted.id, ctx.userId, 'create')
-    } else {
-        const adminEmails = await fetchAdminEmails()
-        const requesterName = await fetchUserDisplayName(ctx.userId, ctx.email)
-        if (adminEmails.length > 0) {
-            sendLeaveRequestSubmitted(
-                adminEmails,
-                requesterName,
-                input.leaveType,
-                input.startDate,
-                input.endDate,
-                input.note ?? null,
-                substituteName,
-            ).catch((e) => logCompat.error('[createLeaveRequest] notify failed:', e))
-        }
-        // H3.3: Push do adminów
-        const adminClient = createServiceClient()
-        const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin')
-        for (const a of (admins ?? []) as Array<{ id: string }>) {
-            sendPushToUserId(a.id, {
-                title: 'Nowy wniosek urlopowy',
-                body: `${requesterName}: ${input.startDate} – ${input.endDate}`,
-                url: '/internal/admin?tab=leave-requests',
-                tag: `leave-new-${inserted.id}`,
-            }).catch((e) => logCompat.error('[createLeaveRequest] admin push failed:', e))
+        if (input.halfDay && !['morning', 'afternoon'].includes(input.halfDay)) {
+            throw new ExpectedError('half_day musi być "morning" lub "afternoon".')
         }
 
-        // Parytet z timesheetami: powiadom managera wnioskodawcy (jeśli istnieje
-        // i nie jest adminem — admini dostali notyfikację wyżej). Manager widzi
-        // teraz kolejkę swojego zespołu i może akceptować/odrzucać.
-        const { data: requester } = await adminClient
-            .from('profiles')
-            .select('manager_id')
-            .eq('id', ctx.userId)
-            .maybeSingle<{ manager_id: string | null }>()
-        if (requester?.manager_id) {
-            const { data: mgr } = await adminClient
+        const supabase = createClient()
+
+        // Phase 29 — B2B / zlecenie mogą wnioskować tylko o 'vacation'. Friendly
+        // error message; DB trigger enforce_b2b_zlecenie_vacation_only jest ostatnią
+        // linią obrony. Skip fetch gdy już vacation (szybki happy path).
+        if (input.leaveType !== 'vacation') {
+            const { data: empRow } = await supabase
                 .from('profiles')
-                .select('id, email, role')
-                .eq('id', requester.manager_id)
-                .maybeSingle<{ id: string; email: string | null; role: string }>()
-            if (mgr && mgr.role !== 'admin') {
-                if (mgr.email) {
-                    sendLeaveRequestSubmitted(
-                        [mgr.email],
-                        requesterName,
-                        input.leaveType,
-                        input.startDate,
-                        input.endDate,
-                        input.note ?? null,
-                        substituteName,
-                    ).catch((e) => logCompat.error('[createLeaveRequest] manager notify failed:', e))
-                }
-                sendPushToUserId(mgr.id, {
-                    title: 'Nowy wniosek urlopowy (zespół)',
+                .select('employment_type')
+                .eq('id', ctx.userId)
+                .maybeSingle<{ employment_type: string | null }>()
+            assertB2bZlecenieVacationOnly(empRow?.employment_type ?? null, input.leaveType, true)
+        }
+
+        // Phase 27k + 30 — vacation-pool split + UoP hard-limit. Liczymy paid/unpaid dla
+        // wniosku (vacation/on_demand only); non-pool types → 0/0. Dla UoP z ustawionym
+        // entitlement: hard-limit (throw gdy wniosek > remaining). Dla B2B/zlecenie z pulą:
+        // auto-split (paid z puli + unpaid reszta w jednym leave_request).
+        const split = await computeLeaveRequestSplit(
+            supabase,
+            ctx.userId,
+            input.leaveType,
+            input.startDate,
+            input.endDate,
+            input.halfDay ?? null,
+        )
+
+        // UoP hard-limit (zachowanie Phase 27k bez zmian).
+        if (
+            split.snapshot.employmentType === 'uop'
+            && split.snapshot.entitlementDays != null
+            && split.workingDays > 0
+        ) {
+            const remainingBefore =
+                split.snapshot.entitlementDays
+                + split.snapshot.carriedOverDays
+                - split.snapshot.usedInitialDays
+                - split.snapshot.alreadyBookedDaysInYear
+            if (split.workingDays > remainingBefore + 1e-9) {
+                const initialNote =
+                    split.snapshot.usedInitialDays > 0
+                        ? ` − ${split.snapshot.usedInitialDays} zaległo zużyte`
+                        : ''
+                throw new ExpectedError(
+                    `Przekroczono limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
+                        + `(wymiar ${split.snapshot.entitlementDays} + zaległe ${split.snapshot.carriedOverDays}${initialNote}), `
+                        + `a ten wniosek to ${split.workingDays} dni roboczych. `
+                        + `Dla nadwyżki użyj typu "Urlop bezpłatny".`,
+                )
+            }
+        }
+
+        // "Odbiór dnia za święto" — tylko dla pracowników na UoP.
+        if (input.leaveType === 'holiday_in_lieu') {
+            const { data: meRow } = await supabase
+                .from('profiles')
+                .select('employment_type')
+                .eq('id', ctx.userId)
+                .maybeSingle<{ employment_type: string | null }>()
+            assertHolidayInLieuEligible(meRow?.employment_type ?? null, true)
+        }
+
+        // Phase 25a: validate substitute (must be a real HR-zone employee in tenant,
+        // not the requester himself). Optional — sick_leave / single-day urlopy
+        // mogą iść bez.
+        let substituteName: string | null = null
+        if (input.substituteId) {
+            if (input.substituteId === ctx.userId) {
+                throw new ExpectedError('Nie możesz wybrać siebie jako zastępcy.')
+            }
+            const adminClient = createServiceClient()
+            const { data: sub } = await adminClient
+                .from('profiles')
+                .select('id, role, full_name, email')
+                .eq('id', input.substituteId)
+                .maybeSingle<{ id: string; role: string; full_name: string | null; email: string | null }>()
+            if (!sub) {
+                throw new ExpectedError('Wybrany zastępca nie istnieje.')
+            }
+            if (!['admin', 'internal', 'manager', 'finanse', 'talent_community'].includes(sub.role)) {
+                throw new ExpectedError('Zastępca musi mieć dostęp do strefy HR (internal/manager/admin/finanse/TCM).')
+            }
+            substituteName = sub.full_name ?? sub.email ?? null
+        }
+
+        const { data: inserted, error } = await supabase
+            .from('leave_requests')
+            .insert({
+                user_id: ctx.userId,
+                start_date: input.startDate,
+                end_date: input.endDate,
+                leave_type: input.leaveType,
+                half_day: input.halfDay ?? null,
+                note: input.note ?? null,
+                documentation_url: input.documentationUrl ?? null,
+                substitute_id: input.substituteId ?? null,
+                oof_internal_message: input.oofInternalMessage?.trim() || null,
+                oof_external_message: input.oofExternalMessage?.trim() || null,
+                // Phase 41c — consent only counts alongside a substitute; without one there
+                // is nobody to forward to, and a stray true would confuse the admin panel.
+                forward_mail_enabled: Boolean(input.substituteId && input.forwardMail),
+                created_by: ctx.userId,
+                created_on_behalf: false,
+                // Phase 30 — auto-split płatny (z puli) / bezpłatny.
+                paid_days: split.paid,
+                unpaid_days: split.unpaid,
+            } as never)
+            .select('id, status')
+            .single<{ id: string; status: LeaveStatus }>()
+
+        if (error || !inserted) {
+            throw new Error(`Błąd zapisu wniosku: ${error?.message ?? 'unknown'}`)
+        }
+
+        if (input.substituteId) {
+            await logAudit(ctx.userId, 'LEAVE_SUBSTITUTE_ASSIGNED', {
+                leave_id: inserted.id,
+                substitute_id: input.substituteId,
+            })
+        }
+
+        const autoApproved = inserted.status === 'approved'
+
+        if (autoApproved) {
+            await syncAttendanceFromLeave(inserted.id, ctx.userId, 'create')
+        } else {
+            const adminEmails = await fetchAdminEmails()
+            const requesterName = await fetchUserDisplayName(ctx.userId, ctx.email)
+            if (adminEmails.length > 0) {
+                sendLeaveRequestSubmitted(
+                    adminEmails,
+                    requesterName,
+                    input.leaveType,
+                    input.startDate,
+                    input.endDate,
+                    input.note ?? null,
+                    substituteName,
+                ).catch((e) => logCompat.error('[createLeaveRequest] notify failed:', e))
+            }
+            // H3.3: Push do adminów
+            const adminClient = createServiceClient()
+            const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin')
+            for (const a of (admins ?? []) as Array<{ id: string }>) {
+                sendPushToUserId(a.id, {
+                    title: 'Nowy wniosek urlopowy',
                     body: `${requesterName}: ${input.startDate} – ${input.endDate}`,
                     url: '/internal/admin?tab=leave-requests',
                     tag: `leave-new-${inserted.id}`,
-                }).catch((e) => logCompat.error('[createLeaveRequest] manager push failed:', e))
+                }).catch((e) => logCompat.error('[createLeaveRequest] admin push failed:', e))
+            }
+
+            // Parytet z timesheetami: powiadom managera wnioskodawcy (jeśli istnieje
+            // i nie jest adminem — admini dostali notyfikację wyżej). Manager widzi
+            // teraz kolejkę swojego zespołu i może akceptować/odrzucać.
+            const { data: requester } = await adminClient
+                .from('profiles')
+                .select('manager_id')
+                .eq('id', ctx.userId)
+                .maybeSingle<{ manager_id: string | null }>()
+            if (requester?.manager_id) {
+                const { data: mgr } = await adminClient
+                    .from('profiles')
+                    .select('id, email, role')
+                    .eq('id', requester.manager_id)
+                    .maybeSingle<{ id: string; email: string | null; role: string }>()
+                if (mgr && mgr.role !== 'admin') {
+                    if (mgr.email) {
+                        sendLeaveRequestSubmitted(
+                            [mgr.email],
+                            requesterName,
+                            input.leaveType,
+                            input.startDate,
+                            input.endDate,
+                            input.note ?? null,
+                            substituteName,
+                        ).catch((e) => logCompat.error('[createLeaveRequest] manager notify failed:', e))
+                    }
+                    sendPushToUserId(mgr.id, {
+                        title: 'Nowy wniosek urlopowy (zespół)',
+                        body: `${requesterName}: ${input.startDate} – ${input.endDate}`,
+                        url: '/internal/admin?tab=leave-requests',
+                        tag: `leave-new-${inserted.id}`,
+                    }).catch((e) => logCompat.error('[createLeaveRequest] manager push failed:', e))
+                }
             }
         }
-    }
 
-    return { id: inserted.id, autoApproved }
+        return { id: inserted.id, autoApproved }
+    })
 }
 
 // ─── cancelMyLeaveRequest ────────────────────────────────────────────────────
@@ -979,145 +986,147 @@ async function notifyLeaveCancelled(params: {
     }
 }
 
-export async function cancelMyLeaveRequest(id: string): Promise<void> {
-    const ctx = await requireInternalOrAdminAction()
-    const supabase = createClient()
+export async function cancelMyLeaveRequest(id: string): Promise<ActionResult<void>> {
+    return runAction('cancelMyLeaveRequest', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        const supabase = createClient()
 
-    const { data: row, error: fetchErr } = await supabase
-        .from('leave_requests')
-        .select(
-            'id, user_id, status, start_date, end_date, leave_type, substitute_id, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
-        )
-        .eq('id', id)
-        .single<{
-            id: string
-            user_id: string
-            status: LeaveStatus
-            start_date: string
-            end_date: string
-            leave_type: LeaveType
-            substitute_id: string | null
-            outlook_event_id: string | null
-            graph_oof_set: boolean | null
-            outlook_forward_rule_id: string | null
-        }>()
-    if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
-    if (row.user_id !== ctx.userId) throw new Error('To nie jest Twój wniosek.')
-
-    if (row.status === 'pending') {
-        // Standard cancel — pending wymaga tylko zmiany status
-        const { error } = await supabase
+        const { data: row, error: fetchErr } = await supabase
             .from('leave_requests')
-            .update({ status: 'cancelled' })
-            .eq('id', id)
-        if (error) throw new Error(`Błąd anulowania: ${error.message}`)
-
-        await logAudit(ctx.userId, 'LEAVE_CANCELLED', { leave_id: id })
-
-        // Phase 47 — powiadom approverów (i zastępcę, jeśli był), żeby wycofany
-        // wniosek nie wisiał w ich głowie jako „do akceptacji". In-app + push
-        // (bez emaila — pending znika rutynowo).
-        await notifyLeaveCancelled({
-            leaveId: id,
-            employeeUserId: row.user_id,
-            startDate: row.start_date,
-            endDate: row.end_date,
-            leaveType: row.leave_type,
-            substituteId: row.substitute_id,
-            wasApproved: false,
-            actorUserId: ctx.userId,
-            byManager: false,
-        }).catch((e) => logCompat.error('[cancelMyLeaveRequest] notify (pending) failed:', e))
-        return
-    }
-
-    if (row.status === 'approved') {
-        // H2.3: tylko future approved leaves można anulować self-service
-        const today = new Date().toISOString().slice(0, 10)
-        if (row.start_date <= today) {
-            throw new Error(
-                'Nie można anulować urlopu którego start jest dziś lub w przeszłości — skontaktuj się z adminem.',
+            .select(
+                'id, user_id, status, start_date, end_date, leave_type, substitute_id, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
             )
-        }
-
-        const { error } = await supabase
-            .from('leave_requests')
-            .update({ status: 'cancelled' })
             .eq('id', id)
-        if (error) throw new Error(`Błąd anulowania: ${error.message}`)
+            .single<{
+                id: string
+                user_id: string
+                status: LeaveStatus
+                start_date: string
+                end_date: string
+                leave_type: LeaveType
+                substitute_id: string | null
+                outlook_event_id: string | null
+                graph_oof_set: boolean | null
+                outlook_forward_rule_id: string | null
+            }>()
+        if (fetchErr || !row) throw new ExpectedError('Wniosek nie istnieje.')
+        if (row.user_id !== ctx.userId) throw new ExpectedError('To nie jest Twój wniosek.')
 
-        // Cleanup attendance records (remove op)
-        await syncAttendanceFromLeave(id, row.user_id, 'remove').catch((e) =>
-            logCompat.error('[cancelMyLeaveRequest] attendance cleanup failed:', e),
-        )
+        if (row.status === 'pending') {
+            // Standard cancel — pending wymaga tylko zmiany status
+            const { error } = await supabase
+                .from('leave_requests')
+                .update({ status: 'cancelled' })
+                .eq('id', id)
+            if (error) throw new Error(`Błąd anulowania: ${error.message}`)
 
-        // PR2: remove Outlook calendar event (best-effort, never blocks cancel).
-        if (row.outlook_event_id) {
-            deleteLeaveEvent({
-                userEmail: ctx.email,
-                eventId: row.outlook_event_id,
-            }).catch((e) => logCompat.error('[cancelMyLeaveRequest] calendar delete failed:', e))
-        }
+            await logAudit(ctx.userId, 'LEAVE_CANCELLED', { leave_id: id })
 
-        // Phase 25: revert Outlook OOF if it was set on approve.
-        if (row.graph_oof_set) {
-            disableOutOfOffice({ userEmail: ctx.email })
-                .then(async (r) => {
-                    if (r.success && !r.skipped) {
-                        await supabase
-                            .from('leave_requests')
-                            .update({ graph_oof_set: false } as never)
-                            .eq('id', id)
-                        await logAudit(ctx.userId, 'LEAVE_OOF_DISABLED', {
-                            leave_id: id,
-                            reason: 'self_cancel',
-                        })
-                    }
-                })
-                .catch((e) => logCompat.error('[cancelMyLeaveRequest] OOF disable failed:', e))
-        }
-
-        // Phase 41 — tear down mail forwarding. Only future leaves can be
-        // self-cancelled and the window opens on the first day (Phase 41a), so a rule
-        // is rare here — but a leave cancelled on its own start date still has one.
-        if (row.outlook_forward_rule_id) {
-            closeForwardRule({
-                admin: createServiceClient(),
+            // Phase 47 — powiadom approverów (i zastępcę, jeśli był), żeby wycofany
+            // wniosek nie wisiał w ich głowie jako „do akceptacji". In-app + push
+            // (bez emaila — pending znika rutynowo).
+            await notifyLeaveCancelled({
                 leaveId: id,
-                ruleId: row.outlook_forward_rule_id,
-                userEmail: ctx.email,
+                employeeUserId: row.user_id,
+                startDate: row.start_date,
+                endDate: row.end_date,
+                leaveType: row.leave_type,
+                substituteId: row.substitute_id,
+                wasApproved: false,
                 actorUserId: ctx.userId,
-                reason: 'cancelled',
-                auditExtra: { via: 'self_cancel' },
-            }).catch((e) =>
-                logCompat.error('[cancelMyLeaveRequest] forward rule delete failed:', e),
-            )
+                byManager: false,
+            }).catch((e) => logCompat.error('[cancelMyLeaveRequest] notify (pending) failed:', e))
+            return
         }
 
-        await logAudit(ctx.userId, 'LEAVE_CANCELLED', {
-            leave_id: id,
-            was_approved: true,
-            start_date: row.start_date,
-            end_date: row.end_date,
-        })
+        if (row.status === 'approved') {
+            // H2.3: tylko future approved leaves można anulować self-service
+            const today = new Date().toISOString().slice(0, 10)
+            if (row.start_date <= today) {
+                throw new ExpectedError(
+                    'Nie można anulować urlopu którego start jest dziś lub w przeszłości — skontaktuj się z adminem.',
+                )
+            }
 
-        // Phase 47 — powiadom approverów (admini + manager pracownika) oraz
-        // zastępcę, że zatwierdzony urlop został wycofany. In-app + push + email.
-        await notifyLeaveCancelled({
-            leaveId: id,
-            employeeUserId: row.user_id,
-            startDate: row.start_date,
-            endDate: row.end_date,
-            leaveType: row.leave_type,
-            substituteId: row.substitute_id,
-            wasApproved: true,
-            actorUserId: ctx.userId,
-            byManager: false,
-        }).catch((e) => logCompat.error('[cancelMyLeaveRequest] notify (approved) failed:', e))
-        return
-    }
+            const { error } = await supabase
+                .from('leave_requests')
+                .update({ status: 'cancelled' })
+                .eq('id', id)
+            if (error) throw new Error(`Błąd anulowania: ${error.message}`)
 
-    throw new Error(`Nie można anulować wniosku w statusie "${row.status}".`)
+            // Cleanup attendance records (remove op)
+            await syncAttendanceFromLeave(id, row.user_id, 'remove').catch((e) =>
+                logCompat.error('[cancelMyLeaveRequest] attendance cleanup failed:', e),
+            )
+
+            // PR2: remove Outlook calendar event (best-effort, never blocks cancel).
+            if (row.outlook_event_id) {
+                deleteLeaveEvent({
+                    userEmail: ctx.email,
+                    eventId: row.outlook_event_id,
+                }).catch((e) => logCompat.error('[cancelMyLeaveRequest] calendar delete failed:', e))
+            }
+
+            // Phase 25: revert Outlook OOF if it was set on approve.
+            if (row.graph_oof_set) {
+                disableOutOfOffice({ userEmail: ctx.email })
+                    .then(async (r) => {
+                        if (r.success && !r.skipped) {
+                            await supabase
+                                .from('leave_requests')
+                                .update({ graph_oof_set: false } as never)
+                                .eq('id', id)
+                            await logAudit(ctx.userId, 'LEAVE_OOF_DISABLED', {
+                                leave_id: id,
+                                reason: 'self_cancel',
+                            })
+                        }
+                    })
+                    .catch((e) => logCompat.error('[cancelMyLeaveRequest] OOF disable failed:', e))
+            }
+
+            // Phase 41 — tear down mail forwarding. Only future leaves can be
+            // self-cancelled and the window opens on the first day (Phase 41a), so a rule
+            // is rare here — but a leave cancelled on its own start date still has one.
+            if (row.outlook_forward_rule_id) {
+                closeForwardRule({
+                    admin: createServiceClient(),
+                    leaveId: id,
+                    ruleId: row.outlook_forward_rule_id,
+                    userEmail: ctx.email,
+                    actorUserId: ctx.userId,
+                    reason: 'cancelled',
+                    auditExtra: { via: 'self_cancel' },
+                }).catch((e) =>
+                    logCompat.error('[cancelMyLeaveRequest] forward rule delete failed:', e),
+                )
+            }
+
+            await logAudit(ctx.userId, 'LEAVE_CANCELLED', {
+                leave_id: id,
+                was_approved: true,
+                start_date: row.start_date,
+                end_date: row.end_date,
+            })
+
+            // Phase 47 — powiadom approverów (admini + manager pracownika) oraz
+            // zastępcę, że zatwierdzony urlop został wycofany. In-app + push + email.
+            await notifyLeaveCancelled({
+                leaveId: id,
+                employeeUserId: row.user_id,
+                startDate: row.start_date,
+                endDate: row.end_date,
+                leaveType: row.leave_type,
+                substituteId: row.substitute_id,
+                wasApproved: true,
+                actorUserId: ctx.userId,
+                byManager: false,
+            }).catch((e) => logCompat.error('[cancelMyLeaveRequest] notify (approved) failed:', e))
+            return
+        }
+
+        throw new ExpectedError(`Nie można anulować wniosku w statusie "${row.status}".`)
+    })
 }
 
 // ─── Phase 25: list HR-zone users eligible to be a substitute ───────────────
@@ -1175,366 +1184,368 @@ export interface CreateLeaveOnBehalfInput {
  *  - JEŚLI end_date < today (urlop zakończony): pomijamy Outlook/OOF/substitute
  *    bo nie ma sensu ustawiać auto-reply na okres który minął.
  */
-export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Promise<{ id: string }> {
-    const ctx = await requireInternalOrAdminAction()
-    if (!ctx.isAdmin && !ctx.isManager) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
-    }
-    if (input.targetUserId === ctx.userId) {
-        throw new Error('Nie wpisuj urlopu sam sobie — użyj standardowego formularza wniosku.')
-    }
-
-    // Walidacje wspólne z createLeaveRequest.
-    validateDateString(input.startDate, 'start_date')
-    validateDateString(input.endDate, 'end_date')
-    validateLeaveType(input.leaveType)
-    if (input.endDate < input.startDate) {
-        throw new Error('Data końca musi być >= data początku.')
-    }
-    if (input.halfDay && input.startDate !== input.endDate) {
-        throw new Error('Half-day można zaznaczyć tylko gdy start_date == end_date.')
-    }
-    if (input.halfDay && !['morning', 'afternoon'].includes(input.halfDay)) {
-        throw new Error('half_day musi być "morning" lub "afternoon".')
-    }
-    if (input.leaveType === ('sick_leave' as LeaveType)) {
-        throw new Error('L4 musi wpisać pracownik z dołączonym zwolnieniem lekarskim.')
-    }
-
-    const admin = createServiceClient()
-
-    // Fetch target — potrzebujemy email + full_name do side-effects, role do
-    // wykluczenia konsultantów IT, manager_id do team-scope check, employment_status
-    // do wykluczenia exited/offboarding.
-    const { data: target, error: targetErr } = await admin
-        .from('profiles')
-        .select('id, role, manager_id, employment_status, employment_type, email, full_name')
-        .eq('id', input.targetUserId)
-        .single<{
-            id: string
-            role: string
-            manager_id: string | null
-            employment_status: string | null
-            employment_type: string | null
-            email: string | null
-            full_name: string | null
-        }>()
-    if (targetErr || !target) {
-        throw new Error('Pracownik nie istnieje.')
-    }
-    if (!target.email) {
-        throw new Error('Pracownik nie ma adresu email w systemie.')
-    }
-    if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(target.role)) {
-        throw new Error('Wybrany pracownik nie ma dostępu do strefy HR (konsultanci IT nie mają urlopów w COMPASS).')
-    }
-    if (target.employment_status === 'exited' || target.employment_status === 'offboarding') {
-        throw new Error('Pracownik jest w trakcie offboardingu lub już opuścił firmę.')
-    }
-    if (input.leaveType === 'holiday_in_lieu') {
-        assertHolidayInLieuEligible(target.employment_type, false)
-    }
-    // Phase 29 — B2B / zlecenie: tylko vacation (analogicznie do self-service).
-    assertB2bZlecenieVacationOnly(target.employment_type, input.leaveType, false)
-
-    // Team-scope check dla managera (admin pomija). Pattern z approveTimesheet.
-    if (!ctx.isAdmin) {
-        if (target.manager_id !== ctx.userId) {
-            throw new Error('Możesz wpisać urlop tylko swojemu zespołowi.')
+export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Promise<ActionResult<{ id: string }>> {
+    return runAction('createLeaveOnBehalf', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        if (!ctx.isAdmin && !ctx.isManager) {
+            throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
         }
-    }
-
-    // Duplicate detection — czy istnieje już zatwierdzony urlop nakładający się
-    // na ten zakres? Wystarczy overlap: existing.end >= input.start AND existing.start <= input.end.
-    const { data: overlapping } = await admin
-        .from('leave_requests')
-        .select('id, start_date, end_date, leave_type')
-        .eq('user_id', input.targetUserId)
-        .eq('status', 'approved')
-        .gte('end_date', input.startDate)
-        .lte('start_date', input.endDate)
-    if (overlapping && overlapping.length > 0) {
-        const first = overlapping[0] as { start_date: string; end_date: string }
-        throw new Error(
-            `Pracownik ma już zatwierdzony urlop nakładający się na ten zakres (${first.start_date} – ${first.end_date}).`,
-        )
-    }
-
-    // Substitute walidacja (tylko gdy podano i urlop ongoing/future — past leave
-    // ignorujemy substituteId niżej przy side-effects).
-    if (input.substituteId) {
-        if (input.substituteId === input.targetUserId) {
-            throw new Error('Pracownik nie może być sam swoim zastępcą.')
+        if (input.targetUserId === ctx.userId) {
+            throw new ExpectedError('Nie wpisuj urlopu sam sobie — użyj standardowego formularza wniosku.')
         }
-        const { data: sub } = await admin
+
+        // Walidacje wspólne z createLeaveRequest.
+        validateDateString(input.startDate, 'start_date')
+        validateDateString(input.endDate, 'end_date')
+        validateLeaveType(input.leaveType)
+        if (input.endDate < input.startDate) {
+            throw new ExpectedError('Data końca musi być >= data początku.')
+        }
+        if (input.halfDay && input.startDate !== input.endDate) {
+            throw new ExpectedError('Half-day można zaznaczyć tylko gdy start_date == end_date.')
+        }
+        if (input.halfDay && !['morning', 'afternoon'].includes(input.halfDay)) {
+            throw new ExpectedError('half_day musi być "morning" lub "afternoon".')
+        }
+        if (input.leaveType === ('sick_leave' as LeaveType)) {
+            throw new ExpectedError('L4 musi wpisać pracownik z dołączonym zwolnieniem lekarskim.')
+        }
+
+        const admin = createServiceClient()
+
+        // Fetch target — potrzebujemy email + full_name do side-effects, role do
+        // wykluczenia konsultantów IT, manager_id do team-scope check, employment_status
+        // do wykluczenia exited/offboarding.
+        const { data: target, error: targetErr } = await admin
             .from('profiles')
-            .select('id, role')
-            .eq('id', input.substituteId)
-            .maybeSingle<{ id: string; role: string }>()
-        if (!sub) {
-            throw new Error('Wybrany zastępca nie istnieje.')
+            .select('id, role, manager_id, employment_status, employment_type, email, full_name')
+            .eq('id', input.targetUserId)
+            .single<{
+                id: string
+                role: string
+                manager_id: string | null
+                employment_status: string | null
+                employment_type: string | null
+                email: string | null
+                full_name: string | null
+            }>()
+        if (targetErr || !target) {
+            throw new ExpectedError('Pracownik nie istnieje.')
         }
-        if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(sub.role)) {
-            throw new Error('Zastępca musi mieć dostęp do strefy HR.')
+        if (!target.email) {
+            throw new ExpectedError('Pracownik nie ma adresu email w systemie.')
         }
-    }
-
-    const today = new Date().toISOString().slice(0, 10)
-    const isOngoingOrFuture = input.endDate >= today
-    const actorName = ctx.email
-    const decisionNote = `Wpisany przez ${actorName}`
-
-    // Phase 30 — split płatny/bezpłatny (analog do createLeaveRequest). Manager
-    // wpisując za pracownika UoP musi szanować hard-limit; B2B/zlecenie z pulą
-    // dostaje auto-split.
-    const split = await computeLeaveRequestSplit(
-        admin,
-        input.targetUserId,
-        input.leaveType,
-        input.startDate,
-        input.endDate,
-        input.halfDay ?? null,
-    )
-
-    if (
-        split.snapshot.employmentType === 'uop'
-        && split.snapshot.entitlementDays != null
-        && split.workingDays > 0
-    ) {
-        const remainingBefore =
-            split.snapshot.entitlementDays
-            + split.snapshot.carriedOverDays
-            - split.snapshot.usedInitialDays
-            - split.snapshot.alreadyBookedDaysInYear
-        if (split.workingDays > remainingBefore + 1e-9) {
-            const initialNote =
-                split.snapshot.usedInitialDays > 0
-                    ? ` − ${split.snapshot.usedInitialDays} zaległo zużyte`
-                    : ''
-            throw new Error(
-                `Pracownik przekroczyłby limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
-                    + `(wymiar ${split.snapshot.entitlementDays} + zaległe ${split.snapshot.carriedOverDays}${initialNote}), `
-                    + `a ten wniosek to ${split.workingDays} dni roboczych. `
-                    + `Wpisz UoP-pracownikowi "Urlop bezpłatny" dla nadwyżki.`,
-            )
+        if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(target.role)) {
+            throw new ExpectedError('Wybrany pracownik nie ma dostępu do strefy HR (konsultanci IT nie mają urlopów w COMPASS).')
         }
-    }
+        if (target.employment_status === 'exited' || target.employment_status === 'offboarding') {
+            throw new ExpectedError('Pracownik jest w trakcie offboardingu lub już opuścił firmę.')
+        }
+        if (input.leaveType === 'holiday_in_lieu') {
+            assertHolidayInLieuEligible(target.employment_type, false)
+        }
+        // Phase 29 — B2B / zlecenie: tylko vacation (analogicznie do self-service).
+        assertB2bZlecenieVacationOnly(target.employment_type, input.leaveType, false)
 
-    const { data: inserted, error: insertErr } = await admin
-        .from('leave_requests')
-        .insert({
-            user_id: input.targetUserId,
-            start_date: input.startDate,
-            end_date: input.endDate,
-            leave_type: input.leaveType,
-            half_day: input.halfDay ?? null,
-            note: input.note ?? null,
-            substitute_id: isOngoingOrFuture ? (input.substituteId ?? null) : null,
-            // Phase 41c — mirrors the substitute above: a finished leave keeps neither,
-            // since there is nothing left to forward.
-            forward_mail_enabled: Boolean(
-                isOngoingOrFuture && input.substituteId && input.forwardMail,
-            ),
-            status: 'approved',
-            decided_by: ctx.userId,
-            decided_at: new Date().toISOString(),
-            decision_note: decisionNote,
-            created_by: ctx.userId,
-            created_on_behalf: true,
-            // Phase 30 — split płatny (z puli) / bezpłatny.
-            paid_days: split.paid,
-            unpaid_days: split.unpaid,
-        } as never)
-        .select('id')
-        .single<{ id: string }>()
-
-    if (insertErr || !inserted) {
-        throw new Error(`Błąd zapisu wniosku: ${insertErr?.message ?? 'unknown'}`)
-    }
-
-    // Audit ZAWSZE — kluczowe dla transparentności (kto wpisał za kogo).
-    await logAudit(ctx.userId, 'LEAVE_CREATED_ON_BEHALF', {
-        leave_id: inserted.id,
-        target_user_id: input.targetUserId,
-        leave_type: input.leaveType,
-        start_date: input.startDate,
-        end_date: input.endDate,
-        actor_role: ctx.role,
-        is_past_leave: !isOngoingOrFuture,
-    })
-
-    // Attendance sync ZAWSZE — krytyczne dla spójności (timesheet musi się zgadzać).
-    await syncAttendanceFromLeave(inserted.id, input.targetUserId, 'create').catch((e) =>
-        logCompat.error('[createLeaveOnBehalf] attendance sync failed:', e),
-    )
-
-    // Email do pracownika ZAWSZE — transparentność, audit + RODO.
-    const targetDisplayName = target.full_name ?? target.email
-    sendLeaveCreatedOnBehalf(
-        target.email,
-        targetDisplayName,
-        actorName,
-        input.leaveType,
-        input.startDate,
-        input.endDate,
-        input.note ?? null,
-        !isOngoingOrFuture,
-    ).catch((e) => logCompat.error('[createLeaveOnBehalf] email failed:', e))
-
-    // Push do pracownika ZAWSZE.
-    sendPushToUserId(input.targetUserId, {
-        title: isOngoingOrFuture
-            ? 'Wpisano za Ciebie urlop'
-            : 'Wpisano za Ciebie urlop (wstecznie)',
-        body: `${actorName}: ${input.startDate} – ${input.endDate}`,
-        url: '/internal?tab=leave',
-        tag: `leave-on-behalf-${inserted.id}`,
-    }).catch((e) => logCompat.error('[createLeaveOnBehalf] push failed:', e))
-
-    // Branch — tylko ongoing/future: Outlook event + OOF + email do zastępcy.
-    if (isOngoingOrFuture) {
-        // Outlook calendar event — soft fail (best-effort).
-        createLeaveEvent({
-            userEmail: target.email,
-            startDate: input.startDate,
-            endDate: input.endDate,
-            leaveType: input.leaveType,
-            note: decisionNote,
-            transactionId: `leave-${inserted.id}`,
-        })
-            .then(async (r) => {
-                if (r.success && r.eventId) {
-                    await admin
-                        .from('leave_requests')
-                        .update({ outlook_event_id: r.eventId })
-                        .eq('id', inserted.id)
-                } else if (!r.success && !r.skipped) {
-                    await admin
-                        .from('leave_requests')
-                        .update({ graph_sync_error: `calendar: ${r.error}` } as never)
-                        .eq('id', inserted.id)
-                }
-            })
-            .catch((e) => logCompat.error('[createLeaveOnBehalf] calendar push failed:', e))
-
-        // Outlook OOF + opcjonalny email do zastępcy.
-        let substituteName: string | null = null
-        let substituteEmail: string | null = null
-        if (input.substituteId) {
-            const { data: sub } = await admin
-                .from('profiles')
-                .select('full_name, email')
-                .eq('id', input.substituteId)
-                .maybeSingle<{ full_name: string | null; email: string }>()
-            if (sub) {
-                substituteName = sub.full_name ?? sub.email
-                substituteEmail = sub.email
+        // Team-scope check dla managera (admin pomija). Pattern z approveTimesheet.
+        if (!ctx.isAdmin) {
+            if (target.manager_id !== ctx.userId) {
+                throw new ExpectedError('Możesz wpisać urlop tylko swojemu zespołowi.')
             }
         }
 
-        // Phase 53 — jednodniowy półdniowy urlop nie dostaje całodniowego auto-reply.
-        if (
-            shouldSetOofForLeave({
-                startDate: input.startDate,
-                endDate: input.endDate,
-                halfDay: input.halfDay ?? null,
-            })
-        ) {
-            const defaults = await buildOofDefaultsFor({
-                admin,
-                userId: input.targetUserId,
-                employeeName: targetDisplayName,
-                endDate: input.endDate,
-                substituteName,
-                substituteEmail,
-            })
+        // Duplicate detection — czy istnieje już zatwierdzony urlop nakładający się
+        // na ten zakres? Wystarczy overlap: existing.end >= input.start AND existing.start <= input.end.
+        const { data: overlapping } = await admin
+            .from('leave_requests')
+            .select('id, start_date, end_date, leave_type')
+            .eq('user_id', input.targetUserId)
+            .eq('status', 'approved')
+            .gte('end_date', input.startDate)
+            .lte('start_date', input.endDate)
+        if (overlapping && overlapping.length > 0) {
+            const first = overlapping[0] as { start_date: string; end_date: string }
+            throw new ExpectedError(
+                `Pracownik ma już zatwierdzony urlop nakładający się na ten zakres (${first.start_date} – ${first.end_date}).`,
+            )
+        }
 
-            setOutOfOffice({
+        // Substitute walidacja (tylko gdy podano i urlop ongoing/future — past leave
+        // ignorujemy substituteId niżej przy side-effects).
+        if (input.substituteId) {
+            if (input.substituteId === input.targetUserId) {
+                throw new ExpectedError('Pracownik nie może być sam swoim zastępcą.')
+            }
+            const { data: sub } = await admin
+                .from('profiles')
+                .select('id, role')
+                .eq('id', input.substituteId)
+                .maybeSingle<{ id: string; role: string }>()
+            if (!sub) {
+                throw new ExpectedError('Wybrany zastępca nie istnieje.')
+            }
+            if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(sub.role)) {
+                throw new ExpectedError('Zastępca musi mieć dostęp do strefy HR.')
+            }
+        }
+
+        const today = new Date().toISOString().slice(0, 10)
+        const isOngoingOrFuture = input.endDate >= today
+        const actorName = ctx.email
+        const decisionNote = `Wpisany przez ${actorName}`
+
+        // Phase 30 — split płatny/bezpłatny (analog do createLeaveRequest). Manager
+        // wpisując za pracownika UoP musi szanować hard-limit; B2B/zlecenie z pulą
+        // dostaje auto-split.
+        const split = await computeLeaveRequestSplit(
+            admin,
+            input.targetUserId,
+            input.leaveType,
+            input.startDate,
+            input.endDate,
+            input.halfDay ?? null,
+        )
+
+        if (
+            split.snapshot.employmentType === 'uop'
+            && split.snapshot.entitlementDays != null
+            && split.workingDays > 0
+        ) {
+            const remainingBefore =
+                split.snapshot.entitlementDays
+                + split.snapshot.carriedOverDays
+                - split.snapshot.usedInitialDays
+                - split.snapshot.alreadyBookedDaysInYear
+            if (split.workingDays > remainingBefore + 1e-9) {
+                const initialNote =
+                    split.snapshot.usedInitialDays > 0
+                        ? ` − ${split.snapshot.usedInitialDays} zaległo zużyte`
+                        : ''
+                throw new ExpectedError(
+                    `Pracownik przekroczyłby limit urlopu wypoczynkowego: pozostało ${remainingBefore.toFixed(1)} dni `
+                        + `(wymiar ${split.snapshot.entitlementDays} + zaległe ${split.snapshot.carriedOverDays}${initialNote}), `
+                        + `a ten wniosek to ${split.workingDays} dni roboczych. `
+                        + `Wpisz UoP-pracownikowi "Urlop bezpłatny" dla nadwyżki.`,
+                )
+            }
+        }
+
+        const { data: inserted, error: insertErr } = await admin
+            .from('leave_requests')
+            .insert({
+                user_id: input.targetUserId,
+                start_date: input.startDate,
+                end_date: input.endDate,
+                leave_type: input.leaveType,
+                half_day: input.halfDay ?? null,
+                note: input.note ?? null,
+                substitute_id: isOngoingOrFuture ? (input.substituteId ?? null) : null,
+                // Phase 41c — mirrors the substitute above: a finished leave keeps neither,
+                // since there is nothing left to forward.
+                forward_mail_enabled: Boolean(
+                    isOngoingOrFuture && input.substituteId && input.forwardMail,
+                ),
+                status: 'approved',
+                decided_by: ctx.userId,
+                decided_at: new Date().toISOString(),
+                decision_note: decisionNote,
+                created_by: ctx.userId,
+                created_on_behalf: true,
+                // Phase 30 — split płatny (z puli) / bezpłatny.
+                paid_days: split.paid,
+                unpaid_days: split.unpaid,
+            } as never)
+            .select('id')
+            .single<{ id: string }>()
+
+        if (insertErr || !inserted) {
+            throw new Error(`Błąd zapisu wniosku: ${insertErr?.message ?? 'unknown'}`)
+        }
+
+        // Audit ZAWSZE — kluczowe dla transparentności (kto wpisał za kogo).
+        await logAudit(ctx.userId, 'LEAVE_CREATED_ON_BEHALF', {
+            leave_id: inserted.id,
+            target_user_id: input.targetUserId,
+            leave_type: input.leaveType,
+            start_date: input.startDate,
+            end_date: input.endDate,
+            actor_role: ctx.role,
+            is_past_leave: !isOngoingOrFuture,
+        })
+
+        // Attendance sync ZAWSZE — krytyczne dla spójności (timesheet musi się zgadzać).
+        await syncAttendanceFromLeave(inserted.id, input.targetUserId, 'create').catch((e) =>
+            logCompat.error('[createLeaveOnBehalf] attendance sync failed:', e),
+        )
+
+        // Email do pracownika ZAWSZE — transparentność, audit + RODO.
+        const targetDisplayName = target.full_name ?? target.email
+        sendLeaveCreatedOnBehalf(
+            target.email,
+            targetDisplayName,
+            actorName,
+            input.leaveType,
+            input.startDate,
+            input.endDate,
+            input.note ?? null,
+            !isOngoingOrFuture,
+        ).catch((e) => logCompat.error('[createLeaveOnBehalf] email failed:', e))
+
+        // Push do pracownika ZAWSZE.
+        sendPushToUserId(input.targetUserId, {
+            title: isOngoingOrFuture
+                ? 'Wpisano za Ciebie urlop'
+                : 'Wpisano za Ciebie urlop (wstecznie)',
+            body: `${actorName}: ${input.startDate} – ${input.endDate}`,
+            url: '/internal?tab=leave',
+            tag: `leave-on-behalf-${inserted.id}`,
+        }).catch((e) => logCompat.error('[createLeaveOnBehalf] push failed:', e))
+
+        // Branch — tylko ongoing/future: Outlook event + OOF + email do zastępcy.
+        if (isOngoingOrFuture) {
+            // Outlook calendar event — soft fail (best-effort).
+            createLeaveEvent({
                 userEmail: target.email,
                 startDate: input.startDate,
                 endDate: input.endDate,
-                internalReply: defaults.internal,
-                externalReply: defaults.external,
+                leaveType: input.leaveType,
+                note: decisionNote,
+                transactionId: `leave-${inserted.id}`,
             })
-                .then((r) =>
-                    persistOofResult({
-                        admin,
-                        leaveRequestId: inserted.id,
-                        actorUserId: ctx.userId,
-                        targetUserId: input.targetUserId,
-                        result: r,
-                        auditExtra: {
-                            has_substitute: Boolean(input.substituteId),
-                            via: 'on_behalf',
-                        },
-                    }),
-                )
-                .catch((e) => logCompat.error('[createLeaveOnBehalf] OOF set failed:', e))
-        } else {
-            await logAudit(ctx.userId, 'LEAVE_OOF_SKIPPED_HALF_DAY', {
-                leave_id: inserted.id,
-                target_user_id: input.targetUserId,
-                via: 'on_behalf',
-            })
-        }
+                .then(async (r) => {
+                    if (r.success && r.eventId) {
+                        await admin
+                            .from('leave_requests')
+                            .update({ outlook_event_id: r.eventId })
+                            .eq('id', inserted.id)
+                    } else if (!r.success && !r.skipped) {
+                        await admin
+                            .from('leave_requests')
+                            .update({ graph_sync_error: `calendar: ${r.error}` } as never)
+                            .eq('id', inserted.id)
+                    }
+                })
+                .catch((e) => logCompat.error('[createLeaveOnBehalf] calendar push failed:', e))
 
-        if (substituteEmail) {
-            sendSubstituteAssigned(
-                substituteEmail,
-                substituteName ?? substituteEmail,
-                targetDisplayName,
-                target.email,
-                input.startDate,
-                input.endDate,
-            ).catch((e) => logCompat.error('[createLeaveOnBehalf] substitute notify failed:', e))
-        }
+            // Outlook OOF + opcjonalny email do zastępcy.
+            let substituteName: string | null = null
+            let substituteEmail: string | null = null
+            if (input.substituteId) {
+                const { data: sub } = await admin
+                    .from('profiles')
+                    .select('full_name, email')
+                    .eq('id', input.substituteId)
+                    .maybeSingle<{ full_name: string | null; email: string }>()
+                if (sub) {
+                    substituteName = sub.full_name ?? sub.email
+                    substituteEmail = sub.email
+                }
+            }
 
-        // Phase 41 — mail forwarding, only once the window is actually open. An
-        // on-behalf leave is inserted already approved, so a leave that started
-        // earlier this week gets its rule right away; a future one waits for the cron.
-        // Phase 41c — and only when the forwarding box was ticked.
-        if (
-            substituteEmail &&
-            shouldForwardBeActive(
-                {
-                    status: 'approved',
-                    substituteId: input.substituteId ?? null,
+            // Phase 53 — jednodniowy półdniowy urlop nie dostaje całodniowego auto-reply.
+            if (
+                shouldSetOofForLeave({
                     startDate: input.startDate,
                     endDate: input.endDate,
-                    forwardMailEnabled: Boolean(input.forwardMail),
-                },
-                new Date(),
-            )
-        ) {
-            openForwardRule({
-                admin,
-                leaveId: inserted.id,
-                userEmail: target.email,
-                substituteEmail,
-                substituteName,
-                actorUserId: ctx.userId,
-                targetUserId: input.targetUserId,
-                auditExtra: { via: 'on_behalf' },
-            }).catch((e) => logCompat.error('[createLeaveOnBehalf] forward rule failed:', e))
+                    halfDay: input.halfDay ?? null,
+                })
+            ) {
+                const defaults = await buildOofDefaultsFor({
+                    admin,
+                    userId: input.targetUserId,
+                    employeeName: targetDisplayName,
+                    endDate: input.endDate,
+                    substituteName,
+                    substituteEmail,
+                })
+
+                setOutOfOffice({
+                    userEmail: target.email,
+                    startDate: input.startDate,
+                    endDate: input.endDate,
+                    internalReply: defaults.internal,
+                    externalReply: defaults.external,
+                })
+                    .then((r) =>
+                        persistOofResult({
+                            admin,
+                            leaveRequestId: inserted.id,
+                            actorUserId: ctx.userId,
+                            targetUserId: input.targetUserId,
+                            result: r,
+                            auditExtra: {
+                                has_substitute: Boolean(input.substituteId),
+                                via: 'on_behalf',
+                            },
+                        }),
+                    )
+                    .catch((e) => logCompat.error('[createLeaveOnBehalf] OOF set failed:', e))
+            } else {
+                await logAudit(ctx.userId, 'LEAVE_OOF_SKIPPED_HALF_DAY', {
+                    leave_id: inserted.id,
+                    target_user_id: input.targetUserId,
+                    via: 'on_behalf',
+                })
+            }
+
+            if (substituteEmail) {
+                sendSubstituteAssigned(
+                    substituteEmail,
+                    substituteName ?? substituteEmail,
+                    targetDisplayName,
+                    target.email,
+                    input.startDate,
+                    input.endDate,
+                ).catch((e) => logCompat.error('[createLeaveOnBehalf] substitute notify failed:', e))
+            }
+
+            // Phase 41 — mail forwarding, only once the window is actually open. An
+            // on-behalf leave is inserted already approved, so a leave that started
+            // earlier this week gets its rule right away; a future one waits for the cron.
+            // Phase 41c — and only when the forwarding box was ticked.
+            if (
+                substituteEmail &&
+                shouldForwardBeActive(
+                    {
+                        status: 'approved',
+                        substituteId: input.substituteId ?? null,
+                        startDate: input.startDate,
+                        endDate: input.endDate,
+                        forwardMailEnabled: Boolean(input.forwardMail),
+                    },
+                    new Date(),
+                )
+            ) {
+                openForwardRule({
+                    admin,
+                    leaveId: inserted.id,
+                    userEmail: target.email,
+                    substituteEmail,
+                    substituteName,
+                    actorUserId: ctx.userId,
+                    targetUserId: input.targetUserId,
+                    auditExtra: { via: 'on_behalf' },
+                }).catch((e) => logCompat.error('[createLeaveOnBehalf] forward rule failed:', e))
+            }
         }
-    }
 
-    // Teams alert ZAWSZE — info dla zespołu (niebieski "informacyjny", nie zielony "approved").
-    postToTeamsAlert({
-        title: `Urlop wpisany przez ${actorName}`,
-        text: `${targetDisplayName} — urlop ${input.startDate} – ${input.endDate}${isOngoingOrFuture ? '' : ' (wstecznie)'}`,
-        themeColor: '3B82F6',
-        facts: [
-            { name: 'Typ', value: input.leaveType },
-            { name: 'Pracownik', value: targetDisplayName },
-            { name: 'Wpisał', value: actorName },
-            { name: 'Tryb', value: isOngoingOrFuture ? 'Zaplanowany' : 'Wsteczny' },
-            ...(input.note ? [{ name: 'Notatka', value: input.note.slice(0, 200) }] : []),
-        ],
-        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-on-behalf`,
-    }).catch((e) => logCompat.error('[createLeaveOnBehalf] teams alert failed:', e))
+        // Teams alert ZAWSZE — info dla zespołu (niebieski "informacyjny", nie zielony "approved").
+        postToTeamsAlert({
+            title: `Urlop wpisany przez ${actorName}`,
+            text: `${targetDisplayName} — urlop ${input.startDate} – ${input.endDate}${isOngoingOrFuture ? '' : ' (wstecznie)'}`,
+            themeColor: '3B82F6',
+            facts: [
+                { name: 'Typ', value: input.leaveType },
+                { name: 'Pracownik', value: targetDisplayName },
+                { name: 'Wpisał', value: actorName },
+                { name: 'Tryb', value: isOngoingOrFuture ? 'Zaplanowany' : 'Wsteczny' },
+                ...(input.note ? [{ name: 'Notatka', value: input.note.slice(0, 200) }] : []),
+            ],
+            actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-on-behalf`,
+        }).catch((e) => logCompat.error('[createLeaveOnBehalf] teams alert failed:', e))
 
-    return { id: inserted.id }
+        return { id: inserted.id }
+    })
 }
 
 // ─── Phase 25b: listTeamMembersForLeaveOnBehalf ─────────────────────────────
@@ -1667,7 +1678,7 @@ async function assertManagesTarget(
     targetUserId: string,
 ): Promise<void> {
     if (targetUserId === ctx.userId) {
-        throw new Error('To Twój własny wniosek — użyj sekcji „Moje urlopy".')
+        throw new ExpectedError('To Twój własny wniosek — użyj sekcji „Moje urlopy".')
     }
     if (ctx.isAdmin) return
     const { data: target } = await admin
@@ -1676,7 +1687,7 @@ async function assertManagesTarget(
         .eq('id', targetUserId)
         .single<{ manager_id: string | null }>()
     if (target?.manager_id !== ctx.userId) {
-        throw new Error('Możesz zarządzać urlopami tylko swojego zespołu.')
+        throw new ExpectedError('Możesz zarządzać urlopami tylko swojego zespołu.')
     }
 }
 
@@ -1822,33 +1833,35 @@ export async function listLeavesForUserMonth(
     userId: string,
     year: number,
     month: number,
-): Promise<TeamLeaveRow[]> {
-    const ctx = await requireInternalOrAdminAction()
-    if (!ctx.isAdmin && !ctx.isManager) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
-    }
-    const admin = createServiceClient()
-    if (!ctx.isAdmin) {
-        const { data: target } = await admin
-            .from('profiles')
-            .select('manager_id')
-            .eq('id', userId)
-            .single<{ manager_id: string | null }>()
-        if (target?.manager_id !== ctx.userId) return []
-    }
-    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
-    const monthEnd = format(endOfMonth(new Date(year, month - 1, 1)), 'yyyy-MM-dd')
+): Promise<ActionResult<TeamLeaveRow[]>> {
+    return runAction('listLeavesForUserMonth', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        if (!ctx.isAdmin && !ctx.isManager) {
+            throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
+        }
+        const admin = createServiceClient()
+        if (!ctx.isAdmin) {
+            const { data: target } = await admin
+                .from('profiles')
+                .select('manager_id')
+                .eq('id', userId)
+                .single<{ manager_id: string | null }>()
+            if (target?.manager_id !== ctx.userId) return []
+        }
+        const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+        const monthEnd = format(endOfMonth(new Date(year, month - 1, 1)), 'yyyy-MM-dd')
 
-    const { data, error } = await admin
-        .from('leave_requests')
-        .select(TEAM_LEAVE_SELECT)
-        .eq('user_id', userId)
-        .in('status', ['pending', 'approved'])
-        .lte('start_date', monthEnd)
-        .gte('end_date', monthStart)
-        .order('start_date', { ascending: true })
-    if (error) throw new Error(`Błąd pobierania urlopów: ${error.message}`)
-    return ((data ?? []) as unknown as TeamLeaveQueryRow[]).map(mapTeamLeaveRow)
+        const { data, error } = await admin
+            .from('leave_requests')
+            .select(TEAM_LEAVE_SELECT)
+            .eq('user_id', userId)
+            .in('status', ['pending', 'approved'])
+            .lte('start_date', monthEnd)
+            .gte('end_date', monthStart)
+            .order('start_date', { ascending: true })
+        if (error) throw new Error(`Błąd pobierania urlopów: ${error.message}`)
+        return ((data ?? []) as unknown as TeamLeaveQueryRow[]).map(mapTeamLeaveRow)
+    })
 }
 
 // ─── Phase 30b: dni blokujące timesheet (split-aware) ───────────────────────
@@ -1870,84 +1883,86 @@ export async function getTimesheetBlockedDates(
     year: number,
     month: number,
     targetUserId?: string,
-): Promise<string[]> {
-    const ctx = await requireInternalOrAdminAction()
-    const admin = createServiceClient()
+): Promise<ActionResult<string[]>> {
+    return runAction('getTimesheetBlockedDates', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        const admin = createServiceClient()
 
-    let userId = ctx.userId
-    if (targetUserId && targetUserId !== ctx.userId) {
-        if (!ctx.isAdmin) {
-            const { data: t } = await admin
+        let userId = ctx.userId
+        if (targetUserId && targetUserId !== ctx.userId) {
+            if (!ctx.isAdmin) {
+                const { data: t } = await admin
+                    .from('profiles')
+                    .select('manager_id')
+                    .eq('id', targetUserId)
+                    .maybeSingle<{ manager_id: string | null }>()
+                if (t?.manager_id !== ctx.userId) {
+                    throw new ExpectedError('Brak uprawnień do timesheetu tego pracownika.')
+                }
+            }
+            userId = targetUserId
+        }
+
+        const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+        const monthEnd = format(endOfMonth(new Date(year, month - 1, 1)), 'yyyy-MM-dd')
+
+        const [leavesRes, profRes] = await Promise.all([
+            admin
+                .from('leave_requests')
+                .select('start_date, end_date, half_day, leave_type, status, paid_days')
+                .eq('user_id', userId)
+                .in('status', ['approved', 'pending'])
+                .lte('start_date', monthEnd)
+                .gte('end_date', monthStart),
+            admin
                 .from('profiles')
-                .select('manager_id')
-                .eq('id', targetUserId)
-                .maybeSingle<{ manager_id: string | null }>()
-            if (t?.manager_id !== ctx.userId) {
-                throw new Error('Brak uprawnień do timesheetu tego pracownika.')
+                .select('employment_type')
+                .eq('id', userId)
+                .maybeSingle<{ employment_type: string | null }>(),
+        ])
+
+        const leaves = (leavesRes.data ?? []) as unknown as Array<{
+            start_date: string
+            end_date: string
+            half_day: 'morning' | 'afternoon' | null
+            leave_type: string
+            status: LeaveStatus
+            paid_days: number | string | null
+        }>
+        if (leaves.length === 0) return []
+
+        // Święta dla pełnego zakresu wszystkich urlopów (urlop może zaczynać się w
+        // poprzednim miesiącu — split liczy dni robocze całego urlopu, by poprawnie
+        // wybrać pierwsze N płatnych).
+        const minStart = leaves.reduce((m, l) => (l.start_date < m ? l.start_date : m), leaves[0].start_date)
+        const maxEnd = leaves.reduce((m, l) => (l.end_date > m ? l.end_date : m), leaves[0].end_date)
+        const { data: holRows } = await admin
+            .from('public_holidays')
+            .select('date, name_pl')
+            .gte('date', minStart)
+            .lte('date', maxEnd)
+        const holidays = (holRows ?? []) as PublicHolidayDate[]
+        const employmentType = profRes.data?.employment_type ?? null
+
+        const blocked = new Set<string>()
+        for (const lv of leaves) {
+            // Pending → traktuj jak w pełni blokujący (paidDays=0); approved → realny split.
+            const effectivePaid = lv.status === 'approved' ? Number(lv.paid_days ?? 0) : 0
+            const split = splitLeaveWorkingDays({
+                startDate: lv.start_date,
+                endDate: lv.end_date,
+                halfDay: lv.half_day,
+                leaveType: lv.leave_type,
+                paidDays: effectivePaid,
+                employmentType,
+                holidays,
+            })
+            for (const d of split.blockedDays) {
+                if (d >= monthStart && d <= monthEnd) blocked.add(d)
             }
         }
-        userId = targetUserId
-    }
-
-    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
-    const monthEnd = format(endOfMonth(new Date(year, month - 1, 1)), 'yyyy-MM-dd')
-
-    const [leavesRes, profRes] = await Promise.all([
-        admin
-            .from('leave_requests')
-            .select('start_date, end_date, half_day, leave_type, status, paid_days')
-            .eq('user_id', userId)
-            .in('status', ['approved', 'pending'])
-            .lte('start_date', monthEnd)
-            .gte('end_date', monthStart),
-        admin
-            .from('profiles')
-            .select('employment_type')
-            .eq('id', userId)
-            .maybeSingle<{ employment_type: string | null }>(),
-    ])
-
-    const leaves = (leavesRes.data ?? []) as unknown as Array<{
-        start_date: string
-        end_date: string
-        half_day: 'morning' | 'afternoon' | null
-        leave_type: string
-        status: LeaveStatus
-        paid_days: number | string | null
-    }>
-    if (leaves.length === 0) return []
-
-    // Święta dla pełnego zakresu wszystkich urlopów (urlop może zaczynać się w
-    // poprzednim miesiącu — split liczy dni robocze całego urlopu, by poprawnie
-    // wybrać pierwsze N płatnych).
-    const minStart = leaves.reduce((m, l) => (l.start_date < m ? l.start_date : m), leaves[0].start_date)
-    const maxEnd = leaves.reduce((m, l) => (l.end_date > m ? l.end_date : m), leaves[0].end_date)
-    const { data: holRows } = await admin
-        .from('public_holidays')
-        .select('date, name_pl')
-        .gte('date', minStart)
-        .lte('date', maxEnd)
-    const holidays = (holRows ?? []) as PublicHolidayDate[]
-    const employmentType = profRes.data?.employment_type ?? null
-
-    const blocked = new Set<string>()
-    for (const lv of leaves) {
-        // Pending → traktuj jak w pełni blokujący (paidDays=0); approved → realny split.
-        const effectivePaid = lv.status === 'approved' ? Number(lv.paid_days ?? 0) : 0
-        const split = splitLeaveWorkingDays({
-            startDate: lv.start_date,
-            endDate: lv.end_date,
-            halfDay: lv.half_day,
-            leaveType: lv.leave_type,
-            paidDays: effectivePaid,
-            employmentType,
-            holidays,
-        })
-        for (const d of split.blockedDays) {
-            if (d >= monthStart && d <= monthEnd) blocked.add(d)
-        }
-    }
-    return Array.from(blocked).sort()
+        return Array.from(blocked).sort()
+    })
 }
 
 /**
@@ -1955,100 +1970,102 @@ export async function getTimesheetBlockedDates(
  * managers had no way to cancel a leave they entered). Cleans attendance + (best
  * effort) Outlook event / OOF, notifies the employee via push.
  */
-export async function cancelTeamLeave(id: string): Promise<void> {
-    const ctx = await requireInternalOrAdminAction()
-    if (!ctx.isAdmin && !ctx.isManager) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
-    }
-    const admin = createServiceClient()
-    const { data: row, error } = await admin
-        .from('leave_requests')
-        .select(
-            'id, user_id, status, start_date, end_date, leave_type, substitute_id, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
+export async function cancelTeamLeave(id: string): Promise<ActionResult<void>> {
+    return runAction('cancelTeamLeave', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        if (!ctx.isAdmin && !ctx.isManager) {
+            throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
+        }
+        const admin = createServiceClient()
+        const { data: row, error } = await admin
+            .from('leave_requests')
+            .select(
+                'id, user_id, status, start_date, end_date, leave_type, substitute_id, outlook_event_id, graph_oof_set, outlook_forward_rule_id',
+            )
+            .eq('id', id)
+            .single<{
+                id: string
+                user_id: string
+                status: LeaveStatus
+                start_date: string
+                end_date: string
+                leave_type: LeaveType
+                substitute_id: string | null
+                outlook_event_id: string | null
+                graph_oof_set: boolean | null
+                outlook_forward_rule_id: string | null
+            }>()
+        if (error || !row) throw new ExpectedError('Wniosek nie istnieje.')
+        if (row.status !== 'pending' && row.status !== 'approved') {
+            throw new ExpectedError(`Nie można anulować wniosku w statusie "${row.status}".`)
+        }
+        const wasApproved = row.status === 'approved'
+        await assertManagesTarget(admin, ctx, row.user_id)
+
+        const { error: updErr } = await admin
+            .from('leave_requests')
+            .update({ status: 'cancelled' })
+            .eq('id', id)
+        if (updErr) throw new Error(`Błąd anulowania: ${updErr.message}`)
+
+        await syncAttendanceFromLeave(id, row.user_id, 'remove').catch((e) =>
+            logCompat.error('[cancelTeamLeave] attendance cleanup failed:', e),
         )
-        .eq('id', id)
-        .single<{
-            id: string
-            user_id: string
-            status: LeaveStatus
-            start_date: string
-            end_date: string
-            leave_type: LeaveType
-            substitute_id: string | null
-            outlook_event_id: string | null
-            graph_oof_set: boolean | null
-            outlook_forward_rule_id: string | null
-        }>()
-    if (error || !row) throw new Error('Wniosek nie istnieje.')
-    if (row.status !== 'pending' && row.status !== 'approved') {
-        throw new Error(`Nie można anulować wniosku w statusie "${row.status}".`)
-    }
-    const wasApproved = row.status === 'approved'
-    await assertManagesTarget(admin, ctx, row.user_id)
 
-    const { error: updErr } = await admin
-        .from('leave_requests')
-        .update({ status: 'cancelled' })
-        .eq('id', id)
-    if (updErr) throw new Error(`Błąd anulowania: ${updErr.message}`)
+        const contact = await fetchUserContact(row.user_id)
+        if (contact?.email && row.outlook_event_id) {
+            deleteLeaveEvent({ userEmail: contact.email, eventId: row.outlook_event_id }).catch((e) =>
+                logCompat.error('[cancelTeamLeave] calendar delete failed:', e),
+            )
+        }
+        if (contact?.email && row.graph_oof_set) {
+            disableOutOfOffice({ userEmail: contact.email })
+                .then(async (r) => {
+                    if (r.success && !r.skipped) {
+                        await admin
+                            .from('leave_requests')
+                            .update({ graph_oof_set: false } as never)
+                            .eq('id', id)
+                    }
+                })
+                .catch((e) => logCompat.error('[cancelTeamLeave] OOF disable failed:', e))
+        }
+        // Phase 41 — tear down mail forwarding.
+        if (contact?.email && row.outlook_forward_rule_id) {
+            closeForwardRule({
+                admin,
+                leaveId: id,
+                ruleId: row.outlook_forward_rule_id,
+                userEmail: contact.email,
+                actorUserId: ctx.userId,
+                reason: 'cancelled',
+                auditExtra: { via: 'manager_cancel', target_user_id: row.user_id },
+            }).catch((e) => logCompat.error('[cancelTeamLeave] forward rule delete failed:', e))
+        }
 
-    await syncAttendanceFromLeave(id, row.user_id, 'remove').catch((e) =>
-        logCompat.error('[cancelTeamLeave] attendance cleanup failed:', e),
-    )
+        await logAudit(ctx.userId, 'LEAVE_CANCELLED_BY_MANAGER', {
+            leave_id: id,
+            target_user_id: row.user_id,
+            was_approved: row.status === 'approved',
+            start_date: row.start_date,
+            end_date: row.end_date,
+        })
 
-    const contact = await fetchUserContact(row.user_id)
-    if (contact?.email && row.outlook_event_id) {
-        deleteLeaveEvent({ userEmail: contact.email, eventId: row.outlook_event_id }).catch((e) =>
-            logCompat.error('[cancelTeamLeave] calendar delete failed:', e),
-        )
-    }
-    if (contact?.email && row.graph_oof_set) {
-        disableOutOfOffice({ userEmail: contact.email })
-            .then(async (r) => {
-                if (r.success && !r.skipped) {
-                    await admin
-                        .from('leave_requests')
-                        .update({ graph_oof_set: false } as never)
-                        .eq('id', id)
-                }
-            })
-            .catch((e) => logCompat.error('[cancelTeamLeave] OOF disable failed:', e))
-    }
-    // Phase 41 — tear down mail forwarding.
-    if (contact?.email && row.outlook_forward_rule_id) {
-        closeForwardRule({
-            admin,
+        // Phase 47 — powiadom pracownika (anulował przełożony), jego zastępcę oraz
+        // pozostałych approverów (admini + manager, poza actorem). In-app + push +
+        // (dla approved) email — jednolicie z self-cancel.
+        await notifyLeaveCancelled({
             leaveId: id,
-            ruleId: row.outlook_forward_rule_id,
-            userEmail: contact.email,
+            employeeUserId: row.user_id,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            leaveType: row.leave_type,
+            substituteId: row.substitute_id,
+            wasApproved,
             actorUserId: ctx.userId,
-            reason: 'cancelled',
-            auditExtra: { via: 'manager_cancel', target_user_id: row.user_id },
-        }).catch((e) => logCompat.error('[cancelTeamLeave] forward rule delete failed:', e))
-    }
-
-    await logAudit(ctx.userId, 'LEAVE_CANCELLED_BY_MANAGER', {
-        leave_id: id,
-        target_user_id: row.user_id,
-        was_approved: row.status === 'approved',
-        start_date: row.start_date,
-        end_date: row.end_date,
+            byManager: true,
+        }).catch((e) => logCompat.error('[cancelTeamLeave] notify failed:', e))
     })
-
-    // Phase 47 — powiadom pracownika (anulował przełożony), jego zastępcę oraz
-    // pozostałych approverów (admini + manager, poza actorem). In-app + push +
-    // (dla approved) email — jednolicie z self-cancel.
-    await notifyLeaveCancelled({
-        leaveId: id,
-        employeeUserId: row.user_id,
-        startDate: row.start_date,
-        endDate: row.end_date,
-        leaveType: row.leave_type,
-        substituteId: row.substitute_id,
-        wasApproved,
-        actorUserId: ctx.userId,
-        byManager: true,
-    }).catch((e) => logCompat.error('[cancelTeamLeave] notify failed:', e))
 }
 
 export interface UpdateTeamLeaveInput {
@@ -2067,209 +2084,211 @@ export interface UpdateTeamLeaveInput {
  * entered with the wrong type — e.g. vacation that should be unpaid — could not
  * be fixed). Re-syncs attendance for approved leaves when type/dates/half-day change.
  */
-export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<void> {
-    const ctx = await requireInternalOrAdminAction()
-    if (!ctx.isAdmin && !ctx.isManager) {
-        throw new Error('Wymagane uprawnienia: administrator lub manager.')
-    }
-    const admin = createServiceClient()
-    const { data: row, error } = await admin
-        .from('leave_requests')
-        .select(
-            'id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id, outlook_forward_rule_id, forward_mail_enabled',
-        )
-        .eq('id', input.id)
-        .single<{
-            id: string
-            user_id: string
-            status: LeaveStatus
-            start_date: string
-            end_date: string
-            leave_type: LeaveType
-            half_day: 'morning' | 'afternoon' | null
-            note: string | null
-            substitute_id: string | null
-            outlook_forward_rule_id: string | null
-            forward_mail_enabled: boolean
-        }>()
-    if (error || !row) throw new Error('Wniosek nie istnieje.')
-    if (row.status !== 'pending' && row.status !== 'approved') {
-        throw new Error(`Nie można edytować wniosku w statusie "${row.status}".`)
-    }
-    await assertManagesTarget(admin, ctx, row.user_id)
-
-    const newType = input.leaveType ?? row.leave_type
-    const newStart = input.startDate ?? row.start_date
-    const newEnd = input.endDate ?? row.end_date
-    let newHalfDay = input.halfDay !== undefined ? input.halfDay : row.half_day
-    const newNote = input.note !== undefined ? input.note?.trim() || null : row.note
-    const newSubstituteId =
-        input.substituteId !== undefined ? input.substituteId || null : row.substitute_id
-
-    if (input.leaveType) validateLeaveType(input.leaveType)
-    validateDateString(newStart, 'start_date')
-    validateDateString(newEnd, 'end_date')
-    if (newEnd < newStart) throw new Error('Data końca musi być >= data początku.')
-    // Half-day only makes sense on a single-day leave.
-    if (newHalfDay && newStart !== newEnd) newHalfDay = null
-    if (newHalfDay && !['morning', 'afternoon'].includes(newHalfDay)) {
-        throw new Error('half_day musi być "morning" lub "afternoon".')
-    }
-    // Validate a (newly) chosen substitute — HR-zone, not the employee themselves.
-    if (input.substituteId) {
-        if (input.substituteId === row.user_id) {
-            throw new Error('Pracownik nie może być sam swoim zastępcą.')
+export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<ActionResult<void>> {
+    return runAction('updateTeamLeave', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        if (!ctx.isAdmin && !ctx.isManager) {
+            throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
         }
-        const { data: sub } = await admin
-            .from('profiles')
-            .select('id, role')
-            .eq('id', input.substituteId)
-            .maybeSingle<{ id: string; role: string }>()
-        if (!sub) throw new Error('Wybrany zastępca nie istnieje.')
-        if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(sub.role)) {
-            throw new Error('Zastępca musi mieć dostęp do strefy HR.')
+        const admin = createServiceClient()
+        const { data: row, error } = await admin
+            .from('leave_requests')
+            .select(
+                'id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id, outlook_forward_rule_id, forward_mail_enabled',
+            )
+            .eq('id', input.id)
+            .single<{
+                id: string
+                user_id: string
+                status: LeaveStatus
+                start_date: string
+                end_date: string
+                leave_type: LeaveType
+                half_day: 'morning' | 'afternoon' | null
+                note: string | null
+                substitute_id: string | null
+                outlook_forward_rule_id: string | null
+                forward_mail_enabled: boolean
+            }>()
+        if (error || !row) throw new ExpectedError('Wniosek nie istnieje.')
+        if (row.status !== 'pending' && row.status !== 'approved') {
+            throw new ExpectedError(`Nie można edytować wniosku w statusie "${row.status}".`)
         }
-    }
+        await assertManagesTarget(admin, ctx, row.user_id)
 
-    // Phase 29 friendly guard — B2B/zlecenie may only hold 'vacation'. The DB
-    // trigger enforce_b2b_zlecenie_vacation_only is the hard backstop, but in
-    // prod it surfaces as a masked "Server Components render" error; validate
-    // here for a clear message and to fail before touching attendance. Only the
-    // type-change-to-non-vacation case can trip the trigger, so guard just that.
-    if (newType !== row.leave_type && newType !== 'vacation') {
-        const { data: empRow } = await admin
-            .from('profiles')
-            .select('employment_type')
-            .eq('id', row.user_id)
-            .maybeSingle<{ employment_type: string | null }>()
-        assertB2bZlecenieVacationOnly(empRow?.employment_type ?? null, newType, false)
-    }
+        const newType = input.leaveType ?? row.leave_type
+        const newStart = input.startDate ?? row.start_date
+        const newEnd = input.endDate ?? row.end_date
+        let newHalfDay = input.halfDay !== undefined ? input.halfDay : row.half_day
+        const newNote = input.note !== undefined ? input.note?.trim() || null : row.note
+        const newSubstituteId =
+            input.substituteId !== undefined ? input.substituteId || null : row.substitute_id
 
-    const spanChanged =
-        newStart !== row.start_date ||
-        newEnd !== row.end_date ||
-        newType !== row.leave_type ||
-        newHalfDay !== row.half_day
-
-    // Re-sync attendance: remove the old span first (reads the current row), then
-    // write the new values, then recreate for the new span/type (approved only —
-    // pending leaves have no attendance rows yet).
-    if (spanChanged) {
-        await syncAttendanceFromLeave(input.id, row.user_id, 'remove').catch((e) =>
-            logCompat.error('[updateTeamLeave] attendance remove failed:', e),
-        )
-    }
-
-    const { error: updErr } = await admin
-        .from('leave_requests')
-        .update({
-            leave_type: newType,
-            start_date: newStart,
-            end_date: newEnd,
-            half_day: newHalfDay,
-            note: newNote,
-            substitute_id: newSubstituteId,
-        })
-        .eq('id', input.id)
-    if (updErr) throw new Error(`Błąd zapisu zmian: ${updErr.message}`)
-
-    if (spanChanged && row.status === 'approved') {
-        await syncAttendanceFromLeave(input.id, row.user_id, 'create').catch((e) =>
-            logCompat.error('[updateTeamLeave] attendance create failed:', e),
-        )
-    }
-
-    // Phase 41 — keep mail forwarding in step with the edit. An inbox rule points at
-    // a fixed recipient and never expires, so without this: changing the substitute
-    // would keep delivering mail to the PREVIOUS person, and shortening the leave
-    // would keep forwarding after the employee is back.
-    //
-    // Awaited rather than fire-and-forget, and the replacement is gated on the
-    // teardown succeeding (see below) — two live rules would double-deliver.
-    const datesChanged = newStart !== row.start_date || newEnd !== row.end_date
-    const substituteChanged = newSubstituteId !== row.substitute_id
-    const forwardShouldExist = shouldForwardBeActive(
-        {
-            status: row.status,
-            substituteId: newSubstituteId,
-            startDate: newStart,
-            endDate: newEnd,
-            // Phase 41c — an edit never grants consent; it only carries over what the
-            // employee already agreed to. Turning forwarding on is its own action.
-            forwardMailEnabled: row.forward_mail_enabled,
-        },
-        new Date(),
-    )
-    const { close: shouldCloseForward, open: shouldOpenForward } = planForwardRuleEdit({
-        hasExistingRule: Boolean(row.outlook_forward_rule_id),
-        substituteChanged,
-        datesChanged,
-        forwardShouldExist,
-    })
-
-    if (shouldCloseForward || shouldOpenForward) {
-        const contact = await fetchUserContact(row.user_id)
-        if (contact?.email) {
-            // Gate the replacement on the teardown actually succeeding. closeForwardRule
-            // RETURNS false on a Graph failure (it does not throw), so without this the
-            // code would fall straight through and create a second rule while the first
-            // one is still live — mail would then land with BOTH the old and the new
-            // substitute. Better to leave the leave un-forwarded and surface
-            // graph_sync_error: the admin retry and the orphan sweep both recover from
-            // that, neither recovers from silent double delivery.
-            let teardownOk = true
-            if (shouldCloseForward && row.outlook_forward_rule_id) {
-                teardownOk = await closeForwardRule({
-                    admin,
-                    leaveId: input.id,
-                    ruleId: row.outlook_forward_rule_id,
-                    userEmail: contact.email,
-                    actorUserId: ctx.userId,
-                    reason: 'edited',
-                    auditExtra: { target_user_id: row.user_id },
-                }).catch((e) => {
-                    logCompat.error('[updateTeamLeave] forward rule delete failed:', e)
-                    return false
-                })
+        if (input.leaveType) validateLeaveType(input.leaveType)
+        validateDateString(newStart, 'start_date')
+        validateDateString(newEnd, 'end_date')
+        if (newEnd < newStart) throw new ExpectedError('Data końca musi być >= data początku.')
+        // Half-day only makes sense on a single-day leave.
+        if (newHalfDay && newStart !== newEnd) newHalfDay = null
+        if (newHalfDay && !['morning', 'afternoon'].includes(newHalfDay)) {
+            throw new ExpectedError('half_day musi być "morning" lub "afternoon".')
+        }
+        // Validate a (newly) chosen substitute — HR-zone, not the employee themselves.
+        if (input.substituteId) {
+            if (input.substituteId === row.user_id) {
+                throw new ExpectedError('Pracownik nie może być sam swoim zastępcą.')
             }
-            if (teardownOk && shouldOpenForward && newSubstituteId) {
-                const { data: sub } = await admin
-                    .from('profiles')
-                    .select('full_name, email')
-                    .eq('id', newSubstituteId)
-                    .maybeSingle<{ full_name: string | null; email: string }>()
-                if (sub?.email) {
-                    await openForwardRule({
+            const { data: sub } = await admin
+                .from('profiles')
+                .select('id, role')
+                .eq('id', input.substituteId)
+                .maybeSingle<{ id: string; role: string }>()
+            if (!sub) throw new ExpectedError('Wybrany zastępca nie istnieje.')
+            if (!(ON_BEHALF_HR_ROLES as readonly string[]).includes(sub.role)) {
+                throw new ExpectedError('Zastępca musi mieć dostęp do strefy HR.')
+            }
+        }
+
+        // Phase 29 friendly guard — B2B/zlecenie may only hold 'vacation'. The DB
+        // trigger enforce_b2b_zlecenie_vacation_only is the hard backstop, but in
+        // prod it surfaces as a masked "Server Components render" error; validate
+        // here for a clear message and to fail before touching attendance. Only the
+        // type-change-to-non-vacation case can trip the trigger, so guard just that.
+        if (newType !== row.leave_type && newType !== 'vacation') {
+            const { data: empRow } = await admin
+                .from('profiles')
+                .select('employment_type')
+                .eq('id', row.user_id)
+                .maybeSingle<{ employment_type: string | null }>()
+            assertB2bZlecenieVacationOnly(empRow?.employment_type ?? null, newType, false)
+        }
+
+        const spanChanged =
+            newStart !== row.start_date ||
+            newEnd !== row.end_date ||
+            newType !== row.leave_type ||
+            newHalfDay !== row.half_day
+
+        // Re-sync attendance: remove the old span first (reads the current row), then
+        // write the new values, then recreate for the new span/type (approved only —
+        // pending leaves have no attendance rows yet).
+        if (spanChanged) {
+            await syncAttendanceFromLeave(input.id, row.user_id, 'remove').catch((e) =>
+                logCompat.error('[updateTeamLeave] attendance remove failed:', e),
+            )
+        }
+
+        const { error: updErr } = await admin
+            .from('leave_requests')
+            .update({
+                leave_type: newType,
+                start_date: newStart,
+                end_date: newEnd,
+                half_day: newHalfDay,
+                note: newNote,
+                substitute_id: newSubstituteId,
+            })
+            .eq('id', input.id)
+        if (updErr) throw new Error(`Błąd zapisu zmian: ${updErr.message}`)
+
+        if (spanChanged && row.status === 'approved') {
+            await syncAttendanceFromLeave(input.id, row.user_id, 'create').catch((e) =>
+                logCompat.error('[updateTeamLeave] attendance create failed:', e),
+            )
+        }
+
+        // Phase 41 — keep mail forwarding in step with the edit. An inbox rule points at
+        // a fixed recipient and never expires, so without this: changing the substitute
+        // would keep delivering mail to the PREVIOUS person, and shortening the leave
+        // would keep forwarding after the employee is back.
+        //
+        // Awaited rather than fire-and-forget, and the replacement is gated on the
+        // teardown succeeding (see below) — two live rules would double-deliver.
+        const datesChanged = newStart !== row.start_date || newEnd !== row.end_date
+        const substituteChanged = newSubstituteId !== row.substitute_id
+        const forwardShouldExist = shouldForwardBeActive(
+            {
+                status: row.status,
+                substituteId: newSubstituteId,
+                startDate: newStart,
+                endDate: newEnd,
+                // Phase 41c — an edit never grants consent; it only carries over what the
+                // employee already agreed to. Turning forwarding on is its own action.
+                forwardMailEnabled: row.forward_mail_enabled,
+            },
+            new Date(),
+        )
+        const { close: shouldCloseForward, open: shouldOpenForward } = planForwardRuleEdit({
+            hasExistingRule: Boolean(row.outlook_forward_rule_id),
+            substituteChanged,
+            datesChanged,
+            forwardShouldExist,
+        })
+
+        if (shouldCloseForward || shouldOpenForward) {
+            const contact = await fetchUserContact(row.user_id)
+            if (contact?.email) {
+                // Gate the replacement on the teardown actually succeeding. closeForwardRule
+                // RETURNS false on a Graph failure (it does not throw), so without this the
+                // code would fall straight through and create a second rule while the first
+                // one is still live — mail would then land with BOTH the old and the new
+                // substitute. Better to leave the leave un-forwarded and surface
+                // graph_sync_error: the admin retry and the orphan sweep both recover from
+                // that, neither recovers from silent double delivery.
+                let teardownOk = true
+                if (shouldCloseForward && row.outlook_forward_rule_id) {
+                    teardownOk = await closeForwardRule({
                         admin,
                         leaveId: input.id,
+                        ruleId: row.outlook_forward_rule_id,
                         userEmail: contact.email,
-                        substituteEmail: sub.email,
-                        substituteName: sub.full_name ?? sub.email,
                         actorUserId: ctx.userId,
-                        targetUserId: row.user_id,
-                        auditExtra: { via: 'edit' },
-                    }).catch((e) =>
-                        logCompat.error('[updateTeamLeave] forward rule create failed:', e),
-                    )
+                        reason: 'edited',
+                        auditExtra: { target_user_id: row.user_id },
+                    }).catch((e) => {
+                        logCompat.error('[updateTeamLeave] forward rule delete failed:', e)
+                        return false
+                    })
+                }
+                if (teardownOk && shouldOpenForward && newSubstituteId) {
+                    const { data: sub } = await admin
+                        .from('profiles')
+                        .select('full_name, email')
+                        .eq('id', newSubstituteId)
+                        .maybeSingle<{ full_name: string | null; email: string }>()
+                    if (sub?.email) {
+                        await openForwardRule({
+                            admin,
+                            leaveId: input.id,
+                            userEmail: contact.email,
+                            substituteEmail: sub.email,
+                            substituteName: sub.full_name ?? sub.email,
+                            actorUserId: ctx.userId,
+                            targetUserId: row.user_id,
+                            auditExtra: { via: 'edit' },
+                        }).catch((e) =>
+                            logCompat.error('[updateTeamLeave] forward rule create failed:', e),
+                        )
+                    }
                 }
             }
         }
-    }
 
-    await logAudit(ctx.userId, 'LEAVE_UPDATED_BY_MANAGER', {
-        leave_id: input.id,
-        target_user_id: row.user_id,
-        leave_type: newType !== row.leave_type ? [row.leave_type, newType] : undefined,
-        start_date: newStart !== row.start_date ? [row.start_date, newStart] : undefined,
-        end_date: newEnd !== row.end_date ? [row.end_date, newEnd] : undefined,
+        await logAudit(ctx.userId, 'LEAVE_UPDATED_BY_MANAGER', {
+            leave_id: input.id,
+            target_user_id: row.user_id,
+            leave_type: newType !== row.leave_type ? [row.leave_type, newType] : undefined,
+            start_date: newStart !== row.start_date ? [row.start_date, newStart] : undefined,
+            end_date: newEnd !== row.end_date ? [row.end_date, newEnd] : undefined,
+        })
+
+        sendPushToUserId(row.user_id, {
+            title: 'Zmieniono Twój urlop',
+            body: `${newStart} – ${newEnd} — zaktualizowane przez przełożonego.`,
+            url: '/internal?tab=leave',
+            tag: `leave-updated-${input.id}`,
+        }).catch((e) => logCompat.error('[updateTeamLeave] push failed:', e))
     })
-
-    sendPushToUserId(row.user_id, {
-        title: 'Zmieniono Twój urlop',
-        body: `${newStart} – ${newEnd} — zaktualizowane przez przełożonego.`,
-        url: '/internal?tab=leave',
-        tag: `leave-updated-${input.id}`,
-    }).catch((e) => logCompat.error('[updateTeamLeave] push failed:', e))
 }
 
 // ─── listMyLeaveRequests ─────────────────────────────────────────────────────
@@ -2645,295 +2664,299 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
 
 // ─── Admin: approve / reject ─────────────────────────────────────────────────
 
-export async function approveLeaveRequest(id: string, decisionNote?: string): Promise<void> {
-    const ctx = await requireLeaveApproverAction()
-    const admin = createServiceClient()
+export async function approveLeaveRequest(id: string, decisionNote?: string): Promise<ActionResult<void>> {
+    return runAction('approveLeaveRequest', async () => {
+        const ctx = await requireLeaveApproverAction()
+        const admin = createServiceClient()
 
-    const { data: row, error: fetchErr } = await admin
-        .from('leave_requests')
-        .select('id, user_id, leave_type, start_date, end_date, half_day, status, substitute_id, oof_internal_message, oof_external_message, forward_mail_enabled')
-        .eq('id', id)
-        .single<
-            Pick<
-                LeaveRequestRow,
-                | 'id'
-                | 'user_id'
-                | 'leave_type'
-                | 'start_date'
-                | 'end_date'
-                | 'half_day'
-                | 'status'
-                | 'substitute_id'
-                | 'oof_internal_message'
-                | 'oof_external_message'
-                | 'forward_mail_enabled'
-            >
-        >()
-    if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
-    if (row.status !== 'pending') {
-        throw new Error(`Nie można zaakceptować wniosku w statusie ${row.status}.`)
-    }
-    await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
-
-    const { error } = await admin
-        .from('leave_requests')
-        .update({
-            status: 'approved',
-            decided_by: ctx.userId,
-            decided_at: new Date().toISOString(),
-            decision_note: decisionNote ?? null,
-            graph_sync_error: null, // clear stale error from previous attempts (Phase 25a column, types stale)
-        } as never)
-        .eq('id', id)
-    if (error) throw new Error(`Błąd akceptacji: ${error.message}`)
-
-    await syncAttendanceFromLeave(id, row.user_id, 'create').catch((e) =>
-        logCompat.error('[approveLeaveRequest] attendance sync failed:', e),
-    )
-
-    await logAudit(ctx.userId, 'LEAVE_APPROVED', { leave_id: id, target_user_id: row.user_id })
-
-    // Email notify
-    const userInfo = await fetchUserContact(row.user_id)
-    if (userInfo) {
-        sendLeaveDecision(
-            userInfo.email,
-            userInfo.full_name ?? userInfo.email,
-            'approved',
-            row.leave_type,
-            row.start_date,
-            row.end_date,
-            decisionNote,
-        ).catch((e) => logCompat.error('[approveLeaveRequest] notify failed:', e))
-
-        // PR2: Outlook calendar event. Soft fail — never blocks approve.
-        // Persist eventId for later delete (cancel/reject after approve).
-        createLeaveEvent({
-            userEmail: userInfo.email,
-            startDate: row.start_date,
-            endDate: row.end_date,
-            leaveType: row.leave_type,
-            note: decisionNote,
-            transactionId: `leave-${id}`,
-        })
-            .then(async (r) => {
-                if (r.success && r.eventId) {
-                    await admin
-                        .from('leave_requests')
-                        .update({ outlook_event_id: r.eventId })
-                        .eq('id', id)
-                } else if (!r.success && !r.skipped) {
-                    await admin
-                        .from('leave_requests')
-                        .update({ graph_sync_error: `calendar: ${r.error}` } as never)
-                        .eq('id', id)
-                }
-            })
-            .catch((e) => logCompat.error('[approveLeaveRequest] calendar push failed:', e))
-
-        // Resolve substitute info if assigned. Hoisted out of the OOF block in Phase 41
-        // — the forwarding rule below needs the same lookup.
-        let substituteName: string | null = null
-        let substituteEmail: string | null = null
-        if (row.substitute_id) {
-            const { data: sub } = await admin
-                .from('profiles')
-                .select('full_name, email')
-                .eq('id', row.substitute_id)
-                .maybeSingle<{ full_name: string | null; email: string }>()
-            if (sub) {
-                substituteName = sub.full_name ?? sub.email
-                substituteEmail = sub.email
-            }
+        const { data: row, error: fetchErr } = await admin
+            .from('leave_requests')
+            .select('id, user_id, leave_type, start_date, end_date, half_day, status, substitute_id, oof_internal_message, oof_external_message, forward_mail_enabled')
+            .eq('id', id)
+            .single<
+                Pick<
+                    LeaveRequestRow,
+                    | 'id'
+                    | 'user_id'
+                    | 'leave_type'
+                    | 'start_date'
+                    | 'end_date'
+                    | 'half_day'
+                    | 'status'
+                    | 'substitute_id'
+                    | 'oof_internal_message'
+                    | 'oof_external_message'
+                    | 'forward_mail_enabled'
+                >
+            >()
+        if (fetchErr || !row) throw new ExpectedError('Wniosek nie istnieje.')
+        if (row.status !== 'pending') {
+            throw new ExpectedError(`Nie można zaakceptować wniosku w statusie ${row.status}.`)
         }
+        await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
 
-        // Phase 25 — Outlook Out-of-Office auto-reply. Ustawiamy nawet bez substitute
-        // (fallback: manager pracownika, potem biuro). Sick leave (L4) też dostaje OOF —
-        // szablon celowo milczy o typie nieobecności.
-        // Phase 53 — skip dla jednodniowego półdniowego urlopu w końcu DZIAŁA: stary
-        // warunek (`!start_date.includes('XXX')`) był tautologią i nigdy nie skipował.
-        if (
-            shouldSetOofForLeave({
-                startDate: row.start_date,
-                endDate: row.end_date,
-                halfDay: row.half_day ?? null,
-            })
-        ) {
-            const defaults = await buildOofDefaultsFor({
-                admin,
-                userId: row.user_id,
-                employeeName: userInfo.full_name ?? userInfo.email,
-                endDate: row.end_date,
-                substituteName,
-                substituteEmail,
-            })
+        const { error } = await admin
+            .from('leave_requests')
+            .update({
+                status: 'approved',
+                decided_by: ctx.userId,
+                decided_at: new Date().toISOString(),
+                decision_note: decisionNote ?? null,
+                graph_sync_error: null, // clear stale error from previous attempts (Phase 25a column, types stale)
+            } as never)
+            .eq('id', id)
+        if (error) throw new Error(`Błąd akceptacji: ${error.message}`)
 
-            setOutOfOffice({
-                userEmail: userInfo.email,
-                startDate: row.start_date,
-                endDate: row.end_date,
-                internalReply: row.oof_internal_message?.trim() || defaults.internal,
-                externalReply: row.oof_external_message?.trim() || defaults.external,
-            })
-                .then((r) =>
-                    persistOofResult({
-                        admin,
-                        leaveRequestId: id,
-                        actorUserId: ctx.userId,
-                        targetUserId: row.user_id,
-                        result: r,
-                        auditExtra: {
-                            has_substitute: Boolean(row.substitute_id),
-                        },
-                    }),
-                )
-                .catch((e) => logCompat.error('[approveLeaveRequest] OOF set failed:', e))
-        } else {
-            await logAudit(ctx.userId, 'LEAVE_OOF_SKIPPED_HALF_DAY', {
-                leave_id: id,
-                target_user_id: row.user_id,
-            })
-        }
+        await syncAttendanceFromLeave(id, row.user_id, 'create').catch((e) =>
+            logCompat.error('[approveLeaveRequest] attendance sync failed:', e),
+        )
 
-        // Email do zastępcy (fire-and-forget). Phase 53: poza gate'em OOF —
-        // zastępca półdniowego urlopu nadal zastępuje, choć auto-reply nie ustawiamy.
-        if (substituteEmail) {
-            sendSubstituteAssigned(
-                substituteEmail,
-                substituteName ?? substituteEmail,
-                userInfo.full_name ?? userInfo.email,
+        await logAudit(ctx.userId, 'LEAVE_APPROVED', { leave_id: id, target_user_id: row.user_id })
+
+        // Email notify
+        const userInfo = await fetchUserContact(row.user_id)
+        if (userInfo) {
+            sendLeaveDecision(
                 userInfo.email,
+                userInfo.full_name ?? userInfo.email,
+                'approved',
+                row.leave_type,
                 row.start_date,
                 row.end_date,
-            ).catch((e) => logCompat.error('[approveLeaveRequest] substitute notify failed:', e))
-        }
+                decisionNote,
+            ).catch((e) => logCompat.error('[approveLeaveRequest] notify failed:', e))
 
-        // Phase 41 — forward incoming mail to the substitute for the leave's duration.
-        // Deliberately NOT inside the OOF block: an inbox rule carries no schedule, so
-        // it may only be created once the window is actually open. Approving a leave
-        // that starts later leaves the rule to the daily cron.
-        // Phase 41c — gated on the employee's opt-in, carried on the row since they
-        // filed the request.
-        if (
-            substituteEmail &&
-            shouldForwardBeActive(
-                {
-                    status: 'approved',
-                    substituteId: row.substitute_id ?? null,
+            // PR2: Outlook calendar event. Soft fail — never blocks approve.
+            // Persist eventId for later delete (cancel/reject after approve).
+            createLeaveEvent({
+                userEmail: userInfo.email,
+                startDate: row.start_date,
+                endDate: row.end_date,
+                leaveType: row.leave_type,
+                note: decisionNote,
+                transactionId: `leave-${id}`,
+            })
+                .then(async (r) => {
+                    if (r.success && r.eventId) {
+                        await admin
+                            .from('leave_requests')
+                            .update({ outlook_event_id: r.eventId })
+                            .eq('id', id)
+                    } else if (!r.success && !r.skipped) {
+                        await admin
+                            .from('leave_requests')
+                            .update({ graph_sync_error: `calendar: ${r.error}` } as never)
+                            .eq('id', id)
+                    }
+                })
+                .catch((e) => logCompat.error('[approveLeaveRequest] calendar push failed:', e))
+
+            // Resolve substitute info if assigned. Hoisted out of the OOF block in Phase 41
+            // — the forwarding rule below needs the same lookup.
+            let substituteName: string | null = null
+            let substituteEmail: string | null = null
+            if (row.substitute_id) {
+                const { data: sub } = await admin
+                    .from('profiles')
+                    .select('full_name, email')
+                    .eq('id', row.substitute_id)
+                    .maybeSingle<{ full_name: string | null; email: string }>()
+                if (sub) {
+                    substituteName = sub.full_name ?? sub.email
+                    substituteEmail = sub.email
+                }
+            }
+
+            // Phase 25 — Outlook Out-of-Office auto-reply. Ustawiamy nawet bez substitute
+            // (fallback: manager pracownika, potem biuro). Sick leave (L4) też dostaje OOF —
+            // szablon celowo milczy o typie nieobecności.
+            // Phase 53 — skip dla jednodniowego półdniowego urlopu w końcu DZIAŁA: stary
+            // warunek (`!start_date.includes('XXX')`) był tautologią i nigdy nie skipował.
+            if (
+                shouldSetOofForLeave({
                     startDate: row.start_date,
                     endDate: row.end_date,
-                    forwardMailEnabled: Boolean(row.forward_mail_enabled),
-                },
-                new Date(),
-            )
-        ) {
-            openForwardRule({
-                admin,
-                leaveId: id,
-                userEmail: userInfo.email,
-                substituteEmail,
-                substituteName,
-                actorUserId: ctx.userId,
-                targetUserId: row.user_id,
-                auditExtra: { via: 'approve' },
-            }).catch((e) => logCompat.error('[approveLeaveRequest] forward rule failed:', e))
-        }
-    }
-    // H3.3: Push notification (fire-and-forget)
-    sendPushToUserId(row.user_id, {
-        title: 'Urlop zatwierdzony',
-        body: `Twój wniosek (${row.start_date} – ${row.end_date}) został zaakceptowany.`,
-        url: '/internal?tab=leave',
-        tag: `leave-${id}`,
-    }).catch((e) => logCompat.error('[approveLeaveRequest] push failed:', e))
+                    halfDay: row.half_day ?? null,
+                })
+            ) {
+                const defaults = await buildOofDefaultsFor({
+                    admin,
+                    userId: row.user_id,
+                    employeeName: userInfo.full_name ?? userInfo.email,
+                    endDate: row.end_date,
+                    substituteName,
+                    substituteEmail,
+                })
 
-    // PR3: Teams alert (#compass-alerts channel). Fire-and-forget.
-    postToTeamsAlert({
-        title: 'Urlop zatwierdzony',
-        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
-        themeColor: '22C55E',
-        facts: [
-            { name: 'Typ', value: row.leave_type },
-            { name: 'Decyzja', value: 'Zatwierdzony' },
-            ...(decisionNote ? [{ name: 'Komentarz', value: decisionNote }] : []),
-        ],
-        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
-    }).catch((e) => logCompat.error('[approveLeaveRequest] teams alert failed:', e))
+                setOutOfOffice({
+                    userEmail: userInfo.email,
+                    startDate: row.start_date,
+                    endDate: row.end_date,
+                    internalReply: row.oof_internal_message?.trim() || defaults.internal,
+                    externalReply: row.oof_external_message?.trim() || defaults.external,
+                })
+                    .then((r) =>
+                        persistOofResult({
+                            admin,
+                            leaveRequestId: id,
+                            actorUserId: ctx.userId,
+                            targetUserId: row.user_id,
+                            result: r,
+                            auditExtra: {
+                                has_substitute: Boolean(row.substitute_id),
+                            },
+                        }),
+                    )
+                    .catch((e) => logCompat.error('[approveLeaveRequest] OOF set failed:', e))
+            } else {
+                await logAudit(ctx.userId, 'LEAVE_OOF_SKIPPED_HALF_DAY', {
+                    leave_id: id,
+                    target_user_id: row.user_id,
+                })
+            }
+
+            // Email do zastępcy (fire-and-forget). Phase 53: poza gate'em OOF —
+            // zastępca półdniowego urlopu nadal zastępuje, choć auto-reply nie ustawiamy.
+            if (substituteEmail) {
+                sendSubstituteAssigned(
+                    substituteEmail,
+                    substituteName ?? substituteEmail,
+                    userInfo.full_name ?? userInfo.email,
+                    userInfo.email,
+                    row.start_date,
+                    row.end_date,
+                ).catch((e) => logCompat.error('[approveLeaveRequest] substitute notify failed:', e))
+            }
+
+            // Phase 41 — forward incoming mail to the substitute for the leave's duration.
+            // Deliberately NOT inside the OOF block: an inbox rule carries no schedule, so
+            // it may only be created once the window is actually open. Approving a leave
+            // that starts later leaves the rule to the daily cron.
+            // Phase 41c — gated on the employee's opt-in, carried on the row since they
+            // filed the request.
+            if (
+                substituteEmail &&
+                shouldForwardBeActive(
+                    {
+                        status: 'approved',
+                        substituteId: row.substitute_id ?? null,
+                        startDate: row.start_date,
+                        endDate: row.end_date,
+                        forwardMailEnabled: Boolean(row.forward_mail_enabled),
+                    },
+                    new Date(),
+                )
+            ) {
+                openForwardRule({
+                    admin,
+                    leaveId: id,
+                    userEmail: userInfo.email,
+                    substituteEmail,
+                    substituteName,
+                    actorUserId: ctx.userId,
+                    targetUserId: row.user_id,
+                    auditExtra: { via: 'approve' },
+                }).catch((e) => logCompat.error('[approveLeaveRequest] forward rule failed:', e))
+            }
+        }
+        // H3.3: Push notification (fire-and-forget)
+        sendPushToUserId(row.user_id, {
+            title: 'Urlop zatwierdzony',
+            body: `Twój wniosek (${row.start_date} – ${row.end_date}) został zaakceptowany.`,
+            url: '/internal?tab=leave',
+            tag: `leave-${id}`,
+        }).catch((e) => logCompat.error('[approveLeaveRequest] push failed:', e))
+
+        // PR3: Teams alert (#compass-alerts channel). Fire-and-forget.
+        postToTeamsAlert({
+            title: 'Urlop zatwierdzony',
+            text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
+            themeColor: '22C55E',
+            facts: [
+                { name: 'Typ', value: row.leave_type },
+                { name: 'Decyzja', value: 'Zatwierdzony' },
+                ...(decisionNote ? [{ name: 'Komentarz', value: decisionNote }] : []),
+            ],
+            actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
+        }).catch((e) => logCompat.error('[approveLeaveRequest] teams alert failed:', e))
+    })
 }
 
-export async function rejectLeaveRequest(id: string, decisionNote: string): Promise<void> {
-    const ctx = await requireLeaveApproverAction()
-    if (!decisionNote?.trim()) {
-        throw new Error('Powód odrzucenia jest wymagany.')
-    }
-    const admin = createServiceClient()
-
-    const { data: row, error: fetchErr } = await admin
-        .from('leave_requests')
-        .select('id, user_id, leave_type, start_date, end_date, status, outlook_event_id')
-        .eq('id', id)
-        .single<Pick<LeaveRequestRow, 'id' | 'user_id' | 'leave_type' | 'start_date' | 'end_date' | 'status'> & { outlook_event_id: string | null }>()
-    if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
-    if (row.status !== 'pending') {
-        throw new Error(`Nie można odrzucić wniosku w statusie ${row.status}.`)
-    }
-    await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
-
-    const { error } = await admin
-        .from('leave_requests')
-        .update({
-            status: 'rejected',
-            decided_by: ctx.userId,
-            decided_at: new Date().toISOString(),
-            decision_note: decisionNote,
-        })
-        .eq('id', id)
-    if (error) throw new Error(`Błąd odrzucenia: ${error.message}`)
-
-    await logAudit(ctx.userId, 'LEAVE_REJECTED', { leave_id: id, target_user_id: row.user_id, reason: decisionNote })
-
-    const userInfo = await fetchUserContact(row.user_id)
-    if (userInfo) {
-        sendLeaveDecision(
-            userInfo.email,
-            userInfo.full_name ?? userInfo.email,
-            'rejected',
-            row.leave_type,
-            row.start_date,
-            row.end_date,
-            decisionNote,
-        ).catch((e) => logCompat.error('[rejectLeaveRequest] notify failed:', e))
-
-        // PR2: cleanup Outlook event (defensive — rejects normally happen
-        // from 'pending' so event shouldn't exist, but if admin approved
-        // then changed mind and rejected via a different path, remove).
-        if (row.outlook_event_id) {
-            deleteLeaveEvent({
-                userEmail: userInfo.email,
-                eventId: row.outlook_event_id,
-            }).catch((e) => logCompat.error('[rejectLeaveRequest] calendar delete failed:', e))
+export async function rejectLeaveRequest(id: string, decisionNote: string): Promise<ActionResult<void>> {
+    return runAction('rejectLeaveRequest', async () => {
+        const ctx = await requireLeaveApproverAction()
+        if (!decisionNote?.trim()) {
+            throw new ExpectedError('Powód odrzucenia jest wymagany.')
         }
-    }
-    // H3.3: Push (fire-and-forget)
-    sendPushToUserId(row.user_id, {
-        title: 'Urlop odrzucony',
-        body: `Powód: ${decisionNote.slice(0, 100)}`,
-        url: '/internal?tab=leave',
-        tag: `leave-${id}`,
-    }).catch((e) => logCompat.error('[rejectLeaveRequest] push failed:', e))
+        const admin = createServiceClient()
 
-    // PR3: Teams alert
-    postToTeamsAlert({
-        title: 'Urlop odrzucony',
-        text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
-        themeColor: 'F59E0B',
-        facts: [
-            { name: 'Typ', value: row.leave_type },
-            { name: 'Decyzja', value: 'Odrzucony' },
-            { name: 'Powód', value: decisionNote.slice(0, 200) },
-        ],
-        actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
-    }).catch((e) => logCompat.error('[rejectLeaveRequest] teams alert failed:', e))
+        const { data: row, error: fetchErr } = await admin
+            .from('leave_requests')
+            .select('id, user_id, leave_type, start_date, end_date, status, outlook_event_id')
+            .eq('id', id)
+            .single<Pick<LeaveRequestRow, 'id' | 'user_id' | 'leave_type' | 'start_date' | 'end_date' | 'status'> & { outlook_event_id: string | null }>()
+        if (fetchErr || !row) throw new ExpectedError('Wniosek nie istnieje.')
+        if (row.status !== 'pending') {
+            throw new ExpectedError(`Nie można odrzucić wniosku w statusie ${row.status}.`)
+        }
+        await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
+
+        const { error } = await admin
+            .from('leave_requests')
+            .update({
+                status: 'rejected',
+                decided_by: ctx.userId,
+                decided_at: new Date().toISOString(),
+                decision_note: decisionNote,
+            })
+            .eq('id', id)
+        if (error) throw new Error(`Błąd odrzucenia: ${error.message}`)
+
+        await logAudit(ctx.userId, 'LEAVE_REJECTED', { leave_id: id, target_user_id: row.user_id, reason: decisionNote })
+
+        const userInfo = await fetchUserContact(row.user_id)
+        if (userInfo) {
+            sendLeaveDecision(
+                userInfo.email,
+                userInfo.full_name ?? userInfo.email,
+                'rejected',
+                row.leave_type,
+                row.start_date,
+                row.end_date,
+                decisionNote,
+            ).catch((e) => logCompat.error('[rejectLeaveRequest] notify failed:', e))
+
+            // PR2: cleanup Outlook event (defensive — rejects normally happen
+            // from 'pending' so event shouldn't exist, but if admin approved
+            // then changed mind and rejected via a different path, remove).
+            if (row.outlook_event_id) {
+                deleteLeaveEvent({
+                    userEmail: userInfo.email,
+                    eventId: row.outlook_event_id,
+                }).catch((e) => logCompat.error('[rejectLeaveRequest] calendar delete failed:', e))
+            }
+        }
+        // H3.3: Push (fire-and-forget)
+        sendPushToUserId(row.user_id, {
+            title: 'Urlop odrzucony',
+            body: `Powód: ${decisionNote.slice(0, 100)}`,
+            url: '/internal?tab=leave',
+            tag: `leave-${id}`,
+        }).catch((e) => logCompat.error('[rejectLeaveRequest] push failed:', e))
+
+        // PR3: Teams alert
+        postToTeamsAlert({
+            title: 'Urlop odrzucony',
+            text: `${userInfo?.full_name ?? userInfo?.email ?? 'Konsultant'} — urlop ${row.start_date} – ${row.end_date}`,
+            themeColor: 'F59E0B',
+            facts: [
+                { name: 'Typ', value: row.leave_type },
+                { name: 'Decyzja', value: 'Odrzucony' },
+                { name: 'Powód', value: decisionNote.slice(0, 200) },
+            ],
+            actionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://compass.dynaminds.pl'}/internal/admin?tab=leave-requests`,
+        }).catch((e) => logCompat.error('[rejectLeaveRequest] teams alert failed:', e))
+    })
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
@@ -2955,7 +2978,7 @@ async function assertManagerOwnsLeaveTarget(
         .eq('id', targetUserId)
         .single<{ manager_id: string | null }>()
     if (target?.manager_id !== ctx.userId) {
-        throw new Error('Możesz decydować tylko o wnioskach swojego zespołu.')
+        throw new ExpectedError('Możesz decydować tylko o wnioskach swojego zespołu.')
     }
 }
 
@@ -3550,228 +3573,230 @@ export async function listLeavesWithUserCustomOof(): Promise<PendingLeaveRow[]> 
 
 export async function retryLeaveGraphSync(
     id: string,
-): Promise<{ oof: boolean; calendar: boolean; forward: boolean; error?: string }> {
-    const ctx = await requireAdminAction()
-    const admin = createServiceClient()
+): Promise<ActionResult<{ oof: boolean; calendar: boolean; forward: boolean; error?: string }>> {
+    return runAction('retryLeaveGraphSync', async () => {
+        const ctx = await requireAdminAction()
+        const admin = createServiceClient()
 
-    const { data: row, error: fetchErr } = await admin
-        .from('leave_requests')
-        .select(`
-            id, user_id, start_date, end_date, leave_type, half_day, status,
-            substitute_id, oof_internal_message, oof_external_message,
-            outlook_event_id, outlook_forward_rule_id, forward_mail_enabled
-        `)
-        .eq('id', id)
-        .single<{
-            id: string
-            user_id: string
-            start_date: string
-            end_date: string
-            leave_type: LeaveType
-            half_day: 'morning' | 'afternoon' | null
-            status: LeaveStatus
-            substitute_id: string | null
-            oof_internal_message: string | null
-            oof_external_message: string | null
-            outlook_event_id: string | null
-            outlook_forward_rule_id: string | null
-            forward_mail_enabled: boolean
-        }>()
-    if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
-    if (row.status !== 'approved') {
-        throw new Error('Retry działa tylko dla zaakceptowanych wniosków.')
-    }
-
-    const userInfo = await fetchUserContact(row.user_id)
-    if (!userInfo) throw new Error('Pracownik bez emaila — nie można wywołać Graph.')
-
-    // Resolve substitute (for default OOF text).
-    let substituteName: string | null = null
-    let substituteEmail: string | null = null
-    if (row.substitute_id) {
-        const { data: sub } = await admin
-            .from('profiles')
-            .select('full_name, email')
-            .eq('id', row.substitute_id)
-            .maybeSingle<{ full_name: string | null; email: string }>()
-        if (sub) {
-            substituteName = sub.full_name ?? sub.email
-            substituteEmail = sub.email
+        const { data: row, error: fetchErr } = await admin
+            .from('leave_requests')
+            .select(`
+                id, user_id, start_date, end_date, leave_type, half_day, status,
+                substitute_id, oof_internal_message, oof_external_message,
+                outlook_event_id, outlook_forward_rule_id, forward_mail_enabled
+            `)
+            .eq('id', id)
+            .single<{
+                id: string
+                user_id: string
+                start_date: string
+                end_date: string
+                leave_type: LeaveType
+                half_day: 'morning' | 'afternoon' | null
+                status: LeaveStatus
+                substitute_id: string | null
+                oof_internal_message: string | null
+                oof_external_message: string | null
+                outlook_event_id: string | null
+                outlook_forward_rule_id: string | null
+                forward_mail_enabled: boolean
+            }>()
+        if (fetchErr || !row) throw new ExpectedError('Wniosek nie istnieje.')
+        if (row.status !== 'approved') {
+            throw new ExpectedError('Retry działa tylko dla zaakceptowanych wniosków.')
         }
-    }
 
-    let oofOk = false
-    let oofSkipReason: string | null = null
-    let calOk = false
-    let forwardOk = false
-    const errors: string[] = []
+        const userInfo = await fetchUserContact(row.user_id)
+        if (!userInfo) throw new ExpectedError('Pracownik bez emaila — nie można wywołać Graph.')
 
-    // Phase 53 — mirror the approve flow: a single-day half-day leave gets no
-    // auto-reply, so there is nothing to (re)set here either.
-    if (
-        !shouldSetOofForLeave({
-            startDate: row.start_date,
-            endDate: row.end_date,
-            halfDay: row.half_day ?? null,
-        })
-    ) {
-        oofOk = true
-        oofSkipReason = 'half_day'
-    } else {
-        const defaults = await buildOofDefaultsFor({
-            admin,
-            userId: row.user_id,
-            employeeName: userInfo.full_name ?? userInfo.email,
-            endDate: row.end_date,
-            substituteName,
-            substituteEmail,
-        })
-
-        const oofRes = await setOutOfOffice({
-            userEmail: userInfo.email,
-            startDate: row.start_date,
-            endDate: row.end_date,
-            internalReply: row.oof_internal_message?.trim() || defaults.internal,
-            externalReply: row.oof_external_message?.trim() || defaults.external,
-        })
-        if (oofRes.success && !oofRes.skipped) {
-            oofOk = true
-            await admin
-                .from('leave_requests')
-                .update({
-                    graph_oof_set: true,
-                    graph_oof_set_at: new Date().toISOString(),
-                    graph_oof_skip_reason: null,
-                } as never)
-                .eq('id', id)
-        } else if (oofRes.success && oofRes.skipped && oofRes.skipReason === 'user_custom') {
-            // Phase 25d — user has their own OOF; respect it. Retry treats this as success.
-            oofOk = true
-            oofSkipReason = 'user_custom'
-            await admin
-                .from('leave_requests')
-                .update({ graph_oof_skip_reason: 'user_custom' } as never)
-                .eq('id', id)
-        } else if (oofRes.success && oofRes.skipped) {
-            // no_credentials — dev/local; nothing to persist, nothing to retry.
-            oofOk = true
-        } else if (oofRes.error) {
-            errors.push(`oof: ${oofRes.error}`)
-        }
-    }
-
-    if (!row.outlook_event_id) {
-        const calRes = await createLeaveEvent({
-            userEmail: userInfo.email,
-            startDate: row.start_date,
-            endDate: row.end_date,
-            leaveType: row.leave_type,
-            note: null,
-            transactionId: `leave-retry-${id}-${Date.now()}`,
-        })
-        if (calRes.success) {
-            calOk = true
-            if (calRes.eventId) {
-                await admin
-                    .from('leave_requests')
-                    .update({ outlook_event_id: calRes.eventId } as never)
-                    .eq('id', id)
+        // Resolve substitute (for default OOF text).
+        let substituteName: string | null = null
+        let substituteEmail: string | null = null
+        if (row.substitute_id) {
+            const { data: sub } = await admin
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', row.substitute_id)
+                .maybeSingle<{ full_name: string | null; email: string }>()
+            if (sub) {
+                substituteName = sub.full_name ?? sub.email
+                substituteEmail = sub.email
             }
-        } else if (calRes.error) {
-            errors.push(`calendar: ${calRes.error}`)
         }
-    } else {
-        calOk = true // already has event
-    }
 
-    // Phase 41 — forwarding rule. Same short-circuit shape as the calendar branch:
-    // never recreate a rule we already track, or the mailbox ends up with two rules
-    // forwarding the same mail and only one id to delete.
-    if (row.outlook_forward_rule_id) {
-        forwardOk = true // already has rule
-    } else if (
-        substituteEmail &&
-        shouldForwardBeActive(
-            {
-                status: row.status,
-                substituteId: row.substitute_id,
+        let oofOk = false
+        let oofSkipReason: string | null = null
+        let calOk = false
+        let forwardOk = false
+        const errors: string[] = []
+
+        // Phase 53 — mirror the approve flow: a single-day half-day leave gets no
+        // auto-reply, so there is nothing to (re)set here either.
+        if (
+            !shouldSetOofForLeave({
                 startDate: row.start_date,
                 endDate: row.end_date,
-                // Phase 41c — retry re-creates what consent asked for, nothing more.
-                forwardMailEnabled: Boolean(row.forward_mail_enabled),
-            },
-            new Date(),
-        )
-    ) {
-        const fwdRes = await createForwardRule({
-            userEmail: userInfo.email,
-            substituteEmail,
-            substituteName,
-            leaveId: id,
-        })
-        if (fwdRes.success) {
-            forwardOk = true
-            if (fwdRes.ruleId) {
+                halfDay: row.half_day ?? null,
+            })
+        ) {
+            oofOk = true
+            oofSkipReason = 'half_day'
+        } else {
+            const defaults = await buildOofDefaultsFor({
+                admin,
+                userId: row.user_id,
+                employeeName: userInfo.full_name ?? userInfo.email,
+                endDate: row.end_date,
+                substituteName,
+                substituteEmail,
+            })
+
+            const oofRes = await setOutOfOffice({
+                userEmail: userInfo.email,
+                startDate: row.start_date,
+                endDate: row.end_date,
+                internalReply: row.oof_internal_message?.trim() || defaults.internal,
+                externalReply: row.oof_external_message?.trim() || defaults.external,
+            })
+            if (oofRes.success && !oofRes.skipped) {
+                oofOk = true
                 await admin
                     .from('leave_requests')
-                    .update({ outlook_forward_rule_id: fwdRes.ruleId } as never)
+                    .update({
+                        graph_oof_set: true,
+                        graph_oof_set_at: new Date().toISOString(),
+                        graph_oof_skip_reason: null,
+                    } as never)
                     .eq('id', id)
-                // Emitted explicitly because this path calls createForwardRule directly
-                // rather than going through openForwardRule (retry owns graph_sync_error
-                // wholesale, see the overwrite below). Every moment a mailbox starts
-                // being copied to somebody else must show up as LEAVE_FORWARD_SET —
-                // that is the whole point of this audit trail.
-                await logAudit(ctx.userId, 'LEAVE_FORWARD_SET', {
-                    leave_id: id,
-                    target_user_id: row.user_id,
-                    substitute_email: substituteEmail,
-                    retry: true,
-                })
+            } else if (oofRes.success && oofRes.skipped && oofRes.skipReason === 'user_custom') {
+                // Phase 25d — user has their own OOF; respect it. Retry treats this as success.
+                oofOk = true
+                oofSkipReason = 'user_custom'
+                await admin
+                    .from('leave_requests')
+                    .update({ graph_oof_skip_reason: 'user_custom' } as never)
+                    .eq('id', id)
+            } else if (oofRes.success && oofRes.skipped) {
+                // no_credentials — dev/local; nothing to persist, nothing to retry.
+                oofOk = true
+            } else if (oofRes.error) {
+                errors.push(`oof: ${oofRes.error}`)
             }
-        } else if (fwdRes.error) {
-            errors.push(`forward: ${fwdRes.error}`)
         }
-    } else {
-        // No substitute, or the leave sits outside the forwarding window — nothing owed.
-        forwardOk = true
-    }
 
-    if (errors.length > 0) {
-        await admin
-            .from('leave_requests')
-            .update({ graph_sync_error: errors.join('; ') } as never)
-            .eq('id', id)
-    } else {
-        await admin
-            .from('leave_requests')
-            .update({ graph_sync_error: null } as never)
-            .eq('id', id)
-    }
+        if (!row.outlook_event_id) {
+            const calRes = await createLeaveEvent({
+                userEmail: userInfo.email,
+                startDate: row.start_date,
+                endDate: row.end_date,
+                leaveType: row.leave_type,
+                note: null,
+                transactionId: `leave-retry-${id}-${Date.now()}`,
+            })
+            if (calRes.success) {
+                calOk = true
+                if (calRes.eventId) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ outlook_event_id: calRes.eventId } as never)
+                        .eq('id', id)
+                }
+            } else if (calRes.error) {
+                errors.push(`calendar: ${calRes.error}`)
+            }
+        } else {
+            calOk = true // already has event
+        }
 
-    const auditAction =
-        oofOk && calOk && forwardOk
-            ? oofSkipReason === 'user_custom'
-                ? 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
-                : oofSkipReason === 'half_day'
-                    ? 'LEAVE_OOF_SKIPPED_HALF_DAY'
-                    : 'LEAVE_OOF_SET'
-            : 'LEAVE_OOF_FAILED'
-    await logAudit(ctx.userId, auditAction, {
-        leave_id: id,
-        retry: true,
-        oof_ok: oofOk,
-        oof_skip_reason: oofSkipReason ?? undefined,
-        calendar_ok: calOk,
-        forward_ok: forwardOk,
-        errors: errors.length > 0 ? errors.join('; ') : undefined,
+        // Phase 41 — forwarding rule. Same short-circuit shape as the calendar branch:
+        // never recreate a rule we already track, or the mailbox ends up with two rules
+        // forwarding the same mail and only one id to delete.
+        if (row.outlook_forward_rule_id) {
+            forwardOk = true // already has rule
+        } else if (
+            substituteEmail &&
+            shouldForwardBeActive(
+                {
+                    status: row.status,
+                    substituteId: row.substitute_id,
+                    startDate: row.start_date,
+                    endDate: row.end_date,
+                    // Phase 41c — retry re-creates what consent asked for, nothing more.
+                    forwardMailEnabled: Boolean(row.forward_mail_enabled),
+                },
+                new Date(),
+            )
+        ) {
+            const fwdRes = await createForwardRule({
+                userEmail: userInfo.email,
+                substituteEmail,
+                substituteName,
+                leaveId: id,
+            })
+            if (fwdRes.success) {
+                forwardOk = true
+                if (fwdRes.ruleId) {
+                    await admin
+                        .from('leave_requests')
+                        .update({ outlook_forward_rule_id: fwdRes.ruleId } as never)
+                        .eq('id', id)
+                    // Emitted explicitly because this path calls createForwardRule directly
+                    // rather than going through openForwardRule (retry owns graph_sync_error
+                    // wholesale, see the overwrite below). Every moment a mailbox starts
+                    // being copied to somebody else must show up as LEAVE_FORWARD_SET —
+                    // that is the whole point of this audit trail.
+                    await logAudit(ctx.userId, 'LEAVE_FORWARD_SET', {
+                        leave_id: id,
+                        target_user_id: row.user_id,
+                        substitute_email: substituteEmail,
+                        retry: true,
+                    })
+                }
+            } else if (fwdRes.error) {
+                errors.push(`forward: ${fwdRes.error}`)
+            }
+        } else {
+            // No substitute, or the leave sits outside the forwarding window — nothing owed.
+            forwardOk = true
+        }
+
+        if (errors.length > 0) {
+            await admin
+                .from('leave_requests')
+                .update({ graph_sync_error: errors.join('; ') } as never)
+                .eq('id', id)
+        } else {
+            await admin
+                .from('leave_requests')
+                .update({ graph_sync_error: null } as never)
+                .eq('id', id)
+        }
+
+        const auditAction =
+            oofOk && calOk && forwardOk
+                ? oofSkipReason === 'user_custom'
+                    ? 'LEAVE_OOF_SKIPPED_USER_CUSTOM'
+                    : oofSkipReason === 'half_day'
+                        ? 'LEAVE_OOF_SKIPPED_HALF_DAY'
+                        : 'LEAVE_OOF_SET'
+                : 'LEAVE_OOF_FAILED'
+        await logAudit(ctx.userId, auditAction, {
+            leave_id: id,
+            retry: true,
+            oof_ok: oofOk,
+            oof_skip_reason: oofSkipReason ?? undefined,
+            calendar_ok: calOk,
+            forward_ok: forwardOk,
+            errors: errors.length > 0 ? errors.join('; ') : undefined,
+        })
+
+        return {
+            oof: oofOk,
+            calendar: calOk,
+            forward: forwardOk,
+            error: errors.length > 0 ? errors.join('; ') : undefined,
+        }
     })
-
-    return {
-        oof: oofOk,
-        calendar: calOk,
-        forward: forwardOk,
-        error: errors.length > 0 ? errors.join('; ') : undefined,
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3810,132 +3835,134 @@ export interface SetLeaveMailForwardResult {
 export async function setLeaveMailForward(
     leaveId: string,
     enabled: boolean,
-): Promise<SetLeaveMailForwardResult> {
-    const ctx = await requireInternalOrAdminAction()
-    const admin = createServiceClient()
+): Promise<ActionResult<SetLeaveMailForwardResult>> {
+    return runAction('setLeaveMailForward', async () => {
+        const ctx = await requireInternalOrAdminAction()
+        const admin = createServiceClient()
 
-    const { data: row, error: fetchErr } = await admin
-        .from('leave_requests')
-        .select(
-            'id, user_id, status, start_date, end_date, substitute_id, outlook_forward_rule_id, forward_mail_enabled',
-        )
-        .eq('id', leaveId)
-        .single<{
-            id: string
-            user_id: string
-            status: LeaveStatus
-            start_date: string
-            end_date: string
-            substitute_id: string | null
-            outlook_forward_rule_id: string | null
-            forward_mail_enabled: boolean
-        }>()
-    if (fetchErr || !row) throw new Error('Wniosek nie istnieje.')
+        const { data: row, error: fetchErr } = await admin
+            .from('leave_requests')
+            .select(
+                'id, user_id, status, start_date, end_date, substitute_id, outlook_forward_rule_id, forward_mail_enabled',
+            )
+            .eq('id', leaveId)
+            .single<{
+                id: string
+                user_id: string
+                status: LeaveStatus
+                start_date: string
+                end_date: string
+                substitute_id: string | null
+                outlook_forward_rule_id: string | null
+                forward_mail_enabled: boolean
+            }>()
+        if (fetchErr || !row) throw new ExpectedError('Wniosek nie istnieje.')
 
-    // Właściciel zawsze; poza tym admin lub manager pracownika.
-    if (row.user_id !== ctx.userId) {
-        await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
-    }
-
-    if (enabled && !row.substitute_id) {
-        throw new Error(
-            'Najpierw wskaż zastępcę — bez niego nie ma komu przekazywać poczty.',
-        )
-    }
-
-    const { error: updErr } = await admin
-        .from('leave_requests')
-        .update({ forward_mail_enabled: enabled } as never)
-        .eq('id', leaveId)
-    if (updErr) throw new Error(`Nie udało się zapisać ustawienia: ${updErr.message}`)
-
-    await logAudit(ctx.userId, 'LEAVE_FORWARD_PREFERENCE_SET', {
-        leave_id: leaveId,
-        target_user_id: row.user_id,
-        enabled,
-        via: row.user_id === ctx.userId ? 'self' : 'manager',
-    })
-
-    const contact = await fetchUserContact(row.user_id)
-    if (!contact?.email) {
-        return {
-            enabled,
-            ruleActive: Boolean(row.outlook_forward_rule_id),
-            warning: 'Nie znaleziono adresu e-mail pracownika — ustawienie zapisane, skrzynka nietknięta.',
+        // Właściciel zawsze; poza tym admin lub manager pracownika.
+        if (row.user_id !== ctx.userId) {
+            await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
         }
-    }
 
-    // ─── Wyłączanie: skasuj regułę, jeśli jakąś znamy ────────────────────
-    if (!enabled) {
-        if (!row.outlook_forward_rule_id) return { enabled: false, ruleActive: false }
+        if (enabled && !row.substitute_id) {
+            throw new ExpectedError(
+                'Najpierw wskaż zastępcę — bez niego nie ma komu przekazywać poczty.',
+            )
+        }
 
-        const closed = await closeForwardRule({
+        const { error: updErr } = await admin
+            .from('leave_requests')
+            .update({ forward_mail_enabled: enabled } as never)
+            .eq('id', leaveId)
+        if (updErr) throw new Error(`Nie udało się zapisać ustawienia: ${updErr.message}`)
+
+        await logAudit(ctx.userId, 'LEAVE_FORWARD_PREFERENCE_SET', {
+            leave_id: leaveId,
+            target_user_id: row.user_id,
+            enabled,
+            via: row.user_id === ctx.userId ? 'self' : 'manager',
+        })
+
+        const contact = await fetchUserContact(row.user_id)
+        if (!contact?.email) {
+            return {
+                enabled,
+                ruleActive: Boolean(row.outlook_forward_rule_id),
+                warning: 'Nie znaleziono adresu e-mail pracownika — ustawienie zapisane, skrzynka nietknięta.',
+            }
+        }
+
+        // ─── Wyłączanie: skasuj regułę, jeśli jakąś znamy ────────────────────
+        if (!enabled) {
+            if (!row.outlook_forward_rule_id) return { enabled: false, ruleActive: false }
+
+            const closed = await closeForwardRule({
+                admin,
+                leaveId,
+                ruleId: row.outlook_forward_rule_id,
+                userEmail: contact.email,
+                actorUserId: ctx.userId,
+                reason: 'opted_out',
+                auditExtra: { via: 'manual_toggle', target_user_id: row.user_id },
+            })
+            return closed
+                ? { enabled: false, ruleActive: false }
+                : {
+                      enabled: false,
+                      ruleActive: true,
+                      warning:
+                          'Przekierowanie wyłączone w COMPASS, ale Outlook odrzucił usunięcie reguły. '
+                          + 'Zostanie usunięta przy najbliższym uzgodnieniu — jeśli to pilne, skasuj ją '
+                          + 'w Outlooku (Ustawienia → Poczta → Reguły).',
+                  }
+        }
+
+        // ─── Włączanie: reguła tylko wtedy, gdy okno jest otwarte ────────────
+        // Poza oknem zapisana zgoda wystarcza — regułę założy uzgodnienie w dniu startu.
+        const windowOpen = shouldForwardBeActive(
+            {
+                status: row.status,
+                substituteId: row.substitute_id,
+                startDate: row.start_date,
+                endDate: row.end_date,
+                forwardMailEnabled: true,
+            },
+            new Date(),
+        )
+        if (!windowOpen || row.outlook_forward_rule_id) {
+            return { enabled: true, ruleActive: Boolean(row.outlook_forward_rule_id) }
+        }
+
+        const { data: sub } = await admin
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', row.substitute_id as string)
+            .maybeSingle<{ full_name: string | null; email: string }>()
+        if (!sub?.email) {
+            return {
+                enabled: true,
+                ruleActive: false,
+                warning: 'Nie znaleziono adresu e-mail zastępcy — przekierowania nie założono.',
+            }
+        }
+
+        const opened = await openForwardRule({
             admin,
             leaveId,
-            ruleId: row.outlook_forward_rule_id,
             userEmail: contact.email,
+            substituteEmail: sub.email,
+            substituteName: sub.full_name ?? sub.email,
             actorUserId: ctx.userId,
-            reason: 'opted_out',
-            auditExtra: { via: 'manual_toggle', target_user_id: row.user_id },
+            targetUserId: row.user_id,
+            auditExtra: { via: 'manual_toggle' },
         })
-        return closed
-            ? { enabled: false, ruleActive: false }
+        return opened
+            ? { enabled: true, ruleActive: true }
             : {
-                  enabled: false,
-                  ruleActive: true,
+                  enabled: true,
+                  ruleActive: false,
                   warning:
-                      'Przekierowanie wyłączone w COMPASS, ale Outlook odrzucił usunięcie reguły. '
-                      + 'Zostanie usunięta przy najbliższym uzgodnieniu — jeśli to pilne, skasuj ją '
-                      + 'w Outlooku (Ustawienia → Poczta → Reguły).',
+                      'Zapisano zgodę, ale Outlook nie założył reguły. Ponowna próba nastąpi '
+                      + 'przy najbliższym uzgodnieniu.',
               }
-    }
-
-    // ─── Włączanie: reguła tylko wtedy, gdy okno jest otwarte ────────────
-    // Poza oknem zapisana zgoda wystarcza — regułę założy uzgodnienie w dniu startu.
-    const windowOpen = shouldForwardBeActive(
-        {
-            status: row.status,
-            substituteId: row.substitute_id,
-            startDate: row.start_date,
-            endDate: row.end_date,
-            forwardMailEnabled: true,
-        },
-        new Date(),
-    )
-    if (!windowOpen || row.outlook_forward_rule_id) {
-        return { enabled: true, ruleActive: Boolean(row.outlook_forward_rule_id) }
-    }
-
-    const { data: sub } = await admin
-        .from('profiles')
-        .select('full_name, email')
-        .eq('id', row.substitute_id as string)
-        .maybeSingle<{ full_name: string | null; email: string }>()
-    if (!sub?.email) {
-        return {
-            enabled: true,
-            ruleActive: false,
-            warning: 'Nie znaleziono adresu e-mail zastępcy — przekierowania nie założono.',
-        }
-    }
-
-    const opened = await openForwardRule({
-        admin,
-        leaveId,
-        userEmail: contact.email,
-        substituteEmail: sub.email,
-        substituteName: sub.full_name ?? sub.email,
-        actorUserId: ctx.userId,
-        targetUserId: row.user_id,
-        auditExtra: { via: 'manual_toggle' },
     })
-    return opened
-        ? { enabled: true, ruleActive: true }
-        : {
-              enabled: true,
-              ruleActive: false,
-              warning:
-                  'Zapisano zgodę, ale Outlook nie założył reguły. Ponowna próba nastąpi '
-                  + 'przy najbliższym uzgodnieniu.',
-          }
 }

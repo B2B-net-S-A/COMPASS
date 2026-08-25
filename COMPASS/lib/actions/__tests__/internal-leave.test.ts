@@ -122,6 +122,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import {
     approveLeaveRequest,
+    cancelMyLeaveRequest,
     listAllLeaveRequests,
     listPendingLeaveRequests,
     rejectLeaveRequest,
@@ -270,12 +271,17 @@ describe('listAllLeaveRequests — historia (wszystkie statusy) + scoping', () =
     })
 })
 
+// Audyt 2026-08 (B1): approve/reject zwracają teraz `ActionResult` zamiast rzucać —
+// odmowa to `{ success: false }` z treścią dla użytkownika, nie wyjątek.
 describe('approve/reject — manager team-scope guard', () => {
     it('rejects a manager approving a request outside their team (no status update)', async () => {
         state.leaveRow = pendingRow('emp-x')
         state.targetManagerId = 'other-manager'
 
-        await expect(approveLeaveRequest('leave-emp-x')).rejects.toThrow(/swojego zespołu/i)
+        const res = await approveLeaveRequest('leave-emp-x')
+
+        expect(res.success).toBe(false)
+        expect(res.success === false && res.error).toMatch(/swojego zespołu/i)
         expect(state.updateCalls.find((u) => u.table === 'leave_requests')).toBeUndefined()
     })
 
@@ -283,9 +289,31 @@ describe('approve/reject — manager team-scope guard', () => {
         state.leaveRow = pendingRow('emp-x')
         state.targetManagerId = 'other-manager'
 
-        await expect(rejectLeaveRequest('leave-emp-x', 'konflikt terminów')).rejects.toThrow(
-            /swojego zespołu/i,
-        )
+        const res = await rejectLeaveRequest('leave-emp-x', 'konflikt terminów')
+
+        expect(res.success).toBe(false)
+        expect(res.success === false && res.error).toMatch(/swojego zespołu/i)
         expect(state.updateCalls.find((u) => u.table === 'leave_requests')).toBeUndefined()
+    })
+})
+
+describe('cancelMyLeaveRequest — reguły dostają się do użytkownika', () => {
+    it('cudzy wniosek: zwraca treść odmowy, nie rusza statusu', async () => {
+        state.leaveRow = { ...pendingRow('emp-x'), status: 'pending' }
+
+        const res = await cancelMyLeaveRequest('leave-emp-x')
+
+        expect(res.success).toBe(false)
+        expect(res.success === false && res.error).toMatch(/nie jest Twój wniosek/i)
+        expect(state.updateCalls.find((u) => u.table === 'leave_requests')).toBeUndefined()
+    })
+
+    it('wniosek już odrzucony: podaje status w komunikacie', async () => {
+        state.leaveRow = { ...pendingRow('manager-1'), status: 'rejected' }
+
+        const res = await cancelMyLeaveRequest('leave-manager-1')
+
+        expect(res.success).toBe(false)
+        expect(res.success === false && res.error).toMatch(/statusie "rejected"/i)
     })
 })

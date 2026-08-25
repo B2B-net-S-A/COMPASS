@@ -93,27 +93,27 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
         }
 
         startTransition(async () => {
-            try {
-                await createLeaveOnBehalf({
-                    targetUserId,
-                    startDate,
-                    endDate,
-                    leaveType,
-                    halfDay: showHalfDay && halfDay ? halfDay : null,
-                    note: note.trim() || null,
-                    substituteId: showSubstitute && substituteId ? substituteId : null,
-                    forwardMail: Boolean(showSubstitute && substituteId) && forwardMail,
-                })
-                toastSuccess(
-                    isPastLeave
-                        ? 'Urlop wpisany. Pracownik dostał email + push. Outlook OOF nie ustawiany (urlop minął).'
-                        : 'Urlop wpisany. Pracownik dostał email + push, w Outlooku ustawiony Out of Office.',
-                )
-                resetForm()
-                router.refresh()
-            } catch (err: unknown) {
-                toast.error(err instanceof Error ? err.message : 'Nieznany błąd')
+            const res = await createLeaveOnBehalf({
+                targetUserId,
+                startDate,
+                endDate,
+                leaveType,
+                halfDay: showHalfDay && halfDay ? halfDay : null,
+                note: note.trim() || null,
+                substituteId: showSubstitute && substituteId ? substituteId : null,
+                forwardMail: Boolean(showSubstitute && substituteId) && forwardMail,
+            })
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Nie udało się wpisać urlopu.')
+                return
             }
+            toastSuccess(
+                isPastLeave
+                    ? 'Urlop wpisany. Pracownik dostał email + push. Outlook OOF nie ustawiany (urlop minął).'
+                    : 'Urlop wpisany. Pracownik dostał email + push, w Outlooku ustawiony Out of Office.',
+            )
+            resetForm()
+            router.refresh()
         })
     }
 

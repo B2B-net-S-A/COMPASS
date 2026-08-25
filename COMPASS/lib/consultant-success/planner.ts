@@ -23,6 +23,7 @@ import type {
     SuccessAdminClient,
     SuccessDeliveryPayload,
 } from './types'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 const SUCCESS_HUB_URL = '/internal/people/success'
 
@@ -195,13 +196,12 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
     const deliveries = new Map<string, PlannedDelivery>()
     const surveysFeatureEnabled = areConsultantSuccessSurveysEnabled()
 
-    const { data: profileData, error: profileError } = await admin
+    // Fallbackowi odbiorcy ankiet — lista „tu i teraz", bez osób, które odeszły.
+    const profileQuery = admin
         .from('profiles')
         .select('id, email')
         .in('role', ['talent_community', 'admin'])
-        // Fallbackowi odbiorcy ankiet — bez osób, które odeszły.
-        .neq('employment_status', 'exited')
-        .order('id')
+    const { data: profileData, error: profileError } = await excludeExited(profileQuery).order('id')
     ensureQuery(profileError, 'profiles_read_failed')
     const fallbackProfiles = (profileData ?? []) as RecipientProfile[]
     const allowedRecipientIds = new Set(fallbackProfiles.map((profile) => profile.id))

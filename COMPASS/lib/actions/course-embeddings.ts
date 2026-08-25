@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 import { chatJSON } from '@/lib/ai/llm'
+import { requireAdminAction } from '@/lib/auth/internal-guard'
 import type {
     ActionResult,
     Course,
@@ -46,6 +47,9 @@ function buildCourseEmbeddingText(course: {
  */
 export async function regenerateCourseEmbedding(courseId: string): Promise<ActionResult<{ generated: boolean }>> {
     try {
+        // Audyt 2026-08 (B3) — akcja omija RLS (service role) i pali płatny embedding
+        // na dowolnym courseId. Bez guarda był to publiczny endpoint zapisu do `courses`.
+        await requireAdminAction()
         const admin = createServiceClient()
 
         const { data: course } = await admin

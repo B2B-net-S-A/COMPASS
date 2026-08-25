@@ -57,11 +57,13 @@ export function LeaveQueue({ requests }: Props) {
     async function openProof(leaveId: string) {
         setProofLoadingId(leaveId)
         try {
-            const url = await getLeaveProofSignedUrl(leaveId)
-            window.open(url, '_blank', 'noopener,noreferrer')
-        } catch (e) {
-            logCompat.error('[LeaveQueue] nie udało się otworzyć załącznika', e)
-            alert(e instanceof Error ? e.message : 'Nie udało się otworzyć załącznika.')
+            const res = await getLeaveProofSignedUrl(leaveId)
+            if (!res?.success) {
+                logCompat.error('[LeaveQueue] nie udało się otworzyć załącznika', res?.error)
+                toast.error(res?.error ?? 'Nie udało się otworzyć załącznika.')
+                return
+            }
+            window.open(res.data, '_blank', 'noopener,noreferrer')
         } finally {
             setProofLoadingId(null)
         }
@@ -100,12 +102,14 @@ export function LeaveQueue({ requests }: Props) {
             let ok = 0
             let fail = 0
             for (const id of ids) {
-                try {
-                    await approveLeaveRequest(id)
+                // Akcja nie rzuca — odmowę zwraca jako `{success:false}`. Bez tego
+                // sprawdzenia licznik `ok` rósłby także dla nieudanych wniosków.
+                const res = await approveLeaveRequest(id)
+                if (res?.success) {
                     ok += 1
-                } catch (e: unknown) {
+                } else {
                     fail += 1
-                    logCompat.error('[bulkApprove] failed for', id, e)
+                    logCompat.error('[bulkApprove] failed for', id, res?.error)
                 }
             }
             if (fail === 0) {
@@ -132,12 +136,13 @@ export function LeaveQueue({ requests }: Props) {
             let ok = 0
             let fail = 0
             for (const id of ids) {
-                try {
-                    await rejectLeaveRequest(id, reason)
+                // Jak wyżej: brak rzucania znaczy, że o wyniku decyduje `success`.
+                const res = await rejectLeaveRequest(id, reason)
+                if (res?.success) {
                     ok += 1
-                } catch (e: unknown) {
+                } else {
                     fail += 1
-                    logCompat.error('[bulkReject] failed for', id, e)
+                    logCompat.error('[bulkReject] failed for', id, res?.error)
                 }
             }
             if (fail === 0) {
@@ -163,11 +168,13 @@ export function LeaveQueue({ requests }: Props) {
         setBusyId(req.id)
         startTransition(async () => {
             try {
-                await approveLeaveRequest(req.id)
+                const res = await approveLeaveRequest(req.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się zaakceptować wniosku.')
+                    return
+                }
                 toastSuccess(`Zaakceptowano wniosek ${req.user_email}`)
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setBusyId(null)
             }
@@ -187,11 +194,13 @@ export function LeaveQueue({ requests }: Props) {
         setBusyId(target.id)
         startTransition(async () => {
             try {
-                await rejectLeaveRequest(target.id, reason)
+                const res = await rejectLeaveRequest(target.id, reason)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się odrzucić wniosku.')
+                    return
+                }
                 toastSuccess(`Odrzucono wniosek ${target.user_email}`)
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setBusyId(null)
             }

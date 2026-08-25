@@ -65,11 +65,13 @@ export function MyLeaveList({ requests }: Props) {
         setBusyId(req.id)
         startTransition(async () => {
             try {
-                await cancelMyLeaveRequest(req.id)
+                const res = await cancelMyLeaveRequest(req.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się anulować wniosku.')
+                    return
+                }
                 toastSuccess('Wniosek anulowany')
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setBusyId(null)
             }

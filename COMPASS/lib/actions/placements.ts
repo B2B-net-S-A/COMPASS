@@ -44,6 +44,7 @@ import {
     type ExistingPlacementKey,
     type ProfileLite,
 } from '@/lib/placements/import'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -62,11 +63,12 @@ async function fileFromForm(formData: FormData): Promise<ArrayBuffer> {
 }
 
 async function loadProfilesForMatching(admin: ServiceClient): Promise<ProfileLite[]> {
-    const { data } = await admin
-        .from('profiles')
-        .select('id, full_name, role')
-        .not('full_name', 'is', null)
-        .neq('employment_status', 'exited')
+    const { data } = await excludeExited(
+        admin
+            .from('profiles')
+            .select('id, full_name, role')
+            .not('full_name', 'is', null),
+    )
     return ((data ?? []) as ProfileLite[]).filter((p) => (p.full_name ?? '').trim().length > 0)
 }
 

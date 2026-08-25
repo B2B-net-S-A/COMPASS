@@ -20,6 +20,7 @@ import { reconcileForwardRules } from '@/lib/oof/forward-rules'
 import { shouldForwardBeActive } from '@/lib/oof/forward-window'
 import { HR_ROLES } from '@/lib/oof/reconcile'
 import { createServiceClient } from '@/lib/supabase/admin'
+import { activeRoster } from '@/lib/hr/employment-window'
 
 /** Ten sam limit co w uzgodnieniu — skan nie może rosnąć w nieskończoność. */
 const MAX_MAILBOXES = 100
@@ -157,14 +158,14 @@ export async function listActiveForwardRules(): Promise<ForwardRulesOverview> {
         .in('role', [...HR_ROLES])
     if (rosterErr) throw new Error(`Nie udało się pobrać listy pracowników: ${rosterErr.message}`)
 
-    const roster = ((rosterRaw ?? []) as Array<{
-        id: string
-        email: string | null
-        full_name: string | null
-        employment_status: string | null
-    }>).filter(
-        (u) => u.email && u.employment_status !== 'exited' && u.employment_status !== 'offboarding',
-    )
+    const roster = activeRoster(
+        (rosterRaw ?? []) as Array<{
+            id: string
+            email: string | null
+            full_name: string | null
+            employment_status: string | null
+        }>,
+    ).filter((u) => u.email)
 
     const nameById = new Map(roster.map((u) => [u.id, u.full_name ?? u.email]))
 

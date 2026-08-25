@@ -8,6 +8,7 @@ import { getSuperAdmins, isSuperAdmin } from '@/lib/auth/super-admins'
 import { logAudit } from '@/lib/actions/audit'
 import { DB_ROLES, type DbRole, roleLabelPl } from '@/lib/types/role'
 import { sendRoleChangeEmail } from '@/lib/email'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -735,13 +736,10 @@ export interface ManagerCandidate {
 export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
     await requireSuperAdmin()
     const admin = createServiceClient()
-    const { data, error } = await admin
-        .from('profiles')
-        .select('id, full_name, email, role')
-        .in('role', ['admin', 'manager', 'finanse'])
-        // Nikogo nie podpinamy pod przełożonego, który już odszedł.
-        .neq('employment_status', 'exited')
-        .order('full_name', { ascending: true })
+    // Nikogo nie podpinamy pod przełożonego, który już odszedł.
+    const { data, error } = await excludeExited(
+        admin.from('profiles').select('id, full_name, email, role').in('role', ['admin', 'manager', 'finanse']),
+    ).order('full_name', { ascending: true })
     if (error) throw new Error(`Błąd listowania managerów: ${error.message}`)
     return ((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null; role: string }>)
         .filter((r) => !!r.email)

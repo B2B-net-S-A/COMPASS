@@ -24,10 +24,16 @@ import { logger } from '@/lib/logger'
 //
 // ROZRÓŻNIENIE JEST ISTOTNE — bez niego Sentry utonie w szumie i wypali
 // limit 5k zdarzeń/mies. na darmowym planie:
-//   • ExpectedError  → walidacja i guardy. To normalny przebieg programu,
-//                      użytkownik ma zobaczyć treść. NIE idzie do Sentry.
+//   • ExpectedError  → walidacja ORAZ guardy autoryzacyjne. To normalny przebieg
+//                      programu, użytkownik ma zobaczyć treść. NIE idzie do Sentry.
 //   • cokolwiek inne → realna awaria. Idzie do Sentry, użytkownik dostaje
 //                      komunikat ogólny (bez wycieku szczegółów bazy).
+//
+// GUARDY NALEŻĄ DO PIERWSZEJ KATEGORII — pierwsza wersja tego kontraktu mówiła
+// inaczej i było to błędne: najczęstszy przypadek w tej rodzinie to WYGASŁA SESJA,
+// a wtedy „Coś poszło nie tak po naszej stronie" wysyła użytkownika do admina
+// zamiast do ekranu logowania, a Sentry dostaje zdarzenie przy każdym wygaśnięciu
+// ciasteczka. Guardy w lib/auth/internal-guard.ts rzucają ExpectedError.
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -42,18 +48,8 @@ export type ActionResult<T = void> =
     | { success: true; data: T }
     | { success: false; error: string }
 
-/**
- * Błąd, którego treść MA zobaczyć użytkownik: nieprzeszła walidacja,
- * odmowa uprawnień, naruszenie reguły biznesowej.
- *
- * Nie trafia do Sentry — to nie awaria, tylko normalny przebieg.
- */
-export class ExpectedError extends Error {
-    constructor(message: string) {
-        super(message)
-        this.name = 'ExpectedError'
-    }
-}
+export { ExpectedError, SessionExpiredError, SESSION_EXPIRED_PL } from './expected-error'
+import { ExpectedError } from './expected-error'
 
 /** Komunikat zastępczy dla awarii — nie ujawnia szczegółów bazy ani ścieżek. */
 export const UNEXPECTED_ERROR_PL =
@@ -89,8 +85,6 @@ export async function runAction<T>(
             return { success: false, error: error.message }
         }
 
-        // Guardy autoryzacyjne rzucają zwykłym Error i MAJĄ być zamaskowane —
-        // ale chcemy o nich wiedzieć, więc idą do Sentry jak każda awaria.
         Sentry.captureException(error, { tags: { action: actionName, layer: 'server-action' } })
         logger.error({ event: 'action.failed', action: actionName, error })
         return { success: false, error: UNEXPECTED_ERROR_PL }

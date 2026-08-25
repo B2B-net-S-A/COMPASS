@@ -214,10 +214,12 @@ function AttachmentLink({ bonus }: { bonus: BonusWithUsers }) {
     async function openAttachment() {
         setLoading(true)
         try {
-            const url = await getBonusAttachmentSignedUrl(bonus.id)
-            window.open(url, '_blank', 'noopener,noreferrer')
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Błąd pobierania załącznika')
+            const res = await getBonusAttachmentSignedUrl(bonus.id)
+            if (!res.success) {
+                toast.error(res.error)
+                return
+            }
+            window.open(res.data, '_blank', 'noopener,noreferrer')
         } finally {
             setLoading(false)
         }

@@ -159,53 +159,57 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
         }
 
         startTransition(async () => {
-            try {
-                // H2.4: jeśli wybrany plik, najpierw upload do storage
-                let finalDocUrl: string | null = docUrl || null
-                if (docFile) {
-                    setUploadingDoc(true)
-                    try {
-                        const fd = new FormData()
-                        fd.append('file', docFile)
-                        const upRes = await uploadLeaveProof(fd)
-                        finalDocUrl = upRes.path
-                    } finally {
-                        setUploadingDoc(false)
+            // H2.4: jeśli wybrany plik, najpierw upload do storage
+            let finalDocUrl: string | null = docUrl || null
+            if (docFile) {
+                setUploadingDoc(true)
+                try {
+                    const fd = new FormData()
+                    fd.append('file', docFile)
+                    const upRes = await uploadLeaveProof(fd)
+                    if (!upRes?.success) {
+                        toast.error(upRes?.error ?? 'Nie udało się wgrać załącznika.')
+                        return
                     }
+                    finalDocUrl = upRes.data.path
+                } finally {
+                    setUploadingDoc(false)
                 }
-
-                const res = await createLeaveRequest({
-                    startDate,
-                    endDate,
-                    leaveType,
-                    halfDay: showHalfDay && halfDay ? halfDay : null,
-                    note: note || null,
-                    documentationUrl: finalDocUrl,
-                    substituteId: substituteId || null,
-                    oofInternalMessage: oofInternal.trim() || null,
-                    oofExternalMessage: oofExternal.trim() || null,
-                    forwardMail: Boolean(substituteId) && forwardMail,
-                })
-                toastSuccess(
-                    res.autoApproved
-                        ? 'Wniosek L4 zaakceptowany automatycznie. Pamiętaj o dosłaniu zwolnienia w ciągu 7 dni.'
-                        : 'Wniosek złożony. Czeka na akceptację admina. Po akceptacji ustawimy Out of Office w Outlook.',
-                )
-                setStartDate('')
-                setEndDate('')
-                setNote('')
-                setDocUrl('')
-                setDocFile(null)
-                setHalfDay('')
-                setSubstituteId('')
-                setOofInternal('')
-                setOofExternal('')
-                setShowOofAdvanced(false)
-                setForwardMail(false)
-                router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Nieznany błąd')
             }
+
+            const res = await createLeaveRequest({
+                startDate,
+                endDate,
+                leaveType,
+                halfDay: showHalfDay && halfDay ? halfDay : null,
+                note: note || null,
+                documentationUrl: finalDocUrl,
+                substituteId: substituteId || null,
+                oofInternalMessage: oofInternal.trim() || null,
+                oofExternalMessage: oofExternal.trim() || null,
+                forwardMail: Boolean(substituteId) && forwardMail,
+            })
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Nie udało się złożyć wniosku.')
+                return
+            }
+            toastSuccess(
+                res.data.autoApproved
+                    ? 'Wniosek L4 zaakceptowany automatycznie. Pamiętaj o dosłaniu zwolnienia w ciągu 7 dni.'
+                    : 'Wniosek złożony. Czeka na akceptację admina. Po akceptacji ustawimy Out of Office w Outlook.',
+            )
+            setStartDate('')
+            setEndDate('')
+            setNote('')
+            setDocUrl('')
+            setDocFile(null)
+            setHalfDay('')
+            setSubstituteId('')
+            setOofInternal('')
+            setOofExternal('')
+            setShowOofAdvanced(false)
+            setForwardMail(false)
+            router.refresh()
         })
     }
 

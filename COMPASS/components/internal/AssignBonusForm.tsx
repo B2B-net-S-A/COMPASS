@@ -544,21 +544,21 @@ export function AssignBonusForm({
             const editPeriodYear = Number(editYearStr)
             const editPeriodMonth = Number(editMonthStr)
             startTransition(async () => {
-                try {
-                    const updated = await updateBonus({
-                        id: prefilled.id,
-                        amount: amountNum,
-                        reason: reasonTrimmed,
-                        notes: notes.trim() || null,
-                        period_year: editPeriodYear,
-                        period_month: editPeriodMonth,
-                    })
-                    toastSuccess('Premia zaktualizowana.')
-                    router.refresh()
-                    onSuccess?.(updated)
-                } catch (err) {
-                    toast.error(err instanceof Error ? err.message : 'Nieznany błąd.')
+                const res = await updateBonus({
+                    id: prefilled.id,
+                    amount: amountNum,
+                    reason: reasonTrimmed,
+                    notes: notes.trim() || null,
+                    period_year: editPeriodYear,
+                    period_month: editPeriodMonth,
+                })
+                if (!res.success) {
+                    toast.error(res.error)
+                    return
                 }
+                toastSuccess('Premia zaktualizowana.')
+                router.refresh()
+                onSuccess?.(res.data)
             })
             return
         }
@@ -571,30 +571,28 @@ export function AssignBonusForm({
         }
 
         startTransition(async () => {
-            try {
-                const inserted = await assignBonus(built)
-                if (attachment) {
-                    try {
-                        await uploadBonusAttachment(inserted.id, attachment)
-                    } catch (uploadErr) {
-                        toast.error(
-                            `Premia zapisana, ale upload załącznika nie powiódł się: ${
-                                uploadErr instanceof Error ? uploadErr.message : 'błąd'
-                            }`,
-                        )
-                    }
-                }
-                toastSuccess(
-                    recipientName
-                        ? `Premia ${BONUS_CATEGORIES_PL[built.category]} przypisana: ${recipientName}.`
-                        : `Premia ${BONUS_CATEGORIES_PL[built.category]} przypisana.`,
-                )
-                resetForm()
-                router.refresh()
-                onSuccess?.()
-            } catch (err) {
-                toast.error(err instanceof Error ? err.message : 'Nieznany błąd.')
+            const res = await assignBonus(built)
+            if (!res.success) {
+                toast.error(res.error)
+                return
             }
+            if (attachment) {
+                // Premia jest już zapisana — nieudany upload nie przerywa reszty flow.
+                const uploadRes = await uploadBonusAttachment(res.data.id, attachment)
+                if (!uploadRes.success) {
+                    toast.error(
+                        `Premia zapisana, ale upload załącznika nie powiódł się: ${uploadRes.error}`,
+                    )
+                }
+            }
+            toastSuccess(
+                recipientName
+                    ? `Premia ${BONUS_CATEGORIES_PL[built.category]} przypisana: ${recipientName}.`
+                    : `Premia ${BONUS_CATEGORIES_PL[built.category]} przypisana.`,
+            )
+            resetForm()
+            router.refresh()
+            onSuccess?.()
         })
     }
 

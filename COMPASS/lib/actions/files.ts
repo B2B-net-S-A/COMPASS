@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 import { revalidatePath } from 'next/cache'
 import { chatJSON } from '@/lib/ai/llm'
+import { requireAdminAction } from '@/lib/auth/internal-guard'
 
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024
 const MAX_CV_SIZE = 20 * 1024 * 1024
@@ -288,13 +289,16 @@ export async function uploadReferralCV(formData: FormData) {
 // --- Admin Actions ---
 
 export async function adminUploadCV(formData: FormData, candidateId: string) {
+    // Audyt 2026-08 (B3) — wcześniej w tym miejscu stał komentarz „verify admin access
+    // here if roles are implemented". Role istnieją od dawna, a akcja przyjmuje dowolne
+    // candidateId i dowolny plik, więc guard należy się tu, a nie w middleware.
+    await requireAdminAction()
+
     const file = formData.get('file') as File
     if (!file) throw new Error('Nie wybrano pliku')
     assertFileSize(file, MAX_CV_SIZE, 'CV')
 
     const supabase = createClient()
-    // Verify admin access here if roles are implemented
-    // For now, assuming if they can call this, they are authorized or middleware handles it
 
     try {
         // 1. Upload file to candidate's folder
@@ -392,6 +396,11 @@ export async function adminUploadCV(formData: FormData, candidateId: string) {
 }
 
 export async function adminGenerateProfileFromCV(candidateId: string, cvUrl: string) {
+    // Audyt 2026-08 (B3) — `cvUrl` to dowolna ścieżka w buckecie `documents`, której
+    // treść leci do LLM, a wynik nadpisuje `profiles` wskazane przez `candidateId`.
+    // Bez guarda był to publiczny odczyt Storage + płatne wywołanie modelu.
+    await requireAdminAction()
+
     const supabase = createClient()
 
     try {

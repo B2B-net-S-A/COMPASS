@@ -12,6 +12,7 @@ import {
     type GenericAlertPayload,
 } from '@/lib/notifications/alert-dispatch'
 import type { createServiceClient } from '@/lib/supabase/admin'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -34,11 +35,9 @@ export function parseRecipientCsv(raw: string | null | undefined): string[] {
  * byłby wysłany donikąd.
  */
 export async function allFinanseAndAdmins(admin: ServiceClient): Promise<string[]> {
-    const { data } = await admin
-        .from('profiles')
-        .select('id')
-        .in('role', ['admin', 'finanse'])
-        .neq('employment_status', 'exited')
+    const { data } = await excludeExited(
+        admin.from('profiles').select('id').in('role', ['admin', 'finanse']),
+    )
     return ((data ?? []) as Array<{ id: string }>).map((p) => p.id)
 }
 

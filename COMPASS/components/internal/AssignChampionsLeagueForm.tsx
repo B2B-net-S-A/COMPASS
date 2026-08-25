@@ -149,19 +149,18 @@ export function AssignChampionsLeagueForm({
 
         if (isEdit && prefilled) {
             startTransition(async () => {
-                try {
-                    const updated = await updateBonus({
-                        id: prefilled.id,
-                        amount: parsedAmount,
-                        reason: trimmedReason,
-                        notes: notes.trim() || null,
-                    })
-                    toastSuccess('Premia Champions League zaktualizowana.')
-                    onSuccess?.(updated)
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : 'Nie udało się zapisać.'
-                    toast.error(msg)
+                const res = await updateBonus({
+                    id: prefilled.id,
+                    amount: parsedAmount,
+                    reason: trimmedReason,
+                    notes: notes.trim() || null,
+                })
+                if (!res.success) {
+                    toast.error(res.error)
+                    return
                 }
+                toastSuccess('Premia Champions League zaktualizowana.')
+                onSuccess?.(res.data)
             })
             return
         }
@@ -184,14 +183,14 @@ export function AssignChampionsLeagueForm({
         }
 
         startTransition(async () => {
-            try {
-                await assignBonus(input)
-                toastSuccess(`🏆 Champions League ${BONUS_QUARTERS_PL[periodQuarter - 1]} ${periodYear} przypisana — pracownik dostał email.`)
-                onSuccess?.()
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Nie udało się przypisać premii.'
-                toast.error(msg)
+            const res = await assignBonus(input)
+            if (!res.success) {
+                // Tu ląduje m.in. „🥇 1. miejsce w Q1 2026 jest już zajęte przez X".
+                toast.error(res.error)
+                return
             }
+            toastSuccess(`🏆 Champions League ${BONUS_QUARTERS_PL[periodQuarter - 1]} ${periodYear} przypisana — pracownik dostał email.`)
+            onSuccess?.()
         })
     }
 

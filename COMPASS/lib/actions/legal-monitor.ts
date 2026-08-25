@@ -34,6 +34,7 @@ import {
     type LegalMonitorReviewStatus,
     type LegalMonitorRunRow,
 } from '@/lib/types/legal-monitor'
+import { excludeExited, isActiveNow } from '@/lib/hr/employment-window'
 
 /** Sufit odczytu skrzynki — filtrowanie robimy po stronie klienta (skala: dziesiątki wpisów). */
 const ITEMS_LIMIT = 1000
@@ -369,7 +370,7 @@ export async function setLegalMonitorFollowUp(input: {
             .maybeSingle()
         const row = candidate as { role?: string; employment_status?: string } | null
         const eligible =
-            !!row && (row.role === 'admin' || row.role === 'finanse') && row.employment_status !== 'exited'
+            !!row && (row.role === 'admin' || row.role === 'finanse') && isActiveNow(row)
         if (!eligible) {
             throw new Error('Reakcję można przypisać tylko aktywnej osobie z rolą finanse lub admin.')
         }
@@ -403,12 +404,9 @@ export async function listLegalMonitorAssignees(): Promise<
 > {
     await requireFinanseOrAdminAction()
     const supabase = createClient()
-    const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .in('role', ['admin', 'finanse'])
-        .neq('employment_status', 'exited')
-        .order('full_name')
+    const { data } = await excludeExited(
+        supabase.from('profiles').select('id, full_name, email').in('role', ['admin', 'finanse']),
+    ).order('full_name')
     return ((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>).map(
         (p) => ({ id: p.id, name: p.full_name || p.email || '—' }),
     )

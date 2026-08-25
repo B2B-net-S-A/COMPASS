@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { findPeakActivityWindow } from '@/lib/clock/aggregation'
 import { sendClockDailySummary, type ClockDailySummary } from '@/lib/email'
 import { withCronAuth } from '@/lib/api/with-auth'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,14 +35,15 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     const dd = String(yesterday.getUTCDate()).padStart(2, '0')
     const yesterdayDate = `${yyyy}-${mm}-${dd}`
 
-    const { data: users } = await admin
-        .from('profiles')
-        .select('id, full_name, email, clock_daily_summary_email')
-        .in('role', ['internal', 'admin'])
-        .eq('clock_daily_summary_email', true)
-        // Flaga zgody zostaje na profilu po archiwizacji (domyślnie true),
-        // więc bez tego byłego pracownika broni tylko brak wpisów w work_clock_daily.
-        .neq('employment_status', 'exited')
+    // Flaga zgody zostaje na profilu po archiwizacji (domyślnie true),
+    // więc bez tego byłego pracownika broni tylko brak wpisów w work_clock_daily.
+    const { data: users } = await excludeExited(
+        admin
+            .from('profiles')
+            .select('id, full_name, email, clock_daily_summary_email')
+            .in('role', ['internal', 'admin'])
+            .eq('clock_daily_summary_email', true),
+    )
 
     if (!users || users.length === 0) {
         return NextResponse.json({ ok: true, sent: 0, skipped: 0, scanned: 0 })

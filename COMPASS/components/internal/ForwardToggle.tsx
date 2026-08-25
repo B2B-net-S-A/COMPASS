@@ -42,25 +42,26 @@ export function ForwardToggle({ leaveId, enabled, ruleActive, substituteName }: 
     function handleToggle() {
         const next = !on
         startTransition(async () => {
-            try {
-                const res = await setLeaveMailForward(leaveId, next)
-                setOn(res.enabled)
-                setActive(res.ruleActive)
-                if (res.warning) {
-                    toast.warning(res.warning)
-                } else if (res.enabled) {
-                    toastSuccess(
-                        res.ruleActive
-                            ? `Poczta jest już przekazywana do: ${substituteName ?? 'zastępcy'}.`
-                            : 'Zapisano. Przekazywanie ruszy pierwszego dnia urlopu.',
-                    )
-                } else {
-                    toastSuccess('Przekazywanie poczty wyłączone.')
-                }
-                router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Nie udało się zmienić ustawienia.')
+            const result = await setLeaveMailForward(leaveId, next)
+            if (!result?.success) {
+                toast.error(result?.error ?? 'Nie udało się zmienić ustawienia.')
+                return
             }
+            const res = result.data
+            setOn(res.enabled)
+            setActive(res.ruleActive)
+            if (res.warning) {
+                toast.warning(res.warning)
+            } else if (res.enabled) {
+                toastSuccess(
+                    res.ruleActive
+                        ? `Poczta jest już przekazywana do: ${substituteName ?? 'zastępcy'}.`
+                        : 'Zapisano. Przekazywanie ruszy pierwszego dnia urlopu.',
+                )
+            } else {
+                toastSuccess('Przekazywanie poczty wyłączone.')
+            }
+            router.refresh()
         })
     }
 

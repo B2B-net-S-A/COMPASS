@@ -25,6 +25,7 @@ import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sy
 import { logger } from '@/lib/logger'
 import { shouldForwardBeActive, warsawToday } from './forward-window'
 import { HR_ROLES } from './reconcile'
+import { activeRoster } from '@/lib/hr/employment-window'
 
 /**
  * Upper bound on mailboxes scanned per run, so a growing roster cannot push the cron
@@ -220,14 +221,14 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
         return stats
     }
 
-    // Filter exited/offboarding + missing email in JS (PostgREST NULL-in-NOT-IN pitfall).
-    const roster = ((rosterRaw ?? []) as Array<{
-        id: string
-        email: string | null
-        employment_status: string | null
-    }>).filter(
-        (u) => u.email && u.employment_status !== 'exited' && u.employment_status !== 'offboarding',
-    )
+    // Filtrowanie w JS, nie w PostgREST (pułapka NULL-in-NOT-IN).
+    const roster = activeRoster(
+        (rosterRaw ?? []) as Array<{
+            id: string
+            email: string | null
+            employment_status: string | null
+        }>,
+    ).filter((u) => u.email)
 
     if (roster.length > MAX_SWEEP_PER_RUN) {
         stats.errors.push(

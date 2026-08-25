@@ -12,6 +12,13 @@ vi.mock('@/lib/ai/embeddings', () => ({
     generateEmbedding: vi.fn(async (text: string) => deterministicEmbedding(text)),
 }))
 
+// Audyt 2026-08 (B3) — baza wiedzy jest teraz admin-only. Domyślnie guard przepuszcza,
+// żeby istniejące testy zachowania zostały bez zmian; blokadę testujemy osobno.
+const guard = vi.hoisted(() => ({
+    requireAdminAction: vi.fn(async () => ({ userId: 'admin-1' })),
+}))
+vi.mock('@/lib/auth/internal-guard', () => guard)
+
 function setup(cfg: MockSupabaseConfig = {}): MockSupabase {
     currentClient = createMockSupabaseClient(cfg)
     return currentClient
@@ -156,5 +163,43 @@ describe('uploadKnowledgeFile — validation', () => {
         const result = await uploadKnowledgeFile(makeFormData(big), 'general')
         expect(result.success).toBe(false)
         expect(result.error).toMatch(/20MB/i)
+    })
+})
+
+describe('guard admina', () => {
+    it('blokuje każdą akcję zapisu/odczytu, gdy wywołujący nie jest adminem', async () => {
+        setup({ tables: { compass_assist_knowledge: [] } })
+        const mod = await import('../knowledge-base')
+
+        const cases: Array<[string, () => Promise<unknown>]> = [
+            ['createEmbedding', () => mod.createEmbedding('x')],
+            ['addKnowledgeDocument', () => mod.addKnowledgeDocument('x', 'general')],
+            ['getKnowledgeHistory', () => mod.getKnowledgeHistory()],
+            ['deleteKnowledgeDocument', () => mod.deleteKnowledgeDocument('k1')],
+            ['searchKnowledge', () => mod.searchKnowledge('x')],
+        ]
+
+        for (const [, call] of cases) {
+            guard.requireAdminAction.mockRejectedValueOnce(new Error('Wymagane uprawnienia administratora.'))
+            await expect(call()).rejects.toThrow(/administratora/)
+        }
+
+        // Ta jedna zwraca błąd zamiast rzucać — kontrakt jej wywołujących.
+        guard.requireAdminAction.mockRejectedValueOnce(new Error('Wymagane uprawnienia administratora.'))
+        const fd = new FormData()
+        fd.set('file', new File(['x'], 'doc.pdf', { type: 'application/pdf' }))
+        const result = await mod.uploadKnowledgeFile(fd, 'general')
+        expect(result.success).toBe(false)
+        expect(result.error).toMatch(/administratora/)
+    })
+
+    it('nie pali embeddingu, gdy guard odrzuci wywołanie', async () => {
+        setup({ tables: { compass_assist_knowledge: [] } })
+        const embMod = await import('@/lib/ai/embeddings')
+        const mod = await import('../knowledge-base')
+
+        guard.requireAdminAction.mockRejectedValueOnce(new Error('Wymagane uprawnienia administratora.'))
+        await expect(mod.createEmbedding('drogi tekst')).rejects.toThrow()
+        expect(embMod.generateEmbedding).not.toHaveBeenCalled()
     })
 })

@@ -34,6 +34,7 @@ import type {
     OnboardingTemplateItem,
     ResponsibleRole,
 } from '@/lib/types/lifecycle'
+import { excludeExited, isActiveNow } from '@/lib/hr/employment-window'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const BUCKET = 'lifecycle-docs'
@@ -274,12 +275,12 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
     await requireLifecycleManagerAction()
     const supabase = createServiceClient()
 
-    const { data: profiles, error } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, role, hired_at, work_start_date, employment_status, manager_id, is_external, external_notes')
-        .in('role', ['consultant', 'internal', 'finanse', 'manager', 'talent_community'])
-        .neq('employment_status', 'exited')
-        .order('full_name', { ascending: true })
+    const { data: profiles, error } = await excludeExited(
+        supabase
+            .from('profiles')
+            .select('id, email, full_name, role, hired_at, work_start_date, employment_status, manager_id, is_external, external_notes')
+            .in('role', ['consultant', 'internal', 'finanse', 'manager', 'talent_community']),
+    ).order('full_name', { ascending: true })
     if (error || !profiles) {
         logCompat.error('listEmployeesForLifecycle error:', error)
         return []
@@ -318,7 +319,7 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
     }))
 
     if (filter === 'onboarding') return all.filter((e) => !e.has_active_onboarding && e.employment_status !== 'offboarding')
-    if (filter === 'exit') return all.filter((e) => !e.has_active_exit_interview && e.employment_status !== 'exited')
+    if (filter === 'exit') return all.filter((e) => !e.has_active_exit_interview && isActiveNow(e))
     return all
 }
 

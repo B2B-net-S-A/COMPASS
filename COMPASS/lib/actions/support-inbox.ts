@@ -20,6 +20,7 @@ import {
     type SupportInboxMeta,
     type TicketStatus,
 } from '@/lib/types/support'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 interface ProfileLite {
     id: string
@@ -674,13 +675,13 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
         // is_inbox_handler (np. manager). Bare-admini świadomie POZA listą —
         // właściciele firmy nie obsługują skrzynki (zgłoszenie Dominika);
         // admin, który chce obsługiwać, ustawia sobie flagę.
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, role, is_inbox_handler')
-            .or('is_inbox_handler.eq.true,role.eq.talent_community')
-            // Ticket przypisany osobie, która odeszła, nie ma kto obsłużyć.
-            .neq('employment_status', 'exited')
-            .order('full_name', { ascending: true })
+        // Ticket przypisany osobie, która odeszła, nie ma kto obsłużyć.
+        const { data, error } = await excludeExited(
+            supabase
+                .from('profiles')
+                .select('id, full_name, email, role, is_inbox_handler')
+                .or('is_inbox_handler.eq.true,role.eq.talent_community'),
+        ).order('full_name', { ascending: true })
 
         if (error) throw error
         const items = ((data ?? []) as Array<ProfileLite & { role: string; is_inbox_handler: boolean }>).map((p) => ({

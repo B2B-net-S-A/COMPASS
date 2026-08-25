@@ -14,6 +14,7 @@ import {
     TIMESHEET_DEADLINE_DAY,
     type TimesheetPeriod,
 } from '@/lib/hr/timesheet-reminder-window'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,14 +69,14 @@ export const GET = withCronAuth(async (request, { admin }) => {
     const { year: targetYear, month: targetMonth } = override.period
     const monthLabel = periodLabel(override.period)
 
-    const { data: employees, error: employeesErr } = await admin
-        .from('profiles')
-        .select('id, full_name, email, employment_type')
-        .in('role', ['internal', 'admin'])
-        // Przypomnienie o timesheecie do byłego pracownika = mail w próżnię.
-        // Dziś nie strzelało tylko dlatego, że archiwum trafiło się na B2B
-        // (a B2B i tak odpada niżej) — na UoP poszłoby.
-        .neq('employment_status', 'exited')
+    // Przypomnienie o timesheecie do byłego pracownika = mail w próżnię
+    // (od Phase 43 zarchiwizowany nie ma jak się zalogować i go złożyć).
+    const { data: employees, error: employeesErr } = await excludeExited(
+        admin
+            .from('profiles')
+            .select('id, full_name, email, employment_type')
+            .in('role', ['internal', 'admin']),
+    )
     if (employeesErr) {
         logCompat.error('[timesheet-reminder] employees fetch error:', employeesErr)
         return NextResponse.json({ error: employeesErr.message }, { status: 500 })

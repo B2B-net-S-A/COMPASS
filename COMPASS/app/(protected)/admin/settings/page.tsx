@@ -1,94 +1,61 @@
-'use client'
-
-import { useState } from 'react'
-import { Button } from "@/components/ui/button"
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { cleanDuplicateCandidates } from '@/lib/actions/maintenance'
-import { Trash2, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
-import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { logger } from '@/lib/logger'
+import { Mail, Crown, KeyRound } from 'lucide-react'
+
+// Audyt 2026-08 (B3) — strona była hostem jednego przycisku „Czyszczenie duplikatów",
+// który celował w public.candidates. Ta tabela została przeniesiona do schematu
+// compass_legacy migracją 20260504000001_phase1_archive_legacy_ats, więc PostgREST
+// nie widział jej od maja i akcja zawsze kończyła się błędem. Usunięta razem
+// z lib/actions/maintenance.ts (był to niezabezpieczony server action).
+// Route zostaje, bo Sidebar i MobileMenu linkują tu jako wejście do sekcji ustawień.
+
+const sections = [
+    {
+        title: 'Powiadomienia Email',
+        description: 'Szablony i adresy odbiorców powiadomień systemowych.',
+        href: '/admin/settings/notifications',
+        icon: Mail,
+    },
+    {
+        title: 'Administratorzy',
+        description: 'Lista Super Adminów. Dostęp tylko dla Super Admina.',
+        href: '/admin/settings/admins',
+        icon: Crown,
+    },
+    {
+        title: 'Użytkownicy',
+        description: 'Konta, role, reset hasła, blokady. Dostęp tylko dla Super Admina.',
+        href: '/admin/settings/users',
+        icon: KeyRound,
+    },
+]
 
 export default function AdminSettingsPage() {
-    const [cleaning, setCleaning] = useState(false)
-    const [result, setResult] = useState<{ count: number, message: string } | null>(null)
-    const [confirm, ConfirmUI] = useConfirm()
-
-    const handleCleanup = async () => {
-        const ok = await confirm({
-            title: 'Czyszczenie duplikatów',
-            description: 'Czy na pewno chcesz usunąć zduplikowanych kandydatów? Ta operacja jest nieodwracalna.',
-            confirmLabel: 'Usuń duplikaty',
-            variant: 'destructive',
-        })
-        if (!ok) return
-
-        setCleaning(true)
-        setResult(null)
-
-        try {
-            const res = await cleanDuplicateCandidates()
-            setResult(res)
-        } catch (error) {
-            logger.error({ event: 'admin.settings.duplicate_cleanup_failed', error })
-            setResult({ count: 0, message: `Błąd krytyczny: ${(error as Error).message}` })
-        } finally {
-            setCleaning(false)
-        }
-    }
-
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-2">
-                <h3 className="text-lg font-medium">Konserwacja Systemu</h3>
+                <h3 className="text-lg font-medium">Ustawienia</h3>
                 <p className="text-sm text-muted-foreground">
-                    Narzędzia administracyjne do zarządzania systemem.
+                    Wybierz sekcję z menu po lewej lub skorzystaj ze skrótów poniżej.
                 </p>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-                <Card className="bg-card border-border">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-destructive">
-                            <Trash2 className="w-5 h-5" />
-                            Czyszczenie Duplikatów
-                        </CardTitle>
-                        <CardDescription>
-                            Automatycznie scala zduplikowane konta (po emailu).
-                            Zachowuje najstarszy profil, ale aktualizuje go o najnowsze dane: umiejętności, certyfikaty, doświadczenie (bio) i nowe CV.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg text-sm text-destructive">
-                            ⚠️ Uwaga: Ta operacja usunie trwale nadmiarowe rekordy z bazy danych.
-                        </div>
-
-                        <Button
-                            variant="destructive"
-                            onClick={handleCleanup}
-                            disabled={cleaning}
-                            className="w-full"
-                        >
-                            {cleaning ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Czyszczenie...
-                                </>
-                            ) : (
-                                'Uruchom Czyszczenie'
-                            )}
-                        </Button>
-
-                        {result && (
-                            <div className={`flex items-center gap-2 text-sm p-2 rounded ${result.count > 0 ? 'text-success bg-success/10' : 'text-muted-foreground bg-secondary/20'}`}>
-                                {result.count > 0 ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                                {result.message}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                {sections.map((section) => (
+                    <Link key={section.href} href={section.href} className="block">
+                        <Card className="bg-card border-border h-full transition-colors hover:bg-muted/40">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <section.icon className="w-5 h-5" />
+                                    {section.title}
+                                </CardTitle>
+                                <CardDescription>{section.description}</CardDescription>
+                            </CardHeader>
+                            <CardContent />
+                        </Card>
+                    </Link>
+                ))}
             </div>
-
-            <ConfirmUI />
         </div>
     )
 }

@@ -47,6 +47,7 @@ import type {
     SuccessTcmOption,
     UpdateSuccessTaskInput,
 } from '@/lib/types/consultant-success'
+import { excludeExited } from '@/lib/hr/employment-window'
 
 const SUCCESS_ROOT = '/internal/people/success'
 const DAY_MS = 86_400_000
@@ -130,13 +131,10 @@ function healthFromSettings(row: DbRow | undefined, profileNames: Map<string, st
 }
 
 async function loadTcmOptions(db = successDb()): Promise<{ options: SuccessTcmOption[]; names: Map<string, string> }> {
-    const { data, error } = await db
-        .from('profiles')
-        .select('id, full_name')
-        .in('role', ['talent_community', 'admin'])
-        // Jak w listTcmProfiles — byli opiekunowie znikają z wyboru.
-        .neq('employment_status', 'exited')
-        .order('full_name')
+    // Jak w listTcmProfiles — byli opiekunowie znikają z wyboru.
+    const { data, error } = await excludeExited(
+        db.from('profiles').select('id, full_name').in('role', ['talent_community', 'admin']),
+    ).order('full_name')
     assertDb(error, 'Nie udało się pobrać opiekunów TCM')
     const options = ((data ?? []) as DbRow[]).map((row) => ({
         id: String(row.id),

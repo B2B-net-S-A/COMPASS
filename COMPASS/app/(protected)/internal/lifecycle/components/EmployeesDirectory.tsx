@@ -12,6 +12,7 @@ import { ScheduleExitDialog } from './ScheduleExitDialog'
 import { EditLifecycleProfileDialog } from './EditLifecycleProfileDialog'
 import { ExternalEmployeeDialog } from './ExternalEmployeeDialog'
 import { EmployeeNotesDialog } from './EmployeeNotesDialog'
+import { isActiveNow } from '@/lib/hr/employment-window'
 
 const STATUS_LABEL: Record<string, string> = {
     pending: 'Czeka',
@@ -182,7 +183,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                         </Button>
                                         {activeMenu === e.id && (
                                             <div className="absolute right-3 top-full mt-1 z-10 rounded-md border bg-card shadow-lg min-w-[220px] py-1">
-                                                {!e.has_active_onboarding && e.employment_status !== 'exited' && (
+                                                {!e.has_active_onboarding && isActiveNow(e) && (
                                                     <button
                                                         type="button"
                                                         onClick={() => { setActiveMenu(null); setStartOnboardingFor(e) }}
@@ -202,7 +203,7 @@ export function EmployeesDirectory({ initialEmployees }: Props) {
                                                         Otwórz aktywny onboarding
                                                     </Link>
                                                 )}
-                                                {!e.has_active_exit_interview && e.employment_status !== 'exited' && (
+                                                {!e.has_active_exit_interview && isActiveNow(e) && (
                                                     <button
                                                         type="button"
                                                         onClick={() => { setActiveMenu(null); setScheduleExitFor(e) }}

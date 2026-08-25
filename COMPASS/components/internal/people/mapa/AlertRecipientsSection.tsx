@@ -64,7 +64,11 @@ function RecipientPicker({
     async function save() {
         setSaving(true)
         try {
-            await setAlertRecipients(kind, Array.from(selected))
+            const res = await setAlertRecipients(kind, Array.from(selected))
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Nie udało się zapisać.')
+                return
+            }
             toast.success('Zapisano odbiorców.')
             router.refresh()
         } catch (e) {

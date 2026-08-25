@@ -61,7 +61,12 @@ export function AdminLeaveSyncIssues({ requests }: Props) {
         setBusyId(req.id)
         startTransition(async () => {
             try {
-                const res = await retryLeaveGraphSync(req.id)
+                const result = await retryLeaveGraphSync(req.id)
+                if (!result?.success) {
+                    toast.error(result?.error ?? 'Nie udało się ponowić synchronizacji.')
+                    return
+                }
+                const res = result.data
                 if (res.oof && res.calendar && res.forward) {
                     toastSuccess(
                         'Synchronizacja Graph powiodła się (OOF + Calendar + przekierowanie).',
@@ -74,8 +79,6 @@ export function AdminLeaveSyncIssues({ requests }: Props) {
                     toast.error(`Synchronizacja nie powiodła się: ${res.error ?? 'nieznany błąd'}`)
                 }
                 router.refresh()
-            } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : 'Błąd')
             } finally {
                 setBusyId(null)
             }

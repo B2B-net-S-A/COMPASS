@@ -10,23 +10,28 @@ const authContextMock = vi.hoisted(() => ({
     isManager: true,
 }))
 
-vi.mock('@/lib/auth/internal-guard', () => ({
-    requireInternalOrAdminAction: async () => authContextMock,
-    requireBonusProposerAction: async () => {
-        if (!authContextMock.isAdmin && !authContextMock.isManager) {
-            throw new Error('Wymagane uprawnienia: administrator lub manager.')
-        }
-        return authContextMock
-    },
-    requireBonusReadAllAction: async () => authContextMock,
-    // Phase 32 — edit of an assigned bonus is admin/finanse only.
-    requireFinanseOrAdminAction: async () => {
-        if (!authContextMock.isAdmin && authContextMock.role !== 'finanse') {
-            throw new Error('Wymagane uprawnienia: administrator lub finanse.')
-        }
-        return authContextMock
-    },
-}))
+// Guardy w produkcji rzucają ExpectedError — mock musi to odwzorować, inaczej
+// runAction potraktowałby odmowę uprawnień jako awarię (Sentry + komunikat ogólny).
+vi.mock('@/lib/auth/internal-guard', async () => {
+    const { ExpectedError } = await import('@/lib/actions/expected-error')
+    return {
+        requireInternalOrAdminAction: async () => authContextMock,
+        requireBonusProposerAction: async () => {
+            if (!authContextMock.isAdmin && !authContextMock.isManager) {
+                throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
+            }
+            return authContextMock
+        },
+        requireBonusReadAllAction: async () => authContextMock,
+        // Phase 32 — edit of an assigned bonus is admin/finanse only.
+        requireFinanseOrAdminAction: async () => {
+            if (!authContextMock.isAdmin && authContextMock.role !== 'finanse') {
+                throw new ExpectedError('Wymagane uprawnienia: administrator lub finanse.')
+            }
+            return authContextMock
+        },
+    }
+})
 
 vi.mock('@/lib/actions/audit', () => ({
     logAudit: vi.fn(async () => {}),
@@ -133,6 +138,22 @@ vi.mock('@/lib/supabase/admin', () => ({
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
 import { assignBonus, updateBonus, cancelBonus, proposeBonus } from '@/lib/actions/internal-bonus'
+import type { ActionResult } from '@/lib/actions/action-result'
+
+// Akcje premii zwracają ActionResult — odmowa nie rzuca, tylko wraca jako {success:false}.
+async function expectRejection(
+    call: Promise<ActionResult<unknown>>,
+    pattern: RegExp,
+): Promise<void> {
+    const res = await call
+    expect(res).toEqual({ success: false, error: expect.stringMatching(pattern) })
+}
+
+async function expectSuccess<T>(call: Promise<ActionResult<T>>): Promise<T> {
+    const res = await call
+    if (!res.success) throw new Error(`oczekiwano sukcesu, dostałem: ${res.error}`)
+    return res.data
+}
 
 beforeEach(() => {
     authContextMock.userId = 'manager-1'
@@ -168,6 +189,7 @@ describe('assignBonus (Phase 26)', () => {
             reason: 'Test bonus za bieżący miesiąc',
             custom_email_memo: 'Memo dla testu',
         })
+        expect(result.success).toBe(true)
         expect(supabaseState.insertedRow).toMatchObject({
             recipient_user_id: 'recipient-1',
             proposed_by: 'manager-1',
@@ -176,11 +198,10 @@ describe('assignBonus (Phase 26)', () => {
             period_year: now.getFullYear(),
             period_month: now.getMonth() + 1,
         })
-        expect(result).toBeTruthy()
     })
 
     it('rejects self-assignment', async () => {
-        await expect(
+        await expectRejection(
             assignBonus({
                 category: 'custom',
                 recipient_user_id: 'manager-1',
@@ -190,11 +211,12 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'self assign attempt',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/sobie/i)
+            /sobie/i,
+        )
     })
 
     it('rejects amount below minimum', async () => {
-        await expect(
+        await expectRejection(
             assignBonus({
                 category: 'custom',
                 recipient_user_id: 'recipient-1',
@@ -204,11 +226,12 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'invalid amount',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/Kwota/)
+            /Kwota/,
+        )
     })
 
     it('rejects too short reason', async () => {
-        await expect(
+        await expectRejection(
             assignBonus({
                 category: 'custom',
                 recipient_user_id: 'recipient-1',
@@ -218,13 +241,14 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'no',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/Uzasadnienie/)
+            /Uzasadnienie/,
+        )
     })
 
     it('rejects period far in the past (> 12 months back)', async () => {
         const now = new Date()
         const farPastYear = now.getFullYear() - 2
-        await expect(
+        await expectRejection(
             assignBonus({
                 category: 'custom',
                 recipient_user_id: 'recipient-1',
@@ -234,13 +258,14 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'too far back',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/12 miesi/i)
+            /12 miesi/i,
+        )
     })
 
     it('rejects future period', async () => {
         const now = new Date()
         const futureYear = now.getFullYear() + 1
-        await expect(
+        await expectRejection(
             assignBonus({
                 category: 'custom',
                 recipient_user_id: 'recipient-1',
@@ -250,13 +275,14 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'future period',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/12 miesi/i)
+            /12 miesi/i,
+        )
     })
 
     it('rejects when manager scope mismatch', async () => {
         supabaseState.recipientProfile.manager_id = 'different-manager'
         const now = new Date()
-        await expect(
+        await expectRejection(
             assignBonus({
                 category: 'custom',
                 recipient_user_id: 'recipient-1',
@@ -266,7 +292,8 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'cross-team assignment',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/podw/i)
+            /podw/i,
+        )
     })
 
     it('allows admin to assign for anyone', async () => {
@@ -284,17 +311,19 @@ describe('assignBonus (Phase 26)', () => {
             reason: 'admin assign cross-team',
             custom_email_memo: 'memo',
         })
-        expect(result).toBeTruthy()
+        expect(result.success).toBe(true)
         expect(supabaseState.insertedRow).toMatchObject({ status: 'assigned' })
     })
 
     // Phase 27e — the one-bonus-per-recipient-per-month UNIQUE index was dropped
     // (recruiter/sales/delivery bonuses are per-placement, so multiples per month are valid).
     // assignBonus no longer special-cases a duplicate-key error into a "już przypisana" message.
+    // Audyt 2026-08 (B1): błąd zapytania to awaria, więc użytkownik dostaje komunikat
+    // ogólny (a zdarzenie idzie do Sentry) — asercja pilnuje, że NIE wraca stara treść.
     it('does not map a duplicate-key DB error to a per-month "already assigned" message', async () => {
         supabaseState.insertError = { code: '23505', message: 'duplicate key' }
         const now = new Date()
-        await expect(
+        await expectRejection(
             assignBonus({
                 category: 'custom',
                 recipient_user_id: 'recipient-1',
@@ -304,7 +333,8 @@ describe('assignBonus (Phase 26)', () => {
                 reason: 'duplicate test',
                 custom_email_memo: 'memo',
             }),
-        ).rejects.toThrow(/Błąd przypisania premii/i)
+            /po naszej stronie/i,
+        )
     })
 })
 
@@ -353,7 +383,7 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
     it('allows admin to update amount and reason of an assigned bonus', async () => {
         setAdminContext()
         supabaseState.bonusRow = makeAssignedBonusRow()
-        await updateBonus({ id: 'bonus-1', amount: 700, reason: 'Updated reason text' })
+        await expectSuccess(updateBonus({ id: 'bonus-1', amount: 700, reason: 'Updated reason text' }))
         expect(supabaseState.bonusRow).toMatchObject({
             amount: 700,
             reason: 'Updated reason text',
@@ -363,28 +393,26 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
     it('allows finanse to update an assigned bonus', async () => {
         setFinanceContext()
         supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
-        await updateBonus({ id: 'bonus-1', amount: 800 })
+        await expectSuccess(updateBonus({ id: 'bonus-1', amount: 800 }))
         expect(supabaseState.bonusRow).toMatchObject({ amount: 800 })
     })
 
     it('allows a manager to edit a bonus they proposed', async () => {
         // Default beforeEach context is manager-1; this bonus is proposed_by manager-1.
         supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
-        await updateBonus({ id: 'bonus-1', amount: 700 })
+        await expectSuccess(updateBonus({ id: 'bonus-1', amount: 700 }))
         expect(supabaseState.bonusRow).toMatchObject({ amount: 700 })
     })
 
     it('blocks a manager from editing a bonus they did not propose', async () => {
         supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
-        await expect(updateBonus({ id: 'bonus-1', amount: 700 })).rejects.toThrow(
-            /sam przypisał/i,
-        )
+        await expectRejection(updateBonus({ id: 'bonus-1', amount: 700 }), /sam przypisał/i)
     })
 
     it('rejects empty patch (admin)', async () => {
         setAdminContext()
         supabaseState.bonusRow = makeAssignedBonusRow()
-        await expect(updateBonus({ id: 'bonus-1' })).rejects.toThrow(/Brak zmian/i)
+        await expectRejection(updateBonus({ id: 'bonus-1' }), /Brak zmian/i)
     })
 
     it('allows finanse to correct the month of a standard assigned bonus (Phase 32)', async () => {
@@ -400,7 +428,7 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
         row.period_year = curYear
         row.period_month = curMonth
         supabaseState.bonusRow = row
-        await updateBonus({ id: 'bonus-1', period_year: prevYear, period_month: prevMonth })
+        await expectSuccess(updateBonus({ id: 'bonus-1', period_year: prevYear, period_month: prevMonth }))
         expect(supabaseState.bonusRow).toMatchObject({
             period_year: prevYear,
             period_month: prevMonth,
@@ -410,7 +438,8 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
     it('rejects a period change missing the month (Phase 32)', async () => {
         setAdminContext()
         supabaseState.bonusRow = makeAssignedBonusRow()
-        await expect(updateBonus({ id: 'bonus-1', period_year: 2026 })).rejects.toThrow(
+        await expectRejection(
+            updateBonus({ id: 'bonus-1', period_year: 2026 }),
             /rok i miesiąc/i,
         )
     })
@@ -426,13 +455,14 @@ describe('updateBonus (Phase 26 + 32 — admin/finanse only)', () => {
             place_rank: 1,
         }
         // Current month keeps validatePeriod happy so we reach the category guard.
-        await expect(
+        await expectRejection(
             updateBonus({
                 id: 'bonus-1',
                 period_year: now.getFullYear(),
                 period_month: now.getMonth() + 1,
             }),
-        ).rejects.toThrow(/Champions League/i)
+            /Champions League/i,
+        )
     })
 })
 
@@ -440,39 +470,41 @@ describe('cancelBonus (Phase 26 + 32 — admin/finanse any; manager own)', () =>
     it('allows admin to cancel an assigned bonus', async () => {
         setAdminContext()
         supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
-        await cancelBonus({ id: 'bonus-1', cancellation_reason: 'test cancel reason' })
+        await expectSuccess(cancelBonus({ id: 'bonus-1', cancellation_reason: 'test cancel reason' }))
         expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
     })
 
     it('allows finanse to cancel an assigned bonus', async () => {
         setFinanceContext()
         supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
-        await cancelBonus({ id: 'bonus-1', cancellation_reason: 'finance correction' })
+        await expectSuccess(cancelBonus({ id: 'bonus-1', cancellation_reason: 'finance correction' }))
         expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
     })
 
     it('allows a manager to cancel their own bonus', async () => {
         supabaseState.bonusRow = makeAssignedBonusRow('manager-1')
-        await cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager cancels own' })
+        await expectSuccess(cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager cancels own' }))
         expect(supabaseState.bonusRow).toMatchObject({ status: 'cancelled' })
     })
 
     it('blocks a manager from cancelling someone else\'s bonus', async () => {
         supabaseState.bonusRow = makeAssignedBonusRow('different-manager')
-        await expect(
+        await expectRejection(
             cancelBonus({ id: 'bonus-1', cancellation_reason: 'manager tries other' }),
-        ).rejects.toThrow(/tylko premie, które sam przypisał/i)
+            /tylko premie, które sam przypisał/i,
+        )
     })
 })
 
 describe('legacy proposeBonus (Phase 26 — gated by INVOICES_ENABLED)', () => {
     it('throws when invoices feature off', async () => {
-        await expect(
+        await expectRejection(
             proposeBonus({
                 recipient_user_id: 'recipient-1',
                 amount: 500,
                 reason: 'legacy propose',
             }),
-        ).rejects.toThrow(/Faktury są aktualnie wy/i)
+            /Faktury są aktualnie wy/i,
+        )
     })
 })

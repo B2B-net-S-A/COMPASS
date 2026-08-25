@@ -20,19 +20,24 @@ const fakeCtx = () => ({
     canViewTechMap: false,
 })
 
-vi.mock('@/lib/auth/internal-guard', () => ({
-    requireLifecycleManagerAction: async () => {
-        if (!authState.allowed) {
-            // Realny guard rzuca dla konsultanta/anon — moduł mapy jest niedostępny.
-            throw new Error('Brak uprawnień: wymagany administrator lub Talent Community.')
-        }
-        return fakeCtx()
-    },
-    requireTechMapViewerAction: async () => {
-        if (!authState.allowed) throw new Error('Brak uprawnień do mapy technologicznej.')
-        return fakeCtx()
-    },
-}))
+// Guardy rzucają ExpectedError (kontrakt B1) — dzięki temu runAction zwraca ich
+// treść użytkownikowi zamiast generycznego komunikatu o awarii.
+vi.mock('@/lib/auth/internal-guard', async () => {
+    const { ExpectedError } = await import('@/lib/actions/expected-error')
+    return {
+        requireLifecycleManagerAction: async () => {
+            if (!authState.allowed) {
+                // Realny guard rzuca dla konsultanta/anon — moduł mapy jest niedostępny.
+                throw new ExpectedError('Brak uprawnień: wymagany administrator lub Talent Community.')
+            }
+            return fakeCtx()
+        },
+        requireTechMapViewerAction: async () => {
+            if (!authState.allowed) throw new ExpectedError('Brak uprawnień do mapy technologicznej.')
+            return fakeCtx()
+        },
+    }
+})
 
 vi.mock('@/lib/actions/audit', () => ({
     logAudit: vi.fn(async () => {}),
@@ -91,6 +96,7 @@ vi.mock('@/lib/supabase/admin', () => ({
     createServiceClient: () => ({ from: (table: string) => makeChain(table) }),
 }))
 
+import type { ActionResult } from '@/lib/actions/action-result'
 import type { CardInput } from '@/lib/types/tech-map'
 import {
     createCardDraft,
@@ -146,36 +152,55 @@ beforeEach(() => {
     db.insertError = null
 })
 
+// Akcje zapisu zwracają ActionResult — odmowa uprawnień to `{success:false}`
+// z treścią guardu, a nie wyjątek. Akcje czysto odczytowe zostały przy rzucaniu
+// (wołają je komponenty serwerowe, które łapią wyjątek i robią notFound()).
+const readActionsRejecting: Array<[string, () => Promise<unknown>]> = [
+    ['listTechnologies', () => listTechnologies()],
+    ['listCards', () => listCards()],
+    ['getPreInterviewBrief', () => getPreInterviewBrief('c-1')],
+    // Etap 2
+    ['getClientTechMap', () => getClientTechMap('k-1')],
+    ['listClientsWithCards', () => listClientsWithCards()],
+    // Etap 3
+    ['getTechMapKpi', () => getTechMapKpi()],
+    ['getAlertRecipientsConfig', () => getAlertRecipientsConfig()],
+]
+
+const writeActionsReturningError: Array<[string, () => Promise<ActionResult<unknown>>]> = [
+    ['createCardDraft', () => createCardDraft(card())],
+    ['createClientForTechMap', () => createClientForTechMap('Acme')],
+    ['createTechnologyUnverified', () => createTechnologyUnverified('Rust')],
+    ['setAlertRecipients', () => setAlertRecipients('demand', [])],
+]
+
 describe('kontrola dostępu — moduł niedostępny bez guardu lifecycle', () => {
-    it.each([
-        ['listTechnologies', () => listTechnologies()],
-        ['listCards', () => listCards()],
-        ['createCardDraft', () => createCardDraft(card())],
-        ['getPreInterviewBrief', () => getPreInterviewBrief('c-1')],
-        ['createClientForTechMap', () => createClientForTechMap('Acme')],
-        ['createTechnologyUnverified', () => createTechnologyUnverified('Rust')],
-        // Etap 2
-        ['getClientTechMap', () => getClientTechMap('k-1')],
-        ['listClientsWithCards', () => listClientsWithCards()],
-        // Etap 3
-        ['getTechMapKpi', () => getTechMapKpi()],
-        ['getAlertRecipientsConfig', () => getAlertRecipientsConfig()],
-        ['setAlertRecipients', () => setAlertRecipients('demand', [])],
-    ])('%s odrzuca użytkownika bez uprawnień', async (_name, run) => {
+    it.each(readActionsRejecting)('%s (odczyt) rzuca dla użytkownika bez uprawnień', async (_name, run) => {
         authState.allowed = false
         await expect(run()).rejects.toThrow('Brak uprawnień')
     })
+
+    it.each(writeActionsReturningError)(
+        '%s (zapis) zwraca {success:false} z treścią guardu',
+        async (_name, run) => {
+            authState.allowed = false
+            const res = await run()
+            if (res.success) throw new Error('oczekiwano odmowy uprawnień')
+            expect(res.error).toContain('Brak uprawnień')
+        },
+    )
 })
 
 describe('createCardDraft', () => {
     it('odrzuca kartę bez klienta (walidacja bazowa)', async () => {
-        await expect(createCardDraft(card({ clientId: '' }))).rejects.toThrow('Wybierz klienta')
+        const res = await createCardDraft(card({ clientId: '' }))
+        expect(res).toEqual({ success: false, error: expect.stringContaining('Wybierz klienta') })
     })
 
     it('zapisuje draft z tcm_id z kontekstu i materializuje przydział bloku', async () => {
         db.tables.tech_interview_cards = [{ id: 'card-1' }]
         const result = await createCardDraft(card({ technologyIds: ['t-1', 't-2'] }))
-        expect(result).toEqual({ id: 'card-1' })
+        expect(result).toEqual({ success: true, data: { id: 'card-1' } })
 
         const cardInsert = db.inserts.find((i) => i.table === 'tech_interview_cards')
         expect(cardInsert).toBeTruthy()
@@ -201,25 +226,29 @@ describe('saveCard / finalizeCard — własność i kompletność', () => {
 
     it('nie pozwala edytować cudzej karty (nie-admin)', async () => {
         db.tables.tech_interview_cards = [foreignCard]
-        await expect(saveCard('card-1', card())).rejects.toThrow('własne karty')
+        const res = await saveCard('card-1', card())
+        expect(res).toEqual({ success: false, error: expect.stringContaining('własne karty') })
     })
 
     it('admin może edytować cudzą kartę', async () => {
         authState.isAdmin = true
         db.tables.tech_interview_cards = [foreignCard]
-        await expect(saveCard('card-1', card())).resolves.toBeUndefined()
+        await expect(saveCard('card-1', card())).resolves.toEqual({ success: true, data: undefined })
     })
 
     it('nie pozwala zmienić konsultanta na istniejącej karcie', async () => {
         db.tables.tech_interview_cards = [{ ...foreignCard, tcm_id: 'tcm-1' }]
-        await expect(saveCard('card-1', card({ contractorId: 'INNY' }))).rejects.toThrow(
-            'Nie można zmienić konsultanta',
-        )
+        const res = await saveCard('card-1', card({ contractorId: 'INNY' }))
+        expect(res).toEqual({
+            success: false,
+            error: expect.stringContaining('Nie można zmienić konsultanta'),
+        })
     })
 
     it('finalizacja niekompletnej karty (brak statusu) jest odrzucana', async () => {
         db.tables.tech_interview_cards = [{ ...foreignCard, tcm_id: 'tcm-1' }]
-        await expect(finalizeCard('card-1', card({ status: null }))).rejects.toThrow('Status rozmowy')
+        const res = await finalizeCard('card-1', card({ status: null }))
+        expect(res).toEqual({ success: false, error: expect.stringContaining('Status rozmowy') })
     })
 
     it('finalizacja kompletnej karty przechodzi i zdejmuje draft', async () => {
@@ -247,7 +276,8 @@ describe('saveCard / finalizeCard — własność i kompletność', () => {
 
     it('odrzuca tytuł dłuższy niż limit CHECK-a w DB', async () => {
         db.tables.tech_interview_cards = [{ ...foreignCard, tcm_id: 'tcm-1' }]
-        await expect(saveCard('card-1', card({ title: 'x'.repeat(121) }))).rejects.toThrow('Tytuł rozmowy')
+        const res = await saveCard('card-1', card({ title: 'x'.repeat(121) }))
+        expect(res).toEqual({ success: false, error: expect.stringContaining('Tytuł rozmowy') })
     })
 })
 
@@ -255,23 +285,29 @@ describe('słownik technologii', () => {
     it('duplikat (23505) zwraca istniejącą pozycję zamiast błędu — tag-picker wybiera kanoniczną', async () => {
         db.insertError = { code: '23505', message: 'duplicate' }
         db.tables.technologies = [{ id: 't-1', name: 'Kubernetes', slug: 'kubernetes' }]
-        const row = await createTechnologyUnverified('kubernetes')
-        expect(row.id).toBe('t-1')
+        const res = await createTechnologyUnverified('kubernetes')
+        if (!res.success) throw new Error(`oczekiwano sukcesu, dostałem: ${res.error}`)
+        expect(res.data.id).toBe('t-1')
     })
 
     it('edycja słownika wymaga admina', async () => {
-        await expect(updateTechnology({ id: 't-1', name: 'Nowa' })).rejects.toThrow(
-            'Tylko administrator',
-        )
+        const res = await updateTechnology({ id: 't-1', name: 'Nowa' })
+        expect(res).toEqual({ success: false, error: expect.stringContaining('Tylko administrator') })
     })
 })
 
 describe('createClientForTechMap', () => {
     it('normalizuje nazwę (trim + zbite spacje) przed zapisem', async () => {
         db.tables.clients = [{ id: 'k-9', name: 'Acme Corp' }]
-        await createClientForTechMap('  Acme   Corp ')
+        const res = await createClientForTechMap('  Acme   Corp ')
+        expect(res.success).toBe(true)
         const insert = db.inserts.find((i) => i.table === 'clients')
         expect((insert!.rows as Record<string, unknown>).name).toBe('Acme Corp')
+    })
+
+    it('za krótka nazwa wraca jako komunikat dla użytkownika, nie jako wyjątek', async () => {
+        const res = await createClientForTechMap(' A ')
+        expect(res).toEqual({ success: false, error: expect.stringContaining('za krótka') })
     })
 })
 

@@ -44,6 +44,7 @@ import {
     validateProgressionEntries,
     buildCopyEntries,
 } from '@/lib/rates/progression'
+import { activeRoster } from '@/lib/hr/employment-window'
 
 // ─── Validation ──────────────────────────────────────────────────────────
 
@@ -280,8 +281,8 @@ export async function listUserRateDirectory(): Promise<UserRateDirectoryRow[]> {
         employment_type: string | null
     }>
 
-    // Hide exited employees from the directory.
-    const activeRows = rows.filter((p) => p.employment_status !== 'exited')
+    // Katalog „tu i teraz" — nie raport miesięczny, więc bez okna zatrudnienia.
+    const activeRows = activeRoster(rows)
 
     if (activeRows.length === 0) return []
 
