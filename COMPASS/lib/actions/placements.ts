@@ -46,6 +46,7 @@ import {
 } from '@/lib/placements/import'
 import { ensureContractors } from '@/lib/contractors/import-core'
 import { excludeExited } from '@/lib/hr/employment-window'
+import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -516,26 +517,26 @@ async function cleanupFreshPlacementBonuses(admin: ServiceClient, bonusIds: stri
  */
 function validateBonusOverride(o: PlacementBonusOverride, label: string): void {
     if (!Number.isFinite(o.amount) || o.amount < BONUS_MIN_AMOUNT) {
-        throw new Error(`Premia ${label}: kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
+        throw new ExpectedError(`Premia ${label}: kwota musi być >= ${BONUS_MIN_AMOUNT}.`)
     }
     if (o.amount > BONUS_MAX_AMOUNT) {
-        throw new Error(`Premia ${label}: kwota za duża (max ${BONUS_MAX_AMOUNT}).`)
+        throw new ExpectedError(`Premia ${label}: kwota za duża (max ${BONUS_MAX_AMOUNT}).`)
     }
     const reason = o.reason.trim()
     if (reason.length < BONUS_REASON_MIN_LENGTH) {
-        throw new Error(`Premia ${label}: uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.`)
+        throw new ExpectedError(`Premia ${label}: uzasadnienie min ${BONUS_REASON_MIN_LENGTH} znaki.`)
     }
     if (reason.length > BONUS_REASON_MAX_LENGTH) {
-        throw new Error(`Premia ${label}: uzasadnienie max ${BONUS_REASON_MAX_LENGTH} znaków.`)
+        throw new ExpectedError(`Premia ${label}: uzasadnienie max ${BONUS_REASON_MAX_LENGTH} znaków.`)
     }
     if (!Number.isInteger(o.periodMonth) || o.periodMonth < 1 || o.periodMonth > 12) {
-        throw new Error(`Premia ${label}: nieprawidłowy miesiąc premii.`)
+        throw new ExpectedError(`Premia ${label}: nieprawidłowy miesiąc premii.`)
     }
     if (!Number.isInteger(o.periodYear) || o.periodYear < 2020 || o.periodYear > 2100) {
-        throw new Error(`Premia ${label}: nieprawidłowy rok premii.`)
+        throw new ExpectedError(`Premia ${label}: nieprawidłowy rok premii.`)
     }
     if (o.notes != null && o.notes.trim().length > BONUS_NOTES_MAX_LENGTH) {
-        throw new Error(`Premia ${label}: notatka za długa (max ${BONUS_NOTES_MAX_LENGTH} znaków).`)
+        throw new ExpectedError(`Premia ${label}: notatka za długa (max ${BONUS_NOTES_MAX_LENGTH} znaków).`)
     }
 }
 
@@ -550,7 +551,7 @@ function validateBonusOverride(o: PlacementBonusOverride, label: string): void {
  * intentionally skipped. Category-specific columns (candidate, margins, tier) always come
  * from the placement — the manager tunes the payout, not the provenance.
  */
-export async function confirmPlacementHours(
+async function confirmPlacementHoursBody(
     placementId: string,
     overrides?: ConfirmPlacementHoursOverrides,
 ): Promise<void> {
@@ -563,18 +564,25 @@ export async function confirmPlacementHours(
     if (overrides?.dl) validateBonusOverride(overrides.dl, 'DL')
     if (overrides?.recruiter) validateBonusOverride(overrides.recruiter, 'rekrutera')
 
-    const { data: pRaw } = await admin.from('placements').select('*').eq('id', placementId).single()
-    if (!pRaw) throw new Error('Placement nie znaleziony.')
+    const { data: pRaw, error: placementLoadError } = await admin
+        .from('placements')
+        .select('*')
+        .eq('id', placementId)
+        .maybeSingle()
+    if (placementLoadError) {
+        throw new Error(`Nie udało się pobrać placementu: ${placementLoadError.message}`)
+    }
+    if (!pRaw) throw new ExpectedError('Placement nie znaleziony.')
     const p = pRaw as PlacementRow
-    if (p.status === 'cancelled') throw new Error('Placement jest anulowany.')
+    if (p.status === 'cancelled') throw new ExpectedError('Placement jest anulowany.')
     // A confirmed placement is terminal for this action. This also prevents an old client
     // (which sends no explicit selections) from generating a bonus that was intentionally
     // skipped during the original confirmation.
     if (p.status === 'bonus_confirmed') {
-        throw new Error('168h zostało już potwierdzone. Odśwież listę placementów.')
+        throw new ExpectedError('168h zostało już potwierdzone. Odśwież listę placementów.')
     }
     if (!generateDlBonus && !generateRecruiterBonus) {
-        throw new Error('Wybierz co najmniej jedną premię do naliczenia.')
+        throw new ExpectedError('Wybierz co najmniej jedną premię do naliczenia.')
     }
 
     const { year: defYear, month: defMonth } = bonusPeriodFromEligibleDate(p.bonus_eligible_date)
@@ -723,7 +731,8 @@ export async function confirmPlacementHours(
         if (cleanupError) {
             throw new Error(`${primaryError} Nie udało się wycofać nowych premii: ${cleanupError}`)
         }
-        throw new Error(primaryError)
+        if (placementUpdateError) throw new Error(primaryError)
+        throw new ExpectedError(primaryError)
     }
 
     // Notify only after the placement links are safely persisted. A failed write therefore
@@ -761,6 +770,13 @@ export async function confirmPlacementHours(
     revalidatePath('/internal/admin')
     revalidatePath('/internal/placements')
     revalidatePath('/internal')
+}
+
+export async function confirmPlacementHours(
+    placementId: string,
+    overrides?: ConfirmPlacementHoursOverrides,
+): Promise<ActionResult<void>> {
+    return runAction('confirmPlacementHours', () => confirmPlacementHoursBody(placementId, overrides))
 }
 
 /**

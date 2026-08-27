@@ -194,15 +194,19 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
         }
         startTransition(async () => {
             try {
-                await confirmPlacementHours(placement.id, overrides)
+                const result = await confirmPlacementHours(placement.id, overrides)
+                if (!result.success) {
+                    toast.error(result.error)
+                    return
+                }
                 toast.success(
                     selectedBonusCount === 1
                         ? 'Potwierdzono 168h — wybrana premia została naliczona.'
                         : 'Potwierdzono 168h — obie premie zostały naliczone.',
                 )
                 onConfirmed()
-            } catch (e) {
-                toast.error(e instanceof Error ? e.message : 'Nie udało się potwierdzić.')
+            } catch {
+                toast.error('Nie udało się potwierdzić 168h. Spróbuj ponownie.')
             }
         })
     }

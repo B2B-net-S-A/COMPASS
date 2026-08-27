@@ -4,7 +4,11 @@ import userEvent from '@testing-library/user-event'
 import type { PlacementWithBonusStatus } from '@/lib/types/placement'
 
 const { mockConfirmPlacementHours, mockToastError, mockToastSuccess } = vi.hoisted(() => ({
-    mockConfirmPlacementHours: vi.fn(async () => {}),
+    mockConfirmPlacementHours: vi.fn(
+        async (): Promise<
+            { success: true; data: void } | { success: false; error: string }
+        > => ({ success: true, data: undefined }),
+    ),
     mockToastError: vi.fn(),
     mockToastSuccess: vi.fn(),
 }))
@@ -149,5 +153,24 @@ describe('<PlacementConfirmDialog /> bonus selection', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('Wybierz co najmniej jedną premię.')
         expect(screen.getByRole('button', { name: 'Wybierz premię' })).toBeDisabled()
         expect(mockConfirmPlacementHours).not.toHaveBeenCalled()
+    })
+
+    it('shows a readable server rejection and keeps the dialog open', async () => {
+        const user = userEvent.setup()
+        mockConfirmPlacementHours.mockResolvedValueOnce({
+            success: false,
+            error: '168h zostało już potwierdzone. Odśwież listę placementów.',
+        })
+        const { onConfirmed } = renderDialog()
+
+        await user.click(screen.getByRole('button', { name: 'Generuj obie premie' }))
+
+        await waitFor(() => {
+            expect(mockToastError).toHaveBeenCalledWith(
+                '168h zostało już potwierdzone. Odśwież listę placementów.',
+            )
+        })
+        expect(mockToastSuccess).not.toHaveBeenCalled()
+        expect(onConfirmed).not.toHaveBeenCalled()
     })
 })

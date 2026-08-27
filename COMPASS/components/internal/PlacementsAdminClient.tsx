@@ -71,7 +71,10 @@ export function PlacementsAdminClient({ placements }: Props) {
     async function onDeleteBonus(p: PlacementWithBonusStatus, kind: 'dl' | 'recruiter') {
         const who = kind === 'dl' ? p.delivery_lead_raw : p.recruiter_raw
         const label = kind === 'dl' ? 'DL' : 'rekrutera'
-        const amount = kind === 'dl' ? p.dl_bonus_amount : p.recruiter_bonus_amount
+        const amount =
+            kind === 'dl'
+                ? p.dl_bonus_actual_amount ?? p.dl_bonus_amount
+                : p.recruiter_bonus_actual_amount ?? p.recruiter_bonus_amount
         const status = kind === 'dl' ? p.dl_bonus_status : p.recruiter_bonus_status
         const willNotify = status !== 'cancelled'
         const notifyLine = willNotify

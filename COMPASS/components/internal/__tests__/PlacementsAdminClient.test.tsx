@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { PlacementWithBonusStatus } from '@/lib/types/placement'
 
 vi.mock('@/lib/actions/placements', () => ({
@@ -55,6 +56,11 @@ function confirmedPlacement(): PlacementWithBonusStatus {
 }
 
 describe('<PlacementsAdminClient /> skipped bonus display', () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+        vi.unstubAllGlobals()
+    })
+
     it('shows an explicit opt-out instead of the imported forecast amount', () => {
         render(<PlacementsAdminClient placements={[confirmedPlacement()]} />)
 
@@ -62,5 +68,18 @@ describe('<PlacementsAdminClient /> skipped bonus display', () => {
         expect(screen.queryByText('756 zł')).not.toBeInTheDocument()
         expect(screen.queryByText(/1500|1\s?500/)).not.toBeInTheDocument()
         expect(screen.getByText(/1600|1\s?600/)).toBeInTheDocument()
+    })
+
+    it('uses the saved amount rather than the imported forecast in the delete prompt', async () => {
+        const user = userEvent.setup()
+        const prompt = vi.fn((_message: string, _defaultValue?: string): string | null => null)
+        vi.stubGlobal('prompt', prompt)
+        render(<PlacementsAdminClient placements={[confirmedPlacement()]} />)
+
+        await user.click(screen.getByRole('button', { name: 'Usuń rekr.' }))
+
+        expect(prompt).toHaveBeenCalledOnce()
+        expect(prompt.mock.calls[0]?.[0]).toMatch(/1[\s\u00a0]?600 zł/)
+        expect(prompt.mock.calls[0]?.[0]).not.toMatch(/1[\s\u00a0]?500 zł/)
     })
 })

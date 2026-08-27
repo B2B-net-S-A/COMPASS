@@ -11,6 +11,7 @@ const authContext = vi.hoisted(() => ({
 
 const dbState = vi.hoisted(() => ({
     placement: null as Record<string, unknown> | null,
+    placementLoadError: null as { message: string } | null,
     insertedBonuses: [] as Array<Record<string, unknown>>,
     placementPatch: null as Record<string, unknown> | null,
     placementUpdateError: null as { message: string } | null,
@@ -21,10 +22,19 @@ const dbState = vi.hoisted(() => ({
     deleteError: null as { message: string } | null,
 }))
 
-const { mockLogAudit, mockSendBonusAssigned, mockSendPush } = vi.hoisted(() => ({
+const { mockCaptureException, mockLogAudit, mockSendBonusAssigned, mockSendPush } = vi.hoisted(() => ({
+    mockCaptureException: vi.fn(),
     mockLogAudit: vi.fn(async () => {}),
     mockSendBonusAssigned: vi.fn(async () => ({ success: true })),
     mockSendPush: vi.fn(async () => ({ success: true })),
+}))
+
+vi.mock('@sentry/nextjs', () => ({
+    captureException: mockCaptureException,
+}))
+
+vi.mock('@/lib/logger', () => ({
+    logger: { info: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock('@/lib/auth/internal-guard', () => ({
@@ -84,7 +94,7 @@ function makeQuery(table: string) {
                     error: dbState.placementUpdateError,
                 }
             }
-            return { data: dbState.placement, error: null }
+            return { data: dbState.placement, error: dbState.placementLoadError }
         }
 
         if (table === 'profiles') {
@@ -157,6 +167,25 @@ function makeQuery(table: string) {
 }
 
 import { confirmPlacementHours } from '@/lib/actions/placements'
+import { UNEXPECTED_ERROR_PL } from '@/lib/actions/action-result'
+
+async function expectActionSuccess(resultPromise: ReturnType<typeof confirmPlacementHours>) {
+    await expect(resultPromise).resolves.toEqual({ success: true, data: undefined })
+}
+
+async function expectExpectedError(
+    resultPromise: ReturnType<typeof confirmPlacementHours>,
+    error: string,
+) {
+    await expect(resultPromise).resolves.toEqual({ success: false, error })
+}
+
+async function expectUnexpectedError(resultPromise: ReturnType<typeof confirmPlacementHours>) {
+    await expect(resultPromise).resolves.toEqual({
+        success: false,
+        error: UNEXPECTED_ERROR_PL,
+    })
+}
 
 function buildPlacement(overrides: Partial<PlacementRow> = {}): PlacementRow {
     return {
@@ -193,7 +222,9 @@ function buildPlacement(overrides: Partial<PlacementRow> = {}): PlacementRow {
 }
 
 beforeEach(() => {
+    vi.clearAllMocks()
     dbState.placement = buildPlacement() as unknown as Record<string, unknown>
+    dbState.placementLoadError = null
     dbState.insertedBonuses = []
     dbState.placementPatch = null
     dbState.placementUpdateError = null
@@ -206,7 +237,7 @@ beforeEach(() => {
 
 describe('confirmPlacementHours', () => {
     it('keeps legacy behaviour and creates both bonuses when overrides are omitted', async () => {
-        await confirmPlacementHours('placement-1')
+        await expectActionSuccess(confirmPlacementHours('placement-1'))
 
         expect(dbState.insertedBonuses.map((row) => row.category)).toEqual([
             'delivery_lead',
@@ -222,16 +253,18 @@ describe('confirmPlacementHours', () => {
     })
 
     it('skips the DL record and notification when only the recruiter bonus is selected', async () => {
-        await confirmPlacementHours('placement-1', {
-            dl: null,
-            recruiter: {
-                amount: 1600,
-                reason: 'Premia rekrutera za skuteczny placement',
-                periodYear: 2026,
-                periodMonth: 8,
-                notes: null,
-            },
-        })
+        await expectActionSuccess(
+            confirmPlacementHours('placement-1', {
+                dl: null,
+                recruiter: {
+                    amount: 1600,
+                    reason: 'Premia rekrutera za skuteczny placement',
+                    periodYear: 2026,
+                    periodMonth: 8,
+                    notes: null,
+                },
+            }),
+        )
 
         expect(dbState.insertedBonuses).toHaveLength(1)
         expect(dbState.insertedBonuses[0]).toMatchObject({
@@ -263,16 +296,18 @@ describe('confirmPlacementHours', () => {
     })
 
     it('skips the recruiter record and notification when only the DL bonus is selected', async () => {
-        await confirmPlacementHours('placement-1', {
-            dl: {
-                amount: 800,
-                reason: 'Premia Delivery Lead za skuteczny placement',
-                periodYear: 2026,
-                periodMonth: 8,
-                notes: 'Korekta',
-            },
-            recruiter: null,
-        })
+        await expectActionSuccess(
+            confirmPlacementHours('placement-1', {
+                dl: {
+                    amount: 800,
+                    reason: 'Premia Delivery Lead za skuteczny placement',
+                    periodYear: 2026,
+                    periodMonth: 8,
+                    notes: 'Korekta',
+                },
+                recruiter: null,
+            }),
+        )
 
         expect(dbState.insertedBonuses).toHaveLength(1)
         expect(dbState.insertedBonuses[0]).toMatchObject({
@@ -303,9 +338,10 @@ describe('confirmPlacementHours', () => {
     })
 
     it('rejects deselecting both bonuses without writing or notifying', async () => {
-        await expect(
+        await expectExpectedError(
             confirmPlacementHours('placement-1', { dl: null, recruiter: null }),
-        ).rejects.toThrow('Wybierz co najmniej jedną premię')
+            'Wybierz co najmniej jedną premię do naliczenia.',
+        )
 
         expect(dbState.insertedBonuses).toHaveLength(0)
         expect(dbState.placementPatch).toBeNull()
@@ -320,8 +356,9 @@ describe('confirmPlacementHours', () => {
             recruiter_bonus_id: 'existing-recruiter-bonus',
         }) as unknown as Record<string, unknown>
 
-        await expect(confirmPlacementHours('placement-1')).rejects.toThrow(
-            '168h zostało już potwierdzone',
+        await expectExpectedError(
+            confirmPlacementHours('placement-1'),
+            '168h zostało już potwierdzone. Odśwież listę placementów.',
         )
 
         expect(dbState.insertedBonuses).toHaveLength(0)
@@ -332,9 +369,10 @@ describe('confirmPlacementHours', () => {
     it('cleans up and rejects when another confirmation wins the conditional update', async () => {
         dbState.placementUpdateMatched = false
 
-        await expect(
+        await expectExpectedError(
             confirmPlacementHours('placement-1', { recruiter: null }),
-        ).rejects.toThrow('potwierdzone przez inną osobę')
+            '168h zostało już potwierdzone przez inną osobę. Odśwież listę placementów.',
+        )
 
         expect(dbState.deletedBonusIds).toEqual(['bonus-delivery_lead'])
         expect(dbState.placementUpdateStatusFilter).toEqual(['upcoming', 'started'])
@@ -346,9 +384,7 @@ describe('confirmPlacementHours', () => {
     it('cleans up a freshly created bonus and sends no notification when placement linking fails', async () => {
         dbState.placementUpdateError = { message: 'database unavailable' }
 
-        await expect(
-            confirmPlacementHours('placement-1', { recruiter: null }),
-        ).rejects.toThrow('Nie udało się powiązać premii z placementem')
+        await expectUnexpectedError(confirmPlacementHours('placement-1', { recruiter: null }))
 
         expect(dbState.deletedBonusIds).toEqual(['bonus-delivery_lead'])
         expect(mockSendBonusAssigned).not.toHaveBeenCalled()
@@ -359,9 +395,7 @@ describe('confirmPlacementHours', () => {
     it('removes the DL bonus and sends no notification when recruiter creation fails', async () => {
         dbState.insertErrorCategory = 'recruiter'
 
-        await expect(confirmPlacementHours('placement-1')).rejects.toThrow(
-            'Nie udało się utworzyć premii rekrutera',
-        )
+        await expectUnexpectedError(confirmPlacementHours('placement-1'))
 
         expect(dbState.insertedBonuses.map((row) => row.category)).toEqual(['delivery_lead'])
         expect(dbState.deletedBonusIds).toEqual(['bonus-delivery_lead'])
@@ -374,12 +408,34 @@ describe('confirmPlacementHours', () => {
         dbState.placementUpdateError = { message: 'database unavailable' }
         dbState.deleteError = { message: 'cleanup unavailable' }
 
-        await expect(
-            confirmPlacementHours('placement-1', { recruiter: null }),
-        ).rejects.toThrow('Nie udało się wycofać nowych premii: cleanup unavailable')
+        await expectUnexpectedError(confirmPlacementHours('placement-1', { recruiter: null }))
 
         expect(mockSendBonusAssigned).not.toHaveBeenCalled()
         expect(mockSendPush).not.toHaveBeenCalled()
         expect(mockLogAudit).not.toHaveBeenCalled()
+    })
+
+    it('reports a placement query failure without leaking database details', async () => {
+        dbState.placementLoadError = { message: 'connection refused' }
+
+        await expectUnexpectedError(confirmPlacementHours('placement-1'))
+
+        expect(mockCaptureException.mock.calls[0]?.[0]).toEqual(
+            expect.objectContaining({ message: 'Nie udało się pobrać placementu: connection refused' }),
+        )
+        expect(dbState.insertedBonuses).toHaveLength(0)
+        expect(mockSendBonusAssigned).not.toHaveBeenCalled()
+    })
+
+    it('returns a readable not-found result without reporting an operational failure', async () => {
+        dbState.placement = null
+
+        await expectExpectedError(
+            confirmPlacementHours('missing-placement'),
+            'Placement nie znaleziony.',
+        )
+
+        expect(mockCaptureException).not.toHaveBeenCalled()
+        expect(dbState.insertedBonuses).toHaveLength(0)
     })
 })
