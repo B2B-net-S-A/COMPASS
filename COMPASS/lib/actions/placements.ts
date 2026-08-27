@@ -630,11 +630,18 @@ async function confirmPlacementHoursBody(
             recMonth !== defMonth ||
             recNotes !== null)
 
-    const { data: peopleRaw } = await admin
-        .from('profiles')
-        .select('id, full_name, email')
-        .in('id', [p.delivery_lead_id, p.recruiter_id])
-    const people = (peopleRaw ?? []) as Contact[]
+    const notificationRecipientIds = [
+        generateDlBonus && !p.dl_bonus_id ? p.delivery_lead_id : null,
+        generateRecruiterBonus && !p.recruiter_bonus_id ? p.recruiter_id : null,
+    ].filter((id): id is string => id !== null)
+    let people: Contact[] = []
+    if (notificationRecipientIds.length > 0) {
+        const { data: peopleRaw } = await admin
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', notificationRecipientIds)
+        people = (peopleRaw ?? []) as Contact[]
+    }
     const dl = people.find((x) => x.id === p.delivery_lead_id) ?? null
     const rec = people.find((x) => x.id === p.recruiter_id) ?? null
     const { data: proposerRow } = await admin.from('profiles').select('full_name').eq('id', ctx.userId).single()

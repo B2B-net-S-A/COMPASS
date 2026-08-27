@@ -162,6 +162,9 @@ export function placementRecipientBonusSummary(
     const isDeliveryLead = placement.delivery_lead_id === userId
     const isRecruiter = placement.recruiter_id === userId
     const confirmed = placement.status === 'bonus_confirmed'
+    // listPlacements/listMyPlacements enrich every non-null bonus link with its status and
+    // actual amount. Treating only an absent link or an explicit cancellation as inactive
+    // keeps intentional opt-outs distinct from the pre-confirmation forecast.
     const dlActive =
         isDeliveryLead &&
         (!confirmed || (placement.dl_bonus_id !== null && placement.dl_bonus_status !== 'cancelled'))
