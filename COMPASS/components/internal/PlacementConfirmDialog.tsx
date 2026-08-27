@@ -3,8 +3,8 @@
 // Phase 28 follow-up — edit-before-generate at 168h confirmation.
 // Clicking "168h" no longer generates the DL + recruiter bonuses straight away. Instead this
 // dialog opens pre-filled with the computed payout for BOTH recipients (separately, like the
-// manual "Przypisz premię" form) so the manager can adjust amount / month / reason / notes
-// before the bonuses are created and the notifications are sent.
+// manual "Przypisz premię" form) so the manager can adjust amount / month / reason / notes,
+// or skip either recipient, before bonuses are created and notifications are sent.
 
 import { useMemo, useState, useTransition } from 'react'
 import { Loader2, CheckCircle2, TrendingUp, UserPlus } from 'lucide-react'
@@ -17,9 +17,11 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { confirmPlacementHours } from '@/lib/actions/placements'
 import {
@@ -156,23 +158,48 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
         ),
         notes: '',
     })
+    const [generateDlBonus, setGenerateDlBonus] = useState(true)
+    const [generateRecruiterBonus, setGenerateRecruiterBonus] = useState(true)
+    const selectedBonusCount = Number(generateDlBonus) + Number(generateRecruiterBonus)
 
     function submit() {
-        const dlParsed = parseDraft(dl)
-        if ('error' in dlParsed) {
-            toast.error(`Premia DL: ${dlParsed.error}`)
+        if (selectedBonusCount === 0) {
+            toast.error('Wybierz co najmniej jedną premię do naliczenia.')
             return
         }
-        const recParsed = parseDraft(rec)
-        if ('error' in recParsed) {
-            toast.error(`Premia rekrutera: ${recParsed.error}`)
-            return
+
+        let dlOverride: PlacementBonusOverride | null = null
+        if (generateDlBonus) {
+            const parsed = parseDraft(dl)
+            if ('error' in parsed) {
+                toast.error(`Premia DL: ${parsed.error}`)
+                return
+            }
+            dlOverride = parsed
         }
-        const overrides: ConfirmPlacementHoursOverrides = { dl: dlParsed, recruiter: recParsed }
+
+        let recruiterOverride: PlacementBonusOverride | null = null
+        if (generateRecruiterBonus) {
+            const parsed = parseDraft(rec)
+            if ('error' in parsed) {
+                toast.error(`Premia rekrutera: ${parsed.error}`)
+                return
+            }
+            recruiterOverride = parsed
+        }
+
+        const overrides: ConfirmPlacementHoursOverrides = {
+            dl: dlOverride,
+            recruiter: recruiterOverride,
+        }
         startTransition(async () => {
             try {
                 await confirmPlacementHours(placement.id, overrides)
-                toast.success('Potwierdzono 168h — premie naliczone i wysłane.')
+                toast.success(
+                    selectedBonusCount === 1
+                        ? 'Potwierdzono 168h — wybrana premia została naliczona.'
+                        : 'Potwierdzono 168h — obie premie zostały naliczone.',
+                )
                 onConfirmed()
             } catch (e) {
                 toast.error(e instanceof Error ? e.message : 'Nie udało się potwierdzić.')
@@ -187,8 +214,9 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
                     <CheckCircle2 className="h-5 w-5" /> Potwierdź 168h i przypisz premie
                 </DialogTitle>
                 <DialogDescription>
-                    {placement.consultant_name} @ {placement.client_name}. Sprawdź i w razie potrzeby popraw
-                    obie premie — dopiero <strong>„Generuj premie”</strong> je utworzy i wyśle powiadomienia.
+                    {placement.consultant_name} @ {placement.client_name}. Sprawdź dane i odznacz premię,
+                    której nie chcesz naliczać. Dopiero potwierdzenie utworzy wybrane premie i wyśle
+                    powiadomienia.
                 </DialogDescription>
             </DialogHeader>
 
@@ -202,6 +230,8 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
                     draft={dl}
                     setDraft={setDl}
                     periodOptions={periodOptions}
+                    selected={generateDlBonus}
+                    onSelectedChange={setGenerateDlBonus}
                     disabled={pending}
                 />
                 <BonusCard
@@ -213,17 +243,28 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
                     draft={rec}
                     setDraft={setRec}
                     periodOptions={periodOptions}
+                    selected={generateRecruiterBonus}
+                    onSelectedChange={setGenerateRecruiterBonus}
                     disabled={pending}
                 />
             </div>
 
             <DialogFooter>
+                {selectedBonusCount === 0 ? (
+                    <p className="mr-auto self-center text-sm text-destructive" role="alert">
+                        Wybierz co najmniej jedną premię.
+                    </p>
+                ) : null}
                 <Button variant="ghost" onClick={onClose} disabled={pending}>
                     Anuluj
                 </Button>
-                <Button onClick={submit} disabled={pending} className="gap-2">
+                <Button onClick={submit} disabled={pending || selectedBonusCount === 0} className="gap-2">
                     {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Generuj premie
+                    {selectedBonusCount === 0
+                        ? 'Wybierz premię'
+                        : selectedBonusCount === 1
+                            ? 'Generuj wybraną premię'
+                            : 'Generuj obie premie'}
                 </Button>
             </DialogFooter>
         </>
@@ -239,6 +280,8 @@ interface BonusCardProps {
     draft: Draft
     setDraft: React.Dispatch<React.SetStateAction<Draft>>
     periodOptions: PeriodOption[]
+    selected: boolean
+    onSelectedChange: (selected: boolean) => void
     disabled: boolean
 }
 
@@ -251,88 +294,112 @@ function BonusCard({
     draft,
     setDraft,
     periodOptions,
+    selected,
+    onSelectedChange,
     disabled,
 }: BonusCardProps) {
     const idBase = heading.replace(/\s+/g, '-').toLowerCase()
     return (
-        <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-                {icon} {heading}
-            </div>
-
-            <div>
-                <Label>Odbiorca ({recipientLabel})</Label>
-                <div className="mt-1 rounded-md border bg-background px-3 py-2 text-sm" aria-readonly="true">
-                    {recipientName}
+        <div className={cn('rounded-lg border bg-muted/20 p-4 space-y-3', !selected && 'border-dashed bg-muted/40')}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                    {icon} {heading}
                 </div>
-            </div>
-
-            <p className="text-[11px] text-muted-foreground">{basis}</p>
-
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <Label htmlFor={`${idBase}-amount`}>Kwota [PLN]</Label>
-                    <Input
-                        id={`${idBase}-amount`}
-                        type="number"
-                        step="0.01"
-                        min={BONUS_MIN_AMOUNT}
-                        max={BONUS_MAX_AMOUNT}
-                        value={draft.amount}
-                        onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value }))}
+                <div className="flex items-center gap-2">
+                    <Checkbox
+                        id={`${idBase}-selected`}
+                        checked={selected}
+                        onCheckedChange={(checked) => onSelectedChange(checked === true)}
                         disabled={disabled}
-                        required
+                        aria-label={`Nalicz premię: ${heading}`}
                     />
-                </div>
-                <div>
-                    <Label htmlFor={`${idBase}-period`}>Miesiąc premii</Label>
-                    <select
-                        id={`${idBase}-period`}
-                        value={draft.periodKey}
-                        onChange={(e) => setDraft((d) => ({ ...d, periodKey: e.target.value }))}
-                        disabled={disabled}
-                        className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
-                        required
-                    >
-                        {periodOptions.map((p) => (
-                            <option key={p.key} value={p.key}>
-                                {p.label}
-                            </option>
-                        ))}
-                    </select>
+                    <Label htmlFor={`${idBase}-selected`} className="cursor-pointer text-sm font-medium">
+                        Nalicz tę premię
+                    </Label>
                 </div>
             </div>
 
-            <div>
-                <Label htmlFor={`${idBase}-reason`}>Uzasadnienie (widoczne w mailu do pracownika)</Label>
-                <Textarea
-                    id={`${idBase}-reason`}
-                    value={draft.reason}
-                    onChange={(e) => setDraft((d) => ({ ...d, reason: e.target.value }))}
-                    disabled={disabled}
-                    required
-                    rows={2}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                    {draft.reason.trim().length}/{BONUS_REASON_MAX_LENGTH} znaków
+            {!selected ? (
+                <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground" role="status">
+                    Premia dla {recipientName} nie zostanie naliczona, a odbiorca nie dostanie powiadomienia.
                 </p>
-            </div>
+            ) : (
+                <>
+                    <div>
+                        <Label>Odbiorca ({recipientLabel})</Label>
+                        <div className="mt-1 rounded-md border bg-background px-3 py-2 text-sm" aria-readonly="true">
+                            {recipientName}
+                        </div>
+                    </div>
 
-            <div>
-                <Label htmlFor={`${idBase}-notes`}>Notatka wewnętrzna (opcjonalna)</Label>
-                <Textarea
-                    id={`${idBase}-notes`}
-                    value={draft.notes}
-                    onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-                    disabled={disabled}
-                    rows={1}
-                    maxLength={BONUS_NOTES_MAX_LENGTH}
-                    placeholder="Widoczna dla managera i admina."
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                    {draft.notes.trim().length}/{BONUS_NOTES_MAX_LENGTH} znaków
-                </p>
-            </div>
+                    <p className="text-[11px] text-muted-foreground">{basis}</p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <Label htmlFor={`${idBase}-amount`}>Kwota [PLN]</Label>
+                            <Input
+                                id={`${idBase}-amount`}
+                                type="number"
+                                step="0.01"
+                                min={BONUS_MIN_AMOUNT}
+                                max={BONUS_MAX_AMOUNT}
+                                value={draft.amount}
+                                onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value }))}
+                                disabled={disabled}
+                                required
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor={`${idBase}-period`}>Miesiąc premii</Label>
+                            <select
+                                id={`${idBase}-period`}
+                                value={draft.periodKey}
+                                onChange={(e) => setDraft((d) => ({ ...d, periodKey: e.target.value }))}
+                                disabled={disabled}
+                                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                required
+                            >
+                                {periodOptions.map((p) => (
+                                    <option key={p.key} value={p.key}>
+                                        {p.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <Label htmlFor={`${idBase}-reason`}>Uzasadnienie (widoczne w mailu do pracownika)</Label>
+                        <Textarea
+                            id={`${idBase}-reason`}
+                            value={draft.reason}
+                            onChange={(e) => setDraft((d) => ({ ...d, reason: e.target.value }))}
+                            disabled={disabled}
+                            required
+                            rows={2}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                            {draft.reason.trim().length}/{BONUS_REASON_MAX_LENGTH} znaków
+                        </p>
+                    </div>
+
+                    <div>
+                        <Label htmlFor={`${idBase}-notes`}>Notatka wewnętrzna (opcjonalna)</Label>
+                        <Textarea
+                            id={`${idBase}-notes`}
+                            value={draft.notes}
+                            onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+                            disabled={disabled}
+                            rows={1}
+                            maxLength={BONUS_NOTES_MAX_LENGTH}
+                            placeholder="Widoczna dla managera i admina."
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                            {draft.notes.trim().length}/{BONUS_NOTES_MAX_LENGTH} znaków
+                        </p>
+                    </div>
+                </>
+            )}
         </div>
     )
 }

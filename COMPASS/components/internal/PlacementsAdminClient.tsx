@@ -174,10 +174,22 @@ export function PlacementsAdminClient({ placements }: Props) {
                                         <td className="p-2">{p.start_date}</td>
                                         <td className="p-2 text-muted-foreground">{p.bonus_eligible_date}</td>
                                         <td className="p-2 text-right">{Number(p.margin_per_hour)} zł/h</td>
-                                        <td className="p-2 text-right">{pln(p.dl_bonus_amount)}</td>
                                         <td className="p-2 text-right">
-                                            {pln(p.recruiter_bonus_amount)}{' '}
-                                            <span className="text-muted-foreground">(t{p.recruiter_tier})</span>
+                                            {isConfirmed && (!p.dl_bonus_id || p.dl_bonus_status === 'cancelled') ? (
+                                                <span className="text-muted-foreground">Brak aktywnej premii</span>
+                                            ) : (
+                                                pln(p.dl_bonus_actual_amount ?? p.dl_bonus_amount)
+                                            )}
+                                        </td>
+                                        <td className="p-2 text-right">
+                                            {isConfirmed && (!p.recruiter_bonus_id || p.recruiter_bonus_status === 'cancelled') ? (
+                                                <span className="text-muted-foreground">Brak aktywnej premii</span>
+                                            ) : (
+                                                <>
+                                                    {pln(p.recruiter_bonus_actual_amount ?? p.recruiter_bonus_amount)}{' '}
+                                                    <span className="text-muted-foreground">(t{p.recruiter_tier})</span>
+                                                </>
+                                            )}
                                         </td>
                                         <td className="p-2">
                                             <Badge variant={statusVariant(p.status)}>

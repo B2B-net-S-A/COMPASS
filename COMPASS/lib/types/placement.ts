@@ -138,6 +138,51 @@ export interface PlacementRow {
 export interface PlacementWithBonusStatus extends PlacementRow {
     dl_bonus_status: 'assigned' | 'pending' | 'paid' | 'cancelled' | null
     recruiter_bonus_status: 'assigned' | 'pending' | 'paid' | 'cancelled' | null
+    dl_bonus_actual_amount: number | null
+    recruiter_bonus_actual_amount: number | null
+}
+
+export interface PlacementRecipientBonusSummary {
+    isDeliveryLead: boolean
+    isRecruiter: boolean
+    amount: number
+    /** True when 168h was confirmed but this recipient has no currently linked active bonus. */
+    hasNoActiveBonus: boolean
+}
+
+/**
+ * Resolve the amount visible to one placement participant. Before 168h confirmation this
+ * is the forecast. Afterwards only actually linked bonuses count, so an intentional opt-out
+ * never looks like money that was awarded.
+ */
+export function placementRecipientBonusSummary(
+    placement: PlacementWithBonusStatus,
+    userId: string,
+): PlacementRecipientBonusSummary {
+    const isDeliveryLead = placement.delivery_lead_id === userId
+    const isRecruiter = placement.recruiter_id === userId
+    const confirmed = placement.status === 'bonus_confirmed'
+    const dlActive =
+        isDeliveryLead &&
+        (!confirmed || (placement.dl_bonus_id !== null && placement.dl_bonus_status !== 'cancelled'))
+    const recruiterActive =
+        isRecruiter &&
+        (!confirmed ||
+            (placement.recruiter_bonus_id !== null && placement.recruiter_bonus_status !== 'cancelled'))
+    const dlAmount = confirmed
+        ? placement.dl_bonus_actual_amount ?? Number(placement.dl_bonus_amount)
+        : Number(placement.dl_bonus_amount)
+    const recruiterAmount = confirmed
+        ? placement.recruiter_bonus_actual_amount ?? Number(placement.recruiter_bonus_amount)
+        : Number(placement.recruiter_bonus_amount)
+
+    return {
+        isDeliveryLead,
+        isRecruiter,
+        amount: (dlActive ? dlAmount : 0) + (recruiterActive ? recruiterAmount : 0),
+        hasNoActiveBonus:
+            confirmed && (isDeliveryLead || isRecruiter) && !dlActive && !recruiterActive,
+    }
 }
 
 /** Case-insensitive natural key for idempotent re-upload (consultant + client + start). */
@@ -179,10 +224,12 @@ export interface PlacementBonusOverride {
 /**
  * Optional per-recipient overrides accepted by `confirmPlacementHours`. When a side is
  * omitted the action falls back to the computed defaults (unchanged legacy behaviour).
+ * An explicit `null` skips generating that recipient's bonus. At least one recipient must
+ * remain selected when confirming 168h.
  */
 export interface ConfirmPlacementHoursOverrides {
-    dl?: PlacementBonusOverride
-    recruiter?: PlacementBonusOverride
+    dl?: PlacementBonusOverride | null
+    recruiter?: PlacementBonusOverride | null
 }
 
 /**

@@ -399,26 +399,32 @@ export async function listPlacements(): Promise<PlacementWithBonusStatus[]> {
                 .filter((id): id is string => Boolean(id)),
         ),
     )
-    const statusById = new Map<string, BonusStatus>()
+    const bonusById = new Map<string, { status: BonusStatus; amount: number }>()
     if (bonusIds.length > 0) {
         const { data: bonusRows } = await admin
             .from('bonuses')
-            .select('id, status')
+            .select('id, status, amount')
             .in('id', bonusIds)
-        for (const b of (bonusRows ?? []) as Array<{ id: string; status: BonusStatus }>) {
-            statusById.set(b.id, b.status)
+        for (const b of (bonusRows ?? []) as Array<{ id: string; status: BonusStatus; amount: number | string }>) {
+            bonusById.set(b.id, { status: b.status, amount: Number(b.amount) })
         }
     }
 
     return placements.map((p) => ({
         ...p,
-        dl_bonus_status: p.dl_bonus_id ? statusById.get(p.dl_bonus_id) ?? null : null,
-        recruiter_bonus_status: p.recruiter_bonus_id ? statusById.get(p.recruiter_bonus_id) ?? null : null,
+        dl_bonus_status: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.status ?? null : null,
+        recruiter_bonus_status: p.recruiter_bonus_id
+            ? bonusById.get(p.recruiter_bonus_id)?.status ?? null
+            : null,
+        dl_bonus_actual_amount: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.amount ?? null : null,
+        recruiter_bonus_actual_amount: p.recruiter_bonus_id
+            ? bonusById.get(p.recruiter_bonus_id)?.amount ?? null
+            : null,
     }))
 }
 
 /** DL/Recruiter self-view: own placements (RLS scopes to delivery_lead_id/recruiter_id = me). */
-export async function listMyPlacements(): Promise<PlacementRow[]> {
+export async function listMyPlacements(): Promise<PlacementWithBonusStatus[]> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Brak sesji.')
@@ -427,7 +433,36 @@ export async function listMyPlacements(): Promise<PlacementRow[]> {
         .select('*')
         .or(`delivery_lead_id.eq.${user.id},recruiter_id.eq.${user.id}`)
         .order('start_date', { ascending: false })
-    return (data ?? []) as PlacementRow[]
+    const placements = (data ?? []) as PlacementRow[]
+    const bonusIds = Array.from(
+        new Set(
+            placements
+                .flatMap((p) => [p.dl_bonus_id, p.recruiter_bonus_id])
+                .filter((id): id is string => Boolean(id)),
+        ),
+    )
+    const bonusById = new Map<string, { status: BonusStatus; amount: number }>()
+    if (bonusIds.length > 0) {
+        const { data: bonusRows } = await supabase
+            .from('bonuses')
+            .select('id, status, amount')
+            .in('id', bonusIds)
+        for (const b of (bonusRows ?? []) as Array<{ id: string; status: BonusStatus; amount: number | string }>) {
+            bonusById.set(b.id, { status: b.status, amount: Number(b.amount) })
+        }
+    }
+
+    return placements.map((p) => ({
+        ...p,
+        dl_bonus_status: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.status ?? null : null,
+        recruiter_bonus_status: p.recruiter_bonus_id
+            ? bonusById.get(p.recruiter_bonus_id)?.status ?? null
+            : null,
+        dl_bonus_actual_amount: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.amount ?? null : null,
+        recruiter_bonus_actual_amount: p.recruiter_bonus_id
+            ? bonusById.get(p.recruiter_bonus_id)?.amount ?? null
+            : null,
+    }))
 }
 
 interface Contact {
@@ -466,6 +501,12 @@ async function notifyBonusRecipient(
     }).catch(() => undefined)
 }
 
+async function cleanupFreshPlacementBonuses(admin: ServiceClient, bonusIds: string[]): Promise<string | null> {
+    if (bonusIds.length === 0) return null
+    const { error } = await admin.from('bonuses').delete().in('id', bonusIds)
+    return error?.message ?? null
+}
+
 /**
  * Defense-in-depth validation of a manager-supplied bonus override. The dialog validates
  * the same rules client-side; this guards the trusted write path against a crafted call.
@@ -499,14 +540,15 @@ function validateBonusOverride(o: PlacementBonusOverride, label: string): void {
 }
 
 /**
- * Confirm a placement's consultant worked 168h → generate the DL + recruiter bonuses
- * (status 'assigned'), link them on the placement, notify recipients. Idempotent: skips a
- * bonus that was already generated (guarded by dl_bonus_id / recruiter_bonus_id).
+ * Confirm a placement's consultant worked 168h → generate the selected DL/recruiter bonuses
+ * (status 'assigned'), link them on the placement, notify recipients. Idempotent: a placement
+ * already marked `bonus_confirmed` is rejected, including when one side was intentionally skipped.
  *
  * `overrides` lets the manager edit amount/reason/period/notes for each bonus in a
  * pre-filled dialog BEFORE generation + notification. When a side is omitted the computed
- * defaults are used (legacy behaviour). Category-specific columns (candidate, margins,
- * tier) always come from the placement — the manager tunes the payout, not the provenance.
+ * defaults are used (legacy behaviour); an explicit `null` means that recipient's bonus is
+ * intentionally skipped. Category-specific columns (candidate, margins, tier) always come
+ * from the placement — the manager tunes the payout, not the provenance.
  */
 export async function confirmPlacementHours(
     placementId: string,
@@ -515,6 +557,9 @@ export async function confirmPlacementHours(
     const ctx = await requireBonusProposerAction()
     const admin = createServiceClient()
 
+    const generateDlBonus = overrides?.dl !== null
+    const generateRecruiterBonus = overrides?.recruiter !== null
+
     if (overrides?.dl) validateBonusOverride(overrides.dl, 'DL')
     if (overrides?.recruiter) validateBonusOverride(overrides.recruiter, 'rekrutera')
 
@@ -522,6 +567,15 @@ export async function confirmPlacementHours(
     if (!pRaw) throw new Error('Placement nie znaleziony.')
     const p = pRaw as PlacementRow
     if (p.status === 'cancelled') throw new Error('Placement jest anulowany.')
+    // A confirmed placement is terminal for this action. This also prevents an old client
+    // (which sends no explicit selections) from generating a bonus that was intentionally
+    // skipped during the original confirmation.
+    if (p.status === 'bonus_confirmed') {
+        throw new Error('168h zostało już potwierdzone. Odśwież listę placementów.')
+    }
+    if (!generateDlBonus && !generateRecruiterBonus) {
+        throw new Error('Wybierz co najmniej jedną premię do naliczenia.')
+    }
 
     const { year: defYear, month: defMonth } = bonusPeriodFromEligibleDate(p.bonus_eligible_date)
 
@@ -554,17 +608,19 @@ export async function confirmPlacementHours(
     // Did the manager actually change a value vs. the computed default? (A click-through of
     // the pre-filled dialog is NOT an edit; adding an internal note counts as one.)
     const dlEdited =
-        dlAmount !== dlDefaultAmount ||
-        dlReason !== dlDefaultReason ||
-        dlYear !== defYear ||
-        dlMonth !== defMonth ||
-        dlNotes !== null
+        generateDlBonus &&
+        (dlAmount !== dlDefaultAmount ||
+            dlReason !== dlDefaultReason ||
+            dlYear !== defYear ||
+            dlMonth !== defMonth ||
+            dlNotes !== null)
     const recEdited =
-        recAmount !== recDefaultAmount ||
-        recReason !== recDefaultReason ||
-        recYear !== defYear ||
-        recMonth !== defMonth ||
-        recNotes !== null
+        generateRecruiterBonus &&
+        (recAmount !== recDefaultAmount ||
+            recReason !== recDefaultReason ||
+            recYear !== defYear ||
+            recMonth !== defMonth ||
+            recNotes !== null)
 
     const { data: peopleRaw } = await admin
         .from('profiles')
@@ -577,7 +633,8 @@ export async function confirmPlacementHours(
     const proposerName = (proposerRow as { full_name: string | null } | null)?.full_name ?? 'Manager'
 
     let dlBonusId = p.dl_bonus_id
-    if (!dlBonusId) {
+    let createdDlBonusId: string | null = null
+    if (generateDlBonus && !dlBonusId) {
         const { data: b, error } = await admin
             .from('bonuses')
             .insert({
@@ -600,11 +657,12 @@ export async function confirmPlacementHours(
             .single()
         if (error || !b) throw new Error(`Nie udało się utworzyć premii DL: ${error?.message ?? 'unknown'}`)
         dlBonusId = (b as { id: string }).id
-        if (dl) await notifyBonusRecipient(dl, proposerName, dlAmount, dlYear, dlMonth, dlReason, dlBonusId, 'dl')
+        createdDlBonusId = dlBonusId
     }
 
     let recBonusId = p.recruiter_bonus_id
-    if (!recBonusId) {
+    let createdRecruiterBonusId: string | null = null
+    if (generateRecruiterBonus && !recBonusId) {
         const { data: b, error } = await admin
             .from('bonuses')
             .insert({
@@ -625,12 +683,22 @@ export async function confirmPlacementHours(
             })
             .select('id')
             .single()
-        if (error || !b) throw new Error(`Nie udało się utworzyć premii rekrutera: ${error?.message ?? 'unknown'}`)
+        if (error || !b) {
+            const primaryError = `Nie udało się utworzyć premii rekrutera: ${error?.message ?? 'unknown'}`
+            const cleanupError = await cleanupFreshPlacementBonuses(
+                admin,
+                createdDlBonusId ? [createdDlBonusId] : [],
+            )
+            if (cleanupError) {
+                throw new Error(`${primaryError}. Nie udało się też wycofać premii DL: ${cleanupError}`)
+            }
+            throw new Error(primaryError)
+        }
         recBonusId = (b as { id: string }).id
-        if (rec) await notifyBonusRecipient(rec, proposerName, recAmount, recYear, recMonth, recReason, recBonusId, 'recruiter')
+        createdRecruiterBonusId = recBonusId
     }
 
-    await admin
+    const { data: confirmedPlacement, error: placementUpdateError } = await admin
         .from('placements')
         .update({
             status: 'bonus_confirmed',
@@ -641,6 +709,40 @@ export async function confirmPlacementHours(
             updated_at: new Date().toISOString(),
         })
         .eq('id', placementId)
+        .in('status', ['upcoming', 'started'])
+        .select('id')
+        .maybeSingle()
+    if (placementUpdateError || !confirmedPlacement) {
+        const createdBonusIds = [createdDlBonusId, createdRecruiterBonusId].filter(
+            (id): id is string => id !== null,
+        )
+        const cleanupError = await cleanupFreshPlacementBonuses(admin, createdBonusIds)
+        const primaryError = placementUpdateError
+            ? `Nie udało się powiązać premii z placementem: ${placementUpdateError.message}`
+            : '168h zostało już potwierdzone przez inną osobę. Odśwież listę placementów.'
+        if (cleanupError) {
+            throw new Error(`${primaryError} Nie udało się wycofać nowych premii: ${cleanupError}`)
+        }
+        throw new Error(primaryError)
+    }
+
+    // Notify only after the placement links are safely persisted. A failed write therefore
+    // cannot announce a bonus that the UI would not be able to find afterwards.
+    if (createdDlBonusId && dl) {
+        await notifyBonusRecipient(dl, proposerName, dlAmount, dlYear, dlMonth, dlReason, createdDlBonusId, 'dl')
+    }
+    if (createdRecruiterBonusId && rec) {
+        await notifyBonusRecipient(
+            rec,
+            proposerName,
+            recAmount,
+            recYear,
+            recMonth,
+            recReason,
+            createdRecruiterBonusId,
+            'recruiter',
+        )
+    }
 
     await logAudit(ctx.userId, 'PLACEMENT_HOURS_CONFIRMED', { placement_id: placementId })
     await logAudit(ctx.userId, 'PLACEMENT_BONUSES_GENERATED', {
@@ -648,8 +750,12 @@ export async function confirmPlacementHours(
         dl_bonus_id: dlBonusId,
         recruiter_bonus_id: recBonusId,
         edited: dlEdited || recEdited,
-        dl: { amount: dlAmount, period_year: dlYear, period_month: dlMonth, edited: dlEdited },
-        recruiter: { amount: recAmount, period_year: recYear, period_month: recMonth, edited: recEdited },
+        dl: generateDlBonus
+            ? { amount: dlAmount, period_year: dlYear, period_month: dlMonth, edited: dlEdited }
+            : { skipped: true },
+        recruiter: generateRecruiterBonus
+            ? { amount: recAmount, period_year: recYear, period_month: recMonth, edited: recEdited }
+            : { skipped: true },
     })
 
     revalidatePath('/internal/admin')
