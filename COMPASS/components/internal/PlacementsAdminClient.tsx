@@ -33,6 +33,10 @@ function pln(n: number | string): string {
     return `${Number(n).toLocaleString('pl-PL')} zł`
 }
 
+function bonusAmountLabel(n: number | string | null | undefined): string {
+    return n == null ? 'Kwota niedostępna' : pln(n)
+}
+
 function statusVariant(s: PlacementStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
     if (s === 'bonus_confirmed') return 'default'
     if (s === 'cancelled') return 'destructive'
@@ -83,7 +87,7 @@ export function PlacementsAdminClient({ placements }: Props) {
             kind === 'dl'
                 ? p.dl_bonus_actual_amount ?? p.dl_bonus_amount
                 : kind === 'additional_dl'
-                    ? p.additional_dl_bonus_actual_amount ?? p.dl_bonus_amount
+                    ? p.additional_dl_bonus_actual_amount
                     : p.recruiter_bonus_actual_amount ?? p.recruiter_bonus_amount
         const status =
             kind === 'dl'
@@ -96,7 +100,7 @@ export function PlacementsAdminClient({ placements }: Props) {
             ? '\nPracownik dostanie email + powiadomienie o anulowaniu.'
             : '\n(Premia jest już w statusie anulowanym — pracownik nie dostanie ponownego powiadomienia.)'
         const reason = window.prompt(
-            `Usunąć bezpowrotnie premię ${label} (${who}, ${pln(amount)}) z placementu ${p.consultant_name} @ ${p.client_name}?\n\nPodaj powód (min. 3 znaki).${notifyLine}`,
+            `Usunąć bezpowrotnie premię ${label} (${who}, ${bonusAmountLabel(amount)}) z placementu ${p.consultant_name} @ ${p.client_name}?\n\nPodaj powód (min. 3 znaki).${notifyLine}`,
             '',
         )
         if (reason === null) return
@@ -217,9 +221,10 @@ export function PlacementsAdminClient({ placements }: Props) {
                                                                 Brak aktywnej premii
                                                             </span>
                                                         ) : (
-                                                            pln(
-                                                                p.additional_dl_bonus_actual_amount ??
-                                                                    p.dl_bonus_amount,
+                                                            bonusAmountLabel(
+                                                                isConfirmed
+                                                                    ? p.additional_dl_bonus_actual_amount
+                                                                    : p.dl_bonus_amount,
                                                             )
                                                         )}
                                                     </div>

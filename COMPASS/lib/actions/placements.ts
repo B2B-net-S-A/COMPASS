@@ -47,6 +47,7 @@ import {
 import { ensureContractors } from '@/lib/contractors/import-core'
 import { excludeExited } from '@/lib/hr/employment-window'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
+import { selectInChunks } from '@/lib/supabase/select-in-chunks'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -409,11 +410,17 @@ export async function listPlacements(): Promise<PlacementWithBonusStatus[]> {
     )
     const bonusById = new Map<string, { status: BonusStatus; amount: number }>()
     if (bonusIds.length > 0) {
-        const { data: bonusRows } = await admin
-            .from('bonuses')
-            .select('id, status, amount')
-            .in('id', bonusIds)
-        for (const b of (bonusRows ?? []) as Array<{ id: string; status: BonusStatus; amount: number | string }>) {
+        const bonusRows = await selectInChunks<{
+            id: string
+            status: BonusStatus
+            amount: number | string
+        }>({
+            source: 'bonuses (statusy placementów)',
+            column: 'id',
+            ids: bonusIds,
+            query: () => admin.from('bonuses').select('id, status, amount'),
+        })
+        for (const b of bonusRows) {
             bonusById.set(b.id, { status: b.status, amount: Number(b.amount) })
         }
     }
@@ -463,11 +470,17 @@ export async function listMyPlacements(): Promise<PlacementWithBonusStatus[]> {
     )
     const bonusById = new Map<string, { status: BonusStatus; amount: number }>()
     if (bonusIds.length > 0) {
-        const { data: bonusRows } = await supabase
-            .from('bonuses')
-            .select('id, status, amount')
-            .in('id', bonusIds)
-        for (const b of (bonusRows ?? []) as Array<{ id: string; status: BonusStatus; amount: number | string }>) {
+        const bonusRows = await selectInChunks<{
+            id: string
+            status: BonusStatus
+            amount: number | string
+        }>({
+            source: 'bonuses (statusy moich placementów)',
+            column: 'id',
+            ids: bonusIds,
+            query: () => supabase.from('bonuses').select('id, status, amount'),
+        })
+        for (const b of bonusRows) {
             bonusById.set(b.id, { status: b.status, amount: Number(b.amount) })
         }
     }
