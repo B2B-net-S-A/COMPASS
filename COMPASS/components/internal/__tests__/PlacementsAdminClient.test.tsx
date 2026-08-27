@@ -3,9 +3,21 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PlacementWithBonusStatus } from '@/lib/types/placement'
 
+const { mockDeletePlacementBonus, mockToastSuccess } = vi.hoisted(() => ({
+    mockDeletePlacementBonus: vi.fn(async () => {}),
+    mockToastSuccess: vi.fn(),
+}))
+
 vi.mock('@/lib/actions/placements', () => ({
     cancelPlacement: vi.fn(),
-    deletePlacementBonus: vi.fn(),
+    deletePlacementBonus: mockDeletePlacementBonus,
+}))
+
+vi.mock('@/lib/toast', () => ({
+    toast: {
+        error: vi.fn(),
+        success: mockToastSuccess,
+    },
 }))
 
 vi.mock('@/components/internal/PlacementImportDialog', () => ({
@@ -44,14 +56,19 @@ function confirmedPlacement(): PlacementWithBonusStatus {
         cancelled_at: null,
         cancel_reason: null,
         dl_bonus_id: null,
+        additional_dl_bonus_id: null,
         recruiter_bonus_id: 'recruiter-bonus-1',
         tcm_ticket_id: null,
         created_at: '2026-07-01T10:00:00Z',
         updated_at: '2026-08-18T10:00:00Z',
         dl_bonus_status: null,
+        additional_dl_bonus_status: null,
         recruiter_bonus_status: 'assigned',
         dl_bonus_actual_amount: null,
+        additional_dl_bonus_actual_amount: null,
         recruiter_bonus_actual_amount: 1600,
+        additional_dl_recipient_id: null,
+        additional_dl_recipient_name: null,
     }
 }
 
@@ -81,5 +98,104 @@ describe('<PlacementsAdminClient /> skipped bonus display', () => {
         expect(prompt).toHaveBeenCalledOnce()
         expect(prompt.mock.calls[0]?.[0]).toMatch(/1[\s\u00a0]?600 zł/)
         expect(prompt.mock.calls[0]?.[0]).not.toMatch(/1[\s\u00a0]?500 zł/)
+    })
+
+    it('shows and independently deletes the additional DL bonus', async () => {
+        const user = userEvent.setup()
+        const prompt = vi.fn(
+            (_message: string, _defaultValue?: string): string | null => 'Błędnie naliczona premia',
+        )
+        vi.stubGlobal('prompt', prompt)
+        render(
+            <PlacementsAdminClient
+                placements={[
+                    {
+                        ...confirmedPlacement(),
+                        additional_dl_bonus_id: 'additional-dl-bonus-1',
+                        additional_dl_bonus_status: 'assigned',
+                        additional_dl_bonus_actual_amount: 800,
+                        additional_dl_recipient_id: 'marcin-1',
+                        additional_dl_recipient_name: 'Marcin Kraszewski',
+                    },
+                ]}
+            />,
+        )
+
+        expect(screen.getByText('Marcin Kraszewski:')).toBeInTheDocument()
+        expect(screen.getByText(/800 zł/)).toBeInTheDocument()
+
+        await user.click(screen.getByRole('button', { name: 'Usuń dodatk. DL' }))
+
+        expect(prompt.mock.calls[0]?.[0]).toMatch(/Marcin Kraszewski/)
+        expect(prompt.mock.calls[0]?.[0]).toMatch(/800 zł/)
+        expect(mockDeletePlacementBonus).toHaveBeenCalledWith({
+            placementId: 'placement-1',
+            bonusKind: 'additional_dl',
+            deletionReason: 'Błędnie naliczona premia',
+        })
+        expect(mockToastSuccess).toHaveBeenCalledWith('Premia dodatkowego DL usunięta.')
+    })
+
+    it('never substitutes the Igor forecast when the saved Marcin amount is unavailable', async () => {
+        const user = userEvent.setup()
+        const prompt = vi.fn((_message: string, _defaultValue?: string): string | null => null)
+        vi.stubGlobal('prompt', prompt)
+        render(
+            <PlacementsAdminClient
+                placements={[
+                    {
+                        ...confirmedPlacement(),
+                        dl_bonus_amount: 756,
+                        additional_dl_bonus_id: 'additional-dl-bonus-1',
+                        additional_dl_bonus_status: 'assigned',
+                        additional_dl_bonus_actual_amount: null,
+                        additional_dl_recipient_id: 'marcin-1',
+                        additional_dl_recipient_name: 'Marcin Kraszewski',
+                    },
+                ]}
+            />,
+        )
+
+        expect(screen.getByText('Kwota niedostępna')).toBeInTheDocument()
+        expect(screen.queryByText('756 zł')).not.toBeInTheDocument()
+
+        await user.click(screen.getByRole('button', { name: 'Usuń dodatk. DL' }))
+
+        expect(prompt.mock.calls[0]?.[0]).toContain('Kwota niedostępna')
+        expect(prompt.mock.calls[0]?.[0]).not.toMatch(/756 zł/)
+    })
+
+    it('keeps Igor amount as the Marcin forecast before confirmation', () => {
+        render(
+            <PlacementsAdminClient
+                placements={[
+                    {
+                        ...confirmedPlacement(),
+                        status: 'started',
+                        dl_bonus_id: null,
+                        additional_dl_bonus_id: null,
+                        recruiter_bonus_id: null,
+                        dl_bonus_status: null,
+                        additional_dl_bonus_status: null,
+                        recruiter_bonus_status: null,
+                        dl_bonus_actual_amount: null,
+                        additional_dl_bonus_actual_amount: null,
+                        recruiter_bonus_actual_amount: null,
+                        additional_dl_recipient_id: 'marcin-1',
+                        additional_dl_recipient_name: 'Marcin Kraszewski',
+                    },
+                ]}
+            />,
+        )
+
+        expect(screen.getAllByText('756 zł')).toHaveLength(2)
+        expect(screen.queryByText('Kwota niedostępna')).not.toBeInTheDocument()
+    })
+
+    it('keeps ordinary placements free of additional-DL labels and actions', () => {
+        render(<PlacementsAdminClient placements={[confirmedPlacement()]} />)
+
+        expect(screen.queryByText(/Dodatkowy DL|Marcin Kraszewski:/)).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Usuń dodatk. DL' })).not.toBeInTheDocument()
     })
 })

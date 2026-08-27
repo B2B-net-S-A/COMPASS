@@ -4837,6 +4837,7 @@ export type Database = {
       }
       placements: {
         Row: {
+          additional_dl_bonus_id: string | null
           bonus_eligible_date: string
           cancel_reason: string | null
           cancelled_at: string | null
@@ -4877,6 +4878,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          additional_dl_bonus_id?: string | null
           bonus_eligible_date: string
           cancel_reason?: string | null
           cancelled_at?: string | null
@@ -4917,6 +4919,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          additional_dl_bonus_id?: string | null
           bonus_eligible_date?: string
           cancel_reason?: string | null
           cancelled_at?: string | null
@@ -4957,6 +4960,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "placements_additional_dl_bonus_id_fkey"
+            columns: ["additional_dl_bonus_id"]
+            isOneToOne: false
+            referencedRelation: "bonuses"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "placements_cancelled_by_fkey"
             columns: ["cancelled_by"]

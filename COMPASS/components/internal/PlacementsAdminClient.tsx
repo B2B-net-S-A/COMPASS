@@ -33,6 +33,10 @@ function pln(n: number | string): string {
     return `${Number(n).toLocaleString('pl-PL')} zł`
 }
 
+function bonusAmountLabel(n: number | string | null | undefined): string {
+    return n == null ? 'Kwota niedostępna' : pln(n)
+}
+
 function statusVariant(s: PlacementStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
     if (s === 'bonus_confirmed') return 'default'
     if (s === 'cancelled') return 'destructive'
@@ -68,20 +72,35 @@ export function PlacementsAdminClient({ placements }: Props) {
         }
     }
 
-    async function onDeleteBonus(p: PlacementWithBonusStatus, kind: 'dl' | 'recruiter') {
-        const who = kind === 'dl' ? p.delivery_lead_raw : p.recruiter_raw
-        const label = kind === 'dl' ? 'DL' : 'rekrutera'
+    async function onDeleteBonus(
+        p: PlacementWithBonusStatus,
+        kind: 'dl' | 'additional_dl' | 'recruiter',
+    ) {
+        const who =
+            kind === 'dl'
+                ? p.delivery_lead_raw
+                : kind === 'additional_dl'
+                    ? p.additional_dl_recipient_name ?? 'dodatkowy Delivery Lead'
+                    : p.recruiter_raw
+        const label = kind === 'dl' ? 'DL' : kind === 'additional_dl' ? 'dodatkowego DL' : 'rekrutera'
         const amount =
             kind === 'dl'
                 ? p.dl_bonus_actual_amount ?? p.dl_bonus_amount
-                : p.recruiter_bonus_actual_amount ?? p.recruiter_bonus_amount
-        const status = kind === 'dl' ? p.dl_bonus_status : p.recruiter_bonus_status
+                : kind === 'additional_dl'
+                    ? p.additional_dl_bonus_actual_amount
+                    : p.recruiter_bonus_actual_amount ?? p.recruiter_bonus_amount
+        const status =
+            kind === 'dl'
+                ? p.dl_bonus_status
+                : kind === 'additional_dl'
+                    ? p.additional_dl_bonus_status
+                    : p.recruiter_bonus_status
         const willNotify = status !== 'cancelled'
         const notifyLine = willNotify
             ? '\nPracownik dostanie email + powiadomienie o anulowaniu.'
             : '\n(Premia jest już w statusie anulowanym — pracownik nie dostanie ponownego powiadomienia.)'
         const reason = window.prompt(
-            `Usunąć bezpowrotnie premię ${label} (${who}, ${pln(amount)}) z placementu ${p.consultant_name} @ ${p.client_name}?\n\nPodaj powód (min. 3 znaki).${notifyLine}`,
+            `Usunąć bezpowrotnie premię ${label} (${who}, ${bonusAmountLabel(amount)}) z placementu ${p.consultant_name} @ ${p.client_name}?\n\nPodaj powód (min. 3 znaki).${notifyLine}`,
             '',
         )
         if (reason === null) return
@@ -164,6 +183,10 @@ export function PlacementsAdminClient({ placements }: Props) {
                                     isConfirmed &&
                                     p.dl_bonus_status !== null &&
                                     p.dl_bonus_status !== 'paid'
+                                const additionalDlDeletable =
+                                    isConfirmed &&
+                                    p.additional_dl_bonus_status !== null &&
+                                    p.additional_dl_bonus_status !== 'paid'
                                 const recDeletable =
                                     isConfirmed &&
                                     p.recruiter_bonus_status !== null &&
@@ -178,11 +201,35 @@ export function PlacementsAdminClient({ placements }: Props) {
                                         <td className="p-2 text-muted-foreground">{p.bonus_eligible_date}</td>
                                         <td className="p-2 text-right">{Number(p.margin_per_hour)} zł/h</td>
                                         <td className="p-2 text-right">
-                                            {isConfirmed && (!p.dl_bonus_id || p.dl_bonus_status === 'cancelled') ? (
-                                                <span className="text-muted-foreground">Brak aktywnej premii</span>
-                                            ) : (
-                                                pln(p.dl_bonus_actual_amount ?? p.dl_bonus_amount)
-                                            )}
+                                            <div className="space-y-1">
+                                                <div>
+                                                    {isConfirmed && (!p.dl_bonus_id || p.dl_bonus_status === 'cancelled') ? (
+                                                        <span className="text-muted-foreground">Brak aktywnej premii</span>
+                                                    ) : (
+                                                        pln(p.dl_bonus_actual_amount ?? p.dl_bonus_amount)
+                                                    )}
+                                                </div>
+                                                {p.additional_dl_recipient_id || p.additional_dl_bonus_id ? (
+                                                    <div className="text-xs">
+                                                        <span className="text-muted-foreground">
+                                                            {p.additional_dl_recipient_name ?? 'Dodatkowy DL'}:{' '}
+                                                        </span>
+                                                        {isConfirmed &&
+                                                        (!p.additional_dl_bonus_id ||
+                                                            p.additional_dl_bonus_status === 'cancelled') ? (
+                                                            <span className="text-muted-foreground">
+                                                                Brak aktywnej premii
+                                                            </span>
+                                                        ) : (
+                                                            bonusAmountLabel(
+                                                                isConfirmed
+                                                                    ? p.additional_dl_bonus_actual_amount
+                                                                    : p.dl_bonus_amount,
+                                                            )
+                                                        )}
+                                                    </div>
+                                                ) : null}
+                                            </div>
                                         </td>
                                         <td className="p-2 text-right">
                                             {isConfirmed && (!p.recruiter_bonus_id || p.recruiter_bonus_status === 'cancelled') ? (
@@ -240,6 +287,23 @@ export function PlacementsAdminClient({ placements }: Props) {
                                                             Usuń DL
                                                         </Button>
                                                     ) : null}
+                                                    {additionalDlDeletable ? (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            disabled={busyId === p.id}
+                                                            onClick={() => onDeleteBonus(p, 'additional_dl')}
+                                                            className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+                                                            title="Usuń bezpowrotnie dodatkową premię Delivery Lead"
+                                                        >
+                                                            {busyId === p.id ? (
+                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                            ) : (
+                                                                <Trash2 className="h-3 w-3" />
+                                                            )}
+                                                            Usuń dodatk. DL
+                                                        </Button>
+                                                    ) : null}
                                                     {recDeletable ? (
                                                         <Button
                                                             size="sm"
@@ -257,7 +321,7 @@ export function PlacementsAdminClient({ placements }: Props) {
                                                             Usuń rekr.
                                                         </Button>
                                                     ) : null}
-                                                    {!dlDeletable && !recDeletable ? (
+                                                    {!dlDeletable && !additionalDlDeletable && !recDeletable ? (
                                                         <span className="text-xs text-muted-foreground">—</span>
                                                     ) : null}
                                                 </div>
