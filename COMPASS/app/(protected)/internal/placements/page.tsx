@@ -5,7 +5,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { listMyPlacements } from '@/lib/actions/placements'
 import { Badge } from '@/components/ui/badge'
-import { placementStatusLabelPl, type PlacementRow, type PlacementStatus } from '@/lib/types/placement'
+import {
+    placementRecipientBonusSummary,
+    placementStatusLabelPl,
+    type PlacementWithBonusStatus,
+    type PlacementStatus,
+} from '@/lib/types/placement'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,9 +26,10 @@ function statusVariant(s: PlacementStatus): 'default' | 'secondary' | 'destructi
 }
 
 interface MyRow {
-    p: PlacementRow
+    p: PlacementWithBonusStatus
     role: string
     myBonus: number
+    hasNoActiveBonus: boolean
 }
 
 export default async function MyPlacementsPage() {
@@ -34,12 +40,13 @@ export default async function MyPlacementsPage() {
     const placements = await listMyPlacements()
 
     const rows: MyRow[] = placements.map((p) => {
-        const isDl = p.delivery_lead_id === user?.id
-        const isRec = p.recruiter_id === user?.id
-        const role = isDl && isRec ? 'DL + Rekruter' : isDl ? 'Delivery Lead' : 'Rekruter'
-        const myBonus =
-            (isDl ? Number(p.dl_bonus_amount) : 0) + (isRec ? Number(p.recruiter_bonus_amount) : 0)
-        return { p, role, myBonus }
+        const summary = placementRecipientBonusSummary(p, user?.id ?? '')
+        const role = summary.isDeliveryLead && summary.isRecruiter
+            ? 'DL + Rekruter'
+            : summary.isDeliveryLead
+                ? 'Delivery Lead'
+                : 'Rekruter'
+        return { p, role, myBonus: summary.amount, hasNoActiveBonus: summary.hasNoActiveBonus }
     })
 
     const pending = rows.filter((r) => r.p.status === 'upcoming' || r.p.status === 'started')
@@ -81,7 +88,7 @@ export default async function MyPlacementsPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(({ p, role, myBonus }) => (
+                            {rows.map(({ p, role, myBonus, hasNoActiveBonus }) => (
                                 <tr key={p.id} className="border-t">
                                     <td className="p-2 font-medium">{p.consultant_name}</td>
                                     <td className="p-2">{p.client_name}</td>
@@ -90,10 +97,16 @@ export default async function MyPlacementsPage() {
                                     <td className="p-2 text-muted-foreground">
                                         {p.status === 'bonus_confirmed' ? '—' : p.bonus_eligible_date}
                                     </td>
-                                    <td className="p-2 text-right font-medium">{pln(myBonus)}</td>
+                                    <td className="p-2 text-right font-medium">
+                                        {hasNoActiveBonus ? (
+                                            <span className="text-muted-foreground">Brak aktywnej premii</span>
+                                        ) : (
+                                            pln(myBonus)
+                                        )}
+                                    </td>
                                     <td className="p-2">
-                                        <Badge variant={statusVariant(p.status)}>
-                                            {placementStatusLabelPl(p.status)}
+                                        <Badge variant={hasNoActiveBonus ? 'outline' : statusVariant(p.status)}>
+                                            {hasNoActiveBonus ? 'Brak aktywnej premii' : placementStatusLabelPl(p.status)}
                                         </Badge>
                                     </td>
                                 </tr>
