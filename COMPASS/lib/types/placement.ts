@@ -124,6 +124,7 @@ export interface PlacementRow {
     cancelled_at: string | null
     cancel_reason: string | null
     dl_bonus_id: string | null
+    additional_dl_bonus_id: string | null
     recruiter_bonus_id: string | null
     tcm_ticket_id: string | null
     created_at: string
@@ -132,14 +133,18 @@ export interface PlacementRow {
 
 /**
  * Phase 28 follow-up — placement row augmented with the current status of its linked
- * DL/recruiter bonuses, so the admin/manager UI can hide the cancel button after a
+ * placement bonuses, so the admin/manager UI can hide the cancel button after a
  * bonus has already been cancelled (or never linked, e.g. legacy rows).
  */
 export interface PlacementWithBonusStatus extends PlacementRow {
     dl_bonus_status: 'assigned' | 'pending' | 'paid' | 'cancelled' | null
+    additional_dl_bonus_status: 'assigned' | 'pending' | 'paid' | 'cancelled' | null
     recruiter_bonus_status: 'assigned' | 'pending' | 'paid' | 'cancelled' | null
     dl_bonus_actual_amount: number | null
+    additional_dl_bonus_actual_amount: number | null
     recruiter_bonus_actual_amount: number | null
+    additional_dl_recipient_id: string | null
+    additional_dl_recipient_name: string | null
 }
 
 export interface PlacementRecipientBonusSummary {
@@ -212,7 +217,7 @@ export function placementStatusLabelPl(status: PlacementStatus): string {
 }
 
 // ─── Phase 28 follow-up — edit-before-generate at 168h confirmation ─────────
-// The manager reviews/edits the two auto-computed bonuses (DL + recruiter) in a
+// The manager reviews/edits the auto-computed bonuses (DL + optional additional DL + recruiter) in a
 // pre-filled dialog before they are generated and the recipients are notified.
 
 /** Editable values for one placement bonus, supplied by the manager before generation. */
@@ -225,13 +230,15 @@ export interface PlacementBonusOverride {
 }
 
 /**
- * Optional per-recipient overrides accepted by `confirmPlacementHours`. When a side is
+ * Optional per-recipient overrides accepted by `confirmPlacementHours`. When a bonus is
  * omitted the action falls back to the computed defaults (unchanged legacy behaviour).
  * An explicit `null` skips generating that recipient's bonus. At least one recipient must
- * remain selected when confirming 168h.
+ * remain selected when confirming 168h. `additionalDl` is used only for placements whose
+ * Delivery Lead is covered by the server-owned additional-recipient rule.
  */
 export interface ConfirmPlacementHoursOverrides {
     dl?: PlacementBonusOverride | null
+    additionalDl?: PlacementBonusOverride | null
     recruiter?: PlacementBonusOverride | null
 }
 

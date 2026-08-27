@@ -26,7 +26,7 @@ vi.mock('@/lib/toast', () => ({
 
 import { PlacementConfirmDialog } from '../PlacementConfirmDialog'
 
-function placement(): PlacementWithBonusStatus {
+function placement(overrides: Partial<PlacementWithBonusStatus> = {}): PlacementWithBonusStatus {
     return {
         id: 'placement-1',
         consultant_name: 'Marcin Szyłko',
@@ -52,23 +52,29 @@ function placement(): PlacementWithBonusStatus {
         cancelled_at: null,
         cancel_reason: null,
         dl_bonus_id: null,
+        additional_dl_bonus_id: null,
         recruiter_bonus_id: null,
         tcm_ticket_id: null,
         created_at: '2026-07-01T10:00:00Z',
         updated_at: '2026-07-01T10:00:00Z',
         dl_bonus_status: null,
+        additional_dl_bonus_status: null,
         recruiter_bonus_status: null,
         dl_bonus_actual_amount: null,
+        additional_dl_bonus_actual_amount: null,
         recruiter_bonus_actual_amount: null,
+        additional_dl_recipient_id: null,
+        additional_dl_recipient_name: null,
+        ...overrides,
     }
 }
 
-function renderDialog() {
+function renderDialog(placementOverrides: Partial<PlacementWithBonusStatus> = {}) {
     const onClose = vi.fn()
     const onConfirmed = vi.fn()
     render(
         <PlacementConfirmDialog
-            placement={placement()}
+            placement={placement(placementOverrides)}
             onClose={onClose}
             onConfirmed={onConfirmed}
         />,
@@ -81,14 +87,16 @@ afterEach(() => {
 })
 
 describe('<PlacementConfirmDialog /> bonus selection', () => {
-    it('starts with both bonuses selected and preserves the two-bonus payload', async () => {
+    it('keeps ordinary placements at two selected bonuses and preserves the two-bonus payload', async () => {
         const user = userEvent.setup()
         const { onConfirmed } = renderDialog()
 
+        expect(screen.getAllByRole('checkbox')).toHaveLength(2)
         expect(screen.getByRole('checkbox', { name: /Premia Delivery Lead/i })).toBeChecked()
         expect(screen.getByRole('checkbox', { name: /Premia rekrutera/i })).toBeChecked()
+        expect(screen.queryByText(/dodatkowy odbiorca/i)).not.toBeInTheDocument()
 
-        await user.click(screen.getByRole('button', { name: 'Generuj obie premie' }))
+        await user.click(screen.getByRole('button', { name: 'Generuj 2 premie' }))
 
         await waitFor(() => {
             expect(mockConfirmPlacementHours).toHaveBeenCalledWith('placement-1', {
@@ -97,9 +105,118 @@ describe('<PlacementConfirmDialog /> bonus selection', () => {
             })
         })
         expect(mockToastSuccess).toHaveBeenCalledWith(
-            'Potwierdzono 168h — obie premie zostały naliczone.',
+            'Potwierdzono 168h — 2 premie zostały naliczone.',
         )
         expect(onConfirmed).toHaveBeenCalledOnce()
+    })
+
+    it('starts an additional DL recipient with a third selected bonus cloned from the DL default', async () => {
+        const user = userEvent.setup()
+        const { onConfirmed } = renderDialog({
+            delivery_lead_id: 'igor-1',
+            delivery_lead_raw: 'Igor Twardowski',
+            additional_dl_recipient_id: 'marcin-1',
+            additional_dl_recipient_name: 'Marcin Kraszewski',
+        })
+
+        expect(screen.getAllByRole('checkbox')).toHaveLength(3)
+        expect(screen.getByRole('checkbox', { name: 'Nalicz premię: Premia Delivery Lead' })).toBeChecked()
+        expect(
+            screen.getByRole('checkbox', {
+                name: 'Nalicz premię: Premia Delivery Lead — Marcin Kraszewski',
+            }),
+        ).toBeChecked()
+        expect(screen.getByRole('checkbox', { name: /Premia rekrutera/i })).toBeChecked()
+
+        await user.click(screen.getByRole('button', { name: 'Generuj 3 premie' }))
+
+        await waitFor(() => {
+            expect(mockConfirmPlacementHours).toHaveBeenCalledWith('placement-1', {
+                dl: expect.objectContaining({ amount: 756, periodYear: 2026, periodMonth: 8 }),
+                additionalDl: expect.objectContaining({ amount: 756, periodYear: 2026, periodMonth: 8 }),
+                recruiter: expect.objectContaining({ amount: 1500, periodYear: 2026, periodMonth: 8 }),
+            })
+        })
+        expect(mockToastSuccess).toHaveBeenCalledWith(
+            'Potwierdzono 168h — 3 premie zostały naliczone.',
+        )
+        expect(onConfirmed).toHaveBeenCalledOnce()
+    })
+
+    it('edits the additional DL bonus independently while opting out the primary DL', async () => {
+        const user = userEvent.setup()
+        renderDialog({
+            delivery_lead_id: 'igor-1',
+            delivery_lead_raw: 'Igor Twardowski',
+            additional_dl_recipient_id: 'marcin-1',
+            additional_dl_recipient_name: 'Marcin Kraszewski',
+        })
+
+        const amounts = screen.getAllByLabelText('Kwota [PLN]')
+        const additionalAmount = amounts[1]
+        expect(additionalAmount).toHaveValue(756)
+        await user.clear(additionalAmount)
+        await user.type(additionalAmount, '900')
+
+        await user.click(screen.getByRole('checkbox', { name: 'Nalicz premię: Premia Delivery Lead' }))
+        expect(screen.getByText(/Premia dla Igor Twardowski nie zostanie naliczona/)).toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Generuj 2 premie' }))
+
+        await waitFor(() => {
+            expect(mockConfirmPlacementHours).toHaveBeenCalledWith('placement-1', {
+                dl: null,
+                additionalDl: expect.objectContaining({ amount: 900 }),
+                recruiter: expect.objectContaining({ amount: 1500 }),
+            })
+        })
+    })
+
+    it('submits an explicit null when the additional DL bonus is unchecked', async () => {
+        const user = userEvent.setup()
+        renderDialog({
+            delivery_lead_id: 'igor-1',
+            delivery_lead_raw: 'Igor Twardowski',
+            additional_dl_recipient_id: 'marcin-1',
+            additional_dl_recipient_name: 'Marcin Kraszewski',
+        })
+
+        await user.click(
+            screen.getByRole('checkbox', {
+                name: 'Nalicz premię: Premia Delivery Lead — Marcin Kraszewski',
+            }),
+        )
+        expect(screen.getByText(/Premia dla Marcin Kraszewski nie zostanie naliczona/)).toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Generuj 2 premie' }))
+
+        await waitFor(() => {
+            expect(mockConfirmPlacementHours).toHaveBeenCalledWith('placement-1', {
+                dl: expect.objectContaining({ amount: 756 }),
+                additionalDl: null,
+                recruiter: expect.objectContaining({ amount: 1500 }),
+            })
+        })
+    })
+
+    it('blocks an additional-DL placement when all three bonuses are unchecked', async () => {
+        const user = userEvent.setup()
+        renderDialog({
+            delivery_lead_id: 'igor-1',
+            delivery_lead_raw: 'Igor Twardowski',
+            additional_dl_recipient_id: 'marcin-1',
+            additional_dl_recipient_name: 'Marcin Kraszewski',
+        })
+
+        await user.click(screen.getByRole('checkbox', { name: 'Nalicz premię: Premia Delivery Lead' }))
+        await user.click(
+            screen.getByRole('checkbox', {
+                name: 'Nalicz premię: Premia Delivery Lead — Marcin Kraszewski',
+            }),
+        )
+        await user.click(screen.getByRole('checkbox', { name: /Premia rekrutera/i }))
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Wybierz co najmniej jedną premię.')
+        expect(screen.getByRole('button', { name: 'Wybierz premię' })).toBeDisabled()
+        expect(mockConfirmPlacementHours).not.toHaveBeenCalled()
     })
 
     it('can skip the DL bonus without validating or submitting its draft', async () => {
@@ -163,7 +280,7 @@ describe('<PlacementConfirmDialog /> bonus selection', () => {
         })
         const { onConfirmed } = renderDialog()
 
-        await user.click(screen.getByRole('button', { name: 'Generuj obie premie' }))
+        await user.click(screen.getByRole('button', { name: 'Generuj 2 premie' }))
 
         await waitFor(() => {
             expect(mockToastError).toHaveBeenCalledWith(

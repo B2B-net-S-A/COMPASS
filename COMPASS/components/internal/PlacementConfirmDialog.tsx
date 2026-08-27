@@ -2,9 +2,9 @@
 
 // Phase 28 follow-up — edit-before-generate at 168h confirmation.
 // Clicking "168h" no longer generates the DL + recruiter bonuses straight away. Instead this
-// dialog opens pre-filled with the computed payout for BOTH recipients (separately, like the
+// dialog opens pre-filled with the computed payout for all recipients (separately, like the
 // manual "Przypisz premię" form) so the manager can adjust amount / month / reason / notes,
-// or skip either recipient, before bonuses are created and notifications are sent.
+// or skip any recipient, before bonuses are created and notifications are sent.
 
 import { useMemo, useState, useTransition } from 'react'
 import { Loader2, CheckCircle2, TrendingUp, UserPlus } from 'lucide-react'
@@ -137,7 +137,7 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
     const periodOptions = useMemo(() => buildPeriodOptions(eligible), [eligible])
     const defaultPeriodKey = `${eligible.year}-${eligible.month}`
 
-    const [dl, setDl] = useState<Draft>({
+    const createDlDraft = (): Draft => ({
         amount: Number(placement.dl_bonus_amount).toFixed(2),
         periodKey: defaultPeriodKey,
         reason: defaultDlBonusReason(
@@ -147,6 +147,16 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
         ),
         notes: '',
     })
+    const additionalDlRecipient =
+        placement.additional_dl_recipient_id && placement.additional_dl_recipient_name
+            ? {
+                id: placement.additional_dl_recipient_id,
+                name: placement.additional_dl_recipient_name,
+            }
+            : null
+
+    const [dl, setDl] = useState<Draft>(createDlDraft)
+    const [additionalDl, setAdditionalDl] = useState<Draft>(createDlDraft)
     const [rec, setRec] = useState<Draft>({
         amount: Number(placement.recruiter_bonus_amount).toFixed(2),
         periodKey: defaultPeriodKey,
@@ -159,8 +169,12 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
         notes: '',
     })
     const [generateDlBonus, setGenerateDlBonus] = useState(true)
+    const [generateAdditionalDlBonus, setGenerateAdditionalDlBonus] = useState(additionalDlRecipient !== null)
     const [generateRecruiterBonus, setGenerateRecruiterBonus] = useState(true)
-    const selectedBonusCount = Number(generateDlBonus) + Number(generateRecruiterBonus)
+    const selectedBonusCount =
+        Number(generateDlBonus) +
+        Number(additionalDlRecipient !== null && generateAdditionalDlBonus) +
+        Number(generateRecruiterBonus)
 
     function submit() {
         if (selectedBonusCount === 0) {
@@ -178,6 +192,16 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
             dlOverride = parsed
         }
 
+        let additionalDlOverride: PlacementBonusOverride | null = null
+        if (additionalDlRecipient && generateAdditionalDlBonus) {
+            const parsed = parseDraft(additionalDl)
+            if ('error' in parsed) {
+                toast.error(`Premia DL dla ${additionalDlRecipient.name}: ${parsed.error}`)
+                return
+            }
+            additionalDlOverride = parsed
+        }
+
         let recruiterOverride: PlacementBonusOverride | null = null
         if (generateRecruiterBonus) {
             const parsed = parseDraft(rec)
@@ -190,6 +214,7 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
 
         const overrides: ConfirmPlacementHoursOverrides = {
             dl: dlOverride,
+            ...(additionalDlRecipient ? { additionalDl: additionalDlOverride } : {}),
             recruiter: recruiterOverride,
         }
         startTransition(async () => {
@@ -202,7 +227,7 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
                 toast.success(
                     selectedBonusCount === 1
                         ? 'Potwierdzono 168h — wybrana premia została naliczona.'
-                        : 'Potwierdzono 168h — obie premie zostały naliczone.',
+                        : `Potwierdzono 168h — ${selectedBonusCount} premie zostały naliczone.`,
                 )
                 onConfirmed()
             } catch {
@@ -238,6 +263,21 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
                     onSelectedChange={setGenerateDlBonus}
                     disabled={pending}
                 />
+                {additionalDlRecipient ? (
+                    <BonusCard
+                        icon={<TrendingUp className="h-4 w-4" />}
+                        heading={`Premia Delivery Lead — ${additionalDlRecipient.name}`}
+                        recipientLabel="Delivery Lead (dodatkowy odbiorca)"
+                        recipientName={additionalDlRecipient.name}
+                        basis={`Klient: ${placement.client_name} · Konsultant: ${placement.consultant_name} · Marża mies.: ${pln(placement.monthly_margin)} · 10% z marży`}
+                        draft={additionalDl}
+                        setDraft={setAdditionalDl}
+                        periodOptions={periodOptions}
+                        selected={generateAdditionalDlBonus}
+                        onSelectedChange={setGenerateAdditionalDlBonus}
+                        disabled={pending}
+                    />
+                ) : null}
                 <BonusCard
                     icon={<UserPlus className="h-4 w-4" />}
                     heading="Premia rekrutera"
@@ -268,7 +308,7 @@ function ConfirmForm({ placement, onClose, onConfirmed }: { placement: Placement
                         ? 'Wybierz premię'
                         : selectedBonusCount === 1
                             ? 'Generuj wybraną premię'
-                            : 'Generuj obie premie'}
+                            : `Generuj ${selectedBonusCount} premie`}
                 </Button>
             </DialogFooter>
         </>

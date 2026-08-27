@@ -53,6 +53,12 @@ type ServiceClient = ReturnType<typeof createServiceClient>
 const EXISTING_KEY_COLUMNS =
     'id, consultant_name, client_name, start_date, cost_rate, revenue_rate, position, delivery_lead_raw, recruiter_raw'
 
+// Narrow business rule requested for placement bonuses. Resolve both people by their
+// unique company email on the server; never trust the free-text Excel name or a client
+// supplied recipient id.
+const ADDITIONAL_DL_SOURCE_EMAIL = 'igor.twardowski@b2bnetwork.pl'
+const ADDITIONAL_DL_RECIPIENT_EMAIL = 'marcin.kraszewski@b2bnetwork.pl'
+
 async function fileFromForm(formData: FormData): Promise<ArrayBuffer> {
     const file = formData.get('file')
     if (!file || typeof file === 'string') {
@@ -392,11 +398,12 @@ export async function listPlacements(): Promise<PlacementWithBonusStatus[]> {
     const admin = createServiceClient()
     const { data } = await admin.from('placements').select('*').order('start_date', { ascending: false })
     const placements = (data ?? []) as PlacementRow[]
+    const additionalDlRule = await loadAdditionalDlRuleProfiles(admin)
 
     const bonusIds = Array.from(
         new Set(
             placements
-                .flatMap((p) => [p.dl_bonus_id, p.recruiter_bonus_id])
+                .flatMap((p) => [p.dl_bonus_id, p.additional_dl_bonus_id, p.recruiter_bonus_id])
                 .filter((id): id is string => Boolean(id)),
         ),
     )
@@ -411,17 +418,29 @@ export async function listPlacements(): Promise<PlacementWithBonusStatus[]> {
         }
     }
 
-    return placements.map((p) => ({
-        ...p,
-        dl_bonus_status: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.status ?? null : null,
-        recruiter_bonus_status: p.recruiter_bonus_id
-            ? bonusById.get(p.recruiter_bonus_id)?.status ?? null
-            : null,
-        dl_bonus_actual_amount: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.amount ?? null : null,
-        recruiter_bonus_actual_amount: p.recruiter_bonus_id
-            ? bonusById.get(p.recruiter_bonus_id)?.amount ?? null
-            : null,
-    }))
+    return placements.map((p) => {
+        const additionalRecipient =
+            additionalDlRule.source?.id === p.delivery_lead_id ? additionalDlRule.recipient : null
+        return {
+            ...p,
+            dl_bonus_status: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.status ?? null : null,
+            additional_dl_bonus_status: p.additional_dl_bonus_id
+                ? bonusById.get(p.additional_dl_bonus_id)?.status ?? null
+                : null,
+            recruiter_bonus_status: p.recruiter_bonus_id
+                ? bonusById.get(p.recruiter_bonus_id)?.status ?? null
+                : null,
+            dl_bonus_actual_amount: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.amount ?? null : null,
+            additional_dl_bonus_actual_amount: p.additional_dl_bonus_id
+                ? bonusById.get(p.additional_dl_bonus_id)?.amount ?? null
+                : null,
+            recruiter_bonus_actual_amount: p.recruiter_bonus_id
+                ? bonusById.get(p.recruiter_bonus_id)?.amount ?? null
+                : null,
+            additional_dl_recipient_id: additionalRecipient?.id ?? null,
+            additional_dl_recipient_name: additionalRecipient?.full_name ?? additionalRecipient?.email ?? null,
+        }
+    })
 }
 
 /** DL/Recruiter self-view: own placements (RLS scopes to delivery_lead_id/recruiter_id = me). */
@@ -456,13 +475,17 @@ export async function listMyPlacements(): Promise<PlacementWithBonusStatus[]> {
     return placements.map((p) => ({
         ...p,
         dl_bonus_status: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.status ?? null : null,
+        additional_dl_bonus_status: null,
         recruiter_bonus_status: p.recruiter_bonus_id
             ? bonusById.get(p.recruiter_bonus_id)?.status ?? null
             : null,
         dl_bonus_actual_amount: p.dl_bonus_id ? bonusById.get(p.dl_bonus_id)?.amount ?? null : null,
+        additional_dl_bonus_actual_amount: null,
         recruiter_bonus_actual_amount: p.recruiter_bonus_id
             ? bonusById.get(p.recruiter_bonus_id)?.amount ?? null
             : null,
+        additional_dl_recipient_id: null,
+        additional_dl_recipient_name: null,
     }))
 }
 
@@ -470,6 +493,30 @@ interface Contact {
     id: string
     full_name: string | null
     email: string | null
+}
+
+interface AdditionalDlRuleProfiles {
+    source: Contact | null
+    recipient: Contact | null
+}
+
+async function loadAdditionalDlRuleProfiles(admin: ServiceClient): Promise<AdditionalDlRuleProfiles> {
+    const { data, error } = await admin
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('email', [ADDITIONAL_DL_SOURCE_EMAIL, ADDITIONAL_DL_RECIPIENT_EMAIL])
+    if (error) {
+        throw new Error(`Nie udało się sprawdzić reguły dodatkowej premii DL: ${error.message}`)
+    }
+
+    const profiles = (data ?? []) as Contact[]
+    const byEmail = (email: string) =>
+        profiles.find((profile) => profile.email?.trim().toLowerCase() === email) ?? null
+
+    return {
+        source: byEmail(ADDITIONAL_DL_SOURCE_EMAIL),
+        recipient: byEmail(ADDITIONAL_DL_RECIPIENT_EMAIL),
+    }
 }
 
 async function notifyBonusRecipient(
@@ -541,15 +588,15 @@ function validateBonusOverride(o: PlacementBonusOverride, label: string): void {
 }
 
 /**
- * Confirm a placement's consultant worked 168h → generate the selected DL/recruiter bonuses
- * (status 'assigned'), link them on the placement, notify recipients. Idempotent: a placement
- * already marked `bonus_confirmed` is rejected, including when one side was intentionally skipped.
+ * Confirm a placement's consultant worked 168h → generate the selected bonuses
+ * (Delivery Lead, optional additional DL, recruiter), link them on the placement, then
+ * notify recipients. A confirmed placement is terminal, including when one recipient was
+ * intentionally skipped.
  *
- * `overrides` lets the manager edit amount/reason/period/notes for each bonus in a
- * pre-filled dialog BEFORE generation + notification. When a side is omitted the computed
- * defaults are used (legacy behaviour); an explicit `null` means that recipient's bonus is
- * intentionally skipped. Category-specific columns (candidate, margins, tier) always come
- * from the placement — the manager tunes the payout, not the provenance.
+ * `overrides` lets the manager edit amount/reason/period/notes for every visible card.
+ * Omitted values keep the computed defaults; an explicit `null` skips that recipient.
+ * The additional card is derived exclusively on the server from the canonical Igor →
+ * Marcin profile rule, never from the Excel display name or client payload.
  */
 async function confirmPlacementHoursBody(
     placementId: string,
@@ -558,10 +605,8 @@ async function confirmPlacementHoursBody(
     const ctx = await requireBonusProposerAction()
     const admin = createServiceClient()
 
-    const generateDlBonus = overrides?.dl !== null
-    const generateRecruiterBonus = overrides?.recruiter !== null
-
     if (overrides?.dl) validateBonusOverride(overrides.dl, 'DL')
+    if (overrides?.additionalDl) validateBonusOverride(overrides.additionalDl, 'dodatkowa DL')
     if (overrides?.recruiter) validateBonusOverride(overrides.recruiter, 'rekrutera')
 
     const { data: pRaw, error: placementLoadError } = await admin
@@ -581,7 +626,23 @@ async function confirmPlacementHoursBody(
     if (p.status === 'bonus_confirmed') {
         throw new ExpectedError('168h zostało już potwierdzone. Odśwież listę placementów.')
     }
-    if (!generateDlBonus && !generateRecruiterBonus) {
+
+    const additionalDlRule = await loadAdditionalDlRuleProfiles(admin)
+    const isAdditionalDlPlacement = additionalDlRule.source?.id === p.delivery_lead_id
+    if (isAdditionalDlPlacement && !additionalDlRule.recipient) {
+        throw new ExpectedError(
+            'Nie znaleziono profilu Marcina Kraszewskiego dla dodatkowej premii DL. Skontaktuj się z administratorem.',
+        )
+    }
+    if (!isAdditionalDlPlacement && overrides?.additionalDl) {
+        throw new ExpectedError('Dodatkowa premia DL nie przysługuje temu placementowi.')
+    }
+
+    const additionalDlRecipient = isAdditionalDlPlacement ? additionalDlRule.recipient : null
+    const generateDlBonus = overrides?.dl !== null
+    const generateAdditionalDlBonus = additionalDlRecipient !== null && overrides?.additionalDl !== null
+    const generateRecruiterBonus = overrides?.recruiter !== null
+    if (!generateDlBonus && !generateAdditionalDlBonus && !generateRecruiterBonus) {
         throw new ExpectedError('Wybierz co najmniej jedną premię do naliczenia.')
     }
 
@@ -607,6 +668,18 @@ async function confirmPlacementHoursBody(
     const dlMonth = overrides?.dl ? overrides.dl.periodMonth : defMonth
     const dlNotes = overrides?.dl?.notes?.trim() || null
 
+    // A caller unaware of the new field still gives Marcin the same effective payout as
+    // Igor. The current dialog sends a separate object so either card remains editable.
+    const additionalDlOverride =
+        overrides?.additionalDl === undefined ? overrides?.dl : overrides.additionalDl
+    const additionalDlAmount = additionalDlOverride ? additionalDlOverride.amount : dlDefaultAmount
+    const additionalDlReason = additionalDlOverride
+        ? additionalDlOverride.reason.trim()
+        : dlDefaultReason
+    const additionalDlYear = additionalDlOverride ? additionalDlOverride.periodYear : defYear
+    const additionalDlMonth = additionalDlOverride ? additionalDlOverride.periodMonth : defMonth
+    const additionalDlNotes = additionalDlOverride?.notes?.trim() || null
+
     const recAmount = overrides?.recruiter ? overrides.recruiter.amount : recDefaultAmount
     const recReason = overrides?.recruiter ? overrides.recruiter.reason.trim() : recDefaultReason
     const recYear = overrides?.recruiter ? overrides.recruiter.periodYear : defYear
@@ -622,6 +695,13 @@ async function confirmPlacementHoursBody(
             dlYear !== defYear ||
             dlMonth !== defMonth ||
             dlNotes !== null)
+    const additionalDlEdited =
+        generateAdditionalDlBonus &&
+        (additionalDlAmount !== dlDefaultAmount ||
+            additionalDlReason !== dlDefaultReason ||
+            additionalDlYear !== defYear ||
+            additionalDlMonth !== defMonth ||
+            additionalDlNotes !== null)
     const recEdited =
         generateRecruiterBonus &&
         (recAmount !== recDefaultAmount ||
@@ -632,6 +712,7 @@ async function confirmPlacementHoursBody(
 
     const notificationRecipientIds = [
         generateDlBonus && !p.dl_bonus_id ? p.delivery_lead_id : null,
+        generateAdditionalDlBonus && !p.additional_dl_bonus_id ? additionalDlRecipient?.id ?? null : null,
         generateRecruiterBonus && !p.recruiter_bonus_id ? p.recruiter_id : null,
     ].filter((id): id is string => id !== null)
     let people: Contact[] = []
@@ -643,6 +724,7 @@ async function confirmPlacementHoursBody(
         people = (peopleRaw ?? []) as Contact[]
     }
     const dl = people.find((x) => x.id === p.delivery_lead_id) ?? null
+    const additionalDl = people.find((x) => x.id === additionalDlRecipient?.id) ?? null
     const rec = people.find((x) => x.id === p.recruiter_id) ?? null
     const { data: proposerRow } = await admin.from('profiles').select('full_name').eq('id', ctx.userId).single()
     const proposerName = (proposerRow as { full_name: string | null } | null)?.full_name ?? 'Manager'
@@ -675,6 +757,44 @@ async function confirmPlacementHoursBody(
         createdDlBonusId = dlBonusId
     }
 
+    let additionalDlBonusId = p.additional_dl_bonus_id
+    let createdAdditionalDlBonusId: string | null = null
+    if (generateAdditionalDlBonus && additionalDlRecipient && !additionalDlBonusId) {
+        const { data: b, error } = await admin
+            .from('bonuses')
+            .insert({
+                recipient_user_id: additionalDlRecipient.id,
+                proposed_by: ctx.userId,
+                amount: additionalDlAmount,
+                currency: 'PLN',
+                reason: additionalDlReason,
+                notes: additionalDlNotes,
+                status: 'assigned',
+                period_year: additionalDlYear,
+                period_month: additionalDlMonth,
+                category: 'delivery_lead',
+                client_name: p.client_name,
+                delivery_candidate_name: p.consultant_name,
+                delivery_margin_amount: Number(p.monthly_margin),
+                delivery_margin_percent: 10,
+            })
+            .select('id')
+            .single()
+        if (error || !b) {
+            const primaryError = `Nie udało się utworzyć dodatkowej premii DL: ${error?.message ?? 'unknown'}`
+            const cleanupError = await cleanupFreshPlacementBonuses(
+                admin,
+                createdDlBonusId ? [createdDlBonusId] : [],
+            )
+            if (cleanupError) {
+                throw new Error(`${primaryError}. Nie udało się też wycofać premii Igora: ${cleanupError}`)
+            }
+            throw new Error(primaryError)
+        }
+        additionalDlBonusId = (b as { id: string }).id
+        createdAdditionalDlBonusId = additionalDlBonusId
+    }
+
     let recBonusId = p.recruiter_bonus_id
     let createdRecruiterBonusId: string | null = null
     if (generateRecruiterBonus && !recBonusId) {
@@ -702,7 +822,9 @@ async function confirmPlacementHoursBody(
             const primaryError = `Nie udało się utworzyć premii rekrutera: ${error?.message ?? 'unknown'}`
             const cleanupError = await cleanupFreshPlacementBonuses(
                 admin,
-                createdDlBonusId ? [createdDlBonusId] : [],
+                [createdDlBonusId, createdAdditionalDlBonusId].filter(
+                    (id): id is string => id !== null,
+                ),
             )
             if (cleanupError) {
                 throw new Error(`${primaryError}. Nie udało się też wycofać premii DL: ${cleanupError}`)
@@ -720,6 +842,7 @@ async function confirmPlacementHoursBody(
             hours_confirmed_at: new Date().toISOString(),
             hours_confirmed_by: ctx.userId,
             dl_bonus_id: dlBonusId,
+            additional_dl_bonus_id: additionalDlBonusId,
             recruiter_bonus_id: recBonusId,
             updated_at: new Date().toISOString(),
         })
@@ -728,9 +851,11 @@ async function confirmPlacementHoursBody(
         .select('id')
         .maybeSingle()
     if (placementUpdateError || !confirmedPlacement) {
-        const createdBonusIds = [createdDlBonusId, createdRecruiterBonusId].filter(
-            (id): id is string => id !== null,
-        )
+        const createdBonusIds = [
+            createdDlBonusId,
+            createdAdditionalDlBonusId,
+            createdRecruiterBonusId,
+        ].filter((id): id is string => id !== null)
         const cleanupError = await cleanupFreshPlacementBonuses(admin, createdBonusIds)
         const primaryError = placementUpdateError
             ? `Nie udało się powiązać premii z placementem: ${placementUpdateError.message}`
@@ -746,6 +871,18 @@ async function confirmPlacementHoursBody(
     // cannot announce a bonus that the UI would not be able to find afterwards.
     if (createdDlBonusId && dl) {
         await notifyBonusRecipient(dl, proposerName, dlAmount, dlYear, dlMonth, dlReason, createdDlBonusId, 'dl')
+    }
+    if (createdAdditionalDlBonusId && additionalDl) {
+        await notifyBonusRecipient(
+            additionalDl,
+            proposerName,
+            additionalDlAmount,
+            additionalDlYear,
+            additionalDlMonth,
+            additionalDlReason,
+            createdAdditionalDlBonusId,
+            'dl',
+        )
     }
     if (createdRecruiterBonusId && rec) {
         await notifyBonusRecipient(
@@ -764,11 +901,22 @@ async function confirmPlacementHoursBody(
     await logAudit(ctx.userId, 'PLACEMENT_BONUSES_GENERATED', {
         placement_id: placementId,
         dl_bonus_id: dlBonusId,
+        additional_dl_bonus_id: additionalDlBonusId,
         recruiter_bonus_id: recBonusId,
-        edited: dlEdited || recEdited,
+        edited: dlEdited || additionalDlEdited || recEdited,
         dl: generateDlBonus
             ? { amount: dlAmount, period_year: dlYear, period_month: dlMonth, edited: dlEdited }
             : { skipped: true },
+        additional_dl: !isAdditionalDlPlacement
+            ? { not_applicable: true }
+            : generateAdditionalDlBonus
+                ? {
+                    amount: additionalDlAmount,
+                    period_year: additionalDlYear,
+                    period_month: additionalDlMonth,
+                    edited: additionalDlEdited,
+                }
+                : { skipped: true },
         recruiter: generateRecruiterBonus
             ? { amount: recAmount, period_year: recYear, period_month: recMonth, edited: recEdited }
             : { skipped: true },
@@ -786,10 +934,56 @@ export async function confirmPlacementHours(
     return runAction('confirmPlacementHours', () => confirmPlacementHoursBody(placementId, overrides))
 }
 
+async function revertPlacementAfterLastBonusRemoval(
+    admin: ServiceClient,
+    placementId: string,
+): Promise<boolean> {
+    const { data: placementRaw, error: reloadError } = await admin
+        .from('placements')
+        .select('dl_bonus_id, additional_dl_bonus_id, recruiter_bonus_id, status')
+        .eq('id', placementId)
+        .maybeSingle()
+    if (reloadError) {
+        throw new Error(`Nie udało się sprawdzić pozostałych premii placementu: ${reloadError.message}`)
+    }
+    if (!placementRaw) throw new Error('Placement zniknął po usunięciu premii.')
+
+    const placement = placementRaw as {
+        dl_bonus_id: string | null
+        additional_dl_bonus_id: string | null
+        recruiter_bonus_id: string | null
+        status: string
+    }
+    const hasLinkedBonus = Boolean(
+        placement.dl_bonus_id || placement.additional_dl_bonus_id || placement.recruiter_bonus_id,
+    )
+    if (hasLinkedBonus || placement.status !== 'bonus_confirmed') return false
+
+    const { data: reverted, error: revertError } = await admin
+        .from('placements')
+        .update({
+            status: 'started',
+            hours_confirmed_at: null,
+            hours_confirmed_by: null,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', placementId)
+        .eq('status', 'bonus_confirmed')
+        .select('id')
+        .maybeSingle()
+    if (revertError) {
+        throw new Error(`Nie udało się przywrócić placementu do statusu „Wystartował”: ${revertError.message}`)
+    }
+    if (!reverted) {
+        throw new Error('Status placementu zmienił się równolegle podczas usuwania ostatniej premii.')
+    }
+    return true
+}
+
 /**
- * Hard-delete one of the two bonuses linked to a placement (DL or recruiter). The
+ * Hard-delete one of the bonuses linked to a placement (DL, additional DL, recruiter). The
  * `bonuses` row is removed from the DB; the FK from placements is `ON DELETE SET NULL`,
- * so the link disappears automatically. If both linked bonuses end up NULL, the
+ * so the link disappears automatically. If all linked bonuses end up NULL, the
  * placement is reverted to `started` so the manager can re-click 168h with updated
  * numbers (e.g. after rate corrections). A snapshot is preserved in audit_log even
  * though the bonus row is gone.
@@ -802,7 +996,7 @@ export async function confirmPlacementHours(
  */
 export async function deletePlacementBonus(input: {
     placementId: string
-    bonusKind: 'dl' | 'recruiter'
+    bonusKind: 'dl' | 'additional_dl' | 'recruiter'
     deletionReason: string
 }): Promise<void> {
     const ctx = await requireBonusProposerAction()
@@ -812,41 +1006,64 @@ export async function deletePlacementBonus(input: {
     if (reason.length < 3) throw new Error('Powód usunięcia musi mieć co najmniej 3 znaki.')
     if (reason.length > 500) throw new Error('Powód usunięcia za długi (max 500 znaków).')
 
-    const { data: pRaw } = await admin
+    const { data: pRaw, error: placementLoadError } = await admin
         .from('placements')
-        .select('id, status, dl_bonus_id, recruiter_bonus_id, consultant_name, client_name')
+        .select('id, status, dl_bonus_id, additional_dl_bonus_id, recruiter_bonus_id, consultant_name, client_name')
         .eq('id', input.placementId)
-        .single()
+        .maybeSingle()
+    if (placementLoadError) {
+        throw new Error(`Nie udało się pobrać placementu: ${placementLoadError.message}`)
+    }
     if (!pRaw) throw new Error('Placement nie znaleziony.')
     const p = pRaw as {
         id: string
         status: string
         dl_bonus_id: string | null
+        additional_dl_bonus_id: string | null
         recruiter_bonus_id: string | null
         consultant_name: string
         client_name: string
     }
 
-    const bonusId = input.bonusKind === 'dl' ? p.dl_bonus_id : p.recruiter_bonus_id
-    const label = input.bonusKind === 'dl' ? 'DL' : 'rekrutera'
+    const bonusId = input.bonusKind === 'dl'
+        ? p.dl_bonus_id
+        : input.bonusKind === 'additional_dl'
+            ? p.additional_dl_bonus_id
+            : p.recruiter_bonus_id
+    const label = input.bonusKind === 'dl'
+        ? 'DL'
+        : input.bonusKind === 'additional_dl'
+            ? 'dodatkowa DL'
+            : 'rekrutera'
     if (!bonusId) {
         throw new Error(`Premia ${label} nie istnieje dla tego placementu.`)
     }
 
-    const { data: bRaw } = await admin
+    const { data: bRaw, error: bonusLoadError } = await admin
         .from('bonuses')
         .select('id, recipient_user_id, proposed_by, amount, currency, reason, status, period_year, period_month, linked_invoice_id')
         .eq('id', bonusId)
-        .single()
+        .maybeSingle()
+    if (bonusLoadError) {
+        throw new Error(`Nie udało się pobrać premii do usunięcia: ${bonusLoadError.message}`)
+    }
     if (!bRaw) {
         // Bonus already gone — make sure the placement link is null and we're done.
-        await admin
+        const { error: clearLinkError } = await admin
             .from('placements')
             .update({
-                ...(input.bonusKind === 'dl' ? { dl_bonus_id: null } : { recruiter_bonus_id: null }),
+                ...(input.bonusKind === 'dl'
+                    ? { dl_bonus_id: null }
+                    : input.bonusKind === 'additional_dl'
+                        ? { additional_dl_bonus_id: null }
+                        : { recruiter_bonus_id: null }),
                 updated_at: new Date().toISOString(),
             })
             .eq('id', input.placementId)
+        if (clearLinkError) {
+            throw new Error(`Nie udało się wyczyścić nieaktualnego linku premii: ${clearLinkError.message}`)
+        }
+        await revertPlacementAfterLastBonusRemoval(admin, input.placementId)
         revalidatePath('/internal/admin')
         revalidatePath('/internal/placements')
         return
@@ -887,33 +1104,13 @@ export async function deletePlacementBonus(input: {
     const { error: delErr } = await admin.from('bonuses').delete().eq('id', bonusId)
     if (delErr) throw new Error(`Nie udało się usunąć premii: ${delErr.message}`)
 
-    // FK ON DELETE SET NULL already nulled the placement link; check if both are null now.
-    const { data: pAfterRaw } = await admin
-        .from('placements')
-        .select('dl_bonus_id, recruiter_bonus_id, status')
-        .eq('id', input.placementId)
-        .single()
-    const pAfter = pAfterRaw as
-        | { dl_bonus_id: string | null; recruiter_bonus_id: string | null; status: string }
-        | null
-
     let revertedToStarted = false
-    if (
-        pAfter &&
-        pAfter.dl_bonus_id === null &&
-        pAfter.recruiter_bonus_id === null &&
-        pAfter.status === 'bonus_confirmed'
-    ) {
-        await admin
-            .from('placements')
-            .update({
-                status: 'started',
-                hours_confirmed_at: null,
-                hours_confirmed_by: null,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', input.placementId)
-        revertedToStarted = true
+    let postDeleteError: string | null = null
+    try {
+        // FK ON DELETE SET NULL already cleared the selected placement link.
+        revertedToStarted = await revertPlacementAfterLastBonusRemoval(admin, input.placementId)
+    } catch (error) {
+        postDeleteError = error instanceof Error ? error.message : 'Nieznany błąd odświeżenia placementu.'
     }
 
     await logAudit(ctx.userId, 'PLACEMENT_BONUS_DELETED', {
@@ -931,6 +1128,7 @@ export async function deletePlacementBonus(input: {
         client_name: p.client_name,
         deletion_reason: reason,
         placement_reverted_to_started: revertedToStarted,
+        post_delete_error: postDeleteError,
     })
 
     // Notify the recipient only if the bonus was still active. Legacy rows that were
@@ -961,6 +1159,10 @@ export async function deletePlacementBonus(input: {
     revalidatePath('/internal/admin')
     revalidatePath('/internal/placements')
     revalidatePath('/internal')
+
+    if (postDeleteError) {
+        throw new Error(`Premia została usunięta, ale status placementu wymaga sprawdzenia: ${postDeleteError}`)
+    }
 }
 
 /** Cancel a placement (only before bonuses are generated). */
