@@ -3,7 +3,8 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 
 /**
- * GET /api/internal/workdays?from=2026-01&to=2026-08
+ * GET /api/internal/workdays?from=2026-01&to=2026-08&bucket=month
+ * GET /api/internal/workdays?from=2026-08-24&to=2026-08-24&bucket=week
  *
  * Eksport DNI ROBOCZYCH dla NEXUSA (decyzja D5).
  *
@@ -23,13 +24,29 @@ import { logger } from "@/lib/logger";
  * przypadkiem wyciągnąć więcej, nawet zmieniając ten plik.
  */
 
-const MAX_MONTHS = 24;
+// ~2 lata. Sufit istnieje, żeby jedno żądanie nie zamieniło się w skan całej historii.
+const MAX_SPAN_DAYS = 750;
 
-function parseMonth(value: string | null): string | null {
-  if (!value || !/^\d{4}-\d{2}$/.test(value)) return null;
-  const [y, m] = value.split("-").map(Number);
-  if (m < 1 || m > 12 || y < 2000 || y > 2100) return null;
-  return `${value}-01`;
+/**
+ * Akceptuje `YYYY-MM` (miesiąc) i `YYYY-MM-DD` (dzień).
+ *
+ * Granulacja tygodniowa jest potrzebna, bo Power Calling w NEXUSIE raportuje
+ * TYDZIEŃ ISO. Przybliżanie tygodnia z miesięcznej średniej byłoby zgadywaniem
+ * — czyli dokładnie tym defektem, który ten endpoint likwiduje.
+ */
+function parseDay(value: string | null): string | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}$/.test(value)) {
+    const [y, m] = value.split("-").map(Number);
+    if (m < 1 || m > 12 || y < 2000 || y > 2100) return null;
+    return `${value}-01`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const d = new Date(`${value}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    return value;
+  }
+  return null;
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -50,11 +67,20 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const url = new URL(request.url);
-  const from = parseMonth(url.searchParams.get("from"));
-  const to = parseMonth(url.searchParams.get("to"));
+  const from = parseDay(url.searchParams.get("from"));
+  const to = parseDay(url.searchParams.get("to"));
+  const bucket = url.searchParams.get("bucket") ?? "month";
+  if (bucket !== "month" && bucket !== "week") {
+    // Nieznana granulacja jest ODRZUCANA, nie cicho zamieniana na miesiąc:
+    // literówka dałaby wtedy liczby miesięczne pod etykietą tygodnia.
+    return NextResponse.json(
+      { error: "bucket musi być 'month' albo 'week'" },
+      { status: 422 },
+    );
+  }
   if (!from || !to) {
     return NextResponse.json(
-      { error: "from i to są wymagane w formacie YYYY-MM" },
+      { error: "from i to są wymagane w formacie YYYY-MM albo YYYY-MM-DD" },
       { status: 422 },
     );
   }
@@ -65,14 +91,14 @@ export async function GET(request: NextRequest): Promise<Response> {
     );
   }
 
-  const months =
-    (new Date(to).getFullYear() - new Date(from).getFullYear()) * 12 +
-    (new Date(to).getMonth() - new Date(from).getMonth()) +
-    1;
-  if (months > MAX_MONTHS) {
+  const spanDays =
+    (new Date(`${to}T00:00:00Z`).getTime() -
+      new Date(`${from}T00:00:00Z`).getTime()) /
+    86_400_000;
+  if (spanDays > MAX_SPAN_DAYS) {
     return NextResponse.json(
       {
-        error: `Zakres maksymalnie ${MAX_MONTHS} miesięcy (zażądano ${months})`,
+        error: `Zakres maksymalnie ${MAX_SPAN_DAYS} dni (zażądano ${spanDays})`,
       },
       { status: 422 },
     );
@@ -82,6 +108,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const { data, error } = await admin.rpc("nexus_workdays_export", {
     p_from: from,
     p_to: to,
+    p_bucket: bucket,
   });
 
   if (error) {
@@ -91,7 +118,8 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   type Row = {
     email: string;
-    month: string;
+    period_start: string;
+    period_end: string;
     business_days: number;
     absence_days: number | string;
     working_days: number | string;
@@ -100,8 +128,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   const rows = (data ?? []) as Row[];
 
   return NextResponse.json({
-    from: from.slice(0, 7),
-    to: to.slice(0, 7),
+    from,
+    to,
+    bucket,
     // Nazwa źródła jedzie w odpowiedzi, żeby konsument mógł podpisać kafel
     // tym, czym liczba NAPRAWDĘ jest. W COMPASSIE chorobowe dla B2B jest
     // strukturalnie niezapisywalne (trigger Phase 29), a rekruterzy są
@@ -111,7 +140,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     basis: "business_days_minus_approved_leave",
     people: rows.map((r) => ({
       email: r.email,
-      month: String(r.month).slice(0, 7),
+      period_start: String(r.period_start).slice(0, 10),
+      period_end: String(r.period_end).slice(0, 10),
       business_days: Number(r.business_days),
       absence_days: Number(r.absence_days),
       working_days: Number(r.working_days),

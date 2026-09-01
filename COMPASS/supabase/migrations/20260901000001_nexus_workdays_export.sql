@@ -21,13 +21,21 @@
 
 BEGIN;
 
+-- Granulacja `p_bucket` ('month' | 'week') istnieje, bo Power Calling
+-- w NEXUSIE raportuje TYDZIEŃ ISO, a wskaźniki MD — miesiąc. Przybliżanie
+-- tygodnia z miesięcznej średniej byłoby zgadywaniem, czyli tym samym
+-- defektem co dzielenie przez sztywne 5.
+DROP FUNCTION IF EXISTS public.nexus_workdays_export(DATE, DATE);
+
 CREATE OR REPLACE FUNCTION public.nexus_workdays_export(
-    p_from DATE,
-    p_to   DATE
+    p_from   DATE,
+    p_to     DATE,
+    p_bucket TEXT DEFAULT 'month'
 )
 RETURNS TABLE (
     email          TEXT,
-    month          DATE,
+    period_start   DATE,
+    period_end     DATE,
     business_days  INTEGER,
     absence_days   NUMERIC(5,1),
     working_days   NUMERIC(5,1)
@@ -37,87 +45,71 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-    WITH months AS (
-        SELECT generate_series(
-                   date_trunc('month', p_from)::date,
-                   date_trunc('month', p_to)::date,
-                   interval '1 month'
-               )::date AS m
+    WITH buckets AS (
+        SELECT b.s AS period_start,
+               CASE p_bucket
+                   WHEN 'week'  THEN (b.s + interval '6 days')::date
+                   ELSE (b.s + interval '1 month - 1 day')::date
+               END AS period_end
+        FROM generate_series(
+                 date_trunc(CASE p_bucket WHEN 'week' THEN 'week' ELSE 'month' END, p_from)::date,
+                 date_trunc(CASE p_bucket WHEN 'week' THEN 'week' ELSE 'month' END, p_to)::date,
+                 CASE p_bucket WHEN 'week' THEN interval '1 week' ELSE interval '1 month' END
+             ) AS b(s)
     ),
-    -- Dni robocze miesiąca: pon-pt minus święta. Święta w weekend nie
-    -- odejmują się dwa razy, bo filtr dnia tygodnia jest wspólny.
     business AS (
-        SELECT months.m AS m,
-               count(*)::int AS business_days
-        FROM months
-        CROSS JOIN LATERAL generate_series(
-            months.m,
-            (months.m + interval '1 month - 1 day')::date,
-            interval '1 day'
-        ) AS d(day)
+        SELECT bk.period_start, bk.period_end, count(*)::int AS business_days
+        FROM buckets bk
+        CROSS JOIN LATERAL generate_series(bk.period_start, bk.period_end, interval '1 day') AS d(day)
         WHERE EXTRACT(ISODOW FROM d.day) < 6
-          AND NOT EXISTS (
-              SELECT 1 FROM public.public_holidays h WHERE h.date = d.day::date
-          )
-        GROUP BY months.m
+          AND NOT EXISTS (SELECT 1 FROM public.public_holidays h WHERE h.date = d.day::date)
+        GROUP BY bk.period_start, bk.period_end
     ),
-    -- Nieobecności: liczymy DNI ROBOCZE objęte zatwierdzonym wnioskiem,
-    -- przycięte do miesiąca. Pół dnia to 0.5 — CHECK dopuszcza je wyłącznie
-    -- dla wniosku jednodniowego, więc mnożnik stosuje się do całego wniosku.
     absence AS (
         SELECT p.email::text AS email,
-               months.m      AS m,
-               SUM(
-                   CASE WHEN l.half_day IS NOT NULL THEN 0.5 ELSE 1 END
-               )::numeric(5,1) AS absence_days
+               bk.period_start,
+               SUM(CASE WHEN l.half_day IS NOT NULL THEN 0.5 ELSE 1 END)::numeric(5,1) AS absence_days
         FROM public.leave_requests l
         JOIN public.profiles p ON p.id = l.user_id
-        JOIN months ON TRUE
+        JOIN buckets bk ON TRUE
         CROSS JOIN LATERAL generate_series(
-            GREATEST(l.start_date, months.m),
-            LEAST(l.end_date, (months.m + interval '1 month - 1 day')::date),
+            GREATEST(l.start_date, bk.period_start),
+            LEAST(l.end_date, bk.period_end),
             interval '1 day'
         ) AS d(day)
         WHERE l.status = 'approved'
           AND EXTRACT(ISODOW FROM d.day) < 6
-          AND NOT EXISTS (
-              SELECT 1 FROM public.public_holidays h WHERE h.date = d.day::date
-          )
-        GROUP BY p.email, months.m
+          AND NOT EXISTS (SELECT 1 FROM public.public_holidays h WHERE h.date = d.day::date)
+        GROUP BY p.email, bk.period_start
     )
-    SELECT p.email::text                                   AS email,
-           b.m                                             AS month,
-           b.business_days                                 AS business_days,
-           COALESCE(a.absence_days, 0)::numeric(5,1)       AS absence_days,
-           GREATEST(
-               0,
-               b.business_days - COALESCE(a.absence_days, 0)
-           )::numeric(5,1)                                 AS working_days
+    SELECT p.email::text                              AS email,
+           b.period_start                             AS period_start,
+           b.period_end                               AS period_end,
+           b.business_days                            AS business_days,
+           COALESCE(a.absence_days, 0)::numeric(5,1)  AS absence_days,
+           GREATEST(0, b.business_days - COALESCE(a.absence_days, 0))::numeric(5,1) AS working_days
     FROM public.profiles p
     CROSS JOIN business b
-    LEFT JOIN absence a ON a.email = p.email::text AND a.m = b.m
+    LEFT JOIN absence a ON a.email = p.email::text AND a.period_start = b.period_start
     WHERE p.email IS NOT NULL
-      -- Okno zatrudnienia. Bez niego do NEXUSA jechałyby adresy osób, które
-      -- odeszły albo jeszcze nie zaczęły — z `absence_days = 0`, czyli
-      -- nieodróżnialne od kogoś, kto po prostu nie brał urlopu. Wysyłanie
-      -- e-maila byłego pracownika do zewnętrznego systemu nie ma uzasadnienia.
-      --
-      -- NULL nie wyklucza: 8 z 46 profili nie ma `hired_at`, a brak daty
-      -- znaczy „nie wiemy", nie „nie pracował".
-      AND (p.hired_at IS NULL OR p.hired_at <= (b.m + interval '1 month - 1 day')::date)
-      AND (p.termination_date IS NULL OR p.termination_date >= b.m)
-    ORDER BY p.email, b.m;
+      -- Okno zatrudnienia: bez niego do NEXUSA jechalyby adresy osob, ktore
+      -- odeszly albo jeszcze nie zaczely, z absence_days=0 — nieodroznialne
+      -- od kogos, kto po prostu nie bral urlopu. NULL nie wyklucza (brak daty
+      -- znaczy „nie wiemy", nie „nie pracowal").
+      AND (p.hired_at IS NULL OR p.hired_at <= b.period_end)
+      AND (p.termination_date IS NULL OR p.termination_date >= b.period_start)
+    ORDER BY p.email, b.period_start;
 $$;
 
-COMMENT ON FUNCTION public.nexus_workdays_export(DATE, DATE) IS
+COMMENT ON FUNCTION public.nexus_workdays_export(DATE, DATE, TEXT) IS
     'Eksport dni roboczych dla NEXUSA (D5). Zwraca WYŁĄCZNIE liczby dni — '
     'nigdy leave_type, note ani documentation_url. Typ nieobecności to dana '
     'o zdrowiu; kontrakt wymusza sygnatura, nie dyscyplina wołającego.';
 
-REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE) FROM anon;
-REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE) FROM authenticated;
-GRANT EXECUTE ON FUNCTION public.nexus_workdays_export(DATE, DATE) TO service_role;
+REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE, TEXT) FROM anon;
+REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE, TEXT) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.nexus_workdays_export(DATE, DATE, TEXT) TO service_role;
 
 -- Samosprawdzenie: migracja, która cicho nic nie zmieniła, jest gorsza niż
 -- taka, która padła — bo wygląda na wdrożoną.
@@ -127,6 +119,7 @@ BEGIN
         SELECT 1 FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public' AND p.proname = 'nexus_workdays_export'
+          AND p.pronargs = 3
     ) THEN
         RAISE EXCEPTION 'Samosprawdzenie: funkcja nexus_workdays_export nie istnieje po migracji';
     END IF;
