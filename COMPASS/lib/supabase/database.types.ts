@@ -7344,6 +7344,16 @@ export type Database = {
         Args: { p_answers: Json; p_course_id: string }
         Returns: Json
       }
+      nexus_workdays_export: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          absence_days: number
+          business_days: number
+          email: string
+          month: string
+          working_days: number
+        }[]
+      }
       sync_user_role: {
         Args: { p_email: string; p_is_super_admin?: boolean; p_user_id: string }
         Returns: Database["public"]["Enums"]["user_role"]
