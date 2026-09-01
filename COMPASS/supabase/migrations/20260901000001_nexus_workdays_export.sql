@@ -97,6 +97,15 @@ AS $$
     CROSS JOIN business b
     LEFT JOIN absence a ON a.email = p.email::text AND a.m = b.m
     WHERE p.email IS NOT NULL
+      -- Okno zatrudnienia. Bez niego do NEXUSA jechałyby adresy osób, które
+      -- odeszły albo jeszcze nie zaczęły — z `absence_days = 0`, czyli
+      -- nieodróżnialne od kogoś, kto po prostu nie brał urlopu. Wysyłanie
+      -- e-maila byłego pracownika do zewnętrznego systemu nie ma uzasadnienia.
+      --
+      -- NULL nie wyklucza: 8 z 46 profili nie ma `hired_at`, a brak daty
+      -- znaczy „nie wiemy", nie „nie pracował".
+      AND (p.hired_at IS NULL OR p.hired_at <= (b.m + interval '1 month - 1 day')::date)
+      AND (p.termination_date IS NULL OR p.termination_date >= b.m)
     ORDER BY p.email, b.m;
 $$;
 
@@ -109,5 +118,18 @@ REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE) FROM anon;
 REVOKE ALL ON FUNCTION public.nexus_workdays_export(DATE, DATE) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.nexus_workdays_export(DATE, DATE) TO service_role;
+
+-- Samosprawdzenie: migracja, która cicho nic nie zmieniła, jest gorsza niż
+-- taka, która padła — bo wygląda na wdrożoną.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = 'nexus_workdays_export'
+    ) THEN
+        RAISE EXCEPTION 'Samosprawdzenie: funkcja nexus_workdays_export nie istnieje po migracji';
+    END IF;
+END $$;
 
 COMMIT;

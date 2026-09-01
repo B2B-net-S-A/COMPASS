@@ -7347,11 +7347,16 @@ export type Database = {
       nexus_workdays_export: {
         Args: { p_from: string; p_to: string }
         Returns: {
-          absence_days: number
+          // PostgREST serializuje NUMERIC jako STRING (zachowuje precyzję),
+          // więc `absence_days`/`working_days` przychodzą jako tekst mimo
+          // typu NUMERIC w bazie. `business_days` to INTEGER → liczba.
+          // Handler i tak rzutuje przez Number(), ale typ ma opisywać to,
+          // co naprawdę leci po drucie.
+          absence_days: string
           business_days: number
           email: string
           month: string
-          working_days: number
+          working_days: string
         }[]
       }
       sync_user_role: {
