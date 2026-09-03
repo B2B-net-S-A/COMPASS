@@ -26,6 +26,7 @@ import type {
     BenchBenefits,
     BenchItem,
     BenchStatus,
+    CareRosterItem,
     ClientDepartureRow,
     ClientEntryRow,
     ContractorConversationRow,
@@ -50,9 +51,16 @@ import type {
     OnboardingEntryItem,
     WhoResigned,
 } from '@/lib/types/contractor'
+import {
+    resolveCareSituations,
+    type CareBenchRow,
+    type CareDepartureRow,
+    type CareEntryRow,
+} from '@/lib/contractors/care-roster'
 import { excludeExited } from '@/lib/hr/employment-window'
 import { ExpectedError } from '@/lib/actions/expected-error'
-import { requireRows, selectInChunks, type SelectInChunksOptions } from '@/lib/supabase/select-in-chunks'
+import { runAction, type ActionResult } from '@/lib/actions/action-result'
+import { DEFAULT_IN_CHUNK_SIZE, requireRows, selectInChunks, type SelectInChunksOptions } from '@/lib/supabase/select-in-chunks'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 // Audyt 2026-08 — `/internal/kontraktorzy` to od Fazy 38/45 sama przekierowująca
@@ -1261,4 +1269,145 @@ export async function dismissBenchEntry(id: string): Promise<void> {
     if (error) throw new Error(`Nie udało się usunąć z benchu: ${error.message}`)
     await logAudit(ctx.userId, 'BENCH_ENTRY_DISMISSED', { bench_id: id })
     revalidatePath(HUB)
+}
+
+// ─── Opieka TCM — lista konsultantów + przypisanie opiekuna ──────────────────
+// Kolumna `contractors.owner_tcm_id` istnieje od Fazy 33a i jest czytana przez
+// planner Consultant Success oraz alerty mapy technologicznej (brak opiekuna =
+// alert idzie do WSZYSTKICH TCM i adminów). Nie było jednak ekranu, na którym da
+// się ją wypełnić inaczej niż po jednej osobie — stąd 1 przypisanie na 688
+// rekordów. Te dwie funkcje zamykają tę lukę.
+//
+// KTO JEST NA LIŚCIE liczy się z DANYCH, nie z `contractors.status`: ten ma na
+// produkcji wartość 'active' u wszystkich 688 rekordów (default importu), więc
+// oparcie listy na nim dałoby TCM pod opiekę ludzi, którzy odeszli lata temu.
+// Reguła: ostatnie wejście do klienta bez późniejszego zejścia (= pracuje) LUB
+// niezdjęty wpis na benchu (= między projektami, też wymaga kontaktu).
+
+interface CareContractorRow {
+    id: string
+    full_name: string
+    current_client: string | null
+    current_position: string | null
+    owner_tcm_id: string | null
+}
+
+/**
+ * Lista konsultantów pod opieką Talent Community: pracujący u klienta + bench.
+ *
+ * Tabele źródłowe są małe (setki wierszy), więc składamy je w pamięci zamiast
+ * budować widok w bazie — dzięki temu funkcja nie wymaga migracji, a sama reguła
+ * „kto jest na liście" da się przetestować bez Postgresa
+ * (lib/contractors/care-roster.ts).
+ */
+export async function listCareRoster(): Promise<CareRosterItem[]> {
+    await requireLifecycleManagerAction()
+    const admin = createServiceClient()
+
+    const [entries, departures, bench] = await Promise.all([
+        admin.from('client_entries').select('contractor_id, client_name, position, start_date').not('contractor_id', 'is', null),
+        admin.from('client_departures').select('contractor_id, departure_date').not('contractor_id', 'is', null),
+        admin.from('contractor_bench').select('contractor_id, client_name, role, departure_date, status').is('dismissed_at', null).not('contractor_id', 'is', null),
+    ])
+
+    // TREŚĆ — każde z tych trzech źródeł współtworzy listę. Cicha pustka
+    // w którymkolwiek zabrałaby część ludzi z opieki, a lista dalej wyglądałaby
+    // na kompletną: nikt by nie zauważył, że kogoś brakuje.
+    const situations = resolveCareSituations({
+        entries: requireRows('client_entries', entries) as CareEntryRow[],
+        departures: requireRows('client_departures', departures) as CareDepartureRow[],
+        bench: requireRows('contractor_bench', bench) as CareBenchRow[],
+    })
+
+    const ids = Array.from(situations.keys())
+    if (ids.length === 0) return []
+
+    // TREŚĆ — to jest sama lista, a nie jej ozdoba. Paczkami, bo przy ~330
+    // identyfikatorach jedno `.in()` zbudowałoby URL, który po drodze bywa ucinany
+    // (incydent 2026-08-25) i wróciłby pustką bez błędu.
+    const contractors = await selectInChunks<CareContractorRow>({
+        source: 'contractors',
+        column: 'id',
+        ids,
+        query: () => admin.from('contractors').select('id, full_name, current_client, current_position, owner_tcm_id'),
+    })
+
+    const ownerMap = await loadProfilesByIds(admin, contractors.map((c) => c.owner_tcm_id ?? ''))
+
+    const items: CareRosterItem[] = contractors.map((c) => {
+        const info = situations.get(c.id)
+        return {
+            contractorId: c.id,
+            fullName: c.full_name,
+            situation: info?.situation ?? 'bench',
+            clientName: info?.clientName ?? c.current_client,
+            position: info?.position ?? c.current_position,
+            sinceDate: info?.sinceDate ?? null,
+            benchStatus: info?.benchStatus ?? null,
+            ownerTcmId: c.owner_tcm_id,
+            ownerTcmName: c.owner_tcm_id ? ownerMap.get(c.owner_tcm_id)?.full_name ?? null : null,
+        }
+    })
+
+    return items.sort((a, b) => a.fullName.localeCompare(b.fullName, 'pl'))
+}
+
+/** Ile rekordów wolno ruszyć jednym przypisaniem — z zapasem nad całą listą (~330). */
+const MAX_CARE_ASSIGN_BATCH = 500
+
+/**
+ * Masowe przypisanie opiekuna TCM. `ownerTcmId === null` zdejmuje opiekuna.
+ *
+ * Wołane z komponentu klienckiego, więc przez `runAction` — bez tego Next
+ * zamieniłby komunikat walidacji na „An error occurred…", a awaria nie trafiłaby
+ * do Sentry (SDK nie instrumentuje plików 'use server').
+ */
+export async function assignCareOwner(input: {
+    contractorIds: string[]
+    ownerTcmId: string | null
+}): Promise<ActionResult<{ updated: number }>> {
+    return runAction('assignCareOwner', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        const admin = createServiceClient()
+
+        const ids = Array.from(new Set(input.contractorIds.filter(Boolean)))
+        if (ids.length === 0) throw new ExpectedError('Nie zaznaczono żadnego konsultanta.')
+        if (ids.length > MAX_CARE_ASSIGN_BATCH) {
+            throw new ExpectedError(`Maksymalnie ${MAX_CARE_ASSIGN_BATCH} osób naraz — zawęź zaznaczenie.`)
+        }
+
+        // Opiekun musi pochodzić z listy uprawnionych. Bez tego sprawdzenia dowolny
+        // UUID z `profiles` przeszedłby jako opiekun — a wtedy alerty mapy i check-iny
+        // Consultant Success poleciałyby do osoby, która nie ma dostępu do TCM
+        // i nigdy by ich nie zobaczyła.
+        if (input.ownerTcmId) {
+            const eligible = await listTcmProfiles()
+            if (!eligible.some((p) => p.id === input.ownerTcmId)) {
+                throw new ExpectedError('Wskazana osoba nie jest opiekunem Talent Community.')
+            }
+        }
+
+        // Paczkami z tego samego powodu co przy odczycie: `update().in()` z setkami
+        // identyfikatorów buduje dokładnie tak samo długi URL.
+        let updated = 0
+        for (let i = 0; i < ids.length; i += DEFAULT_IN_CHUNK_SIZE) {
+            const chunk = ids.slice(i, i + DEFAULT_IN_CHUNK_SIZE)
+            const { data, error } = await admin
+                .from('contractors')
+                .update({ owner_tcm_id: input.ownerTcmId, updated_at: new Date().toISOString() })
+                .in('id', chunk)
+                .select('id')
+            if (error) throw new Error(`Nie udało się przypisać opiekuna: ${error.message}`)
+            updated += (data ?? []).length
+        }
+
+        await logAudit(ctx.userId, 'CONTRACTOR_OWNER_ASSIGNED', {
+            owner_tcm_id: input.ownerTcmId,
+            count: updated,
+            // Pełna lista bywa 500-elementowa — do audytu wystarczy próbka i licznik.
+            contractor_ids: ids.slice(0, 50),
+        })
+        revalidatePath(HUB)
+        return { updated }
+    })
 }

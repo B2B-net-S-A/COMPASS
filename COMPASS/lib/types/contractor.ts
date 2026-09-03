@@ -525,3 +525,27 @@ export interface BenchItem {
     source: 'auto' | 'manual'
     dismissed_at: string | null
 }
+
+// ─── Opieka TCM (lista konsultantów + opiekun) ───────────────────────────────
+/**
+ * Dlaczego osoba jest na liście opieki. Rozstrzygane z danych, nie z
+ * `contractors.status` — ten ostatni ma na produkcji wartość 'active' u
+ * WSZYSTKICH 688 rekordów, bo taki był default importu, i nie mówi nic o tym,
+ * czy ktoś dziś pracuje.
+ */
+export type CareSituation = 'u_klienta' | 'bench'
+
+/** Jeden konsultant na liście opieki Talent Community. */
+export interface CareRosterItem {
+    contractorId: string
+    fullName: string
+    situation: CareSituation
+    clientName: string | null
+    position: string | null
+    /** Wejście do klienta (`u_klienta`) albo zejście z projektu (`bench`). */
+    sinceDate: string | null
+    /** Etap benchu — tylko dla `situation === 'bench'`. */
+    benchStatus: BenchStatus | null
+    ownerTcmId: string | null
+    ownerTcmName: string | null
+}
