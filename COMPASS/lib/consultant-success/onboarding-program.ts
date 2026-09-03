@@ -52,6 +52,12 @@ export interface ProgramEnrollment {
     startedOn: string
     endsOn: string
     nextCheckInOn: string
+    /**
+     * Docelowy stan monitoringu. `paused` znaczy „TCM świadomie zatrzymał
+     * kontakt z tą osobą" — automat zapisuje ją do programu (rytm i okno mają
+     * być gotowe), ale nie wznawia wysyłki za człowieka.
+     */
+    monitoringStatus: 'active' | 'paused'
 }
 
 export interface ProgramGraduation {
@@ -108,11 +114,18 @@ export function planOnboardingProgram(input: {
         // planner potraktowałby to jako termin przekroczony i od razu wysłał
         // monit „po terminie" za rozmowę, której nikt nie miał kiedy odbyć.
         const firstCall = addCalendarDays(startedOn, ONBOARDING_PROGRAM_CADENCE_DAYS)
+        // `inactive` to stan domyślny importu („nikt tego nie ustawiał"), więc
+        // zapis go nadpisuje. `paused` to przeciwnie: ślad decyzji człowieka.
+        // Automat, który cicho wznawia wstrzymany kontakt, wysyła przypomnienia
+        // dokładnie o kimś, o kim TCM kazał przestać — i nie zostawia po tym
+        // śladu. Odwiesza się ręcznie, tak jak się wstrzymało.
+        const paused = byContractor.get(contractorId)?.monitoring_status === 'paused'
         enrollments.push({
             contractorId,
             startedOn,
             endsOn: addCalendarDays(startedOn, ONBOARDING_PROGRAM_DAYS),
             nextCheckInOn: firstCall > input.today ? firstCall : input.today,
+            monitoringStatus: paused ? 'paused' : 'active',
         })
     }
 
@@ -184,31 +197,49 @@ export async function syncOnboardingProgram(options: {
 
     const nowIso = now.toISOString()
 
-    if (plan.enrollments.length > 0) {
-        // `upsert` nadpisuje wyłącznie kolumny podane w ładunku, więc zdrowie,
-        // ankiety i historia zostają nietknięte. Kadencję resetujemy świadomie:
-        // to moment wejścia do NOWEGO klienta, więc rytm liczy się od nowa.
+    // `upsert` nadpisuje wyłącznie kolumny podane w ładunku, więc zdrowie,
+    // ankiety i historia zostają nietknięte. Kadencję resetujemy świadomie: to
+    // moment wejścia do NOWEGO klienta, więc rytm liczy się od nowa.
+    const programWindow = (enrollment: ProgramEnrollment) => ({
+        contractor_id: enrollment.contractorId,
+        check_in_cadence_days: ONBOARDING_PROGRAM_CADENCE_DAYS,
+        next_check_in_on: enrollment.nextCheckInOn,
+        onboarding_program_started_on: enrollment.startedOn,
+        onboarding_program_ends_on: enrollment.endsOn,
+        onboarding_program_completed_at: null,
+        updated_by: null,
+        updated_at: nowIso,
+    })
+
+    // Dwa zapisy zamiast jednego, bo PostgREST odrzuca paczkę, w której wiersze
+    // mają różne zestawy kluczy — a wstrzymanym celowo NIE podajemy kolumn
+    // monitoringu, żeby stemple `monitoring_paused_*` przetrwały nietknięte.
+    const resumed = plan.enrollments.filter((enrollment) => enrollment.monitoringStatus === 'active')
+    const staysPaused = plan.enrollments.filter((enrollment) => enrollment.monitoringStatus === 'paused')
+
+    if (resumed.length > 0) {
         // `*_by` na null, bo autorem jest automat — para „kiedy/kto" musi
         // pozostać spójna, a podstawienie poprzedniej osoby byłoby nieprawdą.
         const { error } = await admin.from('contractor_success_settings').upsert(
-            plan.enrollments.map((enrollment) => ({
-                contractor_id: enrollment.contractorId,
+            resumed.map((enrollment) => ({
+                ...programWindow(enrollment),
                 monitoring_status: 'active',
-                check_in_cadence_days: ONBOARDING_PROGRAM_CADENCE_DAYS,
-                next_check_in_on: enrollment.nextCheckInOn,
-                onboarding_program_started_on: enrollment.startedOn,
-                onboarding_program_ends_on: enrollment.endsOn,
-                onboarding_program_completed_at: null,
                 monitoring_started_at: nowIso,
                 monitoring_started_by: null,
                 monitoring_paused_at: null,
                 monitoring_paused_by: null,
-                updated_by: null,
-                updated_at: nowIso,
             })),
             { onConflict: 'contractor_id' },
         )
         if (error) throw new Error(`onboarding_program_enroll_failed:${error.message}`)
+    }
+
+    if (staysPaused.length > 0) {
+        const { error } = await admin.from('contractor_success_settings').upsert(
+            staysPaused.map(programWindow),
+            { onConflict: 'contractor_id' },
+        )
+        if (error) throw new Error(`onboarding_program_enroll_paused_failed:${error.message}`)
     }
 
     if (plan.graduations.length > 0) {

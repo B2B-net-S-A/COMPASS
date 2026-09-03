@@ -63,6 +63,7 @@ describe('planOnboardingProgram — zapis do programu', () => {
             startedOn: '2026-08-31',
             endsOn: '2026-11-29',
             nextCheckInOn: '2026-09-14',
+            monitoringStatus: 'active',
         }])
     })
 
@@ -114,7 +115,38 @@ describe('planOnboardingProgram — zapis do programu', () => {
             startedOn: noweWejscie,
             endsOn: addCalendarDays(noweWejscie, 90),
             nextCheckInOn: addCalendarDays(noweWejscie, ONBOARDING_PROGRAM_CADENCE_DAYS),
+            monitoringStatus: 'active',
         }])
+    })
+
+    it('nie wznawia monitoringu wstrzymanego ręcznie — nawet przy nowym kliencie', () => {
+        const noweWejscie = daysAgo(5)
+
+        const plan = planFor({
+            entries: [entry('c1', noweWejscie)],
+            settings: [setting({
+                contractor_id: 'c1',
+                monitoring_status: 'paused',
+                onboarding_program_started_on: daysAgo(300),
+                onboarding_program_ends_on: daysAgo(210),
+                onboarding_program_completed_at: '2026-02-01T00:00:00.000Z',
+            })],
+        })
+
+        // Okno programu ustawiamy mimo wszystko: gdy TCM odwiesi kontakt, rytm
+        // ma być gotowy. Czego nie robimy, to wznowienia wysyłki za człowieka.
+        expect(plan.enrollments).toHaveLength(1)
+        expect(plan.enrollments[0].monitoringStatus).toBe('paused')
+        expect(plan.enrollments[0].startedOn).toBe(noweWejscie)
+    })
+
+    it('wychodzi ze stanu domyślnego importu (`inactive`) na `active`', () => {
+        const plan = planFor({
+            entries: [entry('c1', daysAgo(5))],
+            settings: [setting({ contractor_id: 'c1', monitoring_status: 'inactive' })],
+        })
+
+        expect(plan.enrollments[0].monitoringStatus).toBe('active')
     })
 
     it('pomija wejście starsze niż okno programu', () => {
