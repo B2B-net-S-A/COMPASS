@@ -1,6 +1,9 @@
 -- ============================================================
 -- Program telefonów po wejściu do klienta — co 2 tygodnie przez 3 miesiące
 -- Data: 2026-09-03
+-- Zastosowana na produkcji 2026-09-03 przez MCP apply_migration.
+-- Wersja w rejestrze: 20260903195055 (= prefiks tego pliku; rejestr nadaje
+-- własny znacznik czasu, więc nazwa pliku idzie za nim, nie odwrotnie).
 -- Bez BEGIN/COMMIT: apply_migration wykonuje treść we własnej transakcji.
 --
 -- Zależy od: contractor_success_settings (Consultant Success Hub, 20260714183425)
