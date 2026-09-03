@@ -1,6 +1,10 @@
 -- ============================================================
 -- Opieka TCM — manager konsultanta po stronie klienta
 -- Data: 2026-09-03
+-- Zastosowana na produkcji 2026-09-03 przez MCP apply_migration.
+-- Wersja w rejestrze: 20260903134442 (= prefiks tego pliku; rejestr nadaje
+-- własny znacznik czasu, więc nazwa pliku idzie za nim, nie odwrotnie).
+-- Bez BEGIN/COMMIT: apply_migration wykonuje treść we własnej transakcji.
 --
 -- Zależy od: contractors (Faza 33a)
 --
@@ -20,8 +24,6 @@
 -- Świadomie TEXT, nie FK: to pracownik KLIENTA (Nordea, BNP), nie użytkownik
 -- Compassa — nie mamy dla niego rekordu i nie chcemy go zakładać.
 -- ============================================================
-
-BEGIN;
 
 ALTER TABLE contractors
     ADD COLUMN IF NOT EXISTS client_manager_name TEXT;
@@ -53,5 +55,3 @@ BEGIN
         RAISE EXCEPTION 'Migracja nieskuteczna: brak indeksu idx_contractors_client_manager';
     END IF;
 END $$;
-
-COMMIT;
