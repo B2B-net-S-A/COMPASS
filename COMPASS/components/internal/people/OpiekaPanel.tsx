@@ -42,6 +42,8 @@ const BENCH_STATUS_PL: Record<string, string> = {
 const OWNER_ALL = ''
 const OWNER_NONE = '__none__'
 const OWNER_MINE = '__mine__'
+/** Filtr managera: wartość spoza listy nazwisk. */
+const MANAGER_NONE = '__none__'
 
 export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
     // Lista trzymana w stanie, żeby po przypisaniu wiersze odświeżyły się od razu —
@@ -52,6 +54,7 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
     const [ownerFilter, setOwnerFilter] = useState<string>(OWNER_ALL)
     const [situationFilter, setSituationFilter] = useState<string>('')
     const [clientFilter, setClientFilter] = useState<string>('')
+    const [managerFilter, setManagerFilter] = useState<string>('')
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [bulkOwner, setBulkOwner] = useState<string>('')
     const [pending, startTransition] = useTransition()
@@ -62,18 +65,31 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
         return Array.from(set).sort((a, b) => a.localeCompare(b, 'pl'))
     }, [items])
 
+    const managers = useMemo(() => {
+        const set = new Set<string>()
+        for (const item of items) if (item.clientManagerName) set.add(item.clientManagerName)
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'pl'))
+    }, [items])
+
+    const withoutManager = useMemo(() => items.filter((i) => !i.clientManagerName).length, [items])
+
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase()
         return items.filter((item) => {
-            if (q && !item.fullName.toLowerCase().includes(q) && !(item.clientName ?? '').toLowerCase().includes(q)) return false
+            if (q
+                && !item.fullName.toLowerCase().includes(q)
+                && !(item.clientName ?? '').toLowerCase().includes(q)
+                && !(item.clientManagerName ?? '').toLowerCase().includes(q)) return false
             if (ownerFilter === OWNER_NONE && item.ownerTcmId) return false
             if (ownerFilter === OWNER_MINE && item.ownerTcmId !== currentUserId) return false
             if (ownerFilter && ownerFilter !== OWNER_NONE && ownerFilter !== OWNER_MINE && item.ownerTcmId !== ownerFilter) return false
             if (situationFilter && item.situation !== situationFilter) return false
             if (clientFilter && item.clientName !== clientFilter) return false
+            if (managerFilter === MANAGER_NONE && item.clientManagerName) return false
+            if (managerFilter && managerFilter !== MANAGER_NONE && item.clientManagerName !== managerFilter) return false
             return true
         })
-    }, [items, query, ownerFilter, situationFilter, clientFilter, currentUserId])
+    }, [items, query, ownerFilter, situationFilter, clientFilter, managerFilter, currentUserId])
 
     const withoutOwner = useMemo(() => items.filter((i) => !i.ownerTcmId).length, [items])
 
@@ -188,6 +204,11 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                     <option value="">Wszyscy klienci</option>
                     {clients.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+                <select aria-label="Manager u klienta" className={selectClass} value={managerFilter} onChange={(e) => setManagerFilter(e.target.value)}>
+                    <option value="">Wszyscy managerowie</option>
+                    <option value={MANAGER_NONE}>Bez managera ({withoutManager})</option>
+                    {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
                 <span className="text-sm text-muted-foreground">Widocznych: {filtered.length}</span>
             </div>
 
@@ -243,6 +264,7 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                             <th className="p-2 text-left">Sytuacja</th>
                             <th className="p-2 text-left">Klient</th>
                             <th className="p-2 text-left">Stanowisko</th>
+                            <th className="p-2 text-left">Manager (klient)</th>
                             <th className="p-2 text-left">Od</th>
                             <th className="p-2 text-left">Opiekun TCM</th>
                         </tr>
@@ -276,6 +298,7 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                                 </td>
                                 <td className="p-2">{item.clientName ?? '—'}</td>
                                 <td className="p-2">{item.position ?? '—'}</td>
+                                <td className="p-2">{item.clientManagerName ?? '—'}</td>
                                 <td className="p-2 whitespace-nowrap">{item.sinceDate ?? '—'}</td>
                                 <td className="p-2">
                                     <select
@@ -301,7 +324,7 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                         ))}
                         {filtered.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                                <td colSpan={8} className="p-8 text-center text-muted-foreground">
                                     {items.length === 0
                                         ? 'Nikt nie pracuje dziś u klienta ani nie czeka na benchu.'
                                         : 'Żaden konsultant nie pasuje do filtrów.'}
