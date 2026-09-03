@@ -89,6 +89,18 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
             .sort((a, b) => b.count - a.count || a.fullName.localeCompare(b.fullName, 'pl'))
     }, [items, tcmOptions])
 
+    /**
+     * Zaznaczenie NIE jest czyszczone przy zmianie filtru (żeby dopisanie litery
+     * w wyszukiwarce nie kasowało pracy), więc może zawierać osoby aktualnie
+     * niewidoczne. Wszystko — licznik, pasek i sama akcja — patrzy na PRZECIĘCIE
+     * z widocznymi: inaczej „Zaznaczono: 12" przypisywałoby opiekuna ludziom,
+     * których nie ma na ekranie, a liczba i tak wyglądałaby wiarygodnie.
+     */
+    const selectedVisible = useMemo(
+        () => filtered.filter((i) => selected.has(i.contractorId)).map((i) => i.contractorId),
+        [filtered, selected],
+    )
+
     const allVisibleSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.contractorId))
 
     function toggleOne(contractorId: string) {
@@ -179,9 +191,9 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                 <span className="text-sm text-muted-foreground">Widocznych: {filtered.length}</span>
             </div>
 
-            {selected.size > 0 && (
+            {selectedVisible.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-2">
-                    <span className="text-sm font-medium">Zaznaczono: {selected.size}</span>
+                    <span className="text-sm font-medium">Zaznaczono: {selectedVisible.length}</span>
                     <select
                         aria-label="Opiekun do przypisania"
                         className={selectClass}
@@ -194,7 +206,7 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                     <Button
                         size="sm"
                         disabled={pending || !bulkOwner}
-                        onClick={() => applyOwner(Array.from(selected), bulkOwner)}
+                        onClick={() => applyOwner(selectedVisible, bulkOwner)}
                     >
                         {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserCheck className="mr-1.5 h-4 w-4" />}
                         Przypisz zaznaczonym
@@ -203,7 +215,7 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                         size="sm"
                         variant="outline"
                         disabled={pending}
-                        onClick={() => applyOwner(Array.from(selected), null)}
+                        onClick={() => applyOwner(selectedVisible, null)}
                     >
                         <UserX className="mr-1.5 h-4 w-4" />
                         Zdejmij opiekuna

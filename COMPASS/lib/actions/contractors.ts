@@ -1389,6 +1389,12 @@ export async function assignCareOwner(input: {
 
         // Paczkami z tego samego powodu co przy odczycie: `update().in()` z setkami
         // identyfikatorów buduje dokładnie tak samo długi URL.
+        //
+        // Paczki lecą po kolei i każda commituje osobno, więc błąd na paczce N
+        // zostawia wcześniejsze zapisane, a użytkownik widzi błąd. Przy ~330
+        // osobach to najwyżej 6 paczek i skutek jest odwracalny (ponowne
+        // przypisanie), więc nie owijamy tego w transakcję. Gdyby
+        // MAX_CARE_ASSIGN_BATCH miało urosnąć — trzeba to przemyśleć na nowo.
         let updated = 0
         for (let i = 0; i < ids.length; i += DEFAULT_IN_CHUNK_SIZE) {
             const chunk = ids.slice(i, i + DEFAULT_IN_CHUNK_SIZE)

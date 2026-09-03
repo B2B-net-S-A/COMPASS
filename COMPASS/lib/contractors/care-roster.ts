@@ -91,17 +91,23 @@ export function resolveCareSituations(input: {
         })
     }
 
-    for (const row of input.bench) {
-        if (!row.contractor_id) continue
+    // Kilka niezdjętych wpisów benchowych na jedną osobę jest możliwe (auto-seed
+    // z każdego zejścia + wpisy ręczne). Wybieramy najnowszy zamiast pierwszego
+    // z brzegu — inaczej o tym, który klient i etap zobaczy TCM, decydowałaby
+    // kolejność skanowania w Postgresie, więc ekran potrafiłby pokazać co innego
+    // po każdym odświeżeniu.
+    const lastBench = latestByContractor(input.bench, (r) => r.departure_date)
+
+    for (const [contractorId, bench] of lastBench) {
         // Praca u klienta wygrywa z ławką: świeże wejście przy niezdjętym starym
         // wpisie benchowym znaczy, że ktoś już pracuje — nie czeka na projekt.
-        if (out.has(row.contractor_id)) continue
-        out.set(row.contractor_id, {
+        if (out.has(contractorId)) continue
+        out.set(contractorId, {
             situation: 'bench',
-            clientName: row.client_name,
-            position: row.role,
-            sinceDate: row.departure_date,
-            benchStatus: row.status,
+            clientName: bench.row.client_name,
+            position: bench.row.role,
+            sinceDate: bench.row.departure_date,
+            benchStatus: bench.row.status,
         })
     }
 

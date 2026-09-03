@@ -144,15 +144,33 @@ describe('resolveCareSituations — bench', () => {
         expect(out.get('c1')).toMatchObject({ situation: 'bench', benchStatus: 'przepiety' })
     })
 
-    it('kilka wpisów benchowych daje jeden wiersz', () => {
+    it('przy kilku wpisach benchowych wygrywa najnowszy, niezależnie od kolejności', () => {
+        // Bez tego o tym, który klient i etap widzi TCM, decydowałaby kolejność
+        // skanowania w Postgresie — ekran pokazywałby co innego po odświeżeniu.
+        const rows = [
+            bench({ contractor_id: 'c2', status: 'w_rekrutacji', departure_date: '2026-01-15', client_name: 'Stary projekt' }),
+            bench({ contractor_id: 'c2', status: 'zakonczenie_umowy', departure_date: '2026-08-20', client_name: 'Nowy projekt' }),
+        ]
+        for (const order of [rows, [...rows].reverse()]) {
+            const out = resolve({ bench: order })
+            expect(out.size).toBe(1)
+            expect(out.get('c2')).toMatchObject({
+                situation: 'bench',
+                clientName: 'Nowy projekt',
+                benchStatus: 'zakonczenie_umowy',
+                sinceDate: '2026-08-20',
+            })
+        }
+    })
+
+    it('wpis benchowy z datą wygrywa z wpisem bez daty', () => {
         const out = resolve({
             bench: [
-                bench({ contractor_id: 'c2', status: 'w_rekrutacji' }),
-                bench({ contractor_id: 'c2', status: 'zakonczenie_umowy' }),
+                bench({ contractor_id: 'c2', departure_date: null, client_name: 'Bez daty' }),
+                bench({ contractor_id: 'c2', departure_date: '2026-04-01', client_name: 'Z datą' }),
             ],
         })
-        expect(out.size).toBe(1)
-        expect(out.get('c2')?.situation).toBe('bench')
+        expect(out.get('c2')?.clientName).toBe('Z datą')
     })
 })
 

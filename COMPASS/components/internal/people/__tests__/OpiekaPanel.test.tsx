@@ -161,6 +161,37 @@ describe('OpiekaPanel — masowe przypisanie', () => {
         expect((screen.getByLabelText('Opiekun dla Adam Bez Opiekuna') as HTMLSelectElement).value).toBe('tcm-1')
     })
 
+    it('zmiana filtru nie przemyca ukrytych zaznaczeń do przypisania', async () => {
+        const user = userEvent.setup()
+        renderPanel()
+
+        // Zaznaczenie pod jednym filtrem…
+        await user.selectOptions(screen.getByLabelText('Opiekun'), '__none__')
+        await user.click(screen.getByLabelText('Zaznacz wszystkich widocznych'))
+        expect(screen.getByText('Zaznaczono: 2')).toBeInTheDocument()
+
+        // …a potem zawężenie do klienta, pod którym widać tylko jedną z nich.
+        await user.selectOptions(screen.getByLabelText('Klient'), 'BNP Paribas')
+        expect(screen.getByText('Zaznaczono: 1')).toBeInTheDocument()
+
+        await user.selectOptions(screen.getByLabelText('Opiekun do przypisania'), 'tcm-1')
+        await user.click(screen.getByRole('button', { name: /Przypisz zaznaczonym/ }))
+
+        // Adam jest zaznaczony, ale niewidoczny — nie może dostać opiekuna.
+        expect(mockAssignCareOwner).toHaveBeenCalledWith({ contractorIds: ['c4'], ownerTcmId: 'tcm-1' })
+    })
+
+    it('pasek masowy znika, gdy żaden zaznaczony nie jest widoczny', async () => {
+        const user = userEvent.setup()
+        renderPanel()
+
+        await user.click(screen.getByLabelText('Zaznacz Adam Bez Opiekuna'))
+        expect(screen.getByText('Zaznaczono: 1')).toBeInTheDocument()
+
+        await user.selectOptions(screen.getByLabelText('Klient'), 'Alior')
+        expect(screen.queryByText(/Zaznaczono:/)).not.toBeInTheDocument()
+    })
+
     it('„Zdejmij opiekuna" wysyła null', async () => {
         const user = userEvent.setup()
         renderPanel([ROSTER[1]])
