@@ -179,6 +179,8 @@ export type AuditAction =
     // Phase 33 — Kontraktorzy (TCM contractor care: log, interviews, client movements)
     | 'CONTRACTOR_CREATED'
     | 'CONTRACTOR_UPDATED'
+    // Opieka TCM — przypisanie opiekuna (pojedyncze i masowe)
+    | 'CONTRACTOR_OWNER_ASSIGNED'
     | 'CONTRACTOR_CONVERSATION_ADDED'
     | 'CONTRACTOR_CONVERSATION_UPDATED'
     | 'CONTRACTOR_ONBOARDING_INTERVIEW_CREATED'

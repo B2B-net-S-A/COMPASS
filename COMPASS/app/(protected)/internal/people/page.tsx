@@ -1,10 +1,11 @@
-import { LayoutDashboard, UserPlus, LogOut, Users, Inbox, BarChart3, FileText, Radar } from 'lucide-react'
+import { LayoutDashboard, UserPlus, LogOut, Users, Inbox, BarChart3, FileText, Radar, UserCheck } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { requireTalentCommunityOrAdminLayout } from '@/lib/auth/internal-guard'
 import { PulpitPanel } from '@/components/internal/people/PulpitPanel'
 import { OnboardingTabPanel } from '@/components/internal/people/OnboardingTabPanel'
 import { ExitTabPanel } from '@/components/internal/people/ExitTabPanel'
 import { KontraktorzyTabPanel } from '@/components/internal/people/KontraktorzyTabPanel'
+import { OpiekaTabPanel } from '@/components/internal/people/OpiekaTabPanel'
 import { SprawyTabPanel } from '@/components/internal/people/SprawyTabPanel'
 import { AnalitykaTabPanel } from '@/components/internal/people/AnalitykaTabPanel'
 import { SzablonyTabPanel } from '@/components/internal/people/SzablonyTabPanel'
@@ -18,6 +19,7 @@ const TABS: ReadonlyArray<HubTab> = [
     { id: 'onboarding', label: 'Onboarding', icon: UserPlus },
     { id: 'exit', label: 'Exit', icon: LogOut },
     { id: 'kontraktorzy', label: 'Kontraktorzy', icon: Users },
+    { id: 'opieka', label: 'Opieka', icon: UserCheck },
     { id: 'mapa', label: 'Mapa technologiczna', icon: Radar },
     { id: 'sprawy', label: 'Sprawy', icon: Inbox },
     { id: 'analityka', label: 'Analityka', icon: BarChart3 },
@@ -67,6 +69,7 @@ export default async function PeopleOpsPage({ searchParams }: PageProps) {
             {tab === 'onboarding' && <OnboardingTabPanel />}
             {tab === 'exit' && <ExitTabPanel />}
             {tab === 'kontraktorzy' && <KontraktorzyTabPanel />}
+            {tab === 'opieka' && <OpiekaTabPanel currentUserId={ctx.userId} />}
             {tab === 'mapa' && <MapaTabPanel isAdmin={ctx.isAdmin} />}
             {tab === 'sprawy' && <SprawyTabPanel />}
             {tab === 'analityka' && (
