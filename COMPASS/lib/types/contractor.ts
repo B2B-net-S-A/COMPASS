@@ -546,6 +546,8 @@ export interface CareRosterItem {
     sinceDate: string | null
     /** Etap benchu — tylko dla `situation === 'bench'`. */
     benchStatus: BenchStatus | null
+    /** Przełożony po stronie klienta (pracownik klienta, nie użytkownik Compassa). */
+    clientManagerName: string | null
     ownerTcmId: string | null
     ownerTcmName: string | null
 }

@@ -35,6 +35,7 @@ function item(over: Partial<CareRosterItem> & { contractorId: string; fullName: 
         position: 'Java Developer',
         sinceDate: '2026-01-10',
         benchStatus: null,
+        clientManagerName: 'Szymon Rapacki',
         ownerTcmId: null,
         ownerTcmName: null,
         ...over,
@@ -116,6 +117,20 @@ describe('OpiekaPanel — filtry', () => {
         await user.selectOptions(screen.getByLabelText('Sytuacja'), '')
         await user.selectOptions(screen.getByLabelText('Klient'), 'Alior')
         expect(rowNames()).toEqual(['Cezary Cudzy'])
+    })
+
+    it('filtruje po managerze u klienta', async () => {
+        const user = userEvent.setup()
+        renderPanel([
+            item({ contractorId: 'm1', fullName: 'Anna Pod Rapackim' }),
+            item({ contractorId: 'm2', fullName: 'Bogdan Pod Markowskim', clientManagerName: 'Maciej Markowski' }),
+            item({ contractorId: 'm3', fullName: 'Celina Bez Managera', clientManagerName: null }),
+        ])
+        await user.selectOptions(screen.getByLabelText('Manager u klienta'), 'Maciej Markowski')
+        expect(rowNames()).toEqual(['Bogdan Pod Markowskim'])
+
+        await user.selectOptions(screen.getByLabelText('Manager u klienta'), '__none__')
+        expect(rowNames()).toEqual(['Celina Bez Managera'])
     })
 
     it('szuka po nazwisku i po kliencie', async () => {

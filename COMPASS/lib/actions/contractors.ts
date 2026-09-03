@@ -1297,6 +1297,7 @@ interface CareContractorRow {
     current_client: string | null
     current_position: string | null
     owner_tcm_id: string | null
+    client_manager_name: string | null
 }
 
 /**
@@ -1336,7 +1337,7 @@ export async function listCareRoster(): Promise<CareRosterItem[]> {
         source: 'contractors',
         column: 'id',
         ids,
-        query: () => admin.from('contractors').select('id, full_name, current_client, current_position, owner_tcm_id'),
+        query: () => admin.from('contractors').select('id, full_name, current_client, current_position, owner_tcm_id, client_manager_name'),
     })
 
     const ownerMap = await loadProfilesByIds(admin, contractors.map((c) => c.owner_tcm_id ?? ''))
@@ -1351,6 +1352,7 @@ export async function listCareRoster(): Promise<CareRosterItem[]> {
             position: info?.position ?? c.current_position,
             sinceDate: info?.sinceDate ?? null,
             benchStatus: info?.benchStatus ?? null,
+            clientManagerName: c.client_manager_name,
             ownerTcmId: c.owner_tcm_id,
             ownerTcmName: c.owner_tcm_id ? ownerMap.get(c.owner_tcm_id)?.full_name ?? null : null,
         }
