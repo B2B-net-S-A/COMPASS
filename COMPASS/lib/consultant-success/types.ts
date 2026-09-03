@@ -56,6 +56,9 @@ export interface SuccessDeliveryRow {
 }
 
 export interface PlannerStats {
+    programCandidates: number
+    programEnrolled: number
+    programGraduated: number
     settingsScanned: number
     checkInsMaterialized: number
     checkInsAlreadyPlanned: number
