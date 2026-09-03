@@ -241,6 +241,24 @@ describe('OpiekaPanel — przypisanie pojedyncze i błędy', () => {
     })
 })
 
+describe('OpiekaPanel — opiekun spoza aktualnej listy TCM', () => {
+    it('pokazuje przypisanie osoby, która nie jest już na liście opiekunów', () => {
+        // Po zawężeniu opiekunów do roli talent_community (2026-09-03) w bazie mogą
+        // zostać przypisania do osób spoza tej listy. Bez dodatkowej opcji `select`
+        // nie dopasowałby wartości i wiersz twierdziłby „bez opiekuna".
+        renderPanel([item({
+            contractorId: 'cX',
+            fullName: 'Halina Historyczna',
+            ownerTcmId: 'tcm-stary',
+            ownerTcmName: 'Michał Stankiewicz',
+        })])
+        const select = screen.getByLabelText('Opiekun dla Halina Historyczna') as HTMLSelectElement
+        expect(select.value).toBe('tcm-stary')
+        expect(within(select).getByRole('option', { name: /Michał Stankiewicz \(poza TCM\)/ })).toBeInTheDocument()
+        expect(screen.getByText('każdy ma opiekuna')).toBeInTheDocument()
+    })
+})
+
 describe('OpiekaPanel — pusta lista', () => {
     it('rozróżnia „nikogo nie ma" od „filtry nic nie zwracają"', async () => {
         const user = userEvent.setup()

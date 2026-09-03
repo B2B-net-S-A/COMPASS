@@ -45,7 +45,11 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
     let taskTcmProfiles: Array<{ id: string; fullName: string }> = []
     let taskContractors: Array<{ id: string; full_name: string }> = []
     if (canCreateTask) {
-        // Operatorzy TCM: talent_community LUB grant has_tcm_access (bez bare-adminów) — patrz listTcmProfiles.
+        // Wykonawcy zadań TCM: talent_community LUB grant has_tcm_access (bez bare-adminów).
+        // UWAGA: to NIE jest ta sama lista co wybór OPIEKUNA kontraktora — `listTcmProfiles`
+        // zawężono 2026-09-03 do samej roli, bo opieka nad konsultantem to rola, a nie
+        // uprawnienie. Zadanie można przydzielić każdemu, kto pracuje w TCM, więc grant
+        // zostaje tutaj celowo. Nie „ujednolicaj" tych dwóch zapytań.
         const [{ data: tcm }, { data: cs }] = await Promise.all([
             excludeExited(supabase.from('profiles').select('id, full_name').or('role.eq.talent_community,has_tcm_access.eq.true')).order('full_name'),
             supabase.from('contractors').select('id, full_name').order('full_name'),

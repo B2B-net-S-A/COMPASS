@@ -140,20 +140,27 @@ async function loadProfilesByIds(admin: ServiceClient, ids: string[]): Promise<M
     return map
 }
 
-/** TCM + admin profiles — for "owner"/"TCM" dropdowns. */
+/** Kto może być opiekunem kontraktora — wyłącznie rola talent_community. */
 export async function listTcmProfiles(): Promise<Array<{ id: string; fullName: string }>> {
     await requireLifecycleManagerAction()
     const admin = createServiceClient()
-    // Osoby odpowiedzialne za zadania TCM = operatorzy TCM: rola talent_community LUB
-    // grant has_tcm_access (Phase 45). Bare-admini (właściciele firmy) NIE są tu
-    // wypisywani — zaśmiecali listę „przypisane" (zgłoszenie Dominika). Admin, który
-    // realnie prowadzi TCM, dostaje grant has_tcm_access.
-    // Opiekun, który odszedł, nie jest opiekunem — nie oferuj go w dropdownie.
+    // Opiekunem może być TYLKO osoba z rolą talent_community (decyzja Artura,
+    // 2026-09-03). Wcześniej lista obejmowała też grant has_tcm_access (Phase 45),
+    // przez co w wyborze opiekuna pojawiały się cztery osoby z finansów i manager.
+    //
+    // Rozróżnienie jest celowe: `has_tcm_access` daje DOSTĘP do strefy TCM
+    // (podglądu, edycji), ale nie czyni z kogoś opiekuna konsultanta — opieka to
+    // rola, nie uprawnienie. Bare-admini nie byli tu wypisywani już wcześniej,
+    // bo zaśmiecali listę „przypisane" (zgłoszenie Dominika).
+    //
+    // Konsekwencja dla wywołujących: `assignCareOwner` waliduje po tej samej
+    // liście, więc zawężenie obejmuje też zapis, nie tylko dropdown.
+    // Opiekun, który odszedł, nie jest opiekunem — nie oferuj go w wyborze.
     const q = excludeExited(
         admin
             .from('profiles')
             .select('id, full_name, role')
-            .or('role.eq.talent_community,has_tcm_access.eq.true'),
+            .eq('role', 'talent_community'),
     ).order('full_name', { ascending: true })
     // TREŚĆ — pusty dropdown mówi „nie ma komu przypisać", a nie „nie udało się sprawdzić".
     return (requireRows('profiles', await q) as ProfileLite[]).map((p) => ({ id: p.id, fullName: p.full_name ?? '—' }))

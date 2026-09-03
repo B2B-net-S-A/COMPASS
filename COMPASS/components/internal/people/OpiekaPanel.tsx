@@ -287,6 +287,14 @@ export function OpiekaPanel({ roster, tcmOptions, currentUserId }: Props) {
                                     >
                                         <option value="">— bez opiekuna —</option>
                                         {tcmOptions.map((o) => <option key={o.id} value={o.id}>{o.fullName}</option>)}
+                                        {/* Przypisanie sprzed zmiany roli: bez tej opcji `select` nie
+                                            dopasowałby wartości i pokazałby „bez opiekuna" — twierdzenie
+                                            o danych, które w bazie wyglądają inaczej. */}
+                                        {item.ownerTcmId && !tcmOptions.some((o) => o.id === item.ownerTcmId) && (
+                                            <option value={item.ownerTcmId}>
+                                                {item.ownerTcmName ?? 'Nieznany'} (poza TCM)
+                                            </option>
+                                        )}
                                     </select>
                                 </td>
                             </tr>
