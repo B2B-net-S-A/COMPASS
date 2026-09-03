@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { areConsultantSuccessSurveysEnabled } from './flags'
+import { syncOnboardingProgram } from './onboarding-program'
 
 import {
     CHECK_IN_MILESTONES,
@@ -53,6 +54,8 @@ interface SuccessSettingRow {
     surveys_enabled: boolean
     health_status: 'unknown' | 'green' | 'amber' | 'red'
     health_review_on: string | null
+    onboarding_program_ends_on: string | null
+    onboarding_program_completed_at: string | null
 }
 
 interface ContractorRow {
@@ -161,6 +164,9 @@ function asDate(value: string): string {
 
 function baseStats(shadowMode: boolean): PlannerStats {
     return {
+        programCandidates: 0,
+        programEnrolled: 0,
+        programGraduated: 0,
         settingsScanned: 0,
         checkInsMaterialized: 0,
         checkInsAlreadyPlanned: 0,
@@ -280,10 +286,18 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
         }
     }
 
+    // 0. Zapis do programu telefonów onboardingowych i absolutorium po 90 dniach.
+    // MUSI iść przed krokiem 1: świeżo zapisana osoba ma dostać pierwszy termin
+    // w tym samym przebiegu, a nie dopiero nazajutrz.
+    const programStats = await syncOnboardingProgram({ admin, now, shadowMode })
+    stats.programCandidates = programStats.programCandidates
+    stats.programEnrolled = programStats.programEnrolled
+    stats.programGraduated = programStats.programGraduated
+
     // 1. Materialise one upcoming/missed check-in per active monitored consultant.
     const { data: settingData, error: settingError } = await admin
         .from('contractor_success_settings')
-        .select('contractor_id, monitoring_status, check_in_cadence_days, next_check_in_on, surveys_enabled, health_status, health_review_on')
+        .select('contractor_id, monitoring_status, check_in_cadence_days, next_check_in_on, surveys_enabled, health_status, health_review_on, onboarding_program_ends_on, onboarding_program_completed_at')
         .eq('monitoring_status', 'active')
     ensureQuery(settingError, 'settings_read_failed')
     const settings = (settingData ?? []) as SuccessSettingRow[]
@@ -325,9 +339,16 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
         const actorId = contractor?.owner_tcm_id && allowedRecipientIds.has(contractor.owner_tcm_id)
             ? contractor.owner_tcm_id
             : null
+        // Rozmowa z okna programu onboardingowego jest telefonem i ma być tak
+        // opisana w kolejce TCM — inaczej nie da się jej odróżnić od zwykłego
+        // check-inu, a to dwie różne obietnice wobec konsultanta.
+        const withinProgram = setting.onboarding_program_ends_on !== null
+            && setting.onboarding_program_completed_at === null
+            && scheduledFor <= setting.onboarding_program_ends_on
         const { error: insertError } = await admin.from('contractor_check_ins').insert({
             contractor_id: setting.contractor_id,
-            check_in_type: 'regular',
+            check_in_type: withinProgram ? 'onboarding' : 'regular',
+            channel: withinProgram ? 'phone' : null,
             status: 'scheduled',
             scheduled_at: localBusinessTimeToUtc(scheduledFor, 9).toISOString(),
             assigned_tcm_id: actorId,
