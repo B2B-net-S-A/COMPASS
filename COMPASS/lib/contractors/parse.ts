@@ -171,7 +171,16 @@ export interface ParseResult<T> {
     skippedBlankRows: number
 }
 
-async function loadWorkbook(buffer: ArrayBuffer | Buffer): Promise<ExcelJS.Workbook> {
+/**
+ * Load an xlsx buffer into an ExcelJS workbook.
+ *
+ * Exported so a caller can parse the workbook ONCE and feed it to several sheet parsers via the
+ * `parse*FromWorkbook` helpers, instead of re-loading the same buffer per sheet. tc-sync imports
+ * wejścia + zejścia from one ~9.5 MB SharePoint workbook (see app/api/cron/tc-sync); loading it
+ * twice ran exceljs's full parse twice — the dominant CPU/allocation cost on that cron, on a host
+ * with no swap. The manual-upload path still loads its own single sheet via `parse*Workbook`.
+ */
+export async function loadWorkbook(buffer: ArrayBuffer | Buffer): Promise<ExcelJS.Workbook> {
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0])
     return wb
@@ -184,7 +193,10 @@ function truthyBool(v: CellVal): boolean {
 
 // ─── 1. Rozmowy z kontraktorami ───────────────────────────────────────────────
 export async function parseRozmowyWorkbook(buffer: ArrayBuffer | Buffer): Promise<ParseResult<ParsedConversation>> {
-    const wb = await loadWorkbook(buffer)
+    return parseRozmowyFromWorkbook(await loadWorkbook(buffer))
+}
+
+export function parseRozmowyFromWorkbook(wb: ExcelJS.Workbook): ParseResult<ParsedConversation> {
     const hit = findSheet(wb, ['Imię', 'Sprawa'])
     if (!hit) {
         return { rows: [], errors: ['Nie znaleziono arkusza rozmów (oczekiwano kolumn „Imię", „Sprawa").'], scannedRows: 0, skippedBlankRows: 0 }
@@ -247,7 +259,10 @@ export async function parseRozmowyWorkbook(buffer: ArrayBuffer | Buffer): Promis
 
 // ─── 2. Wejścia do klientów ───────────────────────────────────────────────────
 export async function parseWejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promise<ParseResult<ParsedEntry>> {
-    const wb = await loadWorkbook(buffer)
+    return parseWejsciaFromWorkbook(await loadWorkbook(buffer))
+}
+
+export function parseWejsciaFromWorkbook(wb: ExcelJS.Workbook): ParseResult<ParsedEntry> {
     const hit = findSheet(wb, ['Klient', 'Odpowiedzialny rekruter', 'Start date'])
     if (!hit) {
         return { rows: [], errors: ['Nie znaleziono arkusza wejść (oczekiwano „Klient", „Odpowiedzialny rekruter", „Start date").'], scannedRows: 0, skippedBlankRows: 0 }
@@ -303,7 +318,10 @@ export async function parseWejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promis
 
 // ─── 3. Zejścia od klientów ───────────────────────────────────────────────────
 export async function parseZejsciaWorkbook(buffer: ArrayBuffer | Buffer): Promise<ParseResult<ParsedDeparture>> {
-    const wb = await loadWorkbook(buffer)
+    return parseZejsciaFromWorkbook(await loadWorkbook(buffer))
+}
+
+export function parseZejsciaFromWorkbook(wb: ExcelJS.Workbook): ParseResult<ParsedDeparture> {
     const hit = findSheet(wb, ['Klient', 'Data zejścia', 'Kto zrezygnował'])
     if (!hit) {
         return { rows: [], errors: ['Nie znaleziono arkusza zejść (oczekiwano „Klient", „Data zejścia", „Kto zrezygnował").'], scannedRows: 0, skippedBlankRows: 0 }

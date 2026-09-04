@@ -4,7 +4,8 @@ import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { downloadSharedWorkbook } from '@/lib/graph/sharepoint'
-import { importWejsciaFromBuffer, importZejsciaFromBuffer } from '@/lib/contractors/import-core'
+import { loadWorkbook } from '@/lib/contractors/parse'
+import { importWejsciaFromWorkbook, importZejsciaFromWorkbook } from '@/lib/contractors/import-core'
 import { seedBenchFromRecentDepartures } from '@/lib/contractors/bench-seed'
 import { logger } from '@/lib/logger'
 
@@ -40,6 +41,18 @@ const HUB = '/internal/people'
  * heartbeat `TC_SYNC_RUN` (statystyki = ciało odpowiedzi).
  */
 export const GET = withCronAuth(withCronHeartbeat('TC_SYNC_RUN', async (_request, { admin }) => {
+    // KILL-SWITCH (domyślnie WYŁĄCZONY). tc-sync pobiera i parsuje ~9,5 MB skoroszyt SharePoint,
+    // co OOM-owało kontener prawie codziennie o 05:00Z (audyt 2026-09; 503 „no available server").
+    // Dodatkowo sync i tak NIC nie importuje — exceljs rzuca `Unexpected xml node: dateGroupItem`
+    // na autofiltrze pliku. Do czasu naprawy parsera trasa jest inertna: scheduler Coolify może ją
+    // wołać, ale nie robi żadnej ciężkiej pracy (brak downloadu/parsowania → brak OOM). Heartbeat
+    // `TC_SYNC_RUN` nadal się zapisuje (start+done), więc widać w audycie, że trasa żyje i pominęła.
+    // WŁĄCZENIE: ustaw TC_SYNC_ENABLED=true w env vault Coolify — dopiero PO naprawie importu.
+    if (process.env.TC_SYNC_ENABLED !== 'true') {
+        logger.info({ event: 'cron.tc_sync.disabled', reason: 'TC_SYNC_ENABLED != true' })
+        return NextResponse.json({ ok: true, skipped: true, reason: 'TC_SYNC_ENABLED != true' }, { status: 200 })
+    }
+
     const fileUrl = process.env.TC_SYNC_FILE_URL
     if (!fileUrl) {
         const error = 'TC_SYNC_FILE_URL nie skonfigurowany'
@@ -83,18 +96,33 @@ export const GET = withCronAuth(withCronHeartbeat('TC_SYNC_RUN', async (_request
         return NextResponse.json({ ok: false, stage: 'download', error }, { status: 500 })
     }
 
+    // Parsuj skoroszyt RAZ i podaj oba arkusze temu samemu obiektowi. Poprzednio każdy
+    // importer ładował i parsował ten sam ~9,5 MB plik osobno (2× exceljs) — podwójny koszt
+    // CPU/pamięci na hoście bez swapu; jeden load zdejmuje połowę tego narzutu. Błąd samego
+    // parsowania kończy się teraz czystym 500 (stage 'parse'), zamiast dwóch identycznych
+    // błędów per-arkusz.
+    let workbook: Awaited<ReturnType<typeof loadWorkbook>>
+    try {
+        workbook = await loadWorkbook(buffer)
+    } catch (e) {
+        const error = e instanceof Error ? e.message : 'parsowanie skoroszytu nie powiodło się'
+        logger.error({ event: 'cron.tc_sync.parse_failed', error })
+        Sentry.captureException(e, { tags: { kind: 'cron_tc_sync', stage: 'parse' } })
+        return NextResponse.json({ ok: false, stage: 'parse', error }, { status: 500 })
+    }
+
     const out: Record<string, unknown> = { ok: true, bytes: buffer.length }
     // One workbook, two sheets; each parser finds its own. Import independently so one failing
     // sheet doesn't block the other.
     try {
-        out.wejscia = await importWejsciaFromBuffer(admin, buffer, actorUserId)
+        out.wejscia = await importWejsciaFromWorkbook(admin, workbook, actorUserId)
     } catch (e) {
         out.wejscia = { error: e instanceof Error ? e.message : 'import wejść nie powiódł się' }
         out.ok = false
         Sentry.captureException(e, { tags: { kind: 'cron_tc_sync', sheet: 'wejscia' } })
     }
     try {
-        out.zejscia = await importZejsciaFromBuffer(admin, buffer, actorUserId)
+        out.zejscia = await importZejsciaFromWorkbook(admin, workbook, actorUserId)
     } catch (e) {
         out.zejscia = { error: e instanceof Error ? e.message : 'import zejść nie powiódł się' }
         out.ok = false
