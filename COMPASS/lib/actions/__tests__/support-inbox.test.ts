@@ -266,6 +266,68 @@ describe('moveInboxTicket', () => {
     })
 })
 
+describe('addInboxComment', () => {
+    const withInboxTicket = () =>
+        baseTables({
+            support_tickets: [
+                { id: 't-inbox', user_id: 'handler1', category_id: 'cat-adm', status: 'open', subject: 'Sprawa', body_md: 'long body', priority: 'normal', assignee_id: 'handler1', resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+            ],
+            support_inbox_meta: [
+                { ticket_id: 't-inbox', source: 'manual_paste', priority_level: 'P2', due_date: '2026-05-13T10:00:00Z', consultant_id: null, external_message_id: null, email_from: null, email_subject: 'Sprawa', email_received_at: null, created_at: '2026-05-01' },
+            ],
+        })
+
+    it('rejects non-handler caller', async () => {
+        setupClient({ user: { id: 'ext1', email: 'someone@example.com' }, tables: withInboxTicket() })
+        const { addInboxComment } = await import('../support-inbox')
+        const res = await addInboxComment('t-inbox', 'Notatka obsługi')
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toMatch(/uprawnienia/)
+    })
+
+    it('rejects empty body', async () => {
+        setupClient({ user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' }, tables: withInboxTicket() })
+        const { addInboxComment } = await import('../support-inbox')
+        const res = await addInboxComment('t-inbox', '   ')
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toMatch(/wymagana/i)
+    })
+
+    it('rejects when ticket has no inbox meta (cross-contamination guard)', async () => {
+        setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: baseTables({
+                support_tickets: [
+                    { id: 't-user', user_id: 'someone', category_id: 'cat-hr', status: 'open', subject: 'User ticket', body_md: '...', priority: 'normal', assignee_id: null, resolved_at: null, created_at: '2026-05-01', updated_at: '2026-05-01' },
+                ],
+            }),
+        })
+        const { addInboxComment } = await import('../support-inbox')
+        const res = await addInboxComment('t-user', 'Notatka obsługi')
+        expect(res.success).toBe(false)
+        if (res.success) return
+        expect(res.error).toMatch(/inbox/)
+    })
+
+    it('inserts an internal comment on an inbox ticket', async () => {
+        const client = setupClient({
+            user: { id: 'handler1', email: 'blazej@b2bnetwork.pl' },
+            tables: withInboxTicket(),
+        })
+        const { addInboxComment } = await import('../support-inbox')
+        const res = await addInboxComment('t-inbox', '  Rozmawiałem z konsultantem  ', true)
+        expect(res.success).toBe(true)
+        const comments = client._tables.support_ticket_comments as Array<Record<string, unknown>>
+        const inserted = comments.find(c => c.ticket_id === 't-inbox')
+        expect(inserted).toBeDefined()
+        expect(inserted?.author_id).toBe('handler1')
+        expect(inserted?.is_internal).toBe(true)
+        expect(inserted?.body_md).toBe('Rozmawiałem z konsultantem')
+    })
+})
+
 describe('renameInboxTicket', () => {
     const withInboxTicket = (subject = 'Onboarding - Wojciech Sokolnicki') =>
         baseTables({

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { addComment, changeTicketStatus } from '@/lib/actions/support-tickets'
 import { useRealtimeTicketComments } from '@/lib/hooks/useRealtimeTicketComments'
-import type { SupportComment, TicketStatus } from '@/lib/types/support'
+import type { SupportComment, TicketStatus, SupportActionResult } from '@/lib/types/support'
 import { TICKET_STATUS_LABEL } from '@/lib/types/support'
 import { cn } from '@/lib/utils'
 
@@ -20,11 +20,16 @@ interface TicketChatProps {
     canMarkInternal: boolean
     currentUserId: string
     currentStatus: TicketStatus
+    // Domyślnie akcje helpdesku. Skrzynka (kanban Spraw) wstrzykuje własne, bo
+    // helpdeskowe addComment/changeTicketStatus odrzucają zgłoszenia `inbox_%`
+    // (isHelpdeskCategory) komunikatem „Ticket nie istnieje".
+    onAddComment?: (ticketId: string, body: string, isInternal: boolean) => Promise<SupportActionResult<{ commentId: string }>>
+    onChangeStatus?: (ticketId: string, status: TicketStatus) => Promise<SupportActionResult<void>>
 }
 
 const STATUS_FLOW: TicketStatus[] = ['open', 'in_progress', 'waiting_user', 'resolved', 'closed']
 
-export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canMarkInternal, currentUserId, currentStatus }: TicketChatProps) {
+export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canMarkInternal, currentUserId, currentStatus, onAddComment = addComment, onChangeStatus = changeTicketStatus }: TicketChatProps) {
     const router = useRouter()
     const [body, setBody] = useState('')
     const [internal, setInternal] = useState(false)
@@ -41,7 +46,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
         if (!body.trim()) return
         setError(null)
         startSending(async () => {
-            const result = await addComment(ticketId, body, internal)
+            const result = await onAddComment(ticketId, body, internal)
             if (!result.success) {
                 setError(result.error)
                 return
@@ -54,7 +59,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
 
     const handleStatusChange = (newStatus: TicketStatus) => {
         startStatusUpdating(async () => {
-            const result = await changeTicketStatus(ticketId, newStatus)
+            const result = await onChangeStatus(ticketId, newStatus)
             if (!result.success) {
                 setError(result.error)
                 return

@@ -8,7 +8,7 @@ import { TicketStatusBadge } from '@/components/support/TicketStatusBadge'
 import { TicketChat } from '@/components/support/TicketChat'
 import { InboxPriorityBadge } from '@/components/inbox/InboxPriorityBadge'
 import { SlaCountdownBadge } from '@/components/inbox/SlaCountdownBadge'
-import { getInboxTicketDetail } from '@/lib/actions/support-inbox'
+import { getInboxTicketDetail, addInboxComment, moveInboxTicket } from '@/lib/actions/support-inbox'
 import { TicketToTaskButton } from '@/components/inbox/TicketToTaskButton'
 import { InboxTicketTitle } from '@/components/inbox/InboxTicketTitle'
 import { excludeExited } from '@/lib/hr/employment-window'
@@ -145,6 +145,8 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                         canMarkInternal={true}
                         currentUserId={user.id}
                         currentStatus={ticket.status}
+                        onAddComment={addInboxComment}
+                        onChangeStatus={moveInboxTicket}
                     />
                 </CardContent>
             </Card>
