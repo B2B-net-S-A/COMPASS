@@ -41,6 +41,18 @@ const HUB = '/internal/people'
  * heartbeat `TC_SYNC_RUN` (statystyki = ciało odpowiedzi).
  */
 export const GET = withCronAuth(withCronHeartbeat('TC_SYNC_RUN', async (_request, { admin }) => {
+    // KILL-SWITCH (domyślnie WYŁĄCZONY). tc-sync pobiera i parsuje ~9,5 MB skoroszyt SharePoint,
+    // co OOM-owało kontener prawie codziennie o 05:00Z (audyt 2026-09; 503 „no available server").
+    // Dodatkowo sync i tak NIC nie importuje — exceljs rzuca `Unexpected xml node: dateGroupItem`
+    // na autofiltrze pliku. Do czasu naprawy parsera trasa jest inertna: scheduler Coolify może ją
+    // wołać, ale nie robi żadnej ciężkiej pracy (brak downloadu/parsowania → brak OOM). Heartbeat
+    // `TC_SYNC_RUN` nadal się zapisuje (start+done), więc widać w audycie, że trasa żyje i pominęła.
+    // WŁĄCZENIE: ustaw TC_SYNC_ENABLED=true w env vault Coolify — dopiero PO naprawie importu.
+    if (process.env.TC_SYNC_ENABLED !== 'true') {
+        logger.info({ event: 'cron.tc_sync.disabled', reason: 'TC_SYNC_ENABLED != true' })
+        return NextResponse.json({ ok: true, skipped: true, reason: 'TC_SYNC_ENABLED != true' }, { status: 200 })
+    }
+
     const fileUrl = process.env.TC_SYNC_FILE_URL
     if (!fileUrl) {
         const error = 'TC_SYNC_FILE_URL nie skonfigurowany'
