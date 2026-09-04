@@ -9,10 +9,12 @@ import { logAudit } from '@/lib/actions/audit'
 import { normalizePersonName } from '@/lib/types/placement'
 import { scoreNameMatch, type ProfileLite } from '@/lib/placements/import'
 import { importExternalKey } from '@/lib/types/contractor'
+import type ExcelJS from 'exceljs'
 import {
+    loadWorkbook,
     parseRozmowyWorkbook,
-    parseWejsciaWorkbook,
-    parseZejsciaWorkbook,
+    parseWejsciaFromWorkbook,
+    parseZejsciaFromWorkbook,
     type ParsedConversation,
     type ParsedDeparture,
     type ParsedEntry,
@@ -225,7 +227,11 @@ export async function importRozmowyFromBuffer(admin: ServiceClient, buffer: Arra
 }
 
 export async function importWejsciaFromBuffer(admin: ServiceClient, buffer: ArrayBuffer | Buffer, actorUserId: string): Promise<ImportResult> {
-    const parsed = await parseWejsciaWorkbook(buffer)
+    return importWejsciaFromWorkbook(admin, await loadWorkbook(buffer), actorUserId)
+}
+
+export async function importWejsciaFromWorkbook(admin: ServiceClient, wb: ExcelJS.Workbook, actorUserId: string): Promise<ImportResult> {
+    const parsed = parseWejsciaFromWorkbook(wb)
     if (parsed.rows.length === 0) throw new Error(parsed.errors[0] ?? 'Brak danych (wejścia).')
     const batchId = crypto.randomUUID()
     const profiles = await loadProfiles(admin)
@@ -266,7 +272,11 @@ export async function importWejsciaFromBuffer(admin: ServiceClient, buffer: Arra
 }
 
 export async function importZejsciaFromBuffer(admin: ServiceClient, buffer: ArrayBuffer | Buffer, actorUserId: string): Promise<ImportResult> {
-    const parsed = await parseZejsciaWorkbook(buffer)
+    return importZejsciaFromWorkbook(admin, await loadWorkbook(buffer), actorUserId)
+}
+
+export async function importZejsciaFromWorkbook(admin: ServiceClient, wb: ExcelJS.Workbook, actorUserId: string): Promise<ImportResult> {
+    const parsed = parseZejsciaFromWorkbook(wb)
     if (parsed.rows.length === 0) throw new Error(parsed.errors[0] ?? 'Brak danych (zejścia).')
     const batchId = crypto.randomUUID()
     const profiles = await loadProfiles(admin)
