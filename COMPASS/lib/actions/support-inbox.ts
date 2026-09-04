@@ -524,6 +524,72 @@ export async function moveInboxTicket(
 }
 
 /**
+ * Komentarz do zgłoszenia ze skrzynki (tablica Kanban Spraw → szczegóły).
+ * Helpdeskowe `addComment` odrzuca zgłoszenia inboxu (kategorie `inbox_%`) przez
+ * `isHelpdeskCategory` i zwraca „Ticket nie istnieje" — dlatego skrzynka ma własną
+ * ścieżkę: autoryzacja przez `isCallerHandler`, a bariera „to jest inbox" to obecność
+ * wiersza w `support_inbox_meta` (ta sama, co w `moveInboxTicket`).
+ *
+ * Bez powiadomień: zgłaszający ze skrzynki to kontakt e-mail w `support_inbox_meta`,
+ * a nie użytkownik aplikacji — nie ma „drugiej strony" z profilem do powiadomienia.
+ * Komentarze służą jako notatki obsługi.
+ */
+export async function addInboxComment(
+    ticketId: string,
+    body: string,
+    isInternal = false,
+): Promise<SupportActionResult<{ commentId: string }>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+        if (!(await isCallerHandler(supabase, user.id))) {
+            return { success: false, error: 'Niewystarczające uprawnienia' }
+        }
+
+        const trimmed = (body ?? '').trim()
+        if (trimmed.length < 1) {
+            return { success: false, error: 'Treść komentarza jest wymagana' }
+        }
+
+        // Ta sama bariera co w moveInboxTicket: akcja obsługuje wyłącznie zgłoszenia
+        // skrzynki, nie tickety helpdesku ani lustro spraw kontraktorskich.
+        const { data: meta } = await supabase
+            .from('support_inbox_meta')
+            .select('ticket_id')
+            .eq('ticket_id', ticketId)
+            .single()
+        if (!meta) return { success: false, error: 'To zgłoszenie nie jest typu inbox' }
+
+        const { data, error } = await supabase
+            .from('support_ticket_comments')
+            .insert({
+                ticket_id: ticketId,
+                author_id: user.id,
+                body_md: trimmed,
+                is_internal: isInternal,
+            })
+            .select('id')
+            .single()
+        if (error) throw error
+
+        // Podbij updated_at, żeby sprawa podskoczyła w sortowaniu tablicy.
+        await supabase
+            .from('support_tickets')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', ticketId)
+
+        revalidatePath(`/admin/inbox/${ticketId}`)
+        revalidatePath('/admin/inbox')
+        return { success: true, data: { commentId: data.id } }
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : 'Błąd dodawania komentarza'
+        logCompat.error('[addInboxComment]', error)
+        return { success: false, error: msg }
+    }
+}
+
+/**
  * Phase 49 — zmiana tytułu zgłoszenia (People Ops → Sprawy).
  * Tytuł bywa nadany w pośpiechu albo przeklejony z maila; bez edycji zostawał
  * na tablicy na zawsze. Nie ruszamy `support_inbox_meta.email_subject` — to zapis
