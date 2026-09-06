@@ -1,4 +1,4 @@
-import { LayoutDashboard, UserPlus, LogOut, Users, Inbox, BarChart3, FileText, Radar, UserCheck } from 'lucide-react'
+import { LayoutDashboard, UserPlus, LogOut, Users, Inbox, BarChart3, FileText, Radar, UserCheck, Link2 } from 'lucide-react'
 import { HubTabs, type HubTab } from '@/components/internal/HubTabs'
 import { requireTalentCommunityOrAdminLayout } from '@/lib/auth/internal-guard'
 import { PulpitPanel } from '@/components/internal/people/PulpitPanel'
@@ -10,6 +10,7 @@ import { SprawyTabPanel } from '@/components/internal/people/SprawyTabPanel'
 import { AnalitykaTabPanel } from '@/components/internal/people/AnalitykaTabPanel'
 import { SzablonyTabPanel } from '@/components/internal/people/SzablonyTabPanel'
 import { MapaTabPanel } from '@/components/internal/people/MapaTabPanel'
+import { NexusIdentityTabPanel } from '@/components/internal/people/NexusIdentityTabPanel'
 import { DEPARTURE_PERIODS, type DeparturePeriod } from '@/lib/contractors/departure-analytics'
 
 export const dynamic = 'force-dynamic'
@@ -24,6 +25,7 @@ const TABS: ReadonlyArray<HubTab> = [
     { id: 'sprawy', label: 'Sprawy', icon: Inbox },
     { id: 'analityka', label: 'Analityka', icon: BarChart3 },
     { id: 'szablony', label: 'Szablony', icon: FileText },
+    { id: 'nexus', label: 'Tożsamość NEXUS', icon: Link2 },
 ]
 
 const VALID_TAB_IDS = TABS.map((t) => t.id)
@@ -76,6 +78,7 @@ export default async function PeopleOpsPage({ searchParams }: PageProps) {
                 <AnalitykaTabPanel period={period} client={searchParams?.client} recruiter={searchParams?.recruiter} />
             )}
             {tab === 'szablony' && <SzablonyTabPanel />}
+            {tab === 'nexus' && <NexusIdentityTabPanel />}
         </div>
     )
 }
