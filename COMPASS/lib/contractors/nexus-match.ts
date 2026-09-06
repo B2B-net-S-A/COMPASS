@@ -44,6 +44,13 @@ export type CompassContractor = {
     full_name: string
     email: string | null
     nexus_contract_id: number | null
+    /**
+     * Poprzedni werdykt. Niesiony TUTAJ, a nie odfiltrowywany w zapytaniu,
+     * bo `not_found` to DECYZJA CZŁOWIEKA („tej osoby nie ma w NEXUSIE"),
+     * a nie brak decyzji — a decyzje mają być chronione przez regułę, którą
+     * da się przetestować, nie przez klauzulę WHERE u wołającego.
+     */
+    nexus_match_status?: string | null
 }
 
 export type MatchStatus = 'linked' | 'pending' | 'ambiguous' | 'not_found'
@@ -105,6 +112,21 @@ export function decideMatches(
                 contractorId: c.id,
                 nexusContractId: c.nexus_contract_id,
                 status: 'linked',
+                suggestions: [],
+            }
+        }
+
+        // Odrzucony ręcznie („nie ma go w NEXUSIE") — też jest decyzją i też
+        // jej nie ruszamy. Sam `nexus_contract_id` NIE wystarczy jako strażnik:
+        // odrzucony wiersz ma tu `null`, więc bez tego warunku najbliższy
+        // przebieg crona trafiłby go po nazwisku, wystawił `pending` i cicho
+        // skasował werdykt człowieka — a ten wróciłby do kolejki, z której
+        // został świadomie usunięty.
+        if (c.nexus_match_status === 'not_found') {
+            return {
+                contractorId: c.id,
+                nexusContractId: null,
+                status: 'not_found',
                 suggestions: [],
             }
         }

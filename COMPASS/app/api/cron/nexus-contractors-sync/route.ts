@@ -7,6 +7,7 @@ import {
     decideMatches,
     summarize,
     type CompassContractor,
+    type MatchDecision,
     type NexusContractor,
 } from '@/lib/contractors/nexus-match'
 
@@ -114,9 +115,12 @@ export const GET = withCronAuth(
             )
         }
 
+        // `nexus_match_status` jest CZĘŚCIĄ wejścia reguły, nie tylko wyjściem:
+        // bez niego `decideMatches` nie odróżni „jeszcze nierozstrzygnięty" od
+        // „człowiek powiedział, że tej osoby nie ma w NEXUSIE".
         const { data: rows, error: readError } = await admin
             .from('contractors')
-            .select('id, full_name, email, nexus_contract_id')
+            .select('id, full_name, email, nexus_contract_id, nexus_match_status')
         if (readError) {
             throw new Error(`Odczyt contractors nie powiódł się: ${readError.message}`)
         }
@@ -124,22 +128,67 @@ export const GET = withCronAuth(
         const decisions = decideMatches((rows ?? []) as CompassContractor[], nexus)
         const now = new Date().toISOString()
 
-        let written = 0
+        // Zapis grupami po werdykcie: 689 pojedynczych UPDATE-ów to 689
+        // round-tripów na każdy przebieg. Grupowanie schodzi do czterech.
+        //
+        // Świadomie NIE `upsert(..., { onConflict: 'id' })`: to ścieżka
+        // INSERT ... ON CONFLICT, więc PostgREST waliduje payload wobec
+        // całej tabeli i brak `full_name` (NOT NULL, bez wartości domyślnej)
+        // wywracałby zapis. UPDATE ... IN nie ma tego problemu.
+        const byStatus = new Map<string, MatchDecision[]>()
         for (const d of decisions) {
+            const bucket = byStatus.get(d.status)
+            if (bucket) bucket.push(d)
+            else byStatus.set(d.status, [d])
+        }
+
+        let written = 0
+        for (const [status, group] of byStatus) {
+            // `linked` niesie RÓŻNE `nexus_contract_id` per wiersz, więc tej
+            // grupy nie da się zapisać jednym UPDATE-em — ale to jedyna taka
+            // grupa i po pierwszym przebiegu jest już w większości stabilna.
+            if (status === 'linked') {
+                for (const d of group) {
+                    const { error: writeError } = await admin
+                        .from('contractors')
+                        .update({
+                            nexus_contract_id: d.nexusContractId,
+                            nexus_match_status: d.status,
+                            nexus_synced_at: now,
+                        })
+                        .eq('id', d.contractorId)
+                    if (writeError) {
+                        logger.error({
+                            event: 'cron.nexus_contractors.write_failed',
+                            contractor_id: d.contractorId,
+                            msg: writeError.message,
+                        })
+                        Sentry.captureException(writeError, {
+                            tags: { kind: 'cron_nexus_contractors', stage: 'write' },
+                        })
+                        continue
+                    }
+                    written += 1
+                }
+                continue
+            }
+
+            const ids = group.map((d) => d.contractorId)
             const { error: writeError } = await admin
                 .from('contractors')
                 .update({
-                    nexus_contract_id: d.nexusContractId,
-                    nexus_match_status: d.status,
+                    nexus_contract_id: null,
+                    nexus_match_status: status,
                     nexus_synced_at: now,
                 })
-                .eq('id', d.contractorId)
+                .in('id', ids)
             if (writeError) {
-                // Jeden wiersz nie może wywrócić całego przebiegu — ale musi
-                // zostawić ślad, bo cichy błąd zapisu wygląda jak brak zmian.
+                // Grupa nie może wywrócić całego przebiegu, ale musi zostawić
+                // ślad — cichy błąd zapisu wygląda jak brak zmian.
                 logger.error({
                     event: 'cron.nexus_contractors.write_failed',
-                    contractor_id: d.contractorId,
+                    status,
+                    rows: ids.length,
                     msg: writeError.message,
                 })
                 Sentry.captureException(writeError, {
@@ -147,7 +196,7 @@ export const GET = withCronAuth(
                 })
                 continue
             }
-            written += 1
+            written += ids.length
         }
 
         const out = {

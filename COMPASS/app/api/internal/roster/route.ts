@@ -57,9 +57,20 @@ export async function GET(request: NextRequest): Promise<Response> {
   type Row = { email: string; employment_status: string | null };
   const rows = (data ?? []) as Row[];
 
-  // Konsument (NEXUS) traktuje PUSTĄ listę jako awarię po naszej stronie, nie
-  // jako „wszyscy odeszli" — i słusznie. Zwracamy `count`, żeby ta decyzja
-  // dała się podjąć bez liczenia tablicy po drugiej stronie.
+  // Pusta lista jest AWARIĄ po naszej stronie, nie stanem „wszyscy odeszli",
+  // więc odmawiamy jej wyeksportowania. Konsument (NEXUS) ma własny taki
+  // bezpiecznik, ale ten kontrakt nie może wisieć na dyscyplinie odbiorcy:
+  // po drugiej stronie odpowiedź `count: 0` wpada do pętli, która DEAKTYWUJE
+  // konta. Tania asercja tutaj, katastrofa tam.
+  if (rows.length === 0) {
+    logger.error({ event: "roster.export.empty" });
+    return NextResponse.json(
+      { error: "Empty roster — refusing to export" },
+      { status: 500 },
+    );
+  }
+
+  // `count` jedzie w odpowiedzi, żeby odbiorca nie musiał liczyć tablicy.
   return NextResponse.json({
     count: rows.length,
     people: rows.map((r) => ({

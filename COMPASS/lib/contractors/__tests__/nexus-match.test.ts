@@ -30,8 +30,9 @@ function compassRow(
     full_name: string,
     email: string | null = null,
     nexus_contract_id: number | null = null,
+    nexus_match_status: string | null = null,
 ): CompassContractor {
-    return { id, full_name, email, nexus_contract_id }
+    return { id, full_name, email, nexus_contract_id, nexus_match_status }
 }
 
 describe('decideMatches', () => {
@@ -102,6 +103,20 @@ describe('decideMatches', () => {
         )
         expect(d.status).toBe('linked')
         expect(d.nexusContractId).toBe(99)
+    })
+
+    it('nie cofa ręcznego „nie ma go w NEXUSIE\" przy kolejnym przebiegu', () => {
+        // Regresja z review #366: strażnikiem był wyłącznie `nexus_contract_id`,
+        // a odrzucony wiersz ma tam `null` — więc cron trafiał go po nazwisku,
+        // wystawiał `pending` i cicho kasował werdykt człowieka, wracając go do
+        // kolejki, z której został świadomie usunięty.
+        const [d] = decideMatches(
+            [compassRow('c1', 'Jan Kowalski', null, null, 'not_found')],
+            [nexusRow(11, 'Jan', 'Kowalski', 'jan@example.com')],
+        )
+        expect(d.status).toBe('not_found')
+        expect(d.nexusContractId).toBeNull()
+        expect(d.suggestions).toEqual([])
     })
 
     it('e-mail wygrywa z nazwiskiem i nie zważa na wielkość liter', () => {
