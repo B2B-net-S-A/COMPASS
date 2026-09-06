@@ -7374,10 +7374,10 @@ export type Database = {
         }[];
       };
       nexus_roster_export: {
-        Args: Record<string, never>;
+        Args: never;
         Returns: {
           email: string;
-          employment_status: string | null;
+          employment_status: string;
         }[];
       };
       sync_user_role: {
