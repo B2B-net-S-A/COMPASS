@@ -2020,6 +2020,104 @@ export async function deleteLifecycleNote(noteId: string): Promise<void> {
     await logAudit(ctx.userId, 'LIFECYCLE_NOTE_DELETED', { note_id: noteId })
 }
 
+// ─── Sygnały sprzedażowe (eksportowane do ATLASA) ───────────────────────────
+//
+// ŚWIADOMIE ODDZIELONE OD `lifecycle_notes`. Notatka kadrowa i sygnał
+// sprzedażowy mają inny cel przetwarzania, inny krąg odbiorców i inną
+// retencję. Gdyby sygnał był flagą na notatce, eksport musiałby sięgać po jej
+// treść — czyli prywatny zapis kadrowy dostałby drogę do CRM-u. Tu tej drogi
+// nie ma: pole `need` pisze TCM wprost do formularza sygnału.
+//
+// Do ATLASA jedzie też IMIĘ I E-MAIL KONSULTANTA, żeby handel mógł
+// podziękować i rozliczyć bonus za polecenie — dlatego formularz musi to
+// mówić wprost. Etykieta jest tu mechanizmem zgody, nie ozdobą.
+
+export interface SalesSignal {
+    id: string
+    company_name: string
+    need: string
+    contact_hint: string | null
+    context: string | null
+    consultant_id: string | null
+    consultant_name: string | null
+    reported_by: string | null
+    created_at: string
+}
+
+export async function listSalesSignals(consultantId: string): Promise<SalesSignal[]> {
+    await requireInternalOrAdminAction()
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('sales_signals')
+        .select('*, consultant:profiles!consultant_id(full_name)')
+        .eq('consultant_id', consultantId)
+        .order('created_at', { ascending: false })
+    if (error) {
+        logCompat.error('listSalesSignals error:', error)
+        return []
+    }
+    return (data ?? []).map((row: Record<string, unknown>) => ({
+        id: row.id as string,
+        company_name: row.company_name as string,
+        need: row.need as string,
+        contact_hint: (row.contact_hint as string | null) ?? null,
+        context: (row.context as string | null) ?? null,
+        consultant_id: (row.consultant_id as string | null) ?? null,
+        consultant_name:
+            ((row.consultant as { full_name?: string } | null)?.full_name as string | undefined) ??
+            null,
+        reported_by: (row.reported_by as string | null) ?? null,
+        created_at: row.created_at as string,
+    }))
+}
+
+export async function addSalesSignal(input: {
+    consultantId: string
+    companyName: string
+    need: string
+    contactHint?: string
+    context?: string
+}): Promise<string> {
+    const ctx = await requireLifecycleManagerAction()
+    // Dublet CHECK-ów z bazy, ale po polsku i PRZED zapisem — komunikat
+    // Postgresa o naruszeniu constraintu nic użytkownikowi nie mówi.
+    if (!input.companyName.trim()) throw new Error('Nazwa firmy jest wymagana.')
+    if (!input.need.trim()) throw new Error('Opisz, czego klient potrzebuje.')
+
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('sales_signals')
+        .insert({
+            reported_by: ctx.userId,
+            consultant_id: input.consultantId,
+            company_name: input.companyName.trim(),
+            need: input.need.trim(),
+            contact_hint: input.contactHint?.trim() || null,
+            context: input.context?.trim() || null,
+        })
+        .select('id')
+        .single()
+    if (error || !data) {
+        logCompat.error('addSalesSignal error:', error)
+        throw new Error(error?.message || 'Nie udało się zapisać sygnału.')
+    }
+
+    await logAudit(ctx.userId, 'SALES_SIGNAL_ADDED', {
+        consultant_id: input.consultantId,
+        signal_id: data.id,
+        company_name: input.companyName.trim(),
+    })
+    return data.id as string
+}
+
+export async function deleteSalesSignal(signalId: string): Promise<void> {
+    const ctx = await requireLifecycleManagerAction()
+    const supabase = createClient()
+    const { error } = await supabase.from('sales_signals').delete().eq('id', signalId)
+    if (error) throw new Error('Nie udało się usunąć sygnału.')
+    await logAudit(ctx.userId, 'SALES_SIGNAL_DELETED', { signal_id: signalId })
+}
+
 // ─── Template duplicate ─────────────────────────────────────────────────────
 
 export async function duplicateTemplate(templateId: string): Promise<string> {

@@ -78,6 +78,8 @@ export type AuditAction =
     | 'EXTERNAL_EMPLOYEE_CREATED'
     | 'LIFECYCLE_NOTE_ADDED'
     | 'LIFECYCLE_NOTE_DELETED'
+    | 'SALES_SIGNAL_ADDED'
+    | 'SALES_SIGNAL_DELETED'
     | 'TEMPLATE_DUPLICATED'
     // Phase 23 — Premie (Bonuses)
     | 'BONUS_PROPOSED'

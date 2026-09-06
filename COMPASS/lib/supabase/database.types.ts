@@ -5361,6 +5361,57 @@ export type Database = {
           },
         ];
       };
+      sales_signals: {
+        Row: {
+          company_name: string;
+          consultant_id: string | null;
+          contact_hint: string | null;
+          context: string | null;
+          created_at: string;
+          id: string;
+          need: string;
+          reported_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          company_name: string;
+          consultant_id?: string | null;
+          contact_hint?: string | null;
+          context?: string | null;
+          created_at?: string;
+          id?: string;
+          need: string;
+          reported_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          company_name?: string;
+          consultant_id?: string | null;
+          contact_hint?: string | null;
+          context?: string | null;
+          created_at?: string;
+          id?: string;
+          need?: string;
+          reported_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sales_signals_consultant_id_fkey";
+            columns: ["consultant_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sales_signals_reported_by_fkey";
+            columns: ["reported_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       support_article_attachments: {
         Row: {
           article_id: string;
@@ -7371,6 +7422,22 @@ export type Database = {
           period_end: string;
           period_start: string;
           working_days: string;
+        }[];
+      };
+      atlas_sales_signals_export: {
+        Args: {
+          p_since?: string | null;
+        };
+        Returns: {
+          company_name: string;
+          consultant_email: string | null;
+          consultant_name: string | null;
+          contact_hint: string | null;
+          context: string | null;
+          created_at: string;
+          id: string;
+          need: string;
+          reported_by_email: string | null;
         }[];
       };
       nexus_roster_export: {
