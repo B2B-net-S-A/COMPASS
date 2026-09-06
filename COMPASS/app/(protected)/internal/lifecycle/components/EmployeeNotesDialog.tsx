@@ -2,6 +2,7 @@
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { LifecycleNotesPanel } from './LifecycleNotesPanel'
+import { SalesSignalPanel } from './SalesSignalPanel'
 import type { EligibleEmployee } from '@/lib/actions/lifecycle'
 
 interface Props {
@@ -27,6 +28,7 @@ export function EmployeeNotesDialog({ open, onOpenChange, employee }: Props) {
                 </DialogHeader>
 
                 <LifecycleNotesPanel userId={employee.id} defaultCategory="general" />
+                <SalesSignalPanel userId={employee.id} />
             </DialogContent>
         </Dialog>
     )

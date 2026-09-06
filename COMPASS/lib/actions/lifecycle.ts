@@ -11,6 +11,7 @@ import {
     requireLifecycleManagerAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { runAction, ExpectedError, type ActionResult } from '@/lib/actions/action-result'
 import {
     sendExitInterviewInvitation,
     sendOffboardingChecklistToManager,
@@ -2018,6 +2019,115 @@ export async function deleteLifecycleNote(noteId: string): Promise<void> {
     const { error } = await supabase.from('lifecycle_notes').delete().eq('id', noteId)
     if (error) throw new Error('Nie udało się usunąć notatki.')
     await logAudit(ctx.userId, 'LIFECYCLE_NOTE_DELETED', { note_id: noteId })
+}
+
+// ─── Sygnały sprzedażowe (eksportowane do ATLASA) ───────────────────────────
+//
+// ŚWIADOMIE ODDZIELONE OD `lifecycle_notes`. Notatka kadrowa i sygnał
+// sprzedażowy mają inny cel przetwarzania, inny krąg odbiorców i inną
+// retencję. Gdyby sygnał był flagą na notatce, eksport musiałby sięgać po jej
+// treść — czyli prywatny zapis kadrowy dostałby drogę do CRM-u. Tu tej drogi
+// nie ma: pole `need` pisze TCM wprost do formularza sygnału.
+//
+// Do ATLASA jedzie też IMIĘ I E-MAIL KONSULTANTA, żeby handel mógł
+// podziękować i rozliczyć bonus za polecenie — dlatego formularz musi to
+// mówić wprost. Etykieta jest tu mechanizmem zgody, nie ozdobą.
+
+export interface SalesSignal {
+    id: string
+    company_name: string
+    need: string
+    contact_hint: string | null
+    context: string | null
+    consultant_id: string | null
+    reported_by: string | null
+    created_at: string
+}
+
+export async function listSalesSignals(consultantId: string): Promise<SalesSignal[]> {
+    // Ten sam guard co przy zapisie. RLS i tak jest prawdziwą bramką, ale
+    // szerszy guard TypeScriptowy pokazywałby managerowi „Brak sygnałów"
+    // zamiast „brak dostępu" — czyli kłamałby o stanie danych.
+    await requireLifecycleManagerAction()
+    const supabase = createClient()
+    // BEZ embed-by-FK-hint: `sales_signals` ma DWA FK do `profiles`
+    // (`consultant_id` i `reported_by`), a wtedy PostgREST zwraca PGRST200
+    // nawet z hintem — patrz CLAUDE.md. Panel i tak nie wyświetla nazwiska
+    // konsultanta (zna je z kontekstu strony), więc embed był zbędny.
+    const { data, error } = await supabase
+        .from('sales_signals')
+        .select('id, company_name, need, contact_hint, context, consultant_id, reported_by, created_at')
+        .eq('consultant_id', consultantId)
+        .order('created_at', { ascending: false })
+    if (error) {
+        logCompat.error('listSalesSignals error:', error)
+        return []
+    }
+    return (data ?? []) as SalesSignal[]
+}
+
+export async function addSalesSignal(input: {
+    consultantId: string
+    companyName: string
+    need: string
+    contactHint?: string
+    context?: string
+}): Promise<ActionResult<string>> {
+    return runAction('addSalesSignal', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        // ExpectedError, nie goły Error: treść ma dotrzeć do użytkownika,
+        // a Sentry ma tego NIE liczyć jako awarii (limit 5k zdarzeń/mies.).
+        if (!input.companyName.trim()) throw new ExpectedError('Nazwa firmy jest wymagana.')
+        if (!input.need.trim()) throw new ExpectedError('Opisz, czego klient potrzebuje.')
+
+        const supabase = createClient()
+        const { data, error } = await supabase
+            .from('sales_signals')
+            .insert({
+                reported_by: ctx.userId,
+                consultant_id: input.consultantId,
+                company_name: input.companyName.trim(),
+                need: input.need.trim(),
+                contact_hint: input.contactHint?.trim() || null,
+                context: input.context?.trim() || null,
+            })
+            .select('id')
+            .single()
+        if (error || !data) {
+            logCompat.error('addSalesSignal error:', error)
+            // Zwykły Error → runAction zamieni na komunikat ogólny i wyśle
+            // do Sentry. Szczegóły bazy nie wychodzą do użytkownika.
+            throw new Error(error?.message || 'insert failed')
+        }
+
+        await logAudit(ctx.userId, 'SALES_SIGNAL_ADDED', {
+            consultant_id: input.consultantId,
+            signal_id: data.id,
+            company_name: input.companyName.trim(),
+        })
+        return data.id as string
+    })
+}
+
+export async function deleteSalesSignal(signalId: string): Promise<ActionResult<void>> {
+    return runAction('deleteSalesSignal', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        const supabase = createClient()
+        // `count` zamiast samego braku błędu: usunięcie nieistniejącego wiersza
+        // zwraca `{ error: null }`, więc bez tego audyt notowałby skasowanie
+        // czegoś, co ktoś inny usunął wcześniej.
+        const { error, count } = await supabase
+            .from('sales_signals')
+            .delete({ count: 'exact' })
+            .eq('id', signalId)
+        if (error) {
+            logCompat.error('deleteSalesSignal error:', error)
+            throw new Error(error.message)
+        }
+        if (count && count > 0) {
+            await logAudit(ctx.userId, 'SALES_SIGNAL_DELETED', { signal_id: signalId })
+        }
+    })
 }
 
 // ─── Template duplicate ─────────────────────────────────────────────────────
