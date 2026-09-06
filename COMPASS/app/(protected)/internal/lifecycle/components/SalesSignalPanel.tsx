@@ -59,36 +59,38 @@ export function SalesSignalPanel({ userId }: Props) {
             return
         }
         startTransition(async () => {
-            try {
-                await addSalesSignal({
-                    consultantId: userId,
-                    companyName: companyName.trim(),
-                    need: need.trim(),
-                    contactHint: contactHint.trim() || undefined,
-                    context: context.trim() || undefined,
-                })
-                toastSuccess('Sygnał zapisany — trafi do CRM przy najbliższej synchronizacji.')
-                resetForm()
-                setShowAdd(false)
-                const updated = await listSalesSignals(userId)
-                setSignals(updated)
-                router.refresh()
-            } catch (e) {
-                toast.error(e instanceof Error ? e.message : 'Błąd zapisu sygnału.')
+            // Server action zwraca ActionResult, nie rzuca — w produkcji Next.js
+            // i tak zastąpiłby treść wyjątku komunikatem ogólnym (CLAUDE.md #1).
+            const res = await addSalesSignal({
+                consultantId: userId,
+                companyName: companyName.trim(),
+                need: need.trim(),
+                contactHint: contactHint.trim() || undefined,
+                context: context.trim() || undefined,
+            })
+            if (!res.success) {
+                toast.error(res.error)
+                return
             }
+            toastSuccess('Sygnał zapisany — trafi do CRM przy najbliższej synchronizacji.')
+            resetForm()
+            setShowAdd(false)
+            const updated = await listSalesSignals(userId)
+            setSignals(updated)
+            router.refresh()
         })
     }
 
     function handleDelete(id: string) {
         if (!confirm('Usunąć sygnał?')) return
         startTransition(async () => {
-            try {
-                await deleteSalesSignal(id)
-                setSignals((prev) => prev.filter((s) => s.id !== id))
-                router.refresh()
-            } catch (e) {
-                toast.error(e instanceof Error ? e.message : 'Błąd usuwania sygnału.')
+            const res = await deleteSalesSignal(id)
+            if (!res.success) {
+                toast.error(res.error)
+                return
             }
+            setSignals((prev) => prev.filter((s) => s.id !== id))
+            router.refresh()
         })
     }
 

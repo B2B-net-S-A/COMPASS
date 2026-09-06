@@ -11,6 +11,7 @@ import {
     requireLifecycleManagerAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { runAction, ExpectedError, type ActionResult } from '@/lib/actions/action-result'
 import {
     sendExitInterviewInvitation,
     sendOffboardingChecklistToManager,
@@ -2039,36 +2040,30 @@ export interface SalesSignal {
     contact_hint: string | null
     context: string | null
     consultant_id: string | null
-    consultant_name: string | null
     reported_by: string | null
     created_at: string
 }
 
 export async function listSalesSignals(consultantId: string): Promise<SalesSignal[]> {
-    await requireInternalOrAdminAction()
+    // Ten sam guard co przy zapisie. RLS i tak jest prawdziwą bramką, ale
+    // szerszy guard TypeScriptowy pokazywałby managerowi „Brak sygnałów"
+    // zamiast „brak dostępu" — czyli kłamałby o stanie danych.
+    await requireLifecycleManagerAction()
     const supabase = createClient()
+    // BEZ embed-by-FK-hint: `sales_signals` ma DWA FK do `profiles`
+    // (`consultant_id` i `reported_by`), a wtedy PostgREST zwraca PGRST200
+    // nawet z hintem — patrz CLAUDE.md. Panel i tak nie wyświetla nazwiska
+    // konsultanta (zna je z kontekstu strony), więc embed był zbędny.
     const { data, error } = await supabase
         .from('sales_signals')
-        .select('*, consultant:profiles!consultant_id(full_name)')
+        .select('id, company_name, need, contact_hint, context, consultant_id, reported_by, created_at')
         .eq('consultant_id', consultantId)
         .order('created_at', { ascending: false })
     if (error) {
         logCompat.error('listSalesSignals error:', error)
         return []
     }
-    return (data ?? []).map((row: Record<string, unknown>) => ({
-        id: row.id as string,
-        company_name: row.company_name as string,
-        need: row.need as string,
-        contact_hint: (row.contact_hint as string | null) ?? null,
-        context: (row.context as string | null) ?? null,
-        consultant_id: (row.consultant_id as string | null) ?? null,
-        consultant_name:
-            ((row.consultant as { full_name?: string } | null)?.full_name as string | undefined) ??
-            null,
-        reported_by: (row.reported_by as string | null) ?? null,
-        created_at: row.created_at as string,
-    }))
+    return (data ?? []) as SalesSignal[]
 }
 
 export async function addSalesSignal(input: {
@@ -2077,45 +2072,62 @@ export async function addSalesSignal(input: {
     need: string
     contactHint?: string
     context?: string
-}): Promise<string> {
-    const ctx = await requireLifecycleManagerAction()
-    // Dublet CHECK-ów z bazy, ale po polsku i PRZED zapisem — komunikat
-    // Postgresa o naruszeniu constraintu nic użytkownikowi nie mówi.
-    if (!input.companyName.trim()) throw new Error('Nazwa firmy jest wymagana.')
-    if (!input.need.trim()) throw new Error('Opisz, czego klient potrzebuje.')
+}): Promise<ActionResult<string>> {
+    return runAction('addSalesSignal', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        // ExpectedError, nie goły Error: treść ma dotrzeć do użytkownika,
+        // a Sentry ma tego NIE liczyć jako awarii (limit 5k zdarzeń/mies.).
+        if (!input.companyName.trim()) throw new ExpectedError('Nazwa firmy jest wymagana.')
+        if (!input.need.trim()) throw new ExpectedError('Opisz, czego klient potrzebuje.')
 
-    const supabase = createClient()
-    const { data, error } = await supabase
-        .from('sales_signals')
-        .insert({
-            reported_by: ctx.userId,
+        const supabase = createClient()
+        const { data, error } = await supabase
+            .from('sales_signals')
+            .insert({
+                reported_by: ctx.userId,
+                consultant_id: input.consultantId,
+                company_name: input.companyName.trim(),
+                need: input.need.trim(),
+                contact_hint: input.contactHint?.trim() || null,
+                context: input.context?.trim() || null,
+            })
+            .select('id')
+            .single()
+        if (error || !data) {
+            logCompat.error('addSalesSignal error:', error)
+            // Zwykły Error → runAction zamieni na komunikat ogólny i wyśle
+            // do Sentry. Szczegóły bazy nie wychodzą do użytkownika.
+            throw new Error(error?.message || 'insert failed')
+        }
+
+        await logAudit(ctx.userId, 'SALES_SIGNAL_ADDED', {
             consultant_id: input.consultantId,
+            signal_id: data.id,
             company_name: input.companyName.trim(),
-            need: input.need.trim(),
-            contact_hint: input.contactHint?.trim() || null,
-            context: input.context?.trim() || null,
         })
-        .select('id')
-        .single()
-    if (error || !data) {
-        logCompat.error('addSalesSignal error:', error)
-        throw new Error(error?.message || 'Nie udało się zapisać sygnału.')
-    }
-
-    await logAudit(ctx.userId, 'SALES_SIGNAL_ADDED', {
-        consultant_id: input.consultantId,
-        signal_id: data.id,
-        company_name: input.companyName.trim(),
+        return data.id as string
     })
-    return data.id as string
 }
 
-export async function deleteSalesSignal(signalId: string): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    const supabase = createClient()
-    const { error } = await supabase.from('sales_signals').delete().eq('id', signalId)
-    if (error) throw new Error('Nie udało się usunąć sygnału.')
-    await logAudit(ctx.userId, 'SALES_SIGNAL_DELETED', { signal_id: signalId })
+export async function deleteSalesSignal(signalId: string): Promise<ActionResult<void>> {
+    return runAction('deleteSalesSignal', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        const supabase = createClient()
+        // `count` zamiast samego braku błędu: usunięcie nieistniejącego wiersza
+        // zwraca `{ error: null }`, więc bez tego audyt notowałby skasowanie
+        // czegoś, co ktoś inny usunął wcześniej.
+        const { error, count } = await supabase
+            .from('sales_signals')
+            .delete({ count: 'exact' })
+            .eq('id', signalId)
+        if (error) {
+            logCompat.error('deleteSalesSignal error:', error)
+            throw new Error(error.message)
+        }
+        if (count && count > 0) {
+            await logAudit(ctx.userId, 'SALES_SIGNAL_DELETED', { signal_id: signalId })
+        }
+    })
 }
 
 // ─── Template duplicate ─────────────────────────────────────────────────────
