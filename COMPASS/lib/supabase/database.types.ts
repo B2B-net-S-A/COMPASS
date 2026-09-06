@@ -1988,6 +1988,9 @@ export type Database = {
           id: string;
           imported_by: string | null;
           last_import_batch_id: string | null;
+          nexus_contract_id: number | null;
+          nexus_match_status: string | null;
+          nexus_synced_at: string | null;
           notes: string | null;
           owner_tcm_id: string | null;
           phone: string | null;
@@ -2004,6 +2007,9 @@ export type Database = {
           id?: string;
           imported_by?: string | null;
           last_import_batch_id?: string | null;
+          nexus_contract_id?: number | null;
+          nexus_match_status?: string | null;
+          nexus_synced_at?: string | null;
           notes?: string | null;
           owner_tcm_id?: string | null;
           phone?: string | null;
@@ -2020,6 +2026,9 @@ export type Database = {
           id?: string;
           imported_by?: string | null;
           last_import_batch_id?: string | null;
+          nexus_contract_id?: number | null;
+          nexus_match_status?: string | null;
+          nexus_synced_at?: string | null;
           notes?: string | null;
           owner_tcm_id?: string | null;
           phone?: string | null;
@@ -7362,6 +7371,13 @@ export type Database = {
           period_end: string;
           period_start: string;
           working_days: string;
+        }[];
+      };
+      nexus_roster_export: {
+        Args: Record<string, never>;
+        Returns: {
+          email: string;
+          employment_status: string | null;
         }[];
       };
       sync_user_role: {

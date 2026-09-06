@@ -269,6 +269,8 @@ export type AuditAction =
     | 'PLACEMENT_STATUS_TICK_RUN'
     | 'SECRET_EXPIRY_CHECK_RUN'
     | 'TC_SYNC_RUN'
+    // Integracja z NEXUSEM: pobranie kontraktorów i dopasowanie tożsamości.
+    | 'NEXUS_CONTRACTORS_SYNC_RUN'
     // Audyt 2026-08 (C5) — realizacja praw z RODO. Eksport też jest tu wpisem:
     // zbudowanie kompletu danych o jednej osobie jest czynnością na danych
     // osobowych i musi mieć autora. `GDPR_SUBJECT_ANONYMIZED` niesie nazwę
