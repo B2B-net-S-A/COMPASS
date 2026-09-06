@@ -23,6 +23,18 @@ export async function NexusIdentityTabPanel() {
         )
     }
 
+    // Znany stan przejściowy: kod jest wdrożony, migracja jeszcze nie.
+    // Mówimy o tym wprost — czerwony błąd sugerowałby awarię, na którą zespół
+    // TCM i tak nic nie poradzi.
+    if (result.data.migrationPending) {
+        return (
+            <p className="max-w-2xl text-sm text-muted-foreground">
+                Integracja z NEXUSEM czeka na migrację bazy. Kolejka pojawi się tutaj,
+                gdy migracja zostanie zaaplikowana i przejdzie pierwsza synchronizacja.
+            </p>
+        )
+    }
+
     return (
         <div className="space-y-4">
             <p className="max-w-2xl text-sm text-muted-foreground">
@@ -30,7 +42,7 @@ export async function NexusIdentityTabPanel() {
                 Automat wiąże tylko po e-mailu — dopasowanie po nazwisku jest świadomie
                 zabronione, bo sklejenie dwóch różnych osób jest ciche i trwałe.
             </p>
-            <NexusIdentityQueue rows={result.data} />
+            <NexusIdentityQueue rows={result.data.rows} />
         </div>
     )
 }

@@ -31,13 +31,28 @@ export type NexusQueueRow = {
     syncedAt: string | null
 }
 
+export type NexusQueue = {
+    rows: NexusQueueRow[]
+    /** Kolumny jeszcze nie istnieją — migracja nie została zaaplikowana. */
+    migrationPending: boolean
+}
+
+/** PostgREST przekazuje kod błędu Postgresa; 42703 = `undefined_column`. */
+const UNDEFINED_COLUMN = '42703'
+
 /**
  * Wiersze czekające na rozstrzygnięcie.
  *
  * `requireRows`, bo to jest TREŚĆ ekranu: pusta lista przy awarii odczytu
  * wyglądałaby jak „wszystko dopasowane", czyli odwrotność prawdy.
+ *
+ * WYJĄTEK — brak kolumn. Migracja tego PR-a wjeżdża osobno (baza produkcyjna
+ * nie przyjmuje DDL z deployu), więc między merge'em a jej zaaplikowaniem
+ * kolumny `nexus_*` nie istnieją. To nie jest awaria do zgłaszania: to znany,
+ * przejściowy stan, i ekran ma o nim powiedzieć wprost, zamiast straszyć
+ * zespół TCM czerwonym błędem, na który i tak nic nie poradzi.
  */
-export async function listNexusMatchQueue(): Promise<ActionResult<NexusQueueRow[]>> {
+export async function listNexusMatchQueue(): Promise<ActionResult<NexusQueue>> {
     return runAction('listNexusMatchQueue', async () => {
         await requireLifecycleManagerAction()
         const admin = createServiceClient()
@@ -46,14 +61,22 @@ export async function listNexusMatchQueue(): Promise<ActionResult<NexusQueueRow[
             .select('id, full_name, current_client, nexus_match_status, nexus_synced_at')
             .in('nexus_match_status', ['pending', 'ambiguous'])
             .order('full_name')
+
+        if ((res.error as { code?: string } | null)?.code === UNDEFINED_COLUMN) {
+            return { rows: [], migrationPending: true }
+        }
+
         const rows = requireRows('kolejki dopasowania NEXUSA', res)
-        return rows.map((r) => ({
-            id: r.id,
-            fullName: r.full_name,
-            currentClient: r.current_client,
-            matchStatus: r.nexus_match_status,
-            syncedAt: r.nexus_synced_at,
-        }))
+        return {
+            migrationPending: false,
+            rows: rows.map((r) => ({
+                id: r.id,
+                fullName: r.full_name,
+                currentClient: r.current_client,
+                matchStatus: r.nexus_match_status,
+                syncedAt: r.nexus_synced_at,
+            })),
+        }
     })
 }
 
