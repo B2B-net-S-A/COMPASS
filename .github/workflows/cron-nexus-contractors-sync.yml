@@ -1,36 +1,18 @@
-name: NEXUS contractors sync (DORMANT — manual only)
+name: Cron — NEXUS contractors sync
 
-# Most tożsamości NEXUS↔Compass — scheduler trasy /api/cron/nexus-contractors-sync.
+# Drugi scheduler (obok zadania w Coolify) dla /api/cron/nexus-contractors-sync:
+# pobiera kontraktorów z NEXUSA i dopina im tożsamość (nexus_match_status).
+# Wzorzec 1:1 z cron-timesheet-reminder.yml — Bearer CRON_SECRET, APP_URL z var.
 #
-# STAN: DORMANT (tylko workflow_dispatch). Świadomie BEZ `schedule:`, bo most nie
-# jest jeszcze uruchomiony — trasa zwraca 500 (`stage:config`), dopóki w Coolify
-# nie ma NEXUS_CONTRACTORS_URL + NEXUS_CONTRACTORS_API_KEY, a NEXUS nie wystawia
-# eksportu kontraktorów. Auto-harmonogram teraz = codzienne czerwone runy + szum
-# w Sentry (`nexus_contractors_not_configured`). Ten krok dodaje podpowiedzi po
-# nazwisku do kolejki People Ops → „Tożsamość NEXUS"; dopóki nie ruszy, kolejka
-# jest pusta i nic nie linkuje.
-#
-# JAK AKTYWOWAĆ MOST (kolejność):
-#   1. [NEXUS] wystaw endpoint eksportu kontraktorów (paginowany {items,has_more},
-#      item: nexus_contract_id, candidate{name,lastname,email}, client_name, status,
-#      start_date, end_date, lacks_current_order).
-#   2. [env] dodaj do Coolify (workflow „Coolify set env", value_from_secret):
-#        NEXUS_CONTRACTORS_URL      (adres z p.1)
-#        NEXUS_CONTRACTORS_API_KEY  (nagłówek X-API-Key)
-#   3. Odpal ten workflow ręcznie (Run workflow) i sprawdź podsumowanie:
-#        200 + {linked, pending, ambiguous, not_found} → most działa.
-#        „stage:config" → env jeszcze nieustawione (workflow zostaje zielony, dormant).
-#   4. Przejdź kolejkę „Tożsamość NEXUS" (People Ops) i pozostaw linked/not_found.
-#   5. Gdy przebieg jest stabilny — ODKOMENTUJ `schedule:` poniżej (minuta ≠ :00)
-#      i wtedy zamień nagłówek na zwykły „(daily cron)". Nie planuj równolegle
-#      w Coolify — jeden scheduler (crony Coolify są zawodne, patrz saga martwych cronów).
-#
-# Wzór end-to-end: cron-legal-monitor-alerts.yml (Bearer CRON_SECRET, graceful skip).
+# Trasa dopina tożsamość idempotentnie (upsert po id, grupowany po werdykcie),
+# więc redundancja z ewentualnym zadaniem Coolify jest bezpieczna. Bez sekretu
+# CRON_SECRET workflow daje ostrzeżenie i zielony przebieg, nie czerwony.
+# Rotacja wartości: action=cron-secret-ciphertext w workflow „Coolify Ops".
 
 on:
-  # schedule:
-  #   # Po aktywacji: raz dziennie ~04:37 UTC (poza szczytem pełnej godziny).
-  #   - cron: '37 4 * * *'
+  schedule:
+    # Codziennie 06:00 UTC (≈ 07:00 / 08:00 w Warszawie zależnie od DST).
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -43,7 +25,7 @@ concurrency:
 jobs:
   trigger-sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Curl /api/cron/nexus-contractors-sync
         env:
@@ -55,27 +37,13 @@ jobs:
             exit 1
           fi
           if [ -z "$CRON_SECRET" ]; then
-            echo "::warning::Pominięte — brak sekretu CRON_SECRET. Bez niego trasa cron odrzuca żądanie (401)."
+            echo "::warning::Pominięte — brak sekretu CRON_SECRET. Dodaj sekret, żeby scheduler ruszył."
             exit 0
           fi
           echo "Calling $APP_URL/api/cron/nexus-contractors-sync"
           # Bearer, nie ?secret= — sekret w query trafia do logów CF/proxy/Sentry.
-          # Bez -f, bo chcemy rozróżnić 500 „stage:config" (most jeszcze nieustawiony,
-          # zielono) od realnej awarii (czerwono).
-          resp=$(curl -sS -m 90 --retry 2 --retry-delay 10 -w $'\n%{http_code}' \
+          curl -fsSL --retry 3 --retry-delay 10 \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/nexus-contractors-sync") || true
-          code=$(printf '%s' "$resp" | tail -n1)
-          body=$(printf '%s' "$resp" | sed '$d')
-          echo "HTTP $code"
-          echo "$body"
-          if [ "$code" = "200" ]; then
-            echo "✅ Sync NEXUS↔Compass wykonany. Sprawdź kolejkę People Ops → Tożsamość NEXUS."
-            exit 0
-          fi
-          if printf '%s' "$body" | grep -q '"stage":"config"'; then
-            echo "::warning::Most tożsamości NIE jest jeszcze skonfigurowany — ustaw NEXUS_CONTRACTORS_URL + NEXUS_CONTRACTORS_API_KEY w Coolify (workflow „Coolify set env"). Scheduler pozostaje dormant."
-            exit 0
-          fi
-          echo "::error::Sync nexus-contractors zwrócił HTTP $code (nie stage:config)."
-          exit 1
+            "$APP_URL/api/cron/nexus-contractors-sync" | tee /tmp/result.json
+          echo
+          echo "✅ NEXUS contractors sync completed."
