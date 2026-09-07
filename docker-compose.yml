@@ -32,6 +32,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       CRON_SECRET: ${CRON_SECRET}
+      AVAILABILITY_EXPORT_SECRET: ${AVAILABILITY_EXPORT_SECRET:-}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       # Consultant Success rollout flags. The private surface is enabled while
       # automations stay non-delivering in shadow mode and surveys stay disabled.

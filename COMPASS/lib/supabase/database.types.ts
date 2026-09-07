@@ -7440,6 +7440,10 @@ export type Database = {
           reported_by_email: string;
         }[];
       };
+      nexus_availability_export: {
+        Args: never;
+        Returns: Json;
+      };
       nexus_roster_export: {
         Args: never;
         Returns: {
