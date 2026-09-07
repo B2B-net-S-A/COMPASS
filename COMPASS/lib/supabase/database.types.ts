@@ -7426,18 +7426,18 @@ export type Database = {
       };
       atlas_sales_signals_export: {
         Args: {
-          p_since?: string | null;
+          p_since?: string;
         };
         Returns: {
           company_name: string;
-          consultant_email: string | null;
-          consultant_name: string | null;
-          contact_hint: string | null;
-          context: string | null;
+          consultant_email: string;
+          consultant_name: string;
+          contact_hint: string;
+          context: string;
           created_at: string;
           id: string;
           need: string;
-          reported_by_email: string | null;
+          reported_by_email: string;
         }[];
       };
       nexus_availability_export: {

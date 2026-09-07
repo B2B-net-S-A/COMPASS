@@ -124,12 +124,13 @@ describe("GET /api/internal/sales-signals", () => {
     );
   });
 
-  it("bez `since` robi pełny eksport (p_since = null)", async () => {
+  it("bez `since` robi pełny eksport (p_since pominięty)", async () => {
     await call(URL_BASE, auth);
-    expect(rpcMock).toHaveBeenCalledWith(
-      "atlas_sales_signals_export",
-      expect.objectContaining({ p_since: null }),
-    );
+    // Route woła RPC z p_since=undefined, nie null: wygenerowany typ to
+    // `p_since?: string`, a pominięcie = DEFAULT NULL w funkcji = pełny
+    // eksport. Zachowanie to samo, typ poprawny (patrz fix #374).
+    const arg = rpcMock.mock.calls[0][1];
+    expect(arg.p_since).toBeUndefined();
   });
 
   it("odrzuca niepoprawne `since` zamiast cicho robić pełny skan", async () => {
