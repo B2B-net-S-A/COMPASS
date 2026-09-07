@@ -134,8 +134,26 @@ i `timesheet-reminder`), a crony Coolify są zawodne (patrz saga martwych cronó
 Punkty 1–2 są **blokujące i po Waszej stronie** (NEXUS + env); bez nich scheduler tylko generuje
 awarie 500. Punkty 3 i 5 mogę zrobić w Compassie, gdy 1–2 są gotowe (albo 3 od razu jako dormant/manual).
 
+### Zrobione teraz: scheduler DORMANT + runbook
+Dodano `.github/workflows/cron-nexus-contractors-sync.yml` w stanie **dormant** (tylko `workflow_dispatch`,
+`schedule:` zakomentowany). Rozróżnia 500 „stage:config" (most nieustawiony → run zielony, ostrzeżenie)
+od realnej awarii (czerwony), więc bezpiecznie testuje przed konfiguracją.
+
+**Jak domknąć most (gdy zechcesz):**
+1. Ustal, czy NEXUS wystawia eksport kontraktorów (repo `artur-t-96/Nexus`; kształt w kroku 1 checklisty).
+   Jeśli nie — to najpierw praca po stronie NEXUSA.
+2. Wrzuć adres i klucz jako **sekrety repo** (np. `NEXUS_CONTRACTORS_URL`, `NEXUS_CONTRACTORS_API_KEY`),
+   potem odpal workflow **„Coolify set env"** dwa razy z `value_from_secret` (żeby wartość nie trafiła do
+   metadanych runa). To ustawi je w env vault Coolify + zrobi restart.
+3. Odpal **„NEXUS contractors sync (DORMANT — manual only)"** ręcznie (Run workflow). Oczekiwane:
+   `HTTP 200` + `{linked, pending, ambiguous, not_found}`. Wynik `stage:config` = env dalej brak.
+4. Wejdź w People Ops → **Tożsamość NEXUS** i przejdź kolejkę (zatwierdź powiązania / odrzuć „nie ma w NEXUSIE").
+5. Gdy przebieg jest stabilny — odkomentuj `schedule:` w workflow (minuta ≠ :00). Wtedy dopiero ma sens
+   krok 5 checklisty (obsługa „WSPÓŁPRACA ZAKOŃCZONA") — mogę go dołożyć.
+
 ---
 
 ## Pliki
 - `COMPASS/supabase/migrations/20260907114609_opieka_owner_tcm_backfill.sql` — backfill (wdrożony).
 - `COMPASS/docs/opieka-bez-opiekuna-2026-09-07.csv` — 92 osoby bez opiekuna, z powodem.
+- `.github/workflows/cron-nexus-contractors-sync.yml` — scheduler mostu tożsamości, DORMANT (manual).
