@@ -11,7 +11,6 @@ import { CompleteOnboardingButton } from '../../components/CompleteOnboardingBut
 import { BuddyCard } from '../../components/BuddyCard'
 import { CancelOnboardingButton } from '../../components/CancelOnboardingButton'
 import { LifecycleNotesPanel } from '../../components/LifecycleNotesPanel'
-import { SalesSignalPanel } from '../../components/SalesSignalPanel'
 import { AuditHistoryPanel } from '../../components/AuditHistoryPanel'
 import { WelcomeEmailCard } from '../../components/WelcomeEmailCard'
 
@@ -167,7 +166,6 @@ export default async function OnboardingDetailPage({ params }: { params: { progr
                 <section>
                     <h2 className="text-lg font-semibold mb-3">Notatki TCM</h2>
                     <LifecycleNotesPanel userId={detail.employee.id} defaultCategory="onboarding" />
-                    <SalesSignalPanel userId={detail.employee.id} />
                 </section>
             )}
 
