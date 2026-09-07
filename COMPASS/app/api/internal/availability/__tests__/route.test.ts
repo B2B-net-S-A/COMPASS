@@ -32,6 +32,17 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("availability export", () => {
+  it("distinguishes an exited identity from a missing identity without exporting leave history", async () => {
+    const data = snapshot();
+    data.people[0].employment_status = "exited";
+    data.people[0].absences = [];
+    rpc.mockResolvedValue({ data, error: null });
+    const body = await (await call()).json();
+    expect(body.people[0]).toMatchObject({ id: employee, available: false, employment_status: "exited", absences: [] });
+    data.people[0].available = true;
+    expect((await call()).status).toBe(503);
+  });
+
   it("exports dates and named cover with a complete versioned snapshot", async () => {
     const response = await call();
     expect(response.status).toBe(200);

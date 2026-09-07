@@ -59,6 +59,9 @@ jobs:
       - name: Vitest unit tests
         run: npm run test:unit
 
+      - name: Availability connection scope tests
+        run: python3 ../scripts/test_configure_nexus_availability.py
+
       - name: Next build (placeholder env)
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co

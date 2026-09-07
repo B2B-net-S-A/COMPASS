@@ -37,10 +37,13 @@ AS $$
                 ) ORDER BY l.start_date, l.id)
                 FROM public.leave_requests l
                 WHERE l.user_id = p.id AND l.status = 'approved'
+                    AND COALESCE(p.employment_status::text, 'active') IN ('active', 'offboarding')
                     AND l.half_day IS NULL
                     AND l.end_date >= w.day AND l.start_date <= w.day + 30
             ), '[]'::jsonb) AS absences
         FROM public.profiles p CROSS JOIN working w
+        -- Keep an explicit unavailable identity for exited people: omission
+        -- must remain distinguishable from an unknown/missing identity.
         WHERE p.email IS NOT NULL AND trim(p.email) <> ''
     )
     SELECT jsonb_build_object(
@@ -61,5 +64,18 @@ GRANT EXECUTE ON FUNCTION public.nexus_availability_export() TO service_role;
 
 COMMENT ON FUNCTION public.nexus_availability_export() IS
     'Server-only NEXUS workforce availability. Full-day approved leave only; no reasons or documents.';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = 'nexus_availability_export'
+            AND p.pronargs = 0 AND NOT p.prosecdef AND p.provolatile = 's'
+    ) OR NOT has_function_privilege('service_role', 'public.nexus_availability_export()', 'EXECUTE')
+      OR has_function_privilege('anon', 'public.nexus_availability_export()', 'EXECUTE')
+      OR has_function_privilege('authenticated', 'public.nexus_availability_export()', 'EXECUTE') THEN
+        RAISE EXCEPTION 'Availability export function or execution grants are incorrect';
+    END IF;
+END $$;
 
 COMMIT;

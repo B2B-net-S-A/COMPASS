@@ -29,7 +29,8 @@ const snapshotSchema = z.object({
     employment_status: z.string(),
     available: z.boolean(),
     absences: z.array(absence),
-  })).min(1),
+  }).refine((person) => ["active", "offboarding"].includes(person.employment_status)
+    || (!person.available && person.absences.length === 0))).min(1),
 }).refine((row) => row.count === row.people.length
   && new Set(row.people.map((person) => person.id)).size === row.count);
 
