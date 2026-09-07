@@ -78,7 +78,9 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const admin = createServiceClient();
   const { data, error } = await admin.rpc("atlas_sales_signals_export", {
-    p_since: since.value,
+    // ?? undefined: p_since jest opcjonalny (string), a `null` z parseSince
+    // nie jest przypisywalny — pominięcie = DEFAULT NULL w funkcji = pełny eksport.
+    p_since: since.value ?? undefined,
   });
 
   if (error) {
