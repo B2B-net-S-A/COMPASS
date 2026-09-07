@@ -348,6 +348,46 @@ Pierwszy dzień miesiąca licz przez `monthStart(year, month)`, nie własnym sza
 
 ---
 
+## Integracja z NEXUSEM (kontraktorzy + roster cyklu życia)
+
+Compass wymienia z NEXUSEM (ATS) dwie rzeczy poza dniami roboczymi z D5.
+**Kod wdrożony (#366/#367/#369), migracja `20260906205803` na prodzie.**
+
+**Dwa kierunki, dwa różne sekrety — łatwo pomylić:**
+
+| Przepływ | Trasa | Sekret | Uwaga |
+|---|---|---|---|
+| Kontraktorzy: **Compass ← NEXUS** | cron `/api/cron/nexus-contractors-sync` | `NEXUS_CONTRACTORS_API_KEY` (`X-API-Key` do NEXUSA) | pobiera + dopasowuje po e-mailu |
+| Cykl życia: **NEXUS ← Compass** | `/api/internal/roster` | `ROSTER_EXPORT_SECRET` (`Bearer`, czyta NEXUS) | oddaje TYLKO email+status |
+
+- **`/api/internal/roster`** (`app/api/internal/roster/route.ts`) — eksport rosteru
+  dla NEXUSA (Etap 5). Zwraca WYŁĄCZNIE `email` + `employment_status` przez funkcję
+  `nexus_roster_export()` (SECURITY DEFINER) — kontrakt wymusza SYGNATURA funkcji SQL,
+  nie handler; `profiles` to pełna kartoteka kadrowa. Własny `ROSTER_EXPORT_SECRET`,
+  **nie `CRON_SECRET`** (tamten odblokowuje `/api/migrate-compliance` = DDL na bazie).
+  Header-only, 503 „Not configured" ≠ 401 „zły sekret". **Pusta lista = 500** (odmowa),
+  bo po stronie NEXUSA `count:0` wpada do pętli DEAKTYWUJĄCEJ konta.
+- **Cron `/api/cron/nexus-contractors-sync`** (`app/api/cron/…/route.ts`) — pobiera
+  eksport kontraktorów z NEXUSA i pisze `contractors.nexus_match_status`. Zapis
+  grupowany po werdykcie (4 zapytania, nie 689). **Nie nadpisuje `contractors.email`**
+  (to adres kandydata; `activateSuccessMonitoring` wysyła na niego ankiety pulse).
+  Env: `NEXUS_CONTRACTORS_URL`, `NEXUS_CONTRACTORS_API_KEY`. Cron wymaga **nazwy
+  kontenera** w Coolify (bez niej pada mimo schedulera).
+- **Reguła dopasowania** (`lib/contractors/nexus-match.ts`, czysta funkcja) — automat
+  linkuje WYŁĄCZNIE po jednoznacznym e-mailu. Nazwisko → `pending`; wiele trafień →
+  `ambiguous`; `not_found` (decyzja człowieka) NIE jest cofane przy kolejnym cronie
+  (strażnikiem jest `nexus_match_status`, nie sam `nexus_contract_id`). Dopasowanie po
+  nazwisku jest ZABRONIONE — patrz `20260714183425_consultant_success_hub.sql`
+  („Name matching is intentionally forbidden"); 689 kontraktorów ma 0 e-maili, więc po
+  starcie prawie wszystko wpada do ręcznej kolejki.
+- **Kolejka ręczna** — People Ops → zakładka **„Tożsamość NEXUS"**
+  (`components/internal/people/NexusIdentityTabPanel.tsx` + akcje `lib/actions/nexus-identity.ts`).
+  Akcje przez `runAction`+`ExpectedError`; lista przez `requireRows` (TREŚĆ ekranu).
+  Rozpoznaje `42703 undefined_column` → „czeka na migrację" zamiast błędu.
+- **Migracja `20260906205803_nexus_contractor_identity.sql`** — kolumny `contractors.nexus_*`
+  + częściowy UNIQUE + `nexus_roster_export()`. Nazwa pliku = wersja z rejestru
+  (repo↔rejestr rozjechane, patrz „NIGDY `supabase db push`").
+
 ## Zadania cykliczne (crony)
 
 Trasy w `COMPASS/app/api/cron/` (`ls app/api/cron` = aktualna lista — nie utrzymuję jej kopii tutaj,
