@@ -101,15 +101,38 @@ powiązał**. Powód: auto-link działa **tylko po unikalnym e-mailu**, a kontra
 (dopasowanie po nazwisku jest w kodzie celowo zabronione). Bez powiązania sygnał „zakończenia"
 z NEXUSA **nie ma jak trafić** na właściwego kontraktora w Compassie.
 
-### Kolejność (decyzja: „najpierw most tożsamości")
-1. **Najpierw** doprowadzić powiązanie kontraktorów z NEXUSEM do realnego działania — to jest właściwa
-   blokada (brak e-maili / klucza do linkowania; sprawdzić, czy cron w ogóle jest odpalany i czy
-   `NEXUS_CONTRACTORS_URL` / `NEXUS_CONTRACTORS_API_KEY` są ustawione).
-2. **Dopiero potem** wpiąć obsługę „WSPÓŁPRACA ZAKOŃCZONA": po stronie crona sync, dla powiązanego
-   kontraktora → zapis `client_departures` + `owner_tcm_id = null`.
+### Diagnoza dokładna (2026-09-07)
+Kod mostu jest **kompletny i dobrze pomyślany** — brakuje tylko jego URUCHOMIENIA:
+- `app/api/cron/nexus-contractors-sync/route.ts` pobiera kontraktorów z NEXUSA, liczy werdykty
+  (`lib/contractors/nexus-match.ts`) i zapisuje `nexus_contract_id` / `nexus_match_status` / `nexus_synced_at`.
+- Reguła: auto-link **tylko** po unikalnym e-mailu; bez e-maila (dziś wszystkie) → **podpowiedzi po
+  nazwisku** trafiające do **kolejki człowieka** (`pending` / `ambiguous`), a ręczne „nie ma w NEXUSIE"
+  zostaje `not_found`. Kolejkę obsługuje zakładka **People Ops → Tożsamość NEXUS**
+  (`NexusIdentityQueue.tsx`, akcje `linkContractorToNexus` / `dismissNexusMatch`).
+- `NexusContractor` **już niesie** `status` / `end_date` / `lacks_current_order` — sygnały do Zadania 2.
 
-To osobny kawałek pracy, zależny od strony NEXUSA (jakie dokładnie pole/wartość wysyła i jak
-zbudować most tożsamości). Semantyka po stronie Compassa jest już ustalona (patrz wyżej).
+**Sync NIGDY nie ruszył:** `audit_logs` ma **0** zdarzeń `NEXUS_CONTRACTORS_SYNC_RUN` /
+`CONTRACTOR_LINKED_TO_NEXUS`; brak workflow GH Actions dla tej trasy (są tylko dla `legal-monitor-alerts`
+i `timesheet-reminder`), a crony Coolify są zawodne (patrz saga martwych cronów). Dlatego `nexus_match_status`
+= `null` u wszystkich 691 i kolejka „Tożsamość NEXUS" jest pusta.
+
+### Checklist aktywacji mostu (kolejność: „najpierw most tożsamości")
+1. **[strona NEXUSA — poza tym repo]** Wystawić endpoint eksportu kontraktorów, który Compass pobiera:
+   paginowany `{ items: NexusContractor[], has_more }`, gdzie każdy `item` niesie `nexus_contract_id`,
+   `candidate {name,lastname,email}`, `client_name`, `status`, `start_date`, `end_date`, `lacks_current_order`.
+2. **[Coolify env vault]** Ustawić `NEXUS_CONTRACTORS_URL` (adres z p.1) + `NEXUS_CONTRACTORS_API_KEY`
+   (nagłówek `X-API-Key`). Bez nich trasa zwraca 500 (`stage:config`) — świadomie widoczna awaria.
+3. **[Compass repo — mogę zrobić]** Dodać scheduler GH Actions `cron-nexus-contractors-sync.yml`
+   (wzór: `cron-legal-monitor-alerts.yml`, Bearer `CRON_SECRET`, minuta ≠ :00). GH, nie Coolify —
+   bo to ścieżka zweryfikowana i widoczna w UI.
+4. **[ludzie]** Po pierwszym przebiegu przejść kolejkę „Tożsamość NEXUS" i pozostawiać `linked` /
+   `not_found`. Dopiero powiązani kontraktorzy będą podatni na auto-usuwanie.
+5. **[Compass repo — kolejny etap]** Wpiąć obsługę „WSPÓŁPRACA ZAKOŃCZONA": w cronie sync, dla
+   kontraktora `linked` z odpowiednim sygnałem (`status`/`end_date`/`lacks_current_order`) →
+   zapis `client_departures` + `owner_tcm_id = null` (semantyka ustalona wyżej).
+
+Punkty 1–2 są **blokujące i po Waszej stronie** (NEXUS + env); bez nich scheduler tylko generuje
+awarie 500. Punkty 3 i 5 mogę zrobić w Compassie, gdy 1–2 są gotowe (albo 3 od razu jako dormant/manual).
 
 ---
 
