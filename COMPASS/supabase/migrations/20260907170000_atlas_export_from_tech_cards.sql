@@ -43,13 +43,13 @@ SET search_path = public, pg_catalog
 AS $$
     SELECT
         c.id,
-        COALESCE(cl.name, 'klient nieznany')::text AS company_name,
+        cl.name::text AS company_name,
         CASE
             WHEN array_length(c.hiring_roles, 1) > 0
                 THEN 'Klient rekrutuje: ' || array_to_string(c.hiring_roles, ', ')
             ELSE 'Zgłoszona potrzeba rekrutacyjna u klienta'
         END::text AS need,
-        ('Sygnał od konsultanta: ' || COALESCE(ct.full_name, '—'))::text AS contact_hint,
+        ('Sygnał od konsultanta: ' || ct.full_name)::text AS contact_hint,
         (
             COALESCE('źródło: ' || nullif(c.hiring_source, '') || '; ', '')
             || 'wywiad ' || COALESCE(c.interview_date::text, '—')
@@ -60,8 +60,8 @@ AS $$
         lower(trim(ct.email))::text  AS consultant_email,
         COALESCE(c.finalized_at, c.created_at) AS created_at
     FROM tech_interview_cards c
-    LEFT JOIN clients cl       ON cl.id = c.client_id
-    LEFT JOIN contractors ct   ON ct.id = c.contractor_id
+    JOIN clients cl            ON cl.id = c.client_id
+    JOIN contractors ct        ON ct.id = c.contractor_id
     LEFT JOIN client_areas ca  ON ca.id = c.client_area_id
     LEFT JOIN profiles rep     ON rep.id = COALESCE(c.tcm_id, c.created_by)
     WHERE c.hiring IS TRUE
