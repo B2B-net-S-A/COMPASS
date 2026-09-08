@@ -5361,57 +5361,6 @@ export type Database = {
           },
         ];
       };
-      sales_signals: {
-        Row: {
-          company_name: string;
-          consultant_id: string | null;
-          contact_hint: string | null;
-          context: string | null;
-          created_at: string;
-          id: string;
-          need: string;
-          reported_by: string | null;
-          updated_at: string;
-        };
-        Insert: {
-          company_name: string;
-          consultant_id?: string | null;
-          contact_hint?: string | null;
-          context?: string | null;
-          created_at?: string;
-          id?: string;
-          need: string;
-          reported_by?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          company_name?: string;
-          consultant_id?: string | null;
-          contact_hint?: string | null;
-          context?: string | null;
-          created_at?: string;
-          id?: string;
-          need?: string;
-          reported_by?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "sales_signals_consultant_id_fkey";
-            columns: ["consultant_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "sales_signals_reported_by_fkey";
-            columns: ["reported_by"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       support_article_attachments: {
         Row: {
           article_id: string;
