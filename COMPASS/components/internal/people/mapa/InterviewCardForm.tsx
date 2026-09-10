@@ -34,6 +34,8 @@ import {
     INITIATIVE_PRIORITY_PL,
     INTERVIEW_CARD_STATUS_PL,
     INTERVIEW_CARD_STATUSES,
+    PROFESSIONAL_INSURANCE_OPTIONS,
+    PROFESSIONAL_INSURANCE_PL,
     TEAM_SIZE_MAX,
     TECH_CATEGORY_PL,
     type CardInput,
@@ -41,6 +43,7 @@ import {
     type HiringSource,
     type InitiativeInput,
     type InterviewCardStatus,
+    type ProfessionalInsurance,
     type TechnologyRow,
     type VendorRow,
 } from '@/lib/types/tech-map'
@@ -156,6 +159,9 @@ export function InterviewCardForm(props: Props) {
     const [hiring, setHiring] = useState<boolean | null>(props.initial.hiring)
     const [hiringRoles, setHiringRoles] = useState<string[]>(props.initial.hiringRoles)
     const [hiringSource, setHiringSource] = useState<HiringSource | null>(props.initial.hiringSource)
+    const [professionalInsurance, setProfessionalInsurance] = useState<ProfessionalInsurance | null>(
+        props.initial.professionalInsurance,
+    )
     const [memorableQuote, setMemorableQuote] = useState(props.initial.memorableQuote ?? '')
 
     // Technologie i zespół
@@ -212,6 +218,7 @@ export function InterviewCardForm(props: Props) {
             hiring,
             hiringRoles,
             hiringSource,
+            professionalInsurance,
             memorableQuote: memorableQuote || null,
             techOldNew: techOldNew || null,
             teamSize: teamSize.trim() === '' ? null : teamSize.trim(),
@@ -616,6 +623,27 @@ export function InterviewCardForm(props: Props) {
                         </div>
                     </div>
                 )}
+                <div className="space-y-1.5">
+                    <Label>Czy konsultant IT posiada OC zawodowe?</Label>
+                    <div className="flex flex-wrap gap-2">
+                        {PROFESSIONAL_INSURANCE_OPTIONS.map((opt) => (
+                            <button
+                                key={opt}
+                                type="button"
+                                onClick={() =>
+                                    setProfessionalInsurance(professionalInsurance === opt ? null : opt)
+                                }
+                                className={
+                                    professionalInsurance === opt
+                                        ? 'rounded-md border border-primary bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary'
+                                        : 'rounded-md border border-border px-4 py-1.5 text-sm text-muted-foreground hover:bg-muted'
+                                }
+                            >
+                                {PROFESSIONAL_INSURANCE_PL[opt]}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div className="space-y-1.5">
                     <Label>Jedno zdanie warte zapamiętania</Label>
                     <Input

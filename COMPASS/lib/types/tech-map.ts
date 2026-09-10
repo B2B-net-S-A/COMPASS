@@ -8,6 +8,10 @@ export type InterviewCardStatus = 'ok' | 'odmowa' | 'brak_czasu' | 'niechetny'
 
 export type HiringSource = 'widzial' | 'slyszal' | 'plotka'
 
+// „Czy konsultant IT posiada OC zawodowe?" — tri-state jawny. NULL (brak w tym
+// typie) = brak odpowiedzi, świadomie różny od jawnego 'nie_wiem'.
+export type ProfessionalInsurance = 'tak' | 'nie' | 'nie_wiem'
+
 export type TechCategory = 'jezyk' | 'chmura' | 'dane' | 'devops' | 'security' | 'inne'
 
 export type InitiativeKind = 'migracja' | 'nowy_system' | 'ai' | 'regulacje' | 'inne'
@@ -37,6 +41,12 @@ export const HIRING_SOURCE_PL: Record<HiringSource, string> = {
     plotka: 'Plotka',
 }
 
+export const PROFESSIONAL_INSURANCE_PL: Record<ProfessionalInsurance, string> = {
+    tak: 'Tak',
+    nie: 'Nie',
+    nie_wiem: 'Nie wiem',
+}
+
 export const TECH_CATEGORY_PL: Record<TechCategory, string> = {
     jezyk: 'Język / framework',
     chmura: 'Chmura',
@@ -63,6 +73,9 @@ export const INTERVIEW_CARD_STATUSES: InterviewCardStatus[] = Object.keys(
     INTERVIEW_CARD_STATUS_PL,
 ) as InterviewCardStatus[]
 export const HIRING_SOURCES: HiringSource[] = Object.keys(HIRING_SOURCE_PL) as HiringSource[]
+export const PROFESSIONAL_INSURANCE_OPTIONS: ProfessionalInsurance[] = Object.keys(
+    PROFESSIONAL_INSURANCE_PL,
+) as ProfessionalInsurance[]
 export const TECH_CATEGORIES: TechCategory[] = Object.keys(TECH_CATEGORY_PL) as TechCategory[]
 export const INITIATIVE_KINDS: InitiativeKind[] = Object.keys(INITIATIVE_KIND_PL) as InitiativeKind[]
 export const INITIATIVE_PRIORITIES: InitiativePriority[] = Object.keys(
@@ -173,6 +186,8 @@ export interface TechInterviewCardRow {
     hiring: boolean | null
     hiring_roles: string[]
     hiring_source: HiringSource | null
+    /** „Czy konsultant IT posiada OC zawodowe?": tak/nie/nie_wiem; NULL = brak odpowiedzi. */
+    professional_insurance: ProfessionalInsurance | null
     memorable_quote: string | null
     tech_old_new: string | null
     team_size: string | null
@@ -236,6 +251,8 @@ export interface CardInput {
     hiring: boolean | null
     hiringRoles: string[]
     hiringSource: HiringSource | null
+    /** „Czy konsultant IT posiada OC zawodowe?" — null = brak odpowiedzi. */
+    professionalInsurance: ProfessionalInsurance | null
     memorableQuote: string | null
     techOldNew: string | null
     teamSize: string | null

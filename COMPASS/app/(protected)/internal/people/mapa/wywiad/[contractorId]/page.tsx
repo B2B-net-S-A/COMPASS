@@ -47,6 +47,7 @@ export default async function WywiadPage({ params }: { params: { contractorId: s
         hiring: null,
         hiringRoles: [],
         hiringSource: null,
+        professionalInsurance: null,
         memorableQuote: null,
         techOldNew: null,
         teamSize: null,

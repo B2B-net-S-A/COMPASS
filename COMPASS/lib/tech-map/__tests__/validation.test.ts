@@ -20,6 +20,7 @@ const card = (over: Partial<CardInput> = {}): CardInput => ({
     hiring: false,
     hiringRoles: [],
     hiringSource: null,
+    professionalInsurance: null,
     memorableQuote: null,
     techOldNew: null,
     teamSize: null,

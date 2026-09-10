@@ -61,6 +61,7 @@ export default async function KartaPage({ params }: { params: { cardId: string }
         hiring: card.hiring,
         hiringRoles: card.hiring_roles,
         hiringSource: card.hiring_source,
+        professionalInsurance: card.professional_insurance,
         memorableQuote: card.memorable_quote,
         techOldNew: card.tech_old_new,
         teamSize: card.team_size,

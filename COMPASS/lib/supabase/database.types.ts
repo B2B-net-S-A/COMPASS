@@ -6219,6 +6219,7 @@ export type Database = {
           is_draft: boolean;
           memorable_quote: string | null;
           placement_id: string | null;
+          professional_insurance: string | null;
           project_end_alerted_at: string | null;
           project_end_month: number | null;
           project_end_unknown: boolean;
@@ -6250,6 +6251,7 @@ export type Database = {
           is_draft?: boolean;
           memorable_quote?: string | null;
           placement_id?: string | null;
+          professional_insurance?: string | null;
           project_end_alerted_at?: string | null;
           project_end_month?: number | null;
           project_end_unknown?: boolean;
@@ -6281,6 +6283,7 @@ export type Database = {
           is_draft?: boolean;
           memorable_quote?: string | null;
           placement_id?: string | null;
+          professional_insurance?: string | null;
           project_end_alerted_at?: string | null;
           project_end_month?: number | null;
           project_end_unknown?: boolean;
