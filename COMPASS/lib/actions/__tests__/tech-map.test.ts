@@ -130,6 +130,7 @@ const card = (over: Partial<CardInput> = {}): CardInput => ({
     hiring: false,
     hiringRoles: [],
     hiringSource: null,
+    professionalInsurance: null,
     memorableQuote: null,
     techOldNew: null,
     teamSize: null,
@@ -192,6 +193,18 @@ describe('kontrola dostępu — moduł niedostępny bez guardu lifecycle', () =>
 })
 
 describe('createCardDraft', () => {
+    it.each(['tak', 'nie', 'nie_wiem', null] as const)('zapisuje odpowiedź OC %s przy tworzeniu i edycji', async (professionalInsurance) => {
+        db.tables.tech_interview_cards = [{ id: 'card-1', contractor_id: 'c-1', tcm_id: 'tcm-1' }]
+        expect((await createCardDraft(card({ professionalInsurance }))).success).toBe(true)
+        expect(db.inserts.find((i) => i.table === 'tech_interview_cards')?.rows).toMatchObject({
+            professional_insurance: professionalInsurance,
+        })
+        expect((await saveCard('card-1', card({ professionalInsurance }))).success).toBe(true)
+        expect(db.updates.find((i) => i.table === 'tech_interview_cards')?.patch).toMatchObject({
+            professional_insurance: professionalInsurance,
+        })
+    })
+
     it('odrzuca kartę bez klienta (walidacja bazowa)', async () => {
         const res = await createCardDraft(card({ clientId: '' }))
         expect(res).toEqual({ success: false, error: expect.stringContaining('Wybierz klienta') })

@@ -412,6 +412,7 @@ function cardPayloadFromInput(input: CardInput) {
         hiring: input.hiring,
         hiring_roles: input.hiringRoles.map((r) => r.trim()).filter(Boolean),
         hiring_source: input.hiring === true ? input.hiringSource : null,
+        professional_insurance: input.professionalInsurance,
         memorable_quote: input.memorableQuote?.trim() || null,
         tech_old_new: input.techOldNew?.trim() || null,
         team_size: input.teamSize?.trim() || null,
