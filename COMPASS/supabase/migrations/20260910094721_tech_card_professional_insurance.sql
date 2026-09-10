@@ -5,9 +5,7 @@
 -- Pole opcjonalne (jak większość pól karty) — NIE wchodzi do matrycy finalizacji
 -- (validateCardForFinalize), więc karta bez odpowiedzi nadal się finalizuje.
 --
--- ⚠ Baza produkcyjna jest READ-ONLY dla sesji Claude'a — ten plik NIE jest tu
---    aplikowany. Wersję z rejestru stempluje osobno MCP apply_migration; prefiks
---    pliku ≠ wersja w rejestrze (patrz CLAUDE.md „NIGDY supabase db push").
+-- Applied to compass-prod; filename matches the migration registry.
 
 ALTER TABLE tech_interview_cards
     ADD COLUMN IF NOT EXISTS professional_insurance TEXT
