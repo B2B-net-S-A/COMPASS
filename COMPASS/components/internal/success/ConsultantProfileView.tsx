@@ -153,7 +153,7 @@ function Overview({ detail, focusId }: { detail: SuccessConsultantDetail; focusI
 
             <section className="space-y-3">
                 <div className="flex items-center justify-between"><div><h2 className="font-semibold">Otwarte działania</h2><p className="text-sm text-muted-foreground">Najbliższe zobowiązania po rozmowach.</p></div><Button asChild variant="ghost" size="sm"><Link href={`?tab=actions`}>Wszystkie</Link></Button></div>
-                <SuccessTaskList tasks={openTasks.slice(0, 4)} />
+                <SuccessTaskList tasks={openTasks.slice(0, 4)} tcmOptions={detail.tcmOptions} />
             </section>
         </div>
     )
@@ -241,7 +241,7 @@ function Actions({ detail, focusId }: { detail: SuccessConsultantDetail; focusId
     return (
         <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Działania</h2><p className="text-sm text-muted-foreground">Ustalenia, właściciele i terminy kolejnych działań.</p></div><div className="flex gap-2"><SendPulseButton contractorId={detail.consultant.contractorId} /><CreateTaskDialog contractorId={detail.consultant.contractorId} tcmOptions={detail.tcmOptions} /></div></div>
-            <SuccessTaskList tasks={detail.tasks} focusId={focusId} />
+            <SuccessTaskList tasks={detail.tasks} focusId={focusId} tcmOptions={detail.tcmOptions} />
         </section>
     )
 }

@@ -3,6 +3,7 @@ import {
     CHECK_IN_MILESTONES,
     TCM_DELIVERY_CHANNELS,
     addCalendarDays,
+    clientFeedbackRiskMilestone,
     deferPastQuietHours,
     deliveryDedupeKey,
     dueMilestones,
@@ -85,5 +86,8 @@ describe('consultant-success scheduling', () => {
             .toBe(true)
         expect(isLowPulseResponse({ satisfactionScore: 9, engagementScore: 3, recommendationScore: 8 }))
             .toBe(false)
+        expect(clientFeedbackRiskMilestone('critical')).toBe('risk_critical')
+        expect(clientFeedbackRiskMilestone('high')).toBe('risk_high')
+        expect(clientFeedbackRiskMilestone('medium')).toBeNull()
     })
 })

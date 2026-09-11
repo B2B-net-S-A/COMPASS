@@ -303,6 +303,12 @@ export function isLowPulseResponse(scores: {
         || scores.recommendationScore <= 4
 }
 
+export function clientFeedbackRiskMilestone(riskLevel: string): 'risk_high' | 'risk_critical' | null {
+    if (riskLevel === 'critical') return 'risk_critical'
+    if (riskLevel === 'high') return 'risk_high'
+    return null
+}
+
 export function deliveryDedupeKey(parts: Array<string | number | null | undefined>): string {
     return parts.filter((part) => part !== null && part !== undefined && String(part) !== '').join(':')
 }

@@ -14,6 +14,7 @@ const KIND_LABEL: Record<string, string> = {
     check_in_due: 'Check-in',
     task_due: 'Action step',
     conversation_follow_up: 'Follow-up',
+    client_feedback_risk: 'Ryzykowny feedback',
     pulse_invitation: 'Zaproszenie do ankiety',
     pulse_reminder: 'Przypomnienie o ankiecie',
     pulse_low_alert: 'Niski pulse',
