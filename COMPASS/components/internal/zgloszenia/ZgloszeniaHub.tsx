@@ -5,8 +5,7 @@
 
 import Link from 'next/link'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { KanbanBoard } from '@/components/inbox/KanbanBoard'
-import { NewInboxTicketDialog } from '@/components/inbox/NewInboxTicketDialog'
+import { InboxWorkspace } from '@/components/inbox/InboxWorkspace'
 import { TicketStatusBadge, TicketPriorityBadge } from '@/components/support/TicketStatusBadge'
 import type { InboxTicketWithMeta, TicketStatus, SupportTicketWithMeta } from '@/lib/types/support'
 
@@ -24,14 +23,13 @@ interface Props {
 
 export function ZgloszeniaHub({ inboxColumns, inboxError = null, helpdesk, helpdeskError = null, categories, handlers, currentUserId }: Props) {
     const inboxCount = Object.values(inboxColumns).reduce((n, arr) => n + arr.length, 0)
-    const canAddCase = handlers.length > 0 && categories.length > 0 && currentUserId !== ''
 
     return (
         <div className="space-y-6">
             <header>
                 <h1 className="text-2xl font-bold">Zgłoszenia</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Skrzynka administracja@ i helpdesk konsultantów — sprawy wymagające obsługi operacyjnej.
+                    Sprawy operacyjne i marketingowe oraz helpdesk konsultantów.
                 </p>
             </header>
 
@@ -49,19 +47,12 @@ export function ZgloszeniaHub({ inboxColumns, inboxError = null, helpdesk, helpd
                             hint="Skrzynkę widzą obsługujący (inbox handler) i admin. Jeśli powinieneś mieć dostęp, poproś admina o oznaczenie Cię jako obsługującego."
                         />
                     ) : (
-                        <>
-                            {canAddCase && (
-                                <div className="mb-4 flex justify-end">
-                                    <NewInboxTicketDialog
-                                        categories={categories}
-                                        handlers={handlers}
-                                        currentUserId={currentUserId}
-                                        triggerLabel="Dodaj sprawę"
-                                    />
-                                </div>
-                            )}
-                            <KanbanBoard initialColumns={inboxColumns} />
-                        </>
+                        <InboxWorkspace
+                            columns={inboxColumns}
+                            categories={categories}
+                            handlers={handlers}
+                            currentUserId={currentUserId}
+                        />
                     )}
                 </TabsContent>
 

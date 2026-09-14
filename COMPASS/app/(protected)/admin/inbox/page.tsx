@@ -2,8 +2,7 @@ import { redirect } from 'next/navigation'
 import { Inbox } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/server'
-import { KanbanBoard } from '@/components/inbox/KanbanBoard'
-import { NewInboxTicketDialog } from '@/components/inbox/NewInboxTicketDialog'
+import { InboxWorkspace } from '@/components/inbox/InboxWorkspace'
 import {
     listInboxTickets,
     listInboxHandlers,
@@ -62,13 +61,6 @@ export default async function AdminInboxPage() {
                         Tablica Kanban zgłoszeń wprowadzanych ręcznie. SLA: P1 = 2 dni, P2 = 5 dni, P3 = 10 dni roboczych.
                     </p>
                 </div>
-                {handlers.length > 0 && categories.length > 0 && (
-                    <NewInboxTicketDialog
-                        categories={categories}
-                        handlers={handlers}
-                        currentUserId={user.id}
-                    />
-                )}
             </div>
 
             {!ticketsRes.success && (
@@ -77,7 +69,14 @@ export default async function AdminInboxPage() {
                 </Card>
             )}
 
-            <KanbanBoard initialColumns={columns} />
+            {ticketsRes.success && (
+                <InboxWorkspace
+                    columns={columns}
+                    categories={categories}
+                    handlers={handlers}
+                    currentUserId={user.id}
+                />
+            )}
         </div>
     )
 }
