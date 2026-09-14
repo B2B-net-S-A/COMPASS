@@ -230,6 +230,7 @@ export const INBOX_CATEGORY_SLUGS = [
     'inbox_offboarding',
     'inbox_onboarding',
     'inbox_inne',
+    'inbox_marketing',
 ] as const
 
 export type InboxCategorySlug = (typeof INBOX_CATEGORY_SLUGS)[number]

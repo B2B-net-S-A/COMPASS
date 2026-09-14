@@ -456,6 +456,23 @@ describe('searchConsultants', () => {
 })
 
 describe('listInboxTickets', () => {
+    it('includes newly created Marketing cases alongside existing inbox categories', async () => {
+        const tables = baseTables()
+        tables.support_categories.push({ id: 'cat-mkt', slug: 'inbox_marketing', name_pl: 'Marketing', name_en: 'Marketing', sort_order: 107 })
+        setupClient({ user: { id: 'admin1', email: 'admin@compass.test' }, tables })
+        const { createInboxTicket, listInboxTickets } = await import('../support-inbox')
+        for (const category_id of ['cat-adm', 'cat-mkt']) {
+            const created = await createInboxTicket({
+                category_id, subject: `Sprawa ${category_id}`, body_md: 'Opis sprawy do obsługi', priority_level: 'P3',
+            })
+            expect(created.success).toBe(true)
+        }
+        const result = await listInboxTickets()
+        expect(result.success).toBe(true)
+        if (!result.success) return
+        expect(result.data.open.map((ticket) => ticket.category_slug).sort()).toEqual(['inbox_administracja', 'inbox_marketing'])
+    })
+
     it('rejects non-handler', async () => {
         setupClient({
             user: { id: 'ext1', email: 'someone@example.com' },
