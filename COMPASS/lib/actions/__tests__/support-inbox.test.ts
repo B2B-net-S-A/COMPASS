@@ -640,3 +640,37 @@ describe('listInboxTickets', () => {
     })
 })
 
+
+describe('updateInboxWorkspace', () => {
+    const input = { subject: 'Kampania jesienna', body_md: 'Opis kampanii marketingowej', category_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', assignee_id: null, work_area: 'marketing' as const, priority_level: 'P2' as const, planned_due_date: '2026-10-01', follow_up_date: null, waiting_for: null, checklist: [], materials: [] }
+    it('rejects unauthorized callers before invoking the database', async () => {
+        const client = setupClient({ user: { id: 'ext1', email: 'someone@example.com' }, tables: baseTables() })
+        const { updateInboxWorkspace } = await import('../support-inbox')
+        expect((await updateInboxWorkspace('ticket', '2026-09-01T00:00:00Z', input)).success).toBe(false)
+        expect(client.rpc).not.toHaveBeenCalled()
+    })
+    it('sends the expected revision and the full edit to one atomic operation', async () => {
+        const client = setupClient({ user: { id: 'admin1', email: 'admin@example.com' }, tables: baseTables(), rpcs: { update_inbox_workspace: () => '2026-09-14T10:00:00Z' } })
+        const { updateInboxWorkspace } = await import('../support-inbox')
+        expect((await updateInboxWorkspace('ticket', '2026-09-01T00:00:00Z', input)).success).toBe(true)
+        expect(client.rpc).toHaveBeenCalledWith('update_inbox_workspace', { p_ticket_id: 'ticket', p_expected_updated_at: '2026-09-01T00:00:00Z', p_changes: input })
+    })
+    it('rejects invalid dates and propagates a concurrent edit conflict', async () => {
+        const client = setupClient({ user: { id: 'admin1', email: 'admin@example.com' }, tables: baseTables(), rpcs: { update_inbox_workspace: () => { throw new Error('Sprawa została zmieniona przez inną osobę') } } })
+        const { updateInboxWorkspace } = await import('../support-inbox')
+        expect((await updateInboxWorkspace('ticket', '2026-09-01T00:00:00Z', { ...input, planned_due_date: '2026-02-30' })).success).toBe(false)
+        expect(client.rpc).not.toHaveBeenCalled()
+        expect(await updateInboxWorkspace('ticket', '2026-09-01T00:00:00Z', input)).toEqual({ success: false, error: 'Sprawa została zmieniona przez inną osobę' })
+    })
+})
+
+describe('inbox completion dates', () => {
+    it('preserves resolution date on closing and clears it when reopening', async () => {
+        const client = setupClient({ user: { id: 'handler1', email: 'handler@example.com' }, tables: baseTables({ support_tickets: [{ id: 'done', status: 'resolved', resolved_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z' }], support_inbox_meta: [{ ticket_id: 'done' }] }) })
+        const { moveInboxTicket } = await import('../support-inbox')
+        expect((await moveInboxTicket('done', 'closed')).success).toBe(true)
+        expect(client._tables.support_tickets[0].resolved_at).toBe('2026-09-01T00:00:00Z')
+        expect((await moveInboxTicket('done', 'open')).success).toBe(true)
+        expect(client._tables.support_tickets[0].resolved_at).toBeNull()
+    })
+})

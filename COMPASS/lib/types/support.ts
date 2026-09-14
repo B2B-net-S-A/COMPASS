@@ -138,6 +138,12 @@ export type InboxPriorityLevel = 'P1' | 'P2' | 'P3'
 export type InboxSource = 'manual_paste' | 'email' | 'user'
 
 export interface SupportInboxMeta {
+    work_area?: 'administration' | 'marketing'
+    planned_due_date?: string | null
+    waiting_for?: string | null
+    follow_up_date?: string | null
+    checklist?: Array<{ id: string; text: string; done: boolean }>
+    materials?: Array<{ id: string; label: string; url: string }>
     ticket_id: string
     source: InboxSource
     external_message_id: string | null
@@ -169,6 +175,8 @@ export interface InboxTicketWithMeta extends SupportTicketWithMeta {
 }
 
 export interface CreateInboxTicketInput {
+    work_area?: 'administration' | 'marketing'
+    planned_due_date?: string | null
     category_id: string
     subject: string
     body_md: string
@@ -231,6 +239,10 @@ export const INBOX_CATEGORY_SLUGS = [
     'inbox_onboarding',
     'inbox_inne',
     'inbox_marketing',
+    'inbox_grafika',
+    'inbox_publikacja',
+    'inbox_wydarzenie',
+    'inbox_kampania',
 ] as const
 
 export type InboxCategorySlug = (typeof INBOX_CATEGORY_SLUGS)[number]
@@ -292,4 +304,3 @@ export const ALLOWED_MATERIAL_MIME = [
 ] as const
 
 export type AllowedMaterialMime = (typeof ALLOWED_MATERIAL_MIME)[number]
-

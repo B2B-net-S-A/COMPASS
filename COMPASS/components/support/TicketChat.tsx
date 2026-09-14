@@ -23,13 +23,15 @@ interface TicketChatProps {
     // Domyślnie akcje helpdesku. Skrzynka (kanban Spraw) wstrzykuje własne, bo
     // helpdeskowe addComment/changeTicketStatus odrzucają zgłoszenia `inbox_%`
     // (isHelpdeskCategory) komunikatem „Ticket nie istnieje".
+    onRefresh?: () => void
+    statusLabels?: Record<TicketStatus, string>
     onAddComment?: (ticketId: string, body: string, isInternal: boolean) => Promise<SupportActionResult<{ commentId: string }>>
     onChangeStatus?: (ticketId: string, status: TicketStatus) => Promise<SupportActionResult<void>>
 }
 
 const STATUS_FLOW: TicketStatus[] = ['open', 'in_progress', 'waiting_user', 'resolved', 'closed']
 
-export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canMarkInternal, currentUserId, currentStatus, onAddComment = addComment, onChangeStatus = changeTicketStatus }: TicketChatProps) {
+export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canMarkInternal, currentUserId, currentStatus, onAddComment = addComment, onChangeStatus = changeTicketStatus, onRefresh, statusLabels = TICKET_STATUS_LABEL }: TicketChatProps) {
     const router = useRouter()
     const [body, setBody] = useState('')
     const [internal, setInternal] = useState(false)
@@ -38,7 +40,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
     const [isStatusUpdating, startStatusUpdating] = useTransition()
 
     // Phase 8: realtime — refresh server data when new comment arrives
-    const handleNewComment = useCallback(() => router.refresh(), [router])
+    const handleNewComment = useCallback(() => { router.refresh(); onRefresh?.() }, [router, onRefresh])
     useRealtimeTicketComments({ ticketId, onNewComment: handleNewComment })
 
     const handleSend = (e: React.FormEvent) => {
@@ -53,7 +55,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
             }
             setBody('')
             setInternal(false)
-            router.refresh()
+            handleNewComment()
         })
     }
 
@@ -64,12 +66,13 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
                 setError(result.error)
                 return
             }
-            router.refresh()
+            handleNewComment()
         })
     }
 
     return (
         <div className="space-y-4">
+            {error && <div role="alert" className="p-2 rounded-lg bg-destructive/10 text-sm text-destructive">{error}</div>}
             <div className="space-y-3">
                 {comments.length === 0 ? (
                     <div className="p-4 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
@@ -158,7 +161,7 @@ export function TicketChat({ ticketId, comments, canReply, canChangeStatus, canM
                                 disabled={isStatusUpdating}
                                 onClick={() => handleStatusChange(s)}
                             >
-                                → {TICKET_STATUS_LABEL[s]}
+                                → {statusLabels[s]}
                             </Button>
                         ))}
                     </div>

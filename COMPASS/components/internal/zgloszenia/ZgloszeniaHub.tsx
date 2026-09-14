@@ -27,7 +27,7 @@ export function ZgloszeniaHub({ inboxColumns, inboxError = null, helpdesk, helpd
     return (
         <div className="space-y-6">
             <header>
-                <h1 className="text-2xl font-bold">Zgłoszenia</h1>
+                <h1 className="text-2xl font-bold">Sprawy</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                     Sprawy operacyjne i marketingowe oraz helpdesk konsultantów.
                 </p>
@@ -35,14 +35,14 @@ export function ZgloszeniaHub({ inboxColumns, inboxError = null, helpdesk, helpd
 
             <Tabs defaultValue="skrzynka">
                 <TabsList className="flex flex-wrap">
-                    <TabsTrigger value="skrzynka">Skrzynka administracja@ ({inboxCount})</TabsTrigger>
+                    <TabsTrigger value="skrzynka">Tablica spraw ({inboxCount})</TabsTrigger>
                     <TabsTrigger value="helpdesk">Helpdesk konsultantów ({helpdesk.length})</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="skrzynka">
                     {inboxError ? (
                         <AccessNotice
-                            source="Skrzynka administracja@"
+                            source="Tablica spraw"
                             error={inboxError}
                             hint="Skrzynkę widzą obsługujący (inbox handler) i admin. Jeśli powinieneś mieć dostęp, poproś admina o oznaczenie Cię jako obsługującego."
                         />

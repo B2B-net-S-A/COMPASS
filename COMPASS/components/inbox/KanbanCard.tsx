@@ -1,83 +1,36 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Mail, User, Building2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { InboxPriorityBadge } from './InboxPriorityBadge'
-import { SlaCountdownBadge } from './SlaCountdownBadge'
+import { CaseDeadline } from './CaseDeadline'
+import { AREA_LABELS, getInboxArea, needsFollowUp } from '@/lib/inbox/workspace'
 import type { InboxTicketWithMeta } from '@/lib/types/support'
 
 interface KanbanCardProps {
     ticket: InboxTicketWithMeta
     isDragging?: boolean
+    onOpenTicket?: (id: string) => void
+    now?: Date
 }
 
-export function KanbanCard({ ticket, isDragging }: KanbanCardProps) {
+export function KanbanCard({ ticket, isDragging, onOpenTicket, now }: KanbanCardProps) {
     const router = useRouter()
-
-    // Click vs drag disambiguation: track mousedown position; only navigate if
-    // mouseup happens within ~5px (otherwise the user is dragging via @hello-pangea/dnd).
-    let downX = 0
-    let downY = 0
-
-    const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        downX = e.clientX
-        downY = e.clientY
-    }
-
-    const onMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
-        const moved = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY)
-        if (moved < 5) {
-            router.push(`/admin/inbox/${ticket.id}`)
-        }
-    }
-
+    const checklist = ticket.meta.checklist ?? []
+    const open = () => onOpenTicket ? onOpenTicket(ticket.id) : router.push(`/admin/inbox/${ticket.id}`)
     return (
-        <Card
-            onMouseDown={onMouseDown}
-            onMouseUp={onMouseUp}
-            className={`bg-card border-border hover:border-primary/40 transition-colors p-3 space-y-2 cursor-pointer select-none ${
-                isDragging ? 'border-primary/60 shadow-lg shadow-primary/10' : ''
-            }`}
-        >
-            <div className="flex items-start justify-between gap-2">
-                <h4 className="text-sm font-medium leading-tight line-clamp-2 flex-1">{ticket.subject}</h4>
+        <Card className={`bg-card border-border hover:border-primary/40 transition-colors p-3 space-y-3 ${isDragging ? 'border-primary/60 shadow-lg' : ''}`}>
+            <button type="button" onClick={open} title={ticket.subject} className="text-left w-full font-semibold text-sm leading-snug line-clamp-3 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring rounded">{ticket.subject}</button>
+            <div className="flex gap-1.5 flex-wrap items-center"><InboxPriorityBadge priority={ticket.meta.priority_level} /><CaseDeadline ticket={ticket} now={now} /></div>
+            <p className="text-xs font-medium">{ticket.assignee_name ?? 'Bez przypisania'}</p>
+            <div className="text-xs text-muted-foreground space-y-1">
+                <p>{AREA_LABELS[getInboxArea(ticket)]} · {ticket.category_name_pl}</p>
+                {(ticket.consultant_name || ticket.client_name) && <p className="truncate" title={[ticket.consultant_name, ticket.client_name].filter(Boolean).join(' · ')}>{[ticket.consultant_name, ticket.client_name].filter(Boolean).join(' · ')}</p>}
+                {ticket.status === 'waiting_user' && <p className="line-clamp-2">Czekamy na: {ticket.meta.waiting_for || 'uzupełnij w szczegółach'}</p>}
+                {ticket.meta.follow_up_date && <p className={needsFollowUp(ticket, now) ? 'font-medium text-warning' : ''}>Ponowienie: {ticket.meta.follow_up_date.split('-').reverse().join('.')}</p>}
+                {checklist.length > 0 && <p>Checklista: {checklist.filter((item) => item.done).length}/{checklist.length}</p>}
             </div>
-
-            <div className="flex items-center gap-1.5 flex-wrap">
-                <InboxPriorityBadge priority={ticket.meta.priority_level} />
-                <SlaCountdownBadge dueDate={ticket.meta.due_date} />
-            </div>
-
-            <div className="text-[11px] text-muted-foreground space-y-1">
-                <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground/70">Kategoria:</span>
-                    <span>{ticket.category_name_pl}</span>
-                </div>
-                {ticket.consultant_name && (
-                    <div className="flex items-center gap-1.5">
-                        <User className="w-3 h-3" />
-                        <span>{ticket.consultant_name}</span>
-                    </div>
-                )}
-                {ticket.client_name && (
-                    <div className="flex items-center gap-1.5 truncate">
-                        <Building2 className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{ticket.client_name}</span>
-                    </div>
-                )}
-                {ticket.meta.email_from && (
-                    <div className="flex items-center gap-1.5 truncate">
-                        <Mail className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{ticket.meta.email_from}</span>
-                    </div>
-                )}
-                {ticket.assignee_name && (
-                    <div className="text-[10px] text-muted-foreground/70">
-                        Odpowiedzialna: {ticket.assignee_name}
-                    </div>
-                )}
-            </div>
+            <p className="text-[11px] text-muted-foreground">Zmieniono {new Date(ticket.updated_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}</p>
         </Card>
     )
 }

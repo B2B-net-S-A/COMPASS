@@ -7,9 +7,9 @@ import { toast } from 'sonner'
 import { KanbanCard } from './KanbanCard'
 import { moveInboxTicket } from '@/lib/actions/support-inbox'
 import { useRealtimeInboxTickets } from '@/lib/hooks/useRealtimeInboxTickets'
-import { TICKET_STATUS_LABEL, type InboxTicketWithMeta, type TicketStatus } from '@/lib/types/support'
+import { type InboxTicketWithMeta, type TicketStatus } from '@/lib/types/support'
 
-const COLUMN_ORDER: TicketStatus[] = ['open', 'in_progress', 'waiting_user', 'resolved', 'closed']
+import { INBOX_STATUS_LABELS, STATUS_HELP } from '@/lib/inbox/workspace'
 
 const COLUMN_BG: Record<TicketStatus, string> = {
     open: 'bg-success/5 border-success/20',
@@ -21,9 +21,12 @@ const COLUMN_BG: Record<TicketStatus, string> = {
 
 interface KanbanBoardProps {
     initialColumns: Record<TicketStatus, InboxTicketWithMeta[]>
+    columnOrder?: TicketStatus[]
+    onOpenTicket?: (id: string) => void
+    now?: Date
 }
 
-export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
+export function KanbanBoard({ initialColumns, columnOrder = ['open', 'in_progress', 'waiting_user', 'resolved', 'closed'], onOpenTicket, now }: KanbanBoardProps) {
     const router = useRouter()
     const [columns, setColumns] = useState(initialColumns)
     const [, startTransition] = useTransition()
@@ -38,7 +41,7 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
     const handleDragEnd = (result: DropResult) => {
         const { source, destination, draggableId } = result
         if (!destination) return
-        if (source.droppableId === destination.droppableId && source.index === destination.index) return
+        if (source.droppableId === destination.droppableId) return
 
         const fromStatus = source.droppableId as TicketStatus
         const toStatus = destination.droppableId as TicketStatus
@@ -68,7 +71,7 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
     return (
         <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1 snap-x snap-mandatory md:snap-none">
-                {COLUMN_ORDER.map((status) => {
+                {columnOrder.map((status) => {
                     const items = columns[status] ?? []
                     return (
                         <div
@@ -76,8 +79,8 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
                             className="space-y-2 flex-shrink-0 w-[280px] md:w-[260px] md:flex-1 md:min-w-[240px] snap-start"
                         >
                             <div className="flex items-center justify-between gap-2 px-1">
-                                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">
-                                    {TICKET_STATUS_LABEL[status]}
+                                <h3 title={STATUS_HELP[status]} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">
+                                    {INBOX_STATUS_LABELS[status]}
                                 </h3>
                                 <span className="text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted flex-shrink-0">
                                     {items.length}
@@ -94,7 +97,7 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
                                     >
                                         {items.length === 0 && (
                                             <div className="text-[11px] text-muted-foreground/50 text-center py-6">
-                                                Brak zgłoszeń
+                                                Brak spraw
                                             </div>
                                         )}
                                         {items.map((ticket, idx) => (
@@ -108,6 +111,8 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
                                                         <KanbanCard
                                                             ticket={ticket}
                                                             isDragging={dragSnapshot.isDragging}
+                                                            onOpenTicket={onOpenTicket}
+                                                            now={now}
                                                         />
                                                     </div>
                                                 )}
