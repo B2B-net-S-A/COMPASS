@@ -1,6 +1,8 @@
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { INBOX_PRIORITY_LABEL, type InboxPriorityLevel } from '@/lib/types/support'
+import { type InboxPriorityLevel } from '@/lib/types/support'
+
+import { INBOX_WORK_PRIORITY_LABEL } from '@/lib/inbox/workspace'
 
 const PRIORITY_CLASSES: Record<InboxPriorityLevel, string> = {
     P1: 'border-destructive/30 text-destructive bg-destructive/10',
@@ -17,7 +19,7 @@ export function InboxPriorityBadge({
 }) {
     return (
         <Badge variant="outline" className={cn('text-[10px] font-semibold', PRIORITY_CLASSES[priority], className)}>
-            {INBOX_PRIORITY_LABEL[priority]}
+            {INBOX_WORK_PRIORITY_LABEL[priority]}
         </Badge>
     )
 }

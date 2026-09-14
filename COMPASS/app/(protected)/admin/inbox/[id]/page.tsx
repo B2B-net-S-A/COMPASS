@@ -4,13 +4,13 @@ import { Inbox, Mail, Phone, Building2, User as UserIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/server'
-import { TicketStatusBadge } from '@/components/support/TicketStatusBadge'
-import { TicketChat } from '@/components/support/TicketChat'
 import { InboxPriorityBadge } from '@/components/inbox/InboxPriorityBadge'
-import { SlaCountdownBadge } from '@/components/inbox/SlaCountdownBadge'
-import { getInboxTicketDetail, addInboxComment, moveInboxTicket } from '@/lib/actions/support-inbox'
+import { CaseDeadline } from '@/components/inbox/CaseDeadline'
+import { InboxCaseDetails } from '@/components/inbox/InboxCaseDetails'
+import { INBOX_STATUS_LABELS } from '@/lib/inbox/workspace'
+import { INBOX_CATEGORY_SLUGS } from '@/lib/types/support'
+import { getInboxTicketDetail, listInboxHandlers } from '@/lib/actions/support-inbox'
 import { TicketToTaskButton } from '@/components/inbox/TicketToTaskButton'
-import { InboxTicketTitle } from '@/components/inbox/InboxTicketTitle'
 import { excludeExited } from '@/lib/hr/employment-window'
 
 export const dynamic = 'force-dynamic'
@@ -38,6 +38,10 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
     const result = await getInboxTicketDetail(params.id)
     if (!result.success) notFound()
     const ticket = result.data
+    const [handlersResult, categoriesResult] = await Promise.all([
+        listInboxHandlers(),
+        supabase.from('support_categories').select('id, slug, name_pl').in('slug', [...INBOX_CATEGORY_SLUGS]).order('sort_order'),
+    ])
 
     // Phase 34 / 45 — TCM/admin (or a has_tcm_access grant) can spawn a tracked
     // Talent Community task from this ticket.
@@ -65,24 +69,23 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
                     href="/admin/inbox"
                     className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-2"
                 >
-                    ← Tablica zgłoszeń
+                    ← Tablica spraw
                 </Link>
                 <div className="flex items-start gap-3">
                     <Inbox className="w-7 h-7 text-primary mt-1" />
                     <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <TicketStatusBadge status={ticket.status} />
+                            <Badge variant="outline">{INBOX_STATUS_LABELS[ticket.status]}</Badge>
                             <InboxPriorityBadge priority={ticket.meta.priority_level} />
-                            <SlaCountdownBadge dueDate={ticket.meta.due_date} />
+                            <CaseDeadline ticket={ticket} />
                             <Badge variant="outline" className="text-[10px]">
                                 {ticket.category_name_pl}
                             </Badge>
                         </div>
-                        <InboxTicketTitle ticketId={ticket.id} subject={ticket.subject} />
+                        <h1 className="text-xl font-semibold">{ticket.subject}</h1>
                         <p className="text-xs text-muted-foreground mt-1">
                             Zgłoszone: {new Date(ticket.created_at).toLocaleString('pl-PL')}
-                            {' · '}Termin SLA: {new Date(ticket.meta.due_date).toLocaleString('pl-PL')}
-                            {ticket.assignee_name && ` · Odpowiedzialna: ${ticket.assignee_name}`}
+                            {ticket.assignee_name && ` · Osoba odpowiedzialna: ${ticket.assignee_name}`}
                         </p>
                         {canCreateTask && (
                             <div className="mt-3">
@@ -137,17 +140,7 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
 
             <Card className="bg-card border-border">
                 <CardContent className="p-5">
-                    <TicketChat
-                        ticketId={ticket.id}
-                        comments={ticket.comments}
-                        canReply={ticket.can_reply}
-                        canChangeStatus={ticket.can_change_status}
-                        canMarkInternal={true}
-                        currentUserId={user.id}
-                        currentStatus={ticket.status}
-                        onAddComment={addInboxComment}
-                        onChangeStatus={moveInboxTicket}
-                    />
+                    <InboxCaseDetails ticket={ticket} categories={categoriesResult.data ?? []} handlers={handlersResult.success ? handlersResult.data : []} currentUserId={user.id} />
                 </CardContent>
             </Card>
         </div>

@@ -1,80 +1,58 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ticket } from '@/lib/inbox/__tests__/fixtures'
+import { groupInboxTickets } from '@/lib/inbox/workspace'
 import type { InboxTicketWithMeta, TicketStatus } from '@/lib/types/support'
 import { InboxWorkspace } from '../InboxWorkspace'
-
-vi.mock('next/navigation', () => ({
-    usePathname: () => '/internal/people',
-    useSearchParams: () => new URLSearchParams(window.location.search),
-}))
-vi.mock('../KanbanBoard', () => ({
-    KanbanBoard: ({ initialColumns }: { initialColumns: Record<TicketStatus, InboxTicketWithMeta[]> }) => (
-        <div>{Object.entries(initialColumns).map(([status, tickets]) => (
-            <section key={status} aria-label={status}>{tickets.map((ticket) => <span key={ticket.id}>{ticket.subject}</span>)}</section>
-        ))}</div>
-    ),
-}))
-vi.mock('../NewInboxTicketDialog', () => ({
-    NewInboxTicketDialog: ({ categories, triggerLabel }: { categories: Array<{ slug: string }>; triggerLabel: string }) => (
-        <button data-categories={categories.map((category) => category.slug).join(',')}>{triggerLabel}</button>
-    ),
-}))
-
+vi.mock('next/navigation', () => ({ usePathname: () => '/internal/people', useSearchParams: () => new URLSearchParams(window.location.search) }))
+vi.mock('../InboxCaseEditor', () => ({ fieldClass: '' }))
+vi.mock('../InboxCasePanel', () => ({ InboxCasePanel: ({ onClose }: { onClose: () => void }) => <button onClick={onClose}>Zamknij szczegóły</button> }))
+vi.mock('../KanbanBoard', () => ({ KanbanBoard: ({ initialColumns, columnOrder, onOpenTicket }: { initialColumns: Record<TicketStatus, InboxTicketWithMeta[]>; columnOrder: TicketStatus[]; onOpenTicket: (id: string) => void }) => <div>{columnOrder.map((status) => <section key={status} aria-label={status}>{initialColumns[status].map((item) => <button key={item.id} onClick={() => onOpenTicket(item.id)}>{item.subject}</button>)}</section>)}</div> }))
+vi.mock('../NewInboxTicketDialog', () => ({ NewInboxTicketDialog: ({ categories, triggerLabel, defaultArea }: { categories: Array<{ slug: string }>; triggerLabel: string; defaultArea: string }) => <button data-area={defaultArea} data-categories={categories.map((category) => category.slug).join(',')}>{triggerLabel}</button> }))
 afterEach(cleanup)
-
-const statuses: TicketStatus[] = ['open', 'in_progress', 'waiting_user', 'resolved', 'closed']
-const columns = Object.fromEntries(statuses.map((status) => [status, [
-    { id: `m-${status}`, subject: `Marketing ${status}`, category_slug: 'inbox_marketing', status },
-    { id: `a-${status}`, subject: `Administracja ${status}`, category_slug: 'inbox_administracja', status },
-]])) as Record<TicketStatus, InboxTicketWithMeta[]>
-const props = {
-    columns,
-    categories: [
-        { id: 'adm', slug: 'inbox_administracja', name_pl: 'Administracja' },
-        { id: 'mkt', slug: 'inbox_marketing', name_pl: 'Marketing' },
-    ],
-    handlers: [{ id: 'user', full_name: 'Handler', email: 'handler@example.com' }],
-    currentUserId: 'user',
-}
-
+const marketing = ticket({ id: 'm', subject: 'Marketing aktywna', meta: { ...ticket().meta, work_area: 'marketing' } })
+const props = { columns: groupInboxTickets([marketing, ticket({ subject: 'Administracja aktywna' }), ticket({ id: 'closed', subject: 'Administracja zakończona', status: 'closed' })]), categories: [{ id: ticket().category_id, slug: 'inbox_grafika', name_pl: 'Grafika' }, { id: 'mkt', slug: 'inbox_marketing', name_pl: 'Marketing' }], handlers: [{ id: 'user', full_name: 'Handler', email: 'handler@example.com' }], currentUserId: 'user' }
 describe('InboxWorkspace', () => {
-    it('switches all five columns to Marketing and back, preserving the People Ops tab', () => {
+    it('switches areas and archive while preserving the People Ops route', () => {
         window.history.replaceState(null, '', '/internal/people?tab=sprawy')
         const { rerender } = render(<InboxWorkspace {...props} />)
-        expect(screen.getByRole('button', { name: 'Wszystkie sprawy (10)' })).toHaveAttribute('aria-pressed', 'true')
-        fireEvent.click(screen.getByRole('button', { name: 'Marketing (5)' }))
+        expect(screen.getByRole('button', { name: 'Wszystkie sprawy' })).toHaveAttribute('aria-pressed', 'true')
+        expect(screen.queryByText('Administracja zakończona')).not.toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'Marketing' }))
+        rerender(<InboxWorkspace {...props} />)
         expect(window.location.search).toBe('?tab=sprawy&board=marketing')
+        expect(screen.queryByText('Administracja aktywna')).not.toBeInTheDocument()
+        expect(screen.getByText('Marketing aktywna')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'Wszystkie sprawy' }))
         rerender(<InboxWorkspace {...props} />)
-        for (const status of statuses) {
-            expect(screen.getByText(`Marketing ${status}`)).toBeInTheDocument()
-            expect(screen.queryByText(`Administracja ${status}`)).not.toBeInTheDocument()
-        }
-        fireEvent.click(screen.getByRole('button', { name: 'Wszystkie sprawy (10)' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Archiwum (1)' }))
         rerender(<InboxWorkspace {...props} />)
-        expect(window.location.search).toBe('?tab=sprawy')
-        expect(screen.getByText('Administracja closed')).toBeInTheDocument()
-        expect(screen.getByText('Marketing closed')).toBeInTheDocument()
+        expect(screen.getByText('Administracja zakończona')).toBeInTheDocument()
+        expect(screen.queryByText('Administracja aktywna')).not.toBeInTheDocument()
     })
-
-    it('opens the shared Marketing URL with a Marketing-only creation form', () => {
+    it('prefills Marketing while keeping the independent case types available', () => {
         window.history.replaceState(null, '', '/internal/people?tab=sprawy&board=marketing')
         render(<InboxWorkspace {...props} />)
-        expect(screen.getByRole('button', { name: 'Marketing (5)' })).toHaveAttribute('aria-pressed', 'true')
-        expect(screen.getByRole('button', { name: 'Dodaj sprawę Marketingu' })).toHaveAttribute('data-categories', 'inbox_marketing')
+        const create = screen.getByRole('button', { name: 'Dodaj sprawę Marketingu' })
+        expect(create).toHaveAttribute('data-area', 'marketing')
+        expect(create).toHaveAttribute('data-categories', 'inbox_grafika,inbox_marketing')
     })
-
-    it('updates the filtered board after refresh and supports an empty Marketing board', () => {
+    it('preserves filters when closing the side panel and clears them on demand', () => {
+        window.history.replaceState(null, '', '/internal/people?tab=sprawy&board=marketing&q=aktywna&sort=priority')
+        const { rerender } = render(<InboxWorkspace {...props} />)
+        fireEvent.click(screen.getByRole('button', { name: 'Marketing aktywna' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Zamknij szczegóły' }))
+        expect(screen.getByLabelText('Szukaj sprawy')).toHaveValue('aktywna')
+        expect(screen.getByLabelText('Sortowanie')).toHaveValue('priority')
+        fireEvent.click(screen.getByRole('button', { name: 'Wyczyść filtry' }))
+        rerender(<InboxWorkspace {...props} />)
+        expect(window.location.search).toBe('?tab=sprawy&board=marketing')
+    })
+    it('updates the selected area after a realtime refresh', () => {
         window.history.replaceState(null, '', '/internal/people?tab=sprawy&board=marketing')
         const { rerender } = render(<InboxWorkspace {...props} />)
-        const refreshed = { ...columns, open: columns.open.filter((ticket) => ticket.category_slug !== 'inbox_marketing') }
-        rerender(<InboxWorkspace {...props} columns={refreshed} />)
-        expect(screen.getByRole('button', { name: 'Marketing (4)' })).toBeInTheDocument()
-        expect(screen.queryByText('Marketing open')).not.toBeInTheDocument()
-        const empty: Record<TicketStatus, InboxTicketWithMeta[]> = {
-            open: [], in_progress: [], waiting_user: [], resolved: [], closed: [],
-        }
-        rerender(<InboxWorkspace {...props} columns={empty} />)
-        expect(screen.getByRole('button', { name: 'Marketing (0)' })).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: 'Dodaj sprawę Marketingu' })).toBeInTheDocument()
+        rerender(<InboxWorkspace {...props} columns={groupInboxTickets([])} />)
+        expect(screen.getByRole('status')).toHaveTextContent('Widoczne sprawy: 0')
+        expect(screen.queryByText('Marketing aktywna')).not.toBeInTheDocument()
     })
 })

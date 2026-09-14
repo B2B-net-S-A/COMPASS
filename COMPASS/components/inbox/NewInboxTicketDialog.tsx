@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -24,10 +24,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
+import { AREA_LABELS, INBOX_WORK_PRIORITY_LABEL, type InboxArea } from '@/lib/inbox/workspace'
+import { fieldClass } from './InboxCaseEditor'
 import { ConsultantTypeahead, type ConsultantSelection } from './ConsultantTypeahead'
 import { createInboxTicket } from '@/lib/actions/support-inbox'
 import {
-    INBOX_PRIORITY_LABEL,
     type InboxPriorityLevel,
 } from '@/lib/types/support'
 
@@ -47,7 +48,7 @@ interface NewInboxTicketDialogProps {
     categories: CategoryOption[]
     handlers: HandlerOption[]
     currentUserId: string
-    /** Trigger button label — defaults to "Nowe zgłoszenie" (e.g. "Dodaj sprawę" on People Ops). */
+    defaultArea?: InboxArea
     triggerLabel?: string
 }
 
@@ -55,21 +56,26 @@ export function NewInboxTicketDialog({
     categories,
     handlers,
     currentUserId,
-    triggerLabel = 'Nowe zgłoszenie',
+    triggerLabel = 'Dodaj sprawę',
+    defaultArea = 'administration',
 }: NewInboxTicketDialogProps) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
-    const [isPending, startTransition] = useTransition()
+    const [isPending, setPending] = useState(false)
 
+    const defaultCategory = (defaultArea === 'marketing' ? categories.find((category) => category.slug === 'inbox_marketing') : categories[0])?.id ?? ''
+    const defaultAssignee = handlers.some((handler) => handler.id === currentUserId) ? currentUserId : ''
+    const [area, setArea] = useState<InboxArea>(defaultArea)
+    const [plannedDate, setPlannedDate] = useState('')
     const [subject, setSubject] = useState('')
     const [bodyMd, setBodyMd] = useState('')
     const [emailFrom, setEmailFrom] = useState('')
-    const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? '')
+    const [categoryId, setCategoryId] = useState<string>(defaultCategory)
     const [priorityLevel, setPriorityLevel] = useState<InboxPriorityLevel>('P3')
     const [consultant, setConsultant] = useState<ConsultantSelection | null>(null)
     const [consultantPhone, setConsultantPhone] = useState('')
     const [clientName, setClientName] = useState('')
-    const [assigneeId, setAssigneeId] = useState<string>(currentUserId)
+    const [assigneeId, setAssigneeId] = useState<string>(defaultAssignee)
 
     // Selecting a directory consultant auto-fills phone + client; both stay editable.
     const handleConsultantChange = (sel: ConsultantSelection | null) => {
@@ -84,12 +90,14 @@ export function NewInboxTicketDialog({
         setSubject('')
         setBodyMd('')
         setEmailFrom('')
-        setCategoryId(categories[0]?.id ?? '')
+        setCategoryId(defaultCategory)
         setPriorityLevel('P3')
         setConsultant(null)
         setConsultantPhone('')
         setClientName('')
-        setAssigneeId(currentUserId)
+        setAssigneeId(defaultAssignee)
+        setArea(defaultArea)
+        setPlannedDate('')
     }
 
     const handleSubmit = () => {
@@ -106,9 +114,16 @@ export function NewInboxTicketDialog({
             return
         }
 
-        startTransition(async () => {
+        if (!assigneeId) { toast.error('Wybierz osobę odpowiedzialną'); return }
+
+        if (isPending) return
+        setPending(true)
+        void (async () => {
+            try {
             const res = await createInboxTicket({
                 category_id: categoryId,
+                work_area: area,
+                planned_due_date: plannedDate || null,
                 subject: subject.trim(),
                 body_md: bodyMd.trim(),
                 priority_level: priorityLevel,
@@ -123,17 +138,20 @@ export function NewInboxTicketDialog({
                 toast.error(res.error)
                 return
             }
-            toast.success('Zgłoszenie utworzone')
+            toast.success('Sprawa utworzona')
             reset()
             setOpen(false)
             router.refresh()
-        })
+            } catch { toast.error('Nie udało się utworzyć sprawy. Spróbuj ponownie.') }
+            finally { setPending(false) }
+        })()
     }
 
     return (
         <Dialog
             open={open}
             onOpenChange={(o) => {
+                if (isPending) return
                 setOpen(o)
                 if (!o) reset()
             }}
@@ -146,32 +164,21 @@ export function NewInboxTicketDialog({
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Nowe zgłoszenie</DialogTitle>
+                    <DialogTitle>Nowa sprawa</DialogTitle>
                     <DialogDescription>
-                        Wklej treść maila <em>albo</em> opisz sprawę własnymi słowami. Termin SLA zostanie obliczony automatycznie z priorytetu (P1=2, P2=5, P3=10 dni roboczych).
+                        Opisz, co trzeba zrobić, wskaż osobę odpowiedzialną i termin. Checklistę i materiały dodasz w szczegółach sprawy.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4">
                     <div className="space-y-2">
-                        <Label htmlFor="subject">Tytuł zgłoszenia *</Label>
+                        <Label htmlFor="subject">Tytuł sprawy *</Label>
                         <Input
                             id="subject"
                             value={subject}
                             onChange={(e) => setSubject(e.target.value)}
-                            placeholder="np. Wypowiedzenie umowy — Jan Kowalski"
+                            placeholder={area === 'marketing' ? 'np. Grafika do kampanii jesiennej' : 'np. Wypowiedzenie umowy — Jan Kowalski'}
                             maxLength={200}
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="email-from">Email nadawcy (opcjonalnie — jeśli zgłoszenie pochodzi z maila)</Label>
-                        <Input
-                            id="email-from"
-                            type="email"
-                            value={emailFrom}
-                            onChange={(e) => setEmailFrom(e.target.value)}
-                            placeholder="example@b2bnetwork.pl"
                         />
                     </div>
 
@@ -182,16 +189,25 @@ export function NewInboxTicketDialog({
                             value={bodyMd}
                             onChange={(e) => setBodyMd(e.target.value)}
                             placeholder="Wklej treść maila albo opisz sprawę własnymi słowami..."
-                            rows={8}
-                            className="font-mono text-xs"
+                            rows={3}
+                            maxLength={20000}
                         />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label className="text-sm font-medium space-y-2">Obszar
+                            <select className={fieldClass} value={area} onChange={(event) => setArea(event.target.value as InboxArea)}>{Object.entries(AREA_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+                        </label>
+                        <label className="text-sm font-medium space-y-2">Planowany termin
+                            <Input type="date" min="2000-01-01" max="2100-12-31" value={plannedDate} onChange={(event) => setPlannedDate(event.target.value)} />
+                        </label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{area === 'marketing' ? 'Termin Marketingu jest niezależny od SLA. Możesz ustalić go później.' : 'Bez planowanego terminu obowiązuje SLA: P1 — 2, P2 — 5, P3 — 10 dni roboczych.'}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label>Kategoria *</Label>
+                            <Label htmlFor="inbox-new-category">Typ sprawy *</Label>
                             <Select value={categoryId} onValueChange={setCategoryId}>
-                                <SelectTrigger>
+                                <SelectTrigger id="inbox-new-category">
                                     <SelectValue placeholder="Wybierz kategorię" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -205,23 +221,51 @@ export function NewInboxTicketDialog({
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Priorytet *</Label>
+                            <Label htmlFor="inbox-new-priority">Priorytet *</Label>
                             <Select
                                 value={priorityLevel}
                                 onValueChange={(v) => setPriorityLevel(v as InboxPriorityLevel)}
                             >
-                                <SelectTrigger>
+                                <SelectTrigger id="inbox-new-priority">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {(['P1', 'P2', 'P3'] as InboxPriorityLevel[]).map((p) => (
                                         <SelectItem key={p} value={p}>
-                                            {INBOX_PRIORITY_LABEL[p]}
+                                            {INBOX_WORK_PRIORITY_LABEL[p]}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="inbox-new-owner">Osoba odpowiedzialna *</Label>
+                        <Select value={assigneeId} onValueChange={setAssigneeId}>
+                            <SelectTrigger id="inbox-new-owner">
+                                <SelectValue placeholder="Wybierz osobę" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {handlers.map((h) => (
+                                    <SelectItem key={h.id} value={h.id}>
+                                        {h.full_name ?? h.email}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <details className="rounded-md border p-3 space-y-4">
+                        <summary className="cursor-pointer text-sm font-medium">Dodatkowe dane: email, konsultant, telefon, klient</summary>
+                    <div className="space-y-2">
+                        <Label htmlFor="email-from">Email nadawcy (opcjonalnie — jeśli zgłoszenie pochodzi z maila)</Label>
+                        <Input
+                            id="email-from"
+                            type="email"
+                            value={emailFrom}
+                            onChange={(e) => setEmailFrom(e.target.value)}
+                            placeholder="example@b2bnetwork.pl"
+                        />
                     </div>
 
                     <div className="space-y-2">
@@ -257,21 +301,7 @@ export function NewInboxTicketDialog({
                         </div>
                     </div>
 
-                    <div className="space-y-2">
-                        <Label>Osoba odpowiedzialna *</Label>
-                        <Select value={assigneeId} onValueChange={setAssigneeId}>
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {handlers.map((h) => (
-                                    <SelectItem key={h.id} value={h.id}>
-                                        {h.full_name ?? h.email}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    </details>
                 </div>
 
                 <DialogFooter>
@@ -279,7 +309,7 @@ export function NewInboxTicketDialog({
                         Anuluj
                     </Button>
                     <Button onClick={handleSubmit} disabled={isPending}>
-                        {isPending ? 'Tworzenie...' : 'Utwórz zgłoszenie'}
+                        {isPending ? 'Tworzenie...' : 'Utwórz sprawę'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

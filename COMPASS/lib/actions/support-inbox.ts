@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logAudit } from '@/lib/actions/audit'
+import { inboxEditSchema, inboxPlanningSchema, type InboxEditInput } from '@/lib/inbox/validation'
 import { computeDueDate } from '@/lib/utils/sla'
 import {
     INBOX_CATEGORY_SLUGS,
@@ -177,7 +178,7 @@ export async function listInboxTickets(filter?: {
             const chunkIds = ticketIds.slice(i, i + META_CHUNK)
             const { data: metaChunk, error: metaErr } = await supabase
                 .from('support_inbox_meta')
-                .select('ticket_id, source, external_message_id, consultant_id, consultant_name, consultant_phone, client_name, contractor_id, priority_level, due_date, email_from, email_subject, email_received_at, created_at')
+                .select('ticket_id, source, external_message_id, consultant_id, consultant_name, consultant_phone, client_name, contractor_id, priority_level, due_date, email_from, email_subject, email_received_at, created_at, work_area, planned_due_date, waiting_for, follow_up_date, checklist, materials')
                 .in('ticket_id', chunkIds)
             // Meta jest warunkiem renderowania karty (`if (!meta) continue` niżej) —
             // cicha awaria wycinała WSZYSTKIE tickety bez błędu. Rzucamy, żeby UI
@@ -386,6 +387,9 @@ export async function createInboxTicket(
             return { success: false, error: 'Nieprawidłowa kategoria inbox' }
         }
 
+        const planning = inboxPlanningSchema.safeParse({ work_area: input.work_area ?? (cat.slug === 'inbox_marketing' ? 'marketing' : 'administration'), planned_due_date: input.planned_due_date ?? null })
+        if (!planning.success) return { success: false, error: 'Nieprawidłowy obszar lub termin realizacji' }
+
         const fromDate = input.email_received_at ? new Date(input.email_received_at) : new Date()
         const dueDate = computeDueDate(input.priority_level, fromDate)
 
@@ -416,6 +420,7 @@ export async function createInboxTicket(
         // Step 2: insert into support_inbox_meta — compensate on failure
         const { error: metaErr } = await supabase.from('support_inbox_meta').insert({
             ticket_id: ticket.id,
+            ...planning.data,
             source: input.source ?? 'manual_paste',
             external_message_id: input.external_message_id ?? null,
             consultant_id: input.consultant_id ?? null,
@@ -474,6 +479,7 @@ export async function createInboxTicket(
             }
         }
 
+        revalidatePath('/internal/people')
         revalidatePath('/admin/inbox')
         return { success: true, data: { ticketId: ticket.id } }
     } catch (error: unknown) {
@@ -495,6 +501,8 @@ export async function moveInboxTicket(
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
 
+        if (!['open', 'in_progress', 'waiting_user', 'resolved', 'closed'].includes(newStatus)) return { success: false, error: 'Nieprawidłowy status' }
+
         // Verify this is an inbox ticket — prevents cross-contamination with user tickets
         const { data: meta } = await supabase
             .from('support_inbox_meta')
@@ -503,16 +511,20 @@ export async function moveInboxTicket(
             .single()
         if (!meta) return { success: false, error: 'To zgłoszenie nie jest typu inbox' }
 
+        const { data: current } = await supabase.from('support_tickets').select('status, resolved_at, updated_at').eq('id', ticketId).single()
+        if (!current) return { success: false, error: 'Sprawa nie istnieje lub brak dostępu' }
         const updates: Record<string, unknown> = { status: newStatus, updated_at: new Date().toISOString() }
         if (newStatus === 'resolved' || newStatus === 'closed') {
-            updates.resolved_at = new Date().toISOString()
+            updates.resolved_at = (current.status === 'resolved' || current.status === 'closed') && current.resolved_at ? current.resolved_at : new Date().toISOString()
         } else {
             updates.resolved_at = null
         }
 
-        const { error } = await supabase.from('support_tickets').update(updates).eq('id', ticketId)
+        const { data: moved, error } = await supabase.from('support_tickets').update(updates).eq('id', ticketId).eq('updated_at', current.updated_at).select('id').maybeSingle()
         if (error) throw error
+        if (!moved) return { success: false, error: 'Sprawa została zmieniona. Odśwież widok i spróbuj ponownie.' }
 
+        revalidatePath('/internal/people')
         revalidatePath('/admin/inbox')
         revalidatePath(`/admin/inbox/${ticketId}`)
         return { success: true, data: undefined }
@@ -580,6 +592,7 @@ export async function addInboxComment(
             .eq('id', ticketId)
 
         revalidatePath(`/admin/inbox/${ticketId}`)
+        revalidatePath('/internal/people')
         revalidatePath('/admin/inbox')
         return { success: true, data: { commentId: data.id } }
     } catch (error: unknown) {
@@ -648,10 +661,9 @@ export async function renameInboxTicket(
             subject: [previous, trimmed],
         })
 
+        revalidatePath('/internal/people')
         revalidatePath('/admin/inbox')
         revalidatePath(`/admin/inbox/${ticketId}`)
-        // Kanban Spraw żyje w hubie People Ops — bez tego stary tytuł zostaje na kafelku.
-        revalidatePath('/internal/people')
         return { success: true, data: { subject: trimmed } }
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Błąd zmiany tytułu'
@@ -717,6 +729,7 @@ export async function assignInboxTicket(
             }
         }
 
+        revalidatePath('/internal/people')
         revalidatePath('/admin/inbox')
         revalidatePath(`/admin/inbox/${ticketId}`)
         return { success: true, data: undefined }
@@ -801,3 +814,27 @@ export async function searchConsultants(query: string): Promise<SupportActionRes
     }
 }
 
+/** Atomic, version-checked edit of a case, including its planning details. */
+export async function updateInboxWorkspace(ticketId: string, expectedUpdatedAt: string, input: InboxEditInput): Promise<SupportActionResult<void>> {
+    try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'Brak autoryzacji' }
+        if (!(await isCallerHandler(supabase, user.id))) return { success: false, error: 'Niewystarczające uprawnienia' }
+        const parsed = inboxEditSchema.safeParse(input)
+        if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Nieprawidłowe dane' }
+        if (!expectedUpdatedAt || isNaN(Date.parse(expectedUpdatedAt))) return { success: false, error: 'Odśwież szczegóły przed zapisem' }
+        const { data, error } = await supabase.rpc('update_inbox_workspace', {
+            p_ticket_id: ticketId, p_expected_updated_at: expectedUpdatedAt, p_changes: parsed.data,
+        })
+        if (error) return { success: false, error: error.message }
+        if (!data) return { success: false, error: 'Nie potwierdzono zapisu sprawy' }
+        await logAudit(user.id, 'INBOX_TICKET_UPDATED', { ticket_id: ticketId, fields: Object.keys(parsed.data) })
+        revalidatePath('/internal/people')
+        revalidatePath('/admin/inbox')
+        revalidatePath(`/admin/inbox/${ticketId}`)
+        return { success: true, data: undefined }
+    } catch (error) {
+        return { success: false, error: errorMessage(error, 'Nie udało się zapisać sprawy') }
+    }
+}
