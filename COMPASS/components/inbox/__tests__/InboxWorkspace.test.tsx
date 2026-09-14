@@ -70,7 +70,9 @@ describe('InboxWorkspace', () => {
         rerender(<InboxWorkspace {...props} columns={refreshed} />)
         expect(screen.getByRole('button', { name: 'Marketing (4)' })).toBeInTheDocument()
         expect(screen.queryByText('Marketing open')).not.toBeInTheDocument()
-        const empty = Object.fromEntries(statuses.map((status) => [status, []])) as Record<TicketStatus, InboxTicketWithMeta[]>
+        const empty: Record<TicketStatus, InboxTicketWithMeta[]> = {
+            open: [], in_progress: [], waiting_user: [], resolved: [], closed: [],
+        }
         rerender(<InboxWorkspace {...props} columns={empty} />)
         expect(screen.getByRole('button', { name: 'Marketing (0)' })).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Dodaj sprawę Marketingu' })).toBeInTheDocument()
