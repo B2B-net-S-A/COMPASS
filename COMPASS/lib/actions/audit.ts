@@ -179,6 +179,11 @@ export type AuditAction =
     // Phase 33 — Kontraktorzy (TCM contractor care: log, interviews, client movements)
     | 'CONTRACTOR_CREATED'
     | 'CONTRACTOR_UPDATED'
+    // Tożsamość NEXUS — decyzje człowieka w kolejce (audyt integracji 2026-09-14)
+    | 'CONTRACTOR_LINKED_TO_NEXUS'
+    | 'CONTRACTOR_NEXUS_UNLINKED'
+    | 'CONTRACTOR_NEXUS_DISMISSED'
+    | 'CONTRACTOR_NEXUS_REOPENED'
     // Opieka TCM — przypisanie opiekuna (pojedyncze i masowe)
     | 'CONTRACTOR_OWNER_ASSIGNED'
     | 'CONTRACTOR_CONVERSATION_ADDED'

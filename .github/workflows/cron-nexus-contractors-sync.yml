@@ -1,12 +1,17 @@
 name: Cron — NEXUS contractors sync
 
 # Drugi scheduler (obok zadania w Coolify) dla /api/cron/nexus-contractors-sync:
-# pobiera kontraktorów z NEXUSA i dopina im tożsamość (nexus_match_status).
-# Wzorzec 1:1 z cron-timesheet-reminder.yml — Bearer CRON_SECRET, APP_URL z var.
+# pobiera kontraktorów z NEXUSA, odświeża migawkę eksportu i dopina tożsamość
+# (nexus_match_status). Wzorzec z cron-timesheet-reminder.yml — Bearer CRON_SECRET,
+# APP_URL z var.
 #
-# Trasa dopina tożsamość idempotentnie (upsert po id, grupowany po werdykcie),
-# więc redundancja z ewentualnym zadaniem Coolify jest bezpieczna. Bez sekretu
-# CRON_SECRET workflow daje ostrzeżenie i zielony przebieg, nie czerwony.
+# Trasa jest idempotentna (UPDATE po id grupowany po werdykcie + upsert migawki
+# po nexus_contract_id), więc redundancja z zadaniem Coolify jest bezpieczna.
+#
+# Przebieg jest zielony WYŁĄCZNIE przy HTTP 200 i `ok: true`. Trasa zwraca 500
+# z `ok:false`, gdy którykolwiek zapis się nie powiódł (audyt integracji 14.09,
+# INT-07) — dawniej `curl -f | tee` bez pipefail i tak kończył się zielono.
+# Brak CRON_SECRET to błąd, nie ostrzeżenie: integracja jest żywa.
 # Rotacja wartości: action=cron-secret-ciphertext w workflow „Coolify Ops".
 
 on:
@@ -32,18 +37,30 @@ jobs:
           APP_URL: ${{ vars.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          set -euo pipefail
           if [ -z "$APP_URL" ]; then
             echo "::error::Brak zmiennej APP_URL — ustaw ją w ustawieniach repo."
             exit 1
           fi
           if [ -z "$CRON_SECRET" ]; then
-            echo "::warning::Pominięte — brak sekretu CRON_SECRET. Dodaj sekret, żeby scheduler ruszył."
-            exit 0
+            echo "::error::Brak sekretu CRON_SECRET — synchronizacja z NEXUSEM nie ruszyła."
+            exit 1
           fi
           echo "Calling $APP_URL/api/cron/nexus-contractors-sync"
           # Bearer, nie ?secret= — sekret w query trafia do logów CF/proxy/Sentry.
-          curl -fsSL --retry 3 --retry-delay 10 \
+          # Bez -f: kod HTTP sprawdzamy sami, żeby wypisać ciało odpowiedzi 500.
+          http_code=$(curl -sS --retry 2 --retry-delay 10 \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/nexus-contractors-sync" | tee /tmp/result.json
+            -o /tmp/result.json -w '%{http_code}' \
+            "$APP_URL/api/cron/nexus-contractors-sync")
+          cat /tmp/result.json
           echo
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Synchronizacja zwróciła HTTP $http_code."
+            exit 1
+          fi
+          if ! jq -e '.ok == true' /tmp/result.json > /dev/null; then
+            echo "::error::Synchronizacja zakończona z ok != true (niezapisane werdykty)."
+            exit 1
+          fi
           echo "✅ NEXUS contractors sync completed."

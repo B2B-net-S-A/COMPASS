@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { bearerSecretMatches } from "@/lib/api/bearer-secret";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 
@@ -19,11 +20,15 @@ import { logger } from "@/lib/logger";
  * Nie jest to też `WORKDAYS_EXPORT_SECRET` ani `ROSTER_EXPORT_SECRET` — każdy
  * z nich otwiera dokładnie JEDNĄ trasę i ta własność ma zostać.
  *
- * DLACZEGO TYLKO GET: wszystkie trasy w `app/api/internal/` są odczytowe.
- * Sekret, który potrafi jedynie czytać, ma dużo mniejszy promień rażenia niż
- * taki, który potrafi też pisać. ATLAS nie potwierdza odbioru — trzyma własny
- * znacznik postępu i pyta o nachodzące okno, a idempotencja po stronie
- * konsumenta sprawia, że powtórka nic nie kosztuje.
+ * DLACZEGO TYLKO GET: ten sekret potrafi jedynie czytać. Zwrot statusu
+ * z ATLASA idzie OSOBNĄ trasą (`./status`, POST) z OSOBNYM sekretem
+ * `SALES_SIGNALS_STATUS_SECRET` — inny kierunek, inny promień rażenia.
+ *
+ * WERSJA I UZGODNIENIE (audyt integracji 14.09, INT-04/INT-05): każdy sygnał
+ * niesie `source_updated_at` (wersja wiersza — edycja sfinalizowanej karty ją
+ * zmienia) i `client_id` (stabilny klucz klienta pod mapę klient → firma
+ * w ATLASIE). ATLAS pobiera pełny zbiór i uzgadnia go, więc `hiring=false`
+ * (zniknięcie wiersza) dociera jako wycofanie; `since` zostaje dla zgodności.
  *
  * CZEGO TA TRASA NIE ODDAJE: niczego z kartoteki kadrowej poza imieniem
  * i e-mailem konsultanta oraz e-mailem zgłaszającego. Nie stawek
@@ -60,10 +65,8 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   // Wyłącznie nagłówek. Bez fallbacku na `?secret=` — query stringi lądują
   // w access logach pośredników, a ten sekret ma żyć długo.
-  const provided = request.headers
-    .get("authorization")
-    ?.replace(/^Bearer\s+/i, "");
-  if (!provided || provided !== secret) {
+  // Porównanie w stałym czasie (audyt integracji 14.09).
+  if (!bearerSecretMatches(request.headers.get("authorization"), secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -99,6 +102,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     consultant_name: string | null;
     consultant_email: string | null;
     created_at: string;
+    client_id: string;
+    source_updated_at: string | null;
   };
 
   const rows = (data ?? []) as Row[];
@@ -121,6 +126,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       consultant_name: r.consultant_name,
       consultant_email: r.consultant_email,
       created_at: r.created_at,
+      client_id: r.client_id,
+      source_updated_at: r.source_updated_at,
     })),
   });
 }

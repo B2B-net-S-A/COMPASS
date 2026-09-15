@@ -368,25 +368,55 @@ Compass wymienia z NEXUSEM (ATS) dwie rzeczy poza dniami roboczymi z D5.
   Header-only, 503 „Not configured" ≠ 401 „zły sekret". **Pusta lista = 500** (odmowa),
   bo po stronie NEXUSA `count:0` wpada do pętli DEAKTYWUJĄCEJ konta.
 - **Cron `/api/cron/nexus-contractors-sync`** (`app/api/cron/…/route.ts`) — pobiera
-  eksport kontraktorów z NEXUSA i pisze `contractors.nexus_match_status`. Zapis
-  grupowany po werdykcie (4 zapytania, nie 689). **Nie nadpisuje `contractors.email`**
-  (to adres kandydata; `activateSuccessMonitoring` wysyła na niego ankiety pulse).
+  eksport kontraktorów z NEXUSA, odświeża `nexus_contract_snapshot` (ostatni KOMPLETNY
+  eksport; usuwa niewidziane dopiero po udanym upsercie całości) i pisze werdykty na
+  `contractors`. **Nie nadpisuje `contractors.email`** (to adres kandydata;
+  `activateSuccessMonitoring` wysyła na niego ankiety pulse).
+  **Zielony tylko przy pełnym zapisie:** `written` = skuteczne UPDATE-y, każdy nieudany
+  zapis (także 23505 → `conflicts`) daje HTTP 500 `ok:false`; workflow sprawdza kod HTTP
+  i `jq -e '.ok == true'` (audyt integracji 2026-09-14, INT-07). Nie wracaj do
+  `curl -f | tee` bez pipefail — tak awaria wszystkich zapisów była zielona.
   Env: `NEXUS_CONTRACTORS_URL`, `NEXUS_CONTRACTORS_API_KEY`. Cron wymaga **nazwy
   kontenera** w Coolify (bez niej pada mimo schedulera).
 - **Reguła dopasowania** (`lib/contractors/nexus-match.ts`, czysta funkcja) — automat
-  linkuje WYŁĄCZNIE po jednoznacznym e-mailu. Nazwisko → `pending`; wiele trafień →
-  `ambiguous`; `not_found` (decyzja człowieka) NIE jest cofane przy kolejnym cronie
-  (strażnikiem jest `nexus_match_status`, nie sam `nexus_contract_id`). Dopasowanie po
-  nazwisku jest ZABRONIONE — patrz `20260714183425_consultant_success_hub.sql`
-  („Name matching is intentionally forbidden"); 689 kontraktorów ma 0 e-maili, więc po
-  starcie prawie wszystko wpada do ręcznej kolejki.
+  linkuje WYŁĄCZNIE po e-mailu unikalnym **po obu stronach** i tylko gdy osoba NEXUSA
+  nie jest już powiązana z kimś innym. Nazwisko → `pending` (jedna osoba) albo
+  `ambiguous`. **Kotwicą jest osoba** (`nexus_candidate_id`), nie kontrakt:
+  `nexus_contract_id` to jej bieżący kontrakt odświeżany co bieg (brak żywego = NULL,
+  powiązanie zostaje). **Dwa różne „nie ma w NEXUSIE":** `auto_not_found` (automat,
+  oceniany od nowa przy każdym biegu) i `dismissed` (człowiek, z autorem/datą/powodem —
+  JEDYNY stan chroniony). Do 2026-09-15 oba były `not_found` i pierwszy pusty bieg
+  stawał się trwałym odrzuceniem (INT-02). Dopasowanie po nazwisku jest ZABRONIONE —
+  patrz `20260714183425_consultant_success_hub.sql` („Name matching is intentionally forbidden").
 - **Kolejka ręczna** — People Ops → zakładka **„Tożsamość NEXUS"**
-  (`components/internal/people/NexusIdentityTabPanel.tsx` + akcje `lib/actions/nexus-identity.ts`).
-  Akcje przez `runAction`+`ExpectedError`; lista przez `requireRows` (TREŚĆ ekranu).
-  Rozpoznaje `42703 undefined_column` → „czeka na migrację" zamiast błędu.
-- **Migracja `20260906205803_nexus_contractor_identity.sql`** — kolumny `contractors.nexus_*`
-  + częściowy UNIQUE + `nexus_roster_export()`. Nazwa pliku = wersja z rejestru
-  (repo↔rejestr rozjechane, patrz „NIGDY `supabase db push`").
+  (`components/internal/people/NexusIdentityTabPanel.tsx` + akcje `lib/actions/nexus-identity.ts`),
+  widoki `?nexusView=open|auto_not_found|dismissed|linked`. Podpowiedzi liczone przy
+  odczycie z migawki (`suggestionsFor`), nic nie zapisują. `linkContractorToNexus`
+  weryfikuje ID w migawce i przy innym nazwisku zwraca `name_mismatch` (wymaga
+  `confirmNameMismatch`); `dismissNexusMatch` wymaga powodu; `reopenNexusMatch` /
+  `unlinkContractorFromNexus` to korekta. Akcje przez `runAction`+`ExpectedError`;
+  lista przez `requireRows` (TREŚĆ ekranu). `42703`/`42P01` → „czeka na migrację".
+- **Migracje:** `20260906205803_nexus_contractor_identity.sql` (kolumny `contractors.nexus_*`
+  + częściowy UNIQUE + `nexus_roster_export()`) oraz `20260915100000_nexus_identity_person_anchor.sql`
+  (stany `auto_not_found`/`dismissed`, kolumny decyzji, `nexus_candidate_id`, migawka).
+  Nazwa pliku = wersja z rejestru (repo↔rejestr rozjechane, patrz „NIGDY `supabase db push`").
+
+## Sygnały sprzedażowe dla ATLASA (mapa technologiczna → CRM)
+
+| Przepływ | Trasa | Sekret |
+|---|---|---|
+| Eksport: **ATLAS ← Compass** | `GET /api/internal/sales-signals` | `SALES_SIGNALS_EXPORT_SECRET` (tylko odczyt) |
+| Zwrot statusu: **Compass ← ATLAS** | `POST /api/internal/sales-signals/status` | `SALES_SIGNALS_STATUS_SECRET` (zapis) |
+
+- Źródło: `atlas_sales_signals_export(p_since)` = karty `tech_interview_cards` z `hiring=true`,
+  nie szkice. Każdy sygnał niesie `client_id` (klucz mapy klient → firma w ATLASIE)
+  i `source_updated_at`; `p_since` patrzy też na `updated_at`. ATLAS uzgadnia pełny zbiór,
+  więc zniknięcie wiersza (`hiring=false`) = wycofanie. Mapowanie w handlerze POLE PO POLU.
+- Zwrot statusu pisze `tech_card_sales_status` (1 wiersz/kartę, `converted|archived`),
+  tylko gdy `handled_at >= zapisany`; nieznany `signal_id` → `unknown`, nie błąd.
+  Karta rozmowy pokazuje plakietkę „Czeka na sprzedaż / Przejęte / Odrzucone".
+- Oba sekrety porównywane w stałym czasie (`lib/api/bearer-secret.ts`). Nie łącz ich w jeden.
+  Migracja: `20260915100100_atlas_sales_signals_version_and_status.sql`.
 
 ## Zadania cykliczne (crony)
 

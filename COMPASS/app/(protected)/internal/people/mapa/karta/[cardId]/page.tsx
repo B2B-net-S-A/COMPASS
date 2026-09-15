@@ -112,6 +112,7 @@ export default async function KartaPage({ params }: { params: { cardId: string }
                 areas={areas}
                 technologies={technologies}
                 vendors={vendors}
+                salesStatus={detail.salesStatus}
             />
         </div>
     )

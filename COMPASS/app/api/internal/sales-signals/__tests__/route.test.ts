@@ -35,6 +35,8 @@ const ROW = {
   consultant_name: "Jan Nowak",
   consultant_email: "jan.nowak@dynaminds.pl",
   created_at: "2026-09-01T10:00:00.000Z",
+  client_id: "44444444-4444-4444-4444-444444444444",
+  source_updated_at: "2026-09-03T08:30:00.000Z",
 };
 
 async function call(url: string, headers: Record<string, string> = {}) {
@@ -71,6 +73,36 @@ describe("GET /api/internal/sales-signals", () => {
       need: "Szukają trzech seniorów Java do zespołu płatności.",
       contact_hint: "Anna Kowalska, Head of IT",
     });
+  });
+
+  it("niesie wersję wiersza i id klienta (kontrakt z ATLASEM, INT-04/INT-05)", async () => {
+    // ATLAS uzgadnia pełny zbiór po `source_updated_at` i mapuje klienta po
+    // `client_id` — nazwa firmy („Nordea", „Alior") nie jest stabilnym kluczem.
+    const body = await (await call(URL_BASE, auth)).json();
+    expect(body.signals[0].client_id).toBe("44444444-4444-4444-4444-444444444444");
+    expect(body.signals[0].source_updated_at).toBe("2026-09-03T08:30:00.000Z");
+    expect(Object.keys(body.signals[0]).sort()).toEqual(
+      [
+        "client_id",
+        "company_name",
+        "consultant_email",
+        "consultant_name",
+        "contact_hint",
+        "context",
+        "created_at",
+        "id",
+        "need",
+        "reported_by_email",
+        "source_updated_at",
+      ].sort(),
+    );
+  });
+
+  it("odrzuca sekret o tej samej długości, ale innej treści", async () => {
+    const wrong = SECRET.slice(0, -1) + (SECRET.endsWith("9") ? "8" : "9");
+    const res = await call(URL_BASE, { authorization: `Bearer ${wrong}` });
+    expect(res.status).toBe(401);
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it("niesie `count`, żeby pusta lista nie wyglądała jak awaria", async () => {

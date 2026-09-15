@@ -24,6 +24,7 @@ import {
     saveCard,
 } from '@/lib/actions/tech-map'
 import { validateCardBase, validateCardForFinalize } from '@/lib/tech-map/validation'
+import { SalesSignalStatusBadge } from '@/components/internal/people/mapa/SalesSignalStatusBadge'
 import {
     CARD_TITLE_MAX,
     defaultCardTitle,
@@ -39,6 +40,7 @@ import {
     TEAM_SIZE_MAX,
     TECH_CATEGORY_PL,
     type CardInput,
+    type CardSalesStatus,
     type ClientAreaRow,
     type HiringSource,
     type InitiativeInput,
@@ -130,6 +132,8 @@ interface Props {
     areas: ClientAreaRow[]
     technologies: TechnologyRow[]
     vendors: VendorRow[]
+    /** Zwrot statusu z ATLASA — tylko dla zapisanej, sfinalizowanej karty z hiring=true. */
+    salesStatus?: CardSalesStatus | null
 }
 
 export function InterviewCardForm(props: Props) {
@@ -592,6 +596,9 @@ export function InterviewCardForm(props: Props) {
                         </div>
                     </div>
                 </div>
+                {props.mode === 'edit' && !props.isDraft && props.initial.hiring === true && (
+                    <SalesSignalStatusBadge status={props.salesStatus ?? null} />
+                )}
                 {hiring === true && (
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-1.5">

@@ -272,6 +272,18 @@ export interface CardDetail {
     technologies: Array<{ id: string; name: string }>
     vendors: Array<{ id: string; name: string }>
     initiatives: CardInitiativeRow[]
+    /** Zwrot statusu z ATLASA dla sygnału sprzedażowego (hiring=true); null = brak odpowiedzi. */
+    salesStatus: CardSalesStatus | null
+}
+
+/** Obsługa sygnału „klient szuka ludzi" po stronie sprzedaży (ATLAS). */
+export interface CardSalesStatus {
+    status: 'converted' | 'archived'
+    dealTitle: string | null
+    handledByName: string | null
+    handledByEmail: string | null
+    reason: string | null
+    handledAt: string
 }
 
 /** Wpis wspólnej osi czasu „co już wiemy" (karty + log rozmów opieki). */
