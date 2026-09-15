@@ -79,7 +79,8 @@ WITH manual AS (
 )
 UPDATE contractors c
 SET nexus_match_status     = 'dismissed',
-    nexus_match_decided_by = m.user_id,
+    -- Autor tylko, gdy profil nadal istnieje (FK) — inaczej NULL, data i powód zostają.
+    nexus_match_decided_by = (SELECT p.id FROM profiles p WHERE p.id = m.user_id),
     nexus_match_decided_at = m.created_at,
     nexus_match_reason     = 'Odrzucone ręcznie przed rozdzieleniem stanów (odtworzone z audytu)'
 FROM manual m
