@@ -1988,7 +1988,11 @@ export type Database = {
           id: string;
           imported_by: string | null;
           last_import_batch_id: string | null;
+          nexus_candidate_id: number | null;
           nexus_contract_id: number | null;
+          nexus_match_decided_at: string | null;
+          nexus_match_decided_by: string | null;
+          nexus_match_reason: string | null;
           nexus_match_status: string | null;
           nexus_synced_at: string | null;
           notes: string | null;
@@ -2007,7 +2011,11 @@ export type Database = {
           id?: string;
           imported_by?: string | null;
           last_import_batch_id?: string | null;
+          nexus_candidate_id?: number | null;
           nexus_contract_id?: number | null;
+          nexus_match_decided_at?: string | null;
+          nexus_match_decided_by?: string | null;
+          nexus_match_reason?: string | null;
           nexus_match_status?: string | null;
           nexus_synced_at?: string | null;
           notes?: string | null;
@@ -2026,7 +2034,11 @@ export type Database = {
           id?: string;
           imported_by?: string | null;
           last_import_batch_id?: string | null;
+          nexus_candidate_id?: number | null;
           nexus_contract_id?: number | null;
+          nexus_match_decided_at?: string | null;
+          nexus_match_decided_by?: string | null;
+          nexus_match_reason?: string | null;
           nexus_match_status?: string | null;
           nexus_synced_at?: string | null;
           notes?: string | null;
@@ -4258,6 +4270,54 @@ export type Database = {
           },
         ];
       };
+      nexus_contract_snapshot: {
+        Row: {
+          client_name: string | null;
+          email: string | null;
+          end_date: string | null;
+          job_title: string | null;
+          lacks_current_order: boolean;
+          lastname: string | null;
+          name: string | null;
+          nexus_candidate_id: number;
+          nexus_contract_id: number;
+          seen_at: string;
+          source_updated_at: string | null;
+          start_date: string | null;
+          status: string | null;
+        };
+        Insert: {
+          client_name?: string | null;
+          email?: string | null;
+          end_date?: string | null;
+          job_title?: string | null;
+          lacks_current_order?: boolean;
+          lastname?: string | null;
+          name?: string | null;
+          nexus_candidate_id: number;
+          nexus_contract_id: number;
+          seen_at?: string;
+          source_updated_at?: string | null;
+          start_date?: string | null;
+          status?: string | null;
+        };
+        Update: {
+          client_name?: string | null;
+          email?: string | null;
+          end_date?: string | null;
+          job_title?: string | null;
+          lacks_current_order?: boolean;
+          lastname?: string | null;
+          name?: string | null;
+          nexus_candidate_id?: number;
+          nexus_contract_id?: number;
+          seen_at?: string;
+          source_updated_at?: string | null;
+          start_date?: string | null;
+          status?: string | null;
+        };
+        Relationships: [];
+      };
       notifications: {
         Row: {
           action_url: string | null;
@@ -6148,6 +6208,50 @@ export type Database = {
           },
         ];
       };
+      tech_card_sales_status: {
+        Row: {
+          atlas_deal_id: string | null;
+          atlas_deal_title: string | null;
+          card_id: string;
+          handled_at: string;
+          handled_by_email: string | null;
+          handled_by_name: string | null;
+          reason: string | null;
+          received_at: string;
+          status: string;
+        };
+        Insert: {
+          atlas_deal_id?: string | null;
+          atlas_deal_title?: string | null;
+          card_id: string;
+          handled_at: string;
+          handled_by_email?: string | null;
+          handled_by_name?: string | null;
+          reason?: string | null;
+          received_at?: string;
+          status: string;
+        };
+        Update: {
+          atlas_deal_id?: string | null;
+          atlas_deal_title?: string | null;
+          card_id?: string;
+          handled_at?: string;
+          handled_by_email?: string | null;
+          handled_by_name?: string | null;
+          reason?: string | null;
+          received_at?: string;
+          status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "tech_card_sales_status_card_id_fkey";
+            columns: ["card_id"];
+            isOneToOne: true;
+            referencedRelation: "tech_interview_cards";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       tech_interview_card_initiatives: {
         Row: {
           card_id: string;
@@ -7381,6 +7485,7 @@ export type Database = {
           p_since?: string;
         };
         Returns: {
+          client_id: string;
           company_name: string;
           consultant_email: string;
           consultant_name: string;
@@ -7390,6 +7495,7 @@ export type Database = {
           id: string;
           need: string;
           reported_by_email: string;
+          source_updated_at: string;
         }[];
       };
       nexus_availability_export: {
@@ -7410,6 +7516,14 @@ export type Database = {
           p_user_id: string;
         };
         Returns: Database["public"]["Enums"]["user_role"];
+      };
+      update_inbox_workspace: {
+        Args: {
+          p_changes: Json;
+          p_expected_updated_at: string;
+          p_ticket_id: string;
+        };
+        Returns: string;
       };
     };
     Enums: {

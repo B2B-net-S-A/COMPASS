@@ -3,6 +3,8 @@ import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { logger } from '@/lib/logger'
+import type { createServiceClient } from '@/lib/supabase/admin'
+import { DEFAULT_IN_CHUNK_SIZE } from '@/lib/supabase/select-in-chunks'
 import {
     decideMatches,
     summarize,
@@ -21,8 +23,9 @@ import {
  * w `client_departures`. NEXUS zna te osoby dokładnie — z e-mailem, klientem,
  * datami i realnym statusem umowy.
  *
- * CO TA TRASA ZAPISUJE: wyłącznie `nexus_contract_id`, `nexus_match_status`
- * i `nexus_synced_at`. **Nie dotyka** `full_name`, `status`, `owner_tcm_id`
+ * CO TA TRASA ZAPISUJE: `nexus_contract_snapshot` (ostatni kompletny eksport)
+ * oraz na `contractors` wyłącznie `nexus_contract_id`, `nexus_candidate_id`,
+ * `nexus_match_status`, `nexus_match_reason` i `nexus_synced_at`. **Nie dotyka** `full_name`, `status`, `owner_tcm_id`
  * ani niczego, co prowadzi zespół TCM — ta integracja dokłada tożsamość,
  * nie przejmuje kartoteki.
  *
@@ -42,6 +45,157 @@ const PAGE_SIZE = 200
 const FETCH_TIMEOUT_MS = 20_000
 
 type ExportPage = { items: NexusContractor[]; has_more: boolean }
+type Admin = ReturnType<typeof createServiceClient>
+type CurrentContractor = CompassContractor & { nexus_match_reason?: string | null }
+
+/** PostgREST przekazuje kod Postgresa; 23505 = naruszenie unikalności. */
+const UNIQUE_VIOLATION = '23505'
+const SNAPSHOT_CHUNK = 500
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+    const out: T[][] = []
+    for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
+    return out
+}
+
+function reportWriteError(error: { message: string; code?: string }, extra: Record<string, unknown>) {
+    logger.error({ event: 'cron.nexus_contractors.write_failed', msg: error.message, code: error.code, ...extra })
+    Sentry.captureException(error, { tags: { kind: 'cron_nexus_contractors', stage: 'write' } })
+}
+
+/**
+ * Upsert migawki + usunięcie kontraktów, których NEXUS już nie oddaje.
+ * Zwraca `true`, gdy zapis się nie powiódł — wtedy przebieg nie jest `ok`.
+ */
+async function writeSnapshot(admin: Admin, nexus: readonly NexusContractor[]): Promise<boolean> {
+    const seenAt = new Date().toISOString()
+    const byId = new Map<number, NexusContractor>()
+    for (const row of nexus) byId.set(row.nexus_contract_id, row)
+    const rows = Array.from(byId.values()).map((r) => ({
+        nexus_contract_id: r.nexus_contract_id,
+        nexus_candidate_id: r.candidate.id,
+        name: r.candidate.name,
+        lastname: r.candidate.lastname,
+        email: r.candidate.email,
+        client_name: r.client_name,
+        job_title: r.job_title,
+        status: r.status,
+        start_date: r.start_date,
+        end_date: r.end_date,
+        lacks_current_order: r.lacks_current_order === true,
+        source_updated_at: r.updated_at ?? null,
+        seen_at: seenAt,
+    }))
+
+    for (const part of chunk(rows, SNAPSHOT_CHUNK)) {
+        const { error } = await admin
+            .from('nexus_contract_snapshot')
+            .upsert(part, { onConflict: 'nexus_contract_id' })
+        if (error) {
+            reportWriteError(error, { stage: 'snapshot_upsert', rows: part.length })
+            return true
+        }
+    }
+    // Usuwamy wyłącznie po udanym upsercie CAŁOŚCI — inaczej częściowy zapis
+    // skasowałby kontrakty, których po prostu nie zdążyliśmy odświeżyć.
+    const { error } = await admin.from('nexus_contract_snapshot').delete().lt('seen_at', seenAt)
+    if (error) {
+        reportWriteError(error, { stage: 'snapshot_prune' })
+        return true
+    }
+    return false
+}
+
+type WriteResult = { written: number; unchanged: number; failed: number; conflicts: number }
+
+/**
+ * Zapis werdyktów. `written` liczy WYŁĄCZNIE skuteczne UPDATE-y — dawniej
+ * liczył decyzje, więc awaria wszystkich zapisów dawała `ok:true`.
+ *
+ * - `dismissed` nie jest zapisywany wcale: to decyzja człowieka (autor, data,
+ *   powód), automat jej nie dotyka.
+ * - `linked` zapisujemy per wiersz i tylko przy zmianie (różne kontrakty
+ *   i osoby; bez zmian nie ma czego pisać).
+ * - reszta grupami po (status, powód), paczkami `.in()` ≤ 60 id.
+ *   Świadomie NIE `upsert(..., { onConflict: 'id' })`: ścieżka INSERT
+ *   waliduje payload wobec całej tabeli, a brak `full_name` (NOT NULL) by go
+ *   wywracał.
+ */
+async function writeDecisions(
+    admin: Admin,
+    compass: readonly CurrentContractor[],
+    decisions: readonly MatchDecision[],
+    now: string,
+): Promise<WriteResult> {
+    const result: WriteResult = { written: 0, unchanged: 0, failed: 0, conflicts: 0 }
+    const currentById = new Map(compass.map((c) => [c.id, c]))
+
+    const groups = new Map<string, { status: string; reason: string | null; ids: string[] }>()
+    const linked: MatchDecision[] = []
+    for (const d of decisions) {
+        if (d.status === 'dismissed') {
+            result.unchanged += 1
+            continue
+        }
+        if (d.status === 'linked') {
+            const cur = currentById.get(d.contractorId)
+            const same =
+                cur?.nexus_match_status === 'linked' &&
+                (cur.nexus_contract_id ?? null) === d.nexusContractId &&
+                (cur.nexus_candidate_id ?? null) === d.nexusCandidateId
+            if (same) result.unchanged += 1
+            else linked.push(d)
+            continue
+        }
+        const key = `${d.status}|${d.reason ?? ''}`
+        const group = groups.get(key)
+        if (group) group.ids.push(d.contractorId)
+        else groups.set(key, { status: d.status, reason: d.reason, ids: [d.contractorId] })
+    }
+
+    // Najpierw grupy bez kontraktu (zwalniają ewentualne kotwice), potem linki.
+    for (const group of Array.from(groups.values())) {
+        for (const ids of chunk(group.ids, DEFAULT_IN_CHUNK_SIZE)) {
+            const { error } = await admin
+                .from('contractors')
+                .update({
+                    nexus_contract_id: null,
+                    nexus_candidate_id: null,
+                    nexus_match_status: group.status,
+                    nexus_match_reason: group.reason,
+                    nexus_synced_at: now,
+                })
+                .in('id', ids)
+            if (error) {
+                if ((error as { code?: string }).code === UNIQUE_VIOLATION) result.conflicts += ids.length
+                result.failed += ids.length
+                reportWriteError(error, { status: group.status, rows: ids.length })
+                continue
+            }
+            result.written += ids.length
+        }
+    }
+
+    for (const d of linked) {
+        const { error } = await admin
+            .from('contractors')
+            .update({
+                nexus_contract_id: d.nexusContractId,
+                nexus_candidate_id: d.nexusCandidateId,
+                nexus_match_status: 'linked',
+                nexus_synced_at: now,
+            })
+            .eq('id', d.contractorId)
+        if (error) {
+            if ((error as { code?: string }).code === UNIQUE_VIOLATION) result.conflicts += 1
+            result.failed += 1
+            reportWriteError(error, { contractor_id: d.contractorId, status: 'linked' })
+            continue
+        }
+        result.written += 1
+    }
+    return result
+}
 
 async function fetchAllContractors(
     baseUrl: string,
@@ -115,96 +269,51 @@ export const GET = withCronAuth(
             )
         }
 
+        // Migawka ostatniego KOMPLETNEGO eksportu — źródło podpowiedzi kolejki
+        // i weryfikacji ręcznego powiązania. Pisana dopiero tutaj: pobranie
+        // wyżej rzuca albo zwraca pełny zbiór, więc „niewidziane" = zniknęło
+        // z NEXUSA, a nie „nie zdążyliśmy pobrać strony".
+        const snapshotFailed = await writeSnapshot(admin, nexus)
+
         // `nexus_match_status` jest CZĘŚCIĄ wejścia reguły, nie tylko wyjściem:
-        // bez niego `decideMatches` nie odróżni „jeszcze nierozstrzygnięty" od
-        // „człowiek powiedział, że tej osoby nie ma w NEXUSIE".
+        // bez niego `decideMatches` nie odróżni automatu od decyzji człowieka.
         const { data: rows, error: readError } = await admin
             .from('contractors')
-            .select('id, full_name, email, nexus_contract_id, nexus_match_status')
+            .select(
+                'id, full_name, email, nexus_contract_id, nexus_candidate_id, nexus_match_status, nexus_match_reason',
+            )
         if (readError) {
             throw new Error(`Odczyt contractors nie powiódł się: ${readError.message}`)
         }
 
-        const decisions = decideMatches((rows ?? []) as CompassContractor[], nexus)
-        const now = new Date().toISOString()
+        const compass = (rows ?? []) as CurrentContractor[]
+        const decisions = decideMatches(compass, nexus)
+        const result = await writeDecisions(admin, compass, decisions, new Date().toISOString())
 
-        // Zapis grupami po werdykcie: 689 pojedynczych UPDATE-ów to 689
-        // round-tripów na każdy przebieg. Grupowanie schodzi do czterech.
-        //
-        // Świadomie NIE `upsert(..., { onConflict: 'id' })`: to ścieżka
-        // INSERT ... ON CONFLICT, więc PostgREST waliduje payload wobec
-        // całej tabeli i brak `full_name` (NOT NULL, bez wartości domyślnej)
-        // wywracałby zapis. UPDATE ... IN nie ma tego problemu.
-        const byStatus = new Map<string, MatchDecision[]>()
-        for (const d of decisions) {
-            const bucket = byStatus.get(d.status)
-            if (bucket) bucket.push(d)
-            else byStatus.set(d.status, [d])
-        }
-
-        let written = 0
-        for (const [status, group] of byStatus) {
-            // `linked` niesie RÓŻNE `nexus_contract_id` per wiersz, więc tej
-            // grupy nie da się zapisać jednym UPDATE-em — ale to jedyna taka
-            // grupa i po pierwszym przebiegu jest już w większości stabilna.
-            if (status === 'linked') {
-                for (const d of group) {
-                    const { error: writeError } = await admin
-                        .from('contractors')
-                        .update({
-                            nexus_contract_id: d.nexusContractId,
-                            nexus_match_status: d.status,
-                            nexus_synced_at: now,
-                        })
-                        .eq('id', d.contractorId)
-                    if (writeError) {
-                        logger.error({
-                            event: 'cron.nexus_contractors.write_failed',
-                            contractor_id: d.contractorId,
-                            msg: writeError.message,
-                        })
-                        Sentry.captureException(writeError, {
-                            tags: { kind: 'cron_nexus_contractors', stage: 'write' },
-                        })
-                        continue
-                    }
-                    written += 1
-                }
-                continue
-            }
-
-            const ids = group.map((d) => d.contractorId)
-            const { error: writeError } = await admin
-                .from('contractors')
-                .update({
-                    nexus_contract_id: null,
-                    nexus_match_status: status,
-                    nexus_synced_at: now,
-                })
-                .in('id', ids)
-            if (writeError) {
-                // Grupa nie może wywrócić całego przebiegu, ale musi zostawić
-                // ślad — cichy błąd zapisu wygląda jak brak zmian.
-                logger.error({
-                    event: 'cron.nexus_contractors.write_failed',
-                    status,
-                    rows: ids.length,
-                    msg: writeError.message,
-                })
-                Sentry.captureException(writeError, {
-                    tags: { kind: 'cron_nexus_contractors', stage: 'write' },
-                })
-                continue
-            }
-            written += ids.length
-        }
-
+        const failed = result.failed + (snapshotFailed ? 1 : 0)
         const out = {
-            ok: true,
+            ok: failed === 0,
+            ...(failed > 0 ? { stage: snapshotFailed && result.failed === 0 ? 'snapshot' : 'write' } : {}),
             nexus_rows: nexus.length,
             compass_rows: decisions.length,
-            written,
+            written: result.written,
+            unchanged: result.unchanged,
+            failed: result.failed,
+            conflicts: result.conflicts,
+            snapshot_failed: snapshotFailed,
+            // Osoba NEXUSA trzymana przez kilku kontraktorów — do rozstrzygnięcia w kolejce.
+            linked_twice: decisions.filter((d) => d.reason === 'nexus_person_linked_twice').length,
             ...summarize(decisions),
+        }
+        if (failed > 0) {
+            // 500, nie 200: zielony przebieg przy niezapisanych werdyktach
+            // wyglądałby na kompletny (audyt integracji 14.09, INT-07).
+            logger.error({ event: 'cron.nexus_contractors.partial', ...out })
+            Sentry.captureMessage('nexus_contractors_write_failed', {
+                level: 'error',
+                extra: out,
+            })
+            return NextResponse.json(out, { status: 500 })
         }
         logger.info({ event: 'cron.nexus_contractors.done', ...out })
         return NextResponse.json(out)

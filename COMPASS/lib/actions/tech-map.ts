@@ -45,6 +45,7 @@ import {
     INTERVIEW_CARD_STATUS_PL,
     type BriefTimelineEntry,
     type CardDetail,
+    type CardSalesStatus,
     type CardInitiativeRow,
     type CardInput,
     type CardListItem,
@@ -767,6 +768,38 @@ export async function getCardDetail(cardId: string): Promise<CardDetail> {
             a.name.localeCompare(b.name, 'pl'),
         ),
         initiatives: (initiativeRows.data ?? []) as CardInitiativeRow[],
+        salesStatus: await loadSalesStatus(admin, cardId),
+    }
+}
+
+/**
+ * Zwrot statusu z ATLASA (POST /api/internal/sales-signals/status).
+ * DEKORACJA karty: awaria odczytu albo brak tabeli (migracja jeszcze nie
+ * zaaplikowana) daje `null`, a nie wywrócony ekran karty.
+ */
+async function loadSalesStatus(admin: ServiceClient, cardId: string): Promise<CardSalesStatus | null> {
+    const { data, error } = await admin
+        .from('tech_card_sales_status')
+        .select('status, atlas_deal_title, handled_by_name, handled_by_email, reason, handled_at')
+        .eq('card_id', cardId)
+        .maybeSingle()
+    if (error || !data) return null
+    const row = data as {
+        status: string
+        atlas_deal_title: string | null
+        handled_by_name: string | null
+        handled_by_email: string | null
+        reason: string | null
+        handled_at: string
+    }
+    if (row.status !== 'converted' && row.status !== 'archived') return null
+    return {
+        status: row.status,
+        dealTitle: row.atlas_deal_title,
+        handledByName: row.handled_by_name,
+        handledByEmail: row.handled_by_email,
+        reason: row.reason,
+        handledAt: row.handled_at,
     }
 }
 

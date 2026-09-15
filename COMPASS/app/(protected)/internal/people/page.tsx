@@ -38,6 +38,7 @@ interface PageProps {
         period?: string
         client?: string
         recruiter?: string
+        nexusView?: string
     }
 }
 
@@ -78,7 +79,7 @@ export default async function PeopleOpsPage({ searchParams }: PageProps) {
                 <AnalitykaTabPanel period={period} client={searchParams?.client} recruiter={searchParams?.recruiter} />
             )}
             {tab === 'szablony' && <SzablonyTabPanel />}
-            {tab === 'nexus' && <NexusIdentityTabPanel />}
+            {tab === 'nexus' && <NexusIdentityTabPanel view={searchParams?.nexusView} />}
         </div>
     )
 }
