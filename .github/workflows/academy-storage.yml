@@ -36,6 +36,8 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: COMPASS/package-lock.json
+      - name: Verify disposable historical migration ordering
+        run: node --test ops/academy/storage/prepare-history.test.mjs
       - name: Install locked fixture and production transport dependencies
         if: matrix.mode == 'academy-fixture'
         working-directory: COMPASS

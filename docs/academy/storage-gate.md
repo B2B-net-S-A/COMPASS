@@ -23,3 +23,7 @@ Both jobs use the same pinned CLI and native service images it specifies. Keys a
 Local checks are limited to `node --test ops/academy/storage/gate.test.mjs`, syntax and shell validation. The native Auth/Storage/TUS and complete-history results are **unverified until hosted CI executes them**.
 
 Sources checked for this gate: [resumable and signed uploads](https://supabase.com/docs/guides/storage/uploads/resumable-uploads), [CLI configuration](https://supabase.com/docs/guides/local-development/cli/config), [CLI 2.117.0 release](https://github.com/supabase/cli/releases/tag/v2.117.0), [changelog](https://supabase.com/changelog). CLI command flags were checked with that installed version's `--help`.
+
+## Kolizje historycznych numerów
+
+Pierwszy hosted replay (run 35719877076, 22.09.2026) zatrzymał się na 20260208_ai_matching.sql: SQLSTATE 23505 w schema_migrations_pkey. Repo ma wiele migracji z tym samym prefiksem 20260208. Kolejny replay kopiuje wszystkie pliki w niezmienionej kolejności leksykograficznej do pustego, jednorazowego katalogu i nadaje kopiom unikalne numery. Manifest zapisuje oryginalną nazwę, nazwę kopii i SHA-256; bajty SQL pozostają identyczne. Nie zmieniamy historii repo ani produkcji. Ten wariant dowodzi wykonania uporządkowanego SQL, nie możliwości wykonania zwykłego supabase db push z historycznym rejestrem. Każdy błąd SQL nadal zatrzymuje bramkę.

@@ -15,6 +15,7 @@ export function projectStart(mode, status, log, migrationCount) {
     return {
         mode, outcome: passed ? 'passed' : 'failed', exitCode: status, appliedMigrationFiles: applied, skippedMigrationFiles: skipped,
         historicalMigrationFiles: mode === 'historical-replay' ? migrationCount : null,
+        migrationRegistry: mode === 'historical-replay' ? 'disposable_unique_ids_original_sql_order_unchanged' : 'fixture_only',
         fullHistoricalReplay: mode === 'historical-replay' ? (passed ? 'passed' : 'failed') : 'not_run_in_fixture_job',
         lastMigration, sqlState, firstError,
         failureCategory: passed ? null : status===0&&!complete ? 'incomplete_historical_replay' : sqlState ? 'postgres_migration_error' : /duplicate|same version/i.test(log) ? 'migration_registry_collision' : status === 124 ? 'startup_timeout' : 'supabase_start_or_migration_failure',

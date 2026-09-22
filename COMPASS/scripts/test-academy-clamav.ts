@@ -22,7 +22,7 @@ async function readiness() {
         try { return await assertClamavReadiness(config) }
         catch (cause) {
             error = cause
-            if (cause instanceof Error && !['scanner_unavailable', 'scanner_connection_closed'].includes(cause.message)) throw cause
+            if (cause instanceof Error && !['scanner_unavailable', 'scanner_connection_closed', 'scanner_incomplete_version'].includes(cause.message)) throw cause
             await delay(1000)
         }
     }

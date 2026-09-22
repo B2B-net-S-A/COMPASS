@@ -25,7 +25,7 @@ cleanup() {
 trap cleanup EXIT
 excluded='realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor'
 if [[ "$mode" == historical-replay ]]; then
-  cp "$repo_dir"/COMPASS/supabase/migrations/*.sql "$gate_work/supabase/migrations/"
+  node "$repo_dir/ops/academy/storage/prepare-history.mjs" "$repo_dir/COMPASS/supabase/migrations" "$gate_work/supabase/migrations"
 fi
 # Start/status output can include disposable API keys. Keep it in private temp files;
 # report only a sanitized failure category and migration filename, never raw logs.

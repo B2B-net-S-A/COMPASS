@@ -57,3 +57,11 @@ test('integration script names match the final migrated RPC contracts',async()=>
   }
  }finally{await f.db.close();}
 });
+
+test('native pg name arrays require explicit text-array projection', async () => {
+ const {default:pg}=await import('../../../COMPASS/node_modules/pg/lib/index.js');
+ assert.equal(Array.isArray(pg.types.getTypeParser(1003)('{authenticated}')),false);
+ const roles=pg.types.getTypeParser(1009)('{authenticated}');
+ assert.deepEqual(roles,['authenticated']);
+ assert.match(storagePolicySql({schemaname:'storage',tablename:'objects',policyname:'academy_native_roles',cmd:'SELECT',permissive:'PERMISSIVE',roles,qual:'true',with_check:null}),/TO "authenticated"/);
+});
