@@ -65,6 +65,9 @@ export async function withFixtureDefaultPrivileges(sql, importSchema) {
 /** Include acldefault when the catalog ACL is NULL, plus the effective rights
  * of the three API roles (which also account for PUBLIC and role membership).
  * The caller compares source objects only: native target extensions stay intact.
+ * The bounded baseline now includes vector columns. Their native extension
+ * functions are not application dump objects and retain the target's own ACLs;
+ * every non-extension application function remains in this comparison.
  */
 export async function readFixtureObjectPrivileges(sql) {
     const previous = (await sql.query("select current_setting('search_path') as value")).rows[0].value;
@@ -75,7 +78,10 @@ export async function readFixtureObjectPrivileges(sql) {
             (select jsonb_object_agg(role,pg_catalog.has_function_privilege(role,p.oid,'EXECUTE'))
                 from unnest(array['anon','authenticated','service_role']) role) as effective
             from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
-            where n.nspname=any($1::text[]) order by 1`, [schemas])).rows;
+            where n.nspname=any($1::text[])
+                and not exists(select 1 from pg_catalog.pg_depend d join pg_catalog.pg_extension e on e.oid=d.refobjid
+                    where d.classid='pg_catalog.pg_proc'::regclass and d.objid=p.oid and d.deptype='e' and e.extname='vector')
+            order by 1`, [schemas])).rows;
         const relations = (await sql.query(`select case when c.relkind='S' then 'sequence:' else 'table:' end||format('%I.%I',n.nspname,c.relname) as object,
             ${aclJson("coalesce(c.relacl,pg_catalog.acldefault(case when c.relkind='S' then 's'::\"char\" else 'r'::\"char\" end,c.relowner))")} as privileges,
             (select jsonb_object_agg(role,rights) from (select role,

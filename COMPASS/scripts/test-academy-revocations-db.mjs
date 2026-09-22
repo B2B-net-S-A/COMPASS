@@ -26,7 +26,7 @@ try {
  const promotionsBefore=(await sql("select count(*)::int n from notifications where type='loyalty_tier_up'")).rows[0].n;
  const dependent=await program('Requires valid certificate',[c.course_id]);
  // A second independently retained evidence record for the same learner/course keeps one reward claim justified.
- await owner();const run=(await sql("insert into course_runs(course_id,version_id,title,capacity,status,created_by)values($1,$2,'Historical repeated cohort',10,'published',auth.uid()) returning id",[c.course_id,c.version_id])).rows[0].id;
+ await owner();const run=(await sql("insert into course_runs(course_id,version_id,title,capacity,status,created_by)values($1,$2,'Historical repeated cohort',10,'published',$3) returning id",[c.course_id,c.version_id,ids.trainer])).rows[0].id;
  const e2=(await sql("insert into course_enrollments(user_id,course_id,version_id,run_id,completed_at,completed_lessons)values($1,$2,$3,$4,now(),ARRAY[$5::uuid])returning id",[ids.student,c.course_id,c.version_id,run,c.lesson])).rows[0].id;
  const c2=(await sql("insert into course_completions(enrollment_id,user_id,course_id,version_id,completed_at,certificate_snapshot,reward_tracking_complete)values($1,$2,$3,$4,now(),$5,true)returning id",[e2,ids.student,c.course_id,c.version_id,completion.certificate_snapshot])).rows[0].id;
  await actor('admin');const first=await rpc('academy_revoke_completion',[completion.id,'Attendance was attributed to the wrong person']);assert.equal(first.rewards_state,'retained_valid_completion');checks++;
@@ -49,7 +49,7 @@ try {
  await denied('select academy_submit_survey($1,10,null,null)',[enrollment],/own_trusted_completion_required/);
  await denied('insert into course_ratings(user_id,course_id,rating)values($1,$2,5)',[ids.student,c.course_id],/row-level security/);
  const future=await program('New prerequisite enrollment',[c.course_id]);await actor('student');await denied('select academy_enroll($1,null)',[future.course_id],/prerequisites_not_completed/);
- await owner();const path=(await sql("insert into learning_paths(title,slug,description,status,author_id)values('Revoked proof path','revoked-proof','','published',auth.uid())returning id")).rows[0].id;
+ await owner();const path=(await sql("insert into learning_paths(title,slug,description,status,author_id)values('Revoked proof path','revoked-proof','','published',$1)returning id",[ids.admin])).rows[0].id;
  await sql('insert into learning_path_courses(path_id,course_id,order_index)values($1,$2,0)',[path,c.course_id]);
  await actor('student');await rpc('academy_enroll_path',[path]);assert.equal((await rpc('academy_complete_path',[path])).completed,false);checks++;
  await actor('admin');const ownEnrollment=await rpc('academy_enroll',[c.course_id,null]);await rpc('academy_mark_lesson_complete',[ownEnrollment,c.lesson]);
