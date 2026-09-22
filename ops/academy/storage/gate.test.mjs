@@ -5,6 +5,42 @@ import { projectStart } from './report-start.mjs';
 // Run the host-native ACL regressions in the existing pre-Storage CI gate.
 import './fixture-acl.test.mjs';
 import { availabilitySchemaOrder, candidateClaimOrder, candidateStorageOrder, communicatorBootstrap } from './prepare-history.mjs';
+import { assertCanonicalBaseline, canonicalSnapshot, canonicalSnapshotSha256 } from './canonical-contract.mjs';
+
+test('canonical dependency contract includes production triggers, enums, ACLs and their exact definitions',()=>{
+ assert.equal(canonicalSnapshot.source.project,'shduiynzemftkqqefscd');
+ assert.match(canonicalSnapshotSha256,/^[a-f0-9]{64}$/);
+ const tables=new Map(canonicalSnapshot.contract.tables.map(table=>[table.name,table]));
+ assert.equal(tables.size,18);
+ assert.equal(tables.get('profiles').columns.find(column=>column.name==='role').type,'user_role');
+ assert(tables.get('profiles').triggers.some(trigger=>trigger.name==='trg_pin_profile_privilege_columns'));
+ assert(tables.get('course_enrollments').triggers.some(trigger=>trigger.name==='trg_update_course_enrollment_stats'));
+ assert(tables.get('audit_logs').constraints.some(constraint=>constraint.definition.includes('auth.users(id)')));
+ assert(canonicalSnapshot.contract.functions.every(fn=>fn.definition.startsWith('CREATE OR REPLACE FUNCTION public.')));
+ assert(canonicalSnapshot.contract.defaultPrivileges.some(entry=>entry.owner==='postgres'&&entry.objectType==='r'));
+});
+
+test('canonical parity fails on missing triggers, changed nullability, widened ACLs or default grants',async()=>{
+ const {createAcademyDatabase}=await import('../../../COMPASS/scripts/lib/academy-db-fixture.mjs');
+ const f=await createAcademyDatabase({beforeAcademyMigrations:async db=>{
+  for(const mutation of [
+   'DROP TRIGGER trg_update_course_enrollment_stats ON course_enrollments',
+   'ALTER TABLE profiles ALTER COLUMN email DROP NOT NULL',
+   'GRANT DELETE ON loyalty_transactions TO PUBLIC',
+   'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO PUBLIC',
+  ]){
+   await db.exec('BEGIN');
+   try{await db.exec(mutation);await assert.rejects(assertCanonicalBaseline(db),/canonical_academy_dependency_drift/);}
+   finally{await db.exec('ROLLBACK');}
+  }
+ }});
+ try{
+  assert.equal(f.baselineProof.dependencyParity,true);
+  await f.actor('student');await f.owner();
+  assert.equal((await f.sql('select auth.uid() as id')).rows[0].id,null,'maintenance_fixture_must_clear_browser_claims');
+ }
+ finally{await f.db.close();}
+});
 test('refuses local Docker paths even if generic CI is set',()=>{
  assert.throws(()=>assertHostedStorage({CI:'true'}));assert.throws(()=>assertHostedStorage({GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'self-hosted',RUNNER_OS:'Linux'}));
  assertHostedStorage({GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux'});

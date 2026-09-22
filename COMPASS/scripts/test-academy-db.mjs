@@ -1,6 +1,7 @@
 // Hosted/native gate for versioned Academy SQL and negative authorization cases.
 import assert from 'node:assert/strict';
 import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
+import { verifyCanonicalBackfill } from '../../ops/academy/storage/canonical-backfill.mjs';
 process.on('uncaughtException', error => {
     console.error({ error: error.message, where: error.where, query: error.query });
     process.exit(1);
@@ -44,6 +45,7 @@ await denied('select academy_submit_quiz($1,$2)',[enrollment,JSON.stringify([ans
 let outcome=await rpc('academy_submit_quiz',[enrollment,answers]);assert.equal(outcome.passed,true);assert.equal(outcome.completion.completed,false);checks++;
 let completed=await rpc('academy_mark_lesson_complete',[enrollment,lesson]);assert.equal(completed.completion.completed,true);checks++;
 completed=await rpc('academy_mark_lesson_complete',[enrollment,lesson]);assert.equal(completed.already_completed,true);checks++;
+assert.deepEqual((await sql('select enrollments_count,completions_count from courses where id=$1',[course])).rows[0],{enrollments_count:1,completions_count:1});checks++;
 await sql('insert into course_ratings(user_id,course_id,rating)values($1,$2,5)',[ids.student,course]);
 assert.equal(Number((await sql('select avg_rating from courses where id=$1',[course])).rows[0].avg_rating),5);checks++;
 await actor('trainer');const nextVersion=await rpc('academy_begin_draft',[course]);assert.notEqual(nextVersion,version);checks++;
@@ -147,3 +149,4 @@ if (fixture.engine === 'postgres') {
 }
 console.log(`PASS ${checks} migration and authorization assertions`);
 await db.close();
+console.log(JSON.stringify(await verifyCanonicalBackfill()));

@@ -2,12 +2,23 @@
 
 Stan na 22.09.2026, PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384). Moduł nie jest jeszcze wdrożony ani odebrany produkcyjnie. Poniższe wyniki nie zastępują testów kolejnych commitów.
 
+## Checkpoint `9502a9b117e7e0b294f3f32d77f026855aff2dab`
+
+- [Build check 35732199044](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35732199044): **PASS** — aplikacja oraz testy uprawnień i współbieżności PostgreSQL.
+- [ClamAV 35732199058](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35732199058): **PASS** na AMD64 i ARM64, w tym 20/20 testów sterowania usługami bez pominięć w hosted CI.
+- [Storage 35732199033](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35732199033): natywny Auth/Storage **PASS**; historyczny replay **FAIL** na starym operacyjnym seedzie konta (`42P10`). Nie zmieniamy natywnego Auth ani nie odtwarzamy kont, aby zaliczyć historyczny seed.
+- [Readiness 35732193145](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35732193145): odczyt zakończony. W sprawdzonym vault brak czterech nazw połączenia DB: `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_DB_URL`, `SUPABASE_DB_PASSWORD`. Nie odczytywano ani nie publikowano wartości sekretów.
+
+**Bieżąca ścieżka weryfikacji aktualizacji:** zamiast rekonstruować niezależne operacyjne skrypty całej historii, testujemy jawny kontrakt zależności Academy od aktualnej produkcji: 18 tabel, 3 enumy i 14 funkcji, z kolumnami, indeksami, triggerami, RLS i uprawnieniami. Snapshot zawiera wyłącznie definicje schematu. Test wymaga zgodności katalogu przed zastosowaniem nowych migracji oraz zachowania syntetycznej historii kursów, zapisów, ukończeń i nagród. Pełny `pg_dump` nie jest warunkiem tego ograniczonego testu; jego granice opisuje osobny kontrakt. Nowa ścieżka musi jeszcze uzyskać wynik w natywnym hosted PostgreSQL/Supabase. Historyczna bramka pozostaje na tym etapie niezmieniona i niezaliczona.
+
+**Przygotowanie hosta:** wersjonowane pliki obejmują instalator nieaktywnych usług, osobny seed sygnatur i blokadę współbieżności skanowania, aktualizacji i deployu. Nie były jeszcze instalowane ani uruchamiane na produkcji. Pierwszy merge wymaga wcześniejszej instalacji i seed przez istniejący, przypięty kanał SSH. Włączenie blokady jest zapisane w workflow; nie wymaga nowych uprawnień do ustawień GitHub.
+
 ## Checkpoint `b86f4df4a20b0d81a4d59ae65fd7701bd4eaebe5`
 
 - [Build check 35731018357](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731018357): **PASS**, wszystkie zadania.
 - [ClamAV 35731018470](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731018470): **PASS**, AMD64 i ARM64.
 - [Storage 35731018359](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731018359): pełny workflow nadal **FAIL**. Historyczny replay rozpoczął 46 z 255 plików i zatrzymał się na `20260220_create_centrala_user.sql` (42P10). To operacyjny seed konta zakładający pełną unikalność `auth.users.email`; odczyt produkcyjnego katalogu potwierdza indeks częściowy. Nie odtwarzamy kont ani nie zmieniamy natywnego Auth, aby wymusić przejście starego skryptu.
-- Alternatywa wymaga testu aktualizacji z pełnego eksportu samego schematu produkcji, bez danych. MCP pozwala odczytać katalog, ale nie dostarcza kompletnego `pg_dump`; w sprawdzonych lokalnych konfiguracjach nie znaleziono poświadczeń połączenia DB. Odczyt listy nazw sekretów GitHub botem zwraca 403. Następny inventory sprawdza jedynie obecność czterech nazw połączenia DB w istniejącym vault Coolify. Bramka nie została wyłączona ani oznaczona jako zaliczona.
+- Ówczesna propozycja pełnego eksportu schematu została zastąpiona opisanym wyżej, ograniczonym kontraktem zależności. Historyczny wynik FAIL pozostaje faktem; nie stanowi wyniku nowego testu aktualizacji.
 - [Graph 35731009774](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731009774): `Calendars.ReadWrite=true`; `OnlineMeetings.Read.All`, `OnlineMeetings.ReadWrite.All`, `OnlineMeetingArtifact.Read.All` — wszystkie **false**. Nie nadano nowych zgód. Zewnętrzny link i ręczna obecność nie zależą od tych ról.
 
 ## Checkpoint `272d2c14fd0bdd2fe9372f3502d1d545f52e4011`

@@ -40,6 +40,19 @@ const nativeAcl = async db => (await db.query(`select n.nspname||'.'||c.relname 
     union all select n.nspname||'.'||p.proname,p.proacl::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='auth' or p.proname='native_extension' order by 1`)).rows;
 
+test('native vector extension ACLs stay native while application function ACL drift still fails',async()=>{
+    const {vector}=await import(new URL('../../../COMPASS/node_modules/@electric-sql/pglite/dist/vector/index.js',import.meta.url).href);
+    const source=new PGlite({extensions:{vector}}),target=new PGlite({extensions:{vector}});
+    try{
+        for(const db of [source,target])await db.exec(roles+'CREATE EXTENSION vector;'+dump);
+        const signature=(await target.query("select p.oid::regprocedure::text as signature from pg_proc p join pg_depend d on d.objid=p.oid and d.classid='pg_proc'::regclass join pg_extension e on e.oid=d.refobjid where d.deptype='e' and e.extname='vector' order by p.oid limit 1")).rows[0].signature;
+        await target.exec(`GRANT EXECUTE ON FUNCTION ${signature} TO authenticated;`);
+        assert.equal(await assertFixtureObjectPrivileges(source,target),5);
+        await target.exec('GRANT EXECUTE ON FUNCTION public.worker(uuid) TO authenticated;');
+        await assert.rejects(assertFixtureObjectPrivileges(source,target),/fixture_acl_mismatch:function:public.worker/);
+    }finally{await Promise.all([source.close(),target.close()]);}
+});
+
 test('dump restore removes injected global/schema defaults temporarily and matches source ACLs', async () => {
     const source = new PGlite(), unsafe = new PGlite(), target = new PGlite();
     try {
@@ -110,11 +123,12 @@ test('parity rejects table, sequence and effective inherited privileges, includi
 
 test('actual Academy migrations revoke worker and legacy review RPCs under native-style default grants', async () => {
     const f = await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,
-        beforeAcademyMigrations: db => db.exec(`alter default privileges grant execute on functions to authenticated,anon,service_role;
+        afterBaselineVerification: db => db.exec(`alter default privileges grant execute on functions to authenticated,anon,service_role;
             alter default privileges in schema public grant all on functions to authenticated,anon,service_role;
             alter default privileges grant all on tables to authenticated,anon,service_role;
             alter default privileges in schema public grant all on sequences to authenticated,anon,service_role;`)});
     try {
+        assert.equal(f.baselineProof.dependencyParity,false);
         for (const role of ['anon','authenticated']) {
             await f.actor('',role);
             await f.expectDenied("select public.academy_accept_material_scan(gen_random_uuid(),now(),repeat('a',64),null)",[],/permission denied/);

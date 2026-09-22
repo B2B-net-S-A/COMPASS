@@ -91,15 +91,16 @@ jobs:
     needs: secret-scan
     services:
       postgres:
-        image: postgres:17
+        # Matches the production vector extension version; registry digest verified over HTTPS.
+        image: pgvector/pgvector:0.8.0-pg17@sha256:40b404964359299eefdd5f8518facf1886c562848cf4de13b6eaf91cb70c2b87
         env:
           POSTGRES_DB: academy_test
-          POSTGRES_USER: academy_ci
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: isolated-academy-ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U academy_ci -d academy_test"
+          --health-cmd "pg_isready -U postgres -d academy_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -116,7 +117,7 @@ jobs:
       - run: npm ci
       - name: Real PostgreSQL migration, RLS and simultaneous requests
         env:
-          ACADEMY_TEST_DATABASE_URL: postgresql://academy_ci:isolated-academy-ci@localhost:5432/academy_test
+          ACADEMY_TEST_DATABASE_URL: postgresql://postgres:isolated-academy-ci@localhost:5432/academy_test
         run: npm run test:academy-db
 
   security-scan:

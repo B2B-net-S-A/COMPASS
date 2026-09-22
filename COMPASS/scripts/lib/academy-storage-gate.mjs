@@ -52,7 +52,11 @@ export async function installAcademyStorageFixture(status) {
         // Same server/client major version. Docker is invoked exclusively after the hosted guard.
         const dump=execFileSync('docker',['exec','supabase_db_academy-storage-ci','pg_dump','-U','postgres','-d',fixtureName,'--schema-only','--no-owner','--schema=public','--schema=academy_private'],{encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
         installStage='import_public_schema';
+        // The canonical dependency snapshot contains the existing vector columns
+        // and HNSW indexes. Extension objects are not included by a scoped dump.
         await withFixtureDefaultPrivileges(sql, async () => {
+            await sql.query('CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public');
+            assert.equal((await sql.query("select n.nspname from pg_extension e join pg_namespace n on n.oid=e.extnamespace where e.extname='vector'")).rows[0]?.nspname,'public','canonical_vector_schema_mismatch');
             await sql.query(cleanPublicDump(dump));
             installStage='verify_imported_acl';
             await assertFixtureObjectPrivileges(fixture.db, sql);
@@ -75,11 +79,12 @@ export async function installAcademyStorageFixture(status) {
         installStage='bucket';
         await sql.query('insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)values($1,$2,$3,$4,$5)',[bucket.id,bucket.name,bucket.public,bucket.file_size_limit,bucket.allowed_mime_types]);
         installStage='loyalty_rules';
-        const rules=(await fixture.sql('select code,points,is_active from public.loyalty_rules')).rows;
-        for(const rule of rules) await sql.query('insert into public.loyalty_rules(code,points,is_active)values($1,$2,$3)',[rule.code,rule.points,rule.is_active]);
+        const rules=(await fixture.sql('select code,name,category,points,is_active from public.loyalty_rules')).rows;
+        for(const rule of rules) await sql.query('insert into public.loyalty_rules(code,name,category,points,is_active)values($1,$2,$3,$4,$5)',[rule.code,rule.name,rule.category,rule.points,rule.is_active]);
         installStage='rollout';
         await sql.query('insert into public.academy_rollout_settings default values');
         await sql.query("NOTIFY pgrst, 'reload schema'");
+        console.log(JSON.stringify({check:'canonical_pre_academy_dependency_parity',outcome:'passed',...fixture.baselineProof,migrationsApplied:fixture.appliedMigrations}));
         return sql;
     } catch(error) {
         const relation = /relation "([a-zA-Z0-9_.]+)" does not exist/.exec(error.message??'')?.[1];
