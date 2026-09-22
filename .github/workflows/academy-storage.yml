@@ -24,7 +24,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [academy-fixture, historical-replay]
+        # Upgrade/backfill runs in build-check's real PostgreSQL job. Operational
+        # legacy seeds have a separate, explicitly nonqualifying manual audit.
+        mode: [academy-fixture]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:

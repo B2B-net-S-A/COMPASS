@@ -176,11 +176,11 @@ try {
     await rpc(admin,'academy_review_run_material',{p_asset_id:runAsset.id,p_decision:'withdraw',p_note:'Fixture review withdrawal'});
     await cannotDownload(other,runAsset,'withdrawn_material');
     milestone('native_storage_run_isolation_moderation_and_cancellation');
-    appendStorageReport({outcome:'passed',assertions:checks,passed,realAuth:true,realStorage:true,realTus:true,fullHistoricalReplay:'separate_historical_replay_job',limits:['Minimal application fixture: profiles and legacy schema are incomplete.','Native auth and storage schemas/functions/grants were preserved.','Trusted scanner verdict is simulated here; real ClamAV has a separate gate.','No Next.js/browser or production deployment proof; app routes have separate unit/UI gates.','Previously issued signed download URLs remain valid until their short expiry.']});
+    appendStorageReport({outcome:'passed',assertions:checks,passed,realAuth:true,realStorage:true,realTus:true,fullHistoricalReplay:'separate_manual_history_audit',limits:['Canonical Academy dependencies only; unrelated application schemas and full database restoration are outside this gate.','Native auth and storage schemas/functions/grants were preserved.','Trusted scanner verdict is simulated here; real ClamAV has a separate gate.','No Next.js/browser or production deployment proof; app routes have separate unit/UI gates.','Previously issued signed download URLs remain valid until their short expiry.']});
 } catch(error) {
     // Never emit response bodies, URLs, keys, auth sessions, SQL parameters or raw logs.
     const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,12}$/.test(error.code)?error.code:null;
-    appendStorageReport({outcome:'failed',stage,assertions:checks,passed,errorType:error?.name??'Error',code,detail:typeof error?.message==='string'&&/^[a-zA-Z0-9_:.-]{1,128}$/.test(error.message)?error.message:null,fullHistoricalReplay:'separate_historical_replay_job'});
+    appendStorageReport({outcome:'failed',stage,assertions:checks,passed,errorType:error?.name??'Error',code,detail:typeof error?.message==='string'&&/^[a-zA-Z0-9_:.-]{1,128}$/.test(error.message)?error.message:null,fullHistoricalReplay:'separate_manual_history_audit'});
     process.exitCode=1;
 } finally {
     globalThis.fetch=nativeFetch;

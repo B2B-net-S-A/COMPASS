@@ -6,7 +6,7 @@ Data: 22.09.2026. Status: realizacja w PR #384, bez wdrożenia i zmian danych pr
 
 **Tryb pracy: realizacja wznowiona.** Użytkownik polecił kontynuować aktywny cel dokończenia modułu enterprise. Prace odbywają się w izolowanym checkoutcie; plan i lokalne testy nie oznaczają gotowości produkcyjnej.
 
-**Stan przygotowania:** kod obejmuje model danych, uprawnienia, wersjonowanie, panele, upload, certyfikaty, współprowadzących oraz integrację Teams. Dla `b86f4df` główne hosted CI i rzeczywisty ClamAV AMD64/ARM64 przeszły; natywny fixture Supabase potwierdza Auth/TUS/Storage. Pełny historyczny replay pozostaje niezaliczony z powodu starego operacyjnego skryptu tworzenia konta. Nie ma jeszcze testu aktualizacji z pełnego schematu produkcji, testu Teams z kontami pilota ani odbioru produkcyjnego. Główny katalog użytkownika jest zachowany. Macierz w §14 i poniższy przegląd przed PR są wcześniejszymi checkpointami; aktualne wyniki i ich granice zawiera release-evidence.md.
+**Stan przygotowania:** kod obejmuje model danych, uprawnienia, wersjonowanie, panele, upload, certyfikaty, współprowadzących oraz integrację Teams. Na `f0627df` hosted PostgreSQL potwierdza aktualizację z dokładnego kontraktu zależności produkcji i 191 asercji zachowania historii; natywny Supabase potwierdza Auth/TUS/Storage (70 asercji), a ClamAV przechodzi na AMD64/ARM64. Historyczne odtwarzanie starych operacyjnych seedów pozostaje niezaliczonym, osobnym audytem. Trwa przygotowanie hosta; nie ma jeszcze testu Teams z kontami pilota ani odbioru produkcyjnego. Główny katalog użytkownika jest zachowany. Aktualne wyniki i granice zawiera release-evidence.md.
 
 **Ustalenia przeglądu przed PR:**
 

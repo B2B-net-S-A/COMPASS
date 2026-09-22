@@ -3,7 +3,7 @@
 This contract qualifies the **Academy upgrade from the observed application
 dependencies**, not restoration of the whole COMPASS database. The repository's
 operational seed history is a separate, currently unqualified replay track.
-No workflow failure is suppressed by this implementation.
+No workflow failure is suppressed. The historical replay is retained as a separate manual audit with its own failing exit status.
 
 ## Source and reproducibility
 
@@ -129,8 +129,11 @@ neither is a production migration or authenticated production UI acceptance.
 
 ## Release boundary
 
-The historical replay remains unchanged and blocking until the replacement
-upgrade evidence is actually green and separately reviewed. After that decision,
-it may be retained as an explicitly nonqualifying legacy-history audit. Do not
+On `f0627df`, hosted PostgreSQL job `106770305792` passed the exact dependency
+contract and 191 backfill assertions with all ten migrations. Native Supabase
+job `106770699481` passed Auth/Storage/TUS with 70 assertions. The replacement
+boundary was independently reviewed; the historical operational-seed replay is
+now retained in `academy-history-audit.yml` as a manual, nonqualifying audit. Its
+previous FAIL results are unchanged and future failures retain nonzero status. Do not
 label this result `fullHistoricalReplay: passed`, disaster recovery, full backup
 verification or production deployment verification.

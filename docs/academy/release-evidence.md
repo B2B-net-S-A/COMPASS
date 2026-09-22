@@ -2,6 +2,16 @@
 
 Stan na 22.09.2026, PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384). Moduł nie jest jeszcze wdrożony ani odebrany produkcyjnie. Poniższe wyniki nie zastępują testów kolejnych commitów.
 
+## Checkpoint `f0627dfdc20c158722e5219d6161483c66199708`
+
+- [PostgreSQL — job 106770305792](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35735107639/job/106770305792): **PASS**, dokładna zgodność 18 tabel, 16 funkcji i 3 enumów przed migracjami; wszystkie 10 migracji, 191 asercji historycznego backfillu oraz komplet testów autoryzacji i współbieżności.
+- [Natywny Supabase — job 106770699481](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35735107627/job/106770699481): **PASS**, 70 asercji Auth/Storage/TUS i kontrola końcowych ACL. Historyczny job w tym samym przebiegu pozostał **FAIL**; nie zmieniamy tego wyniku.
+- [ClamAV 35735107911](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35735107911): **PASS**, AMD64 i ARM64.
+- Ponowny odczyt katalogu produkcyjnego: cały zapisany kontrakt zgodny, również przychodzące FK, event triggery i default privileges. Powtórzony preflight: 1 kurs, 1 lekcja, 0 zapisów/certyfikatów, Academy jeszcze nie zainstalowana; rejestr zawiera 185 wcześniejszych migracji i żadnej nowej migracji Academy.
+- [Host 35735050293](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35735050293): root, flock i systemd dostępne, brak hostowego Node (`nodeMajor=0`). Przygotowywany jest osobny przypięty runtime; bez instalacji pakietów systemowych i bez operacji produkcyjnych na tym etapie.
+
+**Decyzja o zakresie bramki:** po rzeczywistym zielonym wyniku aktualizacji i native Storage oraz niezależnym przeglądzie granic, release Academy opiera się na tych bramkach, aplikacyjnym CI i ClamAV. Historyczny replay wydzielono do manualnego `academy-history-audit.yml`, z zachowaniem niezerowego statusu błędów. Nie jest to zaliczenie odtwarzania całej bazy. Kontrakt aktualizacji: [canonical-dependency-contract.md](./canonical-dependency-contract.md).
+
 ## Checkpoint `9502a9b117e7e0b294f3f32d77f026855aff2dab`
 
 - [Build check 35732199044](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35732199044): **PASS** — aplikacja oraz testy uprawnień i współbieżności PostgreSQL.

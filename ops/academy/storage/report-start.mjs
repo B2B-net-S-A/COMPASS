@@ -34,5 +34,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const report = projectStart(mode, Number(status), fs.readFileSync(path, 'utf8'), fs.readdirSync(directory).filter(name => name.endsWith('.sql')).length, orderingExceptions, archivedBootstraps);
     console.log(JSON.stringify(report));
     if(report.outcome==='failed')process.exitCode=1;
-    if(process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n### Supabase ${mode}\n\n\`\`\`json\n${JSON.stringify(report,null,2)}\n\`\`\`\n\nFixture Academy is not a full historical replay. A failed historical replay remains a failing release gate.\n`);
+    if(process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n### Supabase ${mode}\n\n\`\`\`json\n${JSON.stringify(report,null,2)}\n\`\`\`\n\nAcademy dependency upgrade and native Storage are separate release proofs. Historical replay is a manual audit; a failed audit remains red and unqualified, not a backup/restore result.\n`);
 }

@@ -1,0 +1,25 @@
+name: Academy legacy history audit (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: academy-history-audit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  history:
+    name: Unqualified historical replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Verify explicit replay ordering
+        run: node --test ops/academy/storage/prepare-history.test.mjs
+      - name: Audit historical seeds on disposable hosted Supabase
+        # No continue-on-error: a failed audit is red and remains unqualified.
+        run: bash ops/academy/storage/run-hosted-gate.sh historical-replay
