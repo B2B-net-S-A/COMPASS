@@ -99,11 +99,16 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   // Duplikaty w jednej paczce: wygrywa najnowszy handled_at.
+  // Klucz deduplikacji to identyfikator PO normalizacji (audyt 2026-09-22, INT-16):
+  // UUID_RE jest case-insensitive, a zapis idzie już małymi literami, więc ta sama
+  // karta raz lower, raz UPPER dawała dwa wiersze o jednym card_id w jednym upsercie
+  // — Postgres odrzuca wtedy CAŁĄ paczkę („cannot affect row a second time").
   const latest = new Map<string, Update>();
   for (const u of parsed.data.updates) {
-    const prev = latest.get(u.signal_id);
+    const key = u.signal_id.toLowerCase();
+    const prev = latest.get(key);
     if (!prev || Date.parse(u.handled_at) >= Date.parse(prev.handled_at)) {
-      latest.set(u.signal_id, u);
+      latest.set(key, u);
     }
   }
 

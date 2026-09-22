@@ -30,6 +30,7 @@ import { buildDefaultOofMessages, shouldSetOofForLeave } from '@/lib/mailbox/oof
 import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sync'
 import { createForwardRule } from '@/lib/mailbox/graph-inbox-rules'
 import { planForwardRuleEdit, shouldForwardBeActive } from '@/lib/oof/forward-window'
+import { recordLeaveCleanupFailure } from '@/lib/oof/leave-cleanup'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/push/dispatch'
 import {
@@ -1119,22 +1120,37 @@ export async function cancelMyLeaveRequest(id: string): Promise<ActionResult<voi
             )
 
             // PR2: remove Outlook calendar event (best-effort, never blocks cancel).
+            // Audyt 2026-09-22, INT-07: helper zwraca `success:false` zamiast rzucać,
+            // więc porażkę zapisujemy jawnie — cron oof-reconcile ponowi sprzątanie.
             if (row.outlook_event_id) {
                 deleteLeaveEvent({
                     userEmail: ctx.email,
                     eventId: row.outlook_event_id,
-                }).catch((e) => logCompat.error('[cancelMyLeaveRequest] calendar delete failed:', e))
+                })
+                    .then(async (r) => {
+                        if (!r.success) {
+                            await recordLeaveCleanupFailure({ leaveId: id, kind: 'calendar', error: r.error })
+                        }
+                    })
+                    .catch((e) => logCompat.error('[cancelMyLeaveRequest] calendar delete failed:', e))
             }
 
             // Phase 25: revert Outlook OOF if it was set on approve.
+            // INT-03: tylko OOF tego urlopu (marker + okno) — cudzy zostaje.
             if (row.graph_oof_set) {
-                disableOutOfOffice({ userEmail: ctx.email })
+                disableOutOfOffice({ userEmail: ctx.email, startDate: row.start_date, endDate: row.end_date })
                     .then(async (r) => {
-                        if (r.success && !r.skipped) {
-                            await supabase
-                                .from('leave_requests')
-                                .update({ graph_oof_set: false } as never)
-                                .eq('id', id)
+                        if (!r.success) {
+                            await recordLeaveCleanupFailure({ leaveId: id, kind: 'oof', error: r.error })
+                            return
+                        }
+                        if (r.skipReason === 'no_credentials') return
+                        // Wyłączony albo już nie nasz — w obu przypadkach ten urlop nie trzyma OOF.
+                        await createServiceClient()
+                            .from('leave_requests')
+                            .update({ graph_oof_set: false } as never)
+                            .eq('id', id)
+                        if (!r.skipped) {
                             await logAudit(ctx.userId, 'LEAVE_OOF_DISABLED', {
                                 leave_id: id,
                                 reason: 'self_cancel',
@@ -1470,6 +1486,7 @@ export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Prom
                 leaveType: input.leaveType,
                 note: decisionNote,
                 transactionId: `leave-${inserted.id}`,
+                halfDay: input.halfDay ?? null,
             })
                 .then(async (r) => {
                     if (r.success && r.eventId) {
@@ -2072,20 +2089,29 @@ export async function cancelTeamLeave(id: string): Promise<ActionResult<void>> {
         )
 
         const contact = await fetchUserContact(row.user_id)
+        // Audyt 2026-09-22, INT-07: `success:false` zapisujemy — cron ponowi sprzątanie.
         if (contact?.email && row.outlook_event_id) {
-            deleteLeaveEvent({ userEmail: contact.email, eventId: row.outlook_event_id }).catch((e) =>
-                logCompat.error('[cancelTeamLeave] calendar delete failed:', e),
-            )
-        }
-        if (contact?.email && row.graph_oof_set) {
-            disableOutOfOffice({ userEmail: contact.email })
+            deleteLeaveEvent({ userEmail: contact.email, eventId: row.outlook_event_id })
                 .then(async (r) => {
-                    if (r.success && !r.skipped) {
-                        await admin
-                            .from('leave_requests')
-                            .update({ graph_oof_set: false } as never)
-                            .eq('id', id)
+                    if (!r.success) {
+                        await recordLeaveCleanupFailure({ leaveId: id, kind: 'calendar', error: r.error })
                     }
+                })
+                .catch((e) => logCompat.error('[cancelTeamLeave] calendar delete failed:', e))
+        }
+        // INT-03: wyłączamy wyłącznie OOF tego urlopu (marker + okno).
+        if (contact?.email && row.graph_oof_set) {
+            disableOutOfOffice({ userEmail: contact.email, startDate: row.start_date, endDate: row.end_date })
+                .then(async (r) => {
+                    if (!r.success) {
+                        await recordLeaveCleanupFailure({ leaveId: id, kind: 'oof', error: r.error })
+                        return
+                    }
+                    if (r.skipReason === 'no_credentials') return
+                    await admin
+                        .from('leave_requests')
+                        .update({ graph_oof_set: false } as never)
+                        .eq('id', id)
                 })
                 .catch((e) => logCompat.error('[cancelTeamLeave] OOF disable failed:', e))
         }
@@ -3002,6 +3028,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                 leaveType: row.leave_type,
                 note: decisionNote,
                 transactionId: `leave-${id}`,
+                halfDay: row.half_day ?? null,
             })
                 .then(async (r) => {
                     if (r.success && r.eventId) {
@@ -3944,6 +3971,7 @@ export async function retryLeaveGraphSync(
                 // nową transakcją, więc wpis, który powstał, ale którego id nie
                 // udało się zapisać, dorabiał w kalendarzu kolejną kopię urlopu.
                 transactionId: `leave-${id}`,
+                halfDay: row.half_day ?? null,
             })
             if (calRes.success) {
                 calOk = true

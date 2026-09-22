@@ -10,8 +10,9 @@ import {
     TASK_MILESTONES,
     TCM_DELIVERY_CHANNELS,
     addCalendarDays,
-    deliveryDedupeKey,
     latestReachedMilestone,
+    lowPulseDeliveryDedupeKey,
+    milestoneDeliveryDedupeKey,
     latestRecurrenceOnOrBefore,
     isLowPulseResponse,
     localBusinessTimeToUtc,
@@ -260,12 +261,15 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
             priority: notificationPriority(options.milestone),
             due_on: options.dueDate,
         }
-        const dedupeKey = deliveryDedupeKey([
-            options.kind,
-            options.entityId,
-            options.milestone,
-            options.dueDate,
-        ])
+        // INT-19: odbiorca w kluczu — zmiana ownera/assignee daje nową dostawę,
+        // zamiast kolizji z anulowaną dostawą do poprzedniej osoby.
+        const dedupeKey = milestoneDeliveryDedupeKey({
+            kind: options.kind,
+            entityId: options.entityId,
+            milestone: options.milestone,
+            dueDate: options.dueDate,
+            recipientId: recipient.id,
+        })
         for (const channel of TCM_DELIVERY_CHANNELS) {
             if (channel === 'email' && !recipient.email) {
                 stats.missingRecipientEmail += 1
@@ -546,7 +550,7 @@ export async function runConsultantSuccessPlanner(options: PlannerOptions): Prom
             stats.lowPulseResponses += 1
             const recipient = recipientFor(contractorMap.get(request.contractor_id)?.owner_tcm_id)
             if (!recipient) continue
-            const dedupeKey = `survey:${request.id}:low`
+            const dedupeKey = lowPulseDeliveryDedupeKey(request.id, recipient.id)
             const heading = title('low_pulse')
             const contractorName = contractorMap.get(request.contractor_id)?.full_name ?? 'Konsultant'
             const payload: SuccessDeliveryPayload = {

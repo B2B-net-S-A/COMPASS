@@ -106,7 +106,24 @@ async function writeSnapshot(admin: Admin, nexus: readonly NexusContractor[]): P
     return false
 }
 
-type WriteResult = { written: number; unchanged: number; failed: number; conflicts: number }
+type WriteResult = {
+    written: number
+    unchanged: number
+    failed: number
+    conflicts: number
+    /** UPDATE-y, które trafiły w zero wierszy, bo ktoś zmienił wiersz po odczycie (INT-17). */
+    skippedConcurrent: number
+}
+
+type Filterable = {
+    eq: (column: string, value: string | number) => unknown
+    is: (column: string, value: null) => unknown
+}
+
+/** `= wartość` albo `IS NULL` — PostgREST nie dopasuje NULL-a przez `eq`. */
+function matchOrNull<T extends Filterable>(query: T, column: string, value: string | number | null | undefined): T {
+    return (value == null ? query.is(column, null) : query.eq(column, value)) as T
+}
 
 /**
  * Zapis werdyktów. `written` liczy WYŁĄCZNIE skuteczne UPDATE-y — dawniej
@@ -120,6 +137,13 @@ type WriteResult = { written: number; unchanged: number; failed: number; conflic
  *   Świadomie NIE `upsert(..., { onConflict: 'id' })`: ścieżka INSERT
  *   waliduje payload wobec całej tabeli, a brak `full_name` (NOT NULL) by go
  *   wywracał.
+ *
+ * COMPARE-AND-SET (audyt 2026-09-22, INT-17): werdykt liczony jest z odczytu
+ * sprzed kilku sekund, a w tym czasie TCM mógł w kolejce kliknąć „nie ma
+ * w NEXUSIE" albo powiązać osobę ręcznie. Każdy UPDATE ma więc w WHERE stan,
+ * z którego werdykt policzono (status + obie kotwice). Gdy człowiek zdążył
+ * pierwszy, UPDATE trafia w zero wierszy — liczymy to jako `skipped_concurrent`
+ * (nie awaria: kolejny bieg oceni wiersz od nowa, a decyzja człowieka zostaje).
  */
 async function writeDecisions(
     admin: Admin,
@@ -127,10 +151,16 @@ async function writeDecisions(
     decisions: readonly MatchDecision[],
     now: string,
 ): Promise<WriteResult> {
-    const result: WriteResult = { written: 0, unchanged: 0, failed: 0, conflicts: 0 }
+    const result: WriteResult = { written: 0, unchanged: 0, failed: 0, conflicts: 0, skippedConcurrent: 0 }
     const currentById = new Map(compass.map((c) => [c.id, c]))
 
-    const groups = new Map<string, { status: string; reason: string | null; ids: string[] }>()
+    // Grupa = (werdykt, powód, status ODCZYTANY) — ten ostatni trafia do WHERE jako
+    // warunek compare-and-set, więc wiersze o różnym stanie wyjściowym nie mogą
+    // dzielić jednego UPDATE-u.
+    const groups = new Map<
+        string,
+        { status: string; reason: string | null; readStatus: string | null; ids: string[] }
+    >()
     const linked: MatchDecision[] = []
     for (const d of decisions) {
         if (d.status === 'dismissed') {
@@ -147,16 +177,19 @@ async function writeDecisions(
             else linked.push(d)
             continue
         }
-        const key = `${d.status}|${d.reason ?? ''}`
+        const readStatus = currentById.get(d.contractorId)?.nexus_match_status ?? null
+        const key = `${d.status}|${d.reason ?? ''}|${readStatus ?? ''}`
         const group = groups.get(key)
         if (group) group.ids.push(d.contractorId)
-        else groups.set(key, { status: d.status, reason: d.reason, ids: [d.contractorId] })
+        else groups.set(key, { status: d.status, reason: d.reason, readStatus, ids: [d.contractorId] })
     }
 
     // Najpierw grupy bez kontraktu (zwalniają ewentualne kotwice), potem linki.
     for (const group of Array.from(groups.values())) {
         for (const ids of chunk(group.ids, DEFAULT_IN_CHUNK_SIZE)) {
-            const { error } = await admin
+            // Werdykt bez kontraktu powstaje tylko dla wierszy BEZ kotwic i nie
+            // `dismissed` — dokładnie ten stan musi nadal obowiązywać w chwili zapisu.
+            const base = admin
                 .from('contractors')
                 .update({
                     nexus_contract_id: null,
@@ -166,18 +199,24 @@ async function writeDecisions(
                     nexus_synced_at: now,
                 })
                 .in('id', ids)
+                .is('nexus_candidate_id', null)
+                .is('nexus_contract_id', null)
+            const { data, error } = await matchOrNull(base, 'nexus_match_status', group.readStatus).select('id')
             if (error) {
                 if ((error as { code?: string }).code === UNIQUE_VIOLATION) result.conflicts += ids.length
                 result.failed += ids.length
                 reportWriteError(error, { status: group.status, rows: ids.length })
                 continue
             }
-            result.written += ids.length
+            const affected = Array.isArray(data) ? data.length : 0
+            result.written += affected
+            result.skippedConcurrent += ids.length - affected
         }
     }
 
     for (const d of linked) {
-        const { error } = await admin
+        const cur = currentById.get(d.contractorId)
+        let query = admin
             .from('contractors')
             .update({
                 nexus_contract_id: d.nexusContractId,
@@ -186,15 +225,57 @@ async function writeDecisions(
                 nexus_synced_at: now,
             })
             .eq('id', d.contractorId)
+        // Zapis tylko, gdy wiersz jest w stanie, z którego policzono werdykt:
+        // ręczne powiązanie z inną osobą, rozłączenie albo odrzucenie po odczycie
+        // zmienia któreś z tych pól i UPDATE trafia w zero wierszy.
+        query = matchOrNull(query, 'nexus_candidate_id', cur?.nexus_candidate_id)
+        query = matchOrNull(query, 'nexus_contract_id', cur?.nexus_contract_id)
+        query = matchOrNull(query, 'nexus_match_status', cur?.nexus_match_status)
+        const { data, error } = await query.select('id')
         if (error) {
             if ((error as { code?: string }).code === UNIQUE_VIOLATION) result.conflicts += 1
             result.failed += 1
             reportWriteError(error, { contractor_id: d.contractorId, status: 'linked' })
             continue
         }
-        result.written += 1
+        if (Array.isArray(data) && data.length > 0) result.written += 1
+        else result.skippedConcurrent += 1
     }
     return result
+}
+
+/**
+ * Walidacja strony eksportu w runtime (audyt 2026-09-22, INT-18). Samo rzutowanie
+ * TS niczego nie sprawdza: strona z `items`, ale BEZ `has_more`, kończyła pobieranie
+ * (`!undefined`), a migawka usuwała wszystko, czego nie było na pierwszej stronie.
+ * Każde odstępstwo od kontraktu rzuca — przebieg kończy się na etapie `fetch`,
+ * zanim cokolwiek zostanie zapisane albo usunięte.
+ */
+function parseExportPage(raw: unknown, page: number): ExportPage {
+    if (!raw || typeof raw !== 'object') {
+        throw new Error(`NEXUS: strona ${page} nie jest obiektem JSON`)
+    }
+    const body = raw as { items?: unknown; has_more?: unknown }
+    if (!Array.isArray(body.items)) {
+        throw new Error(`NEXUS: strona ${page} bez tablicy items`)
+    }
+    if (typeof body.has_more !== 'boolean') {
+        throw new Error(
+            `NEXUS: strona ${page} bez logicznego has_more — nie wiadomo, czy eksport jest kompletny`,
+        )
+    }
+    body.items.forEach((item: unknown, i: number) => {
+        const row = item as { nexus_contract_id?: unknown; candidate?: { id?: unknown } | null } | null
+        if (
+            !row ||
+            typeof row.nexus_contract_id !== 'number' ||
+            !row.candidate ||
+            typeof row.candidate.id !== 'number'
+        ) {
+            throw new Error(`NEXUS: strona ${page}, pozycja ${i} bez nexus_contract_id/candidate.id`)
+        }
+    })
+    return { items: body.items as NexusContractor[], has_more: body.has_more }
 }
 
 async function fetchAllContractors(
@@ -222,8 +303,8 @@ async function fetchAllContractors(
                 `NEXUS zwrócił ${response.status} dla strony ${page}`,
             )
         }
-        const body = (await response.json()) as ExportPage
-        out.push(...(body.items ?? []))
+        const body = parseExportPage(await response.json(), page)
+        out.push(...body.items)
         if (!body.has_more) return out
     }
     throw new Error(`Przekroczono limit ${MAX_PAGES} stron eksportu`)
@@ -300,6 +381,7 @@ export const GET = withCronAuth(
             unchanged: result.unchanged,
             failed: result.failed,
             conflicts: result.conflicts,
+            skipped_concurrent: result.skippedConcurrent,
             snapshot_failed: snapshotFailed,
             // Osoba NEXUSA trzymana przez kilku kontraktorów — do rozstrzygnięcia w kolejce.
             linked_twice: decisions.filter((d) => d.reason === 'nexus_person_linked_twice').length,

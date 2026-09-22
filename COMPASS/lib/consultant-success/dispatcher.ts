@@ -16,6 +16,8 @@ interface DispatcherOptions {
     limit?: number
     leaseSeconds?: number
     concurrency?: number
+    /** Zegar do kontroli lease przed wysyłką — wstrzykiwany w testach. */
+    clock?: () => number
 }
 
 function baseStats(): DispatcherStats {
@@ -28,6 +30,7 @@ function baseStats(): DispatcherStats {
         cancelled: 0,
         deferredQuietHours: 0,
         errors: 0,
+        lostLease: 0,
         durationMs: 0,
     }
 }
@@ -37,12 +40,24 @@ function safeError(error: unknown): string {
     return message.replace(/[\u0000-\u001F\u007F]/g, ' ').slice(0, 1_000)
 }
 
+/**
+ * ACK dostawy z fencingiem po `claimed_by` (audyt 2026-09-22, INT-20).
+ *
+ * Lease trwa `leaseSeconds`, a batch jest przetwarzany po kilka sztuk — przy
+ * throttlingu dostawcy stary worker potrafi skończyć PO wygaśnięciu lease, gdy
+ * inny worker już przejął wiersz (claim nadpisuje `claimed_by`). Bez warunku
+ * na `claimed_by` jego ACK nadpisywał stan aktywnej próby nowego workera.
+ *
+ * Zwraca `false`, gdy wiersz nie należy już do tego workera (0 wierszy) —
+ * wołający NIE liczy tego jako sukcesu ani błędu, tylko jako utracony lease.
+ */
 async function updateDelivery(
     admin: SuccessAdminClient,
     deliveryId: string,
+    workerId: string,
     values: Record<string, unknown>,
-): Promise<void> {
-    const { error } = await admin
+): Promise<boolean> {
+    const { data, error } = await admin
         .from('contractor_success_deliveries')
         .update({
             ...values,
@@ -51,7 +66,26 @@ async function updateDelivery(
         })
         .eq('id', deliveryId)
         .eq('status', 'processing')
+        .eq('claimed_by', workerId)
+        .select('id')
     if (error) throw new Error(`delivery_ack_failed:${error.message}`)
+    if (!Array.isArray(data) || data.length === 0) {
+        logger.warn({
+            event: 'consultant_success.delivery.lease_lost',
+            deliveryId,
+            workerId,
+            status: values.status,
+        })
+        return false
+    }
+    return true
+}
+
+/** Lease wygasł (albo nie ma go wcale) — inny worker mógł już przejąć wiersz. */
+function leaseExpired(delivery: SuccessDeliveryRow, nowMs: number): boolean {
+    if (!delivery.lease_expires_at) return true
+    const expiresAt = Date.parse(delivery.lease_expires_at)
+    return Number.isNaN(expiresAt) || expiresAt <= nowMs
 }
 
 async function mapWithConcurrency<T>(
@@ -88,10 +122,20 @@ export async function runConsultantSuccessDispatcher(
     const deliveries = (data ?? []) as SuccessDeliveryRow[]
     stats.claimed = deliveries.length
 
+    const clock = options.clock ?? Date.now
+
     const processOne = async (delivery: SuccessDeliveryRow): Promise<void> => {
+        // Każdy ACK idzie przez fencing; utracony lease to osobny licznik,
+        // nie sukces i nie błąd — wiersz należy już do innego workera.
+        const ack = async (values: Record<string, unknown>): Promise<boolean> => {
+            const owned = await updateDelivery(options.admin, delivery.id, options.workerId, values)
+            if (!owned) stats.lostLease += 1
+            return owned
+        }
+
         try {
             if (isQuietHours(now)) {
-                await updateDelivery(options.admin, delivery.id, {
+                const owned = await ack({
                     status: 'retry',
                     available_at: deferPastQuietHours(now).toISOString(),
                     // Claim increments attempts. Quiet-hour deferral is not a
@@ -99,7 +143,20 @@ export async function runConsultantSuccessDispatcher(
                     attempt_count: Math.max(0, delivery.attempt_count - 1),
                     last_error: null,
                 })
-                stats.deferredQuietHours += 1
+                if (owned) stats.deferredQuietHours += 1
+                return
+            }
+
+            // Kontrola lease PRZED efektem zewnętrznym: gdy lease wygasł, inny
+            // worker mógł już przejąć wiersz i wysłać — druga wysyłka to duplikat.
+            // Nie ACK-ujemy: wiersz wróci do puli przez claim.
+            if (leaseExpired(delivery, clock())) {
+                stats.lostLease += 1
+                logger.warn({
+                    event: 'consultant_success.delivery.lease_expired_before_send',
+                    deliveryId: delivery.id,
+                    workerId: options.workerId,
+                })
                 return
             }
 
@@ -111,37 +168,38 @@ export async function runConsultantSuccessDispatcher(
             }
 
             if (result.disposition === 'sent') {
-                await updateDelivery(options.admin, delivery.id, {
+                const owned = await ack({
                     status: 'sent',
                     sent_at: now.toISOString(),
                     last_error: null,
                 })
-                stats.sent += 1
+                if (owned) stats.sent += 1
                 return
             }
             if (result.disposition === 'skipped_no_subscription') {
-                await updateDelivery(options.admin, delivery.id, {
+                const owned = await ack({
                     status: 'skipped_no_subscription',
                     last_error: null,
                 })
-                stats.skippedNoSubscription += 1
+                if (owned) stats.skippedNoSubscription += 1
                 return
             }
             if (result.disposition === 'cancelled') {
-                await updateDelivery(options.admin, delivery.id, {
+                const owned = await ack({
                     status: 'cancelled',
                     last_error: result.reason,
                 })
-                stats.cancelled += 1
+                if (owned) stats.cancelled += 1
                 return
             }
 
             const decision = retryDecision(delivery.attempt_count, now, delivery.max_attempts)
-            await updateDelivery(options.admin, delivery.id, {
+            const owned = await ack({
                 status: decision.status,
                 available_at: decision.availableAt ?? delivery.available_at,
                 last_error: safeError(result.error),
             })
+            if (!owned) return
             if (decision.status === 'dead') {
                 stats.dead += 1
                 logger.error({

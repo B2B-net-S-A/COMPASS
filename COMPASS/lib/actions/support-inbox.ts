@@ -1,6 +1,7 @@
 'use server'
 
-import { logCompat } from '@/lib/logger'
+import * as Sentry from '@sentry/nextjs'
+import { logCompat, logger } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -27,6 +28,80 @@ interface ProfileLite {
     id: string
     full_name: string | null
     email: string
+}
+
+/**
+ * Powiadomienie adresata sprawy (audyt 2026-09-22, INT-22).
+ *
+ * Polityka INSERT na `notifications` przepuszcza wyłącznie `auth.uid() = user_id`
+ * albo admina, więc sesyjny insert TCM-a dla INNEJ osoby był odrzucany — a że
+ * supabase-js zwraca `{ error }` zamiast rzucać, `try/catch` niczego nie widział
+ * i adresat po prostu nie dostawał powiadomienia. Service-rola jest tu bezpieczna,
+ * bo wołający przeszedł już guard handlera, a adresat i treść pochodzą z operacji
+ * biznesowej (przypisanie sprawy), nie z dowolnego wejścia.
+ *
+ * Nie rzuca: powiadomienie nie może wywrócić utworzonej/przypisanej sprawy.
+ * Funkcja NIE jest eksportowana — w pliku 'use server' eksport byłby publicznym
+ * endpointem pozwalającym pisać powiadomienia komukolwiek.
+ */
+async function notifyInboxAssignee(args: {
+    source: 'createInboxTicket' | 'assignInboxTicket'
+    recipientId: string
+    title_pl: string
+    title_en: string
+    body: string
+}): Promise<void> {
+    try {
+        const { error } = await createServiceClient().from('notifications').insert({
+            user_id: args.recipientId,
+            type: 'inbox_ticket_assigned',
+            title_pl: args.title_pl,
+            title_en: args.title_en,
+            body_pl: args.body,
+            body_en: args.body,
+            priority: 'normal',
+        })
+        if (error) {
+            logger.warn({
+                event: 'inbox.notification.insert_failed',
+                source: args.source,
+                recipientId: args.recipientId,
+                error: error.message,
+            })
+        }
+    } catch (e) {
+        logger.warn({
+            event: 'inbox.notification.insert_failed',
+            source: args.source,
+            recipientId: args.recipientId,
+            error: e instanceof Error ? e.message : String(e),
+        })
+    }
+}
+
+/**
+ * Kompensacja nieudanego drugiego kroku createInboxTicket (audyt 2026-09-22, INT-23).
+ * DELETE na support_tickets jest w RLS tylko dla admina, więc sesyjny delete TCM-a
+ * po cichu nic nie usuwał — zostawał ticket bez metadanych, niewidoczny na Kanbanie.
+ * Akcja przeszła guard handlera i sama ten wiersz przed chwilą utworzyła, więc
+ * usunięcie go service-rolą jest jej własną kompensacją. Porażka → log + Sentry.
+ */
+async function compensateTicketInsert(ticketId: string): Promise<void> {
+    let failure: string | null = null
+    try {
+        const { error } = await createServiceClient().from('support_tickets').delete().eq('id', ticketId)
+        if (error) failure = error.message
+    } catch (e) {
+        failure = e instanceof Error ? e.message : String(e)
+    }
+    if (failure) {
+        logger.error({ event: 'inbox.create.compensation_failed', ticketId, error: failure })
+        Sentry.captureMessage('inbox_create_compensation_failed', {
+            level: 'error',
+            tags: { kind: 'inbox_create' },
+            extra: { ticketId, error: failure },
+        })
+    }
 }
 
 /**
@@ -435,7 +510,12 @@ export async function createInboxTicket(
             email_received_at: input.email_received_at ?? null,
         })
         if (metaErr) {
-            await supabase.from('support_tickets').delete().eq('id', ticket.id)
+            // Audyt 2026-09-22, INT-23: kompensacja service-rolą. DELETE na
+            // support_tickets jest w RLS tylko dla admina, więc sesyjny delete TCM-a
+            // po cichu nic nie robił — zostawał ticket bez metadanych, niewidoczny
+            // na Kanbanie. Akcja przeszła już guard handlera i sama ten wiersz
+            // przed chwilą utworzyła, więc usunięcie go jest jej własną kompensacją.
+            await compensateTicketInsert(ticket.id)
             return { success: false, error: metaErr.message }
         }
 
@@ -464,19 +544,13 @@ export async function createInboxTicket(
 
         // Step 3: notify assignee if different from creator
         if (input.assignee_id && input.assignee_id !== user.id) {
-            try {
-                await supabase.from('notifications').insert({
-                    user_id: input.assignee_id,
-                    type: 'inbox_ticket_assigned',
-                    title_pl: 'Nowe zgłoszenie inbox',
-                    title_en: 'New inbox ticket',
-                    body_pl: input.subject.trim(),
-                    body_en: input.subject.trim(),
-                    priority: 'normal',
-                })
-            } catch (e) {
-                logCompat.warn('[createInboxTicket] notification insert failed:', e)
-            }
+            await notifyInboxAssignee({
+                source: 'createInboxTicket',
+                recipientId: input.assignee_id,
+                title_pl: 'Nowe zgłoszenie inbox',
+                title_en: 'New inbox ticket',
+                body: input.subject.trim(),
+            })
         }
 
         revalidatePath('/internal/people')
@@ -714,19 +788,13 @@ export async function assignInboxTicket(
                 .select('subject')
                 .eq('id', ticketId)
                 .single()
-            try {
-                await supabase.from('notifications').insert({
-                    user_id: handlerId,
-                    type: 'inbox_ticket_assigned',
-                    title_pl: 'Przypisano Cię do zgłoszenia inbox',
-                    title_en: 'Assigned to inbox ticket',
-                    body_pl: ticket?.subject ?? '',
-                    body_en: ticket?.subject ?? '',
-                    priority: 'normal',
-                })
-            } catch (e) {
-                logCompat.warn('[assignInboxTicket] notification insert failed:', e)
-            }
+            await notifyInboxAssignee({
+                source: 'assignInboxTicket',
+                recipientId: handlerId,
+                title_pl: 'Przypisano Cię do zgłoszenia inbox',
+                title_en: 'Assigned to inbox ticket',
+                body: ticket?.subject ?? '',
+            })
         }
 
         revalidatePath('/internal/people')

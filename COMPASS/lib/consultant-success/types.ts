@@ -86,6 +86,8 @@ export interface DispatcherStats {
     cancelled: number
     deferredQuietHours: number
     errors: number
+    /** Dostawy, których lease wygasł albo przejął inny worker (INT-20) — bez wysyłki/ACK. */
+    lostLease: number
     durationMs: number
 }
 
