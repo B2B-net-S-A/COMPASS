@@ -2,8 +2,18 @@ import { test, expect } from '@playwright/test'
 
 /**
  * Testy RLS policies — weryfikacja bezpośrednio na Supabase API.
- * Sprawdzają, czy polityki bezpieczeństwa na tabelach bazy danych
- * są poprawnie skonfigurowane po każdym deploymencie.
+ *
+ * Audyt 2026-09-22 (O05): poprzednia wersja potrafiła zaliczyć wyciek danych —
+ * „własny profil" nie filtrował po własnym id, test anonimowy przechodził przy
+ * odpowiedzi 200 z id/email, RPC akceptowało każdy status poza 404, a „rate limit"
+ * był pojedynczym signupem. Testowała też tabele komunikatora (conversations,
+ * messages), które usunięto w audycie C4.
+ *
+ * Każda asercja poniżej oczekuje KONKRETNEGO wyniku. PostgREST mapuje brak
+ * uprawnień (42501) na 401 dla roli `anon` i 403 dla `authenticated` — dlatego
+ * testy negatywne rozróżniają te dwa kody zamiast „cokolwiek poza 500".
+ *
+ * Wszystkie testy są TYLKO do odczytu albo oczekują odmowy; żaden nie zapisuje.
  */
 
 function requireEnv(...names: string[]): string {
@@ -17,7 +27,14 @@ function requireEnv(...names: string[]): string {
 const SUPABASE_URL: string = requireEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL')
 const ANON_KEY: string = requireEnv('SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY')
 
-async function getAuthToken(): Promise<string> {
+const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+
+interface Session {
+    token: string
+    userId: string
+}
+
+async function signIn(): Promise<Session> {
     const email = process.env.TEST_USER_EMAIL
     const password = process.env.TEST_USER_PASSWORD
     if (!email || !password) {
@@ -26,158 +43,99 @@ async function getAuthToken(): Promise<string> {
 
     const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: 'POST',
-        headers: { 'apikey': ANON_KEY, 'Content-Type': 'application/json' },
+        headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
     })
 
     if (!response.ok) throw new Error(`Auth failed: ${response.status}`)
     const data = await response.json()
-    return data.access_token
+    const userId: unknown = data?.user?.id
+    if (typeof data?.access_token !== 'string' || typeof userId !== 'string') {
+        throw new Error('Auth response missing access_token or user.id')
+    }
+    return { token: data.access_token, userId }
 }
 
-async function supabaseQuery(token: string, table: string, method: string = 'GET', body?: object, extra?: string) {
-    const url = `${SUPABASE_URL}/rest/v1/${table}${extra || ''}`
+function authHeaders(token?: string): Record<string, string> {
     const headers: Record<string, string> = {
-        'apikey': ANON_KEY,
-        'Authorization': `Bearer ${token}`,
+        apikey: ANON_KEY,
         'Content-Type': 'application/json',
-        'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
     }
+    if (token) headers.Authorization = `Bearer ${token}`
+    return headers
+}
 
-    const response = await fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
+async function rpc(name: string, body: object, token?: string): Promise<number> {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify(body),
     })
-
-    return {
-        status: response.status,
-        data: response.status !== 204 ? await response.json().catch(() => null) : null,
-        ok: response.ok,
-    }
+    return response.status
 }
 
 test.describe('RLS Policy Verification', () => {
-    let token: string
+    let session: Session
 
     test.beforeAll(async () => {
-        token = await getAuthToken()
+        session = await signIn()
     })
 
     // ─── PROFILES ────────────────────────────────────────────
-    test('profiles: authenticated user can SELECT own profile', async () => {
-        const result = await supabaseQuery(token, 'profiles', 'GET', undefined, '?select=id,email,role&limit=1')
-        expect(result.ok).toBe(true)
-        expect(result.data).toBeTruthy()
-        expect(Array.isArray(result.data)).toBe(true)
-        expect(result.data.length).toBeGreaterThan(0)
-    })
-
-    // ─── CONVERSATIONS ──────────────────────────────────────
-    test('conversations: authenticated user can SELECT conversations', async () => {
-        const result = await supabaseQuery(token, 'conversations', 'GET', undefined, '?select=id,type&limit=5')
-        expect(result.ok).toBe(true)
-        expect(Array.isArray(result.data)).toBe(true)
-    })
-
-    test('conversations: authenticated user can INSERT (create conversation)', async () => {
-        const result = await supabaseQuery(token, 'conversations', 'POST', {
-            type: 'direct',
-        })
-        // Should succeed (201) or conflict — NOT 403/RLS error
-        expect([201, 409]).toContain(result.status)
-
-        // Cleanup: delete the test conversation if created
-        if (result.status === 201 && result.data?.[0]?.id) {
-            // Note: DELETE may require admin or special policy
-            await supabaseQuery(token, 'conversations', 'DELETE', undefined, `?id=eq.${result.data[0].id}`)
-        }
-    })
-
-    // ─── CONVERSATION PARTICIPANTS ──────────────────────────
-    test('conversation_participants: authenticated user can SELECT own participations', async () => {
-        const result = await supabaseQuery(token, 'conversation_participants', 'GET', undefined, '?select=conversation_id,user_id,role&limit=5')
-        expect(result.ok).toBe(true)
-        expect(Array.isArray(result.data)).toBe(true)
-    })
-
-    // ─── MESSAGES ───────────────────────────────────────────
-    test('messages: authenticated user can SELECT messages from own conversations', async () => {
-        const result = await supabaseQuery(token, 'messages', 'GET', undefined, '?select=id,content,conversation_id&limit=5')
-        expect(result.ok).toBe(true)
-        expect(Array.isArray(result.data)).toBe(true)
-    })
-
-    // ─── RPC FUNCTIONS ──────────────────────────────────────
-    test('RPC: create_direct_conversation function is callable', async () => {
-        // Próba wywołania RPC z dummy userId — powinno zwrócić błąd, ale NIE 404
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/create_direct_conversation`, {
-            method: 'POST',
-            headers: {
-                'apikey': ANON_KEY,
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                p_user_id: '00000000-0000-0000-0000-000000000000',
-                p_target_user_id: '00000000-0000-0000-0000-000000000001',
-            }),
-        })
-
-        // Powinno być 200 lub błąd FK constraint — NIE 404 (function not found)
-        expect(response.status).not.toBe(404)
+    test('profiles: authenticated user can SELECT own profile (filtered by own id)', async () => {
+        const response = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?select=id,email,role&id=eq.${session.userId}`,
+            { headers: authHeaders(session.token) },
+        )
+        expect(response.status).toBe(200)
+        const data = await response.json()
+        expect(Array.isArray(data)).toBe(true)
+        expect(data).toHaveLength(1)
+        expect(data[0].id).toBe(session.userId)
     })
 
     // ─── ANON ACCESS (negative tests) ───────────────────────
-    test('anon: unauthenticated user has LIMITED access to profiles', async () => {
+    test('anon: unauthenticated user CANNOT read profiles', async () => {
+        // Migracja A1 (20260825140000) odbiera anon SELECT na profiles. Dopuszczalne
+        // są dokładnie dwa wyniki: 401 (brak grantu) albo 200 z PUSTĄ listą
+        // (RLS odfiltrował wszystko). Jakikolwiek wiersz = wyciek kartoteki.
         const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,email&limit=1`, {
-            headers: { 'apikey': ANON_KEY },
+            headers: authHeaders(),
         })
-        // Profiles mogą być publicznie dostępne (user discovery w komunikatorze)
-        // Ważne: response nie powinien być 500 (serwer nie crashuje)
-        expect(response.status).not.toBe(500)
-
-        if (response.ok) {
+        expect([200, 401]).toContain(response.status)
+        if (response.status === 200) {
             const data = await response.json()
-            expect(Array.isArray(data)).toBe(true)
-            // Jeśli profiles są publiczne, to OK — ale sprawdzamy,
-            // że nie wyciekają wrażliwe pola (password_hash, tokens)
-            if (data.length > 0) {
-                const profile = data[0]
-                expect(profile).not.toHaveProperty('password')
-                expect(profile).not.toHaveProperty('password_hash')
-                expect(profile).not.toHaveProperty('refresh_token')
-            }
+            expect(data).toEqual([])
         }
     })
 
-    test('anon: unauthenticated user CANNOT insert conversations', async () => {
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/conversations`, {
+    test('anon: unauthenticated user CANNOT insert audit_logs', async () => {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/audit_logs`, {
             method: 'POST',
-            headers: {
-                'apikey': ANON_KEY,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=minimal',
-            },
-            body: JSON.stringify({ type: 'direct' }),
+            headers: { ...authHeaders(), Prefer: 'return=minimal' },
+            body: JSON.stringify({ user_id: null, action: 'E2E_RLS_PROBE' }),
         })
-        // Should be 401 or RLS violation (403)
-        expect([401, 403]).toContain(response.status)
+        expect(response.status).toBe(401)
     })
 
-    // ─── RATE LIMIT CHECK ───────────────────────────────────
-    test('auth: signup rate limit returns proper error (not generic 500)', async () => {
-        // Test that Supabase returns a proper error code for rate limits
-        const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
-            method: 'POST',
-            headers: { 'apikey': ANON_KEY, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: `ratelimit-test-${Date.now()}@b2bnetwork.pl`,
-                password: 'TestPassword123!',
-            }),
-        })
+    // ─── RPC FUNCTIONS (SECURITY DEFINER bez kontroli wywołującego) ─────
+    test('RPC: authenticated user CANNOT execute sync_user_role', async () => {
+        // Migracja A2 (20260825140100) odbiera EXECUTE roli authenticated.
+        // Nil-UUID + nieistniejący adres: nawet przy regresji grantu wywołanie
+        // nie dotknie żadnego istniejącego profilu.
+        const status = await rpc(
+            'sync_user_role',
+            { p_user_id: NIL_UUID, p_email: 'rls-probe@invalid.example', p_is_super_admin: false },
+            session.token,
+        )
+        expect(status).toBe(403)
+    })
 
-        // 200 (success) or 429 (rate limited) or 422 (validation) — NOT 500
-        expect(response.status).not.toBe(500)
+    test('RPC: authenticated user CANNOT execute nexus_roster_export', async () => {
+        expect(await rpc('nexus_roster_export', {}, session.token)).toBe(403)
+    })
+
+    test('RPC: anon CANNOT execute nexus_roster_export', async () => {
+        expect(await rpc('nexus_roster_export', {})).toBe(401)
     })
 })

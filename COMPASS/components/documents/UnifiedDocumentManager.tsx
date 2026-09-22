@@ -46,6 +46,7 @@ import {
     archiveDocument,
     deleteDocument,
     uploadNewVersion,
+    getDocumentDownloadUrl,
     type DocumentCategory
 } from '@/lib/actions/documents'
 import { format } from 'date-fns'
@@ -75,6 +76,7 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
     const [changeSummary, setChangeSummary] = useState('')
     const [submitting, setSubmitting] = useState(false)
     const [confirm, ConfirmUI] = useConfirm()
+    const [downloadingVersionId, setDownloadingVersionId] = useState<string | null>(null)
 
     // Memoize category dependency to avoid infinite loops if array literal passed
     const categoriesDep = allowedCategories ? allowedCategories.join(',') : ''
@@ -101,6 +103,29 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
     useEffect(() => {
         loadDocuments()
     }, [loadDocuments])
+
+    // Audyt 2026-09-22 (O07): bucket `documents` jest prywatny — link do pliku
+    // to podpisany URL z serwera (5 min), nie `/object/public/...`. Nawigacja
+    // w tej samej karcie zamiast window.open: URL niesie Content-Disposition
+    // attachment (strona zostaje), a otwarcie okna po `await` blokują
+    // przeglądarki jako popup.
+    const handleDownload = async (versionId: string | undefined) => {
+        if (!versionId) return
+        setDownloadingVersionId(versionId)
+        try {
+            const result = await getDocumentDownloadUrl(versionId)
+            if (!result?.success) {
+                alert(result?.error ?? 'Nie udało się pobrać dokumentu.')
+                return
+            }
+            window.location.assign(result.data.url)
+        } catch (err) {
+            logCompat.error('Document download failed:', err)
+            alert('Nie udało się pobrać dokumentu. Odśwież stronę i spróbuj ponownie.')
+        } finally {
+            setDownloadingVersionId(null)
+        }
+    }
 
     const handleUpload = async () => {
         if (!file || !title) return
@@ -415,11 +440,12 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                                                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                                                 aria-label="Pobierz tę wersję dokumentu"
                                                                 title="Pobierz tę wersję"
-                                                                asChild
+                                                                disabled={downloadingVersionId === ver.id}
+                                                                onClick={() => handleDownload(ver.id)}
                                                             >
-                                                                <a href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${ver.file_url}`} target="_blank" rel="noopener noreferrer">
-                                                                    <Download className="w-4 h-4" />
-                                                                </a>
+                                                                {downloadingVersionId === ver.id
+                                                                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                                    : <Download className="w-4 h-4" />}
                                                             </Button>
                                                         </div>
                                                     ))}
@@ -449,12 +475,13 @@ export function UnifiedDocumentManager({ ownerId, isAdminView = false, allowedCa
                                         <Button
                                             size="sm"
                                             className="bg-muted hover:bg-muted/80 text-foreground border border-border"
-                                            asChild
+                                            disabled={!doc.latest_version?.id || downloadingVersionId === doc.latest_version?.id}
+                                            onClick={() => handleDownload(doc.latest_version?.id)}
                                         >
-                                            <a href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documents/${doc.latest_version?.file_url}`} target="_blank" rel="noopener noreferrer">
-                                                <Download className="w-4 h-4 mr-2" />
-                                                Pobierz
-                                            </a>
+                                            {downloadingVersionId === doc.latest_version?.id
+                                                ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                : <Download className="w-4 h-4 mr-2" />}
+                                            Pobierz
                                         </Button>
 
                                         {!doc.is_archived && (

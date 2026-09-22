@@ -28,6 +28,21 @@ name: Deploy
 # compare API) — wcześniej wyprzedzony deploy czerwieniał mimo udanego
 # wdrożenia. Do wprowadzania wielu PR-ów naraz: scripts/merge-train.sh.
 #
+# 2026-09-22 (audyt O01): deploy NIE startuje już na `push`. Wcześniej ruszał
+# równolegle z „Build check", więc produkcja potrafiła się zrestartować na
+# commicie, którego CI jeszcze nie skończyło (albo skończyło na czerwono) —
+# a `next.config.mjs` wyłącza typecheck/lint w buildzie, więc Coolify niczego
+# za CI nie łapie. Teraz trigger to `workflow_run` workflowu „Build check"
+# (nazwa MUSI zgadzać się z `name:` w build-check.yml — zmiana nazwy tam po
+# cichu wyłącza deploy). Job rusza tylko, gdy ten przebieg był z `push` na main
+# i skończył się `success`. Wdrażany/porównywany SHA to
+# `workflow_run.head_sha` (commit, który CI faktycznie sprawdziło), a nie
+# `github.sha` — w kontekście workflow_run to bieżący HEAD maina, który mógł
+# już pójść do przodu. `workflow_dispatch` zostaje jako ścieżka świadomego
+# redeployu, ale też sprawdza, że HEAD maina ma zielony Build check.
+# Uwaga: workflow_run zawsze wykonuje wersję TEGO pliku z maina.
+# Ochrona gałęzi (ruleset) jest ustawiana osobno — ten plik jej nie zastępuje.
+#
 # Required GH secrets:
 #   COOLIFY_URL       e.g. https://coolify-compass.dynaminds.pl
 #   COOLIFY_TOKEN     Bearer token (Sanctum personal_access_tokens)
@@ -37,12 +52,17 @@ name: Deploy
 #   APP_URL           Production URL for smoke test (e.g. https://compass.dynaminds.pl)
 
 on:
-  push:
+  workflow_run:
+    # Musi być identyczne z `name:` w .github/workflows/build-check.yml.
+    workflows: ['Build check']
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  # Odczyt przebiegów „Build check" przy ręcznym dispatchu (bramka CI).
+  actions: read
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -57,17 +77,51 @@ env:
   # Release prerequisite: install the host controller and seed its signatures
   # before merging this Academy release. Keep deployment policy in reviewed code.
   ACADEMY_CLAMAV_COLOCATED: "true"
+  # Commit, który przeszedł „Build check" (workflow_run) albo HEAD maina przy
+  # ręcznym dispatchu. Jedyne źródło SHA w tym pliku — nie używaj `github.sha`
+  # bezpośrednio: w kontekście workflow_run to HEAD maina z chwili odpalenia,
+  # nie commit sprawdzony przez CI.
+  TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   deploy:
     name: Trigger Coolify deploy
-    if: github.repository == 'B2B-net-S-A/COMPASS' && github.ref == 'refs/heads/main'
+    # Bramka O01: tylko zielony „Build check" z pusha na main albo ręczny dispatch.
+    # `event == 'push'` odcina przebiegi CI z pull_request (filtr `branches`
+    # workflow_run patrzy na head_branch, a PR z gałęzi o nazwie main też go ma).
+    if: >-
+      github.repository == 'B2B-net-S-A/COMPASS' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Require green Build check for dispatched SHA
+        # workflow_run sam niesie konkluzję CI; ręczny dispatch nie — tu
+        # sprawdzamy jawnie, że HEAD maina ma zakończony sukcesem „Build check"
+        # z pusha. Czerwone/niedokończone CI = brak deployu (napraw albo
+        # `gh run rerun --failed`, potem dispatch ponownie).
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(curl -fsSL \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "${{ github.api_url }}/repos/${{ github.repository }}/actions/workflows/build-check.yml/runs?head_sha=${TARGET_SHA}&event=push&per_page=1" \
+                | jq -r '.workflow_runs[0].conclusion // "none"')
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::Build check dla ${TARGET_SHA} ma konkluzję '$conclusion' — deploy wstrzymany (audyt O01)."
+            exit 1
+          fi
+          echo "✅ Build check dla ${TARGET_SHA}: success"
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         if: env.ACADEMY_CLAMAV_COLOCATED == 'true'
         with:
+          ref: ${{ env.TARGET_SHA }}
           persist-credentials: false
           sparse-checkout: ops/academy/clamav
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -100,21 +154,21 @@ jobs:
             echo "No usable live version — deploying normally"
             exit 0
           fi
-          if [ "$version" = "${{ github.sha }}" ]; then
+          if [ "$version" = "${TARGET_SHA}" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "✅ Produkcja już serwuje ${{ github.sha }} — pomijam redundantny rebuild."
+            echo "✅ Produkcja już serwuje ${TARGET_SHA} — pomijam redundantny rebuild."
             exit 0
           fi
           rel=$(curl -fsSL \
                 -H "Authorization: Bearer ${{ github.token }}" \
                 -H "Accept: application/vnd.github+json" \
-                "${{ github.api_url }}/repos/${{ github.repository }}/compare/${{ github.sha }}...${version}" \
+                "${{ github.api_url }}/repos/${{ github.repository }}/compare/${TARGET_SHA}...${version}" \
                 2>/dev/null | jq -r '.status // "unknown"' || echo unknown)
           if [ "$rel" = "ahead" ] || [ "$rel" = "identical" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "✅ Produkcja serwuje $version (pokrewieństwo=$rel wobec targetu) — nasz kod już wdrożony, pomijam rebuild."
           else
-            echo "Live=$version, target=${{ github.sha }}, pokrewieństwo=$rel — deploying normally"
+            echo "Live=$version, target=${TARGET_SHA}, pokrewieństwo=$rel — deploying normally"
           fi
 
       - name: Update build metadata in Coolify env vault
@@ -124,7 +178,7 @@ jobs:
         # returns the real version + deploy timestamp instead of "unknown".
         # Patch is idempotent — Coolify upserts envs by key.
         run: |
-          GIT_SHA="${{ github.sha }}"
+          GIT_SHA="${TARGET_SHA}"
           BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           for entry in \
             "GIT_SHA=$GIT_SHA" \
@@ -333,7 +387,7 @@ jobs:
             echo "::error::vars.APP_URL not set in repo settings"
             exit 1
           fi
-          EXPECTED_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          EXPECTED_SHA=$(echo "${TARGET_SHA}" | cut -c1-7)
           # The deploy job already confirmed the deployment FINISHED server-side,
           # so this only needs to absorb the container swap + app boot —
           # 20 × 15s = 5 min is plenty (was: sleep 60 + 28×15s ≈ 8 min).
@@ -362,7 +416,7 @@ jobs:
                   rel=$(curl -fsSL \
                         -H "Authorization: Bearer ${{ github.token }}" \
                         -H "Accept: application/vnd.github+json" \
-                        "${{ github.api_url }}/repos/${{ github.repository }}/compare/${{ github.sha }}...${version}" \
+                        "${{ github.api_url }}/repos/${{ github.repository }}/compare/${TARGET_SHA}...${version}" \
                         2>/dev/null | jq -r '.status // "unknown"' || echo unknown)
                   if [ "$rel" = "ahead" ]; then
                     echo "✅ Pass: na produkcji $version_short — potomek $EXPECTED_SHA (deploy wyprzedzony przez nowszy merge)."
