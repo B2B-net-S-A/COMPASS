@@ -269,8 +269,16 @@ Pierwszy dzień miesiąca licz przez `monthStart(year, month)`, nie własnym sza
   - **A3 musi iść PO A2.** Dopóki `sync_user_role` jest osiągalna kluczem użytkownika,
     `auth.uid()` w jej wnętrzu jest niepuste, więc trigger cofnąłby jej legalny UPDATE
     i synchronizacja ról przestałaby działać **bez żadnego błędu**.
-  - Stan na 2026-08-25: pliki `20260825140*` i `20260825150000`/`160*` **nie są zaaplikowane**
-    na produkcji (sprawdź `supabase_migrations.schema_migrations`).
+  - Stan na 2026-09-22 (zrzut katalogu z audytu): A1 i A3 **są** na produkcji
+    (`profiles` bez `anon`, trigger `trg_pin_profile_privilege_columns` istnieje). Przed zmianą
+    sprawdź resztę w `supabase_migrations.schema_migrations`.
+- **Audyt 2026-09-22** (`docs/audyt-2026-09-22-naprawy.md`): migracja
+  `20260922180000_audit_0922_rls_hardening.sql` wymusza w RLS **status początkowy** self-insertu
+  (urlop `pending`, timesheet `draft`), wiąże zgodę na nadgodziny z `auth.uid()` i rozszerza pin
+  profilu o `employment_type`, `email`, `loyalty_*`. Nowa kolumna uprawnień/rozliczeń w `profiles`
+  = dopisz ją do `pin_profile_privilege_columns`. Migrację weryfikuj lokalnie (Docker `postgres:17`
+  + stub schematu) i smoke `supabase/tests/audit_0922_rls_smoke.sql` — CI nie aplikuje migracji
+  spoza Akademii.
 - **Prefiks pliku ≠ wersja w rejestrze.** Aplikując przez MCP, zacommituj plik o **tej samej**
   wersji, którą zwrócił rejestr — dziś repo i rejestr są rozjechane (pozycja C1 audytu),
   a bazy nie da się odtworzyć z samych plików.
