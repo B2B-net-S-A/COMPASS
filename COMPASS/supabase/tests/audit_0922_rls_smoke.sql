@@ -1,4 +1,4 @@
--- Smoke test migracji 20260922180000_audit_0922_rls_hardening.sql.
+-- Smoke test migracji 20260922180915_audit_0922_rls_hardening.sql.
 -- Uruchamiać WYŁĄCZNIE w całości — wszystko dzieje się w transakcji zakończonej ROLLBACK,
 -- żaden wiersz nie zostaje w bazie. Test działa jako zwykły pracownik (rola internal,
 -- bez can_log_overtime) przez rolę `authenticated`, czyli tak jak bezpośredni PATCH/POST

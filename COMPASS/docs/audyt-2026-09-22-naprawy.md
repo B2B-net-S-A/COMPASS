@@ -9,17 +9,16 @@ blokowane przez UI).
 
 | PR | Zakres |
 |---|---|
-| #388 `fix(security)` | SEC-01, SEC-03, SEC-04, SEC-05, SEC-12, HF-14, O06 + migracja `20260922180000_audit_0922_rls_hardening.sql` |
+| #388 `fix(security)` | SEC-01, SEC-03, SEC-04, SEC-05, SEC-12, HF-14, O06 + migracja `20260922180915_audit_0922_rls_hardening.sql` |
 | #389 `ci` | O01 (deploy po zielonym Build check + ruleset), O02 (częściowo), O04, O05, O07 |
 | #390 `fix(hr)` | HF-01, 02, 03, 05, 06, 07, 10, 11, 12, 13 (walidacja), 15, 16, 17, 18, 19, INT-11 (lifecycle) |
 | #391 `fix(integracje)` | INT-02, 03, 04, 06, 07, 08, 16, 17, 18, 19, 20, 22, 23 |
 
 ## Wymaga działania człowieka
 
-1. **Migracja** `COMPASS/supabase/migrations/20260922180000_audit_0922_rls_hardening.sql` — zaaplikować
-   przez MCP `apply_migration` (wersja = prefiks pliku). Zweryfikowana lokalnie na Postgres 17
-   (dwukrotne zastosowanie + smoke). Po aplikacji uruchomić `COMPASS/supabase/tests/audit_0922_rls_smoke.sql`
-   — oczekiwany `NOTICE: audit_0922 smoke: OK`, kończy się ROLLBACK.
+1. ~~**Migracja**~~ — **zaaplikowana 2026-09-22** przez MCP `apply_migration`, wersja w rejestrze
+   `20260922180915` (plik przemianowany na tę wersję). Samosprawdzenie przeszło; smoke
+   `COMPASS/supabase/tests/audit_0922_rls_smoke.sql` na produkcji: `audit_0922 smoke: OK`, bez pozostałości.
 2. **Sekrety E2E** `E2E_SUPABASE_URL`, `E2E_SUPABASE_ANON_KEY` (instancja testowa, nie produkcja) —
    bez nich workflow E2E zatrzymuje się na preflighcie.
 3. **Istniejące zarchiwizowane konto** (1 w agregacie audytu) — nowa blokada działa tylko dla przyszłych
