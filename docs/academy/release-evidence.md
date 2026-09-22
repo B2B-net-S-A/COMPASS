@@ -1,6 +1,16 @@
 # Academy — dowody przed wydaniem
 
-Stan na 22.09.2026, PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384), sprawdzony commit `8c003aeb8d10026915644526ea79d431b284ff8b`. Moduł nie jest jeszcze wdrożony ani odebrany produkcyjnie. Poniższe wyniki nie zastępują testów kolejnych commitów.
+Stan na 22.09.2026, PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384). Moduł nie jest jeszcze wdrożony ani odebrany produkcyjnie. Poniższe wyniki nie zastępują testów kolejnych commitów.
+
+## Checkpoint `08ec2ccfe2022ca6d44e337639d645aaa8c13f1d`
+
+- [Supabase Storage 35728768205](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35728768205): job `academy-fixture` **PASS, 70 asercji**. Natywne logowanie, upload TUS z przerwaniem i wznowieniem, odzyskanie finalizacji, odmowy błędnego rozmiaru/MIME oraz odebranego grantu, izolacja materiałów lekcji i edycji, drip, moderacja i anulowanie. Werdykt skanera w tym teście jest symulowany; rzeczywisty silnik sprawdza osobna bramka.
+- [ClamAV 35728768214](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35728768214): **PASS**, AMD64 i ARM64.
+- Historyczny replay nadal **FAIL**: zatrzymany na `20260216_availability_overhaul.sql`, brak `current_status` (42703). Rozpoczął 20 z 254 migracji; nie jest to dowód wykonania 20 migracji. Trwa odtworzenie jawnych zależności historycznego bootstrapu.
+- [Odczyt infrastruktury 35728764000](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35728764000): rzeczywisty pomiar przez istniejący SSH, bez modyfikacji. RAM 7 915 716 KiB, dostępne 5 440 720 KiB, 4 CPU, wolny dysk 61 106 832 KiB, load average 0,72. Wykrycie powiązanego serwera działa mimo 404 endpointu destinations. Pomiar nie dowodzi zapasu w szczycie ani bezpiecznej równoległości skanowania, aktualizacji sygnatur i buildu.
+- Chrome w profilu użytkownika otwiera uwierzytelnione `/home` obecnej produkcji. To potwierdzenie dostępu do późniejszego odbioru, a nie test wdrożonej Academy.
+
+## Poprzedni checkpoint `8c003aeb8d10026915644526ea79d431b284ff8b`
 
 | Bramka | Obserwacja |
 | --- | --- |

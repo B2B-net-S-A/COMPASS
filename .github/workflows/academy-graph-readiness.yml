@@ -1,0 +1,42 @@
+name: Academy Graph permission diagnostic
+
+on:
+  # Origin feature-branch push allows this bounded check before merge.
+  push:
+    branches: [feat/academy-enterprise, main]
+    paths:
+      - 'ops/academy/graph-grants-readonly*'
+      - '.github/workflows/academy-graph-readiness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academy-graph-readiness
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    name: Inspect three existing Graph roles without resource operations
+    if: >-
+      github.repository == 'B2B-net-S-A/COMPASS' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: ops/academy
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Verify the secret boundary without credentials
+        run: node --test ops/academy/graph-grants-readonly.test.mjs
+      - name: Inspect existing permission roles using ephemeral in-memory credentials
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+        run: node ops/academy/graph-grants-readonly.mjs
