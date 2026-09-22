@@ -71,7 +71,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add, cron-secret-ciphertext]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add, cron-secret-ciphertext, academy-prepare, academy-seed]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -102,8 +102,85 @@ permissions:
   contents: read
 
 jobs:
+  academy-prepare:
+    name: Prepare Academy host from a tested revision
+    if: >-
+      (inputs.action == 'academy-prepare' || inputs.action == 'academy-seed') && github.repository == 'B2B-net-S-A/COMPASS' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      # Also excludes the existing main deployment while seeding before the
+      # first Academy release installs its host-side deployment interlock.
+      group: deploy-refs/heads/main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Require successful application and scanner checks for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in build-check.yml academy-malware.yml; do
+            passed=$(gh run list --repo "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" \
+              --workflow "$workflow" --status completed --limit 20 --json conclusion \
+              --jq 'map(select(.conclusion == "success")) | length')
+            if [ "$passed" -lt 1 ]; then
+              echo "::error::No successful $workflow for this exact commit; host is unchanged."
+              exit 1
+            fi
+          done
+      - name: Transfer reviewed files and install without activation
+        if: inputs.action == 'academy-prepare'
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ "$HETZNER_HOST" = 178.104.220.48 ] && [ "$HETZNER_USER" = root ]
+          task_work=$(mktemp -d)
+          trap 'rm -rf -- "$task_work"' EXIT
+          printf '%s\n' "$HETZNER_SSH_KEY" > "$task_work/key"
+          printf '%s\n' '178.104.220.48 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft' > "$task_work/known_hosts"
+          tar -C ops/academy/clamav -czf "$task_work/bundle.tgz" \
+            install-host.sh install-host.mjs host-control.sh host-control.mjs host-control-core.mjs \
+            worker-host.sh worker-request.mjs compose.daemon.proposal.yml compose.update.proposal.yml \
+            clamd.conf clamd-health.conf freshclam.serialized.conf image-lock.json systemd
+          timeout 180 ssh -i "$task_work/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$task_work/known_hosts" \
+            -o ConnectTimeout=15 -o LogLevel=ERROR root@178.104.220.48 \
+            'set -eu; umask 077; stage=$(mktemp -d /opt/compass-academy-stage.XXXXXX); trap '\''rm -rf -- "$stage"'\'' EXIT; tar -xzf - --no-same-owner --no-same-permissions -C "$stage"; bash "$stage/install-host.sh"' \
+            < "$task_work/bundle.tgz"
+          echo 'Academy files installed; no scanner, worker or timer was activated.'
+
+      - name: Seed signatures with scanner stopped
+        if: inputs.action == 'academy-seed'
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ "$HETZNER_HOST" = 178.104.220.48 ] && [ "$HETZNER_USER" = root ]
+          task_work=$(mktemp -d)
+          trap 'rm -rf -- "$task_work"' EXIT
+          printf '%s\n' "$HETZNER_SSH_KEY" > "$task_work/key"
+          printf '%s\n' '178.104.220.48 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft' > "$task_work/known_hosts"
+          timeout 1500 ssh -i "$task_work/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$task_work/known_hosts" \
+            -o ConnectTimeout=15 -o LogLevel=ERROR root@178.104.220.48 \
+            '/opt/compass-academy/host-control.sh seed' </dev/null
+
   ops:
     name: Coolify queue ops
+    if: inputs.action != 'academy-prepare' && inputs.action != 'academy-seed'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

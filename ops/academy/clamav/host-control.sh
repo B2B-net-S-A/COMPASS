@@ -7,7 +7,7 @@ if [[ "$(uname -s)" != Linux || "$(id -u)" != 0 ]]; then
   exit 1
 fi
 case "${1:-}" in
-  status|pause|begin-trigger|bind|terminal|resume|update) ;;
+  status|pause|begin-trigger|bind|terminal|resume|update|seed) ;;
   *) echo '{"ok":false,"error":"invalid_operation"}' >&2; exit 1 ;;
 esac
 if [[ "$#" != 1 ]]; then exit 1; fi

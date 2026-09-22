@@ -15,6 +15,12 @@ export function hostRuntime({run=execute,env=process.env}={}){
   catch{throw new Error('scanner_runtime_failed');}
  };
  const compose=(file,args,timeout)=>command(['compose','-f',file,...args],timeout);
+ async function seedContainers(project,service){
+  const {stdout}=await command(['ps','--all','--quiet','--filter',`label=com.docker.compose.project=${project}`,'--filter',`label=com.docker.compose.service=${service}`]);
+  const ids=stdout.trim().split(/\s+/).filter(Boolean);
+  if(ids.some(id=>!/^[a-f0-9]{12,64}$/.test(id)))throw new Error('invalid_container_id');
+  return ids;
+ }
  async function assertStopped(file,service){
   const {stdout}=await compose(file,['ps','--all','--quiet',service]);
   for(const id of stdout.trim().split(/\s+/).filter(Boolean)){
@@ -24,6 +30,17 @@ export function hostRuntime({run=execute,env=process.env}={}){
   }
  }
  return {
+  // Seed runs before the app deployment creates its private network. Label-scoped
+  // Docker stop/inspect avoids resolving the daemon Compose's external network.
+  stopSeedProcesses:async()=>{
+   for(const [project,service,seconds]of [['compass-academy-clam-update','freshclam','30'],['compass-academy-clamd','clamd','300']]){
+    for(const id of await seedContainers(project,service))await command(['stop','--time',seconds,id]);
+    for(const id of await seedContainers(project,service)){
+     const {stdout}=await command(['inspect','--format','{{json .State}}',id]);const parsed=JSON.parse(stdout);
+     if(parsed.Running||parsed.Paused||parsed.Restarting)throw new Error('scanner_not_stopped');
+    }
+   }
+  },
   stopScanner:()=>compose(daemon,['stop','--timeout','300','clamd']),
   stopUpdater:()=>compose(updater,['stop','--timeout','30','freshclam']),
   assertStopped:async()=>{await assertStopped(updater,'freshclam');await assertStopped(daemon,'clamd');},

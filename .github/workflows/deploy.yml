@@ -54,6 +54,9 @@ env:
   # AND path eq "/api/health" (GH runner IPs are datacenter → threat_score
   # block otherwise). Keep both sides of that contract in sync.
   SMOKE_UA: "dynaminds-smoke-test/1.0 (+github-actions; compass)"
+  # Release prerequisite: install the host controller and seed its signatures
+  # before merging this Academy release. Keep deployment policy in reviewed code.
+  ACADEMY_CLAMAV_COLOCATED: "true"
 
 jobs:
   deploy:
@@ -63,12 +66,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        if: vars.ACADEMY_CLAMAV_COLOCATED == 'true'
+        if: env.ACADEMY_CLAMAV_COLOCATED == 'true'
         with:
           persist-credentials: false
           sparse-checkout: ops/academy/clamav
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        if: vars.ACADEMY_CLAMAV_COLOCATED == 'true'
+        if: env.ACADEMY_CLAMAV_COLOCATED == 'true'
         with:
           node-version: '20'
       - name: Skip if target already live (burst coalescing)
@@ -157,7 +160,7 @@ jobs:
 
       - name: Pause colocated Academy scanner before any build
         id: academy_pause
-        if: vars.ACADEMY_CLAMAV_COLOCATED == 'true' && steps.precheck.outputs.skip != 'true'
+        if: env.ACADEMY_CLAMAV_COLOCATED == 'true' && steps.precheck.outputs.skip != 'true'
         env:
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
           HETZNER_USER: ${{ secrets.HETZNER_USER }}
@@ -167,7 +170,6 @@ jobs:
       - name: Deploy (trigger + wait, with retry on server-side build failure)
         if: ${{ steps.precheck.outputs.skip != 'true' }}
         env:
-          ACADEMY_CLAMAV_COLOCATED: ${{ vars.ACADEMY_CLAMAV_COLOCATED }}
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
           HETZNER_USER: ${{ secrets.HETZNER_USER }}
           HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}

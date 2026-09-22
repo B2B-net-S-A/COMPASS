@@ -1,6 +1,6 @@
 # ClamAV na obecnym hoście Compass — wariant do kwalifikacji
 
-Stan: 2026-09-22. **Propozycja, nie wdrożenie ani potwierdzenie wystarczającej pojemności.** Produkcyjny `docker-compose.yml`, sieć, schedulery i limity istniejących usług pozostają bez zmian. Nie wykonywano lokalnych poleceń Docker ani zdalnych operacji. Ten wariant zastępuje wcześniejsze założenie o hoście z 4 GB RAM; nie znosi warunków odbioru z [runbooka](./clamav-operations.md).
+Stan: 2026-09-22. **Propozycja, nie wdrożenie ani potwierdzenie wystarczającej pojemności.** Repozytorium definiuje w `docker-compose.yml` prywatną sieć app + skaner; jej utworzenie nastąpi dopiero przez normalny deploy. Skaner i timery pozostają osobną, jeszcze nieaktywną instalacją. Limity istniejących usług nie są tu zmieniane. Nie wykonywano lokalnych poleceń Docker ani zdalnych operacji. Ten wariant zastępuje wcześniejsze założenie o hoście z 4 GB RAM; nie znosi warunków odbioru z [runbooka](./clamav-operations.md).
 
 ## Co wynika z pomiaru
 
@@ -27,14 +27,14 @@ Dwa oddzielne pliki/projekty: [daemon](../../ops/academy/clamav/compose.daemon.p
 | Proces | Twardy RAM | CPU | PID | Swap | Tryb |
 | --- | ---: | ---: | ---: | ---: | --- |
 | clamd | 4 GiB | maks. 2 | 128 | 0 | Jeden silnik, `MaxThreads 1`, `MaxQueue 2`, istniejące limity plików/rozpakowania |
-| freshclam | 3 GiB | maks. 2 | 64 | 0 | One-shot, `TestDatabases yes`, clamd zatrzymany; limit czasu 600 s w przyszłym kontrolerze |
+| freshclam | 3 GiB | maks. 2 | 64 | 0 | One-shot, `TestDatabases yes`, clamd zatrzymany; limit polecenia 610 s w kontrolerze |
 | Build Compass | Bez nowej propozycji limitu | Do pomiaru | Do pomiaru | Bez zmiany | clamd i freshclam zatrzymane; nie narzucamy niezweryfikowanego limitu istniejącej aplikacji |
 
 `memswap_limit` równe `mem_limit` wyłącza swap kontenera. `mem_reservation: 3g` daemonu jest tylko miękkim limitem; nie rezerwuje pamięci przed innymi usługami. Nie wyłączamy OOM killera. [Semantyka limitów Docker](https://docs.docker.com/engine/containers/resource_constraints/)
 
 Oba procesy używają dokładnego obrazu z [image-lock.json](../../ops/academy/clamav/image-lock.json), użytkownika `1000:1000`, tylko odczytu rootfs, `cap_drop: ALL`, `no-new-privileges`, ograniczonych logów i żadnych sekretów Compass. Bez domyślnego entrypointu obrazu: daemon uruchamia wyłącznie `clamd`, updater wyłącznie `freshclam`.
 
-Daemon dołącza do przygotowanej wcześniej **wewnętrznej** sieci z dokładnie dwoma członkami: Compass i clamd. W compose sieć ma `external: true`, ponieważ zarządza nią operator; przed użyciem konieczny dowód `Internal=true` oraz listy członków. Nie może to być wspólna sieć wszystkich aplikacji Coolify. Brak `ports`, host networking, domeny i etykiet Traefik. `academy-clamd:3310` jest adresem do ustawienia w runtime Compass dopiero przy wdrożeniu. Updater ma osobną sieć z DNS/CDN egress i nie łączy się z aplikacją. Protokół ClamAV TCP nie ma uwierzytelniania ani szyfrowania. [Oficjalna dokumentacja obrazu](https://docs.clamav.net/manual/Installing/Docker.html)
+Daemon dołącza do przygotowanej wcześniej **wewnętrznej** sieci z dokładnie dwoma członkami: Compass i clamd. W compose daemonu sieć ma `external: true`, ponieważ tworzy ją normalny deploy compose aplikacji; instalator jej nie tworzy. Przed użyciem konieczny dowód `Internal=true` oraz listy członków. Nie może to być wspólna sieć wszystkich aplikacji Coolify. Brak `ports`, host networking, domeny i etykiet Traefik. `academy-clamd:3310` jest adresem do ustawienia w runtime Compass dopiero przy wdrożeniu. Updater ma osobną sieć z DNS/CDN egress i nie łączy się z aplikacją. Protokół ClamAV TCP nie ma uwierzytelniania ani szyfrowania. [Oficjalna dokumentacja obrazu](https://docs.clamav.net/manual/Installing/Docker.html)
 
 `ACADEMY_CLAMAV_STATE_DIR` wskazuje wcześniej utworzony katalog operatora, nie checkout i nie katalog innych usług. Podkatalogi `signatures`, `scan-tmp`, `update-tmp` należą do UID/GID 1000, mode 0700. Compose odmawia automatycznego tworzenia brakujących bind mountów. Sygnatury są trwałe i w daemonie tylko do odczytu; scratch znajduje się na dysku. Proponowane kwoty filesystemu: sygnatury 5 GiB, scan-tmp 8 GiB, update-tmp 2 GiB. **Compose nie egzekwuje tych kwot**: trzeba zweryfikować je w filesystemie lub wydzielonym wolumenie, zanim variant zostanie uznany za operacyjny. Po zabitym procesie sprzątanie dotyczy wyłącznie jego dedykowanego scratch, przy zatrzymanej usłudze.
 
@@ -42,7 +42,7 @@ Healthcheck używa osobnego [klienta loopback](../../ops/academy/clamav/clamd-he
 
 ## Kolejność pracy i aktualizacji
 
-To wymaga kontrolera utrzymaniowego, którego **jeszcze nie podłączono** do Coolify/schedulera. Oddzielne compose same nie zapewniają wzajemnego wykluczenia. Dopóki faktyczny proces build/deploy nie respektuje blokady, wariant wspólnego hosta jest niedopuszczony.
+Repo zawiera kontroler utrzymaniowy i hook w istniejącej trasie Coolify; nie są jeszcze uruchomione na produkcyjnym hoście. Oddzielne compose same nie zapewniają wzajemnego wykluczenia. Dopóki faktyczny proces build/deploy nie respektuje blokady, wariant wspólnego hosta jest niedopuszczony.
 
 1. Aktualizacja co dwie godziny: pobrać tę samą blokadę hosta, którą musi uzyskać każdy build/deploy/restart związany z tym stosem. Zapisać cel operacji i deadline; blokada tylko w skrypcie freshclam bez udziału Coolify nie wystarcza.
 2. Wstrzymać nowe wywołania workera skanowania, dokończyć aktywny skan (budżet 300 s), zatrzymać daemon i potwierdzić jego zakończenie. Timeout drenażu oznacza odroczenie operacji, nie nakładanie procesów ani uznanie skanu za czysty.
@@ -55,31 +55,9 @@ Pierwsze przygotowanie sygnatur to osobne zakończone uruchomienie updatera; nie
 
 ### Konkretny hook do istniejącej trasy Coolify
 
-W obecnym [deploy.yml](../../.github/workflows/deploy.yml) krok `Deploy (trigger + wait, with retry on server-side build failure)` wywołuje API i odpytuje deployment UUID **na runnerze GitHub**. `flock` wyłącznie w lokalnym updaterze nie zsynchronizuje tego buildu. Pliki Compose nie są jeszcze samodzielnym rozwiązaniem tej granicy.
+Aktualny kontrakt jest zaimplementowany w [runbooku kontrolera](./clamav-host-control.md). Trigger i polling pozostają w workflow GitHub. Hostowy hook przed triggerem zapisuje trwały marker owner/run/attempt/SHA/nonce i zatrzymuje skaner pod flock. Unknown HTTP (także 429), utrata runnera albo brak końcowego statusu zachowują pauzę. Po potwierdzonym końcu wszystkich deploymentów ten sam owner może wznowić skaner. Updater respektuje marker i blokadę; worker materiałów trzyma shared lock aż do końca ograniczonego requestu. Nie przenosimy całego pollingu do nowej usługi hosta.
 
-Minimalny kontrakt przyszłego hostowego wrappera, bez dodatkowej usługi kontrolnej:
-
-```text
-academy-maintenance scan -- <dotychczasowe curl workera>
-  flock -n /run/lock/compass-academy.lock
-  jeśli zajęty: odroczenie bez HTTP/claim; jeśli wolny: lock aż do końca requestu
-
-academy-maintenance update
-  flock -w 330 /run/lock/compass-academy.lock
-  stop tylko clamd → one-shot freshclam → start clamd + VERSION → zwolnienie locka
-
-academy-maintenance build -- <obecny trigger + poll konkretnego deployment UUID>
-  flock -w 330 /run/lock/compass-academy.lock
-  stop tylko clamd → trigger + CAŁE oczekiwanie Coolify → start clamd + VERSION
-```
-
-Blokada musi być deskryptorem utrzymywanym przez cały wrapper, pod kontrolą jednego użytkownika hosta; nie używać samego istnienia pliku jako blokady. `EXIT/TERM/INT` mają wznowić skaner po updaterze i po **potwierdzonym końcu** buildu (także `failed`/`cancelled`). Publiczna aplikacja nie jest zatrzymywana przez wrapper. Sekrety wywołań pozostają w istniejącym vault; nigdy w argumentach, repo ani markerach blokady.
-
-Przyszła zmiana integracyjna przenosi istniejący blok trigger+wait do wywołanego przez SSH hostowego wrappera, zamiast dodawać drugi niezależny deploy. Zachowuje PATCH `GIT_SHA`, deployment UUID, retry oraz końcowy smoke. Wszystkie ręczne deploye muszą korzystać z tej samej drogi. **Timeout/utrata API nie jest dowodem końca buildu:** w takim przypadku clamd pozostaje zatrzymany i alarm wymaga odczytu końcowego statusu przed wznowieniem. Tak samo po SIGKILL wrappera lub restarcie hosta — zwykły trap nie zapewnia recovery. Wdrożenie musi mieć sprawdzoną procedurę odzyskania; nie uruchamiać skanera równolegle z nieznanym buildem.
-
-Nie przygotowano ani nie podłączono tego wrappera do hosta w ramach propozycji. Minimum testów integracji: konkurujące `scan/update/build` na rzeczywistym flock na hosted Linux; brak drugiego procesu, dopóki pierwszy trzyma lock; udany i nieudany update; build `finished/failed/cancelled`; timeout odczytu Coolify; TERM oraz recovery po SIGKILL; brak polecenia `stop app`; brak claim podczas zatrzymania clamd. Można testować kolejność na atrapach runtime bez połączenia z produkcją, a restart/freshness na rzeczywistym skanerze w istniejącym hosted gate.
-
-Jeśli przeniesienie tego istniejącego bloku pod wrapper nie jest akceptowalną małą zmianą trasy wdrożeniowej, **osobny host skanera jest prostszą granicą zasobów**. Nie rekomenduję budowania nowego wieloetapowego kontrolera tylko po to, aby ominąć tę decyzję.
+Repo zawiera instalator plików i nieaktywne jednostki systemd. `seed` przygotowuje bazę przed pierwszym deployem sieci, bez startu daemonu. Instalacja/seed oraz aktywacja to osobne kroki. Kontroler z checkpointu `9502a9b` przeszedł hosted testy ARM64/AMD64 (20/20, w tym flock); nowe testy instalatora/seed wymagają własnego wyniku hosted. Test kontrolera nie stanowi potwierdzenia gotowości produkcyjnego hosta. Ręczny deploy również musi respektować protokół pauzy; nieznany wynik wymaga recovery, nigdy automatycznego usunięcia markera.
 
 ## Mierzalne bramki
 

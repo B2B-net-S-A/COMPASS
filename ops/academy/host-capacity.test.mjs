@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { collectHostCapacity, parseCapacity } from './host-capacity.mjs';
-const output='memoryTotalKiB=4096000\nmemoryAvailableKiB=1500000\nswapTotalKiB=0\nswapFreeKiB=0\ncpuCount=2\nloadAverage1=0.50\nfilesystemTotalKiB=40000000\nfilesystemAvailableKiB=20000000\n';
+const output='memoryTotalKiB=4096000\nmemoryAvailableKiB=1500000\nswapTotalKiB=0\nswapFreeKiB=0\ncpuCount=2\nloadAverage1=0.50\nfilesystemTotalKiB=40000000\nfilesystemAvailableKiB=20000000\nhostUid=0\nnodeMajor=22\nflockAvailable=1\nsystemdAvailable=1\n';
 const env={GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'B2B-net-S-A/COMPASS',HETZNER_HOST:'178.104.220.48',HETZNER_USER:'root',HETZNER_SSH_KEY:'PRIVATE_KEY_SENTINEL'};
 test('capacity projection accepts only complete numeric counters',()=>{
  assert.equal(parseCapacity(output).memoryAvailableKiB,1500000);
+ assert.equal(parseCapacity(output).nodeMajor,22);
+ assert.throws(()=>parseCapacity(output.replace('flockAvailable=1','flockAvailable=2')));
  for(const invalid of [output+'secret=value\n',output.replace('cpuCount=2\n',''),output+'cpuCount=3\n',output.replace('1500000','9999999')])assert.throws(()=>parseCapacity(invalid));
 });
 test('fixed host-key verified SSH command reads only capacity and never emits key or target',async()=>{

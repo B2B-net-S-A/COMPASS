@@ -42,6 +42,17 @@ export async function control(op,input,{store,runtime,now=()=>new Date().toISOSt
  const success=extra=>({ok:true,op,...extra});
  const stopped=async()=>{await runtime.stopUpdater();await runtime.stopScanner();await runtime.assertStopped();};
  if(op==='status')return success({paused:!!marker,kind:marker?.kind??null,phase:marker?.phase??null,owner:marker?.kind==='deploy'?marker.owner:null});
+ if(op==='seed'){
+  if(marker?.kind==='deploy')fail('seed_blocked_by_deployment');
+  await save({version:1,kind:'update',id:marker?.id??id(),phase:'stopping',createdAt:marker?.createdAt??now()});
+  try{
+   // Does not need the app's future external network or start a daemon.
+   await runtime.stopSeedProcesses();await save({...marker,phase:'updating'});await runtime.update();
+   await runtime.stopSeedProcesses();await store.remove();return success({scannerStarted:false});
+  }catch{
+   await runtime.stopSeedProcesses().catch(()=>{});await save({...marker,phase:'blocked'});fail('seed_failed');
+  }
+ }
  if(op==='update'){
   if(marker?.kind==='deploy')return success({deferred:true});
   await save({version:1,kind:'update',id:marker?.id??id(),phase:'stopping',createdAt:marker?.createdAt??now()});
@@ -62,10 +73,16 @@ export async function control(op,input,{store,runtime,now=()=>new Date().toISOSt
  }
  const owner=validateOwner(input?.owner);
  if(op==='pause'){
-  if(marker?.kind==='deploy'&&!sameOwner(marker.owner,owner))fail('pause_owned_by_another_run');
+  const owned=marker?.kind==='deploy'&&sameOwner(marker.owner,owner);
+  if(marker?.kind==='deploy'&&!owned){
+   // A failed first build may leave no private network for resume. Permit a
+   // fresh run only after every recorded trigger/build has a known outcome.
+   if(!['paused','resuming'].includes(marker.phase)||marker.deployments.length===0
+    ||marker.deployments.some(d=>d.status==='pending')||marker.triggers.some(t=>t.state==='pending'))fail('pause_owned_by_another_run');
+  }
   // An update marker with no flock holder is an interrupted update. Take over
   // durably, then stop its potentially orphaned container before acknowledging.
-  await save(marker?.kind==='deploy'?{...marker,phase:'pausing'}:
+  await save(owned?{...marker,phase:'pausing'}:
    {version:1,kind:'deploy',owner,phase:'pausing',triggers:[],deployments:[],createdAt:now()});
   await stopped();await save({...marker,phase:'paused'});return success();
  }

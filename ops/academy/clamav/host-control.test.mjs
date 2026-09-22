@@ -13,7 +13,7 @@ function owner(runId='123',attempt='1'){
 function fixture(){
  let marker=null;const calls=[],failing=new Set();
  const store={read:async()=>structuredClone(marker),write:async v=>{marker=structuredClone(v);calls.push('persist:'+v.phase);},remove:async()=>{marker=null;calls.push('remove');}};
- const runtime=Object.fromEntries(['stopUpdater','stopScanner','assertStopped','assertUpdaterStopped','update','startScanner','readiness'].map(name=>[name,async()=>{calls.push(name);if(failing.has(name))throw new Error('synthetic_failure');}]));
+ const runtime=Object.fromEntries(['stopSeedProcesses','stopUpdater','stopScanner','assertStopped','assertUpdaterStopped','update','startScanner','readiness'].map(name=>[name,async()=>{calls.push(name);if(failing.has(name))throw new Error('synthetic_failure');}]));
  return {call:(op,input={})=>control(op,input,{store,runtime}),marker:()=>marker,calls,failing};
 }
 async function bound(f,who=owner(),triggerNonce='1-1',deploymentUuid='deploy-one'){
@@ -61,6 +61,30 @@ test('stale completion cannot resume a newer run; failed readiness keeps the dur
  assert.equal(f.marker().phase,'paused');assert.equal(f.calls.at(-2),'stopScanner');
  f.failing.clear();await f.call('resume',{owner:next});assert.equal(f.marker(),null);
 });
+test('new run recovers a confirmed failed first deployment whose resume lacked the private network',async()=>{
+ const f=fixture(),old=owner(),next=owner('124');await f.call('seed');await f.call('pause',{owner:old});await bound(f,old);
+ await f.call('terminal',{owner:old,deploymentUuid:'deploy-one',status:'failed'});
+ f.failing.add('startScanner');await assert.rejects(f.call('resume',{owner:old}),/restore_failed/);
+ assert.equal(f.marker().phase,'paused');f.calls.length=0;
+ await f.call('pause',{owner:next});assert.deepEqual(f.marker().owner,next);assert.deepEqual(f.marker().deployments,[]);assert.deepEqual(f.marker().triggers,[]);
+ assert.deepEqual(f.calls,['persist:pausing','stopUpdater','stopScanner','assertStopped','persist:paused']);
+ await assert.rejects(f.call('resume',{owner:old}),/owner_mismatch/);
+ await f.call('begin-trigger',{owner:next,triggerNonce:'1-1'});assert.equal(f.marker().triggers[0].state,'pending');
+});
+test('takeover rejects unknown triggers, pending builds, zero bound builds and interrupted pausing',async()=>{
+ const old=owner(),next=owner('124');
+ for(const scenario of ['zero_bound','unknown','pending','pausing']){
+  const f=fixture();await f.call('pause',{owner:old});
+  if(scenario==='unknown')await f.call('begin-trigger',{owner:old,triggerNonce:'1-1'});
+  if(['pending','pausing'].includes(scenario))await bound(f,old);
+  if(scenario==='pausing'){
+   await f.call('terminal',{owner:old,deploymentUuid:'deploy-one',status:'failed'});f.failing.add('assertStopped');
+   await assert.rejects(f.call('pause',{owner:old}));assert.equal(f.marker().phase,'pausing');
+  }
+  f.calls.length=0;const before=structuredClone(f.marker());await assert.rejects(f.call('pause',{owner:next}),/another_run/);
+  assert.deepEqual(f.calls,[]);assert.deepEqual(f.marker(),before);
+ }
+});
 test('updater defers without touching runtime during deployment; update and restore failures fail closed',async()=>{
  const f=fixture();await f.call('pause',{owner:owner()});f.calls.length=0;
  assert.deepEqual(await f.call('update'),{ok:true,op:'update',deferred:true});assert.deepEqual(f.calls,[]);
@@ -71,6 +95,24 @@ test('updater defers without touching runtime during deployment; update and rest
  f.failing.add('update');await assert.rejects(f.call('update'),/update_failed/);assert.equal(f.marker(),null);
  f.failing.add('readiness');await assert.rejects(f.call('update'),/restore_failed/);assert.equal(f.marker().kind,'update');assert.equal(f.marker().phase,'blocked');
  f.failing.clear();await f.call('pause',{owner:owner('999')});assert.equal(f.marker().kind,'deploy');
+});
+test('seed persists before runtime, leaves daemon stopped and refuses a deployment pause',async()=>{
+ const f=fixture();assert.deepEqual(await f.call('seed'),{ok:true,op:'seed',scannerStarted:false});
+ assert.deepEqual(f.calls,['persist:stopping','stopSeedProcesses','persist:updating','update','stopSeedProcesses','remove']);assert.equal(f.marker(),null);
+ await f.call('pause',{owner:owner()});f.calls.length=0;await assert.rejects(f.call('seed'),/seed_blocked_by_deployment/);assert.deepEqual(f.calls,[]);
+});
+test('failed or orphaned seed retains a blocked marker until a successful stopped-only retry',async()=>{
+ for(const failing of ['update','stopSeedProcesses']){
+  const f=fixture();f.failing.add(failing);await assert.rejects(f.call('seed'),/seed_failed/);assert.equal(f.marker().kind,'update');assert.equal(f.marker().phase,'blocked');
+  assert(!f.calls.includes('startScanner'));f.failing.clear();await f.call('seed');assert.equal(f.marker(),null);assert(!f.calls.includes('startScanner'));
+ }
+});
+test('seed runtime touches only fixed project/service labels and never daemon compose/network/start',async()=>{
+ const calls=[];const runtime=hostRuntime({run:async(cmd,args)=>{calls.push({cmd,args});return {stdout:args.includes('ps')?'a'.repeat(64):args.includes('inspect')?JSON.stringify({Running:false,Paused:false,Restarting:false}):''};}});
+ await runtime.stopSeedProcesses();
+ assert(calls.every(c=>c.cmd==='docker'&&!c.args.includes('compose')&&!c.args.includes('network')&&!c.args.includes('start')));
+ assert(calls.filter(c=>c.args.includes('ps')).every(c=>c.args.includes('label=com.docker.compose.project=compass-academy-clamd')||c.args.includes('label=com.docker.compose.project=compass-academy-clam-update')));
+ assert(calls.filter(c=>c.args.includes('stop')).every(c=>c.args.at(-1)==='a'.repeat(64)));
 });
 test('persistent marker survives process/store recreation and rejects corruption or symlinks',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'academy-control-'));await chmod(directory,0o700);

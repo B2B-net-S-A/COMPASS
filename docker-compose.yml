@@ -20,6 +20,9 @@ services:
     image: compass-app:latest
     container_name: compass-app
     restart: unless-stopped
+    networks:
+      - default
+      - academy_scanner
     ports:
       - "${APP_PORT:-10000}:10000"
     environment:
@@ -38,7 +41,7 @@ services:
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
       ACADEMY_ATTENDANCE_RETENTION_DAYS: ${ACADEMY_ATTENDANCE_RETENTION_DAYS:-}
-      ACADEMY_CLAMAV_HOST: ${ACADEMY_CLAMAV_HOST:-}
+      ACADEMY_CLAMAV_HOST: ${ACADEMY_CLAMAV_HOST:-academy-clamd}
       ACADEMY_CLAMAV_PORT: ${ACADEMY_CLAMAV_PORT:-3310}
       ACADEMY_MATERIAL_CLEANUP_ENABLED: ${ACADEMY_MATERIAL_CLEANUP_ENABLED:-false}
       ACADEMY_UPLOAD_RETENTION_HOURS: ${ACADEMY_UPLOAD_RETENTION_HOURS:-48}
@@ -99,3 +102,9 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+networks:
+  default: {}
+  academy_scanner:
+    name: compass-academy-private
+    internal: true

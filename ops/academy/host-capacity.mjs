@@ -9,7 +9,7 @@ const trustedHost = '178.104.220.48';
 // Public host key from the user's existing known_hosts entry; no trust-on-first-use.
 const hostKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft';
 export function parseCapacity(text) {
-    const integers=['memoryTotalKiB','memoryAvailableKiB','swapTotalKiB','swapFreeKiB','cpuCount','filesystemTotalKiB','filesystemAvailableKiB'];
+    const integers=['memoryTotalKiB','memoryAvailableKiB','swapTotalKiB','swapFreeKiB','cpuCount','filesystemTotalKiB','filesystemAvailableKiB','hostUid','nodeMajor','flockAvailable','systemdAvailable'];
     const values={};
     for(const line of text.trim().split('\n')) {
         const [name,number,...extra]=line.split('=');
@@ -20,6 +20,7 @@ export function parseCapacity(text) {
         values[name]=value;
     }
     if(integers.some(key=>!Object.hasOwn(values,key))||!Object.hasOwn(values,'loadAverage1'))throw new Error('incomplete_capacity');
+    if(values.flockAvailable>1||values.systemdAvailable>1||values.nodeMajor>999)throw new Error('invalid_prerequisite');
     if(values.memoryAvailableKiB>values.memoryTotalKiB||values.swapFreeKiB>values.swapTotalKiB||values.filesystemAvailableKiB>values.filesystemTotalKiB||values.cpuCount<1)throw new Error('invalid_capacity');
     return values;
 }

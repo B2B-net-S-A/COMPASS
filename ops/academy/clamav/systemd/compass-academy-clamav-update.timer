@@ -1,0 +1,11 @@
+[Unit]
+Description=Compass Academy ClamAV update schedule (activation is separate)
+
+[Timer]
+OnBootSec=15min
+OnUnitInactiveSec=2h
+AccuracySec=1min
+Unit=compass-academy-clamav-update.service
+
+[Install]
+WantedBy=timers.target
