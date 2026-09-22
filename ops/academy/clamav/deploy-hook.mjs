@@ -9,14 +9,22 @@ const host = '178.104.220.48';
 const hostKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft';
 const actions = new Set(['pause', 'begin-trigger', 'bind', 'terminal', 'resume']);
 
+// Od audytu O01 (2026-09-22) deploy startuje z `workflow_run` po zielonym „Build check".
+// W tym kontekście GITHUB_SHA to bieżący HEAD maina, a wdrażany commit niesie TARGET_SHA
+// (workflow_run.head_sha) — właścicielem blokady skanera jest więc TARGET_SHA.
+function deploySha(env) {
+    return env.GITHUB_EVENT_NAME === 'workflow_run' ? env.TARGET_SHA : env.GITHUB_SHA;
+}
+
 export function requestFor(action, args, env) {
+    const sha = deploySha(env);
     if (!actions.has(action) || env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted'
         || env.GITHUB_REPOSITORY !== 'B2B-net-S-A/COMPASS' || env.GITHUB_REF !== 'refs/heads/main'
-        || !['push', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME)
+        || !['push', 'workflow_dispatch', 'workflow_run'].includes(env.GITHUB_EVENT_NAME)
         || !/^\d+$/.test(env.GITHUB_RUN_ID ?? '') || !/^\d+$/.test(env.GITHUB_RUN_ATTEMPT ?? '')
-        || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? '')) throw new Error('invalid_deploy_context');
-    const owner = { runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT, sha: env.GITHUB_SHA,
-        nonce: createHash('sha256').update(`${env.GITHUB_RUN_ID}:${env.GITHUB_RUN_ATTEMPT}:${env.GITHUB_SHA}`).digest('hex') };
+        || !/^[a-f0-9]{40}$/.test(sha ?? '')) throw new Error('invalid_deploy_context');
+    const owner = { runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT, sha,
+        nonce: createHash('sha256').update(`${env.GITHUB_RUN_ID}:${env.GITHUB_RUN_ATTEMPT}:${sha}`).digest('hex') };
     const request = { owner };
     if (['begin-trigger', 'bind'].includes(action)) {
         if (!/^\d+-\d+$/.test(args[0] ?? '')) throw new Error('invalid_trigger_nonce');
