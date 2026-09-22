@@ -11,6 +11,7 @@ import {
     requireLifecycleManagerAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { revokeAccountAccess } from '@/lib/auth/account-access'
 import {
     sendExitInterviewInvitation,
     sendOffboardingChecklistToManager,
@@ -328,7 +329,8 @@ export async function listEmployeesForLifecycle(filter: 'onboarding' | 'exit' | 
 
     const [{ data: progressRows }, { data: exitRows }] = await Promise.all([
         supabase.from('onboarding_progress').select('user_id, completed_at').in('user_id', userIds),
-        supabase.from('exit_interviews').select('user_id, status').in('user_id', userIds).neq('status', 'archived'),
+        // Anulowany exit interview nie blokuje ponownego startu (HF-14).
+        supabase.from('exit_interviews').select('user_id, status').in('user_id', userIds).not('status', 'in', '(archived,cancelled)'),
     ])
 
     const activeOnboardingSet = new Set<string>(
@@ -1286,7 +1288,20 @@ export async function markEmployeeExited(userId: string): Promise<void> {
         .is('completed_at', null)
         .eq('is_required', true)
 
-    await supabase.from('profiles').update({ employment_status: 'exited' }).eq('id', userId)
+    const { error: exitErr } = await supabase.from('profiles').update({ employment_status: 'exited' }).eq('id', userId)
+    if (exitErr) {
+        logCompat.error('markEmployeeExited profile update error:', exitErr)
+        throw new Error('Nie udało się zarchiwizować pracownika.')
+    }
+
+    // Status `exited` odcina aplikację, ale nie Data API — blokada konta i unieważnienie
+    // sesji zamykają bezpośredni dostęp do bazy (audyt 2026-09-22, SEC-01).
+    try {
+        await revokeAccountAccess(userId)
+    } catch (e) {
+        logCompat.error('markEmployeeExited revokeAccountAccess error:', e)
+        throw new Error('Pracownik zarchiwizowany, ale nie udało się zablokować konta — ponów archiwizację.')
+    }
 
     await supabase.from('lifecycle_events').insert({
         user_id: userId,
