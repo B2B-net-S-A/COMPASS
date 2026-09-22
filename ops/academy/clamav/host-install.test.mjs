@@ -83,7 +83,10 @@ test('host worker uses locks and bounded stdin Node; installer never activates a
  const worker=await text('worker-host.sh'),installer=await text('install-host.sh');
  assert.match(worker,/flock --exclusive --nonblock 8/);assert.match(worker,/flock --shared --nonblock 9/);assert.match(worker,/pause\.json/);
  assert.match(worker,/timeout --signal=TERM --kill-after=10/);
- assert.match(worker,/docker --host unix:\/\/\/var\/run\/docker\.sock exec --interactive compass-app/);
+ assert.match(worker,/export PATH=\/opt\/compass-academy-node\/bin:/);
+ assert.match(worker,/node \/opt\/compass-academy\/app-container\.mjs/);
+ assert.match(worker,/docker --host unix:\/\/\/var\/run\/docker\.sock exec --interactive "\$app_id"/);
+ assert(runtimeFiles.includes('app-container.mjs'));
  assert.match(worker,/node --input-type=module - "\$worker" < \/opt\/compass-academy\/worker-request\.mjs/);
  assert(!/\$\{?CRON_SECRET|--env|-e CRON_SECRET/.test(worker));
  assert.match(installer,/process\.versions\.node/);assert.match(installer,/compose version --short/);

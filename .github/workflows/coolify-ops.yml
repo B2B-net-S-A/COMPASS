@@ -71,7 +71,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add, cron-secret-ciphertext, academy-runtime, academy-prepare, academy-seed, academy-activate]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add, cron-secret-ciphertext, academy-runtime, academy-prepare, academy-seed, academy-activate, academy-proxy-recover]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -102,12 +102,40 @@ permissions:
   contents: read
 
 jobs:
+  academy-proxy-recover:
+    name: Explicit emergency recovery of verified public proxy network
+    if: >-
+      inputs.action == 'academy-proxy-recover' && github.repository == 'B2B-net-S-A/COMPASS' &&
+      github.ref == 'refs/heads/fix/academy-proxy-network'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: deploy-refs/heads/main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: ops/academy
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Verify the exact incident guards without production access
+        run: node --test ops/academy/proxy-emergency-recovery.test.mjs
+      - name: Disconnect only the two verified non-proxy application networks
+        env:
+          RECOVERY_ACTION: academy-proxy-recover
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: node ops/academy/proxy-emergency-recovery.mjs
+
   academy-prepare:
     name: Prepare Academy host from a tested revision
     if: >-
       github.repository == 'B2B-net-S-A/COMPASS' &&
       (((inputs.action == 'academy-runtime' || inputs.action == 'academy-prepare' || inputs.action == 'academy-seed') &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')) ||
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise' || github.ref == 'refs/heads/fix/academy-proxy-network')) ||
       (inputs.action == 'academy-activate' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -175,7 +203,7 @@ jobs:
           printf '%s\n' '178.104.220.48 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft' > "$task_work/known_hosts"
           tar -C ops/academy/clamav -czf "$task_work/bundle.tgz" \
             install-host.sh install-host.mjs host-control.sh host-control.mjs host-control-core.mjs \
-            activate-host.sh activate-host.mjs activation-app-check.mjs \
+            activate-host.sh activate-host.mjs activation-app-check.mjs app-container.mjs \
             worker-host.sh worker-request.mjs compose.daemon.proposal.yml compose.update.proposal.yml \
             clamd.conf clamd-health.conf freshclam.serialized.conf image-lock.json systemd
           timeout 180 ssh -i "$task_work/key" -o IdentitiesOnly=yes -o BatchMode=yes \
@@ -226,7 +254,7 @@ jobs:
 
   ops:
     name: Coolify queue ops
-    if: inputs.action != 'academy-runtime' && inputs.action != 'academy-prepare' && inputs.action != 'academy-seed' && inputs.action != 'academy-activate'
+    if: inputs.action != 'academy-runtime' && inputs.action != 'academy-prepare' && inputs.action != 'academy-seed' && inputs.action != 'academy-activate' && inputs.action != 'academy-proxy-recover'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

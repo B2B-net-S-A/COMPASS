@@ -2,6 +2,7 @@
 # Host-only scheduler entrypoint. No secrets in the host environment or argv.
 set -euo pipefail
 umask 077
+export PATH=/opt/compass-academy-node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 if [[ "$(uname -s)" != Linux || "$(id -u)" != 0 || "$#" != 1 ]]; then
   echo '{"ok":false,"error":"linux_host_root_required"}' >&2; exit 1
 fi
@@ -25,10 +26,14 @@ if [[ "$worker" == materials ]]; then
     echo '{"ok":true,"deferred":true,"reason":"scanner_paused"}'; exit 0
   fi
 fi
+# Coolify app names change on each deployment; discovery returns one verified ID.
+if ! app_id="$(node /opt/compass-academy/app-container.mjs 2>/dev/null)" || [[ ! "$app_id" =~ ^[a-f0-9]{64}$ ]]; then
+  echo '{"ok":false,"error":"academy_app_discovery_failed"}' >&2; exit 1
+fi
 # Docker exec inherits CRON_SECRET from the existing container configuration;
 # stdin contains code only. Suppress Docker stderr, which is not our log contract.
 if ! timeout --signal=TERM --kill-after=10 "$request_timeout" \
-  docker --host unix:///var/run/docker.sock exec --interactive compass-app \
+  docker --host unix:///var/run/docker.sock exec --interactive "$app_id" \
   node --input-type=module - "$worker" < /opt/compass-academy/worker-request.mjs 2>/dev/null; then
   echo '{"ok":false,"error":"academy_worker_failed"}' >&2; exit 1
 fi

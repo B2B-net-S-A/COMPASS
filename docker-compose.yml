@@ -23,6 +23,10 @@ services:
     networks:
       - default
       - academy_scanner
+    labels:
+      # Coolify attaches this resource network to both app and reverse proxy.
+      # Never let Traefik select the isolated scanner or Compose default network.
+      traefik.docker.network: w136dv828ofipvjfnxrqi643
     ports:
       - "${APP_PORT:-10000}:10000"
     environment:
