@@ -2,6 +2,7 @@
 # Installs files only. Never starts/enables containers, workers or timers.
 set -euo pipefail
 umask 077
+export PATH=/opt/compass-academy-node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 if [[ "$(uname -s)" != Linux || "$(id -u)" != 0 || "$#" != 0 ]]; then
   echo '{"ok":false,"error":"linux_host_root_required"}' >&2; exit 1
 fi

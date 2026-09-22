@@ -71,7 +71,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add, cron-secret-ciphertext, academy-prepare, academy-seed]
+        options: [list, cancel, cron-list, cron-enable, cron-restart, cron-set-container, cron-curl-to-wget, cron-disable-task, cron-add, cron-secret-ciphertext, academy-runtime, academy-prepare, academy-seed, academy-activate]
         default: list
       deployment_uuids:
         description: "Space-separated deployment UUIDs to cancel (action=cancel)"
@@ -105,8 +105,10 @@ jobs:
   academy-prepare:
     name: Prepare Academy host from a tested revision
     if: >-
-      (inputs.action == 'academy-prepare' || inputs.action == 'academy-seed') && github.repository == 'B2B-net-S-A/COMPASS' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')
+      github.repository == 'B2B-net-S-A/COMPASS' &&
+      (((inputs.action == 'academy-runtime' || inputs.action == 'academy-prepare' || inputs.action == 'academy-seed') &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')) ||
+      (inputs.action == 'academy-activate' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -134,6 +136,29 @@ jobs:
               exit 1
             fi
           done
+      - name: Install pinned scoped Node runtime without system packages
+        if: inputs.action == 'academy-runtime'
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ "$HETZNER_HOST" = 178.104.220.48 ] && [ "$HETZNER_USER" = root ]
+          task_work=$(mktemp -d)
+          trap 'rm -rf -- "$task_work"' EXIT
+          printf '%s\n' "$HETZNER_SSH_KEY" > "$task_work/key"
+          printf '%s\n' '178.104.220.48 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft' > "$task_work/known_hosts"
+          curl --fail --silent --show-error --location --max-time 180 \
+            https://nodejs.org/dist/v22.23.0/node-v22.23.0-linux-arm64.tar.gz -o "$task_work/node.tar.gz"
+          printf '%s  %s\n' 0c96aa074abd109e0b5da8d10202a9bbcea9bcf9ddb587b20944f71b8f21f8c8 "$task_work/node.tar.gz" | sha256sum --check --status
+          cp ops/academy/clamav/install-node-runtime.sh "$task_work/install-node-runtime.sh"
+          tar -C "$task_work" -cf - install-node-runtime.sh node.tar.gz | timeout 300 ssh \
+            -i "$task_work/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$task_work/known_hosts" \
+            -o ConnectTimeout=15 -o LogLevel=ERROR root@178.104.220.48 \
+            'set -eu; umask 077; stage=$(mktemp -d /opt/compass-academy-runtime-stage.XXXXXX); trap '\''rm -rf -- "$stage"'\'' EXIT; tar -xf - --no-same-owner --no-same-permissions -C "$stage"; bash "$stage/install-node-runtime.sh" - < "$stage/node.tar.gz"'
       - name: Transfer reviewed files and install without activation
         if: inputs.action == 'academy-prepare'
         env:
@@ -150,6 +175,7 @@ jobs:
           printf '%s\n' '178.104.220.48 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft' > "$task_work/known_hosts"
           tar -C ops/academy/clamav -czf "$task_work/bundle.tgz" \
             install-host.sh install-host.mjs host-control.sh host-control.mjs host-control-core.mjs \
+            activate-host.sh activate-host.mjs activation-app-check.mjs \
             worker-host.sh worker-request.mjs compose.daemon.proposal.yml compose.update.proposal.yml \
             clamd.conf clamd-health.conf freshclam.serialized.conf image-lock.json systemd
           timeout 180 ssh -i "$task_work/key" -o IdentitiesOnly=yes -o BatchMode=yes \
@@ -178,9 +204,29 @@ jobs:
             -o ConnectTimeout=15 -o LogLevel=ERROR root@178.104.220.48 \
             '/opt/compass-academy/host-control.sh seed' </dev/null
 
+      - name: Activate Academy timers after deployed revision and scanner checks
+        if: inputs.action == 'academy-activate'
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ "$HETZNER_HOST" = 178.104.220.48 ] && [ "$HETZNER_USER" = root ]
+          task_work=$(mktemp -d)
+          trap 'rm -rf -- "$task_work"' EXIT
+          printf '%s\n' "$HETZNER_SSH_KEY" > "$task_work/key"
+          printf '%s\n' '178.104.220.48 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFrtYvLwQUrw3GhnJs/y0LKt5maZ6qZVWpnb3bL9CRft' > "$task_work/known_hosts"
+          printf '{"sha":"%s"}\n' "$GITHUB_SHA" | timeout 180 ssh \
+            -i "$task_work/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$task_work/known_hosts" \
+            -o ConnectTimeout=15 -o LogLevel=ERROR root@178.104.220.48 \
+            '/opt/compass-academy/activate-host.sh'
+
   ops:
     name: Coolify queue ops
-    if: inputs.action != 'academy-prepare' && inputs.action != 'academy-seed'
+    if: inputs.action != 'academy-runtime' && inputs.action != 'academy-prepare' && inputs.action != 'academy-seed' && inputs.action != 'academy-activate'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

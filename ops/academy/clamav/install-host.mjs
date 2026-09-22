@@ -6,6 +6,7 @@ import {dirname,join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 const execute=promisify(execFile),sourceDirectory=dirname(fileURLToPath(import.meta.url));
 export const runtimeFiles=['host-control.sh','host-control.mjs','host-control-core.mjs','worker-host.sh','worker-request.mjs',
+ 'activate-host.sh','activate-host.mjs','activation-app-check.mjs',
  'compose.daemon.proposal.yml','compose.update.proposal.yml','clamd.conf','clamd-health.conf','freshclam.serialized.conf','image-lock.json'];
 export const unitNames=['compass-academy-materials','compass-academy-sync','compass-academy-clamav-update'];
 export const unitFiles=unitNames.flatMap(name=>[`${name}.service`,`${name}.timer`]);
