@@ -38,6 +38,7 @@ export function storagePolicySql(row) {
  */
 export async function installAcademyStorageFixture(status) {
     assertHostedStorage();
+    let installStage='connect';
     const sql=new pg.Client({connectionString:status.database});await sql.connect();
     const bootstrap=new URL(status.database);bootstrap.pathname='/academy_test';
     // Supabase's postgres role is sufficient for this isolated test database.
@@ -49,26 +50,34 @@ export async function installAcademyStorageFixture(status) {
         assert(/^academy_fixture_[a-f0-9]{32}$/.test(fixtureName), 'invalid_fixture_database_name');
         // Same server/client major version. Docker is invoked exclusively after the hosted guard.
         const dump=execFileSync('docker',['exec','supabase_db_academy-storage-ci','pg_dump','-U','postgres','-d',fixtureName,'--schema-only','--no-owner','--schema=public','--schema=academy_private'],{encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
+        installStage='import_public_schema';
         await sql.query(cleanPublicDump(dump));
         const policies=(await fixture.sql("select schemaname,tablename,policyname,permissive,roles::text[] as roles,cmd,qual,with_check from pg_policies where schemaname='storage' and tablename='objects' and policyname like 'academy_%' order by policyname")).rows;
         assert(policies.length>=6,'storage_policies_missing');
-        for(const policy of policies) await sql.query(storagePolicySql(policy));
+        for(const policy of policies) { installStage=`policy_${policy.policyname}`; await sql.query(storagePolicySql(policy)); }
         const triggers=(await fixture.sql("select t.tgname,pg_get_triggerdef(t.oid) as definition from pg_trigger t where t.tgrelid='storage.objects'::regclass and not t.tgisinternal and t.tgname like 'academy_%'")).rows;
         assert(triggers.length>=1,'storage_final_byte_guard_missing');
         for(const trigger of triggers) {
             assert(/^academy_[a-z_]+$/.test(trigger.tgname), 'invalid_storage_trigger_name');
             assert(/ ON storage\.objects /i.test(trigger.definition), 'invalid_storage_trigger_target');
-            await sql.query(trigger.definition);
+            installStage=`trigger_${trigger.tgname}`; await sql.query(trigger.definition);
         }
         const bucket=(await fixture.sql("select id,name,public,file_size_limit,allowed_mime_types from storage.buckets where id='academy-materials'")).rows[0];
         assert(bucket && !bucket.public, 'private_bucket_required');
+        installStage='bucket';
         await sql.query('insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)values($1,$2,$3,$4,$5)',[bucket.id,bucket.name,bucket.public,bucket.file_size_limit,bucket.allowed_mime_types]);
+        installStage='loyalty_rules';
         const rules=(await fixture.sql('select code,points,is_active from public.loyalty_rules')).rows;
         for(const rule of rules) await sql.query('insert into public.loyalty_rules(code,points,is_active)values($1,$2,$3)',[rule.code,rule.points,rule.is_active]);
+        installStage='rollout';
         await sql.query('insert into public.academy_rollout_settings default values');
         await sql.query("NOTIFY pgrst, 'reload schema'");
         return sql;
-    } catch(error) {await sql.end();throw error;} finally {await fixture.db.close();}
+    } catch(error) {
+        const relation = /relation "([a-zA-Z0-9_.]+)" does not exist/.exec(error.message??'')?.[1];
+        error.message=`fixture_${installStage}:${error.code??'failed'}${relation?':'+relation:''}`;
+        await sql.end();throw error;
+    } finally {await fixture.db.close();}
 }
 export function appendStorageReport(report) {
     console.log(JSON.stringify(report));

@@ -45,4 +45,12 @@ Test obejmuje whitelistę projekcji, zakaz przekierowań i obcych originów, mas
 - [Lista harmonogramów aplikacji](https://coolify.io/docs/api/endpoints/scheduled-tasks/list-scheduled-tasks-by-application-uuid).
 - [Uprawnienia i redakcja danych w API](https://coolify.io/docs/api/permissions). Wykorzystujemy istniejący token; jego uprawnień ten odczyt nie zmienia.
 
-Stan 2026-09-22: skrypt i testy przygotowane, pierwsze rzeczywiste wykonanie nastąpi dopiero po przeglądzie i push. Nie opisujemy jeszcze konfiguracji produkcyjnej na podstawie tego workflow.
+## Wynik pierwszego odczytu — 22.09.2026
+
+[Run 35719877087](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35719877087), commit 24a5c02, zakończył odczyt bez mutacji. Zredagowana projekcja: [readiness-observation.json](./readiness-observation.json).
+
+- Odczyt aplikacji, zmiennych i harmonogramów zakończył się powodzeniem. Destinations zwróciło HTTP 404, więc metadane serwera i pojemność nadal są nieustalone.
+- Nazwy AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, CRON_SECRET i Supabase są obecne, mają niepuste wartości i flagę runtime. To nie dowodzi zgód Graph ani rzeczywistego dostarczenia zmiennych do kontenera.
+- Brak ustawień ACADEMY_CLAMAV_HOST/PORT, ACADEMY_TEAMS_ENABLED i ACADEMY_ATTENDANCE_RETENTION_DAYS.
+- Brak zadań o nazwach academy-materials oraz academy-sync.
+- Status operacyjnej gotowości pozostaje not_established. Przed uruchomieniem potrzebne są skaner, potwierdzona pojemność, harmonogramy, migracje i pilot.
