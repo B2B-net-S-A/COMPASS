@@ -16,6 +16,7 @@ import type { ActionResult } from '@/lib/types/learning'
 import type { AcademyOrganizerDTO, AcademyRunDTO, AcademyRunParticipantDTO, AcademySessionDTO } from '@/lib/types/academy-sessions'
 import { AcademySessionForm, AcademyActualWindowForm } from './AcademySessionForm'
 import { AcademyAttendancePanel } from './AcademyAttendancePanel'
+import { AcademyLearnerProgress } from './AcademyLearnerProgress'
 import { REGISTRATION_LABEL, RUN_STATUS_LABEL, SESSION_SYNC_LABEL, sessionDate, sessionTime } from './session-format'
 
 interface Props {
@@ -97,6 +98,7 @@ export function AcademyRunDetail({ run, canRegister = true, participants, partic
         {completionRevoked && <p role="status" className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">Zaliczenie zostało unieważnione. Certyfikat jest niedostępny.{registration?.completionRevokedReason && ` Powód: ${registration.completionRevokedReason}`}</p>}
         {error && <p role="alert" className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">{error}</p>}
         {message && <p role="status" className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">{message}</p>}
+        {registration?.enrollmentId && registration.learnerProgress && <AcademyLearnerProgress progress={registration.learnerProgress} sessions={run.sessions} courseSlug={run.courseSlug} enrollmentId={registration.enrollmentId} />}
         {run.canManage && run.status !== 'cancelled' && <div className="flex flex-wrap items-center gap-2"><Button onClick={() => { setError(null); setModal({ type: 'session' }) }}><Plus aria-hidden="true" />Dodaj spotkanie</Button><Button variant="outline" onClick={() => { setError(null); setModal({ type: 'editRun' }) }}><Pencil aria-hidden="true" />Edytuj edycję</Button>{run.status === 'draft' && run.canPublish && <Button variant="outline" disabled={isPending || activeSessions.length === 0} onClick={publish}><Send aria-hidden="true" />Zatwierdź i opublikuj terminy</Button>}<Button variant="ghost" onClick={() => { setError(null); setModal({ type: 'cancel' }) }} className="text-destructive hover:text-destructive">Odwołaj edycję</Button></div>}
         <section className="space-y-4"><h2 className="text-lg font-semibold">Spotkania</h2>{run.sessions.length === 0 && <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{run.canManage ? 'Dodaj pierwsze spotkanie, aby przygotować edycję do publikacji.' : 'Terminy spotkań nie zostały jeszcze opublikowane.'}</div>}{run.sessions.map((session) => {
             const cancelled = run.status === 'cancelled' || session.status === 'cancelled'

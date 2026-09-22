@@ -45,6 +45,13 @@ describe('Published session obligations',()=>{
   render(<AcademyRunDetail run={run} participants={[]} organizers={[]} managedTeamsAvailable={false} userId="student" now="2026-09-22T00:00:00Z"/>);
   expect(screen.getByText(/Zaliczenie zostało unieważnione/)).toHaveTextContent('Błędnie potwierdzona obecność');expect(screen.queryByRole('link',{name:'Pobierz certyfikat'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'Sprawdź ukończenie'})).toBeDisabled();
  });
+ it('renders the authenticated learner projection without invoking completion on read',()=>{
+  const run:AcademyRunDTO={id:'run',courseId:'course',versionId:'version',versionNumber:1,courseTitle:'Course',courseSlug:'course',title:'Run',capacity:3,status:'published',confirmedCount:1,waitlistCount:0,canManage:false,canPublish:false,myRegistration:{id:'registration',status:'confirmed',enrollmentId:'own-enrollment',completedAt:null,learnerProgress:{completionState:'pending',missingLessons:[{id:'lesson',title:'Lekcja do ukończenia'}],quizRequired:false,quizPassed:false,quizPassPercent:80,attendanceSatisfied:false,readyToComplete:false,attendance:[{sessionId:session.id,status:'unconfirmed',attendedSeconds:null,thresholdPercent:80,requiredSeconds:null,requiredForCompletion:true,requirementMet:false}]}},sessions:[session]};
+  const view=render(<AcademyRunDetail run={run} participants={[]} organizers={[]} managedTeamsAvailable={false} userId="student" now="2026-09-22T00:00:00Z"/>);
+  expect(screen.getByRole('heading',{name:'Twoje wymagania ukończenia'})).toBeInTheDocument();expect(screen.getByRole('link',{name:'Lekcja do ukończenia'})).toHaveAttribute('href','/learning/course/lekcja/lesson?enrollment=own-enrollment');expect(mocks.complete).not.toHaveBeenCalled();
+  view.rerender(<AcademyRunDetail run={{...run,myRegistration:null,canManage:true}} participants={[]} organizers={[]} managedTeamsAvailable={false} userId="trainer" now="2026-09-22T00:00:00Z"/>);
+  expect(screen.queryByRole('heading',{name:'Twoje wymagania ukończenia'})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:'Lekcja do ukończenia'})).not.toBeInTheDocument();expect(mocks.complete).not.toHaveBeenCalled();
+ });
  it.each(['session','run'] as const)('distinguishes Compass cancellation from the external Teams host action (%s)',async(kind)=>{
   mocks.cancelRun.mockResolvedValue({success:true,data:undefined});mocks.cancelSession.mockResolvedValue({success:true,data:undefined});
   const run:AcademyRunDTO={id:'run',courseId:'course',versionId:'version',versionNumber:1,courseTitle:'Course',courseSlug:'course',title:'Run',capacity:3,status:'published',confirmedCount:1,waitlistCount:0,canManage:true,canPublish:false,myRegistration:null,sessions:[session]};

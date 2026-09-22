@@ -2,6 +2,24 @@ export type AcademyRunStatus = 'draft' | 'published' | 'cancelled'
 export type AcademyRegistrationStatus = 'confirmed' | 'waitlisted' | 'cancelled'
 export type AcademyMeetingMode = 'managed_teams' | 'external_link'
 export type AcademyAttendanceStatus = 'present' | 'insufficient' | 'needs_review'
+export interface AcademyLearnerRunProgress {
+    completionState: 'pending' | 'completed' | 'revoked'
+    missingLessons: Array<{ id: string; title: string }>
+    quizRequired: boolean
+    quizPassed: boolean
+    quizPassPercent: number
+    attendanceSatisfied: boolean
+    readyToComplete: boolean
+    attendance: Array<{
+        sessionId: string
+        status: AcademyAttendanceStatus | 'unconfirmed'
+        attendedSeconds: number | null
+        thresholdPercent: number
+        requiredSeconds: number | null
+        requiredForCompletion: boolean
+        requirementMet: boolean
+    }>
+}
 export interface AcademyIntegrationConfigDTO {
     managedTeamsAvailable: boolean
     reason?: string
@@ -44,7 +62,7 @@ export interface AcademyRunDTO {
     waitlistCount: number
     canManage: boolean
     canPublish: boolean
-    myRegistration: { id: string; status: AcademyRegistrationStatus; enrollmentId: string | null; completedAt: string | null; completionRevokedAt?: string | null; completionRevokedReason?: string | null } | null
+    myRegistration: { id: string; status: AcademyRegistrationStatus; enrollmentId: string | null; completedAt: string | null; completionRevokedAt?: string | null; completionRevokedReason?: string | null; learnerProgress?: AcademyLearnerRunProgress | null } | null
     sessions: AcademySessionDTO[]
 }
 export interface AcademyRunParticipantDTO {

@@ -183,6 +183,49 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_t
   WHERE o.run_id=r.id AND (s.status<>'scheduled' OR s.window_confirmed_at IS NULL OR s.actual_ends_at>now()
    OR COALESCE(a.status,'needs_review')<>'present')));
 $$;
+-- Read-only learner evidence, projected through academy_list_runs. Even a course
+-- manager receives only their own enrollment here; teaching notes stay private.
+CREATE FUNCTION academy_private.learner_run_progress(p_enrollment_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE e public.course_enrollments; r public.course_runs; v public.course_versions;
+ v_missing jsonb; v_attendance jsonb; v_quiz_passed boolean; v_attendance_met boolean;
+ v_completion_state text; v_registration_active boolean;
+BEGIN
+ SELECT * INTO e FROM public.course_enrollments WHERE id=p_enrollment_id AND user_id=auth.uid()
+  AND public.academy_can_access() AND public.academy_enrollment_has_access(id);
+ IF NOT FOUND OR e.run_id IS NULL THEN RETURN NULL; END IF;
+ SELECT * INTO r FROM public.course_runs WHERE id=e.run_id AND version_id=e.version_id;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT * INTO v FROM public.course_versions WHERE id=e.version_id;
+ SELECT COALESCE(jsonb_agg(jsonb_build_object('id',l.id,'title',l.title) ORDER BY l.order_index,l.id),'[]') INTO v_missing
+  FROM public.course_lessons l WHERE l.version_id=e.version_id AND (v.completion_rules->>'require_all_lessons')::boolean
+  AND NOT(l.id=ANY(COALESCE(e.completed_lessons,'{}')));
+ SELECT EXISTS(SELECT 1 FROM public.course_quiz_attempts a WHERE a.enrollment_id=e.id AND a.user_id=auth.uid()
+  AND a.course_id=e.course_id AND a.passed) INTO v_quiz_passed;
+ SELECT COALESCE((SELECT CASE WHEN c.revoked_at IS NOT NULL THEN 'revoked' ELSE 'completed' END
+  FROM public.course_completions c WHERE c.enrollment_id=e.id AND c.user_id=auth.uid()),'pending') INTO v_completion_state;
+ SELECT EXISTS(SELECT 1 FROM public.course_run_registrations reg WHERE reg.enrollment_id=e.id
+  AND reg.run_id=r.id AND reg.user_id=auth.uid() AND reg.status='confirmed') INTO v_registration_active;
+ SELECT COALESCE(jsonb_agg(jsonb_build_object('sessionId',s.id,
+  'status',COALESCE(a.status,'unconfirmed'),'attendedSeconds',a.attended_seconds,
+  'thresholdPercent',(v.completion_rules->>'attendance_percent')::integer,
+  'requiredSeconds',CASE WHEN s.window_confirmed_at IS NOT NULL THEN
+   ceil(floor(extract(epoch FROM s.actual_ends_at-s.actual_starts_at))*(v.completion_rules->>'attendance_percent')::integer/100.0)::integer END,
+  'requiredForCompletion',EXISTS(SELECT 1 FROM academy_private.run_obligations o WHERE o.run_id=r.id AND o.active_session_id=s.id),
+  'requirementMet',s.status='scheduled' AND s.window_confirmed_at IS NOT NULL AND s.actual_ends_at<=now() AND COALESCE(a.status,'unconfirmed')='present'
+  ) ORDER BY s.starts_at,s.id),'[]') INTO v_attendance
+ FROM public.course_sessions s LEFT JOIN public.session_attendance a ON a.session_id=s.id AND a.enrollment_id=e.id
+ WHERE s.run_id=r.id;
+ v_attendance_met:=public.academy_attendance_satisfied(e.id);
+ RETURN jsonb_build_object('completionState',v_completion_state,'missingLessons',v_missing,
+  'quizRequired',(v.completion_rules->>'quiz_required')::boolean,'quizPassed',v_quiz_passed,
+  'quizPassPercent',(v.completion_rules->>'quiz_pass_percent')::integer,
+  'attendance',v_attendance,'attendanceSatisfied',v_attendance_met,
+  'readyToComplete',v_completion_state<>'revoked' AND v_registration_active AND r.status='published'
+   AND jsonb_array_length(v_missing)=0 AND (NOT(v.completion_rules->>'quiz_required')::boolean OR v_quiz_passed) AND v_attendance_met);
+END $$;
+REVOKE ALL ON FUNCTION academy_private.learner_run_progress(uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public.academy_list_runs(p_course_id uuid DEFAULT NULL,p_run_id uuid DEFAULT NULL)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
     SELECT COALESCE(jsonb_agg(item ORDER BY created_at DESC),'[]') FROM (
@@ -195,7 +238,8 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_tem
             'myRegistration',(SELECT jsonb_build_object('id',reg.id,'status',reg.status,'enrollmentId',reg.enrollment_id,
                     'completedAt',(SELECT completed_at FROM public.course_enrollments WHERE id=reg.enrollment_id),
                     'completionRevokedAt',(SELECT revoked_at FROM public.course_completions WHERE enrollment_id=reg.enrollment_id),
-                    'completionRevokedReason',(SELECT revoked_reason FROM public.course_completions WHERE enrollment_id=reg.enrollment_id))
+                    'completionRevokedReason',(SELECT revoked_reason FROM public.course_completions WHERE enrollment_id=reg.enrollment_id),
+                    'learnerProgress',academy_private.learner_run_progress(reg.enrollment_id))
                 FROM public.course_run_registrations reg WHERE reg.run_id=r.id AND reg.user_id=auth.uid()),
             'sessions',(SELECT COALESCE(jsonb_agg(jsonb_build_object(
                 'id',s.id,'runId',s.run_id,'title',s.title,'startsAt',s.starts_at,'endsAt',s.ends_at,
