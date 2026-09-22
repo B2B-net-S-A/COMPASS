@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
-export function projectStart(mode, status, log, migrationCount) {
+export function projectStart(mode, status, log, migrationCount, orderingExceptions = []) {
     const migrations = [...log.matchAll(/Applying migration ([a-zA-Z0-9_.-]+\.sql)/g)];
     const lastMigration = migrations.at(-1)?.[1] ?? null;
     const postgres = log.match(/(?:ERROR:\s*)?([^\r\n]{1,400})\s*\(SQLSTATE ([A-Z0-9]{5})\)/);
@@ -15,7 +15,8 @@ export function projectStart(mode, status, log, migrationCount) {
     return {
         mode, outcome: passed ? 'passed' : 'failed', exitCode: status, appliedMigrationFiles: applied, skippedMigrationFiles: skipped,
         historicalMigrationFiles: mode === 'historical-replay' ? migrationCount : null,
-        migrationRegistry: mode === 'historical-replay' ? 'disposable_unique_ids_original_sql_order_unchanged' : 'fixture_only',
+        migrationRegistry: mode === 'historical-replay' ? 'disposable_unique_ids_original_sql_with_explicit_order_exceptions' : 'fixture_only',
+        orderingExceptions: mode === 'historical-replay' ? orderingExceptions : [],
         fullHistoricalReplay: mode === 'historical-replay' ? (passed ? 'passed' : 'failed') : 'not_run_in_fixture_job',
         lastMigration, sqlState, firstError,
         failureCategory: passed ? null : status===0&&!complete ? 'incomplete_historical_replay' : sqlState ? 'postgres_migration_error' : /duplicate|same version/i.test(log) ? 'migration_registry_collision' : status === 124 ? 'startup_timeout' : 'supabase_start_or_migration_failure',
@@ -23,7 +24,9 @@ export function projectStart(mode, status, log, migrationCount) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const [, , mode, status, path, directory] = process.argv;
-    const report = projectStart(mode, Number(status), fs.readFileSync(path, 'utf8'), fs.readdirSync(directory).filter(name => name.endsWith('.sql')).length);
+    const manifest = mode === 'historical-replay' ? JSON.parse(fs.readFileSync(`${directory}/replay-manifest.json`, 'utf8')) : [];
+    const orderingExceptions = [...new Set(manifest.map(row => row.orderingException).filter(Boolean))];
+    const report = projectStart(mode, Number(status), fs.readFileSync(path, 'utf8'), fs.readdirSync(directory).filter(name => name.endsWith('.sql')).length, orderingExceptions);
     console.log(JSON.stringify(report));
     if(report.outcome==='failed')process.exitCode=1;
     if(process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n### Supabase ${mode}\n\n\`\`\`json\n${JSON.stringify(report,null,2)}\n\`\`\`\n\nFixture Academy is not a full historical replay. A failed historical replay remains a failing release gate.\n`);

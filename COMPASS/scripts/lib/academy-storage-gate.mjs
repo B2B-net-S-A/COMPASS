@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import pg from 'pg';
 import { createAcademyDatabase } from './academy-db-fixture.mjs';
+import { assertFixtureObjectPrivileges, withFixtureDefaultPrivileges } from './academy-fixture-acl.mjs';
 
 export function assertHostedStorage(env = process.env) {
     assert.equal(env.GITHUB_ACTIONS, 'true', 'hosted_storage_gate_only');
@@ -51,7 +52,11 @@ export async function installAcademyStorageFixture(status) {
         // Same server/client major version. Docker is invoked exclusively after the hosted guard.
         const dump=execFileSync('docker',['exec','supabase_db_academy-storage-ci','pg_dump','-U','postgres','-d',fixtureName,'--schema-only','--no-owner','--schema=public','--schema=academy_private'],{encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
         installStage='import_public_schema';
-        await sql.query(cleanPublicDump(dump));
+        await withFixtureDefaultPrivileges(sql, async () => {
+            await sql.query(cleanPublicDump(dump));
+            installStage='verify_imported_acl';
+            await assertFixtureObjectPrivileges(fixture.db, sql);
+        });
         // pg_dump leaves search_path empty. pg_policies deparses expressions in
         // the fixture's public search path, so restore it before those statements.
         await sql.query("select set_config('search_path','public, extensions',false)");

@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feat/academy-enterprise]
+    branches: [main]
     paths:
       - 'COMPASS/supabase/migrations/**'
       - 'COMPASS/lib/academy/**'

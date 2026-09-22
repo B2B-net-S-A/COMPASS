@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-export async function createAcademyDatabase({ materials = false, live = false, staff = false, runMaterials = false, cleanup = false, revocations = false, rollout = false, obligations = false, reviewSubmissions = false } = {}) {
+export async function createAcademyDatabase({ materials = false, live = false, staff = false, runMaterials = false, cleanup = false, revocations = false, rollout = false, obligations = false, reviewSubmissions = false, beforeAcademyMigrations } = {}) {
     if (rollout || obligations) revocations = true;
     if (revocations || reviewSubmissions) staff = true;
     if (cleanup) runMaterials = true;
@@ -124,6 +124,7 @@ for (const [filename, tables] of [
     if (filename.includes('learning_paths')) await db.exec(source.slice(source.indexOf('-- Trigger: updated_at'), source.indexOf('COMMIT;')));
 }
 
+    if (beforeAcademyMigrations) await beforeAcademyMigrations(db);
     const suffixes = ['academy_versioned_foundation', ...(materials ? ['academy_materials'] : []), ...(live ? ['academy_live_sessions'] : []), ...(staff ? ['academy_staff_and_legacy_review'] : []), ...(runMaterials ? ['academy_run_materials'] : []), ...(revocations ? ['academy_completion_revocations'] : []), ...(rollout ? ['academy_rollout_gate'] : []), ...(obligations ? ['academy_session_obligations'] : []), ...(cleanup ? ['academy_material_cleanup'] : []), ...(reviewSubmissions ? ['academy_review_submission_token'] : [])];
     for (const suffix of suffixes) {
         const name = fs.readdirSync(`${root}/supabase/migrations`).find(file => file.endsWith(`_${suffix}.sql`));

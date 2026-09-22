@@ -6,23 +6,49 @@ import { pathToFileURL } from 'node:url';
 
 // Repository history has duplicate date-only version prefixes. Never rename the
 // source migrations or repair production history: normalize only disposable copies.
+// One audited same-day dependency: CREATE must precede DROP/re-CREATE repairs.
+// Hash pins make future edits require an explicit review of this exception.
+export const candidateStorageOrder = {
+    id: 'candidate_storage_bootstrap_before_repairs',
+    files: [
+        ['20260208_storage_candidates.sql', '84fe3d44fcbf2079fcb2aabb4c13ae2579eb2115a6c28ee43610796da56d16aa'],
+        ['20260208_fix_permissions_final.sql', '8d023350529fde5c4b2727496c7cbb848209fd27c94c2aae3773e778265dcfc7'],
+        ['20260208_fix_storage_policy.sql', 'ed8f8a7b78301149aa6b47b2393eb24134ca9f64e59c9e8ef8bd85bacd4eab69'],
+    ],
+};
+const sha256 = content => createHash('sha256').update(content).digest('hex');
+
 export function prepareHistory(source, target) {
     assert.notEqual(fs.realpathSync(source), fs.realpathSync(target));
     assert.equal(fs.readdirSync(target).length, 0, 'replay_destination_must_be_empty');
     const names = fs.readdirSync(source).filter(name => name.endsWith('.sql')).sort();
     assert(names.length > 0 && names.length < 100000);
+    const lexicalNames = [...names];
+    const exceptionNames = candidateStorageOrder.files.map(([name]) => name);
+    const hasException = exceptionNames.some(name => names.includes(name));
+    if (hasException) {
+        for (const [name, expectedHash] of candidateStorageOrder.files) {
+            assert(names.includes(name), `incomplete_replay_order_exception:${name}`);
+            assert.equal(sha256(fs.readFileSync(path.join(source, name))), expectedHash, `changed_replay_order_exception:${name}`);
+        }
+        const bootstrap = exceptionNames[0];
+        names.splice(names.indexOf(bootstrap), 1);
+        names.splice(names.indexOf(exceptionNames[1]), 0, bootstrap);
+    }
     const manifest = names.map((original, index) => {
         assert(/^[a-zA-Z0-9_.-]+\.sql$/.test(original), 'invalid_migration_name');
         const content = fs.readFileSync(path.join(source, original));
         const replay = `${String(20000101000000 + index + 1)}_${original}`;
         fs.writeFileSync(path.join(target, replay), content, { flag: 'wx' });
         assert.deepEqual(fs.readFileSync(path.join(target, replay)), content);
-        return { original, replay, sha256: createHash('sha256').update(content).digest('hex') };
+        return { original, replay, sha256: sha256(content), lexicalIndex: lexicalNames.indexOf(original), replayIndex: index,
+            orderingException: hasException && exceptionNames.includes(original) ? candidateStorageOrder.id : null };
     });
     fs.writeFileSync(path.join(target, 'replay-manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });
     return manifest;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const manifest = prepareHistory(process.argv[2], process.argv[3]);
-    console.log(JSON.stringify({ replay: 'ordered_sql_with_disposable_version_ids', files: manifest.length, originalSqlUnchanged: true }));
+    console.log(JSON.stringify({ replay: 'ordered_sql_with_disposable_version_ids', files: manifest.length, originalSqlUnchanged: true,
+        orderingExceptions: [...new Set(manifest.map(row => row.orderingException).filter(Boolean))] }));
 }

@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assertHostedStorage,localStatus,cleanPublicDump,storagePolicySql } from '../../../COMPASS/scripts/lib/academy-storage-gate.mjs';
 import { projectStart } from './report-start.mjs';
+// Run the host-native ACL regressions in the existing pre-Storage CI gate.
+import './fixture-acl.test.mjs';
+import { candidateStorageOrder } from './prepare-history.mjs';
 test('refuses local Docker paths even if generic CI is set',()=>{
  assert.throws(()=>assertHostedStorage({CI:'true'}));assert.throws(()=>assertHostedStorage({GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'self-hosted',RUNNER_OS:'Linux'}));
  assertHostedStorage({GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux'});
@@ -29,6 +32,49 @@ test('a zero exit cannot pass a replay that skipped or never applied historical 
  assert.equal(projectStart('historical-replay',0,'',254).outcome,'failed');
  assert.equal(projectStart('historical-replay',0,'Applying migration 001_one.sql\nSkipping migration invalid.sql',2).failureCategory,'incomplete_historical_replay');
  assert.equal(projectStart('historical-replay',0,'Applying migration 001_one.sql\n',1).fullHistoricalReplay,'passed');
+});
+
+test('reports the same-day ordering exception without changing failure semantics',()=>{
+ const report=projectStart('historical-replay',1,'Applying migration 001_one.sql\nERROR: duplicate policy (SQLSTATE 42710)\n',2,[candidateStorageOrder.id]);
+ assert.deepEqual(report.orderingExceptions,[candidateStorageOrder.id]);
+ assert.equal(report.outcome,'failed');assert.equal(report.sqlState,'42710');
+ assert.match(report.migrationRegistry,/explicit_order_exceptions/);
+});
+
+test('historical Storage bootstrap and exact backup replay without duplicate policies',async()=>{
+ const {PGlite}=await import('../../../COMPASS/node_modules/@electric-sql/pglite/dist/index.js');
+ const {default:fs}=await import('node:fs');
+ const db=new PGlite();
+ const migration=name=>fs.readFileSync(new URL(`../../../COMPASS/supabase/migrations/${name}`,import.meta.url),'utf8');
+ try {
+  await db.exec(`CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE SCHEMA storage;
+   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT null::uuid$$;
+   CREATE FUNCTION storage.foldername(text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$SELECT string_to_array($1,'/')$$;
+   CREATE TABLE public.profiles(id uuid PRIMARY KEY, role text);
+   CREATE TABLE storage.objects(id uuid PRIMARY KEY,name text,bucket_id text);
+   CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean);
+   CREATE TABLE public.messages(id uuid PRIMARY KEY);`);
+  // Reproduce the hosted failure first; the final lexical file creates an
+  // already-existing policy. No exception is swallowed by the replay helper.
+  for(const [name] of candidateStorageOrder.files.slice(1)) await db.exec(migration(name));
+  await assert.rejects(db.exec(migration(candidateStorageOrder.files[0][0])),error=>error.code==='42710');
+  await db.exec('DROP POLICY "Admins can upload Candidates CVs" ON storage.objects');
+  for(const [name] of candidateStorageOrder.files) await db.exec(migration(name));
+  const candidate=(await db.query("select * from pg_policies where schemaname='storage' and policyname='Admins can upload Candidates CVs'")).rows;
+  assert.equal(candidate.length,1);assert.equal(candidate[0].cmd,'INSERT');
+  assert.match(candidate[0].with_check,/bucket_id = 'documents'/);
+  assert.match(candidate[0].with_check,/foldername\(name\)/);
+  assert.match(candidate[0].with_check,/role = 'admin'/);
+  await db.exec(migration('20260216_chat_attachments.sql'));
+  const policies=async()=>(await db.query("select * from pg_policies where schemaname='storage' and policyname like 'Users can % chat attachments' order by policyname")).rows;
+  const original=await policies();assert.equal(original.length,2);
+  await db.exec(migration('20260216_chat_attachments_backup.sql'));
+  assert.deepEqual(await policies(),original);
+  await db.exec(migration('20260216_chat_attachments_backup.sql'));
+  assert.deepEqual(await policies(),original);
+  // An unrelated repeat is still an error: no blanket DROP or catch adapter.
+  await assert.rejects(db.exec(migration('20260216_chat_attachments.sql')),error=>error.code==='42710');
+ }finally{await db.close();}
 });
 
 test('integration script names match the final migrated RPC contracts',async()=>{
