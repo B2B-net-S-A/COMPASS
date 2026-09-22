@@ -24,6 +24,12 @@ describe('isPolishHoliday', () => {
         expect(isPolishHoliday(new Date(2026, 3, 6))).toBe(true)
     })
 
+    it('Wigilia jest dniem wolnym w latach 2026-2030 (ustawa od 2025)', () => {
+        for (const year of [2026, 2027, 2028, 2029, 2030]) {
+            expect(isPolishHoliday(new Date(year, 11, 24))).toBe(true)
+        }
+    })
+
     it('returns false for ordinary days', () => {
         expect(isPolishHoliday(new Date('2026-05-06T00:00:00Z'))).toBe(false)
         expect(isPolishHoliday(new Date('2026-07-15T00:00:00Z'))).toBe(false)
@@ -41,6 +47,11 @@ describe('addPolishBusinessDays', () => {
         const goodFriday = new Date('2026-04-03T10:00:00Z')
         const result = addPolishBusinessDays(goodFriday, 1)
         expect(result.toISOString().slice(0, 10)).toBe('2026-04-07')
+    })
+
+    it('skips Wigilia and Christmas — Wednesday 2026-12-23 + 1 day → Monday 2026-12-28', () => {
+        const result = addPolishBusinessDays(new Date('2026-12-23T10:00:00Z'), 1)
+        expect(result.toISOString().slice(0, 10)).toBe('2026-12-28')
     })
 
     it('Wednesday 2026-05-06 + 2 days → Friday 2026-05-08 (no skip)', () => {
