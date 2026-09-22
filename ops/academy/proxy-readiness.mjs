@@ -19,13 +19,20 @@ async function memberships(container){
  const data=JSON.parse(await docker(['inspect','--format','{{json .NetworkSettings.Networks}}',container]));
  return Object.entries(data).map(([name,value])=>{const ip=value.IPAddress||null;if(!validName(name)||(ip!==null&&!isIP(ip)))throw new Error('invalid_network');return {name,ip};});
 }
-let stage='app_networks';
+let stage='app_discovery',appCandidates=[];
 try{
- const appNetworks=await memberships('compass-app');stage='proxy_discovery';
+ const candidates=await docker(['ps','--all','--filter','label=com.docker.compose.service=app','--format','{{.Names}}\t{{.State}}']);
+ const rows=candidates?candidates.split('\n'):[];
+ if(rows.length>20)throw new Error('app_candidate_limit');
+ appCandidates=rows.map(row=>{const [name,state,...extra]=row.split('\t');if(extra.length||!validName(name)||!['created','restarting','running','removing','paused','exited','dead'].includes(state))throw new Error('invalid_app_candidate');return {name,state};});
+ const eligible=appCandidates.filter(item=>item.state==='running'&&(item.name==='compass-app'||/^(?:app|compass-app)-w136dv828ofipvjfnxrqi643(?:-|$)/.test(item.name)));
+ if(eligible.length!==1)throw new Error('app_not_unique');
+ const appName=eligible[0].name;stage='app_networks';
+ const appNetworks=await memberships(appName);stage='proxy_discovery';
  const proxyNames=(await docker(['ps','--filter','name=coolify-proxy','--filter','status=running','--format','{{.Names}}'])).split('\n').filter(name=>/^coolify-proxy(?:-[a-zA-Z0-9_-]+)?$/.test(name));
  if(proxyNames.length!==1)throw new Error('proxy_not_unique');
  stage='proxy_networks';const proxyNetworks=await memberships(proxyNames[0]);stage='app_labels';
- const labels=JSON.parse(await docker(['inspect','--format','{{json .Config.Labels}}','compass-app']));
+ const labels=JSON.parse(await docker(['inspect','--format','{{json .Config.Labels}}',appName]));
  const networkLabel=labels['traefik.docker.network']??null;
  if(networkLabel!==null&&!validName(networkLabel))throw new Error('invalid_network_label');
  const servicePorts=[];
@@ -43,8 +50,12 @@ try{
   const response=await fetch('http://127.0.0.1:10000/api/health',{redirect:'error',signal:AbortSignal.timeout(10000)}),body=await response.json();
   health={httpStatus:response.status,status:['healthy','degraded','unhealthy'].includes(body.status)?body.status:'unknown',version:typeof body.version==='string'&&/^[a-f0-9]{7,40}$/.test(body.version)?body.version:null};
  }catch{}
- process.stdout.write(JSON.stringify({app:{networks:appNetworks,routingNetwork:networkLabel,servicePorts,health},proxy:{name:proxyNames[0],networks:proxyNetworks},networks,sharedNetworks:appNetworks.filter(item=>proxyNetworks.some(proxy=>proxy.name===item.name)).map(item=>item.name)})+'\n');
-}catch{process.stdout.write(JSON.stringify({probeFailed:true,stage})+'\n');}
+ process.stdout.write(JSON.stringify({app:{name:appName,networks:appNetworks,routingNetwork:networkLabel,servicePorts,health},appCandidates,proxy:{name:proxyNames[0],networks:proxyNetworks},networks,sharedNetworks:appNetworks.filter(item=>proxyNetworks.some(proxy=>proxy.name===item.name)).map(item=>item.name)})+'\n');
+}catch(error){
+ const validations=['app_candidate_limit','invalid_app_candidate','app_not_unique','invalid_network','proxy_not_unique','invalid_network_label','network_count_limit'];
+ const failure=error.code==='ENOENT'?{kind:'command_missing'}:Number.isInteger(error.code)?{kind:'command_exit',exitCode:error.code}:validations.includes(error.message)?{kind:'validation',code:error.message}:{kind:'invalid_response'};
+ process.stdout.write(JSON.stringify({probeFailed:true,stage,failure,appCandidates})+'\n');
+}
 `;
 function ssh(args,input){
  return new Promise((resolve,reject)=>{
@@ -62,7 +73,14 @@ export async function collectProxyReadiness({env=process.env,run=ssh}={}){
   await writeFile(key,env.HETZNER_SSH_KEY.trim()+'\n',{mode:0o600});await writeFile(known,`${host} ${hostKey}\n`,{mode:0o600});
   const output=await run(['-i',key,'-o','IdentitiesOnly=yes','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',`UserKnownHostsFile=${known}`,'-o','ConnectTimeout=15','-o','LogLevel=ERROR',`root@${host}`,'/opt/compass-academy-node/bin/node --input-type=module'],proxyProbeSource);
   const data=JSON.parse(output);
-  if(data.probeFailed===true&&['app_networks','proxy_discovery','proxy_networks','app_labels','network_internal'].includes(data.stage))return {...report,reason:`probe_${data.stage}`};
+  if(data.probeFailed===true&&['app_discovery','app_networks','proxy_discovery','proxy_networks','app_labels','network_internal'].includes(data.stage)){
+   const result={...report,reason:`probe_${data.stage}`};
+   if(Array.isArray(data.appCandidates)&&data.appCandidates.length<=20)result.appCandidates=data.appCandidates.filter(item=>/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(item.name)&&['created','restarting','running','removing','paused','exited','dead'].includes(item.state)).map(({name,state})=>({name,state}));
+   if(data.failure?.kind==='command_missing'||data.failure?.kind==='invalid_response')result.failure={kind:data.failure.kind};
+   if(data.failure?.kind==='command_exit'&&Number.isInteger(data.failure.exitCode)&&data.failure.exitCode>=0&&data.failure.exitCode<=255)result.failure={kind:'command_exit',exitCode:data.failure.exitCode};
+   if(data.failure?.kind==='validation'&&['app_candidate_limit','invalid_app_candidate','app_not_unique','invalid_network','proxy_not_unique','invalid_network_label','network_count_limit'].includes(data.failure.code))result.failure={kind:'validation',code:data.failure.code};
+   return result;
+  }
   if(!data.app||!data.proxy||!Array.isArray(data.networks)||!Array.isArray(data.sharedNetworks))throw new Error('invalid_projection');
   return {...report,inspection:'complete',...data};
  }catch{return {...report,reason:'ssh_or_probe_unavailable'};}
