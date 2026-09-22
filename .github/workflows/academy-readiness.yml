@@ -40,10 +40,16 @@ jobs:
         with:
           node-version: '20'
       - name: Verify projection and GET-only transport without credentials
-        run: node --test ops/academy/coolify-readiness.test.mjs
+        run: node --test ops/academy/coolify-readiness.test.mjs ops/academy/host-capacity.test.mjs
       - name: Read configured application metadata using the existing deployment credentials
         env:
           COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
           COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
         run: node ops/academy/coolify-readiness.mjs
+      - name: Read host capacity with existing SSH credentials and a pinned host key
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: node ops/academy/host-capacity.mjs

@@ -30,7 +30,7 @@ export function MaterialCleanupQueue() {
         } catch { if (request === requestId.current) setError('Nie udało się odczytać stanu porządkowania materiałów.') }
         finally { if (request === requestId.current) setLoading(false) }
     }, [page, filter])
-    useEffect(() => { void refresh(); return () => { requestId.current++ } }, [refresh])
+    useEffect(() => { const requests = requestId; void refresh(); return () => { requests.current++ } }, [refresh])
     const retry = (id: string) => void run(async () => {
         try {
             const result = await retryAcademyMaterialCleanup(id)

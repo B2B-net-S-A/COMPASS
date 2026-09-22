@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectReadiness, environmentNames, summarizeEnvironments, summarizeTasks } from './coolify-readiness.mjs';
+import { assessOperationalRequirements, collectReadiness, environmentNames, summarizeEnvironments, summarizeTasks } from './coolify-readiness.mjs';
 
 const env = { COOLIFY_URL: 'https://coolify-compass.dynaminds.pl', COOLIFY_TOKEN: 'test-token-do-not-emit', COOLIFY_APP_UUID: 'test-application-uuid' };
 const appPath = '/api/v1/applications/test-application-uuid';
@@ -169,4 +169,62 @@ test('requires existing credentials without attempting to discover or create alt
         const report = await collectReadiness({ env: { ...env, [field]: '' }, fetchImpl: async () => { assert.fail('No request is authorized without complete configuration'); } });
         assert.equal(report.inspection, 'unavailable');
     }
+});
+
+
+test('identifies actionable scanner and scheduler gaps while leaving external-link reminders required', () => {
+    const assessment=assessOperationalRequirements(summarizeEnvironments([]),summarizeTasks([
+        {name:'academy-materials',enabled:true,container:'private',timeout:60,frequency:'* * * * *'},
+        {name:'academy-sync',enabled:false,container:'private',timeout:210,frequency:'* * * * *'},
+    ]));
+    assert.equal(assessment.scannerAddress,'missing');
+    assert.equal(assessment.schedulers[0].state,'timeout_too_short');
+    assert.equal(assessment.schedulers[1].state,'disabled');
+    assert.equal(assessment.schedulers[1].requiredForPilot,true);
+    assert.equal(assessment.schedulers[2].name,'academy-material-cleanup');
+    assert.equal(assessment.schedulers[2].requiredForPilot,false);
+    assert.equal(assessment.rawAttendanceRetention,'not_configured_no_automatic_deletion');
+    assert.equal(assessment.graphPermissionsAndOrganizerPolicies,'not_inspected');
+});
+
+test('configured metadata never proves scheduler delivery, lock, scanner capacity or a managed Teams grant', () => {
+    const assessment=assessOperationalRequirements(summarizeEnvironments([
+        {key:'ACADEMY_CLAMAV_HOST',value:privateValue,is_runtime:true},
+        {key:'CRON_SECRET',value:privateValue,is_runtime:false},
+    ]),summarizeTasks([
+        {name:'academy-materials',enabled:true,container:privateValue,timeout:330,frequency:'*/1 * * * *'},
+        {name:'academy-sync',enabled:true,container:privateValue,timeout:210,frequency:'@hourly'},
+    ]));
+    assert.equal(assessment.scannerAddress,'configured_unverified');
+    assert.equal(assessment.cronCredential,'not_runtime');
+    assert.equal(assessment.schedulers[0].state,'metadata_configured_execution_unverified');
+    assert.equal(assessment.schedulers[0].overlapProtection,'not_inspected');
+    assert.equal(assessment.schedulers[1].state,'frequency_requires_review');
+    assert(!JSON.stringify(assessment).includes(privateValue));
+});
+
+
+test('discovers only the primary server UUID from the documented application relation when destinations is unavailable', async () => {
+    const source=fixtures();let serverReads=0;
+    const report=await collectReadiness({env,fetchImpl:async url=>{
+        const path=new URL(url).pathname;
+        if(path.endsWith('/destinations'))return jsonResponse({message:privateValue},404);
+        if(path===appPath)return jsonResponse({...source[path],destination:{server:{uuid:'test-server-uuid',ip:privateValue,settings:{sentinel_token:privateValue}}}});
+        if(path===serverPath)serverReads++;
+        return jsonResponse(source[path]);
+    }});
+    assert.equal(serverReads,1);assert.equal(report.servers[0].primary,true);
+    assert.equal(report.checks.destinations,'http_404');assert.equal(report.inspection,'partial');
+    assert(!JSON.stringify(report).includes(privateValue));assert(!JSON.stringify(report).includes('test-server-uuid'));
+});
+
+test('does not follow injected URLs or numeric server IDs from application metadata', async () => {
+    let requests=0;
+    const report=await collectReadiness({env,fetchImpl:async url=>{
+        requests++;const path=new URL(url).pathname;
+        if(path===appPath)return jsonResponse({...fixtures()[path],destination:{server:{uuid:'../../servers?secret=leak',id:42,url:'https://attacker.test'}}});
+        if(path.endsWith('/destinations'))return jsonResponse([],200);
+        return jsonResponse(fixtures()[path]);
+    }});
+    assert.equal(requests,4);assert.deepEqual(report.servers,[]);
 });

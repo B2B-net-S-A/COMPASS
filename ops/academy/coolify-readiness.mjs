@@ -8,9 +8,15 @@ const maximumResponseBytes = 2 * 1024 * 1024;
 export const environmentNames = Object.freeze([
     'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'ACADEMY_TEAMS_ENABLED',
     'ACADEMY_CLAMAV_HOST', 'ACADEMY_CLAMAV_PORT', 'ACADEMY_ATTENDANCE_RETENTION_DAYS',
+    'ACADEMY_MATERIAL_CLEANUP_ENABLED', 'ACADEMY_UPLOAD_RETENTION_HOURS', 'ACADEMY_REJECTED_RETENTION_DAYS',
     'CRON_SECRET', 'SUPABASE_SERVICE_ROLE_KEY', 'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_APP_URL',
 ]);
-const taskNames = ['academy-materials', 'academy-sync'];
+export const schedulerContracts = Object.freeze([
+    { name: 'academy-materials', frequency: '* * * * *', minimumTimeoutSeconds: 330, requiredForPilot: true },
+    { name: 'academy-sync', frequency: '* * * * *', minimumTimeoutSeconds: 210, requiredForPilot: true },
+    { name: 'academy-material-cleanup', frequency: '*/5 * * * *', minimumTimeoutSeconds: 90, requiredForPilot: false },
+]);
+const taskNames = schedulerContracts.map(task => task.name);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const boolean = value => typeof value === 'boolean' ? value : null;
 const known = (value, allowed) => allowed.includes(value) ? value : 'unknown';
@@ -63,6 +69,37 @@ export function summarizeTasks(rows) {
     });
 }
 
+/** Metadata gaps are concrete; runtime, business pilot and grants remain separate evidence. */
+export function assessOperationalRequirements(environments, tasks) {
+    const environment = name => {
+        const entry = environments.find(row => row.name === name);
+        if (!entry || entry.present === null || entry.configured === null) return 'unknown';
+        if (!entry.present || !entry.configured) return 'missing';
+        return entry.runtime === false ? 'not_runtime' : entry.runtime === true ? 'configured_unverified' : 'unknown_runtime';
+    };
+    const schedulers = schedulerContracts.map(contract => {
+        const task = tasks.find(row => row.name === contract.name);
+        let state = 'unknown';
+        if (task?.present === false) state = 'missing';
+        else if (task?.duplicates) state = 'duplicate';
+        else if (task?.enabled === false) state = 'disabled';
+        else if (task?.containerConfigured === false) state = 'container_missing';
+        else if (task?.timeoutSeconds !== null && task?.timeoutSeconds !== undefined && task.timeoutSeconds < contract.minimumTimeoutSeconds) state = 'timeout_too_short';
+        else if (task?.frequency !== null && task?.frequency !== undefined && ![contract.frequency, contract.frequency.replace('* * * * *','*/1 * * * *')].includes(task.frequency)) state = 'frequency_requires_review';
+        else if (task?.enabled === true && task.containerConfigured === true && task.timeoutSeconds !== null && task.frequency !== null) state = 'metadata_configured_execution_unverified';
+        return { ...contract, state, overlapProtection: 'not_inspected', heartbeat: 'not_inspected' };
+    });
+    return {
+        scannerAddress: environment('ACADEMY_CLAMAV_HOST'), cronCredential: environment('CRON_SECRET'),
+        graphCredentials: ['AZURE_TENANT_ID','AZURE_CLIENT_ID','AZURE_CLIENT_SECRET'].map(name => ({ name, state: environment(name) })),
+        managedTeamsSwitch: 'not_evaluated_from_secret_values',
+        scannerCapacityAndLoadedSignatures: 'not_inspected', graphPermissionsAndOrganizerPolicies: 'not_inspected',
+        migrationsAndExactDeployedRevision: 'not_inspected', authenticatedBusinessPilot: 'not_inspected',
+        rawAttendanceRetention: environment('ACADEMY_ATTENDANCE_RETENTION_DAYS') === 'missing' ? 'not_configured_no_automatic_deletion' : 'configuration_present_or_unknown_policy_not_evaluated',
+        cleanupExecution: 'not_evaluated_default_is_report_only', schedulers,
+    };
+}
+
 function summarizeApplication(value) {
     if (!record(value)) return null;
     return {
@@ -103,12 +140,13 @@ async function readBoundedJson(response) {
 export async function collectReadiness({ env = process.env, fetchImpl = fetch, now = new Date() } = {}) {
     const checks = {};
     const report = {
-        schemaVersion: 1, checkedAt: now.toISOString(), operation: 'read_only_inventory',
+        schemaVersion: 2, checkedAt: now.toISOString(), operation: 'read_only_inventory',
         inspection: 'unavailable', operationalReadiness: 'not_established',
         connection: {
             urlConfigured: !!env.COOLIFY_URL, tokenConfigured: !!env.COOLIFY_TOKEN, applicationConfigured: !!env.COOLIFY_APP_UUID,
         },
         checks, application: null, servers: [], environments: summarizeEnvironments(null), tasks: summarizeTasks(null),
+        requirements: assessOperationalRequirements(summarizeEnvironments(null), summarizeTasks(null)),
         limitations: [
             'Vault presence does not prove environment delivery to the running process.',
             'Graph grants, mailbox scope, licenses and meeting policies are not inspected.',
@@ -148,31 +186,37 @@ export async function collectReadiness({ env = process.env, fetchImpl = fetch, n
     report.application = summarizeApplication(application);
     report.environments = summarizeEnvironments(environments);
     report.tasks = summarizeTasks(tasks);
+    report.requirements = assessOperationalRequirements(report.environments, report.tasks);
     if (checks.application === 'read' && !report.application) checks.application = 'unknown_schema';
     for (const [label, rows] of [['environments', environments], ['tasks', tasks]]) {
         if (checks[label] === 'read' && (!Array.isArray(rows) || !rows.every(record))) checks[label] = 'unknown_schema';
     }
+    const servers = new Map();
+    // Some Coolify versions expose the primary destination through the application
+    // relation while /applications/{uuid}/destinations is unavailable. Never use a
+    // numeric ID, arbitrary nested URL or a global server list as a substitute.
+    const primaryUuid = application?.destination?.server?.uuid;
+    if (typeof primaryUuid === 'string' && identifier.test(primaryUuid)) servers.set(primaryUuid, true);
     if (Array.isArray(destinations) && destinations.every(record)) {
-        const servers = new Map();
         for (const destination of destinations) {
             if (typeof destination.server_uuid !== 'string' || !identifier.test(destination.server_uuid)) continue;
             servers.set(destination.server_uuid, servers.get(destination.server_uuid) === true || destination.is_primary === true);
         }
-        // A malformed or unexpectedly broad response must not fan out into arbitrary inventory.
-        if (servers.size > 5) checks.servers = 'too_many_destinations';
-        else if (!servers.size) checks.servers = 'unknown_server_reference';
-        else {
-            let index = 0;
-            for (const [uuid, primary] of servers) {
-                const label = `server_${++index}`;
-                const path = `/servers/${uuid}`;
-                allowed.add(path);
-                const server = summarizeServer(await get(label, path), primary);
-                if (server) report.servers.push(server);
-                else if (checks[label] === 'read') checks[label] = 'unknown_schema';
-            }
-        }
     } else if (checks.destinations === 'read') checks.destinations = 'unknown_schema';
+    // A malformed or unexpectedly broad response must not fan out into arbitrary inventory.
+    if (servers.size > 5) checks.servers = 'too_many_destinations';
+    else if (!servers.size) checks.servers = 'unknown_server_reference';
+    else {
+        let index = 0;
+        for (const [uuid, primary] of servers) {
+            const label = `server_${++index}`;
+            const path = `/servers/${uuid}`;
+            allowed.add(path);
+            const server = summarizeServer(await get(label, path), primary);
+            if (server) report.servers.push(server);
+            else if (checks[label] === 'read') checks[label] = 'unknown_schema';
+        }
+    }
     report.inspection = Object.values(checks).every(value => value === 'read') ? 'complete'
         : Object.values(checks).some(value => value === 'read') ? 'partial' : 'unavailable';
     return report;

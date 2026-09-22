@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- Standalone SQL verification reports its assertions and failures. */
 import assert from 'node:assert/strict';
 import {createAcademyDatabase} from './lib/academy-db-fixture.mjs';
 process.on('uncaughtException',e=>{console.error({error:e.message,where:e.where,stack:e.stack});process.exit(1)});

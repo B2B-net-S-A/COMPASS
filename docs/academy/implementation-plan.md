@@ -2,6 +2,8 @@
 
 Data: 22.09.2026. Status: plan do realizacji, bez wdrożenia i zmian danych produkcyjnych.
 
+**Bieżące dowody realizacji:** [release-evidence.md](./release-evidence.md) zawiera wyniki PR #384, hosted CI oraz odczytu produkcyjnej bazy. Ma pierwszeństwo przed starszym checkpointem poniżej; plan produktu i kryteria odbioru pozostają aktualne.
+
 **Tryb pracy: realizacja wznowiona.** Użytkownik polecił kontynuować aktywny cel dokończenia modułu enterprise. Prace odbywają się w izolowanym checkoutcie; plan i lokalne testy nie oznaczają gotowości produkcyjnej.
 
 **Stan przygotowania:** istnieją robocze zmiany modelu danych, uprawnień, wersjonowania, paneli, uploadu, certyfikatów, współprowadzących oraz integracji Teams. Przeprowadzono wybrane testy jednostkowe, testy bazy na PGlite i przegląd przykładowych widoków desktop/mobile. Nie jest to odbiór całego modułu. Nie ma pełnego hosted CI, próby rzeczywistego uploadu w docelowym Storage, testu Teams z kontami pilota ani odbioru produkcyjnego. Główny katalog użytkownika jest zachowany. Macierz w §14 jest wcześniejszym checkpointem; poniższe ustalenia mają pierwszeństwo dla bieżącego stanu.
