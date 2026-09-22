@@ -4,8 +4,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
-// Temporary, exact-incident recovery. Only two fixed network disconnections;
-// never connect, force, restart, change labels or operate on the proxy/scanner.
+// Temporary, exact-incident recovery: two fixed network disconnections and one
+// isolated short-lived container to refresh the Docker provider's cached routes.
+// Never connect, force, restart, change labels or operate on the proxy/scanner.
 export async function recoverProxy({docker,systemctl,health,markerPresent}){
  const resource='w136dv828ofipvjfnxrqi643',privateNetwork='compass-academy-private',defaultNetwork=resource+'_default';
  const expectedSha='d62a21c10732ea2ce3b9710be1cce1338a737e46';
@@ -28,13 +29,16 @@ export async function recoverProxy({docker,systemctl,health,markerPresent}){
  if(label!==''&&label!=='<no value>')fail('routing_label_already_present');
  const appNetworks=await names(app),proxyNetworks=await names(proxy),shared=appNetworks.filter(name=>proxyNetworks.includes(name));
  if(shared.length!==1||shared[0]!==resource)fail('verified_public_network_required');
- if(JSON.stringify([...appNetworks].sort())!==JSON.stringify([resource,defaultNetwork,privateNetwork].sort()))fail('unexpected_app_networks');
+ const publicOnly=appNetworks.length===1&&appNetworks[0]===resource;
+ if(!publicOnly&&JSON.stringify([...appNetworks].sort())!==JSON.stringify([resource,defaultNetwork,privateNetwork].sort()))fail('unexpected_app_networks');
  for(const [network,expected]of [[resource,'false'],[defaultNetwork,'false'],[privateNetwork,'true']]){
   if((await docker(['network','inspect','--format','{{.Internal}}',network])).trim()!==expected)fail('network_classification_changed');
  }
  await verifyHealth();
+ const appImage=(await docker(['inspect','--format','{{.Image}}',app])).trim();
+ if(!/^sha256:[a-f0-9]{64}$/.test(appImage))fail('immutable_app_image_required');
  const disconnected=[];
- for(const network of [privateNetwork,defaultNetwork]){
+ for(const network of publicOnly?[]:[privateNetwork,defaultNetwork]){
   // Recheck application health and durable pause immediately before each mutation.
   if(await markerPresent())fail('pause_marker_present');await verifyHealth();
   await docker(['network','disconnect',network,app]);disconnected.push(network);
@@ -43,7 +47,18 @@ export async function recoverProxy({docker,systemctl,health,markerPresent}){
   await verifyHealth();
  }
  if(JSON.stringify(await names(app))!==JSON.stringify([resource]))fail('public_network_not_exclusive');
- return {ok:true,operation:'emergency_proxy_network_recovery',app,retainedNetwork:resource,disconnected,version:expectedSha};
+ if(await markerPresent())fail('pause_marker_present');await verifyHealth();
+ // Traefik watches container start/die/health_status, not network-disconnect.
+ // Use the verified running app's existing image, without network, writable FS,
+ // mounts or supplied environment. Its stdout is deliberately not returned.
+ await docker(['run','--rm','--pull=never','--name','compass-proxy-refresh-'+globalThis.crypto.randomUUID(),
+  '--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges',
+  '--memory','64m','--memory-swap','64m','--cpus','0.1','--pids-limit','32','--user','65534:65534',
+  '--no-healthcheck','--log-driver','none','--label','traefik.enable=false',
+  '--entrypoint','/usr/local/bin/node',appImage,'--version']);
+ if(JSON.stringify(await names(app))!==JSON.stringify([resource]))fail('public_network_not_exclusive');
+ await verifyHealth();
+ return {ok:true,operation:'emergency_proxy_network_recovery',app,retainedNetwork:resource,disconnected,providerRefresh:true,version:expectedSha};
 }
 
 export const recoverySource=`
