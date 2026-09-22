@@ -6,7 +6,7 @@ import { format, isWeekend, addDays } from 'date-fns'
 // 2029: 1.04 / 31.05 · 2030: 21.04 / 20.06.
 // Source: public_holidays table (migracje 20260507120001_phase11b_hr_internal_schema.sql
 // + 20260825180000_audit_db1_public_holidays_2028_2030.sql
-// + 20260922180000_audit_0922_rls_hardening.sql (Wigilia) — obie listy MUSZĄ mieć te
+// + 20260922180915_audit_0922_rls_hardening.sql (Wigilia) — obie listy MUSZĄ mieć te
 // same daty; ta jest kopią na potrzeby czystych helperów bez dostępu do bazy).
 // TODO(2030-12): Add 2031 entries before 2031-01-01.
 const POLISH_HOLIDAYS: ReadonlySet<string> = new Set([
