@@ -10,7 +10,18 @@
 // reverse direction: detect-and-surface, human-in-the-loop. We never auto-approve —
 // the pending request respects manager approval, pool accounting and substitute flow.
 
-import { getCurrentOof } from '@/lib/mailbox/graph-oof'
+import {
+    compassOofBlocksNewLeave,
+    compassOofMatchesLeave,
+    readCurrentOof,
+    setOutOfOffice,
+    shouldPreserveUserOof,
+    type CurrentOofState,
+} from '@/lib/mailbox/graph-oof'
+import { buildOofDefaultsForLeave } from '@/lib/mailbox/oof-defaults'
+import { shouldSetOofForLeave } from '@/lib/mailbox/oof-template'
+import { logSystemAudit } from '@/lib/audit/system-log'
+import { warsawToday, warsawTomorrow } from './forward-window'
 import {
     VACATION_POOL_TYPES,
     computePaidUnpaidSplit,
@@ -41,7 +52,28 @@ export interface OofReconcileStats {
     gapsFound: number
     /** Pending leave_requests created this run. */
     created: number
+    /**
+     * Audyt 2026-09-22, INT-08 — skrzynki, których OOF NIE udało się odczytać.
+     * `readErrors === scanned` (przy scanned > 0) = cały przebieg ślepy; trasa
+     * zwraca wtedy `ok:false`, zamiast udawać „0 nieobecności".
+     */
+    readErrors: number
+    /** INT-02 — OOF COMPASS ustawione przez cron dla urlopów odroczonych przy akceptacji. */
+    deferredOofSet: number
     errors: string[]
+}
+
+interface DueLeaveRow {
+    id: string
+    user_id: string
+    start_date: string
+    end_date: string
+    half_day: 'morning' | 'afternoon' | null
+    substitute_id: string | null
+    graph_oof_set: boolean | null
+    graph_oof_skip_reason: string | null
+    oof_internal_message: string | null
+    oof_external_message: string | null
 }
 
 interface ProfileRow {
@@ -69,6 +101,8 @@ export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats
         userOof: 0,
         gapsFound: 0,
         created: 0,
+        readErrors: 0,
+        deferredOofSet: 0,
         errors: [],
     }
 
@@ -110,17 +144,30 @@ export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats
         return stats
     }
 
+    const dueByUser = await loadDueCompassLeaves(admin, stats)
+
     for (const u of roster) {
         stats.scanned++
         const email = u.email as string
-        let oof
-        try {
-            oof = await getCurrentOof(email)
-        } catch {
-            stats.errors.push(`${email}: getCurrentOof failed`)
+        // INT-08: błąd odczytu jest liczony i raportowany, a nie mylony z „brak OOF".
+        const read = await readCurrentOof(email)
+        if (!read.ok) {
+            stats.readErrors++
+            stats.errors.push(`${email}: odczyt OOF nieudany (${read.statusCode ?? read.error})`)
             continue
         }
-        if (!oof || oof.status === 'disabled') continue
+        const oof = read.state
+
+        const due = dueByUser.get(u.id)
+        if (due) {
+            try {
+                await applyDueCompassOof(admin, u, due, oof, stats)
+            } catch (e) {
+                stats.errors.push(`${email}: odroczony OOF — ${e instanceof Error ? e.message : 'unknown'}`)
+            }
+        }
+
+        if (oof.status === 'disabled') continue
         stats.activeOof++
 
         const body = `${oof.internalReplyMessage ?? ''}${oof.externalReplyMessage ?? ''}`
@@ -150,6 +197,106 @@ export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats
 
     logger.info({ event: 'oof.reconcile.done', ...stats, errorCount: stats.errors.length })
     return stats
+}
+
+/**
+ * INT-02 — zatwierdzone urlopy, które DZIŚ albo JUTRO powinny mieć OOF COMPASS,
+ * a COMPASS nigdy go nie ustawił (`graph_oof_set=false`). Tak kończy urlop
+ * odroczony przy akceptacji (`skipReason: 'compass_active'`, bo trwał inny)
+ * oraz taki, którego ustawienie padło. Jeden na osobę: najwcześniej zaczynający się.
+ *
+ * Świadomie tylko `graph_oof_set=false`: gdy COMPASS już raz ustawił OOF,
+ * a pracownik sam go wyłączył (np. wrócił wcześniej), cron nie włącza go na nowo.
+ * `user_custom` też pomijamy — to decyzja o zachowaniu własnej odpowiedzi.
+ */
+async function loadDueCompassLeaves(
+    admin: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    stats: OofReconcileStats,
+    now: Date = new Date(),
+): Promise<Map<string, DueLeaveRow>> {
+    const out = new Map<string, DueLeaveRow>()
+    const { data, error } = await admin
+        .from('leave_requests')
+        .select(
+            'id, user_id, start_date, end_date, half_day, substitute_id, graph_oof_set, graph_oof_skip_reason, oof_internal_message, oof_external_message',
+        )
+        .eq('status', 'approved')
+        .eq('graph_oof_set', false)
+        .lte('start_date', warsawTomorrow(now))
+        .gte('end_date', warsawToday(now))
+    if (error) {
+        stats.errors.push(`odroczone OOF: odczyt urlopów nieudany (${error.message})`)
+        return out
+    }
+    for (const row of (data ?? []) as DueLeaveRow[]) {
+        if (row.graph_oof_skip_reason === 'user_custom') continue
+        if (!shouldSetOofForLeave({ startDate: row.start_date, endDate: row.end_date, halfDay: row.half_day })) continue
+        const prev = out.get(row.user_id)
+        if (!prev || row.start_date < prev.start_date) out.set(row.user_id, row)
+    }
+    return out
+}
+
+/** INT-02 — ustaw odroczony OOF COMPASS, jeśli skrzynka jest na niego gotowa. */
+async function applyDueCompassOof(
+    admin: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    u: ProfileRow,
+    leave: DueLeaveRow,
+    current: CurrentOofState,
+    stats: OofReconcileStats,
+): Promise<void> {
+    const markSet = async () => {
+        const { error } = await admin
+            .from('leave_requests')
+            .update({
+                graph_oof_set: true,
+                graph_oof_set_at: new Date().toISOString(),
+                graph_oof_skip_reason: null,
+            })
+            .eq('id', leave.id)
+        if (error) stats.errors.push(`${u.email}: zapis graph_oof_set nieudany (${error.message})`)
+    }
+
+    // Skrzynka ma już dokładnie ten OOF (np. ustawiony, ale flaga się nie zapisała).
+    if (compassOofMatchesLeave(current, leave.start_date, leave.end_date)) {
+        await markSet()
+        return
+    }
+    // Własna odpowiedź pracownika albo nadal trwający wcześniejszy urlop — czekamy.
+    if (shouldPreserveUserOof(current) || compassOofBlocksNewLeave(current, leave.start_date)) return
+
+    const defaults = await buildOofDefaultsForLeave({
+        admin,
+        userId: u.id,
+        employeeName: u.full_name ?? (u.email as string),
+        endDate: leave.end_date,
+        substituteId: leave.substitute_id,
+    })
+    const result = await setOutOfOffice({
+        userEmail: u.email as string,
+        startDate: leave.start_date,
+        endDate: leave.end_date,
+        internalReply: leave.oof_internal_message?.trim() || defaults.internal,
+        externalReply: leave.oof_external_message?.trim() || defaults.external,
+    })
+    if (result.success && !result.skipped) {
+        await markSet()
+        stats.deferredOofSet++
+        await logSystemAudit(null, 'LEAVE_OOF_SET', {
+            leave_id: leave.id,
+            target_user_id: u.id,
+            via: 'oof_reconcile',
+        })
+        logger.info({ event: 'oof.reconcile.deferred_set', leave_id: leave.id, user_id: u.id })
+        return
+    }
+    if (!result.success) {
+        stats.errors.push(`${u.email}: odroczony OOF nieudany (${result.error})`)
+        await admin
+            .from('leave_requests')
+            .update({ graph_sync_error: `oof: ${result.error}` })
+            .eq('id', leave.id)
+    }
 }
 
 async function processUserOof(

@@ -197,7 +197,11 @@ export async function createNewsPost(input: CreateNewsPostInput): Promise<NewsAc
                     body_en: input.excerpt?.trim() || 'See new post',
                     priority: 'normal',
                 }))
-                await supabase.from('notifications').insert(rows)
+                // Autor jest adminem (guard wyżej), więc RLS przepuszcza insert dla
+                // innych użytkowników — ale supabase-js zwraca `{ error }` zamiast
+                // rzucać, więc porażkę trzeba odczytać jawnie (audyt 2026-09-22, INT-22).
+                const { error: notifyErr } = await supabase.from('notifications').insert(rows)
+                if (notifyErr) logCompat.warn('[createNewsPost] notifications insert failed:', notifyErr.message)
             }
         }
 

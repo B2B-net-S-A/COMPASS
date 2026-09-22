@@ -74,6 +74,22 @@ export type OofSkipReason =
     | 'no_credentials'
     /** Phase 25d — user already set their own OOF; we preserve it. */
     | 'user_custom'
+    /**
+     * Audyt 2026-09-22, INT-02 — skrzynka ma trwający (albo wcześniejszy,
+     * jeszcze niezakończony) OOF COMPASS innego urlopu, a nowy urlop zaczyna się
+     * dopiero po nim. Graph trzyma JEDEN harmonogram, więc nadpisanie odebrałoby
+     * auto-reply bieżącemu urlopowi. Cron `oof-reconcile` ustawi nowy OOF, gdy
+     * przyjdzie jego kolej (`applyDueCompassOof`).
+     */
+    | 'compass_active'
+    /**
+     * Audyt 2026-09-22, INT-03 — `disableOutOfOffice` z zakresem dat: bieżący
+     * OOF nie należy do anulowanego urlopu (brak markera COMPASS albo inne okno),
+     * więc go nie ruszamy.
+     */
+    | 'not_owned'
+    /** `disableOutOfOffice` z zakresem dat: auto-reply jest już wyłączony. */
+    | 'already_disabled'
 
 export interface OutOfOfficeResult {
     success: boolean
@@ -94,36 +110,154 @@ export interface CurrentOofState {
 }
 
 /**
- * Read the user's current automaticRepliesSetting. Returns null on any failure
- * (network, 403, 404). Callers MUST treat null as "unknown → overwrite" to keep
- * the existing Phase 25a behavior on Graph failure (Compass OOF still gets set).
+ * Wynik odczytu OOF, który ODRÓŻNIA „wyłączony" od „nie wiadomo"
+ * (audyt 2026-09-22, INT-04 / INT-08).
+ *
+ * Dawniej każda awaria (403, 429, timeout) zamieniała się w `null`, a `null`
+ * znaczyło „nic nie ma, można nadpisać" — chwilowy błąd GET-a przy udanym
+ * PATCH-u kasował własną odpowiedź użytkownika, a cron raportował sukces przy
+ * 100% nieudanych odczytów.
  */
-export async function getCurrentOof(userEmail: string): Promise<CurrentOofState | null> {
-    if (!credsConfigured()) return null
+export type OofReadResult =
+    | { ok: true; state: CurrentOofState }
+    | { ok: false; error: string; statusCode?: number; noCredentials?: boolean }
+
+/**
+ * Odczyt bieżącego automaticRepliesSetting. Nigdy nie rzuca; błąd odczytu jest
+ * jawnym `{ ok: false }`, a nie udawanym „brakiem OOF".
+ *
+ * No retry on purpose: the cron reads every HR mailbox sequentially, and the
+ * per-request deadline in lib/graph/client.ts bounds a hung mailbox.
+ */
+export async function readCurrentOof(userEmail: string): Promise<OofReadResult> {
+    if (!credsConfigured()) return { ok: false, error: 'no_credentials', noCredentials: true }
 
     let client
     try {
         client = await getGraphClient()
-    } catch {
-        return null
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'graph_client_setup_failed' }
     }
 
     try {
         const settings = await client
             .api(`/users/${encodeURIComponent(userEmail)}/mailboxSettings/automaticRepliesSetting`)
             .get()
-        if (!settings || typeof settings !== 'object') return null
-        return settings as CurrentOofState
+        if (!settings || typeof settings !== 'object' || typeof (settings as { status?: unknown }).status !== 'string') {
+            return { ok: false, error: 'invalid_oof_response' }
+        }
+        return { ok: true, state: settings as CurrentOofState }
     } catch (err) {
         const { statusCode } = extractGraphErrorInfo(err)
+        const error = err instanceof Error ? err.message : String(err)
         logger.warn({
             event: 'oof.graph.get_failed',
             statusCode,
             userEmail,
-            error: err instanceof Error ? err.message : String(err),
+            error,
         })
-        return null
+        return { ok: false, error, statusCode }
     }
+}
+
+/**
+ * Read the user's current automaticRepliesSetting; null on any failure.
+ *
+ * @deprecated Zachowane dla zgodności wstecznej — `null` NIE rozróżnia „wyłączony"
+ * od „błąd odczytu". Nowy kod używa `readCurrentOof`.
+ */
+export async function getCurrentOof(userEmail: string): Promise<CurrentOofState | null> {
+    const read = await readCurrentOof(userEmail)
+    return read.ok ? read.state : null
+}
+
+// ─── Okno harmonogramu OOF (daty w Warszawie) ───────────────────────────────
+
+interface WallDateTime {
+    /** YYYY-MM-DD w Europe/Warsaw. */
+    date: string
+}
+
+function warsawDateOf(instant: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(instant)
+}
+
+/**
+ * Graph zwraca scheduled*DateTime albo w UTC (`timeZone: 'UTC'`), albo w strefie,
+ * którą zapisaliśmy (Warszawa). Dla UTC przeliczamy chwilę na datę warszawską;
+ * dla innej strefy bierzemy datę ze ściany wprost — COMPASS zapisuje zawsze
+ * `Europe/Warsaw`, więc to ta sama oś.
+ */
+function toWarsawWall(dt: { dateTime: string; timeZone: string } | null | undefined): WallDateTime | null {
+    if (!dt?.dateTime) return null
+    if ((dt.timeZone ?? '').toUpperCase() === 'UTC') {
+        const instant = new Date(`${dt.dateTime.replace(/Z$/, '')}Z`)
+        if (Number.isNaN(instant.getTime())) return null
+        return { date: warsawDateOf(instant) }
+    }
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(dt.dateTime)
+    return m ? { date: m[1] } : null
+}
+
+/** Okno OOF COMPASS: [startDate, endExclusiveDate) w datach warszawskich. */
+function compassScheduledWindow(
+    current: CurrentOofState,
+): { startDate: string; endExclusiveDate: string } | null {
+    if (current.status !== 'scheduled') return null
+    const start = toWarsawWall(current.scheduledStartDateTime)
+    const end = toWarsawWall(current.scheduledEndDateTime)
+    if (!start || !end) return null
+    return { startDate: start.date, endExclusiveDate: end.date }
+}
+
+function isCompassManagedState(current: CurrentOofState): boolean {
+    return isCompassManaged(current.internalReplyMessage) || isCompassManaged(current.externalReplyMessage)
+}
+
+/**
+ * INT-03 — czy bieżący OOF należy do urlopu o podanym zakresie: marker COMPASS
+ * i okno harmonogramu równe [startDate, endDate+1). Pure — eksport do testów.
+ */
+export function compassOofMatchesLeave(
+    current: CurrentOofState | null,
+    startDate: string,
+    endDate: string,
+): boolean {
+    if (!current || current.status === 'disabled') return false
+    if (!isCompassManagedState(current)) return false
+    const window = compassScheduledWindow(current)
+    if (!window) return false
+    return window.startDate === startDate && window.endExclusiveDate === addDays(endDate, 1)
+}
+
+/**
+ * INT-02 — czy bieżący OOF COMPASS innego urlopu blokuje ustawienie nowego.
+ *
+ * Blokuje, gdy harmonogram COMPASS jeszcze się nie skończył (trwa albo dopiero
+ * nadejdzie), a nowy urlop zaczyna się w dniu jego końca lub później — nadpisanie
+ * odebrałoby auto-reply wcześniejszemu urlopowi. Nowy urlop, który zaczyna się
+ * WCZEŚNIEJ niż koniec bieżącego okna (np. poprawka tego samego urlopu albo urlop
+ * przed zaplanowanym), nadpisuje jak dawniej — wcześniejszy ma pierwszeństwo,
+ * a późniejszy dostanie OOF od crona, gdy nadejdzie jego kolej. Pure.
+ */
+export function compassOofBlocksNewLeave(
+    current: CurrentOofState | null,
+    newStartDate: string,
+    now: Date = new Date(),
+): boolean {
+    if (!current || current.status === 'disabled') return false
+    if (!isCompassManagedState(current)) return false
+    const window = compassScheduledWindow(current)
+    if (!window) return false
+    const today = warsawDateOf(now)
+    // Koniec wyłączny: okno kończące się dziś o północy już nie trwa.
+    if (window.endExclusiveDate <= today) return false
+    return newStartDate >= window.endExclusiveDate
 }
 
 /**
@@ -184,8 +318,23 @@ export async function setOutOfOffice(
 
     // Phase 25d — preserve user-managed OOF. Read current state first; if user
     // has their own auto-reply active (and it's not a previous Compass-managed
-    // OOF), skip the PATCH. Graph read failure → fall back to legacy overwrite.
-    const current = await getCurrentOof(input.userEmail)
+    // OOF), skip the PATCH.
+    //
+    // Audyt 2026-09-22, INT-04: błąd odczytu to NIE „brak OOF". Dawniej wracaliśmy
+    // do bezwarunkowego nadpisania, więc chwilowy 429/timeout GET-a przy udanym
+    // PATCH-u kasował własną odpowiedź użytkownika. Teraz żadnego PATCH-a —
+    // wołający zapisuje `graph_sync_error`, a admin może ponowić z kolejki.
+    const read = await readCurrentOof(input.userEmail)
+    if (!read.ok) {
+        logger.warn({
+            event: 'oof.graph.set_aborted_read_failed',
+            userEmail: input.userEmail,
+            statusCode: read.statusCode,
+            error: read.error,
+        })
+        return { success: false, error: `oof_read_failed: ${read.error}` }
+    }
+    const current = read.state
     if (shouldPreserveUserOof(current)) {
         logger.info({
             event: 'oof.graph.skip_user_custom',
@@ -194,6 +343,22 @@ export async function setOutOfOffice(
             scheduledEnd: current?.scheduledEndDateTime?.dateTime ?? null,
         })
         return { success: true, skipped: true, skipReason: 'user_custom' }
+    }
+
+    // INT-02 — nie odbieraj auto-reply urlopowi, który trwa (albo nadejdzie
+    // wcześniej) na rzecz późniejszego. Ten sam urlop (identyczne okno) nie blokuje.
+    if (
+        !compassOofMatchesLeave(current, input.startDate, input.endDate) &&
+        compassOofBlocksNewLeave(current, input.startDate)
+    ) {
+        logger.info({
+            event: 'oof.graph.skip_compass_active',
+            userEmail: input.userEmail,
+            newStart: input.startDate,
+            currentStart: current.scheduledStartDateTime?.dateTime ?? null,
+            currentEnd: current.scheduledEndDateTime?.dateTime ?? null,
+        })
+        return { success: true, skipped: true, skipReason: 'compass_active' }
     }
 
     const endExclusive = addDays(input.endDate, 1)
@@ -268,6 +433,14 @@ export async function setOutOfOffice(
 
 export interface DisableOutOfOfficeInput {
     userEmail: string
+    /**
+     * Audyt 2026-09-22, INT-03 — zakres anulowanego urlopu (YYYY-MM-DD, włącznie).
+     * Podany → wyłączamy WYŁĄCZNIE OOF z markerem COMPASS i dokładnie tym oknem;
+     * cudzy urlop albo własna odpowiedź użytkownika zostają (`skipped: not_owned`).
+     * Pominięty → dawne bezwarunkowe wyłączenie (zgodność wsteczna).
+     */
+    startDate?: string
+    endDate?: string
 }
 
 /**
@@ -280,6 +453,27 @@ export async function disableOutOfOffice(
 ): Promise<OutOfOfficeResult> {
     if (!credsConfigured()) {
         return { success: true, skipped: true, skipReason: 'no_credentials' }
+    }
+
+    if (input.startDate && input.endDate) {
+        const read = await readCurrentOof(input.userEmail)
+        if (!read.ok) {
+            // Nie wiemy, czyj OOF tam jest — nie strzelamy na ślepo (INT-04).
+            return { success: false, error: `oof_read_failed: ${read.error}` }
+        }
+        if (read.state.status === 'disabled') {
+            return { success: true, skipped: true, skipReason: 'already_disabled' }
+        }
+        if (!compassOofMatchesLeave(read.state, input.startDate, input.endDate)) {
+            logger.info({
+                event: 'oof.graph.disable_skip_not_owned',
+                userEmail: input.userEmail,
+                leaveStart: input.startDate,
+                leaveEnd: input.endDate,
+                currentStatus: read.state.status,
+            })
+            return { success: true, skipped: true, skipReason: 'not_owned' }
+        }
     }
 
     let client

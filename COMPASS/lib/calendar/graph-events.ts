@@ -44,6 +44,58 @@ export interface CreateLeaveEventInput {
     note?: string | null
     /** Deterministic id (e.g. `leave-${leaveRequestId}`) for idempotent retry. */
     transactionId: string
+    /**
+     * Audyt 2026-09-22, INT-06 — urlop na pół dnia (tylko jednodniowy, jak w całym
+     * module urlopów). Podany → event czasowy zamiast całodniowego.
+     */
+    halfDay?: 'morning' | 'afternoon' | null
+}
+
+/** Godziny połówek dnia (Europe/Warsaw) dla eventu półdniowego urlopu. */
+export const HALF_DAY_EVENT_HOURS = {
+    morning: { start: '08:00:00', end: '12:00:00' },
+    afternoon: { start: '12:00:00', end: '16:00:00' },
+} as const
+
+/**
+ * Treść POST /events dla urlopu. Pure — eksport do testów.
+ *
+ * Całodniowy: start/end o północy, koniec wyłączny (dzień PO ostatnim dniu).
+ * Pół dnia (INT-06): event czasowy w nieobecnej połowie dnia — dawniej flaga
+ * `half_day` w ogóle nie trafiała do kalendarza i blokowało się całe 24 h,
+ * a druga połowa dnia wyglądała na niedostępną dla spotkań.
+ */
+export function buildLeaveEventBody(input: CreateLeaveEventInput) {
+    const typeLabel = HR_LEAVE_TYPE_LABEL[input.leaveType] ?? input.leaveType
+    const halfDay =
+        input.halfDay && input.startDate === input.endDate ? HALF_DAY_EVENT_HOURS[input.halfDay] : null
+
+    const timing = halfDay
+        ? {
+              isAllDay: false,
+              start: { dateTime: `${input.startDate}T${halfDay.start}`, timeZone: TIMEZONE },
+              end: { dateTime: `${input.startDate}T${halfDay.end}`, timeZone: TIMEZONE },
+          }
+        : {
+              isAllDay: true,
+              // Graph all-day events: start/end are at midnight in the timezone, and
+              // end is the day *after* the last actual day (exclusive). DB stores
+              // both as inclusive YYYY-MM-DD, so we add 1 day to endDate.
+              start: { dateTime: `${input.startDate}T00:00:00`, timeZone: TIMEZONE },
+              end: { dateTime: `${addDays(input.endDate, 1)}T00:00:00`, timeZone: TIMEZONE },
+          }
+
+    return {
+        subject: halfDay ? `[Compass] ${typeLabel} (pół dnia)` : `[Compass] ${typeLabel}`,
+        ...timing,
+        showAs: 'oof' as const,
+        categories: ['Compass'],
+        body: {
+            contentType: 'text' as const,
+            content: input.note ?? '',
+        },
+        transactionId: input.transactionId,
+    }
 }
 
 export interface CreateLeaveEventResult {
@@ -72,26 +124,7 @@ export async function createLeaveEvent(
         return { success: true, skipped: true }
     }
 
-    const typeLabel = HR_LEAVE_TYPE_LABEL[input.leaveType] ?? input.leaveType
-
-    // Graph all-day events: start/end are at midnight in the timezone, and
-    // end is the day *after* the last actual day (exclusive). DB stores
-    // both as inclusive YYYY-MM-DD, so we add 1 day to endDate.
-    const endExclusive = addDays(input.endDate, 1)
-
-    const body = {
-        subject: `[Compass] ${typeLabel}`,
-        isAllDay: true,
-        start: { dateTime: `${input.startDate}T00:00:00`, timeZone: TIMEZONE },
-        end: { dateTime: `${endExclusive}T00:00:00`, timeZone: TIMEZONE },
-        showAs: 'oof' as const,
-        categories: ['Compass'],
-        body: {
-            contentType: 'text' as const,
-            content: input.note ?? '',
-        },
-        transactionId: input.transactionId,
-    }
+    const body = buildLeaveEventBody(input)
 
     let client
     try {

@@ -306,3 +306,28 @@ export function isLowPulseResponse(scores: {
 export function deliveryDedupeKey(parts: Array<string | number | null | undefined>): string {
     return parts.filter((part) => part !== null && part !== undefined && String(part) !== '').join(':')
 }
+
+/**
+ * Klucz deduplikacji przypomnienia dla TCM (check-in, zadanie, follow-up, health).
+ *
+ * ODBIORCA JEST CZĘŚCIĄ KLUCZA (audyt 2026-09-22, INT-19). Dispatcher anuluje
+ * dostawę, gdy owner/assignee zmienił się przed wysyłką („recipient changed").
+ * Bez odbiorcy w kluczu kolejny bieg plannera generował TEN SAM klucz dla nowej
+ * osoby, a `upsert(..., { ignoreDuplicates: true })` po cichu go pomijał —
+ * przypomnienie przepadało na zawsze. Z odbiorcą w kluczu nowa osoba dostaje
+ * własną dostawę, a powtórne biegi dla tej samej osoby nadal są idempotentne.
+ */
+export function milestoneDeliveryDedupeKey(input: {
+    kind: string
+    entityId: string
+    milestone: string
+    dueDate: string
+    recipientId: string
+}): string {
+    return deliveryDedupeKey([input.kind, input.entityId, input.milestone, input.dueDate, input.recipientId])
+}
+
+/** Alert o niskim pulse — ten sam powód co wyżej: klucz niesie odbiorcę (INT-19). */
+export function lowPulseDeliveryDedupeKey(requestId: string, recipientId: string): string {
+    return deliveryDedupeKey(['survey', requestId, 'low', recipientId])
+}

@@ -47,7 +47,7 @@ type Failure = { table: string; op: 'update' | 'upsert' | 'delete'; code?: strin
 function withFailures(db: MockSupabase, failures: Failure[]): MockSupabase {
     const failingBuilder = (error: { message: string; code?: string }) => {
         const b: Record<string, unknown> = {}
-        for (const m of ['eq', 'in', 'neq', 'lt', 'select']) b[m] = () => b
+        for (const m of ['eq', 'in', 'neq', 'lt', 'is', 'select']) b[m] = () => b
         b.then = (resolve: (v: unknown) => void) => resolve({ data: null, error })
         return b
     }
@@ -194,6 +194,91 @@ describe('GET /api/cron/nexus-contractors-sync', () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body.unchanged).toBeGreaterThanOrEqual(2)
+    })
+
+    it('strona bez logicznego has_more blokuje zapis i prune migawki (INT-18)', async () => {
+        const db = seed({
+            contractors: contractors(),
+            nexus_contract_snapshot: [{ nexus_contract_id: 999, nexus_candidate_id: 9, seen_at: '2020-01-01T00:00:00.000Z' }],
+        })
+        const before = JSON.parse(JSON.stringify(db._tables.contractors))
+        for (const hasMore of [undefined, 'false', null]) {
+            vi.stubGlobal(
+                'fetch',
+                vi.fn(async () =>
+                    new Response(
+                        JSON.stringify({ items: [nexusItem(11, 110, 'Jan', 'Kowalski', 'jan@example.com')], has_more: hasMore }),
+                        { status: 200 },
+                    ),
+                ),
+            )
+            const res = await call()
+            expect(res.status).toBe(500)
+            expect(await res.json()).toMatchObject({ ok: false, stage: 'fetch' })
+        }
+        expect(db._tables.nexus_contract_snapshot.map((r) => r.nexus_contract_id)).toEqual([999])
+        expect(db._tables.contractors).toEqual(before)
+    })
+
+    it('pozycja eksportu bez candidate.id blokuje przebieg (INT-18)', async () => {
+        seed({ contractors: contractors(), nexus_contract_snapshot: [] })
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () =>
+                new Response(JSON.stringify({ items: [{ nexus_contract_id: 11, candidate: null }], has_more: false }), {
+                    status: 200,
+                }),
+            ),
+        )
+        const res = await call()
+        expect(res.status).toBe(500)
+        expect(await res.json()).toMatchObject({ ok: false, stage: 'fetch' })
+    })
+
+    it('ręczna decyzja podjęta między odczytem a zapisem wygrywa z automatem (INT-17)', async () => {
+        const db = createMockSupabaseClient({ tables: { contractors: contractors(), nexus_contract_snapshot: [] } })
+        // Symulacja wyścigu: zaraz po tym, jak cron przeczyta `contractors`, TCM
+        // odrzuca c2 („nie ma w NEXUSIE") i ręcznie łączy c1 z inną osobą.
+        const originalFrom = db.from
+        let raced = false
+        const from = vi.fn((table: string) => {
+            const builder = originalFrom(table)
+            if (table !== 'contractors' || raced) return builder
+            const originalSelect = builder.select
+            builder.select = (...args: unknown[]) => {
+                const q = originalSelect(...args)
+                const originalThen = q.then
+                q.then = (resolve: (v: unknown) => void) =>
+                    originalThen((result: unknown) => {
+                        raced = true
+                        const rows = db._tables.contractors
+                        Object.assign(rows.find((r) => r.id === 'c2')!, {
+                            nexus_match_status: 'dismissed',
+                            nexus_match_reason: 'ręcznie',
+                        })
+                        Object.assign(rows.find((r) => r.id === 'c1')!, {
+                            nexus_match_status: 'linked',
+                            nexus_contract_id: 21,
+                            nexus_candidate_id: 210,
+                        })
+                        resolve(result)
+                    })
+                return q
+            }
+            return builder
+        })
+        state.db = { ...db, from }
+
+        const res = await call()
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body).toMatchObject({ ok: true, failed: 0, skipped_concurrent: 2 })
+
+        const byId = Object.fromEntries(db._tables.contractors.map((r) => [r.id, r]))
+        expect(byId.c1).toMatchObject({ nexus_match_status: 'linked', nexus_contract_id: 21, nexus_candidate_id: 210 })
+        expect(byId.c2).toMatchObject({ nexus_match_status: 'dismissed', nexus_match_reason: 'ręcznie' })
+        // Wiersz bez wyścigu zapisany normalnie.
+        expect(byId.c3).toMatchObject({ nexus_match_status: 'auto_not_found' })
     })
 
     it('pusty eksport to awaria, nie „nie ma kontraktorów"', async () => {

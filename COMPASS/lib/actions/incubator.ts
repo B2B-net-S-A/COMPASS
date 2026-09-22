@@ -1,9 +1,10 @@
 'use server'
 
-import { logCompat } from '@/lib/logger'
+import { logCompat, logger } from '@/lib/logger'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type {
     ApplicationStatus,
     CreatePitchInput,
@@ -39,8 +40,15 @@ function slugify(text: string): string {
         .slice(0, 80) || 'project'
 }
 
+/**
+ * Powiadomienia inkubatora (audyt 2026-09-22, INT-22). Pitch i aplikację składa
+ * zwykły użytkownik, a adresatami są admini — polityka INSERT na `notifications`
+ * (`auth.uid() = user_id` albo admin) odrzucała taki sesyjny insert, a supabase-js
+ * zwraca `{ error }` zamiast rzucać, więc nikt tego nie widział. Service-rola po
+ * guardach akcji; adresaci wyliczani po stronie serwera. Nie eksportować
+ * (plik 'use server').
+ */
 async function notify(
-    supabase: ReturnType<typeof createClient>,
     userIds: string[],
     type: 'incubator_pitch_status_changed' | 'incubator_application_received' | 'incubator_application_status_changed',
     title: string,
@@ -57,9 +65,17 @@ async function notify(
         priority: 'normal',
     }))
     try {
-        await supabase.from('notifications').insert(rows)
+        const { error } = await createServiceClient().from('notifications').insert(rows)
+        if (error) {
+            logger.warn({ event: 'incubator.notification.insert_failed', type, recipients: userIds.length, error: error.message })
+        }
     } catch (e) {
-        logCompat.warn('[notify]', e)
+        logger.warn({
+            event: 'incubator.notification.insert_failed',
+            type,
+            recipients: userIds.length,
+            error: e instanceof Error ? e.message : String(e),
+        })
     }
 }
 
@@ -100,7 +116,6 @@ export async function submitPitch(input: CreatePitchInput): Promise<IncubatorAct
         // Notify all admins
         const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
         await notify(
-            supabase,
             ((admins ?? []) as Array<{ id: string }>).map((p) => p.id),
             'incubator_pitch_status_changed',
             'Nowy pitch w Inkubatorze',
@@ -203,7 +218,6 @@ export async function changePitchStatus(pitchId: string, newStatus: PitchStatus,
         if (error) throw error
 
         await notify(
-            supabase,
             [pitch.submitter_id],
             'incubator_pitch_status_changed',
             'Status pitcha zaktualizowany',
@@ -375,7 +389,6 @@ export async function applyToProject(projectId: string, motivation: string): Pro
         const { data: project } = await supabase.from('incubator_projects').select('title').eq('id', projectId).single()
         const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
         await notify(
-            supabase,
             ((admins ?? []) as Array<{ id: string }>).map((p) => p.id),
             'incubator_application_received',
             'Nowa aplikacja w Inkubatorze',
@@ -445,7 +458,6 @@ export async function changeApplicationStatus(applicationId: string, status: App
 
         const { data: project } = await supabase.from('incubator_projects').select('title').eq('id', app.project_id).single()
         await notify(
-            supabase,
             [app.applicant_id],
             'incubator_application_status_changed',
             'Status aplikacji zaktualizowany',

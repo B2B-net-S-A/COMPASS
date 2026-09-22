@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { logger } from '@/lib/logger'
 import { reconcileForwardRules } from '@/lib/oof/forward-rules'
+import { retryCancelledLeaveCleanup } from '@/lib/oof/leave-cleanup'
 import { reconcileOutlookOof } from '@/lib/oof/reconcile'
 
 export const dynamic = 'force-dynamic'
@@ -71,6 +72,18 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         Sentry.captureException(e, { tags: { kind: 'cron_oof_reconcile' } })
     }
 
+    // Audyt 2026-09-22, INT-07 — ponowienie sprzątania Outlooka po anulowanych
+    // urlopach, którym nie udało się usunąć eventu/OOF w chwili anulowania.
+    let cleanupStats: Awaited<ReturnType<typeof retryCancelledLeaveCleanup>> | null = null
+    let cleanupError: string | null = null
+    try {
+        cleanupStats = await retryCancelledLeaveCleanup(admin as never)
+    } catch (e) {
+        cleanupError = e instanceof Error ? e.message : 'unknown'
+        logger.error({ event: 'leave.cleanup.crashed', error: cleanupError })
+        Sentry.captureException(e, { tags: { kind: 'cron_leave_cleanup' } })
+    }
+
     // Two different thresholds on purpose:
     //   `ok`     — did anything crash? Monitoring reads this, so a half that died must
     //              never report success (Phase 36 returned ok:true unconditionally and
@@ -78,7 +91,20 @@ export const GET = withCronAuth(async (_request, { admin }) => {
     //   Sentry   — only when the WHOLE run collapsed. Across ~37 mailboxes a single
     //              unreadable one is routine, and paging on it teaches people to ignore
     //              Sentry.
-    const anyDown = Boolean(oofError || forwardError)
+    //
+    // Audyt 2026-09-22, INT-08: pół OOF, które nie rzuciło, ale nie odczytało ANI
+    // JEDNEJ skrzynki, to też awaria — dawniej 100% błędów Graph dawało `ok:true`
+    // i „0 nieobecności". Pojedyncza nieczytelna skrzynka nadal nie psuje przebiegu.
+    const oofBlind = Boolean(oofStats && oofStats.scanned > 0 && oofStats.readErrors === oofStats.scanned)
+    if (oofBlind) {
+        logger.error({ event: 'oof.reconcile.all_reads_failed', scanned: oofStats?.scanned })
+        Sentry.captureMessage('oof_reconcile_all_reads_failed', {
+            level: 'warning',
+            tags: { kind: 'cron_oof_reconcile' },
+            extra: { scanned: oofStats?.scanned, sample: oofStats?.errors.slice(0, 5) },
+        })
+    }
+    const anyDown = Boolean(oofError || forwardError || oofBlind || cleanupError)
     const bothDown = Boolean(oofError && forwardError)
     if (bothDown) {
         Sentry.captureMessage('oof_reconcile_run_failed', {
@@ -90,11 +116,15 @@ export const GET = withCronAuth(async (_request, { admin }) => {
 
     return NextResponse.json({
         ok: !anyDown,
+        ...(oofBlind ? { stage: 'oof_read' } : {}),
         // Phase 36 response shape preserved at the top level so existing checks keep working.
         ...(oofStats ?? {}),
         errors: oofStats ? oofStats.errors.slice(0, 15) : [oofError ?? 'oof: unknown'],
         forward: forwardStats
             ? { ...forwardStats, errors: forwardStats.errors.slice(0, 15) }
             : { error: forwardError ?? 'unknown' },
+        cleanup: cleanupStats
+            ? { ...cleanupStats, errors: cleanupStats.errors.slice(0, 15) }
+            : { error: cleanupError ?? 'unknown' },
     })
 })

@@ -1,10 +1,11 @@
 'use server'
 
-import { logCompat } from '@/lib/logger'
+import { logCompat, logger } from '@/lib/logger'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
 import type { TablesInsert } from '@/lib/supabase/database.types'
 import type {
     CreateTicketInput,
@@ -44,8 +45,18 @@ async function isHelpdeskCategory(supabase: ReturnType<typeof createClient>, cat
     return isHelpdeskSlug((data as { slug?: string } | null)?.slug ?? '')
 }
 
+/**
+ * Powiadomienia helpdesku (audyt 2026-09-22, INT-22).
+ *
+ * Adresat prawie nigdy nie jest autorem (konsultant → admini, odpowiedź →
+ * druga strona), a polityka INSERT na `notifications` przepuszcza tylko
+ * `auth.uid() = user_id` albo admina — sesyjny insert konsultanta był więc
+ * odrzucany, a że supabase-js zwraca `{ error }` zamiast rzucać, nikt tego nie
+ * widział. Service-rola po guardach akcji; adresaci wyliczani po stronie serwera
+ * z ticketu, do którego wołający ma dostęp. Funkcja nie jest eksportowana
+ * (plik 'use server' — eksport byłby publicznym endpointem).
+ */
 async function notifyUsers(
-    supabase: ReturnType<typeof createClient>,
     userIds: string[],
     type: 'support_ticket_assigned' | 'support_ticket_replied' | 'support_ticket_resolved',
     titlePl: string,
@@ -62,10 +73,33 @@ async function notifyUsers(
         priority: 'normal',
     }))
     try {
-        await supabase.from('notifications').insert(rows)
+        const { error } = await createServiceClient().from('notifications').insert(rows)
+        if (error) {
+            logger.warn({ event: 'support.notification.insert_failed', type, recipients: userIds.length, error: error.message })
+        }
     } catch (e) {
-        logCompat.warn('[notify] Failed to insert notifications:', e)
+        logger.warn({
+            event: 'support.notification.insert_failed',
+            type,
+            recipients: userIds.length,
+            error: e instanceof Error ? e.message : String(e),
+        })
     }
+}
+
+/**
+ * Adres „opiekuna" z czatu przychodzi z przeglądarki. Zanim service-rola wyśle mu
+ * powiadomienie z tematem wpisanym przez zgłaszającego, sprawdzamy, że to osoba
+ * z zespołu (nie konsultant i nie ktoś, kto odszedł) — inaczej akcja byłaby
+ * kanałem do wrzucania dowolnych powiadomień dowolnym użytkownikom.
+ */
+async function isStaffRecipient(userId: string): Promise<boolean> {
+    const { data } = await createServiceClient()
+        .from('profiles')
+        .select('role, employment_status')
+        .eq('id', userId)
+        .maybeSingle<{ role: string | null; employment_status: string | null }>()
+    return Boolean(data?.role && data.role !== 'consultant' && data.employment_status !== 'exited')
 }
 
 export async function listSupportCategories(opts: { includeInactive?: boolean } = {}): Promise<SupportActionResult<SupportCategory[]>> {
@@ -136,11 +170,13 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportAct
 
         // Notify the assigned guardian (if any) directly; otherwise broadcast to admins.
         if (input.assignee_id) {
-            await notifyUsers(supabase, [input.assignee_id], 'support_ticket_assigned', 'Nowe zgłoszenie z czatu', input.subject.trim())
+            if (await isStaffRecipient(input.assignee_id)) {
+                await notifyUsers([input.assignee_id], 'support_ticket_assigned', 'Nowe zgłoszenie z czatu', input.subject.trim())
+            }
         } else {
             const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
             const adminIds = (admins ?? []).map((p: { id: string }) => p.id)
-            await notifyUsers(supabase, adminIds, 'support_ticket_assigned', 'Nowe zgłoszenie w Support', input.subject.trim())
+            await notifyUsers(adminIds, 'support_ticket_assigned', 'Nowe zgłoszenie w Support', input.subject.trim())
         }
 
         revalidatePath('/support/tickets')
@@ -397,7 +433,7 @@ export async function addComment(ticketId: string, body: string, isInternal = fa
             if (user.id !== ticket.user_id) recipientIds.push(ticket.user_id)
             if (ticket.assignee_id && ticket.assignee_id !== user.id) recipientIds.push(ticket.assignee_id)
             if (recipientIds.length > 0) {
-                await notifyUsers(supabase, recipientIds, 'support_ticket_replied', 'Nowa odpowiedź w Support', ticket.subject)
+                await notifyUsers(recipientIds, 'support_ticket_replied', 'Nowa odpowiedź w Support', ticket.subject)
             }
         }
 
@@ -448,7 +484,7 @@ export async function changeTicketStatus(ticketId: string, status: TicketStatus)
         if (error) throw error
 
         if (status === 'resolved' && ticket.user_id !== user.id) {
-            await notifyUsers(supabase, [ticket.user_id], 'support_ticket_resolved', 'Twoje zgłoszenie zostało rozwiązane', ticket.subject)
+            await notifyUsers([ticket.user_id], 'support_ticket_resolved', 'Twoje zgłoszenie zostało rozwiązane', ticket.subject)
         }
 
         revalidatePath(`/support/tickets/${ticketId}`)
@@ -492,7 +528,7 @@ export async function assignTicket(ticketId: string, assigneeId: string | null):
         if (error) throw error
 
         if (assigneeId && ticket?.subject) {
-            await notifyUsers(supabase, [assigneeId], 'support_ticket_assigned', 'Przypisano Cię do ticketu', ticket.subject)
+            await notifyUsers([assigneeId], 'support_ticket_assigned', 'Przypisano Cię do ticketu', ticket.subject)
 
             // PR3: Teams alert (#compass-alerts)
             const { data: assignee } = await supabase

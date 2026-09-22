@@ -128,6 +128,25 @@ describe('POST /api/internal/sales-signals/status', () => {
         expect(body.unknown.sort()).toEqual(['nie-uuid', UNKNOWN_CARD].sort())
     })
 
+    it('ten sam UUID lower i UPPER case w jednej paczce daje JEDEN wiersz, najnowszy (INT-16)', async () => {
+        const res = await post({
+            updates: [
+                update({ signal_id: CARD_A, status: 'converted', handled_at: '2026-09-15T10:00:00Z' }),
+                update({
+                    signal_id: CARD_A.toUpperCase(),
+                    status: 'archived',
+                    reason: 'nowsze',
+                    handled_at: '2026-09-15T11:00:00Z',
+                }),
+            ],
+        })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ accepted: 1, ignored_stale: 0, unknown: [] })
+        const saved = db._tables.tech_card_sales_status.filter((r) => r.card_id === CARD_A)
+        expect(saved).toHaveLength(1)
+        expect(saved[0]).toMatchObject({ status: 'archived', reason: 'nowsze' })
+    })
+
     it('422 przy złym statusie, złej dacie, niepoprawnym JSON i paczce > 200', async () => {
         expect((await post({ updates: [update({ status: 'won' })] })).status).toBe(422)
         expect((await post({ updates: [update({ handled_at: 'wczoraj' })] })).status).toBe(422)
