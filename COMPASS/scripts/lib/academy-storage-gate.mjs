@@ -52,6 +52,9 @@ export async function installAcademyStorageFixture(status) {
         const dump=execFileSync('docker',['exec','supabase_db_academy-storage-ci','pg_dump','-U','postgres','-d',fixtureName,'--schema-only','--no-owner','--schema=public','--schema=academy_private'],{encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
         installStage='import_public_schema';
         await sql.query(cleanPublicDump(dump));
+        // pg_dump leaves search_path empty. pg_policies deparses expressions in
+        // the fixture's public search path, so restore it before those statements.
+        await sql.query("select set_config('search_path','public, extensions',false)");
         const policies=(await fixture.sql("select schemaname,tablename,policyname,permissive,roles::text[] as roles,cmd,qual,with_check from pg_policies where schemaname='storage' and tablename='objects' and policyname like 'academy_%' order by policyname")).rows;
         assert(policies.length>=6,'storage_policies_missing');
         for(const policy of policies) { installStage=`policy_${policy.policyname}`; await sql.query(storagePolicySql(policy)); }

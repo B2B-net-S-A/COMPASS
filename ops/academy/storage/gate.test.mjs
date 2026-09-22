@@ -65,3 +65,16 @@ test('native pg name arrays require explicit text-array projection', async () =>
  assert.deepEqual(roles,['authenticated']);
  assert.match(storagePolicySql({schemaname:'storage',tablename:'objects',policyname:'academy_native_roles',cmd:'SELECT',permissive:'PERMISSIVE',roles,qual:'true',with_check:null}),/TO "authenticated"/);
 });
+
+test('restores public search path after pg_dump before replaying deparsed policy expressions',async()=>{
+ const {createAcademyDatabase}=await import('../../../COMPASS/scripts/lib/academy-db-fixture.mjs');
+ const f=await createAcademyDatabase({materials:true});
+ try {
+  const row=(await f.sql("select * from pg_policies where schemaname='storage' and policyname='academy_material_read'")).rows[0];
+  const statement=storagePolicySql({...row,policyname:'academy_search_path_regression'});
+  await f.sql("select set_config('search_path','',false)");
+  await assert.rejects(f.sql(statement),/does not exist/);
+  await f.sql("select set_config('search_path','public, extensions',false)");
+  await f.sql(statement);
+ }finally{await f.db.close();}
+});
