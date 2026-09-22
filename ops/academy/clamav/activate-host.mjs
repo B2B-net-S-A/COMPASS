@@ -4,6 +4,7 @@ import {dirname,join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {fileStore} from './host-control-core.mjs';
 import {hostRuntime} from './host-control.mjs';
+import {discoverAcademyApp} from './app-container.mjs';
 const directory=dirname(fileURLToPath(import.meta.url));
 export const activationTimers=['compass-academy-materials.timer','compass-academy-sync.timer','compass-academy-clamav-update.timer'];
 export function executeActivationCommand(command,args,{input='',timeout=30000,env=process.env}={}){
@@ -18,14 +19,14 @@ export async function activateHost(input,{run=executeActivationCommand,store=fil
  if(!input||Object.keys(input).join(',')!=='sha'||typeof input.sha!=='string'||!/^[a-f0-9]{40}$/.test(input.sha))throw new Error('invalid_expected_sha');
  if(await store.read())throw new Error('scanner_paused');
  const docker=(args,options)=>run('docker',['--host','unix:///var/run/docker.sock',...args],options);
+ const app=await discoverAcademyApp({run});
  const {stdout:rawNetwork}=await docker(['network','inspect','compass-academy-private']);
  const networks=JSON.parse(rawNetwork),network=networks[0];
  if(networks.length!==1||network.Name!=='compass-academy-private'||network.Internal!==true)throw new Error('private_network_not_ready');
  const members=Object.entries(network.Containers??{});
  if(members.length!==2||members.some(([id])=>!/^[a-f0-9]{64}$/.test(id)))throw new Error('private_network_members_invalid');
- const app=members.filter(([,value])=>value.Name==='compass-app');
- if(app.length!==1)throw new Error('private_network_members_invalid');
- const scanner=members.find(([id])=>id!==app[0][0]);
+ if(!members.some(([id,value])=>id===app.id&&value.Name===app.name))throw new Error('private_network_members_invalid');
+ const scanner=members.find(([id])=>id!==app.id);
  const {stdout:labels}=await docker(['inspect','--format','{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.service"}}',scanner[0]]);
  if(labels.trim()!=='compass-academy-clamd clamd')throw new Error('private_network_members_invalid');
  for(const [id]of members){
@@ -34,7 +35,7 @@ export async function activateHost(input,{run=executeActivationCommand,store=fil
  }
  await (readiness??(()=>hostRuntime({run}).readiness()))();
  const appCode=await readFile(join(directory,'activation-app-check.mjs'),'utf8');
- const {stdout:rawApp}=await docker(['exec','--interactive','compass-app','node','--input-type=module','-',input.sha],{input:appCode,timeout:20000});
+ const {stdout:rawApp}=await docker(['exec','--interactive',app.id,'node','--input-type=module','-',input.sha],{input:appCode,timeout:20000});
  const appResult=JSON.parse(rawApp);
  if(appResult.ok!==true||![input.sha,input.sha.slice(0,7)].includes(appResult.version))throw new Error('deployed_sha_not_ready');
  const before=[];

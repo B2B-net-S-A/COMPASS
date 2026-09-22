@@ -1,4 +1,4 @@
-// Sent on stdin to Node INSIDE compass-app. Never read/export its secret on the host.
+// Sent on stdin to Node inside the discovered app. Never export its secret to the host.
 const workers={materials:{path:'academy-materials',timeout:300000},sync:{path:'academy-sync',timeout:180000}};
 export async function requestWorker(worker,{env=process.env,fetchRequest=fetch}={}){
  const config=workers[worker];

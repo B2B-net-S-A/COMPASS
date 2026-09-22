@@ -1,4 +1,4 @@
-// Executed on stdin by Node inside compass-app; never export its environment.
+// Executed on stdin by Node inside the discovered app; never export its environment.
 export async function checkActivationApp(sha,{env=process.env,fetchRequest=fetch}={}){
  if(typeof sha!=='string'||!/^[a-f0-9]{40}$/.test(sha))throw new Error('invalid_expected_sha');
  if(env.ACADEMY_CLAMAV_HOST!=='academy-clamd'||(env.ACADEMY_CLAMAV_PORT??'3310')!=='3310'

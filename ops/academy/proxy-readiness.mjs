@@ -31,7 +31,10 @@ try{
  const appNetworks=await memberships(appName);stage='proxy_discovery';
  const proxyNames=(await docker(['ps','--filter','name=coolify-proxy','--filter','status=running','--format','{{.Names}}'])).split('\n').filter(name=>/^coolify-proxy(?:-[a-zA-Z0-9_-]+)?$/.test(name));
  if(proxyNames.length!==1)throw new Error('proxy_not_unique');
- stage='proxy_networks';const proxyNetworks=await memberships(proxyNames[0]);stage='app_labels';
+ stage='proxy_networks';const proxyNetworks=await memberships(proxyNames[0]);
+ const proxyImage=await docker(['inspect','--format','{{.Config.Image}}',proxyNames[0]]);
+ if(!/^[a-zA-Z0-9][a-zA-Z0-9_.:/@-]{0,255}$/.test(proxyImage))throw new Error('invalid_proxy_image');
+ stage='app_labels';
  const labels=JSON.parse(await docker(['inspect','--format','{{json .Config.Labels}}',appName]));
  const networkLabel=labels['traefik.docker.network']??null;
  if(networkLabel!==null&&!validName(networkLabel))throw new Error('invalid_network_label');
@@ -50,7 +53,7 @@ try{
   const response=await fetch('http://127.0.0.1:10000/api/health',{redirect:'error',signal:AbortSignal.timeout(10000)}),body=await response.json();
   health={httpStatus:response.status,status:['healthy','degraded','unhealthy'].includes(body.status)?body.status:'unknown',version:typeof body.version==='string'&&/^[a-f0-9]{7,40}$/.test(body.version)?body.version:null};
  }catch{}
- process.stdout.write(JSON.stringify({app:{name:appName,networks:appNetworks,routingNetwork:networkLabel,servicePorts,health},appCandidates,proxy:{name:proxyNames[0],networks:proxyNetworks},networks,sharedNetworks:appNetworks.filter(item=>proxyNetworks.some(proxy=>proxy.name===item.name)).map(item=>item.name)})+'\n');
+ process.stdout.write(JSON.stringify({app:{name:appName,networks:appNetworks,routingNetwork:networkLabel,servicePorts,health},appCandidates,proxy:{name:proxyNames[0],image:proxyImage,networks:proxyNetworks},networks,sharedNetworks:appNetworks.filter(item=>proxyNetworks.some(proxy=>proxy.name===item.name)).map(item=>item.name)})+'\n');
 }catch(error){
  const validations=['app_candidate_limit','invalid_app_candidate','app_not_unique','invalid_network','proxy_not_unique','invalid_network_label','network_count_limit'];
  const failure=error.code==='ENOENT'?{kind:'command_missing'}:Number.isInteger(error.code)?{kind:'command_exit',exitCode:error.code}:validations.includes(error.message)?{kind:'validation',code:error.message}:{kind:'invalid_response'};

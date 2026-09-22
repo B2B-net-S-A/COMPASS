@@ -3,19 +3,21 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {activateHost,activationTimers,executeActivationCommand} from './activate-host.mjs';
 import {checkActivationApp} from './activation-app-check.mjs';
-const sha='a'.repeat(40),appId='b'.repeat(64),scannerId='c'.repeat(64);
+const sha='a'.repeat(40),appId='b'.repeat(64),scannerId='c'.repeat(64),appName='app-w136dv828ofipvjfnxrqi643-142156803733';
 test('native command adapter preserves explicit Compose defaults and stdin without shell expansion',async()=>{
  const {stdout}=await executeActivationCommand(process.execPath,['-e','let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify({value:process.env.ACADEMY_CLAMAV_STATE_DIR,input:s})))'],{
   env:{ACADEMY_CLAMAV_STATE_DIR:'/var/lib/compass-academy'},input:'literal $(no-command)'});
  assert.deepEqual(JSON.parse(stdout),{value:'/var/lib/compass-academy',input:'literal $(no-command)'});
 });
-function fixture({pause=null,internal=true,extra=false,labels='compass-academy-clamd clamd',running=true,appVersion=sha,ready=true,failEnable=false,firstPreviouslyActive=false,firstManuallyActive=false}={}){
+function fixture({pause=null,internal=true,extra=false,labels='compass-academy-clamd clamd',running=true,appVersion=sha,ready=true,failEnable=false,firstPreviouslyActive=false,firstManuallyActive=false,wrongNetworkApp=false}={}){
  const calls=[];
  const run=async(command,args,options={})=>{
   calls.push({command,args,options});
   if(command==='docker'){
    assert.deepEqual(args.slice(0,2),['--host','unix:///var/run/docker.sock']);
-   if(args.includes('network'))return {stdout:JSON.stringify([{Name:'compass-academy-private',Internal:internal,Containers:{[appId]:{Name:'compass-app'},[scannerId]:{Name:'compass-academy-clamd-clamd-1'},...(extra?{['d'.repeat(64)]:{Name:'unrelated-app'}}:{})}}])};
+   if(args.includes('ps'))return {stdout:`${appId}\t${appName}\trunning\n`};
+   if(args.includes('network'))return {stdout:JSON.stringify([{Name:'compass-academy-private',Internal:internal,Containers:{[wrongNetworkApp?'e'.repeat(64):appId]:{Name:appName},[scannerId]:{Name:'compass-academy-clamd-clamd-1'},...(extra?{['d'.repeat(64)]:{Name:'unrelated-app'}}:{})}}])};
+   if(args.some(x=>x.startsWith('{"id":')))return {stdout:JSON.stringify({id:appId,name:`/${appName}`,service:'app',running,paused:false,restarting:false})};
    if(args.includes('inspect'))return {stdout:args.some(x=>x.includes('.Config.Labels'))?labels:JSON.stringify({Running:running,Paused:false,Restarting:false})};
    if(args.includes('exec'))return {stdout:JSON.stringify({ok:true,version:appVersion})};
    assert.fail('Unexpected Docker operation');
@@ -36,7 +38,7 @@ function fixture({pause=null,internal=true,extra=false,labels='compass-academy-c
 test('activation verifies isolated runtime and exact deployed SHA before enabling only three timers',async()=>{
  const f=fixture();assert.deepEqual(await activateHost({sha},f.dependencies),{ok:true,op:'activate',sha,timers:activationTimers});
  const exec=f.calls.find(c=>c.args.includes('exec'));
- assert.deepEqual(exec.args.slice(2),['exec','--interactive','compass-app','node','--input-type=module','-',sha]);
+ assert.deepEqual(exec.args.slice(2),['exec','--interactive',appId,'node','--input-type=module','-',sha]);
  assert(exec.options.input.includes('process.env'));assert(!exec.args.some(arg=>arg.includes('CRON_SECRET')));
  const enable=f.calls.findIndex(c=>c.command==='systemctl'&&c.args[0]==='enable');
  assert(enable>f.calls.indexOf(exec));assert(enable>f.calls.findIndex(c=>c.command==='readiness'));
@@ -44,7 +46,7 @@ test('activation verifies isolated runtime and exact deployed SHA before enablin
  assert(f.calls.filter(c=>c.command==='systemctl').every(c=>!c.args.some(arg=>arg.includes('cleanup'))));
 });
 test('pending pause, invalid input, wrong network/members/runtime/version all prevent timer mutations',async()=>{
- for(const options of [{pause:{kind:'deploy'}},{internal:false},{extra:true},{labels:'another-project clamd'},{running:false},{appVersion:'d'.repeat(40)},{ready:false}]){
+ for(const options of [{pause:{kind:'deploy'}},{internal:false},{extra:true},{wrongNetworkApp:true},{labels:'another-project clamd'},{running:false},{appVersion:'d'.repeat(40)},{ready:false}]){
   const f=fixture(options);await assert.rejects(activateHost({sha},f.dependencies));
   assert(!f.calls.some(c=>c.command==='systemctl'&&['enable','disable','stop'].includes(c.args[0])));
  }
