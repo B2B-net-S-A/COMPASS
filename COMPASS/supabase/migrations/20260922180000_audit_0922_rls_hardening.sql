@@ -179,6 +179,12 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_pin_profile_privilege_columns ON public.profiles;
+CREATE TRIGGER trg_pin_profile_privilege_columns
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION public.pin_profile_privilege_columns();
+
 -- ─── HF-14 ─────────────────────────────────────────────────────────────────
 -- Podmieniamy wyłącznie warunek podwójnego startu na ŻYWEJ definicji funkcji, żeby nie
 -- nadpisać reszty ciała wersją z repo (repo i rejestr migracji są rozjechane).
