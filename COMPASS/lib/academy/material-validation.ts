@@ -49,9 +49,9 @@ export function checkOfficeArchiveLimits(bytes: Buffer) {
 
 export async function validateMaterialFormat(mimeType: string, prefix: Buffer, document?: Buffer): Promise<void> {
     if (mimeType === 'video/mp4') {
-        if (prefix.length < 16 || prefix.toString('ascii', 4, 8) !== 'ftyp' || prefix.readUInt32BE(0) < 16
-            || !['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'avc1', 'mp41', 'mp42', 'M4V '].includes(prefix.toString('ascii', 8, 12))) throw new MaterialRejected('invalid_mp4')
-        return
+        // A prefix cannot establish codec support or complete media samples.
+        // The scanner must feed every byte through Mp4StreamValidator instead.
+        throw new MaterialRejected('mp4_requires_full_validation')
     }
     if (!document || document.length > 50 * 1024 ** 2) throw new MaterialRejected('invalid_document_size')
     if (mimeType === 'application/pdf') {

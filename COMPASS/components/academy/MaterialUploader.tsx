@@ -14,7 +14,7 @@ const mimeTypes = {
     vtt: 'text/vtt',
 } as const
 const states: Record<string, string> = { uploading: 'Przesyłanie nieukończone — wybierz ponownie ten sam plik', quarantined: 'Oczekuje na weryfikację', scanning: 'Trwa weryfikacja', rejected: 'Plik odrzucony — prześlij poprawny materiał' }
-type UploadRow = { id: string; filename: string; status: string }
+type UploadRow = { id: string; filename: string; status: string; error?: string | null }
 
 export function MaterialUploader({ courseId, lessonId, runId, disabled, onReady }: {
     courseId: string; lessonId?: string; runId?: string; disabled?: boolean; onReady: () => void
@@ -99,10 +99,10 @@ export function MaterialUploader({ courseId, lessonId, runId, disabled, onReady 
         <input id={`upload-${scopeId}`} aria-describedby={`upload-help-${scopeId}`} type="file" accept=".pdf,.pptx,.docx,.mp4,.vtt" disabled={disabled || busy}
             className="block w-full text-sm file:mr-3 file:rounded file:border file:border-border file:bg-muted file:px-3 file:py-2 file:text-foreground"
             onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(file) }} />
-        <p id={`upload-help-${scopeId}`} className="text-xs text-muted-foreground">PDF, PPTX i DOCX do 50 MB; MP4 (H.264/AAC) do 1 GB; napisy VTT. {runId ? 'Po skanowaniu administrator zatwierdzi publikację dla tej grupy.' : 'Materiały pojawią się w lekcji po weryfikacji.'}</p>
+        <p id={`upload-help-${scopeId}`} className="text-xs text-muted-foreground">PDF, PPTX i DOCX do 50 MB; MP4 do 1 GB: H.264 (8-bit, Baseline/Main/High), jedna ścieżka obrazu i najwyżej jedna dźwięku AAC-LC. Nagrania segmentowane nie są obsługiwane; napisy VTT dodaj osobno. {runId ? 'Po skanowaniu administrator zatwierdzi publikację dla tej grupy.' : 'Materiały pojawią się w lekcji po weryfikacji.'}</p>
         {busy && <div className="flex items-center gap-3"><progress className="h-2 w-full" max={100} value={percent} aria-label="Postęp przesyłania" /><span className="text-xs">{percent}%</span><Button type="button" size="sm" variant="outline" onClick={() => controller.current?.abort()}><Pause className="mr-1 h-3 w-3" />Wstrzymaj</Button></div>}
         {uploads.filter(item => item.status !== 'ready').map(item => <div key={item.id} className="flex items-start justify-between gap-2 text-xs">
-            <div className="min-w-0"><p className="break-all font-medium">{item.filename}</p><p className="text-muted-foreground">{states[item.status] ?? item.status}</p></div>
+            <div className="min-w-0"><p className="break-all font-medium">{item.filename}</p><p className="text-muted-foreground">{item.status === 'rejected' && item.error ? item.error : states[item.status] ?? item.status}</p></div>
             {item.status !== 'rejected' && <Button type="button" variant="ghost" size="sm" disabled={disabled || busy} aria-label={`Anuluj przesyłanie ${item.filename}`} onClick={() => void discard(item.id)}><X className="h-4 w-4" /></Button>}
         </div>)}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

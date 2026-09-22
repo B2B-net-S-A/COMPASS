@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { cancelAcademyRegistration, cancelAcademyRun, cancelAcademySession, publishAcademyRun, registerAcademyRun, updateAcademyRun } from '@/lib/actions/academy-sessions'
+import { cancelAcademyRegistration, cancelAcademyRun, cancelAcademySession, publishAcademyRun, reconcileAcademyAttendance, registerAcademyRun, updateAcademyRun } from '@/lib/actions/academy-sessions'
 import { completeAcademyCourse } from '@/lib/actions/course-learning'
 import type { ActionResult } from '@/lib/types/learning'
 import type { AcademyOrganizerDTO, AcademyRunDTO, AcademyRunParticipantDTO, AcademySessionDTO } from '@/lib/types/academy-sessions'
@@ -21,6 +21,7 @@ import { REGISTRATION_LABEL, RUN_STATUS_LABEL, SESSION_SYNC_LABEL, sessionDate, 
 
 interface Props {
     run: AcademyRunDTO
+    isAdmin?: boolean
     canRegister?: boolean
     participants: AcademyRunParticipantDTO[]
     participantsError?: string
@@ -32,7 +33,7 @@ interface Props {
 }
 type Modal = { type: 'editRun' } | { type: 'session'; session?: AcademySessionDTO } | { type: 'replacement'; session: AcademySessionDTO } | { type: 'actual'; session: AcademySessionDTO } | { type: 'cancel'; session?: AcademySessionDTO } | null
 
-export function AcademyRunDetail({ run, canRegister = true, participants, participantsError, organizers, managedTeamsAvailable, managedTeamsReason, userId, now }: Props) {
+export function AcademyRunDetail({ run, isAdmin = false, canRegister = true, participants, participantsError, organizers, managedTeamsAvailable, managedTeamsReason, userId, now }: Props) {
     const router = useRouter()
     const [childPending, setChildPending] = useState(false)
     const [modal, setModal] = useState<Modal>(null)
@@ -110,6 +111,12 @@ export function AcademyRunDetail({ run, canRegister = true, participants, partic
                 {run.canManage && cancelled && !session.replacementSessionId && run.status === 'published' && session.mode === 'managed_teams' && session.syncStatus !== 'cancelled' && <p className="text-sm text-muted-foreground">Zastępstwo będzie dostępne po potwierdzeniu odwołania poprzedniego spotkania przez Teams. W razie błędu ponów synchronizację w panelu integracji.</p>}
                 {session.mode === 'external_link' && (enrolled || run.canManage) && <div className="space-y-1"><Button asChild variant="outline" size="sm"><a href={`/api/academy/sessions/${session.id}/calendar`}><CalendarDays aria-hidden="true" />Pobierz wydarzenie .ics</a></Button><p className="text-xs text-muted-foreground">Po zmianie terminu pobierz ponownie; plik nie aktualizuje się automatycznie.</p></div>}
                 {run.canManage && !cancelled && <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4"><Button variant="outline" size="sm" onClick={() => { setError(null); setModal({ type: 'session', session }) }}><Pencil aria-hidden="true" />Edytuj termin</Button>{Date.parse(session.startsAt) <= Date.parse(now) && <Button variant="outline" size="sm" onClick={() => { setError(null); setModal({ type: 'actual', session }) }}><Clock3 aria-hidden="true" />{session.attendanceWindowConfirmed ? 'Skoryguj czas zajęć' : 'Potwierdź czas zajęć'}</Button>}<Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => { setError(null); setModal({ type: 'cancel', session }) }}>Odwołaj spotkanie</Button>{session.attendanceWindowConfirmed && <span className="text-xs text-success">Czas zajęć potwierdzony</span>}</div>}
+                {isAdmin && run.canManage && run.status === 'published' && !cancelled && session.mode === 'managed_teams'
+                    && session.attendanceWindowConfirmed && session.actualEndsAt && Date.parse(session.actualEndsAt) <= Date.parse(now) && <div className="space-y-2">
+                    <Button variant="outline" size="sm" disabled={isPending || !managedTeamsAvailable} onClick={() => mutate(() => reconcileAcademyAttendance(session.id), 'Zlecono ponowny import obecności. Wynik pojawi się po synchronizacji Teams.')}>Ponów import obecności</Button>
+                    <p className="text-xs text-muted-foreground">Po poprawieniu mapowania kont administrator może ponownie pobrać raport. Ręczne decyzje i istniejące ukończenia oraz certyfikaty pozostają bez zmian.</p>
+                    {!managedTeamsAvailable && <p className="text-xs text-muted-foreground">{managedTeamsReason || 'Ponowienie wymaga włączonej integracji firmowych spotkań Teams.'}</p>}
+                </div>}
             </article>
         })}</section>
         {run.canManage && (participantsError ? <p role="alert" className="rounded-xl border border-destructive/20 p-4 text-sm text-destructive">Nie udało się wczytać listy uczestników. Odśwież stronę przed potwierdzaniem obecności.</p> : <AcademyAttendancePanel participants={participants} sessions={run.sessions} userId={userId} readOnly={run.status === 'cancelled'} />)}

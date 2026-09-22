@@ -65,6 +65,18 @@ export interface AcademyRunDTO {
     myRegistration: { id: string; status: AcademyRegistrationStatus; enrollmentId: string | null; completedAt: string | null; completionRevokedAt?: string | null; completionRevokedReason?: string | null; learnerProgress?: AcademyLearnerRunProgress | null } | null
     sessions: AcademySessionDTO[]
 }
+export interface AcademyParticipantProgress {
+    versionNumber: number
+    totalLessons: number
+    completedLessons: number
+    lessonPercent: number
+    requireAllLessons: boolean
+    quizRequired: boolean
+    quizPassPercent: number
+    quizPassed: boolean
+    quizBestScorePercent: number | null
+    quizAttemptCount: number
+}
 export interface AcademyRunParticipantDTO {
     registrationId: string
     userId: string
@@ -73,6 +85,9 @@ export interface AcademyRunParticipantDTO {
     email: string
     status: AcademyRegistrationStatus
     completedAt: string | null
+    completionState: 'pending' | 'completed' | 'revoked'
+    completionRevokedAt: string | null
+    progress: AcademyParticipantProgress | null
     attendance: Array<{
         sessionId: string
         status: AcademyAttendanceStatus

@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
+import { materialRejectionMessage } from '@/lib/academy/material-errors'
 
 const inputSchema = z.object({
     courseId: z.uuid(), lessonId: z.uuid().optional(), runId: z.uuid().optional(), filename: z.string().trim().min(1).max(180).regex(/^[^/\\\r\n]+$/),
@@ -54,17 +55,18 @@ export async function getAcademyMaterialStatus(assetId: string) {
         if (!data) throw new Error('Materiał jest niedostępny.')
         return { asset_id: data.id as string, name: data.filename as string, storage_path: data.storage_path as string,
             size_bytes: Number(data.size_bytes), mime_type: data.mime_type as string, status: data.status as string,
-            error: data.status === 'rejected' ? 'Plik nie przeszedł weryfikacji bezpieczeństwa lub formatu.' : null }
+            error: data.status === 'rejected' ? materialRejectionMessage(data.scan_error) : null }
     })
 }
 
 export async function listAcademyLessonUploads(lessonId: string) {
     return academyAction('material.lesson_uploads', async () => {
         const { client } = await requireAcademyContext({ trainer: true })
-        const { data, error } = await client.from('course_materials').select('id,filename,status')
+        const { data, error } = await client.from('course_materials').select('id,filename,status,scan_error')
             .eq('lesson_id', z.uuid().parse(lessonId)).is('purged_at', null).or('scan_error.is.null,scan_error.neq.discarded_by_author').order('created_at')
         assertDatabaseResult(error)
-        return (data ?? []) as { id: string; filename: string; status: string }[]
+        return (data ?? []).map(item => ({ id: item.id as string, filename: item.filename as string, status: item.status as string,
+            error: item.status === 'rejected' ? materialRejectionMessage(item.scan_error) : null }))
     })
 }
 
@@ -72,11 +74,13 @@ export async function listAcademyRunMaterials(runId: string) {
     return academyAction('material.run_materials', async () => {
         const { client } = await requireAcademyContext()
         const { data, error } = await client.from('course_materials')
-            .select('id,filename,storage_path,mime_type,size_bytes,status,review_status,review_note,uploaded_by')
+            .select('id,filename,storage_path,mime_type,size_bytes,status,review_status,review_note,uploaded_by,scan_error')
             .eq('run_id', z.uuid().parse(runId)).is('purged_at', null).or('scan_error.is.null,scan_error.neq.discarded_by_author')
             .order('created_at')
         assertDatabaseResult(error)
-        return (data ?? []) as import('@/lib/types/academy-materials').AcademyRunMaterial[]
+        return (data ?? []).map(({ scan_error, ...item }) => ({ ...item,
+            error: item.status === 'rejected' ? materialRejectionMessage(scan_error) : null,
+        })) as (import('@/lib/types/academy-materials').AcademyRunMaterial & { error: string | null })[]
     })
 }
 

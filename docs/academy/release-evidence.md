@@ -1,6 +1,23 @@
-# Academy — dowody przed wydaniem
+# Academy — dowody wydania i odbioru
 
-Stan na 22.09.2026, PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384). Moduł nie jest jeszcze wdrożony ani odebrany produkcyjnie. Poniższe wyniki nie zastępują testów kolejnych commitów.
+Stan na 22.09.2026: PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384) i [#386](https://github.com/B2B-net-S-A/COMPASS/pull/386) wdrożone. Produkcyjny checkpoint: `cf871bb3ce572de4536c94ea5504cfe8a58cd551`. Pełny odbiór biznesowy pozostaje otwarty. Starsze checkpointy poniżej są zapisem historycznym, nie aktualnym stanem wdrożenia.
+
+## Wdrożony checkpoint `cf871bb`
+
+- [CI 35744004243](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35744004243) i [ClamAV 35744004441](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35744004441): **PASS**.
+- [Deploy 35744004272](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35744004272): **PASS**; health 15:07:03 UTC potwierdził `healthy` i oczekiwane `cf871bb`. PR #386 usunął potwierdzony błąd wyboru sieci Traefik, który powodował 504 przy pierwszym wdrożeniu.
+- Zastosowano dokładnie 10 migracji Academy w projekcie `compass-prod` (`shduiynzemftkqqefscd`), rejestr 185 → 195. Zachowano 1 dotychczasowy kurs, 1 lekcję, 0 zapisów. Zweryfikowano RLS 30 tabel, ACL 7 krytycznych RPC oraz 4 ograniczające polityki Storage. Bucket jest prywatny.
+- [Sieć 35745045745](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35745045745): **PASS**. [Aktywacja 35745121543](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35745121543): **PASS**, trzy timery materiałów, synchronizacji i aktualizacji ClamAV aktywne i włączone. Worker materiałów oraz sync zapisały rzeczywiste udane przebiegi 15:08–15:09 UTC.
+- Rollout pozostaje `closed`, bez pilotażowych nadań. Managed Teams i czyszczenie plików wyłączone. Udany przebieg pustej kolejki nie potwierdza realnego uploadu, nauki ani spotkania.
+- Chrome w profilu użytkownika: uwierzytelniony katalog i formularz autora, responsywność 390 × 844 bez poziomego przepełnienia, klawiaturowe przejście i zmiana formy szkolenia. Bez zapisywania kursu i bez wysyłania zaproszeń.
+
+## Pakiet uzupełniający — przed wdrożeniem
+
+Dodatkowe migracje `academy_roster_progress`, `academy_operations_health`, `academy_attendance_recovery` rozszerzają postęp grupy, monitor zadań oraz ponowienie importu obecności. Walidacja MP4 sprawdza cały strumień i zadeklarowany profil AVC/AAC; jej granice opisuje [mp4-validation.md](./mp4-validation.md). Monitoring: [operations-health.md](./operations-health.md).
+
+Lokalnie: kontrola typów PASS; SQL roster 49, monitoring 30, odzyskanie obecności 44 asercje PASS; canonical backfill 191 asercji dla 13 migracji PASS przed końcową korektą monitoringu. Wyniki hosted CI, aplikacja trzech nowych migracji i wdrożenie tego pakietu wymagają osobnego potwierdzenia.
+
+**Pozostały odbiór:** rzeczywisty pilot trener → upload/skan → niezależna akceptacja → uczestnik → lekcje/Teams/obecność → certyfikat; organizator i zgody Microsoft dla trybu automatycznego; odtworzenie kopii DB/Storage; zatwierdzenie retencji przed aktywacją usuwania. Nie utożsamiamy tych punktów z zielonym CI.
 
 ## Checkpoint `f0627dfdc20c158722e5219d6161483c66199708`
 

@@ -12,6 +12,20 @@ import { recordAcademyAttendance } from '@/lib/actions/academy-sessions'
 import type { AcademyRunParticipantDTO, AcademySessionDTO } from '@/lib/types/academy-sessions'
 import { ATTENDANCE_LABEL, REGISTRATION_LABEL, SESSION_SELECT_CLASS } from './session-format'
 
+function LearningProgress({ participant }: { participant: AcademyRunParticipantDTO }) {
+    const progress = participant.progress
+    if (!progress) return <p className="text-xs text-muted-foreground">{participant.status === 'waitlisted' ? 'Postęp będzie dostępny po potwierdzeniu miejsca.' : 'Brak przypisanego programu nauki.'}</p>
+    return <div className="max-w-xl space-y-2 pt-2 text-xs">
+        <p className="text-muted-foreground">Wersja programu {progress.versionNumber}</p>
+        {progress.totalLessons > 0 ? <div className="space-y-1">
+            <p>Lekcje: {progress.completedLessons}/{progress.totalLessons} ({progress.lessonPercent}%) · {progress.requireAllLessons ? 'wymagane do ukończenia' : 'bez wymogu ukończenia wszystkich'}</p>
+            <progress value={progress.lessonPercent} max={100} aria-label={`Postęp lekcji: ${participant.fullName || participant.email}`} className="h-2 w-full accent-primary" />
+        </div> : <p>Program bez lekcji.</p>}
+        <p>{progress.quizRequired ? `Quiz wymagany · próg ${progress.quizPassPercent}%` : 'Quiz niewymagany'}{progress.quizRequired || progress.quizAttemptCount > 0 ? ` · ${progress.quizPassed ? 'zaliczony' : progress.quizAttemptCount > 0 ? 'niezaliczony' : 'jeszcze bez próby'}` : ''}</p>
+        {progress.quizBestScorePercent !== null && <p className="text-muted-foreground">Najlepszy wynik quizu: {progress.quizBestScorePercent}% · liczba prób: {progress.quizAttemptCount}</p>}
+    </div>
+}
+
 export function AcademyAttendancePanel({ participants, sessions, userId, readOnly = false }: { participants: AcademyRunParticipantDTO[]; sessions: AcademySessionDTO[]; userId: string; readOnly?: boolean }) {
     const router = useRouter()
     const available = sessions.filter((session) => session.status !== 'cancelled')
@@ -44,7 +58,24 @@ export function AcademyAttendancePanel({ participants, sessions, userId, readOnl
         {session && !session.attendanceWindowConfirmed && <p className="rounded-lg bg-warning/5 p-3 text-sm text-warning">Najpierw potwierdź rzeczywisty czas zakończonego spotkania powyżej, aby rozliczyć obecność.</p>}
         {participants.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Na tę edycję nikt się jeszcze nie zapisał.</p> : <div className="divide-y divide-border">{participants.map((participant) => {
             const attendance = participant.attendance.find((item) => item.sessionId === session?.id)
-            return <div key={participant.registrationId} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"><div className="min-w-0 space-y-1"><p className="break-words text-sm font-medium">{participant.fullName || participant.email}</p><p className="break-all text-xs text-muted-foreground">{participant.email}</p><div className="flex flex-wrap gap-x-3 gap-y-1 text-xs"><span className="text-muted-foreground">{REGISTRATION_LABEL[participant.status]}</span>{participant.completedAt && <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 aria-hidden="true" className="size-3" />Edycja ukończona</span>}</div>{attendance?.source === 'manual' && attendance.note && <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">Uzasadnienie decyzji: {attendance.note}</p>}</div><div className="flex flex-wrap items-center gap-3"><span className="text-xs text-muted-foreground">{attendance ? `${ATTENDANCE_LABEL[attendance.status]} · ${Math.round(attendance.attendedSeconds / 60)} min · ${attendance.source === 'teams' ? 'Teams' : 'ręcznie'}` : 'Obecność niepotwierdzona'}</span>{participant.status === 'confirmed' && participant.enrollmentId && participant.userId !== userId && <Button variant="outline" size="sm" disabled={readOnly || !session?.attendanceWindowConfirmed} onClick={() => { setSelected(participant); setError(null) }}>Potwierdź / skoryguj</Button>}{participant.userId === userId && <span className="text-xs text-muted-foreground">Twoją obecność potwierdza inny prowadzący.</span>}</div></div>
+            const finalized = participant.completionState === 'completed' || participant.completionState === 'revoked'
+            return <article key={participant.registrationId} aria-label={`Uczestnik: ${participant.fullName || participant.email}`} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-start">
+                <div className="min-w-0 flex-1 space-y-1">
+                    <p className="break-words text-sm font-medium">{participant.fullName || participant.email}</p><p className="break-all text-xs text-muted-foreground">{participant.email}</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs"><span className="text-muted-foreground">{REGISTRATION_LABEL[participant.status]}</span>
+                        {participant.completionState === 'completed' && <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 aria-hidden="true" className="size-3" />Edycja ukończona</span>}
+                        {participant.completionState === 'revoked' && <span className="font-medium text-destructive">Ukończenie i certyfikat unieważnione</span>}
+                    </div>
+                    <LearningProgress participant={participant} />
+                    {finalized && <p className="pt-1 text-xs text-muted-foreground">Decyzje po wystawieniu certyfikatu obsługuje administrator. Historia postępu pozostaje zachowana.</p>}
+                    {attendance?.source === 'manual' && attendance.note && <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">Uzasadnienie decyzji: {attendance.note}</p>}
+                </div>
+                <div className="flex flex-wrap items-center gap-3 sm:max-w-xs sm:justify-end">
+                    <span className="text-xs text-muted-foreground">{attendance ? `${ATTENDANCE_LABEL[attendance.status]} · ${Math.round(attendance.attendedSeconds / 60)} min · ${attendance.source === 'teams' ? 'Teams' : 'ręcznie'}` : 'Obecność niepotwierdzona'}</span>
+                    {participant.status === 'confirmed' && participant.enrollmentId && participant.userId !== userId && <Button variant="outline" size="sm" disabled={readOnly || finalized || !session?.attendanceWindowConfirmed} onClick={() => { setSelected(participant); setError(null) }}>Potwierdź / skoryguj</Button>}
+                    {participant.userId === userId && <span className="text-xs text-muted-foreground">Twoją obecność potwierdza inny prowadzący.</span>}
+                </div>
+            </article>
         })}</div>}
         <Dialog open={Boolean(selected)} onOpenChange={(value) => { if (!value && !isPending) setSelected(null) }}><DialogContent><DialogHeader><DialogTitle>Potwierdź obecność</DialogTitle><DialogDescription>{selected?.fullName || selected?.email} · {session?.title}</DialogDescription></DialogHeader><form onSubmit={save} className="space-y-4"><fieldset disabled={isPending} className="space-y-4"><div className="space-y-2"><label htmlFor="attendance-status" className="text-sm font-medium">Decyzja</label><select id="attendance-status" name="status" defaultValue="present" className={SESSION_SELECT_CLASS}><option value="present">Obecność spełnia wymagania</option><option value="insufficient">Obecność nie spełnia wymagań</option></select></div><div className="space-y-2"><label htmlFor="attendance-minutes" className="text-sm font-medium">Potwierdzony czas obecności w minutach</label><Input id="attendance-minutes" name="minutes" type="number" required min={0} max={1440} step={1} aria-describedby="attendance-time-help" /><p id="attendance-time-help" className="text-xs text-muted-foreground">Jeśli czas jest nieznany, pozostaw obecność do weryfikacji. Brak danych nie oznacza pełnej obecności.</p></div><div className="space-y-2"><label htmlFor="attendance-note" className="text-sm font-medium">Uzasadnienie decyzji</label><Textarea id="attendance-note" name="note" required minLength={5} maxLength={2000} placeholder="Opisz, na jakiej podstawie potwierdzasz lub korygujesz obecność." /></div></fieldset>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setSelected(null)} disabled={isPending}>Anuluj</Button><Button type="submit" disabled={isPending}>{isPending && <Loader2 className="animate-spin" aria-hidden="true" />}Zapisz decyzję</Button></div></form></DialogContent></Dialog>
     </section>
