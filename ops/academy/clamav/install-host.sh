@@ -10,7 +10,15 @@ for required in node flock timeout docker systemctl install stat; do
   if ! command -v "$required" >/dev/null; then echo "missing prerequisite: $required" >&2; exit 1; fi
 done
 node -e 'if(Number(process.versions.node.split(".")[0])<20)process.exit(1)' || { echo 'Node.js >=20 required; no automatic upgrade' >&2; exit 1; }
-docker --host unix:///var/run/docker.sock compose version --short | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{if(!/^v?2\./.test(s.trim()))process.exit(1)})'
+# Docker supports both Compose v2 and v5 with the same CLI/specification.
+# https://docs.docker.com/compose/support-and-feedback/faq/
+compose_version="$(docker --host unix:///var/run/docker.sock compose version --short 2>/dev/null)" || {
+  echo '{"ok":false,"error":"compose_cli_unavailable"}' >&2; exit 1;
+}
+if [[ ! "$compose_version" =~ ^v?([25])\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+  echo '{"ok":false,"error":"unsupported_compose_version"}' >&2; exit 1
+fi
+printf '{"check":"compose_prerequisite","version":"%s"}\n' "$compose_version"
 control_dir=/var/lib/compass-academy-control
 if [[ ! -e "$control_dir" && ! -L "$control_dir" ]]; then install -d -o 0 -g 0 -m 0700 "$control_dir"; fi
 if [[ -L "$control_dir" || ! -d "$control_dir" || "$(stat -c '%u:%a' "$control_dir")" != 0:700 ]]; then

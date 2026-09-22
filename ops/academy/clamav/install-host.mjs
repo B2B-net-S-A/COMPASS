@@ -35,7 +35,15 @@ export async function installHostFiles({root='/',source=sourceDirectory,run=exec
  // Do not replace live schedules. Installation never stops or disables them for the operator.
  for(const name of unitNames){
   for(const suffix of ['service','timer']){
-   const {stdout}=await run('systemctl',['show',`${name}.${suffix}`,'--property=LoadState,ActiveState,UnitFileState'],{encoding:'utf8',timeout:10000});
+   let stdout;
+   try{({stdout}=await run('systemctl',['show',`${name}.${suffix}`,'--property=LoadState,ActiveState,UnitFileState'],{encoding:'utf8',timeout:10000}));}
+   catch(error){
+    // Some systemd releases return nonzero for a missing unit while still
+    // returning explicit properties. Never treat a bus/transport failure as absence.
+    const missing=Object.fromEntries(String(error.stdout??'').trim().split('\n').map(line=>line.split('=')));
+    if(![1,4].includes(error.code)||missing.LoadState!=='not-found'||missing.ActiveState!=='inactive'||(missing.UnitFileState??'')!=='')throw new Error('systemd_unit_inspection_failed');
+    continue;
+   }
    const properties=Object.fromEntries(stdout.trim().split('\n').map(line=>line.split('=')));
    if(!['loaded','not-found','masked'].includes(properties.LoadState)||!['inactive','failed'].includes(properties.ActiveState))throw new Error('stop_schedulers_before_install');
    if(suffix==='timer'&&properties.LoadState!=='not-found'&&!['disabled','masked'].includes(properties.UnitFileState))throw new Error('disable_schedulers_before_install');

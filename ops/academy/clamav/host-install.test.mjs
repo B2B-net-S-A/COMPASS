@@ -37,8 +37,22 @@ test('refuses active or enabled schedules and fails closed on an unavailable sys
   const f=await fixture();try{await assert.rejects(installHostFiles({...f.options,run:async()=>({stdout:properties})}),/schedulers_before_install/);}
   finally{await f.close();}
  }
- const f=await fixture();try{await assert.rejects(installHostFiles({...f.options,run:async()=>{throw new Error('systemd unavailable');}}),/systemd unavailable/);}
+ const f=await fixture();try{await assert.rejects(installHostFiles({...f.options,run:async()=>{throw new Error('systemd unavailable');}}),/systemd_unit_inspection_failed/);}
  finally{await f.close();}
+});
+test('nonzero systemctl show accepts only explicit inactive missing units, never bus errors',async()=>{
+ for(const code of [1,4]){
+  const f=await fixture();try{
+   const result=await installHostFiles({...f.options,run:async(command,args)=>{
+    if(args[0]==='show')throw Object.assign(new Error('unit missing'),{code,stdout:'LoadState=not-found\nActiveState=inactive\nUnitFileState=\n'});
+    return f.options.run(command,args);
+   }});assert.equal(result.activated,false);
+  }finally{await f.close();}
+ }
+ for(const stdout of ['', 'LoadState=unknown\nActiveState=inactive\n', 'LoadState=not-found\nActiveState=active\n', 'LoadState=not-found\nActiveState=inactive\nUnitFileState=enabled\n']){
+  const f=await fixture();try{await assert.rejects(installHostFiles({...f.options,run:async()=>{throw Object.assign(new Error('failed bus or unknown unit'),{code:1,stdout});}}),/systemd_unit_inspection_failed/);}
+  finally{await f.close();}
+ }
 });
 test('rejects symlink destinations and parents without overwriting their targets',async()=>{
  const f=await fixture();try{
