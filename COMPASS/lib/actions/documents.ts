@@ -3,8 +3,16 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/admin'
+import { requireAuthenticatedAction } from '@/lib/auth/internal-guard'
+import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import { revalidatePath } from 'next/cache'
 import { indexDocumentText } from './document-indexing'
+
+const DOCUMENTS_BUCKET = 'documents'
+/** Audyt 2026-09-22 (O07): podpisany link żyje 5 minut — wystarczy na kliknięcie. */
+const DOWNLOAD_URL_TTL_SECONDS = 300
+const DOCUMENT_NOT_AVAILABLE_PL = 'Dokument nie istnieje albo nie masz do niego dostępu.'
 
 export type DocumentCategory = 'contract' | 'invoice' | 'certificate' | 'onboarding' | 'benefit' | 'regulation' | 'other'
 
@@ -241,6 +249,56 @@ export async function deleteDocument(documentId: string) {
     revalidatePath('/centrala')
     revalidatePath('/admin/centrala')
     return { success: true }
+}
+
+/**
+ * Audyt 2026-09-22 (O07): krótko żyjący podpisany URL do wersji dokumentu.
+ *
+ * Bucket `documents` jest PRYWATNY, a UI budował linki
+ * `/storage/v1/object/public/documents/...` — dla prywatnego obiektu to 400,
+ * a gdyby ktoś kiedyś przestawił bucket na publiczny, każdy znający ścieżkę
+ * pobrałby cudzy dokument bez logowania.
+ *
+ * Przyjmuje id WERSJI, nie ścieżkę pliku: wywołujący nie może wskazać
+ * dowolnego obiektu w buckecie. Zasada dostępu = polityka SELECT na
+ * `app_documents` (właściciel ∨ dokument publiczny ∨ admin); sprawdzamy ją
+ * jawnie, bo link podpisuje klient service-role, który RLS omija.
+ * Brak wersji i brak uprawnień dają ten sam komunikat — nie zdradzamy,
+ * czy dokument o danym id istnieje.
+ */
+export async function getDocumentDownloadUrl(versionId: string): Promise<ActionResult<{ url: string }>> {
+    return runAction('getDocumentDownloadUrl', async () => {
+        const ctx = await requireAuthenticatedAction()
+        if (!versionId) throw new ExpectedError('Brak identyfikatora wersji dokumentu.')
+
+        const admin = createServiceClient()
+        const { data: version, error: verErr } = await admin
+            .from('document_versions')
+            .select('document_id, file_url, file_name')
+            .eq('id', versionId)
+            .maybeSingle<{ document_id: string; file_url: string; file_name: string }>()
+        if (verErr) throw new Error(`document_versions lookup failed: ${verErr.message}`)
+        if (!version) throw new ExpectedError(DOCUMENT_NOT_AVAILABLE_PL)
+
+        const { data: doc, error: docErr } = await admin
+            .from('app_documents')
+            .select('owner_id, is_public')
+            .eq('id', version.document_id)
+            .maybeSingle<{ owner_id: string; is_public: boolean | null }>()
+        if (docErr) throw new Error(`app_documents lookup failed: ${docErr.message}`)
+        if (!doc) throw new ExpectedError(DOCUMENT_NOT_AVAILABLE_PL)
+
+        const allowed = doc.owner_id === ctx.userId || doc.is_public === true || ctx.isAdmin
+        if (!allowed) throw new ExpectedError(DOCUMENT_NOT_AVAILABLE_PL)
+
+        const { data: signed, error: signErr } = await admin.storage
+            .from(DOCUMENTS_BUCKET)
+            .createSignedUrl(version.file_url, DOWNLOAD_URL_TTL_SECONDS, { download: version.file_name })
+        if (signErr || !signed?.signedUrl) {
+            throw new Error(`createSignedUrl failed: ${signErr?.message ?? 'no url'}`)
+        }
+        return { url: signed.signedUrl }
+    })
 }
 
 export async function getUnifiedDocuments(ownerId?: string, isPublic: boolean = false, category?: DocumentCategory) {

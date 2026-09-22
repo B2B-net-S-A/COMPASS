@@ -41,8 +41,8 @@ runbooka — ta ścieżka cicho przełączyłaby produkcję na martwy kanał.
 - **Panel Coolify:** `https://coolify-compass.dynaminds.pl`. **App UUID:** `w136dv828ofipvjfnxrqi643`.
 - **Zasób:** Docker Compose Application, prywatne repo z deploy key, branch `main`,
   `docker-compose.yml` z blokiem `build:` (Coolify buduje ze źródła, nie ciągnie z registry).
-- **Auto-deploy:** `git push origin main` → `.github/workflows/deploy.yml` → webhook Coolify →
-  build + restart → smoke test `/api/health` z porównaniem SHA.
+- **Auto-deploy:** `git push origin main` → zielony „Build check" → `.github/workflows/deploy.yml`
+  (`workflow_run`) → webhook Coolify → build + restart → smoke test `/api/health` z porównaniem SHA.
 - **Rollback:** panel Coolify → Resources → compass → Deployments → poprzedni → Redeploy.
 - **Build context:** `./COMPASS` (nie root). Dockerfile w `COMPASS/Dockerfile`.
 - Procedury operacyjne: `~/.claude/rules/deployment.md` + `~/.claude/rules/deployment-runbook.md`.
@@ -91,6 +91,11 @@ Domyślnie **oba wyłączone** — moduł faktur jest schowany od Fazy 26. Analo
   typów OOM-uje na build-hoście ARM bez swapu. Skutek: **build sam z siebie nie sprawdza typów**.
   Jedyną bramką jest CI, więc każda ścieżka omijająca CI (redeploy z panelu Coolify,
   `workflow_dispatch`) wypuszcza kod nieprzetypowany. Nie polegaj na „przecież build przeszedł".
+- **Bramka deployu (audyt O01, 2026-09-22):** `deploy.yml` startuje z `workflow_run` workflowu
+  **„Build check"** i tylko po jego `success` z `push` na main; SHA = `workflow_run.head_sha`.
+  ⚠ Zmiana `name:` w `build-check.yml` **po cichu wyłącza deploy** — obie nazwy muszą się zgadzać.
+  `workflow_dispatch` też wymaga zielonego Build check dla HEAD maina. Redeploy z panelu Coolify
+  nadal omija bramkę.
 - **Deploy:** concurrency `deploy-${{ github.ref }}`, `cancel-in-progress: false` — deploye z `main`
   są sekwencyjne.
 - **Weryfikacja, że deploy dojechał:**

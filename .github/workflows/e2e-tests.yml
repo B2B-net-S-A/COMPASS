@@ -41,9 +41,43 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      # Audyt 2026-09-22 (O04): e2e/04-rls-database.spec.ts wymaga SUPABASE_URL
+      # i SUPABASE_ANON_KEY już przy IMPORCIE pliku — workflow ich nie podawał,
+      # więc Playwright kończył na kolekcji („Total: 0 tests") zanim cokolwiek
+      # uruchomił. Wartości MUSZĄ wskazywać projekt Supabase tej samej instancji
+      # co `base_url` — sekrety E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY
+      # (repo → Settings → Secrets → Actions). Brak fallbacku na produkcyjne
+      # NEXT_PUBLIC_SUPABASE_* celowo: testy mają trafić w środowisko testowe.
+      - name: Preflight — env + test collection
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+        run: |
+          missing=""
+          for name in BASE_URL SUPABASE_URL SUPABASE_ANON_KEY TEST_USER_EMAIL TEST_USER_PASSWORD; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Brak wymaganych zmiennych E2E:$missing (sekrety E2E_SUPABASE_URL, E2E_SUPABASE_ANON_KEY, TEST_USER_EMAIL, TEST_USER_PASSWORD + input base_url)."
+            exit 1
+          fi
+          # Kolekcja bez sieci: łapie błędy importu (np. brak env w specu)
+          # zanim ruszy przeglądarka. 0 zebranych testów = porażka.
+          set -o pipefail
+          npx playwright test --list | tee /tmp/pw-list.txt
+          if ! grep -qE '^Total: [1-9][0-9]* tests?' /tmp/pw-list.txt; then
+            echo "::error::Playwright nie zebrał żadnego testu — sprawdź log kolekcji powyżej."
+            exit 1
+          fi
+
       - name: Run Playwright smoke tests
         env:
           BASE_URL: ${{ inputs.base_url }}
+          SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
         run: npx playwright test

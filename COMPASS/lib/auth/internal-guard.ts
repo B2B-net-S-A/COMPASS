@@ -124,6 +124,17 @@ export async function requireInternalOrAdminLayout(): Promise<InternalAuthContex
 }
 
 /**
+ * Audyt 2026-09-22 (O07): guard dla akcji dostępnych KAŻDEMU zalogowanemu
+ * (także konsultantowi) — np. pobieranie własnych dokumentów z /documents.
+ * Tylko sprawdza sesję; zakres danych (własność rekordu) egzekwuje akcja.
+ */
+export async function requireAuthenticatedAction(): Promise<InternalAuthContext> {
+    const ctx = await loadAuthContext()
+    if (!ctx) throw new SessionExpiredError()
+    return buildCtx(ctx)
+}
+
+/**
  * Server-action variant: throws instead of redirecting so the caller can
  * surface the error to the client (toast / form error).
  */
