@@ -4,7 +4,7 @@ import { assertHostedStorage,localStatus,cleanPublicDump,storagePolicySql } from
 import { projectStart } from './report-start.mjs';
 // Run the host-native ACL regressions in the existing pre-Storage CI gate.
 import './fixture-acl.test.mjs';
-import { candidateStorageOrder } from './prepare-history.mjs';
+import { availabilitySchemaOrder, candidateClaimOrder, candidateStorageOrder, communicatorBootstrap } from './prepare-history.mjs';
 test('refuses local Docker paths even if generic CI is set',()=>{
  assert.throws(()=>assertHostedStorage({CI:'true'}));assert.throws(()=>assertHostedStorage({GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'self-hosted',RUNNER_OS:'Linux'}));
  assertHostedStorage({GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux'});
@@ -34,11 +34,90 @@ test('a zero exit cannot pass a replay that skipped or never applied historical 
  assert.equal(projectStart('historical-replay',0,'Applying migration 001_one.sql\n',1).fullHistoricalReplay,'passed');
 });
 
+test('Applying log entries prove starts; a failed startup does not prove committed migrations',()=>{
+ const log='Applying migration 001_one.sql\nApplying migration 002_two.sql\n';
+ for(const status of [1,124]){
+  const report=projectStart('historical-replay',status,log,2);
+  assert.equal(report.startedMigrationFiles,2);assert.equal(report.appliedMigrationFiles,null);
+ }
+ const incomplete=projectStart('historical-replay',0,log,3);
+ assert.equal(incomplete.startedMigrationFiles,2);assert.equal(incomplete.appliedMigrationFiles,null);
+ const completed=projectStart('historical-replay',0,log,2);
+ assert.equal(completed.startedMigrationFiles,2);assert.equal(completed.appliedMigrationFiles,2);
+});
+
 test('reports the same-day ordering exception without changing failure semantics',()=>{
  const report=projectStart('historical-replay',1,'Applying migration 001_one.sql\nERROR: duplicate policy (SQLSTATE 42710)\n',2,[candidateStorageOrder.id]);
  assert.deepEqual(report.orderingExceptions,[candidateStorageOrder.id]);
  assert.equal(report.outcome,'failed');assert.equal(report.sqlState,'42710');
  assert.match(report.migrationRegistry,/explicit_order_exceptions/);
+});
+
+test('counts an archived bootstrap separately while requiring every replay file',()=>{
+ const bootstrap=[{sourceRelativePath:communicatorBootstrap.sourceRelativePath,sha256:communicatorBootstrap.sha256}];
+ const log='Applying migration 001_migration.sql\nApplying migration 002_archive.sql\n';
+ const result=projectStart('historical-replay',0,log,2,[],bootstrap);
+ assert.equal(result.outcome,'passed');assert.equal(result.historicalMigrationFiles,1);assert.equal(result.replayFilesExpected,2);
+ assert.deepEqual(result.archivedBootstraps,bootstrap);
+ assert.equal(projectStart('historical-replay',0,'Applying migration 001_migration.sql\n',2,[],bootstrap).outcome,'failed');
+});
+
+test('uses original schema repair before availability and the archived communicator before attachment migrations',async()=>{
+ const {PGlite}=await import('../../../COMPASS/node_modules/@electric-sql/pglite/dist/index.js');
+ const {default:fs}=await import('node:fs');
+ const db=new PGlite();
+ const migration=name=>fs.readFileSync(new URL(`../../../COMPASS/supabase/migrations/${name}`,import.meta.url),'utf8');
+ try {
+  await db.exec(`CREATE ROLE authenticated;CREATE SCHEMA auth;CREATE SCHEMA storage;
+   CREATE TABLE auth.users(id uuid PRIMARY KEY);CREATE TABLE profiles(id uuid PRIMARY KEY,role text);
+   CREATE TABLE candidates(id uuid PRIMARY KEY,status text);
+   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT null::uuid$$;
+   CREATE TABLE storage.objects(id uuid PRIMARY KEY,name text,bucket_id text);
+   CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean);
+   CREATE PUBLICATION supabase_realtime;`);
+  await assert.rejects(db.exec(migration('20260216_availability_overhaul.sql')),error=>error.code==='42703');
+  for(const [name] of availabilitySchemaOrder.files) await db.exec(migration(name));
+  const columns=(await db.query("select table_name,column_name from information_schema.columns where table_schema='public' and table_name in ('profiles','candidates') and column_name='current_status' order by table_name")).rows;
+  assert.deepEqual(columns.map(row=>row.table_name),['candidates','profiles']);
+  await assert.rejects(db.exec(migration(communicatorBootstrap.before)),error=>error.code==='42P01');
+  assert.equal((await db.query("select count(*)::int n from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='messages'")).rows[0].n,0);
+  await db.exec(fs.readFileSync(new URL(`../../../COMPASS/supabase/_archive_scripts/${communicatorBootstrap.original}`,import.meta.url),'utf8'));
+  assert.equal((await db.query("select count(*)::int n from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='messages'")).rows[0].n,1);
+  await db.exec(migration(communicatorBootstrap.before));
+  await db.exec(migration('20260216_chat_attachments_backup.sql'));
+  await db.exec(migration('20260220_fix_conversation_rls.sql'));
+  assert.equal((await db.query("select count(*)::int n from pg_tables where schemaname='public' and tablename in ('conversations','conversation_participants','messages') and rowsecurity")).rows[0].n,3);
+  assert.equal((await db.query("select count(*)::int n from pg_policies where schemaname='public' and tablename in ('conversations','conversation_participants','messages')")).rows[0].n,4);
+ }finally{await db.close();}
+});
+
+test('diagnoses duplicate invoice policies and candidate claim dependencies before applying documented order',async()=>{
+ const {PGlite}=await import('../../../COMPASS/node_modules/@electric-sql/pglite/dist/index.js');
+ const {default:fs}=await import('node:fs');
+ const db=new PGlite();
+ const migration=name=>fs.readFileSync(new URL(`../../../COMPASS/supabase/migrations/${name}`,import.meta.url),'utf8');
+ try {
+  await db.exec(`CREATE ROLE authenticated;CREATE SCHEMA auth;CREATE TABLE auth.users(id uuid PRIMARY KEY);
+   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT null::uuid$$;
+   CREATE TABLE profiles(id uuid PRIMARY KEY,role text);CREATE TABLE candidates(id uuid PRIMARY KEY,user_id uuid);`);
+  const verify=migration('20260218_verify_and_fix_all.sql');
+  const invoiceSection=verify.slice(verify.indexOf('CREATE TABLE IF NOT EXISTS invoices'),verify.indexOf('-- 1d. app_documents'));
+  await db.exec(invoiceSection);
+  await assert.rejects(db.exec(migration('20260219_invoices.sql')),error=>error.code==='42710');
+  await db.exec('DROP TABLE invoices');
+  await db.exec(migration('20260219_invoices.sql'));
+  const invoicePolicies=async()=>(await db.query("select * from pg_policies where schemaname='public' and tablename='invoices' order by policyname")).rows;
+  const original=await invoicePolicies();assert.equal(original.length,5);
+  await db.exec(invoiceSection);assert.deepEqual(await invoicePolicies(),original);
+  await assert.rejects(db.exec(migration('20260222_bugfix_rls_claim.sql')),error=>error.code==='42703');
+  await db.exec(migration('20260222_etap2_candidates_extend.sql'));
+  await db.exec(migration('20260222_bugfix_rls_claim.sql'));
+  await assert.rejects(db.exec(migration('20260222_etap1b_fix_candidates_rls.sql')),error=>error.code==='42710');
+  await db.exec('DROP TABLE candidates;CREATE TABLE candidates(id uuid PRIMARY KEY,user_id uuid)');
+  for(const [name] of candidateClaimOrder.files)await db.exec(migration(name));
+  const policy=(await db.query("select * from pg_policies where schemaname='public' and tablename='candidates' and policyname='Users can update own candidate'")).rows;
+  assert.equal(policy.length,1);assert.match(policy[0].qual,/candidate_status = 'kandydat'/);assert.match(policy[0].with_check,/user_id IS NULL/);
+ }finally{await db.close();}
 });
 
 test('historical Storage bootstrap and exact backup replay without duplicate policies',async()=>{

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { candidateStorageOrder, prepareHistory } from './prepare-history.mjs';
+import { candidateStorageOrder, communicatorBootstrap, orderExceptions, prepareHistory } from './prepare-history.mjs';
 import { fileURLToPath } from 'node:url';
 test('replays every duplicate-version file in original lexical order without changing SQL', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'academy-history-'));
@@ -61,9 +61,31 @@ test('prepares every repository migration without silently dropping duplicate co
         const source = fileURLToPath(new URL('../../../COMPASS/supabase/migrations', import.meta.url));
         const manifest = prepareHistory(source, root);
         const names = fs.readdirSync(source).filter(name => name.endsWith('.sql')).sort();
-        assert.deepEqual(manifest.map(row => row.original).sort(), names);
-        assert.equal(manifest.length, names.length);
+        assert.deepEqual(manifest.filter(row => row.sourceKind === 'migration').map(row => row.original).sort(), names);
+        assert.equal(manifest.length, names.length + 1);
+        const bootstrap = manifest.find(row => row.sourceKind === 'archived_bootstrap');
+        assert.equal(bootstrap.original, communicatorBootstrap.original);
+        assert.equal(bootstrap.sha256, communicatorBootstrap.sha256);
+        assert.equal(bootstrap.replayIndex + 1, manifest.find(row => row.original === communicatorBootstrap.before).replayIndex);
+        for (const exception of orderExceptions) {
+            const positions = exception.files.map(([name]) => manifest.find(row => row.original === name).replayIndex);
+            assert.deepEqual(positions, [...positions].sort((a, b) => a - b), exception.id);
+        }
         assert(manifest.some(row => row.original === '20260216_chat_attachments_backup.sql'));
-        for (const row of manifest) assert.deepEqual(fs.readFileSync(path.join(root, row.replay)), fs.readFileSync(path.join(source, row.original)));
+        for (const row of manifest) assert.deepEqual(fs.readFileSync(path.join(root, row.replay)), fs.readFileSync(path.resolve(source, row.sourceRelativePath)));
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('rejects missing or changed archived source instead of inventing communicator tables', () => {
+    for (const changed of [false, true]) {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'academy-history-archive-'));
+        try {
+            const source = path.join(root, 'migrations'), target = path.join(root, 'target');
+            fs.mkdirSync(source); fs.mkdirSync(target); fs.mkdirSync(path.join(root, '_archive_scripts'));
+            fs.copyFileSync(new URL(`../../../COMPASS/supabase/migrations/${communicatorBootstrap.before}`, import.meta.url), path.join(source, communicatorBootstrap.before));
+            if (changed) fs.writeFileSync(path.resolve(source, communicatorBootstrap.sourceRelativePath), 'create table public.messages(id uuid);');
+            assert.throws(() => prepareHistory(source, target), changed ? /changed_archived_communicator_bootstrap/ : /ENOENT/);
+            assert.deepEqual(fs.readdirSync(target), []);
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    }
 });
