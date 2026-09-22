@@ -1,322 +1,113 @@
 'use server'
 
-import { logCompat } from '@/lib/logger'
-
-import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
+import { withCourseVersion, type CourseVersion } from '@/lib/academy/course-data'
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import type {
-    ActionResult,
-    Course,
-    LearningPath,
-    LearningPathDetail,
-    LearningPathListItem,
-} from '@/lib/types/learning'
+import type { ActionResult, Course, LearningPath, LearningPathCourseLink, LearningPathDetail, LearningPathListItem } from '@/lib/types/learning'
 
-// ============================================================
-// A2.1 — Learning Paths server actions
-// ============================================================
+interface PathEnrollment { path_id: string; completed_at: string | null; required_course_ids: string[] }
 
-/**
- * Lista opublikowanych ścieżek (z liczbą kursów + progress jeśli user zapisany).
- */
+async function pathReadState(client: SupabaseClient, userId: string, pathIds: string[]) {
+    const [links, enrollments] = await Promise.all([
+        client.from('learning_path_courses').select('path_id,course_id,order_index,is_required').in('path_id', pathIds).order('order_index'),
+        client.from('learning_path_enrollments').select('path_id,completed_at,required_course_ids').eq('user_id', userId).in('path_id', pathIds),
+    ])
+    assertDatabaseResult(links.error)
+    assertDatabaseResult(enrollments.error)
+    const byPath = new Map<string, LearningPathCourseLink[]>()
+    const enrolled = new Map<string, PathEnrollment>((enrollments.data ?? []).map(row => [row.path_id, row as PathEnrollment]))
+    for (const pathId of pathIds) {
+        const current = (links.data ?? []).filter(row => row.path_id === pathId) as (LearningPathCourseLink & { path_id: string })[]
+        const snapshot = enrolled.get(pathId)
+        if (!snapshot) { byPath.set(pathId, current); continue }
+        const required = snapshot.required_course_ids ?? []
+        byPath.set(pathId, [
+            ...required.map((courseId, index) => ({ course_id: courseId, order_index: index, is_required: true })),
+            ...current.filter(row => !row.is_required && !required.includes(row.course_id)).map((row, index) => ({ ...row, order_index: required.length + index })),
+        ])
+    }
+    const courseIds = [...new Set([...byPath.values()].flatMap(rows => rows.map(row => row.course_id)))]
+    const completions = courseIds.length ? await client.from('course_completions').select('course_id').is('revoked_at', null).eq('user_id', userId).in('course_id', courseIds) : { data: [], error: null }
+    assertDatabaseResult(completions.error)
+    return { byPath, enrolled, completed: new Set((completions.data ?? []).map(row => row.course_id as string)) }
+}
+
 export async function listLearningPaths(): Promise<ActionResult<LearningPathListItem[]>> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-
-        const { data: paths, error } = await supabase
-            .from('learning_paths')
-            .select('*')
-            .eq('status', 'published')
-            .order('created_at', { ascending: false })
-        if (error) throw error
-
-        const pathsTyped = (paths ?? []) as LearningPath[]
-        if (pathsTyped.length === 0) return { success: true, data: [] }
-
-        const pathIds = pathsTyped.map((p) => p.id)
-
-        // Pull liczby kursów per path
-        const { data: pathCourses } = await supabase
-            .from('learning_path_courses')
-            .select('path_id')
-            .in('path_id', pathIds)
-        const courseCountMap = new Map<string, number>()
-        for (const pc of (pathCourses ?? []) as Array<{ path_id: string }>) {
-            courseCountMap.set(pc.path_id, (courseCountMap.get(pc.path_id) ?? 0) + 1)
-        }
-
-        // Pull user enrollments + per-path progress jeśli user zalogowany
-        const enrollmentMap = new Map<string, { progress: number; isEnrolled: boolean }>()
-        if (user) {
-            const { data: enrolls } = await supabase
-                .from('learning_path_enrollments')
-                .select('path_id, completed_at')
-                .eq('user_id', user.id)
-                .in('path_id', pathIds)
-
-            const enrolledArr = Array.from(
-                new Set(((enrolls ?? []) as Array<{ path_id: string }>).map((e) => e.path_id)),
-            )
-            for (const id of enrolledArr) {
-                enrollmentMap.set(id, { progress: 0, isEnrolled: true })
-            }
-
-            // Compute progress: per-path = (ukończone kursy / total kursy w path)
-            if (enrolledArr.length > 0) {
-                const { data: pathCoursesAll } = await supabase
-                    .from('learning_path_courses')
-                    .select('path_id, course_id')
-                    .in('path_id', enrolledArr)
-                type PCRow = { path_id: string; course_id: string }
-                const allCourseIds = (pathCoursesAll ?? []).map((r: PCRow) => r.course_id)
-
-                if (allCourseIds.length > 0) {
-                    const { data: completedEnrolls } = await supabase
-                        .from('course_enrollments')
-                        .select('course_id')
-                        .eq('user_id', user.id)
-                        .in('course_id', allCourseIds)
-                        .not('completed_at', 'is', null)
-                    const completedSet = new Set(
-                        ((completedEnrolls ?? []) as Array<{ course_id: string }>).map((c) => c.course_id),
-                    )
-
-                    // Re-aggregate per path
-                    const pathTotals = new Map<string, { total: number; done: number }>()
-                    for (const r of (pathCoursesAll ?? []) as PCRow[]) {
-                        const cur = pathTotals.get(r.path_id) ?? { total: 0, done: 0 }
-                        cur.total += 1
-                        if (completedSet.has(r.course_id)) cur.done += 1
-                        pathTotals.set(r.path_id, cur)
-                    }
-                    pathTotals.forEach((t, pid) => {
-                        const progress = t.total > 0 ? Math.round((t.done / t.total) * 100) : 0
-                        enrollmentMap.set(pid, { progress, isEnrolled: true })
-                    })
-                }
-            }
-        }
-
-        const items: LearningPathListItem[] = pathsTyped.map((p) => {
-            const enr = enrollmentMap.get(p.id)
-            return {
-                ...p,
-                course_count: courseCountMap.get(p.id) ?? 0,
-                is_enrolled: enr?.isEnrolled ?? false,
-                progress_percent: enr?.progress ?? 0,
-            }
+    return academyAction('path.list', async () => {
+        const { client, access } = await requireAcademyContext()
+        const { data, error } = await client.from('learning_paths').select('*').eq('status', 'published').order('created_at', { ascending: false })
+        assertDatabaseResult(error)
+        const paths = (data ?? []) as LearningPath[]
+        if (!paths.length) return []
+        const state = await pathReadState(client, access.userId, paths.map(path => path.id))
+        return paths.map(path => {
+            const links = state.byPath.get(path.id) ?? []
+            const required = links.filter(link => link.is_required)
+            const enrollment = state.enrolled.get(path.id)
+            const done = required.filter(link => state.completed.has(link.course_id)).length
+            return { ...path, course_count: links.length, is_enrolled: !!enrollment, progress_percent: enrollment?.completed_at ? 100 : enrollment && required.length ? Math.round(done / required.length * 100) : 0 }
         })
-
-        return { success: true, data: items }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania ścieżek'
-        logCompat.error('[listLearningPaths]', error)
-        return { success: false, error: msg }
-    }
+    })
 }
 
-/**
- * Detail ścieżki — pełne dane + lista kursów w kolejności + per-course progress.
- */
 export async function getLearningPathDetail(slug: string): Promise<ActionResult<LearningPathDetail>> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-
-        const { data: path, error: pathErr } = await supabase
-            .from('learning_paths')
-            .select('*')
-            .eq('slug', slug)
-            .single<LearningPath>()
-        if (pathErr || !path) return { success: false, error: 'Ścieżka nie istnieje' }
-
-        // Pull courses w order
-        const { data: pathCourses } = await supabase
-            .from('learning_path_courses')
-            .select('course_id, order_index, is_required')
-            .eq('path_id', path.id)
-            .order('order_index')
-        const links = (pathCourses ?? []) as Array<{
-            course_id: string
-            order_index: number
-            is_required: boolean
-        }>
-
-        // Pull course details
-        const courseIds = links.map((l) => l.course_id)
-        const { data: coursesData } =
-            courseIds.length > 0
-                ? await supabase.from('courses').select('*').in('id', courseIds)
-                : { data: [] }
-        const courseMap = new Map<string, Course>()
-        for (const c of (coursesData ?? []) as Course[]) courseMap.set(c.id, c)
-
-        // User enrollment status w path + per-course progress
-        let isEnrolledInPath = false
-        let pathCompletedAt: string | null = null
-        const completedCourses = new Set<string>()
-        const enrolledInCourses = new Set<string>()
-
-        if (user) {
-            const { data: pathEnr } = await supabase
-                .from('learning_path_enrollments')
-                .select('completed_at')
-                .eq('user_id', user.id)
-                .eq('path_id', path.id)
-                .maybeSingle<{ completed_at: string | null }>()
-            isEnrolledInPath = !!pathEnr
-            pathCompletedAt = pathEnr?.completed_at ?? null
-
-            if (courseIds.length > 0) {
-                const { data: courseEnrolls } = await supabase
-                    .from('course_enrollments')
-                    .select('course_id, completed_at')
-                    .eq('user_id', user.id)
-                    .in('course_id', courseIds)
-                for (const ce of (courseEnrolls ?? []) as Array<{
-                    course_id: string
-                    completed_at: string | null
-                }>) {
-                    enrolledInCourses.add(ce.course_id)
-                    if (ce.completed_at) completedCourses.add(ce.course_id)
-                }
-            }
+    return academyAction('path.detail', async () => {
+        const { client, access } = await requireAcademyContext()
+        const { data: path, error } = await client.from('learning_paths').select('*').eq('slug', z.string().min(1).max(200).parse(slug)).single()
+        assertDatabaseResult(error)
+        if (!path) throw new Error('Ścieżka nie istnieje.')
+        const state = await pathReadState(client, access.userId, [path.id])
+        const links = state.byPath.get(path.id) ?? []
+        const courseIds = links.map(link => link.course_id)
+        const [courses, enrollments] = courseIds.length ? await Promise.all([
+            client.from('courses').select('*').in('id', courseIds),
+            client.from('course_enrollments').select('id,course_id,version_id,run_id,completed_at,enrolled_at').eq('user_id', access.userId).in('course_id', courseIds).order('enrolled_at', { ascending: false }),
+        ]) : [{ data: [], error: null }, { data: [], error: null }]
+        assertDatabaseResult(courses.error)
+        assertDatabaseResult(enrollments.error)
+        const active: { id: string; course_id: string; version_id: string; run_id: string | null; completed_at: string | null; enrolled_at: string }[] = []
+        for (const enrollment of enrollments.data ?? []) {
+            // Matches material access, so withdrawn live registrations cannot become Continue links.
+            const result = await client.rpc('academy_enrollment_has_access', { p_enrollment_id: enrollment.id })
+            assertDatabaseResult(result.error)
+            if (result.data) active.push(enrollment)
         }
-
-        const courses = links
-            .map((l) => {
-                const course = courseMap.get(l.course_id)
-                if (!course) return null
-                return {
-                    course,
-                    order_index: l.order_index,
-                    is_required: l.is_required,
-                    is_completed: completedCourses.has(l.course_id),
-                    is_enrolled: enrolledInCourses.has(l.course_id),
-                }
-            })
-            .filter((x): x is NonNullable<typeof x> => x !== null)
-
-        const total = courses.length
-        const done = courses.filter((c) => c.is_completed).length
-        const progress = total > 0 ? Math.round((done / total) * 100) : 0
-
-        return {
-            success: true,
-            data: {
-                ...path,
-                courses,
-                is_enrolled_in_path: isEnrolledInPath,
-                completed_courses_count: done,
-                total_courses_count: total,
-                progress_percent: progress,
-                completed_at: pathCompletedAt,
-            },
-        }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania ścieżki'
-        logCompat.error('[getLearningPathDetail]', error)
-        return { success: false, error: msg }
-    }
+        const versionIds = [...new Set(active.map(enrollment => enrollment.version_id))]
+        const versions = versionIds.length ? await client.from('course_versions').select('*').in('id', versionIds) : { data: [], error: null }
+        assertDatabaseResult(versions.error)
+        const entries = links.map(link => {
+            const course = courses.data?.find(row => row.id === link.course_id) as Course | undefined
+            const own = active.filter(enrollment => enrollment.course_id === link.course_id)
+            // Resume unfinished work first, otherwise retain the most recent completed evidence.
+            const enrollment = own.find(row => !row.completed_at) ?? own[0]
+            const version = versions.data?.find(row => row.id === enrollment?.version_id) as CourseVersion | undefined
+            return { ...link, course: course ? version ? withCourseVersion(course, version) : course : null, is_completed: state.completed.has(link.course_id), is_enrolled: !!enrollment, enrollment_id: enrollment?.id ?? null, run_id: enrollment?.run_id ?? null }
+        })
+        const required = entries.filter(entry => entry.is_required)
+        const done = required.filter(entry => entry.is_completed).length
+        const enrollment = state.enrolled.get(path.id)
+        return { ...(path as LearningPath), courses: entries, is_enrolled_in_path: !!enrollment, completed_courses_count: done, total_courses_count: required.length, progress_percent: enrollment?.completed_at ? 100 : required.length ? Math.round(done / required.length * 100) : 0, completed_at: enrollment?.completed_at ?? null }
+    })
 }
 
-/**
- * Zapisz na ścieżkę (idempotent).
- */
 export async function enrollInLearningPath(pathId: string): Promise<ActionResult<{ enrollmentId: string }>> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data: existing } = await supabase
-            .from('learning_path_enrollments')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('path_id', pathId)
-            .maybeSingle()
-        if (existing) {
-            return { success: true, data: { enrollmentId: (existing as { id: string }).id } }
-        }
-
-        const { data, error } = await supabase
-            .from('learning_path_enrollments')
-            .insert({ user_id: user.id, path_id: pathId })
-            .select('id')
-            .single()
-        if (error) throw error
-
-        revalidatePath('/learning')
-        revalidatePath('/learning/paths')
-        return { success: true, data: { enrollmentId: (data as { id: string }).id } }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd zapisu na ścieżkę'
-        logCompat.error('[enrollInLearningPath]', error)
-        return { success: false, error: msg }
-    }
+    return academyAction('path.enroll', async () => {
+        const { client } = await requireAcademyContext()
+        const { data, error } = await client.rpc('academy_enroll_path', { p_path_id: z.uuid().parse(pathId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return { enrollmentId: data as string }
+    })
 }
 
-/**
- * Sprawdź czy user ukończył ścieżkę (wszystkie required kursy = completed).
- * Wywoływane np. po quiz pass jako "post-completion check".
- * Idempotent: gdy już marked completed, no-op.
- */
-export async function checkLearningPathCompletion(
-    pathId: string,
-): Promise<ActionResult<{ now_completed: boolean }>> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data: enr } = await supabase
-            .from('learning_path_enrollments')
-            .select('id, completed_at')
-            .eq('user_id', user.id)
-            .eq('path_id', pathId)
-            .maybeSingle<{ id: string; completed_at: string | null }>()
-        if (!enr) return { success: true, data: { now_completed: false } }
-        if (enr.completed_at) return { success: true, data: { now_completed: false } }
-
-        const { data: required } = await supabase
-            .from('learning_path_courses')
-            .select('course_id')
-            .eq('path_id', pathId)
-            .eq('is_required', true)
-        const requiredIds = ((required ?? []) as Array<{ course_id: string }>).map((r) => r.course_id)
-        if (requiredIds.length === 0) return { success: true, data: { now_completed: false } }
-
-        const { data: completed } = await supabase
-            .from('course_enrollments')
-            .select('course_id')
-            .eq('user_id', user.id)
-            .in('course_id', requiredIds)
-            .not('completed_at', 'is', null)
-        const completedSet = new Set(
-            ((completed ?? []) as Array<{ course_id: string }>).map((c) => c.course_id),
-        )
-        const allDone = requiredIds.every((id) => completedSet.has(id))
-
-        if (allDone) {
-            await supabase
-                .from('learning_path_enrollments')
-                .update({ completed_at: new Date().toISOString() })
-                .eq('id', enr.id)
-            return { success: true, data: { now_completed: true } }
-        }
-        return { success: true, data: { now_completed: false } }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd weryfikacji'
-        logCompat.error('[checkLearningPathCompletion]', error)
-        return { success: false, error: msg }
-    }
+export async function checkLearningPathCompletion(pathId: string): Promise<ActionResult<{ now_completed: boolean; completed: boolean }>> {
+    return academyAction('path.complete', async () => {
+        const { client } = await requireAcademyContext()
+        const { data, error } = await client.rpc('academy_complete_path', { p_path_id: z.uuid().parse(pathId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return data as { now_completed: boolean; completed: boolean }
+    })
 }

@@ -54,13 +54,26 @@ env:
   # AND path eq "/api/health" (GH runner IPs are datacenter → threat_score
   # block otherwise). Keep both sides of that contract in sync.
   SMOKE_UA: "dynaminds-smoke-test/1.0 (+github-actions; compass)"
+  # Release prerequisite: install the host controller and seed its signatures
+  # before merging this Academy release. Keep deployment policy in reviewed code.
+  ACADEMY_CLAMAV_COLOCATED: "true"
 
 jobs:
   deploy:
     name: Trigger Coolify deploy
+    if: github.repository == 'B2B-net-S-A/COMPASS' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: env.ACADEMY_CLAMAV_COLOCATED == 'true'
+        with:
+          persist-credentials: false
+          sparse-checkout: ops/academy/clamav
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: env.ACADEMY_CLAMAV_COLOCATED == 'true'
+        with:
+          node-version: '20'
       - name: Skip if target already live (burst coalescing)
         id: precheck
         # Ręczny workflow_dispatch NIGDY nie skipuje — to ścieżka świadomego
@@ -145,9 +158,27 @@ jobs:
             echo "✅ $key set (HTTP $http)"
           done
 
+      - name: Pause colocated Academy scanner before any build
+        id: academy_pause
+        if: env.ACADEMY_CLAMAV_COLOCATED == 'true' && steps.precheck.outputs.skip != 'true'
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: node ops/academy/clamav/deploy-hook.mjs pause
+
       - name: Deploy (trigger + wait, with retry on server-side build failure)
         if: ${{ steps.precheck.outputs.skip != 'true' }}
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
         run: |
+          av_hook() {
+            if [ "$ACADEMY_CLAMAV_COLOCATED" = true ]; then
+              node ops/academy/clamav/deploy-hook.mjs "$@"
+            fi
+          }
           # ─── Dlaczego całość jest w pętli retry ──────────────────────────────
           # Build po stronie Coolify bywa flaky: 4 z 30 przebiegów (13%) padły
           # z `exit code 255` na `docker compose build`, zwykle po ~75-85 s —
@@ -173,6 +204,7 @@ jobs:
             http_code=""
             response=""
             for attempt in $(seq 1 20); do
+              av_hook begin-trigger "$deploy_attempt-$attempt"
               raw=$(curl -sS -X GET \
                 -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
                 -H "Accept: application/json" \
@@ -184,6 +216,12 @@ jobs:
               if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
                 echo "Coolify responded $http_code on attempt $attempt"
                 break
+              fi
+              if [ "$ACADEMY_CLAMAV_COLOCATED" = true ]; then
+                # Even queue-full can mean another build is consuming this host.
+                # No retry or scanner restart until an operator resolves it.
+                echo '::error::Unconfirmed trigger or busy queue; scanner stays paused. Inspect Coolify before recovery.'
+                exit 1
               fi
               echo "::warning::Attempt $attempt/20 — Coolify HTTP $http_code, body: $response"
               if [ $attempt -lt 20 ]; then
@@ -199,6 +237,7 @@ jobs:
               echo "::error::Failed to start deployment (no deployment_uuid in response)"
               exit 1
             fi
+            av_hook bind "$deploy_attempt-$attempt" "$DEPLOYMENT_UUID"
             echo "Deployment queued: $DEPLOYMENT_UUID"
 
             # ── Wait ──
@@ -215,20 +254,26 @@ jobs:
               status=$(echo "$resp" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
               case "$status" in
                 finished)
+                  av_hook terminal "$DEPLOYMENT_UUID" finished
                   echo "✅ Deployment $DEPLOYMENT_UUID finished after ~$((i * 15))s (attempt $deploy_attempt)"
                   exit 0
                   ;;
                 failed|cancelled*|cancelled-by-user)
+                  if [ "$status" = failed ]; then
+                    av_hook terminal "$DEPLOYMENT_UUID" failed
+                  else
+                    av_hook terminal "$DEPLOYMENT_UUID" cancelled
+                  fi
                   echo "::warning::Deployment $DEPLOYMENT_UUID ended with status=$status after ~$((i * 15))s — server-side log tail below"
                   # .logs to JSON z tablicą {output,type,hidden,...}. Drukujemy
-                  # ostatnie widoczne wpisy; przy zmianie kształtu — surowy ogon.
-                  # Logi builda nie niosą sekretów. 60 wpisów × 1200 znaków:
+                  # ostatnie widoczne wpisy; przy zmianie kształtu pomijamy treść.
+                  # 60 wpisów × 1200 znaków:
                   # przy 30×400 prawdziwa przyczyna (npm/docker) nie mieściła się
                   # w oknie i w logach zostawała sama komenda `docker compose build`.
                   logs=$(echo "$resp" | jq -r '.logs // ""' 2>/dev/null || echo '')
                   if [ -n "$logs" ]; then
                     echo "$logs" | jq -r '.[-60:][] | select(.hidden != true) | "[\(.type // "out")] \((.output // "") | .[0:1200])"' 2>/dev/null \
-                      || echo "$logs" | tail -c 8000
+                      || echo '(deployment logs omitted: unsupported response format)'
                   else
                     echo "(no logs returned by API)"
                   fi
@@ -265,6 +310,14 @@ jobs:
 
           echo "::error::Deployment failed on all $MAX_ATTEMPTS attempts — this is unlikely to be flake. Sprawdź log powyżej (pełniejszy niż wcześniej: 60 wpisów × 1200 znaków)."
           exit 1
+
+      - name: Resume Academy scanner only after confirmed terminal deployments
+        if: always() && steps.academy_pause.outcome == 'success'
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: node ops/academy/clamav/deploy-hook.mjs resume
 
   smoke-test:
     name: Smoke test /api/health

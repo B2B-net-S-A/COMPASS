@@ -1,6 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { academyClient, requireAcademyContext, academyAction, assertDatabaseResult } from '@/lib/academy/server'
+import { courseMetadataSchema, loadAcademyCourse, withCourseVersion, type CourseVersion } from '@/lib/academy/course-data'
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logger } from '@/lib/logger'
 import {
@@ -13,7 +15,6 @@ import {
     type CourseLesson,
     type CourseListItem,
     type CourseQuizQuestionAuthor,
-    type CourseStatus,
     type CreateCourseInput,
     type CreateLessonInput,
     type ListCoursesFilters,
@@ -26,178 +27,65 @@ import {
 // ============================================================
 // Helpers
 // ============================================================
-const SLUG_RANDOM_SUFFIX_LENGTH = 6
-
-function slugifyTitle(title: string): string {
-    const polishMap: Record<string, string> = {
-        ą: 'a', ć: 'c', ę: 'e', ł: 'l', ń: 'n', ó: 'o', ś: 's', ź: 'z', ż: 'z',
-        Ą: 'a', Ć: 'c', Ę: 'e', Ł: 'l', Ń: 'n', Ó: 'o', Ś: 's', Ź: 'z', Ż: 'z',
-    }
-    const normalized = title
-        .split('')
-        .map((c) => polishMap[c] ?? c)
-        .join('')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .trim()
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .slice(0, 80)
-    return normalized || 'kurs'
-}
-
-function randomSuffix(length = SLUG_RANDOM_SUFFIX_LENGTH): string {
-    return Math.random().toString(36).slice(2, 2 + length)
-}
-
-async function isAdminOrCentrala(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
-    const { data } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single()
-    const role = data?.role || ''
-    return ['admin'].includes(role)
-}
-
 // ============================================================
 // Server Actions — author + catalog
 // ============================================================
 
-/**
- * Tworzy nowy kurs (status = draft). Każdy authenticated może utworzyć — autorem
- * staje się aktualny user. Slug generowany ze zsanityzowanego tytułu + losowy sufiks.
- */
+/** Creates a draft through the same database boundary used by direct API clients. */
 export async function createCourse(input: CreateCourseInput): Promise<ActionResult<{ courseId: string; slug: string }>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        if (!input.title || input.title.trim().length < 3) {
-            return { success: false, error: 'Tytuł musi mieć co najmniej 3 znaki' }
-        }
-        if (!input.category || input.category.trim().length === 0) {
-            return { success: false, error: 'Kategoria jest wymagana' }
-        }
-
-        // Slug: zsanityzowany tytuł + losowy sufiks (zawsze unikalny — bez kolizji)
-        const slug = `${slugifyTitle(input.title)}-${randomSuffix()}`
-
-        // Phase 1.4 (2026-05-04): only admin/trainer can pick course_type='company' or is_official=true.
-        // Consultant requests for 'company' are silently downgraded to 'consultant' (no error — defensive).
-        const callerIsAdminOrTrainer = await isAdminOrCentrala(supabase, user.id)
-        const requestedType = input.course_type ?? 'consultant'
-        const finalType = callerIsAdminOrTrainer && requestedType === 'company' ? 'company' : 'consultant'
-        const finalOfficial = callerIsAdminOrTrainer && finalType === 'company' ? !!input.is_official : false
-
-        const { data, error } = await supabase
-            .from('courses')
-            .insert({
-                author_id: user.id,
-                title: input.title.trim(),
-                slug,
-                description: input.description?.trim() || null,
-                category: input.category.trim(),
-                tags: input.tags ?? [],
-                level: input.level ?? 'beginner',
-                duration_minutes: input.duration_minutes ?? null,
-                status: 'draft',
-                course_type: finalType,
-                is_official: finalOfficial,
-            })
-            .select('id, slug')
-            .single()
-
-        if (error) throw error
-
-        revalidatePath('/learning')
+    return academyAction('course.create', async () => {
+        const { client, access } = await requireAcademyContext({ trainer: true })
+        const parsed = courseMetadataSchema.extend({ course_type: z.enum(['company', 'consultant']).optional(), is_official: z.boolean().optional() }).parse(input)
+        const { data, error } = await client.rpc('academy_create_course', { p_input: { ...parsed, course_type: access.isAdmin ? parsed.course_type ?? 'consultant' : 'consultant', is_official: access.isAdmin && parsed.course_type === 'company' && parsed.is_official === true } })
+        assertDatabaseResult(error)
         revalidatePath('/learning/tworze')
-        return { success: true, data: { courseId: data.id, slug: data.slug } }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd tworzenia kursu'
-        logger.error({ event: 'courses.create.failed', error })
-        return { success: false, error: msg }
-    }
+        return { courseId: data.course_id as string, slug: data.slug as string }
+    })
 }
 
-/**
- * Aktualizuje metadane kursu. Tylko autor (lub admin/centrala) może edytować.
- * Kurs w stanie `published` można edytować bez re-submit (do dyskusji w fazie 2).
- */
 export async function updateCourse(courseId: string, patch: UpdateCoursePatch): Promise<ActionResult<{ slug: string }>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data: course, error: fetchError } = await supabase
-            .from('courses')
-            .select('id, author_id, slug, status')
-            .eq('id', courseId)
-            .single()
-        if (fetchError || !course) return { success: false, error: 'Kurs nie istnieje' }
-
-        const isAdmin = await isAdminOrCentrala(supabase, user.id)
-        if (course.author_id !== user.id && !isAdmin) {
-            return { success: false, error: 'Brak uprawnień do edycji tego kursu' }
-        }
-
-        const cleanPatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
-        if (patch.title !== undefined) {
-            if (patch.title.trim().length < 3) return { success: false, error: 'Tytuł musi mieć co najmniej 3 znaki' }
-            cleanPatch.title = patch.title.trim()
-        }
-        if (patch.description !== undefined) cleanPatch.description = patch.description?.trim() || null
-        if (patch.category !== undefined) {
-            if (!patch.category.trim()) return { success: false, error: 'Kategoria nie może być pusta' }
-            cleanPatch.category = patch.category.trim()
-        }
-        if (patch.tags !== undefined) cleanPatch.tags = patch.tags
-        if (patch.level !== undefined) cleanPatch.level = patch.level
-        if (patch.duration_minutes !== undefined) cleanPatch.duration_minutes = patch.duration_minutes
-        if (patch.cover_image_url !== undefined) cleanPatch.cover_image_url = patch.cover_image_url
-
-        const { error: updateError } = await supabase
-            .from('courses')
-            .update(cleanPatch)
-            .eq('id', courseId)
-
-        if (updateError) throw updateError
-
-        revalidatePath('/learning')
+    return academyAction('course.update', async () => {
+        const { client, access } = await requireAcademyContext({ trainer: true })
+        const parsed = courseMetadataSchema.partial().parse(patch)
+        const { error } = await client.rpc('academy_update_course', { p_course_id: z.uuid().parse(courseId), p_patch: parsed })
+        assertDatabaseResult(error)
+        const { course } = await loadAcademyCourse(client, access.userId, courseId, { author: true })
         revalidatePath('/learning/tworze')
-        revalidatePath(`/learning/${course.slug}`)
-        return { success: true, data: { slug: course.slug } }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd aktualizacji kursu'
-        logger.error({ event: 'courses.update.failed', error })
-        return { success: false, error: msg }
-    }
+        revalidatePath(`/learning/tworze/${courseId}/edit`)
+        return { slug: course.slug }
+    })
+}
+
+export async function beginCourseDraft(courseId: string): Promise<ActionResult<string>> {
+    return academyAction('course.begin_draft', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        const { data, error } = await client.rpc('academy_begin_draft', { p_course_id: z.uuid().parse(courseId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning/tworze')
+        revalidatePath(`/learning/tworze/${courseId}/edit`)
+        return data as string
+    })
 }
 
 /**
  * Lista kursów aktualnego usera w roli autora (wszystkie statusy).
  */
 export async function getMyCourses(): Promise<ActionResult<Course[]>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data, error } = await supabase
-            .from('courses')
-            .select('*')
-            .eq('author_id', user.id)
-            .order('updated_at', { ascending: false })
-
-        if (error) throw error
-        return { success: true, data: (data ?? []) as Course[] }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania kursów'
-        logger.error({ event: 'courses.get_my.failed', error })
-        return { success: false, error: msg }
-    }
+    return academyAction('course.mine', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        const { data, error } = await client.rpc('academy_teaching_courses')
+        assertDatabaseResult(error)
+        const courses = (data ?? []) as Course[]
+        const ids = courses.map(c => c.can_edit ? c.draft_version_id ?? c.published_version_id : c.published_version_id).filter((id): id is string => !!id)
+        if (!ids.length) return courses
+        const { data: versions, error: versionError } = await client.from('course_versions').select('*').in('id', ids)
+        assertDatabaseResult(versionError)
+        const byId = new Map((versions as CourseVersion[] ?? []).map(v => [v.id, v]))
+        return courses.map(c => {
+            const version = byId.get((c.can_edit ? c.draft_version_id ?? c.published_version_id : c.published_version_id) ?? '')
+            return version ? withCourseVersion(c, version) : c
+        })
+    })
 }
 
 /**
@@ -206,7 +94,7 @@ export async function getMyCourses(): Promise<ActionResult<Course[]>> {
  */
 export async function listPublishedCourses(filters: ListCoursesFilters = {}): Promise<ActionResult<{ items: CourseListItem[]; total: number }>> {
     try {
-        const supabase = createClient()
+        const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
@@ -219,13 +107,25 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
             .from('courses')
             .select('*', { count: 'exact' })
             .eq('status', 'published')
+            .eq('legacy_review_required', false)
+            .not('published_version_id', 'is', null)
 
+        if (filters.author_id) query = query.eq('author_id', z.uuid().parse(filters.author_id))
+        if (filters.instructor_id) {
+            const id = z.uuid().parse(filters.instructor_id)
+            const { data: instructors, error: instructorError } = await supabase.rpc('academy_catalog_instructors')
+            assertDatabaseResult(instructorError)
+            const courses = (instructors as Array<{ id: string; courseIds: string[] }> ?? []).find(person => person.id === id)?.courseIds ?? []
+            if (!courses.length) return { success: true, data: { items: [], total: 0 } }
+            query = query.in('id', courses)
+        }
         if (filters.category) query = query.eq('category', filters.category)
         if (filters.level) query = query.eq('level', filters.level)
+        if (filters.delivery_mode) query = query.eq('delivery_mode', filters.delivery_mode)
         if (filters.course_type) query = query.eq('course_type', filters.course_type)
         if (filters.tag) query = query.contains('tags', [filters.tag])
         if (filters.search && filters.search.trim().length > 0) {
-            const s = `%${filters.search.trim()}%`
+            const s = `%${filters.search.trim().slice(0, 100).replace(/[,%_()]/g, '')}%`
             query = query.or(`title.ilike.${s},description.ilike.${s}`)
         }
 
@@ -241,7 +141,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
                 query = query.order('published_at', { ascending: false })
         }
 
-        query = query.range(from, to)
+        query = query.order('id', { ascending: true }).range(from, to)
 
         const { data, error, count } = await query
         if (error) throw error
@@ -280,78 +180,49 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
  * (bez treści pytań i opcji — te ładujemy oddzielnie przez RPC `get_quiz_for_attempt`
  * w fazie 4). Ujawnia metadane visible-to-user wg RLS (published OR own OR admin).
  */
-export async function getCourseDetail(slugOrId: string): Promise<ActionResult<CourseDetail>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slugOrId)
-        const filterField = isUuid ? 'id' : 'slug'
-
-        const { data: courseRow, error: courseErr } = await supabase
-            .from('courses')
-            .select('*')
-            .eq(filterField, slugOrId)
-            .single()
-
-        if (courseErr || !courseRow) return { success: false, error: 'Kurs nie istnieje lub brak dostępu' }
-
-        const course = courseRow as Course
-
-        // Author profile in a separate query (no embed → testable)
-        const { data: authorProfile } = await supabase
-            .from('profiles')
-            .select('full_name, avatar_url')
-            .eq('id', course.author_id)
-            .maybeSingle()
-
-        const { data: lessons, error: lessonsErr } = await supabase
-            .from('course_lessons')
-            .select('*')
-            .eq('course_id', course.id)
-            .order('order_index', { ascending: true })
-        if (lessonsErr) throw lessonsErr
-
-        const { count: quizCount, error: quizCountErr } = await supabase
-            .from('course_quiz_questions')
-            .select('id', { count: 'exact', head: true })
-            .eq('course_id', course.id)
-        if (quizCountErr) throw quizCountErr
-
-        const { data: enrollment } = await supabase
-            .from('course_enrollments')
-            .select('id')
-            .eq('course_id', course.id)
-            .eq('user_id', user.id)
-            .maybeSingle()
-
-        const { data: ratingRow } = await supabase
-            .from('course_ratings')
-            .select('rating, comment')
-            .eq('course_id', course.id)
-            .eq('user_id', user.id)
-            .maybeSingle()
-
-        const detail: CourseDetail = {
+export async function getCourseDetail(slugOrId: string, options: { author?: boolean; enrollmentId?: string; publishedOnly?: boolean; previewVersionId?: string } = {}): Promise<ActionResult<CourseDetail>> {
+    return academyAction('course.detail', async () => {
+        const { client, access } = await requireAcademyContext()
+        const { course, enrollment } = await loadAcademyCourse(client, access.userId, slugOrId, options)
+        const [{ data: author, error: authorError }, { data: rating, error: ratingError }] = await Promise.all([
+            client.from('profiles').select('full_name,avatar_url').eq('id', course.author_id).maybeSingle(),
+            client.from('course_ratings').select('rating,comment').eq('course_id', course.id).eq('user_id', access.userId).maybeSingle(),
+        ])
+        assertDatabaseResult(authorError)
+        assertDatabaseResult(ratingError)
+        const { data: canManage, error: accessError } = await client.rpc('academy_can_preview_version', { p_version_id: course.version_id })
+        assertDatabaseResult(accessError)
+        const [lessonsResult, syllabusResult] = await Promise.all([
+            enrollment || canManage
+                ? client.from('course_lessons').select('*').eq('version_id', course.version_id).order('order_index')
+                : Promise.resolve({ data: [], error: null }),
+            client.rpc('academy_get_syllabus', { p_version_id: course.version_id }),
+        ])
+        assertDatabaseResult(lessonsResult.error)
+        assertDatabaseResult(syllabusResult.error)
+        const materialMap = new Map<string, CourseLesson>((lessonsResult.data ?? []).map((lesson: CourseLesson) => [lesson.id, lesson]))
+        const { data: count, error: quizError } = await client.rpc('academy_quiz_question_count', { p_version_id: course.version_id })
+        assertDatabaseResult(quizError)
+        return {
             ...course,
-            author_name: (authorProfile as { full_name?: string } | null)?.full_name ?? null,
-            author_avatar_url: (authorProfile as { avatar_url?: string } | null)?.avatar_url ?? null,
-            lessons: ((lessons ?? []) as unknown as CourseLesson[]).map((l) => ({
-                ...l,
-                attachments: Array.isArray(l.attachments) ? l.attachments : [],
-            })),
-            quiz_questions_count: quizCount ?? 0,
+            author_name: author?.full_name ?? null,
+            author_avatar_url: author?.avatar_url ?? null,
+            lessons: (syllabusResult.data ?? []).map((summary: CourseLesson) => {
+                const lesson = materialMap.get(summary.id)
+                return { ...summary, ...lesson, content_available: !!lesson, content_md: lesson?.content_md ?? null, video_url: lesson?.video_url ?? null, attachments: Array.isArray(lesson?.attachments) ? lesson.attachments : [] }
+            }),
+            quiz_questions_count: count ?? 0,
             is_enrolled: !!enrollment,
-            user_rating: ratingRow ? { rating: ratingRow.rating, comment: ratingRow.comment } : null,
+            enrollment_id: enrollment?.id ?? null,
+            run_id: enrollment?.run_id ?? null,
+            completed_at: enrollment?.completed_at ?? null,
+            completion_revoked_at: enrollment?.completion_revoked_at ?? null,
+            completion_revoked_reason: enrollment?.completion_revoked_reason ?? null,
+            completed_lesson_ids: Array.isArray(enrollment?.completed_lessons) ? enrollment.completed_lessons : [],
+            lesson_completion_dates: enrollment?.lesson_completion_dates ?? {},
+            user_rating: rating ? { rating: rating.rating, comment: rating.comment } : null,
         }
-
-        return { success: true, data: detail }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania szczegółów kursu'
-        logger.error({ event: 'courses.get_detail.failed', error })
-        return { success: false, error: msg }
-    }
+    })
 }
 
 // ============================================================
@@ -359,48 +230,22 @@ export async function getCourseDetail(slugOrId: string): Promise<ActionResult<Co
 // ============================================================
 
 async function loadCourseForAuthor(
-    supabase: ReturnType<typeof createClient>,
-    courseId: string,
-    userId: string,
-): Promise<{ id: string; author_id: string; status: CourseStatus; slug: string } | null> {
-    const { data, error } = await supabase
-        .from('courses')
-        .select('id, author_id, status, slug')
-        .eq('id', courseId)
-        .single()
-    if (error || !data) return null
-    const isAdmin = await isAdminOrCentrala(supabase, userId)
-    if (data.author_id !== userId && !isAdmin) return null
-    return data as { id: string; author_id: string; status: CourseStatus; slug: string }
+    supabase: ReturnType<typeof academyClient>, courseId: string, userId: string,
+): Promise<Course | null> {
+    const { data: allowed, error } = await supabase.rpc('academy_can_manage_course', { p_course_id: courseId })
+    assertDatabaseResult(error)
+    if (!allowed) return null
+    const { course } = await loadAcademyCourse(supabase, userId, courseId, { author: true })
+    return course
 }
 
 /**
  * Pobiera lekcje kursu (uporządkowane). Zwraca załączniki sparsowane do tablicy.
  * Author/admin widzi wszystkie statusy; student tylko gdy course.status='published' (przez RLS).
  */
-export async function getCourseLessons(courseId: string): Promise<ActionResult<CourseLesson[]>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data, error } = await supabase
-            .from('course_lessons')
-            .select('*')
-            .eq('course_id', courseId)
-            .order('order_index', { ascending: true })
-
-        if (error) throw error
-        const lessons = ((data ?? []) as unknown as CourseLesson[]).map((l) => ({
-            ...l,
-            attachments: Array.isArray(l.attachments) ? l.attachments : [],
-        }))
-        return { success: true, data: lessons }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania lekcji'
-        logger.error({ event: 'courses.get_lessons.failed', error })
-        return { success: false, error: msg }
-    }
+export async function getCourseLessons(courseId: string, options: { author?: boolean; enrollmentId?: string; publishedOnly?: boolean; previewVersionId?: string } = {}): Promise<ActionResult<CourseLesson[]>> {
+    const result = await getCourseDetail(courseId, options)
+    return result.success ? { success: true, data: result.data.lessons } : result
 }
 
 /**
@@ -408,12 +253,13 @@ export async function getCourseLessons(courseId: string): Promise<ActionResult<C
  */
 export async function addLesson(courseId: string, input: CreateLessonInput): Promise<ActionResult<{ lessonId: string }>> {
     try {
-        const supabase = createClient()
+        const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
         const course = await loadCourseForAuthor(supabase, courseId, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
+        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         if (!input.title || input.title.trim().length < 2) {
             return { success: false, error: 'Tytuł lekcji jest wymagany' }
@@ -424,6 +270,7 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
             .from('course_lessons')
             .select('order_index')
             .eq('course_id', courseId)
+            .eq('version_id', course.version_id)
             .order('order_index', { ascending: false })
             .limit(1)
         const nextIndex = existing && existing.length > 0 ? (existing[0] as { order_index: number }).order_index + 1 : 0
@@ -432,6 +279,7 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
             .from('course_lessons')
             .insert({
                 course_id: courseId,
+                version_id: course.version_id,
                 order_index: nextIndex,
                 title: input.title.trim(),
                 content_md: input.content_md?.trim() || null,
@@ -459,7 +307,7 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
  */
 export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): Promise<ActionResult<{ courseId: string }>> {
     try {
-        const supabase = createClient()
+        const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
@@ -472,6 +320,7 @@ export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): 
 
         const course = await loadCourseForAuthor(supabase, lesson.course_id, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień' }
+        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         const cleanPatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
         if (patch.title !== undefined) {
@@ -507,31 +356,16 @@ export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): 
  */
 export async function reorderLessons(courseId: string, orderedIds: string[]): Promise<ActionResult<void>> {
     try {
-        const supabase = createClient()
+        const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
         const course = await loadCourseForAuthor(supabase, courseId, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
+        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
-        // Phase 1: bump every lesson by 1000 to avoid UNIQUE collision
-        for (let i = 0; i < orderedIds.length; i++) {
-            const { error } = await supabase
-                .from('course_lessons')
-                .update({ order_index: 1000 + i })
-                .eq('id', orderedIds[i])
-                .eq('course_id', courseId)
-            if (error) throw error
-        }
-        // Phase 2: set final indices
-        for (let i = 0; i < orderedIds.length; i++) {
-            const { error } = await supabase
-                .from('course_lessons')
-                .update({ order_index: i })
-                .eq('id', orderedIds[i])
-                .eq('course_id', courseId)
-            if (error) throw error
-        }
+        const { error } = await supabase.rpc('academy_reorder_lessons', { p_course_id: courseId, p_lesson_ids: orderedIds })
+        assertDatabaseResult(error)
 
         revalidatePath(`/learning/tworze/${courseId}/edit`)
         revalidatePath(`/learning/${course.slug}`)
@@ -548,7 +382,7 @@ export async function reorderLessons(courseId: string, orderedIds: string[]): Pr
  */
 export async function deleteLesson(lessonId: string): Promise<ActionResult<{ courseId: string }>> {
     try {
-        const supabase = createClient()
+        const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
@@ -561,6 +395,7 @@ export async function deleteLesson(lessonId: string): Promise<ActionResult<{ cou
 
         const course = await loadCourseForAuthor(supabase, lesson.course_id, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień' }
+        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         const { error } = await supabase.from('course_lessons').delete().eq('id', lessonId)
         if (error) throw error
@@ -579,19 +414,22 @@ export async function deleteLesson(lessonId: string): Promise<ActionResult<{ cou
  * Pobiera quiz dla autora — z polem is_correct (do edycji).
  * RLS na course_quiz_options pozwala na SELECT tylko autorowi/adminowi.
  */
-export async function getCourseQuizForAuthor(courseId: string): Promise<ActionResult<CourseQuizQuestionAuthor[]>> {
+export async function getCourseQuizForAuthor(courseId: string, view: { publishedOnly?: boolean } = {}): Promise<ActionResult<CourseQuizQuestionAuthor[]>> {
     try {
-        const supabase = createClient()
+        const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
-        const course = await loadCourseForAuthor(supabase, courseId, user.id)
+        const course = view.publishedOnly
+            ? (await loadAcademyCourse(supabase, user.id, courseId, { publishedOnly: true })).course
+            : await loadCourseForAuthor(supabase, courseId, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień' }
 
         const { data: questions, error: qErr } = await supabase
             .from('course_quiz_questions')
             .select('id, order_index, question_text')
             .eq('course_id', courseId)
+            .eq('version_id', course.version_id)
             .order('order_index', { ascending: true })
         if (qErr) throw qErr
 
@@ -633,12 +471,13 @@ export async function getCourseQuizForAuthor(courseId: string): Promise<ActionRe
  */
 export async function setQuizQuestions(courseId: string, questions: QuizQuestionInput[]): Promise<ActionResult<void>> {
     try {
-        const supabase = createClient()
+        const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
 
         const course = await loadCourseForAuthor(supabase, courseId, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
+        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         // Validation
         if (questions.length < QUIZ_MIN_QUESTIONS || questions.length > QUIZ_MAX_QUESTIONS) {
@@ -663,36 +502,8 @@ export async function setQuizQuestions(courseId: string, questions: QuizQuestion
             }
         }
 
-        // Delete existing quiz
-        const { error: deleteErr } = await supabase
-            .from('course_quiz_questions')
-            .delete()
-            .eq('course_id', courseId)
-        if (deleteErr) throw deleteErr
-
-        // Insert new questions + options
-        for (let i = 0; i < questions.length; i++) {
-            const q = questions[i]
-            const { data: insertedQ, error: qErr } = await supabase
-                .from('course_quiz_questions')
-                .insert({
-                    course_id: courseId,
-                    order_index: i,
-                    question_text: q.question_text.trim(),
-                })
-                .select('id')
-                .single()
-            if (qErr) throw qErr
-
-            const optionRows = q.options.map((o, j) => ({
-                question_id: insertedQ.id,
-                order_index: j,
-                option_text: o.option_text.trim(),
-                is_correct: o.is_correct,
-            }))
-            const { error: oErr } = await supabase.from('course_quiz_options').insert(optionRows)
-            if (oErr) throw oErr
-        }
+        const { error } = await supabase.rpc('academy_replace_quiz', { p_course_id: courseId, p_questions: questions })
+        assertDatabaseResult(error)
 
         revalidatePath(`/learning/tworze/${courseId}/edit`)
         return { success: true, data: undefined }
@@ -708,94 +519,17 @@ export async function setQuizQuestions(courseId: string, questions: QuizQuestion
  * Walidacja: ≥1 lekcja + 4-10 pytań quizu (każde z 4 opcjami i 1 correct).
  */
 export async function submitForReview(courseId: string): Promise<ActionResult<void>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const course = await loadCourseForAuthor(supabase, courseId, user.id)
-        if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
-
-        if (course.status !== 'draft' && course.status !== 'rejected') {
-            return { success: false, error: `Nie można wysłać do moderacji — aktualny status: ${course.status}` }
-        }
-
-        const { count: lessonCount, error: lessonErr } = await supabase
-            .from('course_lessons')
-            .select('id', { count: 'exact', head: true })
-            .eq('course_id', courseId)
-        if (lessonErr) throw lessonErr
-        if ((lessonCount ?? 0) < 1) {
-            return { success: false, error: 'Kurs musi mieć co najmniej jedną lekcję' }
-        }
-
-        const { count: quizCount, error: quizErr } = await supabase
-            .from('course_quiz_questions')
-            .select('id', { count: 'exact', head: true })
-            .eq('course_id', courseId)
-        if (quizErr) throw quizErr
-        if ((quizCount ?? 0) < QUIZ_MIN_QUESTIONS) {
-            return { success: false, error: `Quiz musi mieć co najmniej ${QUIZ_MIN_QUESTIONS} pytań (jest ${quizCount ?? 0})` }
-        }
-
-        const { error: updErr } = await supabase
-            .from('courses')
-            .update({ status: 'pending_review', rejection_reason: null, updated_at: new Date().toISOString() })
-            .eq('id', courseId)
-        if (updErr) throw updErr
-
-        revalidatePath(`/learning/tworze`)
+    return academyAction('course.submit', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        const { error } = await client.rpc('academy_submit_for_review', { p_course_id: z.uuid().parse(courseId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning/tworze')
         revalidatePath(`/learning/tworze/${courseId}/edit`)
         revalidatePath('/admin/learning')
-        return { success: true, data: undefined }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd wysyłania do moderacji'
-        logger.error({ event: 'courses.submit_for_review.failed', error })
-        return { success: false, error: msg }
-    }
+    })
 }
 
-/**
- * Upload załącznika PDF do bucketu `documents` pod ścieżkę `courses/{courseId}/{ts}_{filename}`.
- * Zwraca relatywną ścieżkę storage — zapis do `course_lessons.attachments` po stronie wywołującego.
- */
-export async function uploadCourseAttachment(formData: FormData): Promise<ActionResult<CourseAttachment>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const courseId = formData.get('courseId') as string | null
-        const file = formData.get('file') as File | null
-        if (!courseId || !file) return { success: false, error: 'Brak courseId lub pliku' }
-
-        const course = await loadCourseForAuthor(supabase, courseId, user.id)
-        if (!course) return { success: false, error: 'Brak uprawnień' }
-
-        const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
-        if (file.size > MAX_BYTES) return { success: false, error: 'Plik przekracza 10 MB' }
-
-        const ALLOWED = ['application/pdf']
-        if (!ALLOWED.includes(file.type)) return { success: false, error: 'Dozwolone tylko pliki PDF' }
-
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
-        const path = `courses/${courseId}/${Date.now()}_${safeName}`
-
-        const buffer = await file.arrayBuffer()
-        const { error: uploadErr } = await supabase.storage
-            .from('documents')
-            .upload(path, buffer, { contentType: file.type, upsert: false })
-        if (uploadErr) throw uploadErr
-
-        const attachment: CourseAttachment = {
-            name: file.name,
-            storage_path: path,
-            size_bytes: file.size,
-        }
-        return { success: true, data: attachment }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd uploadu pliku'
-        logger.error({ event: 'courses.upload_attachment.failed', error })
-        return { success: false, error: msg }
-    }
+/** Compatibility response for a stale authoring page. All new uploads must be scanned. */
+export async function uploadCourseAttachment(_formData: FormData): Promise<ActionResult<CourseAttachment>> {
+    return { success: false, error: 'Odśwież edytor i prześlij materiał przez bezpieczny formularz uploadu.' }
 }

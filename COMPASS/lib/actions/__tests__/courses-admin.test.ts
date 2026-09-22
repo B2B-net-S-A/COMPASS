@@ -1,227 +1,113 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createMockSupabaseClient, type MockSupabase, type MockSupabaseConfig } from '@/test/mocks/supabase'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { revalidatePath } from 'next/cache'
+import type { MockSupabase, MockSupabaseConfig } from '@/test/mocks/supabase'
+import { academyFixture, courseRow, versionRow, id, COURSE, DRAFT, OTHER, USER, VERSION } from './academy-fixtures'
+import { approveCourse, archiveCourse, getReviewQueue, rejectCourse } from '../courses-admin'
 
-let currentClient: MockSupabase
-
-vi.mock('@/lib/supabase/server', () => ({
-    createClient: () => currentClient,
-}))
-
-vi.mock('next/cache', () => ({
-    revalidatePath: vi.fn(),
-}))
-
-function setupClient(cfg: MockSupabaseConfig = {}): MockSupabase {
-    currentClient = createMockSupabaseClient(cfg)
-    return currentClient
+const SUBMISSION = id(100)
+let client: MockSupabase
+vi.mock('@/lib/supabase/server', () => ({ createClient: () => client }))
+vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }))
+function setup(config: MockSupabaseConfig = {}) {
+    client = academyFixture({ ...config, tables: { profiles: [{ id: USER, role: 'admin', full_name: 'Administrator' }], ...config.tables } })
+    return client
 }
+beforeEach(() => setup())
 
-afterEach(() => {
-    vi.clearAllMocks()
+describe('review authorization', () => {
+    it.each([
+        ['queue', () => getReviewQueue()],
+        ['approve', () => approveCourse(COURSE, DRAFT, SUBMISSION)],
+        ['reject', () => rejectCourse(COURSE, 'Potrzebne poprawki', DRAFT, SUBMISSION)],
+        ['archive', () => archiveCourse(COURSE)],
+    ] as const)('requires a signed-in administrator for %s', async (_name, action) => {
+        setup({ user: null })
+        expect((await action()).success).toBe(false)
+        expect(client.rpc).not.toHaveBeenCalled()
+        setup({ tables: { profiles: [{ id: USER, role: 'consultant' }] } })
+        expect((await action()).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
+    })
+    it('does not allow even the author to archive without administrator rights', async () => {
+        setup({ tables: { profiles: [{ id: USER, role: 'consultant' }], courses: [courseRow({ author_id: USER })] } })
+        expect(await archiveCourse(COURSE)).toEqual({ success: false, error: 'Ta operacja wymaga uprawnień administratora.' })
+    })
 })
 
-// ============================================================
-// getReviewQueue
-// ============================================================
-describe('getReviewQueue', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { getReviewQueue } = await import('../courses-admin')
+describe('review queue', () => {
+    it('returns pending versions rather than relying on course-level publication status', async () => {
+        setup({ tables: { courses: [courseRow({ author_id: OTHER })], profiles: [{ id: USER, role: 'admin' }, { id: OTHER, full_name: 'Autorka', avatar_url: 'avatar' }], course_versions: [versionRow(), versionRow({ id: DRAFT, status: 'pending_review', version_number: 3, metadata: { title: 'Nowy szkic do akceptacji' }, submitted_at: '2026-09-22T10:00:00Z' }), versionRow({ id: id(23), status: 'draft' })] } })
         const result = await getReviewQueue()
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+        expect(result.success && result.data).toEqual([expect.objectContaining({ id: COURSE, title: 'Nowy szkic do akceptacji', version_id: DRAFT, version_number: 3, status: 'pending_review', author_name: 'Autorka' })])
     })
-
-    it('rejects regular consultant', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: { profiles: [{ id: 'u1', role: 'consultant' }] },
-        })
-        const { getReviewQueue } = await import('../courses-admin')
-        const result = await getReviewQueue()
-        expect(result.success).toBe(false)
-        if (!result.success) expect(result.error).toMatch(/Niewystarczające uprawnienia/)
+    it('returns an empty queue when no versions are pending', async () => {
+        expect(await getReviewQueue()).toEqual({ success: true, data: [] })
     })
-
-    it.each(['admin'])('returns pending_review courses for %s', async (role) => {
-        setupClient({
-            user: { id: 'u-admin', email: 'a@x.com' },
-            tables: {
-                profiles: [
-                    { id: 'u-admin', role },
-                    { id: 'a1', full_name: 'Anna A.', avatar_url: null },
-                ],
-                courses: [
-                    { id: 'c1', author_id: 'a1', title: 'Pending 1', status: 'pending_review', tags: [], category: 'frontend', level: 'beginner', avg_rating: 0, ratings_count: 0, enrollments_count: 0, completions_count: 0 },
-                    { id: 'c2', author_id: 'a1', title: 'Draft', status: 'draft', tags: [], category: 'frontend', level: 'beginner', avg_rating: 0, ratings_count: 0, enrollments_count: 0, completions_count: 0 },
-                    { id: 'c3', author_id: 'a1', title: 'Pending 2', status: 'pending_review', tags: [], category: 'cloud', level: 'beginner', avg_rating: 0, ratings_count: 0, enrollments_count: 0, completions_count: 0 },
-                ],
-            },
-        })
-        const { getReviewQueue } = await import('../courses-admin')
-        const result = await getReviewQueue()
-        expect(result.success).toBe(true)
-        if (result.success) {
-            expect(result.data).toHaveLength(2)
-            expect(result.data.every((c) => c.status === 'pending_review')).toBe(true)
-        }
+    it('does not expose a version whose course is not visible', async () => {
+        setup({ tables: { courses: [], course_versions: [versionRow({ status: 'pending_review' })] } })
+        expect(await getReviewQueue()).toEqual({ success: true, data: [] })
     })
 })
 
-// ============================================================
-// approveCourse
-// ============================================================
-describe('approveCourse', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { approveCourse } = await import('../courses-admin')
-        const result = await approveCourse('c1')
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+describe('immutable version approval', () => {
+    it('requires the submission token from the rendered form, even when the version still exists', async () => {
+        expect((await approveCourse(COURSE, DRAFT)).success).toBe(false)
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_review_course', expect.anything())
     })
-
-    it('rejects when course is not in pending_review status', async () => {
-        setupClient({
-            user: { id: 'u-admin', email: 'a@x.com' },
-            tables: {
-                profiles: [{ id: 'u-admin', role: 'admin' }],
-                courses: [{ id: 'c1', author_id: 'a1', slug: 'k', status: 'draft' }],
-            },
-        })
-        const { approveCourse } = await import('../courses-admin')
-        const result = await approveCourse('c1')
-        expect(result.success).toBe(false)
-        if (!result.success) expect(result.error).toMatch(/Nie można zatwierdzić/)
+    it('forwards the form token unchanged instead of replacing it with the current database token', async () => {
+        setup({ tables: { course_versions: [versionRow({ id: DRAFT, submission_id: id(101) })] }, rpcs: { academy_review_course: () => { throw new Error('review_submission_changed') } } })
+        expect((await approveCourse(COURSE, DRAFT, SUBMISSION)).success).toBe(false)
+        expect(client.rpc).toHaveBeenCalledWith('academy_review_course', { p_version_id: DRAFT, p_approve: true, p_reason: null, p_submission_id: SUBMISSION })
     })
-
-    it('approves and sets status=published, published_at, reviewed_by', async () => {
-        const rpcSpy = vi.fn(async () => 'awarded')
-        setupClient({
-            user: { id: 'u-admin', email: 'a@x.com' },
-            tables: {
-                profiles: [{ id: 'u-admin', role: 'admin' }],
-                courses: [{ id: 'c1', author_id: 'a1', slug: 'k', status: 'pending_review' }],
-            },
-            rpcs: { award_first_publish_bonus: rpcSpy },
-        })
-        const { approveCourse } = await import('../courses-admin')
-        const result = await approveCourse('c1')
-        expect(result.success).toBe(true)
-        const course = currentClient._tables.courses[0]
-        expect(course.status).toBe('published')
-        expect(course.reviewed_by).toBe('u-admin')
-        expect(course.published_at).toBeTruthy()
-        expect(rpcSpy).toHaveBeenCalledWith({ p_course_id: 'c1' })
-        if (result.success) expect(result.data.firstPublishBonus).toBe(true)
+    it('requires an explicit version from the reviewed screen', async () => {
+        expect(await approveCourse(COURSE)).toEqual({ success: false, error: 'Odśwież podgląd wersji przed podjęciem decyzji.' })
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
-
-    it('reports firstPublishBonus=false when RPC returns not_first', async () => {
-        setupClient({
-            user: { id: 'u-admin', email: 'a@x.com' },
-            tables: {
-                profiles: [{ id: 'u-admin', role: 'admin' }],
-                courses: [{ id: 'c1', author_id: 'a1', slug: 'k', status: 'pending_review' }],
-            },
-            rpcs: { award_first_publish_bonus: async () => 'not_first' },
-        })
-        const { approveCourse } = await import('../courses-admin')
-        const result = await approveCourse('c1')
-        expect(result.success).toBe(true)
-        if (result.success) expect(result.data.firstPublishBonus).toBe(false)
+    it('checks that the reviewed version belongs to the supplied course', async () => {
+        setup({ tables: { course_versions: [versionRow({ id: DRAFT, course_id: id(999) })] } })
+        expect((await approveCourse(COURSE, DRAFT, SUBMISSION)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
+    })
+    it.each(['invalid', ''])('rejects a malformed version identifier %s', async versionId => {
+        expect((await approveCourse(COURSE, versionId, SUBMISSION)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
+    })
+    it.each([true, false])('reports first publication bonus returned by the atomic RPC: %s', async firstBonus => {
+        setup({ rpcs: { academy_review_course: () => ({ first_publish_bonus: firstBonus }) } })
+        expect(await approveCourse(COURSE, DRAFT, SUBMISSION)).toEqual({ success: true, data: { firstPublishBonus: firstBonus } })
+        expect(client.rpc).toHaveBeenCalledWith('academy_review_course', { p_version_id: DRAFT, p_approve: true, p_reason: null, p_submission_id: SUBMISSION })
+        expect(client._tables.courses[0].published_version_id).toBe(VERSION)
+        expect(revalidatePath).toHaveBeenCalledWith('/learning', 'layout')
+    })
+    it('propagates a stale/non-pending version rejection without reporting publication', async () => {
+        setup({ rpcs: { academy_review_course: () => { throw new Error('pending_review_required') } } })
+        expect(await approveCourse(COURSE, DRAFT, SUBMISSION)).toEqual({ success: false, error: 'Ta wersja nie oczekuje już na akceptację. Odśwież kolejkę.' })
+        expect(revalidatePath).not.toHaveBeenCalled()
     })
 })
 
-// ============================================================
-// rejectCourse
-// ============================================================
-describe('rejectCourse', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { rejectCourse } = await import('../courses-admin')
-        const result = await rejectCourse('c1', 'Bad quality')
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+describe('version rejection and archive', () => {
+    it.each(['bad', ' '.repeat(5), 'x'.repeat(3001)])('validates rejection reasons before RPC', async reason => {
+        expect((await rejectCourse(COURSE, reason, DRAFT, SUBMISSION)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
-
-    it('rejects when reason is too short', async () => {
-        setupClient({
-            user: { id: 'u-admin', email: 'a@x.com' },
-            tables: {
-                profiles: [{ id: 'u-admin', role: 'admin' }],
-                courses: [{ id: 'c1', author_id: 'a1', slug: 'k', status: 'pending_review', title: 'X' }],
-            },
-        })
-        const { rejectCourse } = await import('../courses-admin')
-        const result = await rejectCourse('c1', 'bad')
-        expect(result.success).toBe(false)
-        if (!result.success) expect(result.error).toMatch(/co najmniej 5 znaków/)
+    it('sends trimmed reasons with the exact rejected version', async () => {
+        setup({ rpcs: { academy_review_course: () => null } })
+        expect(await rejectCourse(COURSE, '  Popraw drugi rozdział.  ', DRAFT, SUBMISSION)).toEqual({ success: true, data: undefined })
+        expect(client.rpc).toHaveBeenCalledWith('academy_review_course', { p_version_id: DRAFT, p_approve: false, p_reason: 'Popraw drugi rozdział.', p_submission_id: SUBMISSION })
     })
-
-    it('rejects when course not in pending_review', async () => {
-        setupClient({
-            user: { id: 'u-admin', email: 'a@x.com' },
-            tables: {
-                profiles: [{ id: 'u-admin', role: 'admin' }],
-                courses: [{ id: 'c1', author_id: 'a1', slug: 'k', status: 'published', title: 'X' }],
-            },
-        })
-        const { rejectCourse } = await import('../courses-admin')
-        const result = await rejectCourse('c1', 'Niezgodne z polityką')
-        expect(result.success).toBe(false)
+    it('propagates invalid rejection transitions from the database', async () => {
+        setup({ rpcs: { academy_review_course: () => { throw new Error('immutable_course_version') } } })
+        expect(await rejectCourse(COURSE, 'Popraw rozdział', VERSION, SUBMISSION)).toEqual({ success: false, error: 'Opublikowanej wersji nie można zmieniać. Utwórz nowy szkic.' })
     })
-
-    it('updates status=rejected and stores reason', async () => {
-        const rpcSpy = vi.fn(async () => 'notification-id')
-        setupClient({
-            user: { id: 'u-admin', email: 'a@x.com' },
-            tables: {
-                profiles: [{ id: 'u-admin', role: 'admin' }],
-                courses: [{ id: 'c1', author_id: 'a1', slug: 'k', status: 'pending_review', title: 'Title' }],
-            },
-            rpcs: { create_notification: rpcSpy },
-        })
-        const { rejectCourse } = await import('../courses-admin')
-        const result = await rejectCourse('c1', 'Pytanie 3 jest niejednoznaczne — popraw treść')
-        expect(result.success).toBe(true)
-        const course = currentClient._tables.courses[0]
-        expect(course.status).toBe('rejected')
-        expect(course.rejection_reason).toMatch(/Pytanie 3/)
-        expect(rpcSpy).toHaveBeenCalled()
+    it('archives via the administrator RPC without deleting history in the action', async () => {
+        setup({ rpcs: { academy_archive_course: () => null } })
+        expect(await archiveCourse(COURSE)).toEqual({ success: true, data: undefined })
+        expect(client.rpc).toHaveBeenCalledWith('academy_archive_course', { p_course_id: COURSE })
+        expect(client._tables.course_versions).toHaveLength(3)
     })
-})
-
-// ============================================================
-// archiveCourse
-// ============================================================
-describe('archiveCourse', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { archiveCourse } = await import('../courses-admin')
-        const result = await archiveCourse('c1')
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
-    })
-
-    it('allows author to archive own course', async () => {
-        setupClient({
-            user: { id: 'u-author', email: 'a@x.com' },
-            tables: {
-                profiles: [{ id: 'u-author', role: 'consultant' }],
-                courses: [{ id: 'c1', author_id: 'u-author', slug: 'k', status: 'published' }],
-            },
-        })
-        const { archiveCourse } = await import('../courses-admin')
-        const result = await archiveCourse('c1')
-        expect(result.success).toBe(true)
-        expect(currentClient._tables.courses[0].status).toBe('archived')
-    })
-
-    it('rejects non-author non-admin', async () => {
-        setupClient({
-            user: { id: 'u-other', email: 'o@x.com' },
-            tables: {
-                profiles: [{ id: 'u-other', role: 'consultant' }],
-                courses: [{ id: 'c1', author_id: 'u-author', slug: 'k', status: 'published' }],
-            },
-        })
-        const { archiveCourse } = await import('../courses-admin')
-        const result = await archiveCourse('c1')
-        expect(result.success).toBe(false)
+    it('propagates archive failures', async () => {
+        setup({ rpcs: { academy_archive_course: () => { throw new Error('Archiwizacja niedostępna.') } } })
+        expect(await archiveCourse(COURSE)).toEqual({ success: false, error: 'Nie udało się wykonać operacji. Odśwież stronę i spróbuj ponownie.' })
     })
 })

@@ -1,102 +1,55 @@
-import {
-    certificateFilename,
-    computeCertificateHash,
-    generateCertificatePdf,
-} from '@/lib/pdf/certificate'
+import { z } from 'zod'
+import { certificateFilename, generateCertificatePdf } from '@/lib/pdf/certificate'
 import { withAuth } from '@/lib/api/with-auth'
+import { academyClient } from '@/lib/academy/server'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * A1.2: GET /api/akademia/certificate?courseId=<uuid>
- *
- * Generuje PDF certyfikatu ukończenia kursu dla zalogowanego użytkownika.
- * Wymagania:
- *  - User zalogowany
- *  - Enrollment istnieje + completed_at != NULL (kurs zaliczony)
- * Side effect:
- *  - Pierwsze pobranie: zapisuje certificate_issued_at + certificate_hash w course_enrollments
- *  - Kolejne: reużywa zapisanego hasha (deterministyczny — to samo PDF)
- */
-export const GET = withAuth(async (request, { supabase, user }) => {
-    const courseId = request.nextUrl.searchParams.get('courseId')
-    if (!courseId) {
-        return new Response('Brak parametru courseId', { status: 400 })
-    }
-
-    // Pull enrollment + course + author w jednym query
-    const { data: enrollment, error: enrErr } = await supabase
-        .from('course_enrollments')
-        .select(
-            'id, completed_at, certificate_issued_at, certificate_hash, course:courses(id, title, author_id)',
-        )
-        .eq('user_id', user.id)
-        .eq('course_id', courseId)
-        .maybeSingle<{
-            id: string
-            completed_at: string | null
-            certificate_issued_at: string | null
-            certificate_hash: string | null
-            course: { id: string; title: string; author_id: string } | null
-        }>()
-    if (enrErr || !enrollment) {
-        return new Response('Nie jesteś zapisany na ten kurs', { status: 404 })
-    }
-    if (!enrollment.completed_at) {
-        return new Response('Kurs musi być ukończony aby pobrać certyfikat', { status: 400 })
-    }
-    if (!enrollment.course) {
-        return new Response('Kurs nie istnieje', { status: 404 })
-    }
-
-    // Pobierz dane usera (full_name) + autora kursu
-    const [profileRes, authorRes] = await Promise.all([
-        supabase.from('profiles').select('full_name, email').eq('id', user.id).single<{
-            full_name: string | null
-            email: string
-        }>(),
-        supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', enrollment.course.author_id)
-            .maybeSingle<{ full_name: string | null }>(),
-    ])
-
-    if (!profileRes.data) {
-        return new Response('Profile missing', { status: 500 })
-    }
-
-    const fullName = profileRes.data.full_name || profileRes.data.email
-    const certHash =
-        enrollment.certificate_hash ??
-        computeCertificateHash(user.id, courseId, enrollment.completed_at)
-
-    // First-time generation: zapisz cert metadata
-    if (!enrollment.certificate_issued_at) {
-        await supabase
-            .from('course_enrollments')
-            .update({
-                certificate_issued_at: new Date().toISOString(),
-                certificate_hash: certHash,
-            })
-            .eq('id', enrollment.id)
-    }
-
-    const pdfBytes = await generateCertificatePdf({
-        fullName,
-        courseTitle: enrollment.course.title,
-        courseAuthorName: authorRes.data?.full_name ?? null,
-        completedAt: enrollment.completed_at,
-        certificateHash: certHash,
-    })
-
-    const filename = certificateFilename(enrollment.course.title, fullName)
-    return new Response(Buffer.from(pdfBytes), {
-        status: 200,
-        headers: {
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="${filename}"`,
-            'Cache-Control': 'private, no-cache',
-        },
-    })
+const certificateSnapshotSchema = z.object({
+    course_title: z.string().min(1),
+    participant_name: z.string().min(1),
+    author_name: z.string().nullable(),
+    completed_at: z.string().refine(value => Number.isFinite(Date.parse(value))),
+    certificate_hash: z.string().min(16),
+    version_number: z.number().int().positive(),
 })
+
+/** Only persisted completion evidence may issue a certificate; this GET never writes. */
+export const GET = withAuth(async (request, { user }) => {
+    const courseId = request.nextUrl.searchParams.get('courseId')
+    const requestedEnrollment = request.nextUrl.searchParams.get('enrollmentId')
+    if (!z.uuid().safeParse(courseId).success || (requestedEnrollment && !z.uuid().safeParse(requestedEnrollment).success)) {
+        return new Response('Nieprawidłowy identyfikator szkolenia lub zapisu.', { status: 400 })
+    }
+    const client = academyClient()
+    let query = client.from('course_enrollments').select('id').eq('user_id', user.id).eq('course_id', courseId!)
+    query = requestedEnrollment ? query.eq('id', requestedEnrollment) : query.is('run_id', null)
+    const { data: enrollment, error: enrollmentError } = await query.maybeSingle()
+    if (enrollmentError || !enrollment) return new Response('Zapis jest niedostępny.', { status: 404 })
+    const { data: completion, error } = await client.from('course_completions')
+        .select('id,certificate_snapshot,revoked_at,revoked_reason').eq('enrollment_id', enrollment.id).eq('course_id', courseId!).eq('user_id', user.id).maybeSingle()
+    if (error || !completion) return new Response('Certyfikat jest dostępny po ukończeniu szkolenia.', { status: 404 })
+    if (completion.revoked_at) return new Response(`Certyfikat został unieważniony. Powód: ${completion.revoked_reason}`, { status: 410, headers: { 'Cache-Control': 'private, no-store' } })
+    const parsed = certificateSnapshotSchema.safeParse(completion.certificate_snapshot)
+    if (!parsed.success) {
+        logger.error({ event: 'academy.certificate.invalid_snapshot', enrollmentId: enrollment.id })
+        return new Response('Nie udało się odczytać certyfikatu. Skontaktuj się z administratorem.', { status: 500 })
+    }
+    const snapshot = parsed.data
+    const pdfBytes = await generateCertificatePdf({
+        fullName: snapshot.participant_name,
+        courseTitle: snapshot.course_title,
+        courseAuthorName: snapshot.author_name,
+        completedAt: snapshot.completed_at,
+        certificateHash: snapshot.certificate_hash,
+        versionNumber: snapshot.version_number,
+        verificationUrl: completion.id ? `${request.nextUrl.origin}/learning/certyfikaty/${completion.id}` : undefined,
+    })
+    return new Response(Buffer.from(pdfBytes), { headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${certificateFilename(snapshot.course_title, snapshot.participant_name)}"`,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+    } })
+}, { role: ['consultant', 'admin'] })

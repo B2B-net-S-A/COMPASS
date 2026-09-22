@@ -5,28 +5,30 @@ import { QuizForm } from '@/components/learning/QuizForm'
 import { Card, CardContent } from '@/components/ui/card'
 import { getCourseDetail } from '@/lib/actions/courses'
 import { getQuizForAttempt } from '@/lib/actions/course-learning'
+import { academyCourseHref } from '@/lib/academy/navigation'
 
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
     params: { slug: string }
+    searchParams: { enrollment?: string }
 }
 
-export default async function QuizPage({ params }: PageProps) {
-    const detailResult = await getCourseDetail(params.slug)
+export default async function QuizPage({ params, searchParams }: PageProps) {
+    const detailResult = await getCourseDetail(params.slug, { enrollmentId: searchParams.enrollment })
     if (!detailResult.success) notFound()
     const course = detailResult.data
 
-    if (!course.is_enrolled) {
+    if (!course.enrollment_id) {
         redirect(`/learning/${course.slug}`)
     }
 
-    const quizResult = await getQuizForAttempt(course.id)
+    const quizResult = await getQuizForAttempt(course.id, course.enrollment_id)
 
     return (
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
             <div>
-                <Link href={`/learning/${course.slug}`} className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-2">
+                <Link href={academyCourseHref(course.slug, course.enrollment_id)} className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-2">
                     ← {course.title}
                 </Link>
                 <div className="flex items-center gap-3">
@@ -48,7 +50,7 @@ export default async function QuizPage({ params }: PageProps) {
             )}
 
             {quizResult.success && quizResult.data.length > 0 && (
-                <QuizForm courseId={course.id} courseSlug={course.slug} questions={quizResult.data} />
+                <QuizForm key={course.enrollment_id} courseId={course.id} courseSlug={course.slug} enrollmentId={course.enrollment_id} passPercent={course.completion_rules?.quiz_pass_percent ?? 70} questions={quizResult.data} />
             )}
         </div>
     )

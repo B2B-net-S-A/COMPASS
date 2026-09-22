@@ -18,6 +18,7 @@ interface AppLayoutProps {
     sidebarBadges?: SidebarBadgeCounts
     isInboxHandler?: boolean
     consultantSuccessEnabled?: boolean
+    academyEnabled?: boolean
     hasTcmAccess?: boolean
 }
 
@@ -30,6 +31,7 @@ export function AppLayout({
     isInboxHandler,
     consultantSuccessEnabled,
     hasTcmAccess,
+    academyEnabled = false,
 }: AppLayoutProps) {
     return (
         <LanguageProvider>
@@ -44,6 +46,7 @@ export function AppLayout({
                         isInboxHandler={isInboxHandler}
                         consultantSuccessEnabled={consultantSuccessEnabled}
                         hasTcmAccess={hasTcmAccess}
+                        academyEnabled={academyEnabled}
                     />
 
                     <div className="flex flex-1 flex-col min-w-0">
@@ -69,7 +72,7 @@ export function AppLayout({
                     </div>
 
                     {/* Mobile bottom-nav — fixed, mobile only */}
-                    <MobileMenu role={role} user={user} />
+                    <MobileMenu role={role} user={user} academyEnabled={academyEnabled} />
                 </div>
             </PermissionsProvider>
         </LanguageProvider>

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileText, Clock, Loader2 } from 'lucide-react'
@@ -9,6 +10,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MarkdownView } from './MarkdownView'
 import { EmbedVideo } from './EmbedVideo'
+import { AcademyVideo } from '@/components/academy/AcademyVideo'
+import { CourseCompletion } from '@/components/academy/CourseCompletion'
+import { academyCourseHref } from '@/lib/academy/navigation'
 import { markLessonComplete } from '@/lib/actions/course-learning'
 import type { CourseLesson } from '@/lib/types/learning'
 
@@ -19,6 +23,10 @@ interface LessonPlayerProps {
     allLessons: CourseLesson[]
     completedLessonIds: string[]
     quizAvailable: boolean
+    enrollmentId: string
+    revokedAt?: string | null
+    revokedReason?: string | null
+    completedAt?: string | null
 }
 
 export function LessonPlayer({
@@ -28,11 +36,18 @@ export function LessonPlayer({
     allLessons,
     completedLessonIds,
     quizAvailable,
+    enrollmentId,
+    completedAt,
+    revokedAt,
+    revokedReason,
 }: LessonPlayerProps) {
     const router = useRouter()
     const [isCompleted, setIsCompleted] = useState(completedLessonIds.includes(lesson.id))
-    const [isPending, startTransition] = useTransition()
+    const [isPending, startTransition] = useAcademyAction()
     const [error, setError] = useState<string | null>(null)
+
+    const videos = lesson.attachments.filter(attachment => attachment.mime_type === 'video/mp4' && attachment.asset_id)
+    const captions = lesson.attachments.find(attachment => attachment.mime_type === 'text/vtt' && attachment.asset_id)
 
     const currentIdx = allLessons.findIndex((l) => l.id === lesson.id)
     const prevLesson = currentIdx > 0 ? allLessons[currentIdx - 1] : null
@@ -47,21 +62,25 @@ export function LessonPlayer({
         if (isCompleted) return
         setError(null)
         startTransition(async () => {
-            const res = await markLessonComplete(courseId, lesson.id)
-            if (!res.success) {
-                setError(res.error)
-                return
+            try {
+                const res = await markLessonComplete(courseId, lesson.id, enrollmentId)
+                if (!res.success) {
+                    setError(res.error)
+                    return
+                }
+                setIsCompleted(true)
+                // A1.4: pokazujemy toast gdy user osiągnął milestone passy 7/14/21+
+                if (res.data?.streak?.milestone_reached && typeof window !== 'undefined') {
+                    const days = res.data.streak.current
+                    // Lazy-import toast żeby nie obciążać bundle gdy nie potrzebne
+                    import('@/lib/toast-success').then(({ toastSuccess }) => {
+                        toastSuccess(`🔥 ${days} dni z rzędu! +25 pkt loyalty za passę nauki.`)
+                    })
+                }
+                router.refresh()
+            } catch {
+                setError('Połączenie zostało przerwane. Spróbuj ponownie.')
             }
-            setIsCompleted(true)
-            // A1.4: pokazujemy toast gdy user osiągnął milestone passy 7/14/21+
-            if (res.data?.streak?.milestone_reached && typeof window !== 'undefined') {
-                const days = res.data.streak.current
-                // Lazy-import toast żeby nie obciążać bundle gdy nie potrzebne
-                import('@/lib/toast-success').then(({ toastSuccess }) => {
-                    toastSuccess(`🔥 ${days} dni z rzędu! +25 pkt loyalty za passę nauki.`)
-                })
-            }
-            router.refresh()
         })
     }
 
@@ -69,7 +88,7 @@ export function LessonPlayer({
         <div className="space-y-6">
             {/* Lesson navigation header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
-                <Link href={`/learning/${courseSlug}`} className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1">
+                <Link href={academyCourseHref(courseSlug, enrollmentId)} className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1">
                     ← Powrót do kursu
                 </Link>
                 <Badge variant="outline" className="text-[10px]">
@@ -86,6 +105,8 @@ export function LessonPlayer({
                 )}
             </div>
 
+            {videos.map((video, index) => <AcademyVideo key={video.asset_id} lessonId={lesson.id} video={video} captions={index === 0 ? captions : undefined} />)}
+
             {lesson.video_url && <EmbedVideo url={lesson.video_url} title={lesson.title} />}
 
             {lesson.content_md && (
@@ -96,7 +117,7 @@ export function LessonPlayer({
                 </Card>
             )}
 
-            {!lesson.content_md && !lesson.video_url && (
+            {!lesson.content_md && !lesson.video_url && !lesson.attachments.length && (
                 <Card className="bg-card/5 border-border">
                     <CardContent className="p-6 text-sm text-muted-foreground italic">
                         Lekcja nie ma jeszcze treści.
@@ -111,7 +132,7 @@ export function LessonPlayer({
                         {lesson.attachments.map((att, i) => (
                             <a
                                 key={`${att.storage_path}-${i}`}
-                                href={`/api/learning/attachment?path=${encodeURIComponent(att.storage_path)}`}
+                                href={`/api/akademia/attachment?${new URLSearchParams({ lessonId: lesson.id, ...(att.asset_id ? { assetId: att.asset_id } : { path: att.storage_path }) })}`}
                                 className="flex items-center gap-2 p-2 rounded bg-card/5 border border-border hover:border-primary/30 transition-colors text-sm"
                             >
                                 <FileText className="w-4 h-4 text-muted-foreground" />
@@ -124,8 +145,10 @@ export function LessonPlayer({
             )}
 
             {error && (
-                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>
+                <div role="alert" className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">{error}</div>
             )}
+
+            <CourseCompletion courseId={courseId} enrollmentId={enrollmentId} completedAt={completedAt} revokedAt={revokedAt} revokedReason={revokedReason} />
 
             {/* Mark complete + nav */}
             <div className="flex items-center justify-between gap-2 flex-wrap pt-4 border-t border-border">
@@ -147,25 +170,19 @@ export function LessonPlayer({
 
                 <div className="flex items-center gap-2">
                     {prevLesson && (
-                        <Link href={`/learning/${courseSlug}/lekcja/${prevLesson.id}`}>
-                            <Button variant="outline" size="sm" className="gap-2">
+                        <Button asChild variant="outline" size="sm" className="gap-2"><Link href={academyCourseHref(courseSlug, enrollmentId, `/lekcja/${prevLesson.id}`)}>
                                 <ArrowLeft className="w-4 h-4" /> Poprzednia
-                            </Button>
-                        </Link>
+                            </Link></Button>
                     )}
                     {nextLesson && (
-                        <Link href={`/learning/${courseSlug}/lekcja/${nextLesson.id}`}>
-                            <Button size="sm" className="gap-2">
+                        <Button asChild size="sm" className="gap-2"><Link href={academyCourseHref(courseSlug, enrollmentId, `/lekcja/${nextLesson.id}`)}>
                                 Następna <ArrowRight className="w-4 h-4" />
-                            </Button>
-                        </Link>
+                            </Link></Button>
                     )}
                     {isLastLesson && quizAvailable && allCompleted && (
-                        <Link href={`/learning/${courseSlug}/quiz`}>
-                            <Button size="sm" className="gap-2 bg-success hover:bg-success/90">
+                        <Button asChild size="sm" className="gap-2 bg-success hover:bg-success/90"><Link href={academyCourseHref(courseSlug, enrollmentId, "/quiz")}>
                                 Przejdź do quizu <ArrowRight className="w-4 h-4" />
-                            </Button>
-                        </Link>
+                            </Link></Button>
                     )}
                 </div>
             </div>

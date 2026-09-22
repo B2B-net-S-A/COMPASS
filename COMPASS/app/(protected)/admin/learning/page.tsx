@@ -1,121 +1,21 @@
+import { RunMaterialReviewQueue } from '@/components/academy/RunMaterialReviewQueue'
 import Link from 'next/link'
-import { ShieldCheck, Clock, BookOpen, Plus, Building2 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { BookOpen, Plus } from 'lucide-react'
+import { AcademyShell } from '@/components/academy/AcademyShell'
+import { AcademyAdminNav } from '@/components/academy/AcademyAdminNav'
+import { AcademyEmptyState } from '@/components/academy/AcademyEmptyState'
+import { COURSE_FORMAT_LABELS, COURSE_LEVEL_LABELS } from '@/components/academy/catalog/catalog-filters'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { getReviewQueue } from '@/lib/actions/courses-admin'
+import { getReviewQueue, getLegacyReviewQueue } from '@/lib/actions/courses-admin'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminAkademiaPage() {
-    const result = await getReviewQueue()
-    const items = result.success ? result.data : []
-    const error = !result.success ? result.error : null
-
-    return (
-        <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
-            <div className="flex items-start justify-between flex-wrap gap-4">
-                <div>
-                    <Link href="/learning" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-2">
-                        ← Akademia
-                    </Link>
-                    <div className="flex items-center gap-3">
-                        <ShieldCheck className="w-7 h-7 text-primary" />
-                        <h1 className="text-3xl font-bold tracking-tight">Akademia — moderacja</h1>
-                    </div>
-                    <p className="text-muted-foreground mt-1">
-                        Kolejka kursów konsultanckich oczekujących zatwierdzenia + tworzenie kursów firmowych B2Bnetwork.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-base py-1.5 px-3">
-                        {items.length} oczekujących
-                    </Badge>
-                    <Link href="/learning/tworze/nowy?type=company">
-                        <Button size="sm" className="gap-2">
-                            <Plus className="w-4 h-4" /> Stwórz kurs firmowy
-                        </Button>
-                    </Link>
-                </div>
-            </div>
-
-            {/* Quick links to filtered catalog (Phase 1.4) */}
-            <div className="flex flex-wrap gap-2">
-                <Link href="/learning?type=company">
-                    <Button variant="outline" size="sm" className="gap-2">
-                        <Building2 className="w-4 h-4" /> Wszystkie firmowe
-                    </Button>
-                </Link>
-                <Link href="/learning?type=consultant">
-                    <Button variant="outline" size="sm" className="gap-2">
-                        <BookOpen className="w-4 h-4" /> Wszystkie konsultanckie
-                    </Button>
-                </Link>
-            </div>
-
-            {error && (
-                <Card className="bg-destructive/5 border-destructive/20">
-                    <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
-                </Card>
-            )}
-
-            {!error && items.length === 0 && (
-                <Card className="bg-card border-border">
-                    <CardContent className="p-12 text-center space-y-3">
-                        <ShieldCheck className="w-16 h-16 text-muted-foreground mx-auto" />
-                        <h2 className="text-xl font-bold">Brak szkoleń do moderacji</h2>
-                        <p className="text-muted-foreground">Kolejka jest pusta. Wróć później albo stwórz kurs firmowy.</p>
-                    </CardContent>
-                </Card>
-            )}
-
-            {items.length > 0 && (
-                <div className="space-y-3">
-                    {items.map((c) => (
-                        <Card key={c.id} className="bg-card border-border hover:border-warning/40 transition-colors">
-                            <CardContent className="p-5">
-                                <div className="flex items-start justify-between gap-4 flex-wrap">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                            <Badge variant="outline" className="border-warning/30 text-warning bg-warning/10 text-[10px]">
-                                                W moderacji
-                                            </Badge>
-                                            <Badge variant="outline" className="text-[10px]">
-                                                {c.category}
-                                            </Badge>
-                                            <Badge variant="outline" className="text-[10px] border-border">
-                                                {c.level}
-                                            </Badge>
-                                        </div>
-                                        <h3 className="font-bold text-lg mb-1">{c.title}</h3>
-                                        {c.description && (
-                                            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{c.description}</p>
-                                        )}
-                                        <div className="flex flex-wrap gap-1 mt-1">
-                                            {c.tags.slice(0, 6).map((t) => (
-                                                <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1">
-                                                    {t}
-                                                </Badge>
-                                            ))}
-                                        </div>
-                                        <p className="text-[10px] text-muted-foreground mt-2 inline-flex items-center gap-1">
-                                            <Clock className="w-3 h-3" />
-                                            Wysłane: {new Date(c.updated_at).toLocaleString('pl-PL')}
-                                            {' · '}
-                                            Autor: <strong>{c.author_name ?? 'Nieznany'}</strong>
-                                        </p>
-                                    </div>
-                                    <Link href={`/admin/learning/${c.id}`}>
-                                        <Button size="sm" className="gap-2">
-                                            <BookOpen className="w-3.5 h-3.5" /> Otwórz do oceny
-                                        </Button>
-                                    </Link>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            )}
-        </div>
-    )
+    const [result, legacy] = await Promise.all([getReviewQueue(), getLegacyReviewQueue()])
+    return <AcademyShell activeTab="admin" access={{ isAdmin: true, canTeach: true }} title="Akceptacja szkoleń" description="Sprawdź program, materiały i zasady ukończenia przed opublikowaniem konkretnej wersji." action={<Button asChild><Link href="/learning/tworze/nowy?type=company"><Plus aria-hidden="true" />Nowe szkolenie firmowe</Link></Button>}>
+        <AcademyAdminNav active="review" />
+        {!result.success ? <AcademyEmptyState variant="error" title="Nie udało się wczytać kolejki" description="Odśwież stronę i spróbuj ponownie. Decyzje dotyczące szkoleń pozostają bez zmian." /> : result.data.length === 0 ? <AcademyEmptyState title="Wszystkie zgłoszenia rozpatrzone" description="Nowe wersje przesłane przez trenerów pojawią się tutaj. Terminy spotkań zatwierdzisz w szczegółach edycji." /> : <div className="space-y-4"><p className="text-sm text-muted-foreground">Wersje oczekujące na decyzję: <strong className="text-foreground">{result.data.length}</strong></p>{result.data.map((course) => <article key={course.version_id ?? course.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-start"><div className="min-w-0 space-y-3"><div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-full bg-warning/10 px-2.5 py-1 text-warning">Oczekuje na akceptację</span><span className="text-muted-foreground">{course.version_number ? `Wersja ${course.version_number}` : 'Zgłoszona wersja'} · {COURSE_FORMAT_LABELS[course.delivery_mode ?? 'self_paced']}</span></div><h2 className="text-lg font-semibold">{course.title}</h2>{course.description && <p className="line-clamp-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{course.description}</p>}<p className="text-xs text-muted-foreground">{course.author_name || 'Autor szkolenia'} · {course.category} · {COURSE_LEVEL_LABELS[course.level]}</p></div><Button asChild variant="outline" className="shrink-0"><Link href={`/admin/learning/${course.id}`}><BookOpen aria-hidden="true" />Sprawdź wersję</Link></Button></article>)}</div>}
+        {!legacy.success ? <p role="alert" className="text-destructive">Nie udało się wczytać historycznych publikacji.</p> : legacy.data.length > 0 && <section className="space-y-4"><h2 className="text-lg font-semibold">Historyczne publikacje do sprawdzenia</h2><p className="text-sm text-muted-foreground">Nowe zapisy są wstrzymane do niezależnej akceptacji. Dotychczasowe postępy i certyfikaty pozostają dostępne.</p>{legacy.data.map(course => <article key={course.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5"><h3 className="font-medium">{course.title}</h3><Button asChild variant="outline"><Link href={`/admin/learning/${course.id}?legacy=1`}>Sprawdź opublikowaną wersję</Link></Button></article>)}</section>}
+        <RunMaterialReviewQueue />
+    </AcademyShell>
 }

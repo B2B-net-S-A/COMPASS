@@ -1,260 +1,74 @@
 import Link from 'next/link'
-import { GraduationCap, Plus, Star, Users, BookOpen, Pencil, ShieldCheck, Building2, User } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { redirect } from 'next/navigation'
+import { Plus } from 'lucide-react'
+import { AcademyShell } from '@/components/academy/AcademyShell'
+import { CourseCatalog } from '@/components/academy/CourseCatalog'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { getAcademyAccess } from '@/lib/actions/academy-access'
 import { listPublishedCourses } from '@/lib/actions/courses'
-import type { CourseType } from '@/lib/types/learning'
+import { getAcademyCatalogOptions } from '@/lib/actions/academy-discovery'
+import { listAcademyRuns } from '@/lib/actions/academy-sessions'
+import { getCatalogNextRuns } from '@/components/academy/catalog/catalog-runs'
+import {
+    CATALOG_PAGE_SIZE,
+    catalogHref,
+    parseCatalogFilters,
+    parseCatalogPage,
+    type CatalogSearchParams,
+} from '@/components/academy/catalog/catalog-filters'
 
 export const dynamic = 'force-dynamic'
 
-const LEVEL_LABEL: Record<string, string> = {
-    beginner: 'Podstawowy',
-    intermediate: 'Średni',
-    advanced: 'Zaawansowany',
-}
+export default async function AkademiaPage({ searchParams }: { searchParams: CatalogSearchParams }) {
+    const filters = parseCatalogFilters(searchParams)
+    const page = parseCatalogPage(searchParams.page)
+    const [accessResult, result, options, runs] = await Promise.all([
+        getAcademyAccess(),
+        listPublishedCourses({
+            search: filters.search || undefined,
+            category: filters.category,
+            instructor_id: filters.instructorId,
+            course_type: filters.courseType,
+            level: filters.level,
+            delivery_mode: filters.deliveryMode,
+            orderBy: filters.orderBy,
+            page,
+            limit: CATALOG_PAGE_SIZE,
+        }),
+        getAcademyCatalogOptions(),
+        listAcademyRuns(),
+    ])
 
-function formatDuration(min: number | null): string {
-    if (!min) return '—'
-    if (min < 60) return `${min} min`
-    const h = Math.floor(min / 60)
-    const m = min % 60
-    return m === 0 ? `${h}h` : `${h}h ${m}min`
-}
+    const access = accessResult.success ? accessResult.data : { isAdmin: false, canTeach: false }
+    const canTeach = access.isAdmin || access.canTeach
 
-function formatRating(rating: number, count: number): string {
-    if (count === 0) return 'Brak ocen'
-    return `★ ${rating.toFixed(1)} (${count})`
-}
-
-interface PageProps {
-    searchParams: { type?: string }
-}
-
-export default async function AkademiaPage({ searchParams }: PageProps) {
-    const typeParam = searchParams.type === 'company' || searchParams.type === 'consultant' ? searchParams.type as CourseType : undefined
-    const result = await listPublishedCourses({ orderBy: 'newest', limit: 24, course_type: typeParam })
-    const items = result.success ? result.data.items : []
-    const total = result.success ? result.data.total : 0
+    if (result.success && page > Math.max(1, Math.ceil(result.data.total / CATALOG_PAGE_SIZE))) {
+        redirect(catalogHref(filters, Math.max(1, Math.ceil(result.data.total / CATALOG_PAGE_SIZE))))
+    }
 
     return (
-        <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
-            {/* Header */}
-            <div className="flex items-start justify-between flex-wrap gap-4">
-                <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-3">
-                        <GraduationCap className="w-8 h-8 text-primary" />
-                        <h1 className="text-3xl font-bold tracking-tight">Akademia</h1>
-                    </div>
-                    <p className="text-muted-foreground max-w-2xl">
-                        Kursy firmowe od B2Bnetwork i autorskie szkolenia konsultantów.
-                        Ucz się, dziel wiedzą, zbieraj punkty B2Bnetwork League za każdego studenta.
-                    </p>
-                </div>
-                <Link href="/learning/tworze/nowy">
-                    <Button size="lg" className="gap-2">
-                        <Plus className="w-4 h-4" /> Stwórz szkolenie
-                    </Button>
-                </Link>
-            </div>
-
-            {/* Sub-navigation */}
-            <div className="flex flex-wrap gap-2">
-                <Button variant="default" size="sm" className="gap-2">
-                    <BookOpen className="w-4 h-4" /> Katalog
+        <AcademyShell
+            activeTab="catalog"
+            access={access}
+            title="Akademia"
+            description="Wybierz szkolenie dla siebie. Ucz się we własnym tempie lub dołącz do zajęć z prowadzącym."
+            action={canTeach ? (
+                <Button asChild className="h-11 rounded-xl px-5">
+                    <Link href="/learning/tworze/nowy"><Plus aria-hidden="true" /> Nowe szkolenie</Link>
                 </Button>
-                <Link href="/learning/moje">
-                    <Button variant="outline" size="sm" className="gap-2">
-                        <Users className="w-4 h-4" /> Moje szkolenia
-                    </Button>
-                </Link>
-                <Link href="/learning/tworze">
-                    <Button variant="outline" size="sm" className="gap-2">
-                        <Pencil className="w-4 h-4" /> Tworzę
-                    </Button>
-                </Link>
-            </div>
-
-            {/* Course type filter chips (Phase 1.4) */}
-            <div className="flex flex-wrap gap-2 pb-2 border-b border-border">
-                <Link href="/learning">
-                    <Badge
-                        className={`cursor-pointer text-xs h-7 px-3 transition-colors ${
-                            !typeParam ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
-                        }`}
-                    >
-                        Wszystkie
-                    </Badge>
-                </Link>
-                <Link href="/learning?type=company">
-                    <Badge
-                        className={`cursor-pointer text-xs h-7 px-3 transition-colors inline-flex items-center gap-1 ${
-                            typeParam === 'company' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
-                        }`}
-                    >
-                        <Building2 className="w-3 h-3" /> Firmowe
-                    </Badge>
-                </Link>
-                <Link href="/learning?type=consultant">
-                    <Badge
-                        className={`cursor-pointer text-xs h-7 px-3 transition-colors inline-flex items-center gap-1 ${
-                            typeParam === 'consultant' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground border border-border hover:border-primary/40'
-                        }`}
-                    >
-                        <User className="w-3 h-3" /> Konsultanckie
-                    </Badge>
-                </Link>
-            </div>
-
-            {/* Catalog state */}
-            {!result.success && (
-                <Card className="bg-destructive/5 border-destructive/20">
-                    <CardContent className="p-6">
-                        <p className="text-sm text-destructive">Błąd ładowania katalogu: {result.error}</p>
-                    </CardContent>
-                </Card>
-            )}
-
-            {result.success && items.length === 0 && (
-                <Card className="bg-gradient-to-br from-burgundy/10 to-primary/10 border-burgundy/20">
-                    <CardContent className="p-12 text-center space-y-4">
-                        <div className="mx-auto w-16 h-16 rounded-full bg-primary/15 flex items-center justify-center">
-                            <GraduationCap className="w-8 h-8 text-primary" />
-                        </div>
-                        <h2 className="text-2xl font-bold">
-                            {typeParam === 'company' && 'Brak kursów firmowych'}
-                            {typeParam === 'consultant' && 'Brak kursów konsultanckich'}
-                            {!typeParam && 'Katalog jest jeszcze pusty'}
-                        </h2>
-                        <p className="text-muted-foreground max-w-md mx-auto">
-                            {typeParam === 'company'
-                                ? 'B2Bnetwork nie opublikowało jeszcze kursów firmowych w tym filtrze.'
-                                : 'Bądź pierwszą osobą, która podzieli się wiedzą! Stwórz szkolenie, opublikuj je i zarabiaj punkty B2Bnetwork League.'}
-                        </p>
-                        <div className="flex justify-center gap-3 pt-2">
-                            {typeParam ? (
-                                <Link href="/learning">
-                                    <Button size="lg" variant="outline">Zobacz wszystkie</Button>
-                                </Link>
-                            ) : (
-                                <Link href="/learning/tworze/nowy">
-                                    <Button size="lg" className="gap-2">
-                                        <Plus className="w-4 h-4" /> Stwórz pierwsze szkolenie
-                                    </Button>
-                                </Link>
-                            )}
-                        </div>
-                        {!typeParam && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-6 max-w-2xl mx-auto text-left">
-                                <div className="p-3 rounded-lg bg-muted border border-border">
-                                    <p className="text-xs font-semibold text-primary mb-1">+100 pkt</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        jednorazowo za pierwsze opublikowane szkolenie
-                                    </p>
-                                </div>
-                                <div className="p-3 rounded-lg bg-muted border border-border">
-                                    <p className="text-xs font-semibold text-primary mb-1">+50 pkt × ★</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        za każdego konsultanta, który ukończy Twój kurs
-                                    </p>
-                                </div>
-                                <div className="p-3 rounded-lg bg-muted border border-border">
-                                    <p className="text-xs font-semibold text-primary mb-1">+20 / +30 pkt</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        za ukończony kurs (konsultancki / firmowy)
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
-
-            {result.success && items.length > 0 && (
-                <>
-                    <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">
-                            Znaleziono <strong className="text-foreground">{total}</strong> {total === 1 ? 'szkolenie' : 'szkoleń'}
-                            {typeParam === 'company' && ' (firmowe)'}
-                            {typeParam === 'consultant' && ' (konsultanckie)'}
-                        </p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {items.map((c) => (
-                            <Link key={c.id} href={`/learning/${c.slug}`} className="block group">
-                                <Card className={`bg-muted border-border hover:border-primary/40 transition-colors h-full ${c.is_official ? 'border-warning/30' : ''}`}>
-                                    <CardContent className="p-5 space-y-3">
-                                        <div className="flex items-start justify-between gap-2 flex-wrap">
-                                            <div className="flex items-center gap-1 flex-wrap">
-                                                <Badge variant="outline" className="text-[10px]">
-                                                    {c.category}
-                                                </Badge>
-                                                {c.course_type === 'company' && (
-                                                    <Badge variant="outline" className="text-[10px] border-info/30 text-info bg-info/10 inline-flex items-center gap-0.5">
-                                                        <Building2 className="w-2.5 h-2.5" /> Firmowy
-                                                    </Badge>
-                                                )}
-                                                {c.is_official && (
-                                                    <Badge variant="outline" className="text-[10px] border-warning/30 text-warning bg-warning/10 inline-flex items-center gap-0.5">
-                                                        <ShieldCheck className="w-2.5 h-2.5" /> Official
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            <Badge variant="outline" className="text-[10px] border-border">
-                                                {LEVEL_LABEL[c.level] ?? c.level}
-                                            </Badge>
-                                        </div>
-                                        <h3 className="font-bold text-base group-hover:text-primary transition-colors line-clamp-2">
-                                            {c.title}
-                                        </h3>
-                                        {c.description && (
-                                            <p className="text-xs text-muted-foreground line-clamp-3">
-                                                {c.description}
-                                            </p>
-                                        )}
-                                        <div className="flex flex-wrap gap-1">
-                                            {c.tags.slice(0, 4).map((t) => (
-                                                <Badge
-                                                    key={t}
-                                                    className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1"
-                                                >
-                                                    {t}
-                                                </Badge>
-                                            ))}
-                                            {c.tags.length > 4 && (
-                                                <Badge className="bg-muted text-muted-foreground border-0 text-[9px] h-4 px-1">
-                                                    +{c.tags.length - 4}
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
-                                            <span className="inline-flex items-center gap-1">
-                                                <Star className="w-3 h-3 text-warning" />
-                                                {formatRating(c.avg_rating, c.ratings_count)}
-                                            </span>
-                                            <span>{formatDuration(c.duration_minutes)}</span>
-                                            <span className="inline-flex items-center gap-1">
-                                                <Users className="w-3 h-3" />
-                                                {c.enrollments_count}
-                                            </span>
-                                        </div>
-                                        {c.author_name && c.course_type === 'consultant' && (
-                                            <p className="text-[10px] text-muted-foreground">
-                                                Autor: {c.author_name}
-                                            </p>
-                                        )}
-                                        {c.course_type === 'company' && (
-                                            <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-                                                <Building2 className="w-2.5 h-2.5" /> B2Bnetwork
-                                            </p>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            </Link>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
+            ) : undefined}
+        >
+            <CourseCatalog
+                filters={filters}
+                page={page}
+                courses={result.success ? result.data.items : []}
+                total={result.success ? result.data.total : 0}
+                error={result.success ? undefined : result.error}
+                canTeach={canTeach}
+                options={options.success ? options.data : undefined}
+                nextRuns={runs.success ? getCatalogNextRuns(runs.data, new Date().toISOString()) : undefined}
+                discoveryError={!options.success || !runs.success ? 'Część filtrów lub terminów jest chwilowo niedostępna. Odśwież stronę, aby spróbować ponownie.' : undefined}
+            />
+        </AcademyShell>
     )
 }

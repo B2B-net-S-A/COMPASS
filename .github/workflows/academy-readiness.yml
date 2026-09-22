@@ -1,0 +1,55 @@
+name: Academy infrastructure inventory
+
+on:
+  # The feature-branch push works before this new workflow exists on main.
+  push:
+    branches: [feat/academy-enterprise, main]
+    paths:
+      - 'COMPASS/lib/academy/**'
+      - 'COMPASS/lib/actions/academy*.ts'
+      - 'COMPASS/app/api/academy/**'
+      - 'COMPASS/app/api/akademia/**'
+      - 'COMPASS/app/api/cron/academy-*/**'
+      - 'COMPASS/supabase/migrations/*academy*.sql'
+      - 'ops/academy/**'
+      - 'docs/academy/**'
+      - '.github/workflows/academy-readiness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academy-readiness
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    name: Read-only Coolify inventory
+    if: >-
+      github.repository == 'B2B-net-S-A/COMPASS' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: ops/academy
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Verify projection and GET-only transport without credentials
+        run: node --test ops/academy/coolify-readiness.test.mjs ops/academy/host-capacity.test.mjs
+      - name: Read configured application metadata using the existing deployment credentials
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+        run: node ops/academy/coolify-readiness.mjs
+      - name: Read host capacity with existing SSH credentials and a pinned host key
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: node ops/academy/host-capacity.mjs

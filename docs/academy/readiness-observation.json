@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-22T11:09:36.137Z",
+  "operation": "read_only_inventory",
+  "inspection": "partial",
+  "operationalReadiness": "not_established",
+  "connection": {
+    "urlConfigured": true,
+    "tokenConfigured": true,
+    "applicationConfigured": true
+  },
+  "checks": {
+    "destinations": "http_404",
+    "application": "read",
+    "tasks": "read",
+    "environments": "read"
+  },
+  "application": {
+    "status": "running:unknown",
+    "buildPack": "dockercompose",
+    "healthCheckEnabled": false,
+    "additionalDockerNetworkEnabled": null
+  },
+  "servers": [],
+  "environments": [
+    {
+      "name": "AZURE_TENANT_ID",
+      "present": true,
+      "configured": true,
+      "runtime": true
+    },
+    {
+      "name": "AZURE_CLIENT_ID",
+      "present": true,
+      "configured": true,
+      "runtime": true
+    },
+    {
+      "name": "AZURE_CLIENT_SECRET",
+      "present": true,
+      "configured": true,
+      "runtime": true
+    },
+    {
+      "name": "ACADEMY_TEAMS_ENABLED",
+      "present": false,
+      "configured": false,
+      "runtime": null
+    },
+    {
+      "name": "ACADEMY_CLAMAV_HOST",
+      "present": false,
+      "configured": false,
+      "runtime": null
+    },
+    {
+      "name": "ACADEMY_CLAMAV_PORT",
+      "present": false,
+      "configured": false,
+      "runtime": null
+    },
+    {
+      "name": "ACADEMY_ATTENDANCE_RETENTION_DAYS",
+      "present": false,
+      "configured": false,
+      "runtime": null
+    },
+    {
+      "name": "CRON_SECRET",
+      "present": true,
+      "configured": true,
+      "runtime": true
+    },
+    {
+      "name": "SUPABASE_SERVICE_ROLE_KEY",
+      "present": true,
+      "configured": true,
+      "runtime": true
+    },
+    {
+      "name": "NEXT_PUBLIC_SUPABASE_URL",
+      "present": true,
+      "configured": true,
+      "runtime": true
+    },
+    {
+      "name": "NEXT_PUBLIC_APP_URL",
+      "present": true,
+      "configured": true,
+      "runtime": true
+    }
+  ],
+  "tasks": [
+    {
+      "name": "academy-materials",
+      "present": false,
+      "duplicates": false,
+      "enabled": null,
+      "frequency": null,
+      "containerConfigured": null,
+      "timeoutSeconds": null
+    },
+    {
+      "name": "academy-sync",
+      "present": false,
+      "duplicates": false,
+      "enabled": null,
+      "frequency": null,
+      "containerConfigured": null,
+      "timeoutSeconds": null
+    }
+  ],
+  "limitations": [
+    "Vault presence does not prove environment delivery to the running process.",
+    "Graph grants, mailbox scope, licenses and meeting policies are not inspected.",
+    "Scanner reachability, loaded signatures and physical capacity are not inspected.",
+    "Tasks are matched by known names; command contents, execution history and actual delivery are not inspected."
+  ]
+}

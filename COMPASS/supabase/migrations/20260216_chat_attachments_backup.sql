@@ -7,6 +7,8 @@ VALUES ('chat-attachments', 'chat-attachments', true) ON CONFLICT (id) DO NOTHIN
 -- 3. Storage Policies
 -- Policy: Authenticated users can upload to chat-attachments
 -- Path convention: {conversation_id}/{user_id}/{filename}
+-- This historical backup repeats the preceding migration during a clean replay.
+DROP POLICY IF EXISTS "Users can upload chat attachments" ON storage.objects;
 CREATE POLICY "Users can upload chat attachments" ON storage.objects FOR
 INSERT TO authenticated WITH CHECK (
         bucket_id = 'chat-attachments'
@@ -16,5 +18,6 @@ INSERT TO authenticated WITH CHECK (
 -- Ideally we would check conversation existence, but for storage performance,
 -- we'll rely on the fact that file paths are obscure UUIDs and the app only exposes links to participants.
 -- A stricter policy would involve a join with conversation_participants.
+DROP POLICY IF EXISTS "Users can view chat attachments" ON storage.objects;
 CREATE POLICY "Users can view chat attachments" ON storage.objects FOR
 SELECT TO authenticated USING (bucket_id = 'chat-attachments');

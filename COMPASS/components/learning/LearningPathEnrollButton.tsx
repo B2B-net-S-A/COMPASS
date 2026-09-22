@@ -1,6 +1,6 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { useRouter } from 'next/navigation'
 import { Map, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -10,17 +10,19 @@ import { enrollInLearningPath } from '@/lib/actions/learning-paths'
 
 export function LearningPathEnrollButton({ pathId }: { pathId: string }) {
     const router = useRouter()
-    const [pending, startTransition] = useTransition()
+    const [pending, startTransition] = useAcademyAction()
 
     const handleEnroll = () => {
         startTransition(async () => {
-            const res = await enrollInLearningPath(pathId)
-            if (!res.success) {
-                toast.error(res.error)
-                return
-            }
-            toastSuccess('Zapisano na ścieżkę')
-            router.refresh()
+            try {
+                const res = await enrollInLearningPath(pathId)
+                if (!res.success) {
+                    toast.error(res.error)
+                    return
+                }
+                toastSuccess('Zapisano na ścieżkę')
+                router.refresh()
+            } catch { toast.error('Nie udało się zapisać na ścieżkę. Spróbuj ponownie.') }
         })
     }
 

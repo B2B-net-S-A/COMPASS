@@ -1,10 +1,14 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { GraduationCap, BookOpen, Star, Clock, Users, CheckCircle2, ListChecks } from 'lucide-react'
+import { GraduationCap, BookOpen, Star, Clock, Users, ListChecks } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CourseDetailActions } from '@/components/learning/CourseDetailActions'
 import { getCourseDetail } from '@/lib/actions/courses'
+import { academyCourseHref } from '@/lib/academy/navigation'
+import { getAcademyPrerequisiteStatus } from '@/lib/actions/academy-discovery'
+import { AcademyPrerequisites } from '@/components/academy/AcademyPrerequisites'
+import { CourseFeedback } from '@/components/academy/CourseFeedback'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,12 +28,14 @@ function formatDuration(min: number | null): string {
 
 interface PageProps {
     params: { slug: string }
+    searchParams: { enrollment?: string }
 }
 
-export default async function CourseDetailPage({ params }: PageProps) {
-    const result = await getCourseDetail(params.slug)
+export default async function CourseDetailPage({ params, searchParams }: PageProps) {
+    const result = await getCourseDetail(params.slug, { enrollmentId: searchParams.enrollment })
     if (!result.success) notFound()
     const course = result.data
+    const prerequisites = await getAcademyPrerequisiteStatus({ courseId: course.id, enrollmentId: course.enrollment_id ?? undefined })
 
     return (
         <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
@@ -72,13 +78,18 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 )}
             </div>
 
-            <CourseDetailActions
+            <AcademyPrerequisites status={prerequisites.success ? prerequisites.data : undefined} error={prerequisites.success ? undefined : prerequisites.error} enrolled={course.is_enrolled} />
+            {(course.is_enrolled || (prerequisites.success && prerequisites.data.allCompleted)) && <CourseDetailActions
                 courseId={course.id}
                 courseSlug={course.slug}
                 isEnrolled={course.is_enrolled}
+                enrollmentId={course.enrollment_id}
+                runId={course.run_id}
+                completedAt={course.completed_at} revokedAt={course.completion_revoked_at} revokedReason={course.completion_revoked_reason}
+                deliveryMode={course.delivery_mode}
                 hasLessons={course.lessons.length > 0}
                 hasQuiz={course.quiz_questions_count > 0}
-            />
+            />}
 
             <Card className="bg-card border-border">
                 <CardContent className="p-5 space-y-3">
@@ -87,7 +98,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                         <h2 className="text-xl font-semibold">Lekcje ({course.lessons.length})</h2>
                     </div>
                     {course.lessons.length === 0 ? (
-                        <p className="text-sm text-muted-foreground italic">Kurs nie ma jeszcze lekcji.</p>
+                        <p className="text-sm text-muted-foreground italic">Program tego szkolenia jest realizowany podczas spotkań.</p>
                     ) : (
                         <ol className="space-y-2">
                             {course.lessons.map((l, idx) => (
@@ -104,12 +115,12 @@ export default async function CourseDetailPage({ params }: PageProps) {
                                             <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1 mt-0.5">
                                                 <Clock className="w-3 h-3" /> {l.estimated_minutes} min
                                                 {l.video_url && ' · wideo'}
-                                                {l.attachments.length > 0 && ` · ${l.attachments.length} PDF`}
+                                                {l.attachments.length > 0 && ` · ${l.attachments.length} załączników`}
                                             </p>
                                         )}
                                     </div>
                                     {course.is_enrolled && (
-                                        <Link href={`/learning/${course.slug}/lekcja/${l.id}`}>
+                                        <Link href={academyCourseHref(course.slug, course.enrollment_id, `/lekcja/${l.id}`)}>
                                             <Badge variant="outline" className="text-[10px] hover:bg-primary/20 cursor-pointer">
                                                 Otwórz
                                             </Badge>
@@ -126,16 +137,20 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 <CardContent className="p-5 space-y-2">
                     <div className="flex items-center gap-2">
                         <ListChecks className="w-5 h-5 text-primary" />
-                        <h2 className="text-lg font-semibold">Quiz końcowy</h2>
+                        <h2 className="text-lg font-semibold">Warunki ukończenia</h2>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                        {course.quiz_questions_count} pytań ABCD · próg zaliczenia 70% · za zdanie otrzymujesz{' '}
-                        <strong className="text-primary">+20 pkt</strong>
+                        Wersja programu: {course.version_number ?? 1}.
+                        {course.completion_rules?.require_all_lessons && ' Ukończenie wszystkich wymaganych lekcji.'}
+                        {course.completion_rules?.quiz_required && ` Quiz: ${course.quiz_questions_count} pytań, próg ${course.completion_rules.quiz_pass_percent}%.`}
+                        {course.delivery_mode !== 'self_paced' && course.delivery_mode && ` Potwierdzona obecność przez co najmniej ${course.completion_rules?.attendance_percent ?? 80}% czasu każdego wymaganego spotkania.`}
+                        {' Certyfikat otrzymasz po spełnieniu wszystkich warunków.'}
                     </p>
                 </CardContent>
             </Card>
 
-            {course.user_rating && (
+            {course.enrollment_id && course.completed_at && !course.completion_revoked_at && <CourseFeedback courseId={course.id} enrollmentId={course.enrollment_id} completedAt={course.completed_at} initialRating={course.user_rating?.rating} initialComment={course.user_rating?.comment} />}
+            {course.user_rating && !course.completed_at && (
                 <Card className="bg-warning/5 border-warning/20">
                     <CardContent className="p-5">
                         <p className="text-xs text-muted-foreground mb-2">Twoja ocena:</p>

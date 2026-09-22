@@ -3,6 +3,9 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
+import { loadAcademyCourse } from '@/lib/academy/course-data'
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import type { ActionResult } from '@/lib/types/learning'
 
@@ -40,13 +43,17 @@ export interface CourseAnswer {
 export async function listCourseQuestions(
     courseId: string,
     lessonId?: string,
+    enrollmentId?: string,
+    previewVersionId?: string,
 ): Promise<ActionResult<CourseQuestion[]>> {
     try {
-        const supabase = createClient()
+        const { client: supabase, access } = await requireAcademyContext()
+        const { course } = await loadAcademyCourse(supabase, access.userId, z.uuid().parse(courseId), { enrollmentId, previewVersionId })
         let query = supabase
             .from('course_questions')
             .select('*')
             .eq('course_id', courseId)
+            .eq('version_id', course.version_id)
             .order('created_at', { ascending: false })
         if (lessonId) {
             query = query.eq('lesson_id', lessonId)
@@ -150,117 +157,56 @@ export async function listAnswersForQuestion(
     }
 }
 
-/**
- * Zadaj pytanie (5 pkt loyalty bonus).
- */
+/** Questions are scoped to the learner's immutable enrollment version. */
 export async function askQuestion(input: {
     courseId: string
     lessonId?: string | null
+    enrollmentId?: string
     questionText: string
 }): Promise<ActionResult<{ id: string }>> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const text = input.questionText.trim()
-        if (text.length < 10 || text.length > 2000) {
-            return { success: false, error: 'Pytanie musi mieć 10-2000 znaków.' }
-        }
-
-        const { data, error } = await supabase
-            .from('course_questions')
-            .insert({
-                course_id: input.courseId,
-                lesson_id: input.lessonId ?? null,
-                user_id: user.id,
-                question_text: text,
-            })
-            .select('id')
-            .single<{ id: string }>()
-        if (error) throw error
-
-        // Loyalty bonus
-        await supabase.from('loyalty_transactions').insert({
-            user_id: user.id,
-            source_type: 'course_question_asked',
-            source_id: data.id,
-            points: 5,
-            description: 'Pytanie w forum kursu',
+    return academyAction('question.create', async () => {
+        const { client, access } = await requireAcademyContext()
+        const { enrollment } = await loadAcademyCourse(client, access.userId, z.uuid().parse(input.courseId), { enrollmentId: input.enrollmentId })
+        if (!enrollment) throw new Error('Najpierw zapisz się na szkolenie.')
+        const { data, error } = await client.rpc('academy_ask_question', {
+            p_enrollment_id: enrollment.id,
+            p_question_text: z.string().trim().min(10).max(2000).parse(input.questionText),
+            p_lesson_id: input.lessonId ? z.uuid().parse(input.lessonId) : null,
         })
-
-        revalidatePath(`/learning`)
-        return { success: true, data }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd zadawania pytania'
-        logCompat.error('[askQuestion]', error)
-        return { success: false, error: msg }
-    }
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return { id: data as string }
+    })
 }
 
-/**
- * Odpowiedz na pytanie. Jeśli user = autor kursu → 15 pkt loyalty + flag is_author_answer.
- */
-export async function answerQuestion(input: {
-    questionId: string
-    answerText: string
-}): Promise<ActionResult<{ id: string }>> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
+export async function answerQuestion(input: { questionId: string; answerText: string }): Promise<ActionResult<{ id: string }>> {
+    return academyAction('question.answer', async () => {
+        const { client } = await requireAcademyContext()
+        const { data, error } = await client.rpc('academy_answer_question', {
+            p_question_id: z.uuid().parse(input.questionId),
+            p_answer_text: z.string().trim().min(5).max(5000).parse(input.answerText),
+        })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return { id: data as string }
+    })
+}
 
-        const text = input.answerText.trim()
-        if (text.length < 5 || text.length > 5000) {
-            return { success: false, error: 'Odpowiedź musi mieć 5-5000 znaków.' }
-        }
+export async function resolveCourseQuestion(questionId: string, resolved: boolean): Promise<ActionResult<void>> {
+    return academyAction('question.resolve', async () => {
+        const { client } = await requireAcademyContext()
+        const { error } = await client.rpc('academy_resolve_question', { p_question_id: z.uuid().parse(questionId), p_resolved: z.boolean().parse(resolved) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+    })
+}
 
-        // Sprawdź czy user jest autorem kursu (do flagi is_author_answer + loyalty bonus)
-        const { data: q } = await supabase
-            .from('course_questions')
-            .select('course_id, courses:courses(author_id)')
-            .eq('id', input.questionId)
-            .single<{ course_id: string; courses: { author_id: string } | { author_id: string }[] }>()
-        const author = Array.isArray(q?.courses) ? q?.courses[0] : q?.courses
-        const isAuthor = author?.author_id === user.id
-
-        const { data, error } = await supabase
-            .from('course_answers')
-            .insert({
-                question_id: input.questionId,
-                user_id: user.id,
-                answer_text: text,
-                is_author_answer: isAuthor,
-            })
-            .select('id')
-            .single<{ id: string }>()
-        if (error) throw error
-
-        // Author answer = 15 pkt loyalty
-        if (isAuthor) {
-            await supabase.from('loyalty_transactions').insert({
-                user_id: user.id,
-                source_type: 'course_answer_given',
-                source_id: data.id,
-                points: 15,
-                description: 'Odpowiedź autora w forum kursu',
-            })
-            // Mark resolved jeśli to pierwsza autorska odpowiedź
-            await supabase
-                .from('course_questions')
-                .update({ is_resolved: true })
-                .eq('id', input.questionId)
-        }
-
-        revalidatePath(`/learning`)
-        return { success: true, data }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd odpowiedzi'
-        logCompat.error('[answerQuestion]', error)
-        return { success: false, error: msg }
-    }
+/** Minimal selector of versions available to an assigned instructor or editor. */
+export async function listTeachingQuestionVersions(courseId: string) {
+    return academyAction('question.teaching_versions', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        const { data, error } = await client.rpc('academy_teaching_versions', { p_course_id: z.uuid().parse(courseId) })
+        assertDatabaseResult(error)
+        return (data ?? []) as Array<{ id: string; versionNumber: number; title: string; status: string }>
+    })
 }

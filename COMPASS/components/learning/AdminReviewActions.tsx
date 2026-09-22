@@ -7,14 +7,18 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { approveCourse, rejectCourse } from '@/lib/actions/courses-admin'
+import { approveCourse, rejectCourse, reviewLegacyCourse } from '@/lib/actions/courses-admin'
 
 interface AdminReviewActionsProps {
+    versionId: string
+    submissionId?: string | null
     courseId: string
     title: string
+    legacyReview?: boolean
+    canReview?: boolean
 }
 
-export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps) {
+export function AdminReviewActions({ courseId, versionId, submissionId, title, legacyReview = false, canReview = true }: AdminReviewActionsProps) {
     const router = useRouter()
     const [showReject, setShowReject] = useState(false)
     const [reason, setReason] = useState('')
@@ -32,7 +36,7 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
         setError(null)
         setSuccess(null)
         startTransition(async () => {
-            const res = await approveCourse(courseId)
+            const res = legacyReview ? await reviewLegacyCourse(courseId, versionId, true) : await approveCourse(courseId, versionId, submissionId)
             if (!res.success) {
                 setError(res.error)
                 return
@@ -54,12 +58,12 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
         setError(null)
         setSuccess(null)
         startTransition(async () => {
-            const res = await rejectCourse(courseId, reason.trim())
+            const res = legacyReview ? await reviewLegacyCourse(courseId, versionId, false, reason.trim()) : await rejectCourse(courseId, reason.trim(), versionId, submissionId)
             if (!res.success) {
                 setError(res.error)
                 return
             }
-            setSuccess('Odrzucone ✓ — autor otrzymał notyfikację')
+            setSuccess(legacyReview ? 'Nowe zapisy pozostają wstrzymane. Zapisano powód decyzji.' : 'Wersja zwrócona do poprawy.')
             setTimeout(() => router.push('/admin/learning'), 1500)
         })
     }
@@ -71,6 +75,7 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
                     <h3 className="font-semibold">Decyzja moderatora</h3>
                 </div>
 
+                {!canReview && <p className="text-sm text-warning">Akceptację musi przeprowadzić administrator, który nie jest autorem ani współautorem tej wersji.</p>}
                 {error && (
                     <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -85,11 +90,11 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
 
                 {!showReject && (
                     <div className="flex gap-2">
-                        <Button onClick={handleApprove} disabled={isPending} className="gap-2 bg-success hover:bg-success/90">
+                        <Button onClick={handleApprove} disabled={isPending || !canReview} className="gap-2 bg-success hover:bg-success/90">
                             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                            Zatwierdź i opublikuj
+                            {legacyReview ? 'Zatwierdź i otwórz zapisy' : 'Zatwierdź i opublikuj'}
                         </Button>
-                        <Button onClick={() => setShowReject(true)} variant="outline" disabled={isPending} className="gap-2">
+                        <Button onClick={() => setShowReject(true)} variant="outline" disabled={isPending || !canReview} className="gap-2">
                             <X className="w-4 h-4" /> Odrzuć
                         </Button>
                     </div>
@@ -99,22 +104,22 @@ export function AdminReviewActions({ courseId, title }: AdminReviewActionsProps)
                     <div className="space-y-3">
                         <div>
                             <label className="text-xs text-muted-foreground mb-1 block">
-                                Powód odrzucenia (autor zobaczy to w notyfikacji)
+                                Powód odrzucenia (widoczny w panelu autora)
                             </label>
                             <Textarea
                                 value={reason}
                                 onChange={(e) => setReason(e.target.value)}
                                 rows={3}
                                 placeholder="np. Pytanie 3 jest niejednoznaczne — popraw treść i wyślij ponownie."
-                                disabled={isPending}
+                                disabled={isPending || !canReview}
                             />
                         </div>
                         <div className="flex gap-2">
-                            <Button onClick={handleReject} disabled={isPending || reason.trim().length < 5} variant="destructive" className="gap-2">
+                            <Button onClick={handleReject} disabled={isPending || !canReview || reason.trim().length < 5} variant="destructive" className="gap-2">
                                 {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
                                 Wyślij odrzucenie
                             </Button>
-                            <Button onClick={() => setShowReject(false)} variant="outline" disabled={isPending}>
+                            <Button onClick={() => setShowReject(false)} variant="outline" disabled={isPending || !canReview}>
                                 Anuluj
                             </Button>
                         </div>

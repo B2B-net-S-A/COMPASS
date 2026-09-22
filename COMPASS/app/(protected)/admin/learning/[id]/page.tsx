@@ -1,9 +1,10 @@
+import { canReviewCourseVersion } from '@/lib/actions/courses-admin'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ShieldCheck, BookOpen, ListChecks, Clock } from 'lucide-react'
+import { ShieldCheck, ListChecks, Clock } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { MarkdownView } from '@/components/learning/MarkdownView'
+import { CourseLearnerPreview } from '@/components/academy/CourseLearnerPreview'
 import { AdminReviewActions } from '@/components/learning/AdminReviewActions'
 import {
     getCourseDetail,
@@ -15,17 +16,22 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
     params: { id: string }
+    searchParams: { legacy?: string }
 }
 
-export default async function AdminCourseReviewPage({ params }: PageProps) {
-    const detailResult = await getCourseDetail(params.id)
+export default async function AdminCourseReviewPage({ params, searchParams }: PageProps) {
+    const legacy = searchParams.legacy === '1'
+    const options = legacy ? { publishedOnly: true } : { author: true }
+    const detailResult = await getCourseDetail(params.id, options)
     if (!detailResult.success) notFound()
     const course = detailResult.data
-    const lessonsResult = await getCourseLessons(course.id)
-    const quizResult = await getCourseQuizForAuthor(course.id)
+    const lessonsResult = await getCourseLessons(course.id, options)
+    const quizResult = await getCourseQuizForAuthor(course.id, { publishedOnly: legacy })
 
+    const permission = await canReviewCourseVersion(course.version_id!)
     const lessons = lessonsResult.success ? lessonsResult.data : []
     const quiz = quizResult.success ? quizResult.data : []
+    const previewLoaded = lessonsResult.success && quizResult.success && permission.success && (legacy || !!course.submission_id)
 
     return (
         <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
@@ -39,7 +45,7 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                     <Badge variant="outline" className="border-warning/30 text-warning bg-warning/10 text-[10px]">
-                        W moderacji
+                        {legacy ? 'Historyczna publikacja' : 'W moderacji'}
                     </Badge>
                     <Badge variant="outline" className="text-[10px]">{course.category}</Badge>
                     <Badge variant="outline" className="text-[10px] border-border">{course.level}</Badge>
@@ -55,71 +61,17 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                 )}
             </div>
 
-            {course.description && (
-                <Card className="bg-muted border-border">
-                    <CardContent className="p-5">
-                        <p className="text-sm">{course.description}</p>
-                        {course.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-3">
-                                {course.tags.map((t) => (
-                                    <Badge key={t} className="bg-muted text-muted-foreground border-0 text-[10px]">{t}</Badge>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+            {previewLoaded ? <>
+                <AdminReviewActions legacyReview={legacy} canReview={permission.success && permission.data} versionId={course.version_id!} submissionId={course.submission_id} courseId={course.id} title={course.title} />
+                <CourseLearnerPreview mode="review" course={course} lessons={lessons} quiz={[]} />
+            </> : <Card className="border-destructive/30 bg-destructive/5"><CardContent className="space-y-2 p-5" role="alert">
+                <p className="font-semibold">Nie udało się wczytać kompletnego podglądu.</p>
+                <p className="text-sm">Decyzja jest zablokowana, dopóki nie odczytamy programu, materiałów, quizu i uprawnień moderatora.</p>
+                <Link href={`/admin/learning/${course.id}${legacy ? '?legacy=1' : ''}`} className="inline-flex text-sm font-medium text-primary underline">Odśwież podgląd</Link>
+            </CardContent></Card>}
 
-            {/* Action panel */}
-            <AdminReviewActions courseId={course.id} title={course.title} />
-
-            {/* Lessons preview */}
-            <div>
-                <div className="flex items-center gap-2 mb-3">
-                    <BookOpen className="w-5 h-5 text-primary" />
-                    <h2 className="text-xl font-semibold">Lekcje ({lessons.length})</h2>
-                </div>
-                <div className="space-y-3">
-                    {lessons.map((lesson, idx) => (
-                        <Card key={lesson.id} className="bg-muted border-border">
-                            <CardContent className="p-5 space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="text-[10px]">{idx + 1}</Badge>
-                                    <h3 className="font-semibold">{lesson.title}</h3>
-                                    {lesson.estimated_minutes && (
-                                        <Badge variant="outline" className="text-[9px] border-border">
-                                            {lesson.estimated_minutes} min
-                                        </Badge>
-                                    )}
-                                </div>
-                                {lesson.video_url && (
-                                    <p className="text-xs text-muted-foreground">
-                                        Wideo: <a href={lesson.video_url} target="_blank" rel="noreferrer" className="text-primary underline">{lesson.video_url}</a>
-                                    </p>
-                                )}
-                                {lesson.attachments.length > 0 && (
-                                    <p className="text-xs text-muted-foreground">{lesson.attachments.length} załącznik(ów) PDF</p>
-                                )}
-                                {lesson.content_md && (
-                                    <div className="pt-2 border-t border-border">
-                                        <MarkdownView content={lesson.content_md} />
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    ))}
-                    {lessons.length === 0 && (
-                        <Card className="bg-destructive/5 border-destructive/20">
-                            <CardContent className="p-4 text-sm text-destructive">
-                                Brak lekcji — kurs nie powinien być w kolejce moderacji.
-                            </CardContent>
-                        </Card>
-                    )}
-                </div>
-            </div>
-
-            {/* Quiz preview */}
-            <div>
+            {/* Answer key is scoped to an authorized reviewer. */}
+            {previewLoaded && <div>
                 <div className="flex items-center gap-2 mb-3">
                     <ListChecks className="w-5 h-5 text-primary" />
                     <h2 className="text-xl font-semibold">Quiz ({quiz.length} pytań)</h2>
@@ -151,7 +103,7 @@ export default async function AdminCourseReviewPage({ params }: PageProps) {
                         </Card>
                     ))}
                 </div>
-            </div>
+            </div>}
         </div>
     )
 }

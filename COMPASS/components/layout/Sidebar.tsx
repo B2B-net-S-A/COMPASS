@@ -66,6 +66,7 @@ interface SidebarProps {
     isInboxHandler?: boolean
     consultantSuccessEnabled?: boolean
     // Phase 45: per-user grant — additive Talent Community access without the role.
+    academyEnabled?: boolean
     hasTcmAccess?: boolean
 }
 
@@ -92,6 +93,7 @@ export function Sidebar({
     isInboxHandler = false,
     consultantSuccessEnabled = false,
     hasTcmAccess = false,
+    academyEnabled = false,
 }: SidebarProps) {
     const pathname = usePathname()
     const searchParams = useSearchParams()
@@ -371,6 +373,7 @@ export function Sidebar({
     // Apply per-feature permission filter (admins always pass).
     // Globalny gate dla coming-soon idzie pierwszy — ukrywa nawet adminom.
     const filterByPermission = (link: NavLink): boolean => {
+        if (link.feature === 'learning') return academyEnabled && (role === 'admin' || (role === 'consultant' && permissions?.learning !== 'false'))
         if (isFeatureComingSoon(link.feature)) return false
         if (isAdmin) return true
         if (!link.feature) return true

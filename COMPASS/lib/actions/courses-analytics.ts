@@ -1,15 +1,8 @@
 'use server'
 
-import { logCompat } from '@/lib/logger'
-
-import { createClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/admin'
-
-// ============================================================
-// Phase A2.7 / A3.4 — Course Analytics
-// Author analytics: per-author summary + per-course breakdown
-// Admin analytics: global LMS metrics
-// ============================================================
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
+import type { ActionResult } from '@/lib/types/learning'
 
 export interface AuthorCourseStat {
     course_id: string
@@ -17,111 +10,18 @@ export interface AuthorCourseStat {
     course_status: string
     enrollments_count: number
     completions_count: number
-    completion_rate: number // %
+    completion_rate: number
     avg_rating: number
     ratings_count: number
     last_enrolled_at: string | null
 }
-
 export interface AuthorAnalyticsSummary {
     total_courses: number
     total_enrollments: number
     total_completions: number
-    average_rating: number // weighted by ratings_count
+    average_rating: number
     courses: AuthorCourseStat[]
 }
-
-/**
- * A2.7: per-author dashboard analytics. Tylko własne kursy autora (RLS).
- */
-export async function getAuthorAnalytics(): Promise<{
-    success: boolean
-    data?: AuthorAnalyticsSummary
-    error?: string
-}> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        // Pull author's courses + statystyki rollup
-        const { data: courses, error } = await supabase
-            .from('courses')
-            .select(
-                'id, title, status, enrollments_count, completions_count, avg_rating, ratings_count',
-            )
-            .eq('author_id', user.id)
-            .order('enrollments_count', { ascending: false })
-        if (error) throw error
-
-        const rows = (courses ?? []) as Array<{
-            id: string
-            title: string
-            status: string
-            enrollments_count: number
-            completions_count: number
-            avg_rating: number
-            ratings_count: number
-        }>
-
-        // Pobierz last_enrolled_at per course (jeśli courses.length > 0)
-        const lastEnrolledMap = new Map<string, string | null>()
-        if (rows.length > 0) {
-            const { data: lastEnrolls } = await supabase
-                .from('course_enrollments')
-                .select('course_id, enrolled_at')
-                .in(
-                    'course_id',
-                    rows.map((r) => r.id),
-                )
-                .order('enrolled_at', { ascending: false })
-                .limit(rows.length * 5) // sufficient buffer
-            for (const e of (lastEnrolls ?? []) as Array<{ course_id: string; enrolled_at: string }>) {
-                if (!lastEnrolledMap.has(e.course_id)) {
-                    lastEnrolledMap.set(e.course_id, e.enrolled_at)
-                }
-            }
-        }
-
-        const courseStats: AuthorCourseStat[] = rows.map((r) => ({
-            course_id: r.id,
-            course_title: r.title,
-            course_status: r.status,
-            enrollments_count: r.enrollments_count,
-            completions_count: r.completions_count,
-            completion_rate: r.enrollments_count > 0
-                ? Math.round((r.completions_count / r.enrollments_count) * 100)
-                : 0,
-            avg_rating: Number(r.avg_rating ?? 0),
-            ratings_count: r.ratings_count,
-            last_enrolled_at: lastEnrolledMap.get(r.id) ?? null,
-        }))
-
-        const totalEnrollments = courseStats.reduce((s, c) => s + c.enrollments_count, 0)
-        const totalCompletions = courseStats.reduce((s, c) => s + c.completions_count, 0)
-        const totalRatingPoints = courseStats.reduce((s, c) => s + c.avg_rating * c.ratings_count, 0)
-        const totalRatingsCount = courseStats.reduce((s, c) => s + c.ratings_count, 0)
-        const weightedAvg = totalRatingsCount > 0 ? totalRatingPoints / totalRatingsCount : 0
-
-        return {
-            success: true,
-            data: {
-                total_courses: courseStats.length,
-                total_enrollments: totalEnrollments,
-                total_completions: totalCompletions,
-                average_rating: Math.round(weightedAvg * 10) / 10,
-                courses: courseStats,
-            },
-        }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania analityki'
-        logCompat.error('[getAuthorAnalytics]', error)
-        return { success: false, error: msg }
-    }
-}
-
 export interface AdminLmsAnalytics {
     total_published_courses: number
     total_pending_review: number
@@ -129,113 +29,105 @@ export interface AdminLmsAnalytics {
     total_completions: number
     overall_completion_rate: number
     average_rating_all: number
-    top_courses: Array<{
-        course_id: string
-        title: string
-        enrollments: number
-        completions: number
-        completion_rate: number
-        avg_rating: number
-    }>
-    monthly_enrollments: Array<{ month: string; count: number }> // last 12 mo
+    top_courses: Array<{ course_id: string; title: string; enrollments: number; completions: number; completion_rate: number; avg_rating: number }>
+    monthly_enrollments: Array<{ month: string; count: number }>
+}
+interface ReportCourse { id: string; title: string; status: string; published_version_id: string | null; legacy_review_required: boolean }
+interface ReportEnrollment { id: string; course_id: string; run_id: string | null; enrolled_at: string }
+interface ReportCompletion { id: string; course_id: string; enrollment_id: string }
+interface ReportVersion { id: string; course_id: string; status: string }
+
+// Session-bound RLS also limits a run-only facilitator to their own groups.
+// Pagination avoids quietly reporting only the first PostgREST response page.
+async function readRows<T>(client: SupabaseClient, table: string, columns: string): Promise<T[]> {
+    const rows: T[] = []
+    const pageSize = 500
+    for (let offset = 0; ; offset += pageSize) {
+        let query = client.from(table).select(columns).order('id').range(offset, offset + pageSize - 1)
+        if (table === 'course_completions') query = query.is('revoked_at', null)
+        const { data, error } = await query
+        assertDatabaseResult(error)
+        rows.push(...(data ?? []) as T[])
+        if (!data || data.length < pageSize) return rows
+    }
 }
 
-/**
- * A3.4: Admin LMS analytics dashboard data. Wymaga admin role.
- */
-export async function getAdminLmsAnalytics(): Promise<{
-    success: boolean
-    data?: AdminLmsAnalytics
-    error?: string
-}> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single<{ role: string }>()
-        if (!profile || profile.role !== 'admin') {
-            return { success: false, error: 'Brak uprawnień (admin only)' }
-        }
-
-        const admin = createServiceClient()
-
-        const [coursesRes, enrollsRes] = await Promise.all([
-            admin
-                .from('courses')
-                .select('id, title, status, enrollments_count, completions_count, avg_rating, ratings_count'),
-            // Last 12 months enrollments — group manually w JS bo Supabase API nie ma group-by
-            admin
-                .from('course_enrollments')
-                .select('enrolled_at')
-                .gte('enrolled_at', new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()),
-        ])
-
-        const courses = (coursesRes.data ?? []) as Array<{
-            id: string
-            title: string
-            status: string
-            enrollments_count: number
-            completions_count: number
-            avg_rating: number
-            ratings_count: number
-        }>
-
-        const published = courses.filter((c) => c.status === 'published')
-        const pending = courses.filter((c) => c.status === 'pending_review')
-
-        const totalEnr = published.reduce((s, c) => s + c.enrollments_count, 0)
-        const totalCompl = published.reduce((s, c) => s + c.completions_count, 0)
-        const overallRate = totalEnr > 0 ? Math.round((totalCompl / totalEnr) * 100) : 0
-        const totalRatingPoints = published.reduce((s, c) => s + c.avg_rating * c.ratings_count, 0)
-        const totalRatingsCount = published.reduce((s, c) => s + c.ratings_count, 0)
-        const avgRating = totalRatingsCount > 0 ? totalRatingPoints / totalRatingsCount : 0
-
-        const topCourses = [...published]
-            .sort((a, b) => b.enrollments_count - a.enrollments_count)
-            .slice(0, 10)
-            .map((c) => ({
-                course_id: c.id,
-                title: c.title,
-                enrollments: c.enrollments_count,
-                completions: c.completions_count,
-                completion_rate: c.enrollments_count > 0
-                    ? Math.round((c.completions_count / c.enrollments_count) * 100)
-                    : 0,
-                avg_rating: Math.round(c.avg_rating * 10) / 10,
-            }))
-
-        // Monthly histogram
-        const monthCounts = new Map<string, number>()
-        for (const e of (enrollsRes.data ?? []) as Array<{ enrolled_at: string }>) {
-            const month = e.enrolled_at.slice(0, 7) // YYYY-MM
-            monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1)
-        }
-        const monthly = Array.from(monthCounts.entries())
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([month, count]) => ({ month, count }))
-
+async function readReport(client: SupabaseClient, courses: ReportCourse[]) {
+    if (!courses.length) return { rows: [] as AuthorCourseStat[], versions: [] as ReportVersion[], enrollments: [] as ReportEnrollment[] }
+    const [allEnrollments, completions, registrations, runs, ratings, versions] = await Promise.all([
+        readRows<ReportEnrollment>(client, 'course_enrollments', 'id,course_id,run_id,enrolled_at'),
+        readRows<ReportCompletion>(client, 'course_completions', 'id,course_id,enrollment_id'),
+        readRows<{ id: string; enrollment_id: string | null; status: string }>(client, 'course_run_registrations', 'id,enrollment_id,status'),
+        readRows<{ id: string; status: string }>(client, 'course_runs', 'id,status'),
+        readRows<{ id: string; course_id: string; rating: number }>(client, 'course_ratings', 'id,course_id,rating'),
+        readRows<ReportVersion>(client, 'course_versions', 'id,course_id,status'),
+    ])
+    const courseIds = new Set(courses.map(course => course.id))
+    const completedIds = new Set(completions.map(completion => completion.enrollment_id))
+    const confirmedIds = new Set(registrations.filter(registration => registration.status === 'confirmed').map(registration => registration.enrollment_id))
+    const activeRunIds = new Set(runs.filter(run => run.status === 'published').map(run => run.id))
+    const enrollments = allEnrollments.filter(enrollment => courseIds.has(enrollment.course_id) && (
+        completedIds.has(enrollment.id) || !enrollment.run_id || (confirmedIds.has(enrollment.id) && activeRunIds.has(enrollment.run_id))
+    ))
+    const rows = courses.map(course => {
+        const enrolled = enrollments.filter(enrollment => enrollment.course_id === course.id)
+        const completed = enrolled.filter(enrollment => completedIds.has(enrollment.id)).length
+        const courseRatings = ratings.filter(rating => rating.course_id === course.id)
         return {
-            success: true,
-            data: {
-                total_published_courses: published.length,
-                total_pending_review: pending.length,
-                total_enrollments: totalEnr,
-                total_completions: totalCompl,
-                overall_completion_rate: overallRate,
-                average_rating_all: Math.round(avgRating * 10) / 10,
-                top_courses: topCourses,
-                monthly_enrollments: monthly,
-            },
+            course_id: course.id, course_title: course.title, course_status: course.status,
+            enrollments_count: enrolled.length, completions_count: completed,
+            completion_rate: enrolled.length ? Math.round(completed / enrolled.length * 100) : 0,
+            avg_rating: courseRatings.length ? courseRatings.reduce((sum, rating) => sum + rating.rating, 0) / courseRatings.length : 0,
+            ratings_count: courseRatings.length,
+            last_enrolled_at: enrolled.map(enrollment => enrollment.enrolled_at).sort().at(-1) ?? null,
         }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania analityki'
-        logCompat.error('[getAdminLmsAnalytics]', error)
-        return { success: false, error: msg }
+    }).sort((a, b) => b.enrollments_count - a.enrollments_count || a.course_title.localeCompare(b.course_title, 'pl'))
+    return { rows, versions, enrollments }
+}
+
+function summarize(rows: AuthorCourseStat[]): AuthorAnalyticsSummary {
+    const ratings = rows.reduce((sum, course) => sum + course.ratings_count, 0)
+    return {
+        total_courses: rows.length,
+        total_enrollments: rows.reduce((sum, course) => sum + course.enrollments_count, 0),
+        total_completions: rows.reduce((sum, course) => sum + course.completions_count, 0),
+        average_rating: ratings ? Math.round(rows.reduce((sum, course) => sum + course.avg_rating * course.ratings_count, 0) / ratings * 10) / 10 : 0,
+        courses: rows,
     }
+}
+
+export async function getAuthorAnalytics(): Promise<ActionResult<AuthorAnalyticsSummary>> {
+    return academyAction('analytics.teaching', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        const { data, error } = await client.rpc('academy_teaching_courses')
+        assertDatabaseResult(error)
+        const courses = (data ?? []) as Array<ReportCourse & { can_lead?: boolean; can_manage_assigned_runs?: boolean }>
+        const monitored = courses.filter(course => course.can_lead || course.can_manage_assigned_runs)
+        return summarize((await readReport(client, monitored)).rows)
+    })
+}
+
+export async function getAdminLmsAnalytics(): Promise<ActionResult<AdminLmsAnalytics>> {
+    return academyAction('analytics.admin', async () => {
+        const { client } = await requireAcademyContext({ admin: true })
+        const courses = await readRows<ReportCourse>(client, 'courses', 'id,title,status,published_version_id,legacy_review_required')
+        const report = await readReport(client, courses)
+        const summary = summarize(report.rows)
+        const publishedVersions = new Set(report.versions.filter(version => version.status === 'published').map(version => version.id))
+        const months = Array.from({ length: 12 }, (_, index) => {
+            const now = new Date()
+            const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11 + index, 1)).toISOString().slice(0, 7)
+            return { month, count: report.enrollments.filter(enrollment => enrollment.enrolled_at.slice(0, 7) === month).length }
+        })
+        return {
+            total_published_courses: courses.filter(course => !course.legacy_review_required && course.status !== 'archived' && !!course.published_version_id && publishedVersions.has(course.published_version_id)).length,
+            total_pending_review: report.versions.filter(version => version.status === 'pending_review').length,
+            total_enrollments: summary.total_enrollments,
+            total_completions: summary.total_completions,
+            overall_completion_rate: summary.total_enrollments ? Math.round(summary.total_completions / summary.total_enrollments * 100) : 0,
+            average_rating_all: summary.average_rating,
+            top_courses: report.rows.slice(0, 10).map(course => ({ course_id: course.course_id, title: course.course_title, enrollments: course.enrollments_count, completions: course.completions_count, completion_rate: course.completion_rate, avg_rating: course.avg_rating })),
+            monthly_enrollments: months,
+        }
+    })
 }
