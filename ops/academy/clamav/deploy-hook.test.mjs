@@ -17,6 +17,16 @@ test('owner is stable for a run, different for retry and commit; only main hoste
     }
 });
 
+test('workflow_run deploy (audyt O01) owns the lock by TARGET_SHA, not by the current main HEAD', () => {
+    const run = { ...env, GITHUB_EVENT_NAME: 'workflow_run', GITHUB_SHA: 'c'.repeat(40), TARGET_SHA: 'd'.repeat(40) };
+    const owner = requestFor('pause', [], run).owner;
+    assert.equal(owner.sha, 'd'.repeat(40));
+    assert.deepEqual(requestFor('resume', [], run).owner, owner);
+    assert.throws(() => requestFor('pause', [], { ...run, TARGET_SHA: undefined }));
+    assert.throws(() => requestFor('pause', [], { ...run, TARGET_SHA: 'x' }));
+    assert.equal(requestFor('pause', [], { ...env, TARGET_SHA: 'd'.repeat(40) }).owner.sha, 'a'.repeat(40));
+});
+
 test('requests preserve exact trigger and deployment identity and reject injection or nonterminal statuses', () => {
     assert.equal(requestFor('bind', ['1-2', 'deployment-abc'], env).triggerNonce, '1-2');
     assert.equal(requestFor('terminal', ['deployment-abc', 'failed'], env).status, 'failed');
