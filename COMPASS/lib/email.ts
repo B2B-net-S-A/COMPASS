@@ -1097,21 +1097,20 @@ export async function sendExitInterviewInvitation(
     scheduledFor: string,
     interviewId: string,
 ): Promise<{ success: boolean }> {
-    const subject = `[COMPASS] Exit interview — zapraszamy do wypełnienia ankiety`
-    const link = `${COMPASS_APP_URL}/internal/lifecycle/exit/wypelnij`
+    // Audyt 2026-09-22 (HF-16) — ankiety exit w aplikacji już nie ma (strona
+    // /internal/lifecycle/exit/wypelnij mówi „nie musisz wypełniać żadnej ankiety"),
+    // a proces prowadzi TCM. Mail informuje o rozmowie, bez CTA do pustej strony.
+    const subject = `[COMPASS] Offboarding — rozmowa wyjściowa`
     const bodyHtml = `
         <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
         <p style="color: #d1d5db; font-size: 14px;">
-            Dziękujemy za czas spędzony w B2B Network. Przed Twoim odejściem chcielibyśmy poprosić o wypełnienie krótkiej ankiety exit interview — Twoja szczera opinia pomoże nam stać się lepszą firmą.
+            Dziękujemy za czas spędzony w B2B Network. Przed Twoim odejściem chcielibyśmy porozmawiać o Twoich doświadczeniach — Twoja szczera opinia pomoże nam stać się lepszą firmą.
         </p>
         <p style="color: #d1d5db; font-size: 14px;">
-            Sugerowany termin wypełnienia: <strong>${scheduledFor}</strong>
+            Planowany termin rozmowy wyjściowej: <strong>${scheduledFor}</strong>. Talent Community Manager skontaktuje się z Tobą, żeby potwierdzić szczegóły.
         </p>
         <p style="color: #d1d5db; font-size: 14px;">
-            Możesz wypełnić ankietę z imienia i nazwiska <strong>lub anonimowo</strong> (checkbox na końcu formularza).
-        </p>
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="${link}" style="background: #3A8DFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij exit interview</a>
+            Nie musisz niczego wypełniać w aplikacji — formalnościami offboardingu zajmie się dział. W razie pytań skontaktuj się z Talent Community Managerem.
         </p>
         <p style="color: #6b7280; font-size: 11px;">Interview ID: ${interviewId}</p>
     `
@@ -1142,15 +1141,15 @@ export async function sendExitInterviewReminder(
     recipientName: string,
     terminationDate: string,
 ): Promise<{ success: boolean }> {
-    const subject = `[COMPASS] Przypomnienie: wypełnij exit interview`
-    const link = `${COMPASS_APP_URL}/internal/lifecycle/exit/wypelnij`
+    // HF-16 — jak zaproszenie: informacja o rozmowie z TCM, bez CTA do nieistniejącej ankiety.
+    const subject = `[COMPASS] Przypomnienie: rozmowa wyjściowa`
     const bodyHtml = `
         <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
         <p style="color: #d1d5db; font-size: 14px;">
-            Twoja data zakończenia współpracy: <strong>${terminationDate}</strong>. Nie wypełniłaś/eś jeszcze exit interview — to ostatnia szansa, by podzielić się opinią.
+            Twoja data zakończenia współpracy: <strong>${terminationDate}</strong>. Przed odejściem Talent Community Manager chciałby porozmawiać z Tobą o Twoich doświadczeniach.
         </p>
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="${link}" style="background: #f59e0b; color: #0a0a0a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Wypełnij teraz</a>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Jeśli nie macie jeszcze ustalonego terminu rozmowy, skontaktuj się z Talent Community Managerem. Nie musisz niczego wypełniać w aplikacji.
         </p>
     `
     try {

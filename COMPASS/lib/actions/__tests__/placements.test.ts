@@ -207,7 +207,7 @@ function makeQuery(table: string) {
     return query
 }
 
-import { confirmPlacementHours, deletePlacementBonus } from '@/lib/actions/placements'
+import { cancelPlacement, confirmPlacementHours, deletePlacementBonus } from '@/lib/actions/placements'
 import { UNEXPECTED_ERROR_PL } from '@/lib/actions/action-result'
 
 async function expectActionSuccess(resultPromise: ReturnType<typeof confirmPlacementHours>) {
@@ -738,5 +738,44 @@ describe('deletePlacementBonus', () => {
             }),
         )
         expect(mockSendBonusCancelled).toHaveBeenCalledOnce()
+    })
+})
+
+// Audyt 2026-09-22 (HF-19) — anulowanie przegrywa z równoległym potwierdzeniem 168h.
+describe('cancelPlacement', () => {
+    it('anuluje warunkowo (status upcoming/started) i loguje audyt', async () => {
+        await cancelPlacement('placement-1', 'Kandydat zrezygnował')
+
+        expect(dbState.placementUpdateStatusFilter).toEqual(['upcoming', 'started'])
+        expect(dbState.placementPatch).toMatchObject({
+            status: 'cancelled',
+            cancel_reason: 'Kandydat zrezygnował',
+        })
+        expect(mockLogAudit).toHaveBeenCalledWith(
+            'manager-1',
+            'PLACEMENT_CANCELLED',
+            expect.objectContaining({ placement_id: 'placement-1' }),
+        )
+    })
+
+    it('przegrany wyścig (0 wierszy) → błąd, bez audytu anulowania', async () => {
+        dbState.placementUpdateMatched = false
+
+        await expect(cancelPlacement('placement-1', 'Kandydat zrezygnował')).rejects.toThrow(
+            /zmienił status w międzyczasie/,
+        )
+        expect(mockLogAudit).not.toHaveBeenCalled()
+    })
+
+    it('błąd bazy przy zapisie → błąd zamiast fałszywego sukcesu', async () => {
+        dbState.placementUpdateError = { message: 'db down' }
+
+        await expect(cancelPlacement('placement-1', 'Powód')).rejects.toThrow(/db down/)
+        expect(mockLogAudit).not.toHaveBeenCalled()
+    })
+
+    it('pusty powód jest odrzucony przed zapisem', async () => {
+        await expect(cancelPlacement('placement-1', '   ')).rejects.toThrow(/powód/i)
+        expect(dbState.placementPatch).toBeNull()
     })
 })

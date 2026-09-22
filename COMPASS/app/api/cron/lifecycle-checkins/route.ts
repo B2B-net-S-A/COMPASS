@@ -40,16 +40,20 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_CHECKINS_RUN', asyn
     ]
 
     let scanned = 0
+    let attempted = 0
     let emailed = 0
     const errors: string[] = []
 
     for (const w of dayWindows) {
         const { data: progressRows, error } = await admin
             .from('onboarding_progress')
-            .select(`id, user_id, started_at, ${w.field}, user:profiles!user_id(email, full_name)`)
+            .select(`id, user_id, started_at, ${w.field}, user:profiles!user_id(email, full_name, is_external, employment_status)`)
             .gte('started_at', w.from)
             .lt('started_at', w.to)
             .is('completed_at', null)
+            // Audyt 2026-09-22 (HF-15) — anulowany onboarding ma `completed_at IS NULL`,
+            // więc bez tego filtra dostawał prośby o check-in zamkniętego procesu.
+            .is('cancelled_at', null)
             .is(w.field, null)
 
         if (error) {
@@ -58,9 +62,23 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_CHECKINS_RUN', asyn
         }
         scanned += progressRows?.length ?? 0
 
-        for (const row of (progressRows ?? []) as Array<{ id: string; user_id: string; user: { email: string | null; full_name: string | null } | null }>) {
+        for (const row of (progressRows ?? []) as Array<{
+            id: string
+            user_id: string
+            user: {
+                email: string | null
+                full_name: string | null
+                is_external: boolean | null
+                employment_status: string | null
+            } | null
+        }>) {
             const email = row.user?.email
             if (!email) continue
+            // HF-15 — check-in wymaga zalogowania: pracownik zewnętrzny nie ma konta,
+            // a zarchiwizowany (Phase 43) nie może się już zalogować.
+            if (row.user?.is_external) continue
+            if (row.user?.employment_status === 'exited') continue
+            attempted++
             try {
                 const result = await sendOnboardingDayCheckin(
                     email,
@@ -68,7 +86,9 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_CHECKINS_RUN', asyn
                     row.id,
                     w.day,
                 )
+                // INT-11 — sender zwraca `{success:false}` zamiast rzucać; to też porażka.
                 if (result.success) emailed++
+                else errors.push(`day=${w.day} user=${row.user_id}: wysyłka nieudana`)
             } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : 'unknown'
                 errors.push(`day=${w.day} user=${row.user_id}: ${msg}`)
@@ -77,5 +97,11 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_CHECKINS_RUN', asyn
         }
     }
 
-    return NextResponse.json({ ok: true, scanned, emailed, errors: errors.slice(0, 10) })
+    // INT-11 — błąd zapytania albo nieudana wysyłka nie może raportować `ok: true`.
+    // HTTP 500, gdy nic nie wyszło, a coś padło — heartbeat/scheduler widzą porażkę.
+    const ok = errors.length === 0
+    return NextResponse.json(
+        { ok, scanned, attempted, emailed, failed: errors.length, errors: errors.slice(0, 10) },
+        { status: !ok && emailed === 0 ? 500 : 200 },
+    )
 }))

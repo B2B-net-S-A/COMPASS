@@ -1181,23 +1181,37 @@ export async function deletePlacementBonus(input: {
 /** Cancel a placement (only before bonuses are generated). */
 export async function cancelPlacement(placementId: string, reason: string): Promise<void> {
     const ctx = await requireBonusProposerAction()
+    const trimmedReason = (reason ?? '').trim()
+    if (!trimmedReason) throw new ExpectedError('Podaj powód anulowania placementu.')
     const admin = createServiceClient()
     const { data: p } = await admin.from('placements').select('status').eq('id', placementId).single()
     if (!p) throw new Error('Placement nie znaleziony.')
     if ((p as { status: string }).status === 'bonus_confirmed') {
         throw new Error('Nie można anulować — premie zostały już wygenerowane.')
     }
-    await admin
+    // Audyt 2026-09-22 (HF-19) — warunkowy zapis, lustro confirmPlacementHours:
+    // gdy ktoś równolegle potwierdził 168h i wygenerował premie, anulowanie przegrywa
+    // zamiast zostawić anulowany placement z aktywnymi premiami.
+    const { data: cancelled, error: cancelErr } = await admin
         .from('placements')
         .update({
             status: 'cancelled',
             cancelled_at: new Date().toISOString(),
             cancelled_by: ctx.userId,
-            cancel_reason: reason.trim() || null,
+            cancel_reason: trimmedReason,
             updated_at: new Date().toISOString(),
         })
         .eq('id', placementId)
-    await logAudit(ctx.userId, 'PLACEMENT_CANCELLED', { placement_id: placementId, reason })
+        .in('status', ['upcoming', 'started'])
+        .select('id')
+        .maybeSingle()
+    if (cancelErr) throw new Error(`Nie udało się anulować placementu: ${cancelErr.message}`)
+    if (!cancelled) {
+        throw new ExpectedError(
+            'Placement zmienił status w międzyczasie (premie wygenerowane lub już anulowany). Odśwież listę.',
+        )
+    }
+    await logAudit(ctx.userId, 'PLACEMENT_CANCELLED', { placement_id: placementId, reason: trimmedReason })
     revalidatePath('/internal/admin')
     revalidatePath('/internal/placements')
 }

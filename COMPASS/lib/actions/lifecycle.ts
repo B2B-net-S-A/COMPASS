@@ -12,6 +12,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { revokeAccountAccess } from '@/lib/auth/account-access'
+import { ExpectedError } from '@/lib/actions/expected-error'
 import {
     sendExitInterviewInvitation,
     sendOffboardingChecklistToManager,
@@ -812,6 +813,9 @@ export async function completeOnboardingTask(formData: FormData): Promise<void> 
     if (taskErr || !task) throw new Error('Task nie znaleziony lub brak dostępu.')
 
     let uploadedPath: string | null = task.file_path
+    // Audyt 2026-09-22 (HF-18) — hash trafia do zapisu wyłącznie przy NOWYM pliku.
+    // Wcześniej startował jako null i zawsze szedł do UPDATE, więc ponowne oznaczenie
+    // zadania (np. ze starej karty) kasowało SHA-256 pliku, który nadal leży w bucket.
     let fileHash: string | null = null
 
     if (task.requires_file && file && file.size > 0) {
@@ -847,7 +851,7 @@ export async function completeOnboardingTask(formData: FormData): Promise<void> 
             completed_by: ctx.userId,
             notes,
             file_path: uploadedPath,
-            file_hash: fileHash,
+            ...(fileHash ? { file_hash: fileHash } : {}),
         })
         .eq('id', taskId)
     if (updateErr) {
@@ -943,27 +947,61 @@ export async function completeOnboarding(progressId: string): Promise<void> {
         throw new Error(`Pozostało ${incompleteRequired.length} wymaganych zadań do ukończenia.`)
     }
 
-    const { data: progress } = await supabase
+    const { data: progress, error: progressErr } = await supabase
         .from('onboarding_progress')
-        .select('user_id')
+        .select('user_id, completed_at, cancelled_at')
         .eq('id', progressId)
         .single()
-    if (!progress) throw new Error('Onboarding nie znaleziony.')
+    if (progressErr || !progress) throw new Error('Onboarding nie znaleziony.')
+    // Audyt 2026-09-22 (HF-17) — stara otwarta karta nie może „zakończyć" procesu,
+    // który ktoś w międzyczasie anulował albo już zakończył.
+    if (progress.cancelled_at) throw new ExpectedError('Onboarding został anulowany — nie można go zakończyć.')
+    if (progress.completed_at) throw new ExpectedError('Onboarding jest już zakończony.')
 
     const completedAt = new Date().toISOString()
-    await supabase
+    // Warunkowy zapis: wyścig z anulowaniem/drugim zakończeniem przegrywa tutaj,
+    // zanim zmieni się status pracownika.
+    const { data: completed, error: completeErr } = await supabase
         .from('onboarding_progress')
         .update({ completed_at: completedAt })
         .eq('id', progressId)
+        .is('completed_at', null)
+        .is('cancelled_at', null)
+        .select('id')
+    if (completeErr) {
+        logCompat.error('completeOnboarding progress update error:', completeErr)
+        throw new Error('Nie udało się zakończyć onboardingu.')
+    }
+    if (!completed || completed.length === 0) {
+        throw new ExpectedError('Onboarding został w międzyczasie anulowany lub zakończony. Odśwież stronę.')
+    }
 
-    await supabase.from('profiles').update({ employment_status: 'active' }).eq('id', progress.user_id)
+    // Tylko onboarding → active. Pracownik, którego w międzyczasie przeniesiono do
+    // offboardingu (albo zarchiwizowano), nie może tą ścieżką wrócić do `active`.
+    const { error: profileErr } = await supabase
+        .from('profiles')
+        .update({ employment_status: 'active' })
+        .eq('id', progress.user_id)
+        .eq('employment_status', 'onboarding')
+    if (profileErr) {
+        logCompat.error('completeOnboarding profile update error:', profileErr)
+        // Cofamy zakończenie, żeby ponowienie było możliwe i stany się nie rozjechały.
+        const { error: revertErr } = await supabase
+            .from('onboarding_progress')
+            .update({ completed_at: null })
+            .eq('id', progressId)
+            .eq('completed_at', completedAt)
+        if (revertErr) logCompat.error('completeOnboarding revert error:', revertErr)
+        throw new Error('Nie udało się zaktualizować statusu pracownika — onboarding nie został zakończony.')
+    }
 
-    await supabase.from('lifecycle_events').insert({
+    const { error: eventErr } = await supabase.from('lifecycle_events').insert({
         user_id: progress.user_id,
         event_type: 'onboarding_completed',
         metadata: { progress_id: progressId, completed_at: completedAt },
         created_by: ctx.userId,
     })
+    if (eventErr) logCompat.error('completeOnboarding lifecycle event insert error:', eventErr)
 
     await logAudit(ctx.userId, 'ONBOARDING_COMPLETED', { progress_id: progressId, user_id: progress.user_id })
 }
@@ -1125,7 +1163,12 @@ export async function scheduleExitInterview(
                 scheduledForLabel,
                 interviewId,
             )
-                .then(async () => {
+                .then(async (sent) => {
+                    // HF-16 — `{success:false}` to nieudana wysyłka, nie powód do stempla.
+                    if (!sent.success) {
+                        logCompat.error('sendExitInterviewInvitation returned success=false:', interviewId)
+                        return
+                    }
                     await supabase
                         .from('exit_interviews')
                         .update({ invitation_sent_at: new Date().toISOString(), invitation_sent_by: ctx.userId })
@@ -1337,17 +1380,21 @@ export async function sendExitInvitationNow(interviewId: string): Promise<void> 
 
     const scheduledForLabel = interview.scheduled_for ?? new Date().toISOString().slice(0, 10)
 
-    await sendExitInterviewInvitation(
+    const sent = await sendExitInterviewInvitation(
         contact.email,
         contact.full_name ?? contact.email,
         scheduledForLabel,
         interviewId,
     )
+    // Audyt 2026-09-22 (HF-16) — sender zwraca `{success:false}` zamiast rzucać;
+    // stempel „wysłano" tylko przy faktycznej wysyłce.
+    if (!sent.success) throw new Error('Nie udało się wysłać zaproszenia. Spróbuj ponownie.')
 
-    await supabase
+    const { error: stampErr } = await supabase
         .from('exit_interviews')
         .update({ invitation_sent_at: new Date().toISOString(), invitation_sent_by: ctx.userId })
         .eq('id', interviewId)
+    if (stampErr) logCompat.error('sendExitInvitationNow stamp error:', stampErr)
 
     await logAudit(ctx.userId, 'EXIT_INVITATION_EMAIL_SENT', {
         interview_id: interviewId,
@@ -1659,6 +1706,54 @@ export async function cancelOnboarding(progressId: string, reason: string | null
     await logAudit(ctx.userId, 'ONBOARDING_CANCELLED', { progress_id: progressId, user_id: progress.user_id, reason })
 }
 
+/**
+ * HF-13 — lustro rozstrzygania szablonu w RPC `start_onboarding_for_user`:
+ * jawny szablon musi istnieć i nie być zarchiwizowany; bez jawnego — domyślny
+ * aktywny szablon dla roli pracownika. Zwraca id szablonu albo rzuca bez zmian w bazie.
+ */
+async function resolveActiveOnboardingTemplate(
+    supabase: ReturnType<typeof createServiceClient>,
+    userId: string,
+    templateId: string | null,
+): Promise<string> {
+    if (templateId) {
+        const { data, error } = await supabase
+            .from('onboarding_templates')
+            .select('id')
+            .eq('id', templateId)
+            .eq('is_archived', false)
+            .maybeSingle()
+        if (error) throw new Error('Nie udało się sprawdzić szablonu onboardingu.')
+        if (!data) {
+            throw new ExpectedError(
+                'Szablon onboardingu jest zarchiwizowany lub nie istnieje — wybierz aktywny szablon.',
+            )
+        }
+        return data.id as string
+    }
+    const { data: profile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle()
+    if (profileErr || !profile?.role) throw new Error('Nie znaleziono profilu pracownika.')
+    const { data, error } = await supabase
+        .from('onboarding_templates')
+        .select('id')
+        .eq('target_role', profile.role)
+        .eq('is_default', true)
+        .eq('is_archived', false)
+        .limit(1)
+        .maybeSingle()
+    if (error) throw new Error('Nie udało się sprawdzić szablonu onboardingu.')
+    if (!data) {
+        throw new ExpectedError(
+            'Brak aktywnego domyślnego szablonu onboardingu dla roli pracownika — wybierz szablon.',
+        )
+    }
+    return data.id as string
+}
+
 export async function restartOnboarding(progressId: string, newTemplateId?: string | null): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
     const supabase = createServiceClient()
@@ -1670,9 +1765,19 @@ export async function restartOnboarding(progressId: string, newTemplateId?: stri
         .single()
     if (!progress) throw new Error('Onboarding nie znaleziony.')
 
+    // Audyt 2026-09-22 (HF-13) — DELETE poniżej kaskadowo usuwa zadania, pliki
+    // i check-iny, a RPC odrzuca nieaktywny szablon. Sprawdzamy szablon tą samą
+    // regułą co RPC ZANIM cokolwiek zmienimy — inaczej restart z zarchiwizowanego
+    // szablonu kasował stary onboarding i nie zakładał nowego.
+    const templateId = await resolveActiveOnboardingTemplate(
+        supabase,
+        progress.user_id,
+        newTemplateId ?? progress.template_id,
+    )
+
     // First mark current onboarding as cancelled (if still active)
     if (!progress.cancelled_at && !progress.completed_at) {
-        await supabase
+        const { error: cancelErr } = await supabase
             .from('onboarding_progress')
             .update({
                 cancelled_at: new Date().toISOString(),
@@ -1680,6 +1785,10 @@ export async function restartOnboarding(progressId: string, newTemplateId?: stri
                 cancellation_reason: 'restart',
             })
             .eq('id', progressId)
+        if (cancelErr) {
+            logCompat.error('restartOnboarding cancel error:', cancelErr)
+            throw new Error('Nie udało się anulować bieżącego onboardingu — restart przerwany.')
+        }
     }
 
     // Delete old progress entirely so UNIQUE user_id allows new one
@@ -1692,7 +1801,7 @@ export async function restartOnboarding(progressId: string, newTemplateId?: stri
     // Start new onboarding
     const { data, error } = await supabase.rpc('start_onboarding_for_user', {
         p_user_id: progress.user_id,
-        p_template_id: newTemplateId ?? progress.template_id,
+        p_template_id: templateId,
         p_actor_id: ctx.userId,
     })
     if (error || !data) {

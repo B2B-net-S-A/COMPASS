@@ -249,3 +249,105 @@ function addDays(isoDate: string, days: number): string {
     d.setUTCDate(d.getUTCDate() + days)
     return d.toISOString().slice(0, 10) // YYYY-MM-DD
 }
+
+export interface UpdateLeaveEventInput {
+    userEmail: string
+    eventId: string
+    /** ISO date (YYYY-MM-DD), inclusive. */
+    startDate: string
+    /** ISO date (YYYY-MM-DD), inclusive. */
+    endDate: string
+    /** DB leave_type enum value — the subject follows a type change. */
+    leaveType: string
+}
+
+export interface UpdateLeaveEventResult {
+    success: boolean
+    error?: string
+    skipped?: boolean
+    /** Graph answered 404 — the event is gone (e.g. deleted by the user in Outlook). */
+    notFound?: boolean
+}
+
+/**
+ * Audyt 2026-09-22 (HF-07) — move an existing leave event after the leave's dates
+ * (or type) were edited. Same all-day shape as {@link createLeaveEvent}; PATCH keeps
+ * the event id stable, so the id persisted in `leave_requests.outlook_event_id` stays
+ * valid for a later delete.
+ */
+export async function updateLeaveEvent(
+    input: UpdateLeaveEventInput,
+): Promise<UpdateLeaveEventResult> {
+    if (!input.eventId) {
+        return { success: true, skipped: true }
+    }
+    if (!process.env.AZURE_TENANT_ID || !process.env.AZURE_CLIENT_ID || !process.env.AZURE_CLIENT_SECRET) {
+        return { success: true, skipped: true }
+    }
+
+    const typeLabel = HR_LEAVE_TYPE_LABEL[input.leaveType] ?? input.leaveType
+    const body = {
+        subject: `[Compass] ${typeLabel}`,
+        isAllDay: true,
+        start: { dateTime: `${input.startDate}T00:00:00`, timeZone: TIMEZONE },
+        end: { dateTime: `${addDays(input.endDate, 1)}T00:00:00`, timeZone: TIMEZONE },
+        showAs: 'oof' as const,
+    }
+
+    let client
+    try {
+        client = await getGraphClient()
+    } catch (err) {
+        return {
+            success: false,
+            error: err instanceof Error ? err.message : 'graph_client_setup_failed',
+        }
+    }
+
+    let lastErr: unknown = null
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            await client
+                .api(`/users/${encodeURIComponent(input.userEmail)}/events/${input.eventId}`)
+                .patch(body)
+            return { success: true }
+        } catch (err) {
+            lastErr = err
+            const { statusCode, retryAfterMs } = extractGraphErrorInfo(err)
+
+            if (statusCode === 404) {
+                logger.info({
+                    event: 'calendar.graph.update_not_found',
+                    eventId: input.eventId,
+                })
+                return { success: false, notFound: true, error: 'event_not_found' }
+            }
+
+            const retryable = isRetryableGraphStatus(statusCode)
+            if (!retryable || attempt >= MAX_ATTEMPTS) break
+
+            const backoff = retryAfterMs ?? BASE_BACKOFF_MS * Math.pow(2, attempt - 1)
+            logger.warn({
+                event: 'calendar.graph.update_retry',
+                attempt,
+                statusCode,
+                backoffMs: backoff,
+                eventId: input.eventId,
+            })
+            await sleep(backoff)
+        }
+    }
+
+    const message = lastErr instanceof Error ? lastErr.message : 'unknown_graph_error'
+    logger.error({
+        event: 'calendar.graph.update_failed',
+        error: message,
+        eventId: input.eventId,
+    })
+    Sentry.captureMessage('calendar_event_update_failed', {
+        level: 'warning',
+        tags: { kind: 'graph_calendar_update' },
+        extra: { eventId: input.eventId, error: message },
+    })
+    return { success: false, error: message }
+}

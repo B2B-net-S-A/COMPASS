@@ -21,7 +21,7 @@ import {
     sendSubstituteAssigned,
     sendSubstituteCancelled,
 } from '@/lib/email'
-import { createLeaveEvent, deleteLeaveEvent } from '@/lib/calendar/graph-events'
+import { createLeaveEvent, deleteLeaveEvent, updateLeaveEvent } from '@/lib/calendar/graph-events'
 import {
     disableOutOfOffice,
     setOutOfOffice,
@@ -599,6 +599,45 @@ export async function getLeaveProofSignedUrl(leaveId: string): Promise<ActionRes
     })
 }
 
+// ─── Overlap check (createLeaveRequest + updateTeamLeave) ─────────────────────
+
+interface OverlappingLeave {
+    id: string
+    start_date: string
+    end_date: string
+    status: LeaveStatus
+}
+
+/**
+ * Pierwszy aktywny (approved/pending) wniosek pracownika nakładający się na zakres
+ * `[start, end]`, albo null. Audyt 2026-09-22 (HF-06): wcześniej zapytanie żyło tylko
+ * w createLeaveRequest, więc edycją (updateTeamLeave) dało się przesunąć urlop na
+ * daty innego — pula zjadana podwójnie, a anulowanie jednego kasowało attendance
+ * drugiego (sprzątanie idzie po ZAKRESIE DAT). `excludeId` = edytowany wniosek.
+ */
+async function findOverlappingLeave(
+    userId: string,
+    startDate: string,
+    endDate: string,
+    excludeId?: string,
+): Promise<OverlappingLeave | null> {
+    // Service client: wołający już ustalił, że wolno mu działać na wnioskach `userId`
+    // (własne — createLeaveRequest, zespół — updateTeamLeave). Klient sesyjny
+    // widziałby przez RLS tylko własne wnioski, więc ścieżka managera nic by nie znalazła.
+    let query = createServiceClient()
+        .from('leave_requests')
+        .select('id, start_date, end_date, status')
+        .eq('user_id', userId)
+        .in('status', ['approved', 'pending'])
+        .gte('end_date', startDate)
+        .lte('start_date', endDate)
+    if (excludeId) query = query.neq('id', excludeId)
+    const { data, error } = await query
+    if (error) throw new Error(`Błąd sprawdzania kolizji urlopów: ${error.message}`)
+    const rows = (data ?? []) as OverlappingLeave[]
+    return rows[0] ?? null
+}
+
 // ─── createLeaveRequest ──────────────────────────────────────────────────────
 
 export async function createLeaveRequest(input: CreateLeaveInput): Promise<ActionResult<{ id: string; autoApproved: boolean }>> {
@@ -624,19 +663,15 @@ export async function createLeaveRequest(input: CreateLeaveInput): Promise<Actio
         // dzień zjadały pulę podwójnie, a przy anulowaniu jednego sprzątanie attendance
         // (kasujące po ZAKRESIE DAT) kasowało też dni drugiego. Bierzemy też `pending` —
         // dubel czekający na akceptację jest dokładnie tym, co chcemy złapać u wnioskodawcy.
-        const { data: overlapping, error: overlapErr } = await supabase
-            .from('leave_requests')
-            .select('start_date, end_date, status')
-            .eq('user_id', ctx.userId)
-            .in('status', ['approved', 'pending'])
-            .gte('end_date', input.startDate)
-            .lte('start_date', input.endDate)
-        if (overlapErr) throw new Error(`Błąd sprawdzania kolizji urlopów: ${overlapErr.message}`)
-        if (overlapping && overlapping.length > 0) {
-            const first = overlapping[0] as { start_date: string; end_date: string; status: string }
+        const overlapping = await findOverlappingLeave(
+            ctx.userId,
+            input.startDate,
+            input.endDate,
+        )
+        if (overlapping) {
             throw new ExpectedError(
-                `Masz już ${first.status === 'approved' ? 'zatwierdzony' : 'oczekujący'} wniosek `
-                    + `nakładający się na ten zakres (${first.start_date} – ${first.end_date}).`,
+                `Masz już ${overlapping.status === 'approved' ? 'zatwierdzony' : 'oczekujący'} wniosek `
+                    + `nakładający się na ten zakres (${overlapping.start_date} – ${overlapping.end_date}).`,
             )
         }
 
@@ -2092,6 +2127,111 @@ export async function cancelTeamLeave(id: string): Promise<ActionResult<void>> {
     })
 }
 
+/**
+ * Audyt 2026-09-22 (HF-07) — po edycji zatwierdzonego urlopu doprowadź Outlooka do
+ * nowych dat: PATCH istniejącego wydarzenia i ponowne ustawienie OOF (tylko gdy
+ * Compass je ustawił — `graph_oof_set`). Błędy lądują w `graph_sync_error`, widocznym
+ * w panelu synchronizacji, skąd admin może ponowić.
+ */
+async function resyncLeaveGraphAfterEdit(args: {
+    admin: ReturnType<typeof createServiceClient>
+    leaveId: string
+    actorUserId: string
+    userId: string
+    eventId: string | null
+    oofWasSet: boolean
+    refreshEvent: boolean
+    refreshOof: boolean
+    startDate: string
+    endDate: string
+    leaveType: LeaveType
+    halfDay: 'morning' | 'afternoon' | null
+    substituteId: string | null
+    oofInternalMessage: string | null
+    oofExternalMessage: string | null
+}): Promise<void> {
+    const needsEvent = args.refreshEvent && Boolean(args.eventId)
+    const needsOof = args.refreshOof && args.oofWasSet
+    if (!needsEvent && !needsOof) return
+
+    const contact = await fetchUserContact(args.userId)
+    if (!contact?.email) return
+    const { admin } = args
+
+    if (needsEvent && args.eventId) {
+        const res = await updateLeaveEvent({
+            userEmail: contact.email,
+            eventId: args.eventId,
+            startDate: args.startDate,
+            endDate: args.endDate,
+            leaveType: args.leaveType,
+        })
+        if (!res.success) {
+            // Wydarzenie zniknęło z kalendarza — zapominamy id, żeby ponowienie
+            // synchronizacji (retryLeaveGraphSync) mogło założyć je od nowa.
+            const { error } = await admin
+                .from('leave_requests')
+                .update({
+                    graph_sync_error: `calendar: ${res.error ?? 'update failed'}`,
+                    ...(res.notFound ? { outlook_event_id: null } : {}),
+                } as never)
+                .eq('id', args.leaveId)
+            if (error) logCompat.error('[updateTeamLeave] graph_sync_error write failed:', error)
+        }
+    }
+
+    if (needsOof) {
+        if (
+            !shouldSetOofForLeave({
+                startDate: args.startDate,
+                endDate: args.endDate,
+                halfDay: args.halfDay,
+            })
+        ) {
+            // Nowy zakres to pojedyncze pół dnia — takim urlopom OOF nie ustawiamy.
+            // Wyłączenie istniejącego zostawiamy panelowi synchronizacji.
+            logCompat.error('[updateTeamLeave] leave shrunk to a half-day; OOF left unchanged:', args.leaveId)
+            return
+        }
+        let substituteName: string | null = null
+        let substituteEmail: string | null = null
+        if (args.substituteId) {
+            const { data: sub } = await admin
+                .from('profiles')
+                .select('full_name, email')
+                .eq('id', args.substituteId)
+                .maybeSingle<{ full_name: string | null; email: string }>()
+            if (sub) {
+                substituteName = sub.full_name ?? sub.email
+                substituteEmail = sub.email
+            }
+        }
+        const defaults = await buildOofDefaultsFor({
+            admin,
+            userId: args.userId,
+            employeeName: contact.full_name ?? contact.email,
+            endDate: args.endDate,
+            substituteName,
+            substituteEmail,
+        })
+        const result = await setOutOfOffice({
+            userEmail: contact.email,
+            startDate: args.startDate,
+            endDate: args.endDate,
+            internalReply: args.oofInternalMessage?.trim() || defaults.internal,
+            externalReply: args.oofExternalMessage?.trim() || defaults.external,
+        })
+        await persistOofResult({
+            admin,
+            leaveRequestId: args.leaveId,
+            actorUserId: args.actorUserId,
+            targetUserId: args.userId,
+            result,
+            auditExtra: { via: 'edit' },
+        })
+    }
+}
+
 export interface UpdateTeamLeaveInput {
     id: string
     leaveType?: LeaveType
@@ -2118,7 +2258,7 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
         const { data: row, error } = await admin
             .from('leave_requests')
             .select(
-                'id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id, outlook_forward_rule_id, forward_mail_enabled',
+                'id, user_id, status, start_date, end_date, leave_type, half_day, note, substitute_id, outlook_forward_rule_id, forward_mail_enabled, outlook_event_id, graph_oof_set, oof_internal_message, oof_external_message',
             )
             .eq('id', input.id)
             .single<{
@@ -2133,6 +2273,10 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
                 substitute_id: string | null
                 outlook_forward_rule_id: string | null
                 forward_mail_enabled: boolean
+                outlook_event_id: string | null
+                graph_oof_set: boolean | null
+                oof_internal_message: string | null
+                oof_external_message: string | null
             }>()
         if (error || !row) throw new ExpectedError('Wniosek nie istnieje.')
         if (row.status !== 'pending' && row.status !== 'approved') {
@@ -2192,14 +2336,23 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
             newEnd !== row.end_date ||
             newType !== row.leave_type ||
             newHalfDay !== row.half_day
+        const datesChanged = newStart !== row.start_date || newEnd !== row.end_date
 
-        // Re-sync attendance: remove the old span first (reads the current row), then
-        // write the new values, then recreate for the new span/type (approved only —
-        // pending leaves have no attendance rows yet).
-        if (spanChanged) {
-            await syncAttendanceFromLeave(input.id, row.user_id, 'remove').catch((e) =>
-                logCompat.error('[updateTeamLeave] attendance remove failed:', e),
+        // Audyt 2026-09-22 (HF-06) — ta sama kontrola nakładania co przy składaniu
+        // wniosku, z wyłączeniem edytowanego. Przed jakimkolwiek zapisem.
+        if (datesChanged) {
+            const overlapping = await findOverlappingLeave(
+                row.user_id,
+                newStart,
+                newEnd,
+                input.id,
             )
+            if (overlapping) {
+                throw new ExpectedError(
+                    `Pracownik ma już ${overlapping.status === 'approved' ? 'zatwierdzony' : 'oczekujący'} wniosek `
+                        + `nakładający się na ten zakres (${overlapping.start_date} – ${overlapping.end_date}).`,
+                )
+            }
         }
 
         // Audyt 2026-08 — podział płatny/bezpłatny (Faza 30) był zamrożony na wartościach
@@ -2242,6 +2395,18 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
             unpaidDays = split.unpaid
         }
 
+        // Re-sync attendance: remove the old span (reads the current row, so it must run
+        // before the UPDATE below), then write the new values, then recreate for the new
+        // span/type (approved only — pending leaves have no attendance rows yet).
+        // Audyt 2026-09-22 (HF-05) — usunięcie idzie DOPIERO po całej walidacji (kolizje,
+        // podział puli, limit UoP). Wcześniej stało przed nią, więc odrzucona edycja
+        // zostawiała wniosek ze starymi datami, ale bez attendance i płatnych godzin.
+        if (spanChanged) {
+            await syncAttendanceFromLeave(input.id, row.user_id, 'remove').catch((e) =>
+                logCompat.error('[updateTeamLeave] attendance remove failed:', e),
+            )
+        }
+
         const { error: updErr } = await admin
             .from('leave_requests')
             .update({
@@ -2269,7 +2434,6 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
         //
         // Awaited rather than fire-and-forget, and the replacement is gated on the
         // teardown succeeding (see below) — two live rules would double-deliver.
-        const datesChanged = newStart !== row.start_date || newEnd !== row.end_date
         const substituteChanged = newSubstituteId !== row.substitute_id
         const forwardShouldExist = shouldForwardBeActive(
             {
@@ -2337,6 +2501,29 @@ export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<Acti
                     }
                 }
             }
+        }
+
+        // Audyt 2026-09-22 (HF-07) — zatwierdzony urlop ma już wydarzenie w kalendarzu
+        // i (zwykle) OOF ustawione przy akceptacji. Bez tego Outlook dalej pokazywał
+        // stare terminy, a auto-reply wyłączał się za wcześnie albo trwał po powrocie.
+        if (row.status === 'approved' && (spanChanged || substituteChanged)) {
+            await resyncLeaveGraphAfterEdit({
+                admin,
+                leaveId: input.id,
+                actorUserId: ctx.userId,
+                userId: row.user_id,
+                eventId: row.outlook_event_id,
+                oofWasSet: Boolean(row.graph_oof_set),
+                refreshEvent: spanChanged,
+                refreshOof: datesChanged || substituteChanged,
+                startDate: newStart,
+                endDate: newEnd,
+                leaveType: newType,
+                halfDay: newHalfDay,
+                substituteId: newSubstituteId,
+                oofInternalMessage: row.oof_internal_message,
+                oofExternalMessage: row.oof_external_message,
+            }).catch((e) => logCompat.error('[updateTeamLeave] graph resync failed:', e))
         }
 
         await logAudit(ctx.userId, 'LEAVE_UPDATED_BY_MANAGER', {
@@ -2768,7 +2955,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
         }
         await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
 
-        const { error } = await admin
+        const { data: decided, error } = await admin
             .from('leave_requests')
             .update({
                 status: 'approved',
@@ -2778,7 +2965,14 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
                 graph_sync_error: null, // clear stale error from previous attempts (Phase 25a column, types stale)
             } as never)
             .eq('id', id)
+            // Audyt 2026-09-22 (HF-11) — warunkowy zapis: gdy drugi recenzent zdążył
+            // już zadecydować, ta decyzja przegrywa ZANIM ruszą attendance, Outlook i maile.
+            .eq('status', 'pending')
+            .select('id')
         if (error) throw new Error(`Błąd akceptacji: ${error.message}`)
+        if (!decided || decided.length === 0) {
+            throw new ExpectedError('Wniosek został już rozpatrzony przez inną osobę. Odśwież listę.')
+        }
 
         await syncAttendanceFromLeave(id, row.user_id, 'create').catch((e) =>
             logCompat.error('[approveLeaveRequest] attendance sync failed:', e),
@@ -2974,7 +3168,7 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
         }
         await assertManagerOwnsLeaveTarget(ctx, admin, row.user_id)
 
-        const { error } = await admin
+        const { data: decided, error } = await admin
             .from('leave_requests')
             .update({
                 status: 'rejected',
@@ -2983,7 +3177,13 @@ export async function rejectLeaveRequest(id: string, decisionNote: string): Prom
                 decision_note: decisionNote,
             })
             .eq('id', id)
+            // HF-11 — patrz approveLeaveRequest: jedna decyzja wygrywa, druga dostaje konflikt.
+            .eq('status', 'pending')
+            .select('id')
         if (error) throw new Error(`Błąd odrzucenia: ${error.message}`)
+        if (!decided || decided.length === 0) {
+            throw new ExpectedError('Wniosek został już rozpatrzony przez inną osobę. Odśwież listę.')
+        }
 
         await logAudit(ctx.userId, 'LEAVE_REJECTED', { leave_id: id, target_user_id: row.user_id, reason: decisionNote })
 
