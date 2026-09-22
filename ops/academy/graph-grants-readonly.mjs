@@ -7,9 +7,9 @@ const coolifyOrigin = 'https://coolify-compass.dynaminds.pl';
 const graphApplicationId = '00000003-0000-0000-c000-000000000000';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const appIdentifier = /^[a-zA-Z0-9-]{8,64}$/;
-const requiredRoles = Object.freeze(['Calendars.ReadWrite', 'OnlineMeetings.Read.All', 'OnlineMeetingArtifact.Read.All']);
+const inspectedRoles = Object.freeze(['Calendars.ReadWrite', 'OnlineMeetings.Read.All', 'OnlineMeetings.ReadWrite.All', 'OnlineMeetingArtifact.Read.All']);
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const unknown = () => Object.fromEntries(requiredRoles.map(role => [role, null]));
+const unknown = () => Object.fromEntries(inspectedRoles.map(role => [role, null]));
 
 function trustedContext(env) {
     return env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted'
@@ -73,10 +73,10 @@ function inspectKnownRoles(token, tenantId, clientId, now) {
     // unreadable/opaque tokens or invalid claim boundaries remain unknown (null).
     const roles = payload.roles ?? [];
     if (!Array.isArray(roles) || roles.length > 512 || roles.some(role => typeof role !== 'string')) return unknown();
-    return Object.fromEntries(requiredRoles.map(role => [role, roles.includes(role)]));
+    return Object.fromEntries(inspectedRoles.map(role => [role, roles.includes(role)]));
 }
 
-/** Return only three allowlisted booleans, or null when the diagnostic cannot establish a result. */
+/** Return only four exact allowlisted roles, or null when the diagnostic cannot establish a result. */
 export async function collectGraphGrantEvidence({ env = process.env, fetchImpl = fetch, now = new Date() } = {}) {
     if (!trustedContext(env)) return unknown();
     try {

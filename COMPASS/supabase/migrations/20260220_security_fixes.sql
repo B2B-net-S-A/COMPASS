@@ -306,15 +306,15 @@ BEGIN
         d.owner_id,
         d.is_public,
         ts_rank(
-            to_tsvector('polish', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, '')),
-            plainto_tsquery('polish', search_query)
+            to_tsvector('simple', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, '')),
+            plainto_tsquery('simple', search_query)
         ) AS relevance
     FROM public.app_documents d
     WHERE d.is_archived = false
       AND d.text_content IS NOT NULL
       AND (d.is_public = true OR user_role IN ('admin', 'administrator', 'centrala'))
-      AND to_tsvector('polish', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, ''))
-          @@ plainto_tsquery('polish', search_query)
+      AND to_tsvector('simple', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, ''))
+          @@ plainto_tsquery('simple', search_query)
     ORDER BY relevance DESC
     LIMIT max_results;
 END;

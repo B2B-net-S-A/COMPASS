@@ -12,7 +12,7 @@ const env = {
     GITHUB_REF: 'refs/heads/feat/academy-enterprise', GITHUB_EVENT_NAME: 'push',
     COOLIFY_URL: 'https://coolify-compass.dynaminds.pl', COOLIFY_TOKEN: privateValue, COOLIFY_APP_UUID: 'test-application-uuid',
 };
-const expectedUnknown = { 'Calendars.ReadWrite': null, 'OnlineMeetings.Read.All': null, 'OnlineMeetingArtifact.Read.All': null };
+const expectedUnknown = { 'Calendars.ReadWrite': null, 'OnlineMeetings.Read.All': null, 'OnlineMeetings.ReadWrite.All': null, 'OnlineMeetingArtifact.Read.All': null };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
 const claims = overrides => ({ aud: 'https://graph.microsoft.com', iss: `https://sts.windows.net/${tenant}/`,
     exp: second + 3600, iat: second, nbf: second - 5, tid: tenant, appid: client,
@@ -36,7 +36,7 @@ async function inspect({ configuration = rows(), token = jwt(claims()), override
 
 test('reads runtime credentials in memory then requests only the official fixed Graph audience', async () => {
     const { result, requests } = await inspect();
-    assert.deepEqual(result, { 'Calendars.ReadWrite': true, 'OnlineMeetings.Read.All': true, 'OnlineMeetingArtifact.Read.All': false });
+    assert.deepEqual(result, { 'Calendars.ReadWrite': true, 'OnlineMeetings.Read.All': true, 'OnlineMeetings.ReadWrite.All': false, 'OnlineMeetingArtifact.Read.All': false });
     assert.equal(requests.length, 2);
     assert.equal(requests[0].url, 'https://coolify-compass.dynaminds.pl/api/v1/applications/test-application-uuid/envs');
     assert.equal(requests[0].options.method, 'GET');
@@ -57,10 +57,18 @@ test('accepts supported issuer/audience forms and preserves false for genuinely 
         aud: '00000003-0000-0000-c000-000000000000', azp: client, appid: undefined,
         roles: ['OnlineMeetingArtifact.Read.All'] }));
     assert.deepEqual((await inspect({ token })).result, {
-        'Calendars.ReadWrite': false, 'OnlineMeetings.Read.All': false, 'OnlineMeetingArtifact.Read.All': true,
+        'Calendars.ReadWrite': false, 'OnlineMeetings.Read.All': false, 'OnlineMeetings.ReadWrite.All': false, 'OnlineMeetingArtifact.Read.All': true,
     });
     assert.deepEqual((await inspect({ token: jwt(claims({ roles: undefined })) })).result, {
-        'Calendars.ReadWrite': false, 'OnlineMeetings.Read.All': false, 'OnlineMeetingArtifact.Read.All': false,
+        'Calendars.ReadWrite': false, 'OnlineMeetings.Read.All': false, 'OnlineMeetings.ReadWrite.All': false, 'OnlineMeetingArtifact.Read.All': false,
+    });
+});
+
+test('reports the meeting read/write superset literally without inventing the minimal grant or artifact permission', async () => {
+    const { result } = await inspect({ token: jwt(claims({ roles: ['OnlineMeetings.ReadWrite.All'] })) });
+    assert.deepEqual(result, {
+        'Calendars.ReadWrite': false, 'OnlineMeetings.Read.All': false,
+        'OnlineMeetings.ReadWrite.All': true, 'OnlineMeetingArtifact.Read.All': false,
     });
 });
 

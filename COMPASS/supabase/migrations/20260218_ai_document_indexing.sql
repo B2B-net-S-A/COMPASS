@@ -11,8 +11,9 @@ ADD COLUMN IF NOT EXISTS ai_indexed_at TIMESTAMP WITH TIME ZONE,
 ADD COLUMN IF NOT EXISTS description TEXT;
 
 -- 2. Full-text search index (GIN) na text_content
+-- Canonical database uses the installed simple configuration; no polish configuration exists.
 CREATE INDEX IF NOT EXISTS idx_app_documents_text_search
-ON app_documents USING GIN (to_tsvector('polish', COALESCE(text_content, '') || ' ' || COALESCE(title, '') || ' ' || COALESCE(description, '')));
+ON app_documents USING GIN (to_tsvector('simple', COALESCE(text_content, '') || ' ' || COALESCE(title, '') || ' ' || COALESCE(description, '')));
 
 -- 3. Indeks na kategorii + is_archived (szybkie filtrowanie)
 CREATE INDEX IF NOT EXISTS idx_app_documents_category_active
@@ -45,8 +46,8 @@ BEGIN
         d.owner_id,
         d.is_public,
         ts_rank(
-            to_tsvector('polish', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, '')),
-            plainto_tsquery('polish', search_query)
+            to_tsvector('simple', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, '')),
+            plainto_tsquery('simple', search_query)
         ) AS relevance
     FROM app_documents d
     WHERE d.is_archived = false
@@ -55,8 +56,8 @@ BEGIN
             d.is_public = true
             OR user_role IN ('admin', 'administrator', 'centrala')
         )
-        AND to_tsvector('polish', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, ''))
-            @@ plainto_tsquery('polish', search_query)
+        AND to_tsvector('simple', COALESCE(d.text_content, '') || ' ' || COALESCE(d.title, '') || ' ' || COALESCE(d.description, ''))
+            @@ plainto_tsquery('simple', search_query)
     ORDER BY relevance DESC
     LIMIT max_results;
 END;

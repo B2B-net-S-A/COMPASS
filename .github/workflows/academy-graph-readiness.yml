@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   diagnostic:
-    name: Inspect three existing Graph roles without resource operations
+    name: Inspect four exact Graph roles without resource operations
     if: >-
       github.repository == 'B2B-net-S-A/COMPASS' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')

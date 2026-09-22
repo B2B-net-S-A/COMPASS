@@ -62,6 +62,40 @@ test('counts an archived bootstrap separately while requiring every replay file'
  assert.equal(projectStart('historical-replay',0,'Applying migration 001_migration.sql\n',2,[],bootstrap).outcome,'failed');
 });
 
+test('document indexing reproduces missing polish and matches the canonical simple index through later RPC removal',async()=>{
+ const {PGlite}=await import('../../../COMPASS/node_modules/@electric-sql/pglite/dist/index.js');
+ const {default:fs}=await import('node:fs');
+ const db=new PGlite();
+ const migration=name=>fs.readFileSync(new URL(`../../../COMPASS/supabase/migrations/${name}`,import.meta.url),'utf8');
+ try {
+  await db.exec(`CREATE TABLE app_documents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),owner_id uuid,
+   title text,category text,is_archived boolean DEFAULT false,is_public boolean DEFAULT true);`);
+  assert.equal((await db.query("select count(*)::int n from pg_ts_config where cfgname='polish'")).rows[0].n,0);
+  const indexing=migration('20260218_ai_document_indexing.sql');
+  await assert.rejects(db.exec(indexing.replaceAll("'simple'","'polish'")),error=>error.code==='42704');
+  await db.exec(indexing);
+  // Canonical schema-only observation: the production expression uses simple
+  // with these three coalesced fields, in this order. No production rows needed.
+  await db.exec(`CREATE INDEX canonical_expected_document_index ON app_documents USING GIN
+   (to_tsvector('simple'::regconfig,coalesce(text_content,'')||' '||coalesce(title,'')||' '||coalesce(description,'')));`);
+  const expression=async name=>(await db.query('select pg_get_expr(indexprs,indrelid) expression from pg_index where indexrelid=$1::regclass',[name])).rows[0].expression;
+  assert.equal(await expression('idx_app_documents_text_search'),await expression('canonical_expected_document_index'));
+  await db.exec("INSERT INTO app_documents(title,category,text_content) VALUES('Łączność','other','Przykładowy dokument szkoleniowy');");
+  assert.equal((await db.query("select title from search_documents_for_ai('dokument')")).rows[0].title,'Łączność');
+  const security=migration('20260220_security_fixes.sql');
+  const start=security.indexOf('CREATE OR REPLACE FUNCTION public.search_documents_for_ai(');
+  const end=security.indexOf('-- ─── 2h. update_contract_status',start);
+  assert(start>=0&&end>start,'document_search_security_section_missing');
+  const hardened=security.slice(start,end);
+  assert(!hardened.includes("'polish'"));
+  await db.exec(hardened);
+  assert.equal((await db.query("select title from search_documents_for_ai('dokument')")).rows[0].title,'Łączność');
+  await db.exec(migration('20260505100001_phase9_remove_ai_assistant.sql'));
+  assert.equal((await db.query("select to_regprocedure('search_documents_for_ai(text,text,integer)') value")).rows[0].value,null);
+  assert.equal(await expression('idx_app_documents_text_search'),await expression('canonical_expected_document_index'));
+ }finally{await db.close();}
+});
+
 test('uses original schema repair before availability and the archived communicator before attachment migrations',async()=>{
  const {PGlite}=await import('../../../COMPASS/node_modules/@electric-sql/pglite/dist/index.js');
  const {default:fs}=await import('node:fs');

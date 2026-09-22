@@ -2,6 +2,13 @@
 
 Stan na 22.09.2026, PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384). Moduł nie jest jeszcze wdrożony ani odebrany produkcyjnie. Poniższe wyniki nie zastępują testów kolejnych commitów.
 
+## Checkpoint `272d2c14fd0bdd2fe9372f3502d1d545f52e4011`
+
+- [Build check 35729921406](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35729921406): **PASS**, lint, typy, testy, build i PostgreSQL authorization/concurrency.
+- [Storage 35729921436](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35729921436): natywny fixture **PASS**; historyczny replay **FAIL**, rozpoczęte 30 z 255 plików, liczba poprawnie zastosowanych nieustalona. Przyczyna: historyczny indeks wymaga nieistniejącej konfiguracji wyszukiwania `polish` (42704).
+- Odczyt produkcyjnego katalogu potwierdził brak `polish` i istniejący `idx_app_documents_text_search` używający `simple` dla `text_content`, `title`, `description`. Historyczne definicje są korygowane do tego rzeczywistego schematu. Funkcja `search_documents_for_ai` nie istnieje na produkcji; jej usunięcie opisuje migracja phase9. Bez zmian produkcyjnych i bez odczytu treści dokumentów.
+- [Graph 35729914405](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35729914405): obecne `Calendars.ReadWrite`; brak dokładnych ról `OnlineMeetings.Read.All` oraz `OnlineMeetingArtifact.Read.All`. Ten przebieg nie badał szerszej `OnlineMeetings.ReadWrite.All`; nie dowodzi więc braku wszystkich uprawnień odczytu spotkań. Diagnostyka została rozszerzona o czwartą dokładną rolę.
+
 ## Checkpoint `08ec2ccfe2022ca6d44e337639d645aaa8c13f1d`
 
 - [Supabase Storage 35728768205](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35728768205): job `academy-fixture` **PASS, 70 asercji**. Natywne logowanie, upload TUS z przerwaniem i wznowieniem, odzyskanie finalizacji, odmowy błędnego rozmiaru/MIME oraz odebranego grantu, izolacja materiałów lekcji i edycji, drip, moderacja i anulowanie. Werdykt skanera w tym teście jest symulowany; rzeczywisty silnik sprawdza osobna bramka.
