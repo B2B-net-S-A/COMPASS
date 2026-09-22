@@ -72,6 +72,9 @@ jobs:
       - name: Vitest unit tests
         run: npm run test:unit
 
+      - name: Academy migration and authorization contracts
+        run: npm run test:academy-db
+
       - name: Availability connection scope tests
         run: python3 ../scripts/test_configure_nexus_availability.py
 
@@ -81,6 +84,40 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
           NEXT_PUBLIC_APP_URL: https://placeholder.example.com
         run: npm run build
+
+  academy-postgres:
+    name: Academy PostgreSQL authorization and concurrency
+    runs-on: ubuntu-latest
+    needs: secret-scan
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: academy_test
+          POSTGRES_USER: academy_ci
+          POSTGRES_PASSWORD: isolated-academy-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U academy_ci -d academy_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: ./COMPASS
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: COMPASS/package-lock.json
+      - run: npm ci
+      - name: Real PostgreSQL migration, RLS and simultaneous requests
+        env:
+          ACADEMY_TEST_DATABASE_URL: postgresql://academy_ci:isolated-academy-ci@localhost:5432/academy_test
+        run: npm run test:academy-db
 
   security-scan:
     name: Trivy + hadolint (report-only)

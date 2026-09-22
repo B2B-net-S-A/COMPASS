@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Loader2, Play, AlertCircle } from 'lucide-react'
+import { Loader2, Play } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { CourseCompletion } from '@/components/academy/CourseCompletion'
 import { enrollInCourse } from '@/lib/actions/course-learning'
+import { academyCourseHref } from '@/lib/academy/navigation'
+import type { CourseDeliveryMode } from '@/lib/types/learning'
 
 interface CourseDetailActionsProps {
     courseId: string
@@ -14,77 +18,52 @@ interface CourseDetailActionsProps {
     isEnrolled: boolean
     hasLessons: boolean
     hasQuiz: boolean
+    deliveryMode?: CourseDeliveryMode
+    enrollmentId?: string | null
+    runId?: string | null
+    revokedAt?: string | null
+    revokedReason?: string | null
+    completedAt?: string | null
 }
 
-export function CourseDetailActions({ courseId, courseSlug, isEnrolled, hasLessons, hasQuiz }: CourseDetailActionsProps) {
+export function CourseDetailActions({ courseId, courseSlug, hasLessons, hasQuiz, deliveryMode = 'self_paced', enrollmentId, runId, completedAt, revokedAt, revokedReason }: CourseDetailActionsProps) {
     const router = useRouter()
-    const [enrolled, setEnrolled] = useState(isEnrolled)
     const [error, setError] = useState<string | null>(null)
-    const [isPending, startTransition] = useTransition()
+    const [isPending, startTransition] = useAcademyAction()
 
-    const handleEnroll = () => {
+    function enroll() {
         setError(null)
         startTransition(async () => {
-            const res = await enrollInCourse(courseId)
-            if (!res.success) {
-                setError(res.error)
-                return
+            try {
+                const result = await enrollInCourse(courseId)
+                if (!result.success) { setError(result.error); return }
+                router.push(academyCourseHref(courseSlug, result.data.enrollmentId))
+                router.refresh()
+            } catch {
+                setError('Połączenie zostało przerwane. Spróbuj ponownie.')
             }
-            setEnrolled(true)
-            router.refresh()
         })
     }
 
-    return (
-        <Card className="bg-gradient-to-r from-burgundy/10 to-primary/10 border-primary/30">
-            <CardContent className="p-5 space-y-3">
-                {error && (
-                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                        {error}
-                    </div>
-                )}
-
-                {!enrolled && (
-                    <div className="space-y-2">
-                        <p className="text-sm">
-                            Zapisz się na kurs, by uzyskać dostęp do lekcji i quizu. Po zdaniu otrzymasz{' '}
-                            <strong className="text-primary">+20 pkt</strong> lojalnościowych.
-                        </p>
-                        <Button onClick={handleEnroll} disabled={isPending} size="lg" className="gap-2">
-                            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                            Zapisz się i zacznij naukę
-                        </Button>
-                    </div>
-                )}
-
-                {enrolled && hasLessons && (
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
-                            <CheckCircle2 className="w-5 h-5 text-success" />
-                            <span className="text-sm font-medium">Jesteś zapisany na kurs</span>
-                        </div>
-                        <div className="flex gap-2">
-                            <Link href={`/learning/${courseSlug}/lekcja/first`}>
-                                <Button size="sm" className="gap-2">
-                                    <Play className="w-3.5 h-3.5" /> Kontynuuj naukę
-                                </Button>
-                            </Link>
-                            {hasQuiz && (
-                                <Link href={`/learning/${courseSlug}/quiz`}>
-                                    <Button variant="outline" size="sm" className="gap-2">
-                                        Quiz końcowy
-                                    </Button>
-                                </Link>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {enrolled && !hasLessons && (
-                    <p className="text-sm text-muted-foreground">Kurs nie ma jeszcze lekcji.</p>
-                )}
-            </CardContent>
-        </Card>
-    )
+    return <Card className="border-primary/30 bg-primary/5"><CardContent className="space-y-4 p-5">
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {!enrollmentId && (deliveryMode === 'self_paced' ? <>
+            <p className="text-sm">Zapisz się, aby uzyskać dostęp do materiałów i zachować postęp nauki.</p>
+            <Button onClick={enroll} disabled={isPending} className="gap-2">
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Zapisz się i rozpocznij
+            </Button>
+        </> : <>
+            <p className="text-sm">Wybierz edycję szkolenia z dogodnym terminem. Zapis obejmuje wszystkie wymagane spotkania tej edycji.</p>
+            <Button asChild><Link href={`/learning/kalendarz?course=${encodeURIComponent(courseId)}`}>Wybierz termin</Link></Button>
+        </>)}
+        {enrollmentId && <>
+            <p className="text-sm font-medium">{revokedAt ? 'Historia szkolenia' : completedAt ? 'Szkolenie ukończone' : 'Jesteś zapisany na szkolenie'}</p>
+            <div className="flex flex-wrap gap-2">
+                {hasLessons && <Button asChild className="gap-2"><Link href={academyCourseHref(courseSlug, enrollmentId, '/lekcja/first')}><Play className="h-4 w-4" />Kontynuuj naukę</Link></Button>}
+                {hasQuiz && <Button asChild variant="outline"><Link href={academyCourseHref(courseSlug, enrollmentId, '/quiz')}>Quiz końcowy</Link></Button>}
+                {runId && <Button asChild variant="outline"><Link href={`/learning/edycje/${runId}`}>Spotkania i obecność</Link></Button>}
+            </div>
+            <CourseCompletion key={enrollmentId} courseId={courseId} enrollmentId={enrollmentId} completedAt={completedAt} revokedAt={revokedAt} revokedReason={revokedReason} />
+        </>}
+    </CardContent></Card>
 }

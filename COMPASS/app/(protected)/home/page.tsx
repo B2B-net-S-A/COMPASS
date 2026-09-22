@@ -23,6 +23,8 @@ import { ProgressRing } from '@/components/league/ProgressRing'
 import { LearningStreakWidget } from '@/components/learning/LearningStreakWidget'
 import { TicketStatusBadge } from '@/components/support/TicketStatusBadge'
 import { getLoyaltyOverview } from '@/lib/actions/loyalty'
+import { academyResumeHref } from '@/lib/academy/navigation'
+import { getAcademyAccess } from '@/lib/actions/academy-access'
 import { getMyEnrollments } from '@/lib/actions/course-learning'
 import { listNewsForUser } from '@/lib/actions/news'
 import { listTickets } from '@/lib/actions/support-tickets'
@@ -63,12 +65,13 @@ export default async function HomePage() {
     }
 
     const isAdmin = (profile?.role as string) === 'admin'
-    const learningHidden = isFeatureComingSoon('learning')
+    const academyAccess = await getAcademyAccess()
+    const learningHidden = !academyAccess.success
     const leagueHidden = isFeatureComingSoon('league')
 
     const [overviewRes, enrollRes, newsRes, ticketsRes, pitchesRes, adminTicketsRes, adminPitchesRes] = await Promise.all([
         getLoyaltyOverview(),
-        getMyEnrollments(),
+        learningHidden ? Promise.resolve({ success: false as const, error: 'skip' }) : getMyEnrollments(),
         listNewsForUser(),
         listTickets({ scope: 'mine', limit: 10 }),
         listMyPitches(),
@@ -175,7 +178,7 @@ export default async function HomePage() {
                 <div className="grid gap-4 md:grid-cols-3">
                     {recentlyActive && (
                         <Link
-                            href={`/learning/${recentlyActive.course.slug}/lekcja/${recentlyActive.last_accessed_lesson_id ?? 'first'}`}
+                            href={academyResumeHref(recentlyActive)}
                             className="block md:col-span-2"
                         >
                             <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 hover:border-primary/50 transition-colors h-full">
@@ -289,7 +292,7 @@ export default async function HomePage() {
                                 inProgress.map((e) => (
                                     <Link
                                         key={e.enrollment_id}
-                                        href={`/learning/${e.course.slug}/lekcja/${e.last_accessed_lesson_id ?? 'first'}`}
+                                        href={academyResumeHref(e)}
                                         className="block p-3 rounded-md bg-card hover:bg-muted border border-border hover:border-primary/30 transition-colors"
                                     >
                                         <div className="flex items-center justify-between gap-2 mb-1">

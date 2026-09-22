@@ -1,0 +1,47 @@
+name: Academy real Supabase Storage
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, feat/academy-enterprise]
+    paths:
+      - 'COMPASS/supabase/migrations/**'
+      - 'COMPASS/lib/academy/**'
+      - 'COMPASS/lib/actions/academy-materials.ts'
+      - 'COMPASS/scripts/**'
+      - 'COMPASS/package*.json'
+      - 'ops/academy/storage/**'
+      - '.github/workflows/academy-storage.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: academy-storage-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  storage:
+    name: Supabase ${{ matrix.mode }}
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [academy-fixture, historical-replay]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: COMPASS/package-lock.json
+      - name: Install locked fixture and production transport dependencies
+        if: matrix.mode == 'academy-fixture'
+        working-directory: COMPASS
+        run: npm ci
+      - name: Validate export boundary and final RPC contracts without Docker
+        if: matrix.mode == 'academy-fixture'
+        run: node --test ops/academy/storage/gate.test.mjs
+      - name: Real Auth, Storage, PostgREST and PostgreSQL on disposable hosted containers
+        run: bash ops/academy/storage/run-hosted-gate.sh '${{ matrix.mode }}'

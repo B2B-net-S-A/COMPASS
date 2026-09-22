@@ -1,6 +1,7 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useRef, useState } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { useRouter } from 'next/navigation'
 import { Loader2, AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -14,16 +15,18 @@ interface QuizFormProps {
     courseId: string
     courseSlug: string
     questions: QuizQuestionForAttempt[]
+    enrollmentId: string
+    passPercent: number
 }
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D']
 
-export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
+export function QuizForm({ courseId, courseSlug, questions, enrollmentId, passPercent }: QuizFormProps) {
     const router = useRouter()
     const [answers, setAnswers] = useState<Record<string, string>>({}) // questionId → selectedOptionId
     const [error, setError] = useState<string | null>(null)
     const [unansweredId, setUnansweredId] = useState<string | null>(null)
-    const [isPending, startTransition] = useTransition()
+    const [isPending, startTransition] = useAcademyAction()
     const questionRefs = useRef<Record<string, HTMLDivElement | null>>({})
     const [confirm, ConfirmUI] = useConfirm()
 
@@ -51,7 +54,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
             return
         }
         const ok = await confirm({
-            description: 'Wysłać odpowiedzi? Punkty otrzymujesz tylko za pierwsze zaliczające podejście (≥70%).',
+            description: `Wysłać odpowiedzi? Próg zaliczenia quizu wynosi ${passPercent}%.`,
         })
         if (!ok) return
 
@@ -63,17 +66,15 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                     question_id: q.question_id,
                     selected_option_id: answers[q.question_id],
                 }))
-                const res = await submitQuizAttempt(courseId, payload)
+                const res = await submitQuizAttempt(courseId, payload, enrollmentId)
                 if (!res.success) {
                     setError(res.error)
                     return
                 }
                 const result = res.data as QuizSubmissionResult
                 const params = new URLSearchParams({
-                    score: String(result.score_percent),
-                    passed: String(result.passed),
-                    already: String(result.already_awarded),
-                    award: result.award_status ?? '',
+                    attempt: result.attempt_id,
+                    enrollment: enrollmentId,
                 })
                 router.push(`/learning/${courseSlug}/wyniki?${params.toString()}`)
             } catch (err: unknown) {
@@ -94,13 +95,13 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
             <div className="p-4 rounded-lg bg-warning/10 border border-warning/20 text-sm text-warning">
                 <p className="font-medium mb-1">Quiz końcowy</p>
                 <p className="text-xs">
-                    Próg zaliczenia: <strong>70%</strong>. Możesz podchodzić wielokrotnie, ale punkty otrzymujesz tylko
-                    za pierwsze zaliczające podejście.
+                    Próg zaliczenia: <strong>{passPercent}%</strong>. Możesz ponowić próbę.
+                    Ukończenie szkolenia wymaga również spełnienia pozostałych warunków programu.
                 </p>
             </div>
 
             {error && (
-                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
+                <div role="alert" className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div className="flex-1">
                         <p>{error}</p>
@@ -154,6 +155,7 @@ export function QuizForm({ courseId, courseSlug, questions }: QuizFormProps) {
                                             <button
                                                 key={o.id}
                                                 type="button"
+                                                aria-pressed={selected === o.id}
                                                 onClick={() => handleSelect(q.question_id, o.id)}
                                                 disabled={isPending}
                                                 className={`w-full text-left p-3 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${

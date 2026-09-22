@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { sendCourseInactivityReminder } from '@/lib/email'
@@ -6,147 +7,73 @@ import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * A1.5: Course inactivity reminder cron.
- *
- * Trigger: codziennie o 09:00 (zadanie w Coolify).
- *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
- *     "https://compass.dynaminds.pl/api/cron/course-inactivity"
- *
- * Nagłówek Bearer, NIE `?secret=` — sekret w URL-u ląduje w logach Cloudflare,
- * proxy i śladach Sentry. Wariant z query nadal działa (z ostrzeżeniem w logu),
- * ale nie jest tu polecany: przez to, że był JEDYNĄ udokumentowaną formą, kolejne
- * zadania cron kopiowały właśnie ją. Bearer daje też heartbeat w `audit_logs`
- * (`logAudit` przechodzi wtedy na service-rolę) — `?secret=` nie zostawia śladu.
- *
- * Logic:
- *  - Foreach active enrollment (completed_at IS NULL, progress > 0%)
- *  - Jeśli last_accessed_at < now() - 3 days AND (last_inactivity_email_at < now() - 7 days OR NULL)
- *  - Wyślij reminder email + zapisz last_inactivity_email_at
- *
- * Anty-spam: max 1 email / enrollment / tydzień.
- * Anty-noise: tylko enrollments z >0% progress (nie polecaj kursu który user nigdy nie tknął).
+interface InactiveEnrollment {
+    id: string; user_id: string; course_id: string; version_id: string; run_id: string | null
+    completed_lessons: string[] | null; last_accessed_at: string; last_inactivity_email_at: string | null
+}
+
+/** Remind active participants about their exact enrollment, at most weekly.
+ * Service reads count every lesson in its immutable version, including drip content.
  */
 export const GET = withCronAuth(withCronHeartbeat('COURSE_INACTIVITY_RUN', async (_request, { admin }) => {
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const client = admin as unknown as SupabaseClient
+    const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString()
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://compass.dynaminds.pl'
-
-    // Pull active enrollments z last_accessed_at < 3 dni temu i wysłany email > 7 dni temu (lub null)
-    const { data: enrollments, error: enrErr } = await admin
-        .from('course_enrollments')
-        .select(
-            'id, user_id, course_id, completed_lessons, last_accessed_at, last_inactivity_email_at, course:courses(id, title, slug, status)',
-        )
-        .is('completed_at', null)
-        .not('last_accessed_at', 'is', null)
-        .lt('last_accessed_at', threeDaysAgo)
+    const { data, error } = await client.from('course_enrollments')
+        .select('id,user_id,course_id,version_id,run_id,completed_lessons,last_accessed_at,last_inactivity_email_at')
+        .is('completed_at', null).not('last_accessed_at', 'is', null).lt('last_accessed_at', threeDaysAgo)
         .or(`last_inactivity_email_at.is.null,last_inactivity_email_at.lt.${sevenDaysAgo}`)
-        .limit(500) // safety cap
-    if (enrErr) {
-        logCompat.error('[course-inactivity] enrollments fetch error:', enrErr)
-        return NextResponse.json({ error: enrErr.message }, { status: 500 })
+        .order('last_accessed_at').order('id').limit(500)
+    if (error) {
+        logCompat.error('[course-inactivity] enrollment read failed:', error)
+        return NextResponse.json({ ok: false, error: 'Nie udało się odczytać zapisów.' }, { status: 500 })
     }
-
-    type EnrollmentRow = {
-        id: string
-        user_id: string
-        course_id: string
-        completed_lessons: string[] | null
-        last_accessed_at: string | null
-        last_inactivity_email_at: string | null
-        // Supabase zwraca relację 1-to-1 jako tablicę kiedy nie ma `.single()`
-        course: { id: string; title: string; slug: string; status: string }[] | null
+    const enrollments = (data ?? []) as InactiveEnrollment[]
+    if (!enrollments.length) return NextResponse.json({ ok: true, sent: 0, failed: 0, skipped: 0, total_eligible: 0 })
+    const versionIds = [...new Set(enrollments.map(enrollment => enrollment.version_id))]
+    const runIds = [...new Set(enrollments.flatMap(enrollment => enrollment.run_id ? [enrollment.run_id] : []))]
+    const [courses, versions, lessons, profiles, runs, registrations] = await Promise.all([
+        client.from('courses').select('id,slug,status').in('id', [...new Set(enrollments.map(enrollment => enrollment.course_id))]),
+        client.from('course_versions').select('id,status,metadata').in('id', versionIds),
+        client.from('course_lessons').select('id,version_id').in('version_id', versionIds),
+        client.from('profiles').select('id,full_name,email,role,is_external,employment_status').in('id', [...new Set(enrollments.map(enrollment => enrollment.user_id))]),
+        runIds.length ? client.from('course_runs').select('id,status').in('id', runIds) : Promise.resolve({ data: [], error: null }),
+        runIds.length ? client.from('course_run_registrations').select('enrollment_id,user_id,run_id,status').in('run_id', runIds) : Promise.resolve({ data: [], error: null }),
+    ])
+    const readError = [courses, versions, lessons, profiles, runs, registrations].find(result => result.error)?.error
+    if (readError) {
+        logCompat.error('[course-inactivity] eligibility read failed:', readError)
+        return NextResponse.json({ ok: false, error: 'Nie udało się potwierdzić aktywnych zapisów.' }, { status: 500 })
     }
-    const eligibleRaw = (enrollments ?? []) as unknown as EnrollmentRow[]
-
-    // Normalize course (array → single object)
-    type EnrollmentNormalized = Omit<EnrollmentRow, 'course'> & {
-        course: { id: string; title: string; slug: string; status: string } | null
-    }
-    const eligible: EnrollmentNormalized[] = eligibleRaw.map((e) => ({
-        ...e,
-        course: Array.isArray(e.course) ? (e.course[0] ?? null) : e.course,
-    }))
-
-    // Filter: kurs published + completed_lessons.length > 0 (anty-noise)
-    const activeWithProgress = eligible.filter(
-        (e) => e.course?.status === 'published' && (e.completed_lessons?.length ?? 0) > 0,
-    )
-
-    if (activeWithProgress.length === 0) {
-        return NextResponse.json({ ok: true, sent: 0, skipped: 0, total_eligible: 0 })
-    }
-
-    // Pull total lessons per course (one query)
-    const courseIds = Array.from(new Set(activeWithProgress.map((e) => e.course_id)))
-    const { data: lessonCounts } = await admin
-        .from('course_lessons')
-        .select('course_id')
-        .in('course_id', courseIds)
-    const lessonCountMap = new Map<string, number>()
-    for (const l of (lessonCounts ?? []) as Array<{ course_id: string }>) {
-        lessonCountMap.set(l.course_id, (lessonCountMap.get(l.course_id) ?? 0) + 1)
-    }
-
-    // Pull profile contacts
-    const userIds = Array.from(new Set(activeWithProgress.map((e) => e.user_id)))
-    const { data: profiles } = await admin
-        .from('profiles')
-        .select('id, full_name, email')
-        .in('id', userIds)
-    const profileMap = new Map<string, { full_name: string | null; email: string }>()
-    for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
-        profileMap.set(p.id, { full_name: p.full_name, email: p.email })
-    }
-
-    let sent = 0
-    let failed = 0
-    let skipped = 0
-
-    for (const e of activeWithProgress) {
-        const profile = profileMap.get(e.user_id)
-        if (!profile?.email || !e.course) {
-            skipped += 1
-            continue
-        }
-        const totalLessons = lessonCountMap.get(e.course_id) ?? 0
-        const completedLessons = e.completed_lessons?.length ?? 0
-        if (totalLessons === 0) {
-            skipped += 1
-            continue
-        }
-        const progress = Math.min(100, Math.round((completedLessons / totalLessons) * 100))
-        const lastAccess = e.last_accessed_at ? new Date(e.last_accessed_at) : null
-        const daysAgo = lastAccess ? Math.floor((Date.now() - lastAccess.getTime()) / (24 * 60 * 60 * 1000)) : 0
-
+    let sent = 0, failed = 0, skipped = 0, totalEligible = 0
+    for (const enrollment of enrollments) {
+        const course = courses.data?.find(row => row.id === enrollment.course_id)
+        const version = versions.data?.find(row => row.id === enrollment.version_id)
+        const profile = profiles.data?.find(row => row.id === enrollment.user_id)
+        const runActive = !enrollment.run_id || (runs.data?.some(row => row.id === enrollment.run_id && row.status === 'published') && registrations.data?.some(row => row.enrollment_id === enrollment.id && row.user_id === enrollment.user_id && row.run_id === enrollment.run_id && row.status === 'confirmed'))
+        if (!runActive || course?.status !== 'published' || version?.status !== 'published' || !version.metadata?.title || !profile?.email || profile.is_external || profile.employment_status === 'exited' || !['consultant', 'admin'].includes(profile.role)) { skipped++; continue }
+        const lessonIds = new Set((lessons.data ?? []).filter(row => row.version_id === enrollment.version_id).map(row => row.id))
+        const completedLessons = [...new Set(enrollment.completed_lessons ?? [])].filter(id => lessonIds.has(id)).length
+        if (!completedLessons || !lessonIds.size) { skipped++; continue }
+        totalEligible++
         const result = await sendCourseInactivityReminder(profile.email, profile.full_name ?? profile.email, {
-            courseTitle: e.course.title,
-            courseSlug: e.course.slug,
-            progressPercent: progress,
+            courseTitle: version.metadata.title,
+            courseSlug: course.slug,
+            enrollmentId: enrollment.id,
+            progressPercent: Math.min(99, Math.round(completedLessons / lessonIds.size * 100)),
             completedLessons,
-            totalLessons,
-            lastAccessDaysAgo: daysAgo,
+            totalLessons: lessonIds.size,
+            lastAccessDaysAgo: Math.floor((Date.now() - Date.parse(enrollment.last_accessed_at)) / 86400000),
             appUrl,
         })
-
-        if (result.success) {
-            sent += 1
-            // Mark email sent timestamp
-            await admin
-                .from('course_enrollments')
-                .update({ last_inactivity_email_at: new Date().toISOString() })
-                .eq('id', e.id)
-        } else {
-            failed += 1
+        if (!result.success) { failed++; continue }
+        sent++
+        const { error: timestampError } = await client.from('course_enrollments').update({ last_inactivity_email_at: new Date().toISOString() }).eq('id', enrollment.id)
+        if (timestampError) {
+            failed++
+            logCompat.error('[course-inactivity] delivery timestamp failed:', timestampError)
         }
     }
-
-    return NextResponse.json({
-        ok: true,
-        total_eligible: activeWithProgress.length,
-        sent,
-        failed,
-        skipped,
-    })
+    return NextResponse.json({ ok: failed === 0, total_eligible: totalEligible, sent, failed, skipped }, { status: failed ? 500 : 200 })
 }))

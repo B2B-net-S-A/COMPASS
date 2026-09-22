@@ -1,0 +1,13 @@
+{
+  "image": "clamav/clamav:1.4.6-debian13-slim@sha256:b12ef8fefddbba7d88de59bea8a32622f365339154adf02d38fd089112e6745a",
+  "repository": "clamav/clamav",
+  "version": "1.4.6",
+  "digest": "sha256:b12ef8fefddbba7d88de59bea8a32622f365339154adf02d38fd089112e6745a",
+  "platforms": {
+    "linux/amd64": "sha256:f40015e33c6477455cfd56181a938ee0de9bac9567fee3b2d849a0cce771f223",
+    "linux/arm64": "sha256:bbc3bcf76835d9bc18771fb9498daac35253f1585afc35a17c6b21955e61b2b4"
+  },
+  "verifiedAt": "2026-09-22",
+  "supportUntil": "2027-08-15",
+  "supportReference": "https://docs.clamav.net/faq/faq-eol.html"
+}

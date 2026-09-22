@@ -1,11 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { LayoutPreferencesProvider } from '@/lib/contexts/LayoutPreferencesContext'
 import { ThemeProvider } from '@/lib/contexts/ThemeContext'
+import { getAcademyAccess } from '@/lib/actions/academy-access'
 import { getPermissions } from '@/lib/actions/permissions'
 import { getUnreadNewsCount } from '@/lib/actions/news'
 import { listTickets } from '@/lib/actions/support-tickets'
@@ -80,6 +80,7 @@ export default async function ProtectedLayout({
             role === 'manager' ? 'manager' :
             role === 'talent_community' ? 'talent_community' :
             'consultant'
+        const academyAccess = role === 'admin' || role === 'consultant' ? await getAcademyAccess() : null
         const userPermissions = permissionsMap[permissionRole]
         const userData = {
             ...user,
@@ -145,6 +146,7 @@ export default async function ProtectedLayout({
                     isInboxHandler={isInboxHandler}
                     consultantSuccessEnabled={isConsultantSuccessEnabled()}
                     hasTcmAccess={hasTcmAccess}
+                    academyEnabled={academyAccess?.success === true}
                 >
                     <LayoutPreferencesProvider>
                         {children}

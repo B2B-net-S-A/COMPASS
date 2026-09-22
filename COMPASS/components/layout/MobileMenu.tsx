@@ -21,10 +21,10 @@ import {
     Users,
     type LucideIcon,
 } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { isFeatureComingSoon } from '@/lib/types/permissions'
+import { Sheet, SheetContent, SheetHeader, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 
 interface MobileMenuProps {
+    academyEnabled?: boolean
     role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
     user: {
         email?: string | null
@@ -40,7 +40,7 @@ interface NavItem {
     icon: LucideIcon
 }
 
-export function MobileMenu({ role }: MobileMenuProps) {
+export function MobileMenu({ role, academyEnabled = false }: MobileMenuProps) {
     const pathname = usePathname()
     const { t } = useTranslation()
     const [moreOpen, setMoreOpen] = useState(false)
@@ -63,13 +63,15 @@ export function MobileMenu({ role }: MobileMenuProps) {
     ]
 
     // Items shown inside the "More" drawer (Incubator + Support przeniesione na bottom).
+    const canOpenAcademy = academyEnabled && (role === 'admin' || role === 'consultant')
     const moreItems: NavItem[] = [
+        ...(canOpenAcademy ? [{ name: 'Akademia', href: '/learning', icon: GraduationCap }] : []),
         { name: t('nav_notifications'), href: '/notifications', icon: Bell },
         { name: t('nav_profile'), href: '/profile', icon: User },
         { name: t('nav_settings'), href: '/settings', icon: Settings },
     ]
 
-    const showAdminLearning = !isFeatureComingSoon('learning')
+    const showAdminLearning = canOpenAcademy
 
     const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
@@ -113,6 +115,7 @@ export function MobileMenu({ role }: MobileMenuProps) {
                 <SheetContent side="bottom" className="rounded-t-2xl border-t">
                     <SheetHeader>
                         <SheetTitle>{t('more')}</SheetTitle>
+                        <SheetDescription className="sr-only">Wybierz sekcję Compass.</SheetDescription>
                     </SheetHeader>
                     <nav className="mt-4 grid grid-cols-2 gap-2 pb-4">
                         {moreItems.map((item) => {

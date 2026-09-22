@@ -3,6 +3,9 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
+import { loadAcademyCourse } from '@/lib/academy/course-data'
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import type { ActionResult } from '@/lib/types/learning'
 
@@ -12,6 +15,7 @@ import type { ActionResult } from '@/lib/types/learning'
 
 export interface CourseSurveyInput {
     courseId: string
+    enrollmentId?: string
     npsScore: number
     bestPart?: string
     improvementSuggestion?: string
@@ -34,64 +38,20 @@ export interface CourseSurveyAggregate {
 export async function submitCourseSurvey(
     input: CourseSurveyInput,
 ): Promise<ActionResult<{ id: string }>> {
-    try {
-        const supabase = createClient()
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        if (!Number.isInteger(input.npsScore) || input.npsScore < 1 || input.npsScore > 10) {
-            return { success: false, error: 'NPS musi być liczbą całkowitą 1-10.' }
-        }
-
-        // Verify enrollment + completion
-        const { data: enrollment } = await supabase
-            .from('course_enrollments')
-            .select('id, completed_at')
-            .eq('user_id', user.id)
-            .eq('course_id', input.courseId)
-            .maybeSingle<{ id: string; completed_at: string | null }>()
-
-        if (!enrollment) {
-            return { success: false, error: 'Nie jesteś zapisany na ten kurs.' }
-        }
-        if (!enrollment.completed_at) {
-            return { success: false, error: 'Możesz wypełnić ankietę dopiero po ukończeniu kursu.' }
-        }
-
-        // Idempotency: jeśli już wypełnione, zwróć existing
-        const { data: existing } = await supabase
-            .from('course_survey_responses')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('course_id', input.courseId)
-            .maybeSingle<{ id: string }>()
-        if (existing) {
-            return { success: true, data: { id: existing.id } }
-        }
-
-        const { data, error } = await supabase
-            .from('course_survey_responses')
-            .insert({
-                user_id: user.id,
-                course_id: input.courseId,
-                enrollment_id: enrollment.id,
-                nps_score: input.npsScore,
-                best_part: input.bestPart?.trim() || null,
-                improvement_suggestion: input.improvementSuggestion?.trim() || null,
-            })
-            .select('id')
-            .single<{ id: string }>()
-        if (error) throw error
-
-        revalidatePath('/learning')
-        return { success: true, data }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd wysyłania ankiety'
-        logCompat.error('[submitCourseSurvey]', error)
-        return { success: false, error: msg }
-    }
+    return academyAction('survey.submit', async () => {
+        const { client, access } = await requireAcademyContext()
+        const { enrollment } = await loadAcademyCourse(client, access.userId, z.uuid().parse(input.courseId), { enrollmentId: input.enrollmentId })
+        if (!enrollment?.completed_at) throw new Error('Ankieta jest dostępna po ukończeniu szkolenia.')
+        const { data, error } = await client.rpc('academy_submit_survey', {
+            p_enrollment_id: enrollment.id,
+            p_nps_score: z.number().int().min(0).max(10).parse(input.npsScore),
+            p_best_part: z.string().trim().max(1000).parse(input.bestPart ?? '') || null,
+            p_improvement_suggestion: z.string().trim().max(1000).parse(input.improvementSuggestion ?? '') || null,
+        })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return { id: data as string }
+    })
 }
 
 /**

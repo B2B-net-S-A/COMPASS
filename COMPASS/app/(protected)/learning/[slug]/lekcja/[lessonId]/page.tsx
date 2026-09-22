@@ -1,108 +1,51 @@
+import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { LessonPlayer } from '@/components/learning/LessonPlayer'
 import { CourseQA } from '@/components/learning/CourseQA'
-import { getCourseDetail, getCourseLessons } from '@/lib/actions/courses'
+import { getCourseDetail } from '@/lib/actions/courses'
 import { recordLessonAccess } from '@/lib/actions/course-learning'
-import { createClient } from '@/lib/supabase/server'
+import { academyCourseHref } from '@/lib/academy/navigation'
 
 export const dynamic = 'force-dynamic'
 
-interface PageProps {
+export default async function LessonPage({ params, searchParams }: {
     params: { slug: string; lessonId: string }
-}
-
-export default async function LessonPage({ params }: PageProps) {
-    const detailResult = await getCourseDetail(params.slug)
-    if (!detailResult.success) notFound()
-    const course = detailResult.data
-
-    const lessonsResult = await getCourseLessons(course.id)
-    const lessons = lessonsResult.success ? lessonsResult.data : []
-
-    if (lessons.length === 0) {
-        redirect(`/learning/${course.slug}`)
-    }
-
-    // 'first' keyword: redirect to first incomplete lesson, fallback to first lesson
+    searchParams: { enrollment?: string }
+}) {
+    const result = await getCourseDetail(params.slug, { enrollmentId: searchParams.enrollment })
+    if (!result.success) notFound()
+    const course = result.data
+    if (!course.enrollment_id) redirect(academyCourseHref(course.slug))
+    const enrollmentId = course.enrollment_id
+    const lessons = course.lessons
+    const completedIds = course.completed_lesson_ids ?? []
+    const completionDates = course.lesson_completion_dates ?? {}
+    const backHref = academyCourseHref(course.slug, enrollmentId)
+    if (!lessons.length) redirect(backHref)
     if (params.lessonId === 'first') {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        let completedIds: string[] = []
-        if (user) {
-            const { data: enrollment } = await supabase
-                .from('course_enrollments')
-                .select('completed_lessons')
-                .eq('user_id', user.id)
-                .eq('course_id', course.id)
-                .maybeSingle()
-            completedIds = Array.isArray(enrollment?.completed_lessons) ? (enrollment!.completed_lessons as string[]) : []
-        }
-        const firstIncomplete = lessons.find((l) => !completedIds.includes(l.id))
-        const target = firstIncomplete ?? lessons[0]
-        redirect(`/learning/${course.slug}/lekcja/${target.id}`)
+        const target = lessons.find(lesson => !completedIds.includes(lesson.id)) ?? lessons[0]
+        redirect(academyCourseHref(course.slug, enrollmentId, `/lekcja/${target.id}`))
     }
-
-    const lesson = lessons.find((l) => l.id === params.lessonId)
+    const lesson = lessons.find(item => item.id === params.lessonId)
     if (!lesson) notFound()
+    const index = lessons.findIndex(item => item.id === lesson.id)
+    const previous = lessons[index - 1]
+    const previousDate = previous && completionDates[previous.id]
+    const unlockAt = previousDate ? new Date(previousDate).getTime() + lesson.unlock_after_days * 86400000 : null
+    const locked = lesson.content_available === false || (!course.completed_at && !completedIds.includes(lesson.id) && lesson.unlock_after_days > 0 && previous && (!unlockAt || unlockAt > Date.now()))
+    if (locked) return <div className="mx-auto max-w-4xl space-y-4 p-6">
+        <Link href={backHref} className="text-sm text-primary">← Powrót do szkolenia</Link>
+        <h1 className="text-2xl font-semibold">{lesson.title}</h1>
+        <p className="text-muted-foreground">{unlockAt && unlockAt > Date.now()
+            ? `Lekcja będzie dostępna ${new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Europe/Warsaw' }).format(unlockAt)}.`
+            : 'Ta lekcja nie jest jeszcze dostępna. Ukończ wcześniejsze wymagane materiały i sprawdź warunki dostępu do swojej edycji.'}</p>
+    </div>
 
-    if (!course.is_enrolled) {
-        redirect(`/learning/${course.slug}`)
-    }
-
-    // Pull completed lessons + completion dates (do drip gating A2.4)
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    let completedIds: string[] = []
-    let completionDates: Record<string, string> = {}
-    if (user) {
-        const { data: enrollment } = await supabase
-            .from('course_enrollments')
-            .select('completed_lessons, lesson_completion_dates')
-            .eq('user_id', user.id)
-            .eq('course_id', course.id)
-            .maybeSingle<{
-                completed_lessons: string[] | null
-                lesson_completion_dates: Record<string, string> | null
-            }>()
-        completedIds = Array.isArray(enrollment?.completed_lessons) ? enrollment!.completed_lessons as string[] : []
-        completionDates = enrollment?.lesson_completion_dates ?? {}
-
-        // A1.1: zapisz że user właśnie wszedł do lekcji (dla "Kontynuuj naukę" na /home).
-        // Fire-and-forget: nawet gdy się nie uda, nie blokuje render lekcji.
-        await recordLessonAccess(course.id, lesson.id)
-    }
-
-    // A2.4: drip release gating — jeśli unlock_after_days > 0 i poprzednia lekcja
-    // była completed mniej niż X dni temu, redirect z error message.
-    const currentIdx = lessons.findIndex((l) => l.id === lesson.id)
-    const lessonExt = lesson as typeof lesson & { unlock_after_days?: number }
-    const unlockDays = lessonExt.unlock_after_days ?? 0
-    if (unlockDays > 0 && currentIdx > 0 && !completedIds.includes(lesson.id)) {
-        const prevLessonId = lessons[currentIdx - 1].id
-        const prevCompletedIso = completionDates[prevLessonId]
-        if (!prevCompletedIso) {
-            // Poprzednia nie ukończona — redirect do course z hint
-            redirect(`/learning/${course.slug}?error=prerequisite_lesson`)
-        }
-        const prevCompletedTs = new Date(prevCompletedIso).getTime()
-        const unlockTs = prevCompletedTs + unlockDays * 24 * 60 * 60 * 1000
-        if (Date.now() < unlockTs) {
-            const daysLeft = Math.ceil((unlockTs - Date.now()) / (24 * 60 * 60 * 1000))
-            redirect(`/learning/${course.slug}?locked_lesson=${encodeURIComponent(lesson.title)}&days_left=${daysLeft}`)
-        }
-    }
-
-    return (
-        <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
-            <LessonPlayer
-                courseId={course.id}
-                courseSlug={course.slug}
-                lesson={lesson}
-                allLessons={lessons}
-                completedLessonIds={completedIds}
-                quizAvailable={course.quiz_questions_count > 0}
-            />
-            <CourseQA courseId={course.id} lessonId={lesson.id} />
-        </div>
-    )
+    await recordLessonAccess(course.id, lesson.id, enrollmentId)
+    return <div className="mx-auto max-w-4xl space-y-6 p-6 md:p-8">
+        <LessonPlayer key={`${enrollmentId}:${lesson.id}`} courseId={course.id} courseSlug={course.slug}
+            enrollmentId={enrollmentId} completedAt={course.completed_at} revokedAt={course.completion_revoked_at} revokedReason={course.completion_revoked_reason} lesson={lesson} allLessons={lessons}
+            completedLessonIds={completedIds} quizAvailable={course.quiz_questions_count > 0} />
+        <CourseQA courseId={course.id} lessonId={lesson.id} enrollmentId={enrollmentId} />
+    </div>
 }

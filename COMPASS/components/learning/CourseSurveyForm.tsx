@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { Heart, Send, Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,13 +12,14 @@ import { submitCourseSurvey } from '@/lib/actions/course-survey'
 
 interface CourseSurveyFormProps {
     courseId: string
+    enrollmentId?: string
 }
 
 /**
  * A2.5: Post-course survey — 3 pytania (NPS, best part, improvement).
  */
-export function CourseSurveyForm({ courseId }: CourseSurveyFormProps) {
-    const [pending, startTransition] = useTransition()
+export function CourseSurveyForm({ courseId, enrollmentId }: CourseSurveyFormProps) {
+    const [pending, startTransition] = useAcademyAction()
     const [nps, setNps] = useState<number | null>(null)
     const [bestPart, setBestPart] = useState('')
     const [improvement, setImprovement] = useState('')
@@ -25,22 +27,25 @@ export function CourseSurveyForm({ courseId }: CourseSurveyFormProps) {
 
     const handleSubmit = () => {
         if (nps === null) {
-            toast.error('Wybierz ocenę 1-10.')
+            toast.error('Wybierz ocenę 0-10.')
             return
         }
         startTransition(async () => {
-            const res = await submitCourseSurvey({
-                courseId,
-                npsScore: nps,
-                bestPart,
-                improvementSuggestion: improvement,
-            })
-            if (!res.success) {
-                toast.error(res.error)
-                return
-            }
-            toastSuccess('Dziękujemy za feedback!')
-            setSubmitted(true)
+            try {
+                const res = await submitCourseSurvey({
+                    courseId,
+                    enrollmentId,
+                    npsScore: nps,
+                    bestPart,
+                    improvementSuggestion: improvement,
+                })
+                if (!res.success) {
+                    toast.error(res.error)
+                    return
+                }
+                toastSuccess('Dziękujemy za feedback!')
+                setSubmitted(true)
+            } catch { toast.error('Nie udało się zapisać ankiety. Spróbuj ponownie.') }
         })
     }
 
@@ -68,16 +73,18 @@ export function CourseSurveyForm({ courseId }: CourseSurveyFormProps) {
                     </p>
                 </div>
 
-                {/* NPS 1-10 */}
+                {/* NPS 0-10 */}
                 <div className="space-y-2">
                     <label className="text-sm font-medium">
-                        1. Czy poleciłbyś ten kurs koledze? (1 = nigdy, 10 = zdecydowanie)
+                        1. Czy poleciłbyś ten kurs koledze? (0 = nigdy, 10 = zdecydowanie)
                     </label>
                     <div className="flex gap-1 flex-wrap">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                             <button
                                 key={n}
                                 type="button"
+                                aria-pressed={nps === n}
+                                aria-label={`Ocena ${n} z 10`}
                                 onClick={() => setNps(n)}
                                 disabled={pending}
                                 className={`w-9 h-9 rounded-md border text-sm font-medium transition-colors ${

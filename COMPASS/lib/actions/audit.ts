@@ -7,6 +7,9 @@ import { createServiceClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 
 export type AuditAction =
+    | 'ACADEMY_SYNC_RUN'
+    | 'ACADEMY_MATERIAL_SCAN_RUN'
+    | 'ACADEMY_MATERIAL_CLEANUP_RUN'
     | 'LOGIN'
     | 'LOGIN_FAILED'
     | 'LOGOUT'

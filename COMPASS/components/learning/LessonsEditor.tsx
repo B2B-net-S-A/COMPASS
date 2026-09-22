@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { Plus, Trash2, ArrowUp, ArrowDown, ChevronDown, ChevronRight, Eye, Edit3, Upload, FileText, Loader2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
+import { MaterialUploader } from '@/components/academy/MaterialUploader'
+import { Plus, Trash2, ArrowUp, ArrowDown, ChevronDown, ChevronRight, Eye, Edit3, FileText, Loader2, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +16,6 @@ import {
     updateLesson,
     deleteLesson,
     reorderLessons,
-    uploadCourseAttachment,
 } from '@/lib/actions/courses'
 import type { CourseLesson } from '@/lib/types/learning'
 
@@ -27,9 +28,11 @@ interface LessonsEditorProps {
 export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEditorProps) {
     const [lessons, setLessons] = useState<CourseLesson[]>(initialLessons)
     const [expandedId, setExpandedId] = useState<string | null>(initialLessons[0]?.id ?? null)
-    const [isPending, startTransition] = useTransition()
+    const [isPending, startTransition] = useAcademyAction()
     const [error, setError] = useState<string | null>(null)
     const [confirm, ConfirmUI] = useConfirm()
+
+    useEffect(() => { setLessons(initialLessons) }, [initialLessons])
 
     const refreshAfterChange = () => onChanged?.()
 
@@ -119,22 +122,6 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
         })
     }
 
-    const handleUploadAttachment = async (lessonId: string, file: File) => {
-        setError(null)
-        const formData = new FormData()
-        formData.append('courseId', courseId)
-        formData.append('file', file)
-        const res = await uploadCourseAttachment(formData)
-        if (!res.success) {
-            setError(res.error)
-            return
-        }
-        const lesson = lessons.find((l) => l.id === lessonId)
-        if (!lesson) return
-        const newAttachments = [...lesson.attachments, res.data]
-        handleSaveLesson(lessonId, { attachments: newAttachments })
-    }
-
     const handleRemoveAttachment = (lessonId: string, idx: number) => {
         const lesson = lessons.find((l) => l.id === lessonId)
         if (!lesson) return
@@ -147,7 +134,7 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
             <div className="flex items-center justify-between">
                 <div>
                     <h3 className="text-lg font-semibold">Lekcje ({lessons.length})</h3>
-                    <p className="text-xs text-muted-foreground">Markdown + opcjonalny embed YouTube/Vimeo + załączniki PDF</p>
+                    <p className="text-xs text-muted-foreground">Lekcje, dokumenty, nagrania i napisy</p>
                 </div>
                 <Button onClick={handleAddLesson} size="sm" disabled={isPending} className="gap-2">
                     <Plus className="w-4 h-4" /> Dodaj lekcję
@@ -179,7 +166,7 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
                         onSave={(patch) => handleSaveLesson(lesson.id, patch)}
                         onDelete={() => handleDeleteLesson(lesson.id)}
                         onMove={(dir) => handleMove(lesson.id, dir)}
-                        onUpload={(file) => handleUploadAttachment(lesson.id, file)}
+                        onMaterialReady={refreshAfterChange}
                         onRemoveAttachment={(i) => handleRemoveAttachment(lesson.id, i)}
                     />
                 ))}
@@ -199,7 +186,7 @@ interface LessonRowProps {
     onSave: (patch: Partial<CourseLesson>) => void
     onDelete: () => void
     onMove: (dir: 'up' | 'down') => void
-    onUpload: (file: File) => void
+    onMaterialReady: () => void
     onRemoveAttachment: (idx: number) => void
 }
 
@@ -213,7 +200,7 @@ function LessonRow({
     onSave,
     onDelete,
     onMove,
-    onUpload,
+    onMaterialReady,
     onRemoveAttachment,
 }: LessonRowProps) {
     const [title, setTitle] = useState(lesson.title)
@@ -221,7 +208,6 @@ function LessonRow({
     const [videoUrl, setVideoUrl] = useState(lesson.video_url ?? '')
     const [estimatedMin, setEstimatedMin] = useState<string>(lesson.estimated_minutes?.toString() ?? '')
     const [previewMode, setPreviewMode] = useState(false)
-    const [uploading, setUploading] = useState(false)
 
     const dirty =
         title !== lesson.title ||
@@ -236,18 +222,6 @@ function LessonRow({
             video_url: videoUrl.trim() || null,
             estimated_minutes: estimatedMin === '' ? null : parseInt(estimatedMin, 10),
         })
-    }
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-        setUploading(true)
-        try {
-            await onUpload(file)
-        } finally {
-            setUploading(false)
-            e.target.value = ''
-        }
     }
 
     return (
@@ -267,7 +241,7 @@ function LessonRow({
                         <span className="font-medium text-sm">{lesson.title}</span>
                         {lesson.attachments.length > 0 && (
                             <Badge variant="outline" className="text-[10px] border-border">
-                                {lesson.attachments.length} PDF
+                                {lesson.attachments.length} plików
                             </Badge>
                         )}
                     </button>
@@ -378,7 +352,7 @@ function LessonRow({
                         </div>
 
                         <div>
-                            <label className="text-xs text-muted-foreground mb-2 block">Załączniki PDF (max 10 MB)</label>
+                            <label className="text-xs text-muted-foreground mb-2 block">Materiały lekcji</label>
                             <div className="space-y-2">
                                 {lesson.attachments.map((att, i) => (
                                     <div
@@ -393,30 +367,14 @@ function LessonRow({
                                             size="sm"
                                             onClick={() => onRemoveAttachment(i)}
                                             disabled={disabled}
+                                            aria-label={`Usuń załącznik ${att.name}`}
                                             className="h-6 w-6 p-0 text-destructive"
                                         >
                                             <X className="w-3 h-3" />
                                         </Button>
                                     </div>
                                 ))}
-                                <label className="flex items-center justify-center gap-2 p-3 rounded border border-dashed border-border hover:border-primary/40 transition-colors cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                                    {uploading ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 animate-spin" /> Wgrywanie...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Upload className="w-4 h-4" /> Dodaj PDF
-                                        </>
-                                    )}
-                                    <input
-                                        type="file"
-                                        accept="application/pdf"
-                                        className="hidden"
-                                        onChange={handleFileChange}
-                                        disabled={disabled || uploading}
-                                    />
-                                </label>
+                                <MaterialUploader courseId={lesson.course_id} lessonId={lesson.id} disabled={disabled} onReady={onMaterialReady} />
                             </div>
                         </div>
 

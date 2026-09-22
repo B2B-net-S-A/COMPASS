@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { Star, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,7 +21,7 @@ export function RatingWidget({ courseId, initialRating, initialComment, onSaved 
     const [comment, setComment] = useState<string>(initialComment ?? '')
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
-    const [isPending, startTransition] = useTransition()
+    const [isPending, startTransition] = useAcademyAction()
 
     const isUpdating = !!initialRating
 
@@ -32,14 +33,16 @@ export function RatingWidget({ courseId, initialRating, initialComment, onSaved 
         setError(null)
         setSuccess(null)
         startTransition(async () => {
-            const res = await submitRating(courseId, rating, comment.trim() || undefined)
-            if (!res.success) {
-                setError(res.error)
-                return
-            }
-            setSuccess(isUpdating ? 'Ocena zaktualizowana ✓' : 'Dziękujemy za ocenę! ✓')
-            setTimeout(() => setSuccess(null), 3000)
-            onSaved?.()
+            try {
+                const res = await submitRating(courseId, rating, comment.trim() || undefined)
+                if (!res.success) {
+                    setError(res.error)
+                    return
+                }
+                setSuccess(isUpdating ? 'Ocena zaktualizowana ✓' : 'Dziękujemy za ocenę! ✓')
+                setTimeout(() => setSuccess(null), 3000)
+                onSaved?.()
+            } catch { setError('Nie udało się zapisać oceny. Spróbuj ponownie.') }
         })
     }
 

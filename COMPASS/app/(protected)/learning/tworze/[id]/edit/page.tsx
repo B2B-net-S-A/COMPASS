@@ -1,3 +1,5 @@
+import { AcademyStaffPanel } from '@/components/academy/AcademyStaffPanel'
+import { getAcademyStaff } from '@/lib/actions/academy-staff'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { GraduationCap } from 'lucide-react'
@@ -25,16 +27,17 @@ interface PageProps {
 }
 
 export default async function EditCoursePage({ params }: PageProps) {
-    const detailResult = await getCourseDetail(params.id)
+    const detailResult = await getCourseDetail(params.id, { author: true })
     if (!detailResult.success) {
         notFound()
     }
     const course = detailResult.data
-    const lessonsResult = await getCourseLessons(course.id)
+    const lessonsResult = await getCourseLessons(course.id, { author: true })
     const quizResult = await getCourseQuizForAuthor(course.id)
 
     const lessons = lessonsResult.success ? lessonsResult.data : []
     const quiz = quizResult.success ? quizResult.data : []
+    const staff = await getAcademyStaff(course.id)
     const status = STATUS_LABEL[course.status]
 
     return (
@@ -61,6 +64,7 @@ export default async function EditCoursePage({ params }: PageProps) {
                 </div>
             </div>
 
+            {staff.success && staff.data && <AcademyStaffPanel courseId={course.id} state={staff.data} />}
             <CourseEditWizard course={course} initialLessons={lessons} initialQuiz={quiz} />
         </div>
     )

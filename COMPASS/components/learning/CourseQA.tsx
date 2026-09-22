@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState } from 'react'
+import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { MessageSquare, Send, CheckCircle2, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -23,6 +24,8 @@ import {
 interface CourseQAProps {
     courseId: string
     lessonId?: string
+    enrollmentId?: string
+    previewVersionId?: string
     /** When true, ukrywa formularz dodawania pytania (np. dla nieaktywnego kursu). */
     readOnly?: boolean
 }
@@ -32,9 +35,10 @@ function getInitials(name: string | null, fallback: string): string {
     return fallback.slice(0, 2).toUpperCase()
 }
 
-export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps) {
-    const [pending, startTransition] = useTransition()
+export function CourseQA({ courseId, lessonId, enrollmentId, previewVersionId, readOnly = false }: CourseQAProps) {
+    const [pending, startTransition] = useAcademyAction()
     const [questions, setQuestions] = useState<CourseQuestion[]>([])
+    const [loadError, setLoadError] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
     const [newQuestion, setNewQuestion] = useState('')
     const [expandedQid, setExpandedQid] = useState<string | null>(null)
@@ -43,11 +47,12 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
 
     useEffect(() => {
         startTransition(async () => {
-            const res = await listCourseQuestions(courseId, lessonId)
-            if (res.success) setQuestions(res.data)
+            const res = await listCourseQuestions(courseId, lessonId, enrollmentId, previewVersionId)
+            if (res.success) { setQuestions(res.data); setLoadError(null) }
+            else setLoadError(res.error)
             setLoading(false)
         })
-    }, [courseId, lessonId])
+    }, [courseId, lessonId, enrollmentId, previewVersionId, startTransition])
 
     const handleAsk = () => {
         if (newQuestion.trim().length < 10) {
@@ -55,15 +60,15 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
             return
         }
         startTransition(async () => {
-            const res = await askQuestion({ courseId, lessonId, questionText: newQuestion })
+            const res = await askQuestion({ courseId, lessonId, enrollmentId, questionText: newQuestion })
             if (!res.success) {
                 toast.error(res.error)
                 return
             }
-            toastSuccess('Pytanie dodane (+5 pkt loyalty)')
+            toastSuccess('Pytanie dodane')
             setNewQuestion('')
             // Refresh list
-            const refreshed = await listCourseQuestions(courseId, lessonId)
+            const refreshed = await listCourseQuestions(courseId, lessonId, enrollmentId, previewVersionId)
             if (refreshed.success) setQuestions(refreshed.data)
         })
     }
@@ -102,7 +107,7 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
             })
             // Refresh
             const [refreshed, ansRes] = await Promise.all([
-                listCourseQuestions(courseId, lessonId),
+                listCourseQuestions(courseId, lessonId, enrollmentId, previewVersionId),
                 listAnswersForQuestion(qid),
             ])
             if (refreshed.success) setQuestions(refreshed.data)
@@ -123,7 +128,7 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
                     )}
                 </div>
 
-                {!readOnly && (
+                {!readOnly && !previewVersionId && (
                     <div className="space-y-2">
                         <Textarea
                             placeholder="Zadaj pytanie do tej lekcji lub kursu… (min 10 znaków)"
@@ -142,11 +147,12 @@ export function CourseQA({ courseId, lessonId, readOnly = false }: CourseQAProps
                     </div>
                 )}
 
+                {loadError && <p role="alert" className="text-sm text-destructive">{loadError}</p>}
                 {loading ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">Ładuję…</p>
                 ) : questions.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">
-                        Brak pytań. Bądź pierwszy!
+                        {previewVersionId ? 'Uczestnicy nie dodali jeszcze pytań do tej wersji programu.' : 'Brak pytań. Bądź pierwszy!'}
                     </p>
                 ) : (
                     <div className="space-y-3">

@@ -5,6 +5,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { getLearningPathDetail } from '@/lib/actions/learning-paths'
 import { LearningPathEnrollButton } from '@/components/learning/LearningPathEnrollButton'
+import { LearningPathCompletion } from '@/components/academy/LearningPathCompletion'
+import { academyCourseHref } from '@/lib/academy/navigation'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +43,7 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
 
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
-                            <BookOpen className="w-4 h-4" /> {path.total_courses_count} kurs{path.total_courses_count === 1 ? '' : 'y/-ów'}
+                            <BookOpen className="w-4 h-4" /> Obowiązkowe szkolenia: {path.total_courses_count}
                         </span>
                         {path.estimated_hours && (
                             <span className="inline-flex items-center gap-1">
@@ -52,12 +54,14 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
 
                     {path.is_enrolled_in_path ? (
                         <div className="space-y-1.5">
+                            <p className="text-xs text-muted-foreground">Obowiązkowy program zachowujemy zgodnie z Twoim zapisem na ścieżkę.</p>
                             <div className="flex items-center justify-between text-sm">
                                 <span>Postęp ścieżki</span>
                                 <span className="font-mono tabular-nums">
                                     {path.completed_courses_count}/{path.total_courses_count} · {path.progress_percent}%
                                 </span>
                             </div>
+                            {!path.completed_at && <LearningPathCompletion pathId={path.id} />}
                             <div className="h-2 rounded-full bg-muted overflow-hidden">
                                 <div className="h-full bg-primary transition-all" style={{ width: `${path.progress_percent}%` }} />
                             </div>
@@ -73,11 +77,11 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
                 {path.courses.map((c, idx) => {
                     const isCompleted = c.is_completed
                     // A2.1: kolejny kurs gated jeśli poprzedni nie completed (sequential learning)
-                    const prevCompleted = idx === 0 || path.courses[idx - 1].is_completed
+                    const prevCompleted = path.courses.slice(0, idx).filter(previous => previous.is_required).every(previous => previous.is_completed)
                     const isLocked = !prevCompleted && !isCompleted && c.is_required
                     return (
                         <Card
-                            key={c.course.id}
+                            key={c.course_id}
                             className={
                                 isCompleted
                                     ? 'bg-success/5 border-success/20'
@@ -97,9 +101,10 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="font-semibold">{c.course.title}</p>
+                                    <p className="font-semibold">{c.course?.title ?? 'Szkolenie chwilowo niedostępne'}</p>
+                                    {!c.course && <p className="text-xs text-muted-foreground">To wymaganie pozostaje w Twoim programie. Skontaktuj się z administratorem.</p>}
                                     <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                                        <Badge variant="outline" className="text-[10px]">{c.course.category}</Badge>
+                                        {c.course && <Badge variant="outline" className="text-[10px]">{c.course.category}</Badge>}
                                         {!c.is_required && (
                                             <Badge variant="outline" className="text-[10px] border-border">Opcjonalny</Badge>
                                         )}
@@ -110,11 +115,11 @@ export default async function LearningPathDetailPage({ params }: { params: { slu
                                         )}
                                     </div>
                                 </div>
-                                {isLocked ? (
+                                {!c.course ? <span className="text-xs text-muted-foreground">Niedostępne</span> : isLocked ? (
                                     <span className="text-xs text-muted-foreground">Ukończ poprzedni kurs</span>
                                 ) : (
                                     <Link
-                                        href={`/learning/${c.course.slug}`}
+                                        href={c.run_id ? `/learning/edycje/${c.run_id}` : academyCourseHref(c.course.slug, c.enrollment_id)}
                                         className="text-sm text-primary inline-flex items-center gap-1"
                                     >
                                         {isCompleted ? 'Powtórz' : c.is_enrolled ? 'Kontynuuj' : 'Otwórz'}

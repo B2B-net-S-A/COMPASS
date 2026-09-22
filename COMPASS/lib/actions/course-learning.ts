@@ -3,6 +3,9 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
+import { withCourseVersion, type CourseVersion } from '@/lib/academy/course-data'
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import type {
     ActionResult,
@@ -22,314 +25,87 @@ import type {
  * Zapisuje konsultanta na kurs. Idempotentne: jeśli zapis już istnieje, zwraca jego ID.
  */
 export async function enrollInCourse(courseId: string): Promise<ActionResult<{ enrollmentId: string; alreadyEnrolled: boolean }>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        // Idempotency check
-        const { data: existing } = await supabase
-            .from('course_enrollments')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('course_id', courseId)
-            .maybeSingle()
-        if (existing) {
-            return { success: true, data: { enrollmentId: existing.id, alreadyEnrolled: true } }
-        }
-
-        // Verify course is published (RLS will reject otherwise)
-        const { data: course, error: courseErr } = await supabase
-            .from('courses')
-            .select('id, status, slug, prerequisite_course_ids')
-            .eq('id', courseId)
-            .single<{ id: string; status: string; slug: string; prerequisite_course_ids: string[] | null }>()
-        if (courseErr || !course) return { success: false, error: 'Kurs nie istnieje lub brak dostępu' }
-        if (course.status !== 'published') {
-            return { success: false, error: 'Kurs nie jest opublikowany' }
-        }
-
-        // A2.2: walidacja prerequisites — user musi mieć completed enrollments w wymaganych kursach
-        const prereqs = course.prerequisite_course_ids ?? []
-        if (prereqs.length > 0) {
-            const { data: completedEnrolls } = await supabase
-                .from('course_enrollments')
-                .select('course_id')
-                .eq('user_id', user.id)
-                .in('course_id', prereqs)
-                .not('completed_at', 'is', null)
-            const completedSet = new Set(
-                (completedEnrolls ?? []).map((e) => (e as { course_id: string }).course_id),
-            )
-            const missing = prereqs.filter((id) => !completedSet.has(id))
-            if (missing.length > 0) {
-                // Pobierz tytuły brakujących kursów (dla user-friendly error)
-                const { data: missingCourses } = await supabase
-                    .from('courses')
-                    .select('title')
-                    .in('id', missing)
-                const titles = (missingCourses ?? [])
-                    .map((c) => (c as { title: string }).title)
-                    .join(', ')
-                return {
-                    success: false,
-                    error: `Brakuje ukończonych kursów wymaganych: ${titles}`,
-                }
-            }
-        }
-
-        const { data, error } = await supabase
-            .from('course_enrollments')
-            .insert({ user_id: user.id, course_id: courseId })
-            .select('id')
-            .single()
-        if (error) throw error
-
-        revalidatePath('/learning/moje')
-        revalidatePath(`/learning/${course.slug}`)
-        return { success: true, data: { enrollmentId: data.id, alreadyEnrolled: false } }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd zapisu na kurs'
-        logCompat.error('[enrollInCourse]', error)
-        return { success: false, error: msg }
-    }
+    return academyAction('enrollment.create', async () => {
+        const { client, access } = await requireAcademyContext()
+        const id = z.uuid().parse(courseId)
+        const { data: existing, error: existingError } = await client.from('course_enrollments').select('id').eq('user_id', access.userId).eq('course_id', id).is('run_id', null).maybeSingle()
+        assertDatabaseResult(existingError)
+        const { data, error } = await client.rpc('academy_enroll', { p_course_id: id })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return { enrollmentId: data as string, alreadyEnrolled: !!existing }
+    })
 }
 
-/**
- * Oznacza lekcję jako ukończoną (append do `completed_lessons` UUID[] z dedup).
- * Aktualizuje też `last_accessed_lesson_id` + `last_accessed_at` (A1.1)
- * oraz bump streak nauki (A1.4) tylko przy NEW completion (nie idempotent).
- */
-export async function markLessonComplete(
-    courseId: string,
-    lessonId: string,
-): Promise<ActionResult<{ streak: { current: number; milestone_reached: boolean } | null }>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data: enrollment, error: enrErr } = await supabase
-            .from('course_enrollments')
-            .select('id, completed_lessons, lesson_completion_dates')
-            .eq('user_id', user.id)
-            .eq('course_id', courseId)
-            .single<{
-                id: string
-                completed_lessons: string[] | null
-                lesson_completion_dates: Record<string, string> | null
-            }>()
-        if (enrErr || !enrollment) return { success: false, error: 'Nie jesteś zapisany na ten kurs' }
-
-        const completed: string[] = Array.isArray(enrollment.completed_lessons) ? enrollment.completed_lessons : []
-        const completionDates: Record<string, string> = enrollment.lesson_completion_dates ?? {}
-        const nowIso = new Date().toISOString()
-        const alreadyMarked = completed.includes(lessonId)
-
-        const updatePayload: {
-            completed_lessons?: string[]
-            lesson_completion_dates?: Record<string, string>
-            last_accessed_lesson_id: string
-            last_accessed_at: string
-        } = {
-            last_accessed_lesson_id: lessonId,
-            last_accessed_at: nowIso,
-        }
-        if (!alreadyMarked) {
-            updatePayload.completed_lessons = [...completed, lessonId]
-            // A2.4: zapisz timestamp ukończenia dla drip release gating
-            updatePayload.lesson_completion_dates = { ...completionDates, [lessonId]: nowIso }
-        }
-
-        const { error } = await supabase
-            .from('course_enrollments')
-            .update(updatePayload)
-            .eq('id', enrollment.id)
-        if (error) throw error
-
-        // A1.4: bump streak tylko przy NEW completion (re-marking nie liczy się)
-        let streakInfo: { current: number; milestone_reached: boolean } | null = null
-        if (!alreadyMarked) {
-            streakInfo = await bumpLearningStreak(user.id)
-        }
-
-        return { success: true, data: { streak: streakInfo } }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd oznaczania lekcji'
-        logCompat.error('[markLessonComplete]', error)
-        return { success: false, error: msg }
-    }
+async function enrollmentContext(courseId: string, enrollmentId?: string) {
+    const context = await requireAcademyContext()
+    let query = context.client.from('course_enrollments').select('id,version_id,completed_at').eq('course_id', z.uuid().parse(courseId)).eq('user_id', context.access.userId)
+    query = enrollmentId ? query.eq('id', z.uuid().parse(enrollmentId)) : query.is('run_id', null)
+    const { data, error } = await query.single()
+    assertDatabaseResult(error)
+    if (!data) throw new Error('Najpierw zapisz się na szkolenie.')
+    return { ...context, enrollment: data }
 }
 
-/**
- * A1.4: Aktualizuje passę nauki (learning_streak_*) w profilu usera.
- * Rules:
- *  - Jeśli last_date == today → no-op (już dziś coś zrobił)
- *  - Jeśli last_date == yesterday → streak++
- *  - Inaczej (gap ≥1 dzień lub null) → reset to 1
- *  - Update longest jeśli current > longest
- *  - Co 7 kolejnych dni (current % 7 == 0): INSERT loyalty_transactions +25 pkt
- *
- * Zwraca current streak + milestone flag (dla UI toast).
- * Jest internal helper — niewystawiony jako server action.
- */
-async function bumpLearningStreak(
-    userId: string,
-): Promise<{ current: number; milestone_reached: boolean }> {
-    const supabase = createClient()
-    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('learning_streak_current, learning_streak_longest, learning_streak_last_date')
-        .eq('id', userId)
-        .single<{
-            learning_streak_current: number
-            learning_streak_longest: number
-            learning_streak_last_date: string | null
-        }>()
-
-    if (!profile) {
-        return { current: 0, milestone_reached: false }
-    }
-
-    if (profile.learning_streak_last_date === today) {
-        // Już dziś coś zrobił — no-op, ale zwracamy current dla UI
-        return { current: profile.learning_streak_current, milestone_reached: false }
-    }
-
-    let newCurrent: number
-    if (profile.learning_streak_last_date === yesterday) {
-        newCurrent = profile.learning_streak_current + 1
-    } else {
-        // Gap (>=1 dzień przerwy) lub pierwsza aktywność → reset
-        newCurrent = 1
-    }
-    const newLongest = Math.max(newCurrent, profile.learning_streak_longest)
-    const milestoneReached = newCurrent > 0 && newCurrent % 7 === 0
-
-    const { error: updErr } = await supabase
-        .from('profiles')
-        .update({
-            learning_streak_current: newCurrent,
-            learning_streak_longest: newLongest,
-            learning_streak_last_date: today,
-        })
-        .eq('id', userId)
-    if (updErr) logCompat.error('[bumpLearningStreak] update profile failed:', updErr)
-
-    if (milestoneReached) {
-        // INSERT loyalty_transactions +25 pkt za passę 7/14/21/... dni
-        const { error: lpErr } = await supabase.from('loyalty_transactions').insert({
-            user_id: userId,
-            source_type: 'learning_streak_milestone',
-            points: 25,
-            description: `Passa nauki: ${newCurrent} dni z rzędu`,
-        })
-        if (lpErr) logCompat.error('[bumpLearningStreak] loyalty insert failed:', lpErr)
-    }
-
-    return { current: newCurrent, milestone_reached: milestoneReached }
+export async function markLessonComplete(courseId: string, lessonId: string, enrollmentId?: string): Promise<ActionResult<{ streak: { current: number; milestone_reached: boolean } | null }>> {
+    return academyAction('lesson.complete', async () => {
+        const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { data, error } = await client.rpc('academy_mark_lesson_complete', { p_enrollment_id: enrollment.id, p_lesson_id: z.uuid().parse(lessonId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return { streak: data?.streak ?? null }
+    })
 }
 
-/**
- * A1.1: rejestruje wejście użytkownika do lekcji — aktualizuje
- * `last_accessed_lesson_id` + `last_accessed_at` w course_enrollments.
- * Idempotent: cicho ignoruje gdy user nie jest zapisany albo brak auth.
- *
- * Wywoływane z lesson page (server-side) za każdym renderem strony lekcji.
- * Kontynuacja: na home page widget "Wróć do nauki" wskazuje ostatnio
- * odwiedzoną lekcję (najwyższy last_accessed_at z aktywnych enrollments).
- */
-export async function recordLessonAccess(courseId: string, lessonId: string): Promise<ActionResult<void>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: true, data: undefined } // silent no-op
-
-        const { error } = await supabase
-            .from('course_enrollments')
-            .update({
-                last_accessed_lesson_id: lessonId,
-                last_accessed_at: new Date().toISOString(),
-            })
-            .eq('user_id', user.id)
-            .eq('course_id', courseId)
-        if (error) throw error
-
-        return { success: true, data: undefined }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd rejestracji wejścia'
-        logCompat.error('[recordLessonAccess]', error)
-        return { success: false, error: msg }
-    }
+export async function recordLessonAccess(courseId: string, lessonId: string, enrollmentId?: string): Promise<ActionResult<void>> {
+    return academyAction('lesson.access', async () => {
+        const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { error } = await client.rpc('academy_record_lesson_access', { p_enrollment_id: enrollment.id, p_lesson_id: z.uuid().parse(lessonId) })
+        assertDatabaseResult(error)
+    })
 }
 
-/**
- * Pobiera quiz dla studenta (bez `is_correct`) przez RPC `get_quiz_for_attempt`.
- * RPC sprawdza enrollment / autora / admina.
- */
-export async function getQuizForAttempt(courseId: string): Promise<ActionResult<QuizQuestionForAttempt[]>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data, error } = await supabase.rpc('get_quiz_for_attempt', { p_course_id: courseId })
-        if (error) throw error
-
-        const questions = ((data ?? []) as Array<{
-            question_id: string
-            question_order: number
-            question_text: string
-            options: { id: string; order_index: number; option_text: string }[] | null
-        }>).map((q) => ({
-            question_id: q.question_id,
-            question_order: q.question_order,
-            question_text: q.question_text,
-            options: Array.isArray(q.options) ? q.options : [],
-        }))
-
-        return { success: true, data: questions }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania quizu'
-        logCompat.error('[getQuizForAttempt]', error)
-        return { success: false, error: msg }
-    }
+export async function getQuizForAttempt(courseId: string, enrollmentId?: string): Promise<ActionResult<QuizQuestionForAttempt[]>> {
+    return academyAction('quiz.get', async () => {
+        const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { data, error } = await client.rpc('academy_get_quiz', { p_enrollment_id: enrollment.id })
+        assertDatabaseResult(error)
+        return data as QuizQuestionForAttempt[]
+    })
 }
 
-/**
- * Wysyła odpowiedzi quizu — atomic scoring + INSERT attempt + (jeśli passed) award_course_points.
- * Realizowane przez RPC `submit_quiz_attempt`.
- *
- * @param answers Array of { question_id, selected_option_id }
- */
-export async function submitQuizAttempt(
-    courseId: string,
-    answers: { question_id: string; selected_option_id: string }[],
-): Promise<ActionResult<QuizSubmissionResult>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
+export async function submitQuizAttempt(courseId: string, answers: { question_id: string; selected_option_id: string }[], enrollmentId?: string): Promise<ActionResult<QuizSubmissionResult>> {
+    return academyAction('quiz.submit', async () => {
+        const parsed = z.array(z.object({ question_id: z.uuid(), selected_option_id: z.uuid() })).min(1).max(100).parse(answers)
+        if (new Set(parsed.map(answer => answer.question_id)).size !== parsed.length) throw new Error('Każde pytanie może mieć tylko jedną odpowiedź.')
+        const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { data, error } = await client.rpc('academy_submit_quiz', { p_enrollment_id: enrollment.id, p_answers: parsed })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return data as QuizSubmissionResult
+    })
+}
 
-        const { data, error } = await supabase.rpc('submit_quiz_attempt', {
-            p_course_id: courseId,
-            p_answers: answers,
-        })
-        if (error) throw error
+export async function completeAcademyCourse(courseId: string, enrollmentId?: string) {
+    return academyAction('course.complete', async () => {
+        const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { data, error } = await client.rpc('academy_complete_course', { p_enrollment_id: enrollment.id })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return data as { completed: boolean; already_completed?: boolean; reason?: string }
+    })
+}
 
-        const result = data as unknown as QuizSubmissionResult
-
-        revalidatePath('/learning/moje')
-        revalidatePath('/league')
-        return { success: true, data: result }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd zapisu odpowiedzi quizu'
-        logCompat.error('[submitQuizAttempt]', error)
-        return { success: false, error: msg }
-    }
+export async function getMyQuizResult(courseId: string, attemptId: string, enrollmentId?: string) {
+    return academyAction('quiz.result', async () => {
+        const { client, access, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { data, error } = await client.from('course_quiz_attempts').select('id,score_percent,passed,attempted_at').eq('id', z.uuid().parse(attemptId)).eq('enrollment_id', enrollment.id).eq('user_id', access.userId).single()
+        assertDatabaseResult(error)
+        if (!data) throw new Error('Wynik jest niedostępny.')
+        const completion = enrollment.completed_at ? await client.from('course_completions').select('revoked_at').eq('enrollment_id', enrollment.id).eq('user_id', access.userId).maybeSingle() : { data: null, error: null }
+        assertDatabaseResult(completion.error)
+        return { id: data.id as string, score: data.score_percent as number, passed: data.passed as boolean, completed: !!enrollment.completed_at && !completion.data?.revoked_at }
+    })
 }
 
 /**
@@ -355,9 +131,11 @@ export async function submitRating(
             .select('completed_at')
             .eq('user_id', user.id)
             .eq('course_id', courseId)
-            .single()
+            .not('completed_at', 'is', null)
+            .limit(1)
+            .maybeSingle()
         if (!enrollment?.completed_at) {
-            return { success: false, error: 'Możesz ocenić kurs dopiero po ukończeniu (zdaniu quizu)' }
+            return { success: false, error: 'Możesz ocenić kurs dopiero po spełnieniu wszystkich warunków ukończenia.' }
         }
 
         const { data: course } = await supabase
@@ -401,73 +179,69 @@ export async function submitRating(
  * Pobiera kursy, na które user się zapisał — z postępem (% ukończonych lekcji).
  */
 export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentWithProgress[]>> {
-    try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return { success: false, error: 'Brak autoryzacji' }
-
-        const { data: enrollments, error } = await supabase
-            .from('course_enrollments')
-            .select('id, course_id, enrolled_at, completed_lessons, completed_at, points_awarded, last_accessed_lesson_id, last_accessed_at')
-            .eq('user_id', user.id)
-            .order('enrolled_at', { ascending: false })
-        if (error) throw error
-
-        const enrolls = (enrollments ?? []) as Array<{
-            id: string
-            course_id: string
-            enrolled_at: string
-            completed_lessons: string[] | null
-            completed_at: string | null
-            points_awarded: boolean
-            last_accessed_lesson_id: string | null
-            last_accessed_at: string | null
-        }>
-        if (enrolls.length === 0) return { success: true, data: [] }
-
-        const courseIds = enrolls.map((e) => e.course_id)
-        const { data: courses } = await supabase.from('courses').select('*').in('id', courseIds)
-        const coursesMap = new Map<string, Course>()
-        for (const c of (courses ?? []) as Course[]) coursesMap.set(c.id, c)
-
-        // Total lessons per course
-        const { data: lessonCounts } = await supabase
-            .from('course_lessons')
-            .select('course_id')
-            .in('course_id', courseIds)
-        const lessonCountMap = new Map<string, number>()
-        for (const l of (lessonCounts ?? []) as Array<{ course_id: string }>) {
-            lessonCountMap.set(l.course_id, (lessonCountMap.get(l.course_id) ?? 0) + 1)
+    return academyAction('enrollment.mine', async () => {
+        const { client, access } = await requireAcademyContext()
+        const { data: rows, error } = await client.from('course_enrollments').select('*').eq('user_id', access.userId).order('enrolled_at', { ascending: false })
+        assertDatabaseResult(error)
+        let enrollments = rows ?? []
+        const runIds = [...new Set(enrollments.filter(enrollment => enrollment.run_id && !enrollment.completed_at).map(enrollment => enrollment.run_id))]
+        if (runIds.length) {
+            const [runs, registrations] = await Promise.all([
+                client.from('course_runs').select('id').in('id', runIds).eq('status', 'published'),
+                client.from('course_run_registrations').select('enrollment_id,run_id').eq('user_id', access.userId).eq('status', 'confirmed').in('run_id', runIds),
+            ])
+            assertDatabaseResult(runs.error)
+            assertDatabaseResult(registrations.error)
+            const activeRuns = new Set((runs.data ?? []).map(run => run.id))
+            const activeEnrollments = new Set((registrations.data ?? []).filter(registration => activeRuns.has(registration.run_id)).map(registration => registration.enrollment_id))
+            enrollments = enrollments.filter(enrollment => !enrollment.run_id || enrollment.completed_at || activeEnrollments.has(enrollment.id))
         }
-
-        const result: CourseEnrollmentWithProgress[] = enrolls
-            .map((e) => {
-                const course = coursesMap.get(e.course_id)
-                if (!course) return null
-                const totalLessons = lessonCountMap.get(e.course_id) ?? 0
-                const doneCount = (e.completed_lessons ?? []).length
-                const progress = totalLessons === 0 ? (e.completed_at ? 100 : 0) : Math.min(100, Math.round((doneCount / totalLessons) * 100))
-                return {
-                    enrollment_id: e.id,
-                    course,
-                    enrolled_at: e.enrolled_at,
-                    completed_lessons: e.completed_lessons ?? [],
-                    total_lessons: totalLessons,
-                    completed_at: e.completed_at,
-                    points_awarded: e.points_awarded,
-                    progress_percent: progress,
-                    last_accessed_lesson_id: e.last_accessed_lesson_id,
-                    last_accessed_at: e.last_accessed_at,
-                }
-            })
-            .filter((x): x is CourseEnrollmentWithProgress => x !== null)
-
-        return { success: true, data: result }
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Błąd pobierania zapisów'
-        logCompat.error('[getMyEnrollments]', error)
-        return { success: false, error: msg }
-    }
+        if (!enrollments?.length) return []
+        const { data: completions, error: completionsError } = await client.from('course_completions').select('enrollment_id,revoked_at,revoked_reason').eq('user_id', access.userId).in('enrollment_id', enrollments.map(e => e.id))
+        assertDatabaseResult(completionsError)
+        const completionMap = new Map((completions ?? []).map(c => [c.enrollment_id, c]))
+        const versionIds = [...new Set(enrollments.map(enrollment => enrollment.version_id as string))]
+        const [{ data: courses, error: courseError }, { data: versions, error: versionError }, syllabuses] = await Promise.all([
+            client.from('courses').select('*').in('id', enrollments.map(e => e.course_id)),
+            client.from('course_versions').select('*').in('id', versionIds),
+            Promise.all(versionIds.map(async versionId => {
+                const result = await client.rpc('academy_get_syllabus', { p_version_id: versionId })
+                assertDatabaseResult(result.error)
+                return { versionId, lessons: (result.data ?? []) as { id: string }[] }
+            })),
+        ])
+        assertDatabaseResult(courseError)
+        assertDatabaseResult(versionError)
+        // Lesson content RLS hides locked drip lessons; syllabus counts must include them.
+        const lessonMap = new Map(syllabuses.map(syllabus => [syllabus.versionId, syllabus.lessons]))
+        const courseMap = new Map((courses as Course[] ?? []).map(c => [c.id, c]))
+        const versionMap = new Map((versions as CourseVersion[] ?? []).map(v => [v.id, v]))
+        return enrollments.flatMap(enrollment => {
+            const course = courseMap.get(enrollment.course_id)
+            const version = versionMap.get(enrollment.version_id)
+            if (!course || !version) return []
+            const requiredLessons = lessonMap.get(version.id) ?? []
+            const completed = new Set(enrollment.completed_lessons as string[] ?? [])
+            const completedLessonIds = requiredLessons.filter(lesson => completed.has(lesson.id)).map(lesson => lesson.id)
+            const completedCount = completedLessonIds.length
+            return [{
+                enrollment_id: enrollment.id as string,
+                course: withCourseVersion(course, version),
+                enrolled_at: enrollment.enrolled_at as string,
+                completed_lessons: completedLessonIds,
+                total_lessons: requiredLessons.length,
+                completed_at: enrollment.completed_at as string | null,
+                completion_revoked_at: completionMap.get(enrollment.id)?.revoked_at as string | null ?? null,
+                completion_revoked_reason: completionMap.get(enrollment.id)?.revoked_reason as string | null ?? null,
+                points_awarded: enrollment.points_awarded as boolean,
+                progress_percent: enrollment.completed_at ? 100 : requiredLessons.length ? Math.min(99, Math.round(completedCount / requiredLessons.length * 100)) : 0,
+                last_accessed_lesson_id: enrollment.last_accessed_lesson_id as string | null,
+                last_accessed_at: enrollment.last_accessed_at as string | null,
+                version_id: version.id,
+                run_id: enrollment.run_id as string | null,
+            }]
+        })
+    })
 }
 
 // ============================================================

@@ -9,6 +9,13 @@ export type CourseLevel = 'beginner' | 'intermediate' | 'advanced'
 // Phase 1.1 (2026-05-04): course_type ENUM in DB; consultant=peer-authored (admin moderation),
 // company=B2Bnetwork-authored (admin/trainer creates, no peer-author bonus).
 export type CourseType = 'consultant' | 'company'
+export type CourseDeliveryMode = 'self_paced' | 'live' | 'blended'
+export interface CourseCompletionRules {
+    quiz_required: boolean
+    quiz_pass_percent: number
+    require_all_lessons: boolean
+    attendance_percent: number
+}
 
 export interface Course {
     id: string
@@ -36,6 +43,17 @@ export interface Course {
     updated_at: string
     /** A2.2: kursy wymagane przed zapisem (musi być completed). */
     prerequisite_course_ids: string[]
+    delivery_mode?: CourseDeliveryMode
+    published_version_id?: string | null
+    draft_version_id?: string | null
+    version_id?: string
+    submission_id?: string | null
+    legacy_review_required?: boolean
+    can_edit?: boolean
+    can_lead?: boolean
+    can_manage_assigned_runs?: boolean
+    version_number?: number
+    completion_rules?: CourseCompletionRules
 }
 
 export interface CourseListItem extends Course {
@@ -47,6 +65,8 @@ export interface CourseAttachment {
     name: string
     storage_path: string
     size_bytes: number
+    asset_id?: string
+    mime_type?: string
 }
 
 export interface CourseLesson {
@@ -60,6 +80,8 @@ export interface CourseLesson {
     estimated_minutes: number | null
     /** A2.4: drip release — odblokuj X dni po ukończeniu poprzedniej lekcji. 0 = od razu. */
     unlock_after_days: number
+    version_id?: string
+    content_available?: boolean
 }
 
 export interface CourseQuizQuestionPublic {
@@ -76,9 +98,17 @@ export interface CourseDetail extends Course {
     quiz_questions_count: number
     is_enrolled: boolean
     user_rating: { rating: number; comment: string | null } | null
+    enrollment_id?: string | null
+    run_id?: string | null
+    completed_at?: string | null
+    completion_revoked_at?: string | null
+    completion_revoked_reason?: string | null
+    completed_lesson_ids?: string[]
+    lesson_completion_dates?: Record<string, string>
 }
 
 export interface CreateCourseInput {
+    prerequisite_course_ids?: string[]
     title: string
     description?: string
     category: string
@@ -89,9 +119,12 @@ export interface CreateCourseInput {
     course_type?: CourseType
     /** Admin/trainer can mark a company course as 'official' (badge surface). */
     is_official?: boolean
+    delivery_mode?: CourseDeliveryMode
+    completion_rules?: CourseCompletionRules
 }
 
 export interface UpdateCoursePatch {
+    prerequisite_course_ids?: string[]
     title?: string
     description?: string | null
     category?: string
@@ -99,9 +132,13 @@ export interface UpdateCoursePatch {
     level?: CourseLevel
     duration_minutes?: number | null
     cover_image_url?: string | null
+    delivery_mode?: CourseDeliveryMode
+    completion_rules?: CourseCompletionRules
 }
 
 export interface ListCoursesFilters {
+    author_id?: string
+    instructor_id?: string
     category?: string
     tag?: string
     level?: CourseLevel
@@ -110,6 +147,7 @@ export interface ListCoursesFilters {
     page?: number
     limit?: number
     orderBy?: 'newest' | 'popular' | 'top_rated'
+    delivery_mode?: CourseDeliveryMode
 }
 
 export interface CreateLessonInput {
@@ -162,12 +200,16 @@ export interface CourseEnrollmentWithProgress {
     completed_lessons: string[]
     total_lessons: number
     completed_at: string | null
+    completion_revoked_at?: string | null
+    completion_revoked_reason?: string | null
     points_awarded: boolean
     progress_percent: number
     /** A1.1: ID ostatnio odwiedzonej lekcji (NULL gdy user nigdy nie wszedł). */
     last_accessed_lesson_id: string | null
     /** A1.1: Timestamp ostatniej wizyty w lekcji. */
     last_accessed_at: string | null
+    version_id?: string
+    run_id?: string | null
 }
 
 export interface RecommendedCourse {
@@ -217,11 +259,14 @@ export interface LearningPathCourseLink {
 
 export interface LearningPathDetail extends LearningPath {
     courses: Array<{
-        course: Course
+        course_id: string
+        course: Course | null
         order_index: number
         is_required: boolean
         is_completed: boolean
         is_enrolled: boolean
+        enrollment_id: string | null
+        run_id: string | null
     }>
     is_enrolled_in_path: boolean
     completed_courses_count: number

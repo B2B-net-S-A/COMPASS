@@ -3,6 +3,7 @@ import { pl } from 'date-fns/locale'
 import { logger, logCompat } from '@/lib/logger'
 import { sendEmail, type SendResult } from '@/lib/email/sender'
 import { safeExternalUrl } from '@/lib/legal-monitor/safe-url'
+import { academyCourseHref } from '@/lib/academy/navigation'
 import {
     periodLabel,
     periodStartIso,
@@ -838,6 +839,7 @@ export async function sendCourseInactivityReminder(
     args: {
         courseTitle: string
         courseSlug: string
+        enrollmentId: string
         progressPercent: number
         completedLessons: number
         totalLessons: number
@@ -845,20 +847,21 @@ export async function sendCourseInactivityReminder(
         appUrl: string
     },
 ): Promise<{ success: boolean }> {
-    const remaining = args.totalLessons - args.completedLessons
+    const remaining = Math.max(0, args.totalLessons - args.completedLessons)
+    const continueUrl = `${args.appUrl.replace(/\/$/, '')}${academyCourseHref(args.courseSlug, args.enrollmentId, '/lekcja/first')}`
     const subject = `[COMPASS Akademia] Wróć do kursu "${args.courseTitle}"`
     const bodyHtml = `
-        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${recipientName}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${escapeHtml(recipientName)}</strong>,</p>
         <p style="color: #d1d5db; font-size: 14px;">
-            Zaczynałeś świetnie kurs <strong>${args.courseTitle}</strong>, ale od ${args.lastAccessDaysAgo}
+            Zaczynałeś świetnie kurs <strong>${escapeHtml(args.courseTitle)}</strong>, ale od ${args.lastAccessDaysAgo}
             ${args.lastAccessDaysAgo === 1 ? 'dnia nie zaglądałeś' : 'dni nie zaglądasz'}.
         </p>
         <p style="color: #d1d5db; font-size: 14px;">
             Postęp: <strong>${args.progressPercent}%</strong> (${args.completedLessons}/${args.totalLessons} lekcji).
-            Zostały tylko <strong>${remaining}</strong> ${remaining === 1 ? 'lekcja' : 'lekcje'} do końca.
+            ${remaining > 0 ? `Pozostałe lekcje: <strong>${remaining}</strong>.` : 'Lekcje są ukończone. Sprawdź pozostałe warunki ukończenia szkolenia.'}
         </p>
         <p style="margin-top: 20px;">
-            <a href="${args.appUrl}/learning/${args.courseSlug}/lekcja/first"
+            <a href="${escapeHtml(continueUrl)}"
                style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">
                 Kontynuuj kurs
             </a>

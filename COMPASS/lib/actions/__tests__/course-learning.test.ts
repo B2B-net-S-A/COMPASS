@@ -1,263 +1,185 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createMockSupabaseClient, type MockSupabase, type MockSupabaseConfig } from '@/test/mocks/supabase'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { revalidatePath } from 'next/cache'
+import type { MockSupabase, MockSupabaseConfig } from '@/test/mocks/supabase'
+import { academyFixture, courseRow, enrollmentRow, id, ATTEMPT, COURSE, ENROLLMENT, LESSON, OLD_VERSION, OPTION, OTHER, QUESTION, RUN, RUN_ENROLLMENT, USER, VERSION } from './academy-fixtures'
+import { completeAcademyCourse, enrollInCourse, getMyEnrollments, getMyQuizResult, getQuizForAttempt, markLessonComplete, recordLessonAccess, submitQuizAttempt, submitRating } from '../course-learning'
 
-let currentClient: MockSupabase
-
-vi.mock('@/lib/supabase/server', () => ({
-    createClient: () => currentClient,
-}))
-
-vi.mock('next/cache', () => ({
-    revalidatePath: vi.fn(),
-}))
-
-function setupClient(cfg: MockSupabaseConfig = {}): MockSupabase {
-    currentClient = createMockSupabaseClient(cfg)
-    return currentClient
+let client: MockSupabase
+vi.mock('@/lib/supabase/server', () => ({ createClient: () => client }))
+vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() }, logCompat: { error: vi.fn() } }))
+function setup(config: MockSupabaseConfig = {}) {
+    client = academyFixture({ ...config, tables: { academy_user_capabilities: [], ...config.tables }, rpcs: { academy_get_syllabus: ({ p_version_id }) => (config.tables?.course_lessons ?? []).filter(row => row.version_id === p_version_id), ...config.rpcs } })
+    return client
 }
+beforeEach(() => setup())
+const answers = [{ question_id: QUESTION, selected_option_id: OPTION }]
+const fail = (message: string) => () => { throw new Error(message) }
 
-afterEach(() => {
-    vi.clearAllMocks()
-})
-
-// ============================================================
-// enrollInCourse
-// ============================================================
-describe('enrollInCourse', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { enrollInCourse } = await import('../course-learning')
-        const result = await enrollInCourse('c1')
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+describe('enrollment', () => {
+    it('requires an authenticated active Academy profile', async () => {
+        setup({ user: null }); expect((await enrollInCourse(COURSE)).success).toBe(false)
+        setup({ tables: { profiles: [{ id: USER, role: 'consultant', employment_status: 'exited' }] } })
+        expect((await enrollInCourse(COURSE)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
-
-    it('rejects when course is not published', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                courses: [{ id: 'c1', status: 'draft', slug: 'k' }],
-                course_enrollments: [],
-            },
-        })
-        const { enrollInCourse } = await import('../course-learning')
-        const result = await enrollInCourse('c1')
-        expect(result.success).toBe(false)
-        if (!result.success) expect(result.error).toMatch(/nie jest opublikowany/)
+    it('allows learning without a trainer grant and obtains a pinned enrollment through the RPC', async () => {
+        setup({ rpcs: { academy_enroll: () => ENROLLMENT } })
+        expect(await enrollInCourse(COURSE)).toEqual({ success: true, data: { enrollmentId: ENROLLMENT, alreadyEnrolled: false } })
+        expect(client.rpc).toHaveBeenCalledWith('academy_enroll', { p_course_id: COURSE })
+        expect(client._tables.course_enrollments).toEqual([])
     })
-
-    it('returns existing enrollment as alreadyEnrolled', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                courses: [{ id: 'c1', status: 'published', slug: 'k' }],
-                course_enrollments: [{ id: 'e-existing', user_id: 'u1', course_id: 'c1' }],
-            },
-        })
-        const { enrollInCourse } = await import('../course-learning')
-        const result = await enrollInCourse('c1')
-        expect(result.success).toBe(true)
-        if (result.success) {
-            expect(result.data.alreadyEnrolled).toBe(true)
-            expect(result.data.enrollmentId).toBe('e-existing')
-        }
+    it('returns an existing self-paced enrollment idempotently', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_enroll: () => ENROLLMENT } })
+        expect(await enrollInCourse(COURSE)).toEqual({ success: true, data: { enrollmentId: ENROLLMENT, alreadyEnrolled: true } })
+        expect(client.rpc).toHaveBeenCalledWith('academy_enroll', { p_course_id: COURSE })
     })
-
-    it('creates new enrollment when not yet enrolled', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                courses: [{ id: 'c1', status: 'published', slug: 'k' }],
-                course_enrollments: [],
-            },
-        })
-        const { enrollInCourse } = await import('../course-learning')
-        const result = await enrollInCourse('c1')
-        expect(result.success).toBe(true)
-        if (result.success) {
-            expect(result.data.alreadyEnrolled).toBe(false)
-        }
-        expect(currentClient._tables.course_enrollments).toHaveLength(1)
-        expect(currentClient._tables.course_enrollments[0].user_id).toBe('u1')
+    it('does not treat another learner or a live run as an existing self-paced enrollment', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ user_id: OTHER }), enrollmentRow({ id: RUN_ENROLLMENT, run_id: RUN })] }, rpcs: { academy_enroll: () => ENROLLMENT } })
+        expect(await enrollInCourse(COURSE)).toEqual({ success: true, data: { enrollmentId: ENROLLMENT, alreadyEnrolled: false } })
+    })
+    it.each([{ code: 'published_version_required', error: 'Szkolenie wymaga zatwierdzonej wersji programu.' }, { code: 'select_course_run', error: 'Wybierz edycję szkolenia z kalendarza.' }])('surfaces enrollment rules from the database: $code', async ({ code, error }) => {
+        setup({ rpcs: { academy_enroll: fail(code) } })
+        expect(await enrollInCourse(COURSE)).toEqual({ success: false, error })
+        expect(revalidatePath).not.toHaveBeenCalled()
+    })
+    it('rejects malformed course identifiers without an RPC', async () => {
+        expect((await enrollInCourse('c1')).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
 })
 
-// ============================================================
-// markLessonComplete
-// ============================================================
-describe('markLessonComplete', () => {
-    it('rejects when not enrolled', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: { course_enrollments: [] },
-        })
-        const { markLessonComplete } = await import('../course-learning')
-        const result = await markLessonComplete('c1', 'l1')
-        expect(result.success).toBe(false)
+describe('pinned progress and lesson access', () => {
+    it('requires the current learner’s enrollment before marking completion', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ user_id: OTHER })] } })
+        expect((await markLessonComplete(COURSE, LESSON, ENROLLMENT)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
-
-    it('appends lesson to completed_lessons (no duplicates)', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                course_enrollments: [{ id: 'e1', user_id: 'u1', course_id: 'c1', completed_lessons: [] }],
-            },
-        })
-        const { markLessonComplete } = await import('../course-learning')
-        const result = await markLessonComplete('c1', 'l1')
-        expect(result.success).toBe(true)
-        expect(currentClient._tables.course_enrollments[0].completed_lessons).toEqual(['l1'])
+    it('passes the exact run enrollment and lesson to the atomic progress RPC', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow(), enrollmentRow({ id: RUN_ENROLLMENT, run_id: RUN, version_id: VERSION })] }, rpcs: { academy_mark_lesson_complete: () => ({ streak: { current: 7, milestone_reached: true } }) } })
+        expect(await markLessonComplete(COURSE, LESSON, RUN_ENROLLMENT)).toEqual({ success: true, data: { streak: { current: 7, milestone_reached: true } } })
+        expect(client.rpc).toHaveBeenCalledWith('academy_mark_lesson_complete', { p_enrollment_id: RUN_ENROLLMENT, p_lesson_id: LESSON })
     })
-
-    it('does not duplicate when lesson already completed', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                course_enrollments: [{ id: 'e1', user_id: 'u1', course_id: 'c1', completed_lessons: ['l1'] }],
-            },
-        })
-        const { markLessonComplete } = await import('../course-learning')
-        const result = await markLessonComplete('c1', 'l1')
-        expect(result.success).toBe(true)
-        expect(currentClient._tables.course_enrollments[0].completed_lessons).toEqual(['l1'])
+    it('keeps repeat completion idempotency in the database instead of appending arrays client-side', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ completed_lessons: [LESSON] })] }, rpcs: { academy_mark_lesson_complete: () => ({ streak: null }) } })
+        expect(await markLessonComplete(COURSE, LESSON)).toEqual({ success: true, data: { streak: null } })
+        expect(client._tables.course_enrollments[0].completed_lessons).toEqual([LESSON])
+        expect(client.rpc).toHaveBeenCalledWith('academy_mark_lesson_complete', { p_enrollment_id: ENROLLMENT, p_lesson_id: LESSON })
+    })
+    it('rejects inaccessible lessons based on the database verdict', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_mark_lesson_complete: fail('lesson_not_in_enrollment') } })
+        expect(await markLessonComplete(COURSE, LESSON, ENROLLMENT)).toEqual({ success: false, error: 'Lekcja nie należy do Twojej wersji programu.' })
+    })
+    it('records resume position against the selected enrollment', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_record_lesson_access: () => null } })
+        expect(await recordLessonAccess(COURSE, LESSON, ENROLLMENT)).toEqual({ success: true, data: undefined })
+        expect(client.rpc).toHaveBeenCalledWith('academy_record_lesson_access', { p_enrollment_id: ENROLLMENT, p_lesson_id: LESSON })
     })
 })
 
-// ============================================================
-// submitQuizAttempt — RPC integration
-// ============================================================
-describe('submitQuizAttempt', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { submitQuizAttempt } = await import('../course-learning')
-        const result = await submitQuizAttempt('c1', [])
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+describe('quiz and course completion', () => {
+    it('requires authentication for quiz submission', async () => {
+        setup({ user: null })
+        expect((await submitQuizAttempt(COURSE, answers)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
-
-    it('calls submit_quiz_attempt RPC with correct payload', async () => {
-        const rpcSpy = vi.fn(async () => ({ score_percent: 80, passed: true, attempt_id: 'a1', already_awarded: false, award_status: 'awarded' }))
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            rpcs: { submit_quiz_attempt: rpcSpy },
-        })
-        const answers = [
-            { question_id: 'q1', selected_option_id: 'o1' },
-            { question_id: 'q2', selected_option_id: 'o2' },
-        ]
-        const { submitQuizAttempt } = await import('../course-learning')
-        const result = await submitQuizAttempt('c1', answers)
-        expect(result.success).toBe(true)
-        expect(rpcSpy).toHaveBeenCalledWith({ p_course_id: 'c1', p_answers: answers })
-        if (result.success) {
-            expect(result.data.passed).toBe(true)
-            expect(result.data.score_percent).toBe(80)
-        }
+    it('loads quiz questions through the enrollment-scoped RPC', async () => {
+        const questions = [{ question_id: QUESTION, question_order: 0, question_text: 'Pytanie', options: [{ id: OPTION, order_index: 0, option_text: 'Opcja' }] }]
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_get_quiz: () => questions } })
+        expect(await getQuizForAttempt(COURSE, ENROLLMENT)).toEqual({ success: true, data: questions })
+        expect(client.rpc).toHaveBeenCalledWith('academy_get_quiz', { p_enrollment_id: ENROLLMENT })
+        expect(client.from).not.toHaveBeenCalledWith('course_quiz_options')
     })
-})
-
-// ============================================================
-// submitRating
-// ============================================================
-describe('submitRating', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { submitRating } = await import('../course-learning')
-        const result = await submitRating('c1', 5)
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+    it('submits only selected answer IDs for the exact enrollment', async () => {
+        const result = { score_percent: 80, passed: true, attempt_id: ATTEMPT, already_awarded: false, award_status: null }
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_submit_quiz: () => result } })
+        expect(await submitQuizAttempt(COURSE, answers, ENROLLMENT)).toEqual({ success: true, data: result })
+        expect(client.rpc).toHaveBeenCalledWith('academy_submit_quiz', { p_enrollment_id: ENROLLMENT, p_answers: answers })
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_complete_course', expect.anything())
     })
-
-    it('rejects rating outside 1..5', async () => {
-        setupClient({ user: { id: 'u1', email: 'u@x.com' } })
-        const { submitRating } = await import('../course-learning')
-        const r1 = await submitRating('c1', 0)
-        const r2 = await submitRating('c1', 6)
-        expect(r1.success).toBe(false)
-        expect(r2.success).toBe(false)
+    it.each([{ invalidAnswers: [] }, { invalidAnswers: [{ question_id: 'bad', selected_option_id: OPTION }] }, { invalidAnswers: [...answers, ...answers] }])('rejects empty, malformed or duplicate answers before RPC', async ({ invalidAnswers }) => {
+        expect((await submitQuizAttempt(COURSE, invalidAnswers)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
-
-    it('rejects when course not completed by user', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                course_enrollments: [{ id: 'e1', user_id: 'u1', course_id: 'c1', completed_at: null }],
-            },
-        })
-        const { submitRating } = await import('../course-learning')
-        const result = await submitRating('c1', 5)
-        expect(result.success).toBe(false)
-        if (!result.success) expect(result.error).toMatch(/dopiero po ukończeniu/)
+    it('rejects a selected enrollment that belongs to a different course', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ course_id: id(11) })] } })
+        expect((await submitQuizAttempt(COURSE, answers, ENROLLMENT)).success).toBe(false)
+        expect(client.rpc.mock.calls.filter(([name]) => name !== 'academy_rollout_access')).toEqual([])
     })
-
-    it('inserts rating when course is completed', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                course_enrollments: [{ id: 'e1', user_id: 'u1', course_id: 'c1', completed_at: '2026-04-29T12:00:00Z' }],
-                courses: [{ id: 'c1', slug: 'k' }],
-                course_ratings: [],
-            },
-        })
-        const { submitRating } = await import('../course-learning')
-        const result = await submitRating('c1', 4, 'Świetny kurs')
-        expect(result.success).toBe(true)
-        expect(currentClient._tables.course_ratings).toHaveLength(1)
-        expect(currentClient._tables.course_ratings[0].rating).toBe(4)
-        expect(currentClient._tables.course_ratings[0].comment).toBe('Świetny kurs')
+    it('surfaces quiz RPC errors', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_submit_quiz: fail('one_answer_per_question_required') } })
+        expect(await submitQuizAttempt(COURSE, answers)).toEqual({ success: false, error: 'Odpowiedz dokładnie raz na każde pytanie.' })
+    })
+    it.each([{ completed: false, reason: 'attendance_required' }, { completed: true, already_completed: true }])('returns the completion verdict without inventing eligibility: %j', async verdict => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_complete_course: () => verdict } })
+        expect(await completeAcademyCourse(COURSE, ENROLLMENT)).toEqual({ success: true, data: verdict })
+        expect(client.rpc).toHaveBeenCalledWith('academy_complete_course', { p_enrollment_id: ENROLLMENT })
+    })
+    it('returns only the learner’s attempt for the selected enrollment', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ completed_at: '2026-09-22' })], course_quiz_attempts: [{ id: ATTEMPT, enrollment_id: ENROLLMENT, user_id: USER, score_percent: 80, passed: true, answers: 'private scoring data' }] } })
+        expect(await getMyQuizResult(COURSE, ATTEMPT, ENROLLMENT)).toEqual({ success: true, data: { id: ATTEMPT, score: 80, passed: true, completed: true } })
+        client._tables.course_quiz_attempts[0].user_id = OTHER
+        expect((await getMyQuizResult(COURSE, ATTEMPT, ENROLLMENT)).success).toBe(false)
+        client._tables.course_quiz_attempts[0].user_id = USER
+        client._tables.course_quiz_attempts[0].enrollment_id = RUN_ENROLLMENT
+        expect((await getMyQuizResult(COURSE, ATTEMPT, ENROLLMENT)).success).toBe(false)
     })
 })
 
-// ============================================================
-// getMyEnrollments
-// ============================================================
-describe('getMyEnrollments', () => {
-    it('rejects when not authenticated', async () => {
-        setupClient({ user: null })
-        const { getMyEnrollments } = await import('../course-learning')
+describe('ratings', () => {
+    it('requires authentication', async () => { setup({ user: null }); expect((await submitRating(COURSE, 5)).success).toBe(false) })
+    it.each([0, 6, 1.5])('rejects invalid rating %s', async value => { expect((await submitRating(COURSE, value)).success).toBe(false) })
+    it('requires completion of all course rules, not just a passed quiz', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] } })
+        expect(await submitRating(COURSE, 5)).toEqual({ success: false, error: 'Możesz ocenić kurs dopiero po spełnieniu wszystkich warunków ukończenia.' })
+        expect(client._tables.course_ratings).toEqual([])
+    })
+    it('inserts then updates a rating after completion, trimming the comment', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ completed_at: '2026-09-22' })] } })
+        expect((await submitRating(COURSE, 4, '  Dobry kurs  ')).success).toBe(true)
+        expect(client._tables.course_ratings).toEqual([expect.objectContaining({ user_id: USER, course_id: COURSE, rating: 4, comment: 'Dobry kurs' })])
+        expect((await submitRating(COURSE, 5, '')).success).toBe(true)
+        expect(client._tables.course_ratings).toHaveLength(1)
+        expect(client._tables.course_ratings[0]).toMatchObject({ rating: 5, comment: null })
+    })
+})
+
+describe('my enrollments and version progress', () => {
+    it('requires authentication and returns an empty list without enrollments', async () => {
+        setup({ user: null }); expect((await getMyEnrollments()).success).toBe(false)
+        setup(); expect(await getMyEnrollments()).toEqual({ success: true, data: [] })
+    })
+    it('uses lesson counts and metadata from the pinned version, filtering other users', async () => {
+        setup({ tables: { courses: [courseRow()], course_enrollments: [enrollmentRow({ completed_lessons: [LESSON, id(41)] }), enrollmentRow({ id: id(32), user_id: OTHER })], course_lessons: [LESSON, id(41), id(42), id(43)].map(lesson => ({ id: lesson, course_id: COURSE, version_id: OLD_VERSION })).concat([{ id: id(44), course_id: COURSE, version_id: VERSION }]) } })
         const result = await getMyEnrollments()
-        expect(result).toEqual({ success: false, error: 'Brak autoryzacji' })
+        expect(result.success && result.data).toEqual([expect.objectContaining({ enrollment_id: ENROLLMENT, total_lessons: 4, progress_percent: 50, course: expect.objectContaining({ title: 'Zapisana wersja 1' }), version_id: OLD_VERSION })])
     })
-
-    it('returns empty when no enrollments', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: { course_enrollments: [] },
-        })
-        const { getMyEnrollments } = await import('../course-learning')
+    it('reserves 100 percent for completion of all rules and ignores foreign lesson IDs', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ completed_lessons: [LESSON, LESSON, id(999)] })], course_lessons: [{ id: LESSON, version_id: OLD_VERSION }] } })
+        const incomplete = await getMyEnrollments()
+        expect(incomplete.success && incomplete.data[0].progress_percent).toBe(99)
+        expect(incomplete.success && incomplete.data[0].completed_lessons).toEqual([LESSON])
+        client._tables.course_enrollments[0].completed_at = '2026-09-22'
+        const completed = await getMyEnrollments()
+        expect(completed.success && completed.data[0].progress_percent).toBe(100)
+    })
+    it('keeps separate live-run enrollments and handles programs without lessons', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow({ run_id: RUN }), enrollmentRow({ id: RUN_ENROLLMENT, run_id: id(51), version_id: VERSION })], course_runs: [{ id: RUN, status: 'published' }, { id: id(51), status: 'published' }], course_run_registrations: [{ run_id: RUN, enrollment_id: ENROLLMENT, user_id: USER, status: 'confirmed' }, { run_id: id(51), enrollment_id: RUN_ENROLLMENT, user_id: USER, status: 'confirmed' }] } })
         const result = await getMyEnrollments()
-        expect(result.success).toBe(true)
-        if (result.success) expect(result.data).toEqual([])
+        expect(result.success && result.data.map(row => [row.enrollment_id, row.run_id, row.progress_percent])).toEqual([[ENROLLMENT, RUN, 0], [RUN_ENROLLMENT, id(51), 0]])
     })
+})
 
-    it('computes progress percent based on completed_lessons / total_lessons', async () => {
-        setupClient({
-            user: { id: 'u1', email: 'u@x.com' },
-            tables: {
-                course_enrollments: [
-                    {
-                        id: 'e1',
-                        user_id: 'u1',
-                        course_id: 'c1',
-                        enrolled_at: '2026-04-28T00:00:00Z',
-                        completed_lessons: ['l1', 'l2'],
-                        completed_at: null,
-                        points_awarded: false,
-                    },
-                ],
-                courses: [{ id: 'c1', author_id: 'a1', slug: 'k', status: 'published', title: 'T', tags: [], category: 'frontend', level: 'beginner' }],
-                course_lessons: [
-                    { id: 'l1', course_id: 'c1' },
-                    { id: 'l2', course_id: 'c1' },
-                    { id: 'l3', course_id: 'c1' },
-                    { id: 'l4', course_id: 'c1' },
-                ],
-            },
-        })
-        const { getMyEnrollments } = await import('../course-learning')
-        const result = await getMyEnrollments()
-        expect(result.success).toBe(true)
-        if (result.success) {
-            expect(result.data).toHaveLength(1)
-            expect(result.data[0].progress_percent).toBe(50)
-            expect(result.data[0].total_lessons).toBe(4)
-        }
-    })
+
+it('counts locked drip lessons through the syllabus without reading their content', async () => {
+    setup({ tables: { course_enrollments: [enrollmentRow({ completed_lessons: [LESSON] })], course_lessons: [{ id: LESSON, version_id: OLD_VERSION }] }, rpcs: { academy_get_syllabus: () => [LESSON, id(41), id(42)].map(id => ({ id, version_id: OLD_VERSION })) } })
+    const result = await getMyEnrollments()
+    expect(result.success && result.data[0]).toMatchObject({ total_lessons: 3, progress_percent: 33 })
+    expect(client.rpc).toHaveBeenCalledWith('academy_get_syllabus', { p_version_id: OLD_VERSION })
+    expect(client.from).not.toHaveBeenCalledWith('course_lessons')
+})
+
+it('omits withdrawn or cancelled live enrollments while preserving a completed certificate', async () => {
+    setup({ tables: { course_enrollments: [enrollmentRow({ run_id: RUN }), enrollmentRow({ id: RUN_ENROLLMENT, run_id: id(51), completed_at: '2026-09-20' })], course_runs: [{ id: RUN, status: 'cancelled' }], course_run_registrations: [{ run_id: RUN, enrollment_id: ENROLLMENT, user_id: USER, status: 'confirmed' }] } })
+    const result = await getMyEnrollments()
+    expect(result.success && result.data.map(row => row.enrollment_id)).toEqual([RUN_ENROLLMENT])
 })
