@@ -37,6 +37,7 @@ vi.mock('@/lib/email', () => ({
 vi.mock('@/lib/calendar/graph-events', () => ({
     createLeaveEvent: vi.fn(async () => ({ success: true, skipped: true })),
     deleteLeaveEvent: vi.fn(async () => ({ success: true })),
+    updateLeaveEvent: vi.fn(async () => ({ success: true })),
 }))
 vi.mock('@/lib/mailbox/graph-oof', () => ({
     disableOutOfOffice: vi.fn(async () => ({ success: true })),

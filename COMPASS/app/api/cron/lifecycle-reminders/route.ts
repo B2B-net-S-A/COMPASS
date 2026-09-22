@@ -135,6 +135,7 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_REMINDERS_RUN', asy
                     group.progressId,
                 )
                 if (result.success) managerRemindersSent++
+                else errors.push(`manager-reminder ${group.managerId}: wysyłka nieudana`)
             } catch (e: unknown) {
                 errors.push(`manager-reminder ${group.managerId}: ${e instanceof Error ? e.message : 'unknown'}`)
                 logCompat.error('manager-reminder error:', e)
@@ -186,6 +187,7 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_REMINDERS_RUN', asy
                     terminationDate,
                 )
                 if (result.success) exitRemindersSent++
+                else errors.push(`exit-reminder ${row.id}: wysyłka nieudana`)
             } catch (e: unknown) {
                 errors.push(`exit-reminder ${row.id}: ${e instanceof Error ? e.message : 'unknown'}`)
                 logCompat.error('exit-reminder error:', e)
@@ -193,10 +195,18 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_REMINDERS_RUN', asy
         }
     }
 
-    return NextResponse.json({
-        ok: true,
-        manager_reminders_sent: managerRemindersSent,
-        exit_reminders_sent: exitRemindersSent,
-        errors: errors.slice(0, 10),
-    })
+    // Audyt 2026-09-22 (INT-11) — błędy (zapytań i wysyłek `{success:false}`) muszą
+    // dawać `ok: false`; HTTP 500, gdy nic nie wyszło, a coś padło.
+    const ok = errors.length === 0
+    const sent = managerRemindersSent + exitRemindersSent
+    return NextResponse.json(
+        {
+            ok,
+            manager_reminders_sent: managerRemindersSent,
+            exit_reminders_sent: exitRemindersSent,
+            failed: errors.length,
+            errors: errors.slice(0, 10),
+        },
+        { status: !ok && sent === 0 ? 500 : 200 },
+    )
 }))

@@ -124,6 +124,67 @@ async function checkAttendanceAllowsWork(
     }
 }
 
+/**
+ * Audyt 2026-09-22 (HF-02) — wpis musi należeć do miesiąca nagłówka timesheetu.
+ * Sama walidacja formatu przepuszczała `2026-10-01` do timesheetu wrześniowego,
+ * więc godziny październikowe wchodziły do wrześniowego rozliczenia.
+ */
+function assertDateInTimesheetMonth(
+    workDate: string,
+    header: { year: number; month: number },
+): void {
+    const prefix = `${header.year}-${String(header.month).padStart(2, '0')}-`
+    if (!workDate.startsWith(prefix)) {
+        throw new ExpectedError(
+            `Data ${workDate} nie należy do miesiąca tego timesheetu (${prefix.slice(0, 7)}).`,
+        )
+    }
+}
+
+/**
+ * Audyt 2026-09-22 (HF-01) — limit 8h obowiązuje SUMĘ dnia, nie pojedynczy wpis.
+ *
+ * CHECK w bazie (`timesheet_entries_hours_check`) bada jeden wiersz, a indeks
+ * `(timesheet_id, work_date)` nie jest unikalny — dwa wpisy po 8h na ten sam dzień
+ * przechodziły bez uprawnienia do nadgodzin. Liczymy pozostałe wpisy tego dnia
+ * (bez edytowanego) plus nową wartość. Osoba z uprawnieniem do nadgodzin (admin /
+ * `can_log_overtime`) ma sufit {@link OVERTIME_OVERRIDE_HOURS_MAX} na dzień.
+ *
+ * Ograniczenie: kontrola nie jest atomowa — dwa równoległe żądania mogą ją
+ * jednocześnie przejść. Twarda blokada wymaga triggera w bazie (poza zakresem).
+ */
+async function assertDailyHoursWithinLimit(
+    args: {
+        timesheetId: string
+        workDate: string
+        hours: number
+        overtimeAllowed: boolean
+        excludeEntryId?: string
+    },
+): Promise<void> {
+    // Service client: wołający już sprawdził własność/zakres timesheetu, a suma musi
+    // obejmować WSZYSTKIE wpisy dnia niezależnie od tego, kto je dodał.
+    const { data, error } = await createServiceClient()
+        .from('timesheet_entries')
+        .select('id, hours')
+        .eq('timesheet_id', args.timesheetId)
+        .eq('work_date', args.workDate)
+    if (error) throw new Error(`Błąd sprawdzania sumy godzin dnia: ${error.message}`)
+    const otherHours = ((data ?? []) as Array<{ id: string; hours: number | string }>)
+        .filter((e) => e.id !== args.excludeEntryId)
+        .reduce((sum, e) => sum + Number(e.hours), 0)
+    const total = otherHours + args.hours
+    const cap = args.overtimeAllowed ? OVERTIME_OVERRIDE_HOURS_MAX : STANDARD_DAILY_HOURS_MAX
+    if (total > cap + 1e-9) {
+        throw new ExpectedError(
+            args.overtimeAllowed
+                ? `Suma godzin ${args.workDate} przekroczyłaby ${cap}h (już wpisane: ${otherHours}h).`
+                : `Suma godzin ${args.workDate} przekroczyłaby ${cap}h (już wpisane: ${otherHours}h). `
+                  + 'Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.',
+        )
+    }
+}
+
 // ─── User-side ──────────────────────────────────────────────────────────────
 
 export async function getOrCreateMyTimesheet(
@@ -252,9 +313,16 @@ export async function addEntry(input: AddEntryInput): Promise<ActionResult<Times
         if (header.status !== 'draft') {
             throw new ExpectedError('Można edytować tylko timesheet w statusie "draft".')
         }
+        assertDateInTimesheetMonth(input.workDate, header)
 
         // Soft constraint: blokuj jeśli dzień to urlop/L4
         await checkAttendanceAllowsWork(header.user_id, input.workDate)
+        await assertDailyHoursWithinLimit({
+            timesheetId: header.id,
+            workDate: input.workDate,
+            hours: input.hours,
+            overtimeAllowed: ctx.canLogOvertime,
+        })
 
         const { data, error } = await supabase
             .from('timesheet_entries')
@@ -337,10 +405,16 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<Action
         const monthEnd = format(monthEndDate, 'yyyy-MM-dd')
 
         if (input.overwrite) {
+            // Audyt 2026-09-22 (HF-10) — auto-wpisy płatnego urlopu (`leave_paid`) należą
+            // do wniosku urlopowego i niosą rzeczywistą liczbę płatnych godzin (np. 4h
+            // przy podziale 0.5/0.5). Kasowanie ich tutaj zamieniało je w ręczne 8h
+            // i odcinało od sprzątania przy anulowaniu urlopu. Zostają, a ich dni są
+            // pomijane niżej jak każdy dzień z istniejącym wpisem.
             const { error } = await supabase
                 .from('timesheet_entries')
                 .delete()
                 .eq('timesheet_id', input.timesheetId)
+                .neq('source', 'leave_paid')
             if (error) throw new Error(`Błąd czyszczenia wpisów: ${error.message}`)
         }
 
@@ -356,12 +430,12 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<Action
                 .eq('user_id', header.user_id)
                 .gte('date', monthStart)
                 .lte('date', monthEnd),
-            input.overwrite
-                ? Promise.resolve({ data: [] as Array<{ work_date: string }> })
-                : supabase
-                      .from('timesheet_entries')
-                      .select('work_date')
-                      .eq('timesheet_id', input.timesheetId),
+            // Po overwrite zostały tu wyłącznie wpisy `leave_paid` (HF-10) — ich dni
+            // pomijamy tak samo jak dni z wpisami w trybie bez nadpisywania.
+            supabase
+                .from('timesheet_entries')
+                .select('work_date')
+                .eq('timesheet_id', input.timesheetId),
             // H2.9: pending leave_requests przecinające miesiąc — pomijamy aby
             // nie wpisać godzin w dni których admin za chwilę zatwierdzi jako urlop.
             supabase
@@ -373,6 +447,9 @@ export async function quickFillMonth(input: QuickFillMonthInput): Promise<Action
                 .gte('end_date', monthStart),
         ])
 
+        if (existingRes.error) {
+            throw new Error(`Błąd pobierania istniejących wpisów: ${existingRes.error.message}`)
+        }
         const holidays = (holidaysRes.data ?? []) as PublicHolidayDate[]
         const blockedDates = new Set(
             ((attendanceRes.data ?? []) as Array<{ date: string; status: string }>)
@@ -473,15 +550,26 @@ async function loadOwnEditableEntry(
     supabase: ReturnType<typeof createClient>,
     ctx: InternalAuthContext,
     entryId: string,
-): Promise<{ timesheetId: string; userId: string }> {
+): Promise<{
+    timesheetId: string
+    userId: string
+    year: number
+    month: number
+    workDate: string
+    hours: number
+    source: TimesheetEntrySource
+}> {
     const { data, error } = await supabase
         .from('timesheet_entries')
-        .select('id, timesheet_id, timesheets!inner(user_id, status)')
+        .select('id, timesheet_id, work_date, hours, source, timesheets!inner(user_id, status, year, month)')
         .eq('id', entryId)
         .single<{
             id: string
             timesheet_id: string
-            timesheets: { user_id: string; status: TimesheetStatus }
+            work_date: string
+            hours: number | string
+            source: TimesheetEntrySource
+            timesheets: { user_id: string; status: TimesheetStatus; year: number; month: number }
         }>()
     if (error || !data) throw new ExpectedError('Wpis nie istnieje.')
     if (data.timesheets.user_id !== ctx.userId && !ctx.isAdmin) {
@@ -492,19 +580,36 @@ async function loadOwnEditableEntry(
             'Można edytować tylko timesheet w statusie "draft". Zaakceptowany najpierw odblokuj.',
         )
     }
-    return { timesheetId: data.timesheet_id, userId: data.timesheets.user_id }
+    return {
+        timesheetId: data.timesheet_id,
+        userId: data.timesheets.user_id,
+        year: data.timesheets.year,
+        month: data.timesheets.month,
+        workDate: data.work_date,
+        hours: Number(data.hours),
+        source: data.source,
+    }
 }
 
 export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult<void>> {
     return runAction('updateEntry', async () => {
         const ctx = await requireInternalOrAdminAction()
         const supabase = createClient()
-        await loadOwnEditableEntry(supabase, ctx, input.entryId)
+        const current = await loadOwnEditableEntry(supabase, ctx, input.entryId)
+        // Audyt 2026-09-22 (HF-03) — auto-wpis płatnego urlopu (Faza 30b) należy do
+        // wniosku urlopowego: anulowanie urlopu kasuje go po `source`, więc ręczna
+        // edycja (np. przeniesienie na inny dzień) zostawiłaby osierocone godziny.
+        if (current.source === 'leave_paid') {
+            throw new ExpectedError(
+                'Ten wpis powstał z płatnego urlopu — zmień lub anuluj wniosek urlopowy zamiast edytować godziny.',
+            )
+        }
         const updates: Record<string, unknown> = {}
         if (input.workDate !== undefined) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
                 throw new ExpectedError('work_date musi być w formacie YYYY-MM-DD.')
             }
+            assertDateInTimesheetMonth(input.workDate, current)
             updates.work_date = input.workDate
         }
         if (input.hours !== undefined) {
@@ -527,6 +632,22 @@ export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult
             updates.description = input.description.trim()
         }
         if (Object.keys(updates).length === 0) return
+
+        const finalDate = input.workDate ?? current.workDate
+        const finalHours = input.hours ?? current.hours
+        const dateChanged = finalDate !== current.workDate
+        // HF-03 — ta sama reguła co w addEntry: nie da się przenieść wpisu na dzień urlopu/L4.
+        if (dateChanged) await checkAttendanceAllowsWork(current.userId, finalDate)
+        // HF-01 — suma dnia docelowego (bez edytowanego wpisu) + nowa wartość.
+        if (dateChanged || finalHours !== current.hours) {
+            await assertDailyHoursWithinLimit({
+                timesheetId: current.timesheetId,
+                workDate: finalDate,
+                hours: finalHours,
+                overtimeAllowed: ctx.canLogOvertime,
+                excludeEntryId: input.entryId,
+            })
+        }
 
         const { error } = await supabase
             .from('timesheet_entries')
@@ -589,17 +710,19 @@ export async function submitTimesheet(timesheetId: string): Promise<ActionResult
             month: header.month,
         })
 
-        // Notify admins (email + H3.3 push)
-        const adminEmails = await fetchAdminEmails()
+        // Audyt 2026-09-22 (HF-12) — powiadomienie trafia do osoby, która faktycznie
+        // akceptuje (przełożony z `profiles.manager_id`), z fallbackiem do adminów.
+        const recipients = await resolveTimesheetApprovalRecipients(header.user_id)
         const requesterName = await fetchUserDisplayName(ctx.userId, ctx.email)
-        if (adminEmails.length > 0) {
-            sendTimesheetSubmitted(adminEmails, requesterName, header.year, header.month).catch((e) =>
+        const recipientEmails = recipients
+            .map((r) => r.email)
+            .filter((e): e is string => !!e)
+        if (recipientEmails.length > 0) {
+            sendTimesheetSubmitted(recipientEmails, requesterName, header.year, header.month).catch((e) =>
                 logCompat.error('[submitTimesheet] notify failed:', e),
             )
         }
-        const adminClient = createServiceClient()
-        const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin')
-        for (const a of (admins ?? []) as Array<{ id: string }>) {
+        for (const a of recipients) {
             sendPushToUserId(a.id, {
                 title: 'Timesheet do akceptacji',
                 body: `${requesterName}: ${header.year}-${String(header.month).padStart(2, '0')}`,
@@ -644,7 +767,7 @@ export async function approveTimesheet(timesheetId: string): Promise<ActionResul
             .eq('timesheet_id', timesheetId)
         const hash = computeTimesheetHash((entries ?? []) as any)
 
-        const { error } = await admin
+        const { data: updated, error } = await admin
             .from('timesheets')
             .update({
                 status: 'approved',
@@ -654,7 +777,14 @@ export async function approveTimesheet(timesheetId: string): Promise<ActionResul
                 rejection_note: null,
             })
             .eq('id', timesheetId)
+            // Audyt 2026-09-22 (HF-11) — warunkowy zapis: równoległa decyzja (drugi
+            // recenzent ze starego ekranu) nie może nadpisać tej, która już zapadła.
+            .eq('status', 'submitted')
+            .select('id')
         if (error) throw new Error(`Błąd akceptacji: ${error.message}`)
+        if (!updated || updated.length === 0) {
+            throw new ExpectedError('Timesheet został już rozpatrzony przez inną osobę. Odśwież listę.')
+        }
 
         await logAudit(ctx.userId, 'TIMESHEET_APPROVED', {
             timesheet_id: timesheetId,
@@ -722,7 +852,7 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
             }
         }
 
-        const { error } = await admin
+        const { data: updated, error } = await admin
             .from('timesheets')
             .update({
                 // H2.7: po reject wracamy do 'draft' — user może natychmiast edytować
@@ -736,7 +866,14 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
                 submitted_at: null,
             })
             .eq('id', timesheetId)
+            // HF-11 — bez tego warunku odrzucenie ze starego ekranu cofało świeżo
+            // ZAAKCEPTOWANY timesheet do draftu (omijając zakaz unlockTimesheet).
+            .eq('status', 'submitted')
+            .select('id')
         if (error) throw new Error(`Błąd odrzucenia: ${error.message}`)
+        if (!updated || updated.length === 0) {
+            throw new ExpectedError('Timesheet został już rozpatrzony przez inną osobę. Odśwież listę.')
+        }
 
         await logAudit(ctx.userId, 'TIMESHEET_REJECTED', {
             timesheet_id: timesheetId,
@@ -970,7 +1107,16 @@ export async function approverAddEntry(input: AddEntryInput): Promise<ActionResu
 
         const admin = createServiceClient()
         const header = await loadApproverEditableTimesheet(admin, ctx, input.timesheetId)
+        assertDateInTimesheetMonth(input.workDate, header)
         await assertApproverDateNotBlocked(admin, header.user_id, input.workDate)
+        // HF-01 — suma dnia; sufit nadgodzin tylko dla tych, którym resolveOvertimeColumns
+        // pozwala wpisać >8h (admin / can_log_overtime).
+        await assertDailyHoursWithinLimit({
+            timesheetId: header.id,
+            workDate: input.workDate,
+            hours: input.hours,
+            overtimeAllowed: ctx.isAdmin || ctx.canLogOvertime,
+        })
 
         const { data, error } = await admin
             .from('timesheet_entries')
@@ -1006,9 +1152,15 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Acti
 
         const { data: entry, error: eErr } = await admin
             .from('timesheet_entries')
-            .select('id, timesheet_id, is_overtime_override')
+            .select('id, timesheet_id, work_date, hours, is_overtime_override')
             .eq('id', input.entryId)
-            .single<{ id: string; timesheet_id: string; is_overtime_override: boolean }>()
+            .single<{
+                id: string
+                timesheet_id: string
+                work_date: string
+                hours: number | string
+                is_overtime_override: boolean
+            }>()
         if (eErr || !entry) throw new ExpectedError('Wpis nie istnieje.')
         // Confirm the approver may edit THIS timesheet (team scope + editable status) BEFORE any
         // entry-specific logic, so an out-of-scope actor is rejected first.
@@ -1024,6 +1176,7 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Acti
             if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
                 throw new ExpectedError('work_date musi być w formacie YYYY-MM-DD.')
             }
+            assertDateInTimesheetMonth(input.workDate, header)
             updates.work_date = input.workDate
         }
         if (input.hours !== undefined) {
@@ -1054,6 +1207,17 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Acti
         }
         if (input.workDate !== undefined) {
             await assertApproverDateNotBlocked(admin, header.user_id, input.workDate)
+        }
+        const finalDate = input.workDate ?? entry.work_date
+        const finalHours = input.hours ?? Number(entry.hours)
+        if (finalDate !== entry.work_date || finalHours !== Number(entry.hours)) {
+            await assertDailyHoursWithinLimit({
+                timesheetId: header.id,
+                workDate: finalDate,
+                hours: finalHours,
+                overtimeAllowed: ctx.isAdmin || ctx.canLogOvertime,
+                excludeEntryId: input.entryId,
+            })
         }
 
         const { data, error } = await admin
@@ -1585,12 +1749,47 @@ export async function ensureTeamTimesheet(
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
-async function fetchAdminEmails(): Promise<string[]> {
+/** Role, które przechodzą `requireTimesheetApproverAction` (admin / manager / finanse). */
+const TIMESHEET_APPROVER_ROLES = ['admin', 'manager', 'finanse'] as const
+
+/**
+ * Audyt 2026-09-22 (HF-12) — kto ma dostać powiadomienie o złożonym timesheecie.
+ *
+ * Akceptację wykonuje przełożony z `profiles.manager_id` (approveTimesheet sprawdza
+ * właśnie ten związek), więc to on jest adresatem — o ile ma rolę akceptującą
+ * i nie jest zarchiwizowany. Bez takiego przełożonego wracamy do adminów, którzy
+ * akceptują wszystko.
+ */
+async function resolveTimesheetApprovalRecipients(
+    employeeId: string,
+): Promise<Array<{ id: string; email: string | null }>> {
     const admin = createServiceClient()
-    const { data } = await admin.from('profiles').select('email').eq('role', 'admin')
-    return (data ?? [])
-        .map((r: { email: string | null }) => r.email)
-        .filter((e): e is string => !!e)
+    const { data: employee } = await admin
+        .from('profiles')
+        .select('manager_id')
+        .eq('id', employeeId)
+        .maybeSingle<{ manager_id: string | null }>()
+    if (employee?.manager_id) {
+        const { data: manager } = await admin
+            .from('profiles')
+            .select('id, email, role, employment_status')
+            .eq('id', employee.manager_id)
+            .maybeSingle<{
+                id: string
+                email: string | null
+                role: string
+                employment_status: string | null
+            }>()
+        if (
+            manager
+            && manager.employment_status !== 'exited'
+            && (TIMESHEET_APPROVER_ROLES as readonly string[]).includes(manager.role)
+        ) {
+            return [{ id: manager.id, email: manager.email }]
+        }
+    }
+    const { data: admins } = await admin.from('profiles').select('id, email').eq('role', 'admin')
+    return (admins ?? []) as Array<{ id: string; email: string | null }>
 }
 
 async function fetchUserDisplayName(userId: string, fallbackEmail: string): Promise<string> {
