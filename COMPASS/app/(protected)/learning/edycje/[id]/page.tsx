@@ -32,7 +32,7 @@ export default async function AcademyRunPage({ params }: { params: { id: string 
     return <AcademyShell activeTab={run.canManage ? 'teaching' : 'calendar'} showCalendar access={access.data} title={run.title} description={run.courseTitle}
         action={<Button asChild variant="outline"><Link href={run.canManage ? '/learning/tworze/' + run.courseId + '/edycje' : '/learning/kalendarz'}><ArrowLeft aria-hidden="true" />{run.canManage ? 'Wszystkie edycje' : 'Kalendarz'}</Link></Button>}>
         <AcademyPrerequisites status={prerequisites.success ? prerequisites.data : undefined} error={prerequisites.success ? undefined : prerequisites.error} enrolled={enrolled} />
-        <AcademyRunDetail run={run} canRegister={prerequisites.success && prerequisites.data.allCompleted}
+        <AcademyRunDetail run={run} isAdmin={access.data.isAdmin} canRegister={prerequisites.success && prerequisites.data.allCompleted}
             participants={participants?.success ? participants.data : []} participantsError={participants && !participants.success ? participants.error : undefined}
             organizers={organizers?.success ? organizers.data : []} managedTeamsAvailable={config?.success ? config.data.managedTeamsAvailable : false}
             managedTeamsReason={organizers && !organizers.success ? organizers.error : config?.success ? config.data.reason : config && !config.success ? config.error : undefined}

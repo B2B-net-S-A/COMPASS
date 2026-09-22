@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { scanWithClamav, type ClamavConfig } from './clamav'
 import { assertClamavReadiness } from './clamav-readiness'
 import { validateMaterialFormat, MaterialRejected } from './material-validation'
+import { Mp4StreamValidator } from './mp4-validation'
 
 interface ScanAsset {
     id: string; storage_path: string; size_bytes: number; mime_type: string; scan_started_at: string
@@ -44,6 +45,7 @@ export async function runAcademyMaterialScan(client: SupabaseClient, config = ac
         let prefix = Buffer.alloc(0)
         const chunks: Buffer[] = []
         const isDocument = asset.mime_type !== 'video/mp4'
+        const mp4 = isDocument ? null : new Mp4StreamValidator(size)
         async function* bytes() {
             const reader = response.body!.getReader()
             try {
@@ -56,13 +58,15 @@ export async function runAcademyMaterialScan(client: SupabaseClient, config = ac
                     hash.update(chunk)
                     if (prefix.length < 64) prefix = Buffer.concat([prefix, chunk.subarray(0, 64 - prefix.length)])
                     if (isDocument) chunks.push(chunk)
+                    mp4?.push(chunk)
                     yield chunk
                 }
             } finally { await reader.cancel().catch(() => undefined); reader.releaseLock() }
         }
         await scanWithClamav(bytes(), config)
         if (total !== size) throw new MaterialRejected('size_mismatch')
-        await validateMaterialFormat(asset.mime_type, prefix, isDocument ? Buffer.concat(chunks) : undefined)
+        if (mp4) mp4.finish()
+        else await validateMaterialFormat(asset.mime_type, prefix, Buffer.concat(chunks))
         const accepted = await client.rpc('academy_accept_material_scan', { p_asset_id: asset.id, p_scan_started_at: asset.scan_started_at, p_sha256: hash.digest('hex') })
         if (accepted.error) throw new Error('scan_persistence_failed')
         return { configured: true, scanned: 1, accepted: accepted.data ? 1 : 0, rejected: 0, retry: 0 }

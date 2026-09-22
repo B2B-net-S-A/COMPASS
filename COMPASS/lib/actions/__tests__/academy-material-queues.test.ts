@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAcademyMaterialCleanupQueue, getAcademyMaterialQueue, retryAcademyMaterialCleanup, retryAcademyMaterialScan } from '../academy-materials'
+import { getAcademyMaterialCleanupQueue, getAcademyMaterialQueue, getAcademyMaterialStatus, listAcademyLessonUploads, listAcademyRunMaterials, retryAcademyMaterialCleanup, retryAcademyMaterialScan } from '../academy-materials'
 import { academyFixture, COURSE, RUN, USER, id } from './academy-fixtures'
 import type { MockSupabase, MockSupabaseConfig, Row } from '@/test/mocks/supabase'
 
@@ -43,6 +43,18 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
 describe('administrator scan queue', () => {
+    it('returns safe MP4 guidance for author status and both upload lists without raw diagnostics', async () => {
+        const lesson = id(901)
+        setup([asset(301, { status: 'rejected', lesson_id: lesson, scan_error: 'fragmented_mp4_unsupported' }),
+            asset(302, { status: 'rejected', run_id: RUN, scan_error: 'unsupported_mp4_codec' })])
+        const direct = await getAcademyMaterialStatus(id(301))
+        expect(direct.success && direct.data.error).toContain('Segmentowane nagrania')
+        const lessons = await listAcademyLessonUploads(lesson), runs = await listAcademyRunMaterials(RUN)
+        expect(lessons.success && lessons.data[0].error).toContain('Segmentowane nagrania')
+        expect(runs.success && runs.data[0].error).toContain('AAC-LC')
+        expect(JSON.stringify([direct, lessons, runs])).not.toContain('scan_error')
+        expect(JSON.stringify([direct, lessons, runs])).not.toContain('fragmented_mp4_unsupported')
+    })
     it('returns later pages beyond 100 rows with the full filtered count', async () => {
         setup(Array.from({ length: 123 }, (_, index) => asset(index + 100)))
         const result = await getAcademyMaterialQueue({ page: 5 })

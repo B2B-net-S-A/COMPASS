@@ -54,10 +54,10 @@ describe('private material format checks', () => {
         }
         await expect(validateMaterialFormat('application/vnd.openxmlformats-officedocument.wordprocessingml.document', document.subarray(0, 64), document)).rejects.toThrow('invalid_or_oversized_office_manifest')
     })
-    it('requires MP4 magic and validates caption encoding/header', async () => {
+    it('refuses prefix-only MP4 validation and validates caption encoding/header', async () => {
         const mp4 = Buffer.alloc(24); mp4.writeUInt32BE(24); mp4.write('ftypisom', 4)
-        await expect(validateMaterialFormat('video/mp4', mp4)).resolves.toBeUndefined()
-        await expect(validateMaterialFormat('video/mp4', Buffer.from('pretend mp4'))).rejects.toThrow('invalid_mp4')
+        await expect(validateMaterialFormat('video/mp4', mp4)).rejects.toThrow('mp4_requires_full_validation')
+        await expect(validateMaterialFormat('video/mp4', Buffer.from('pretend mp4'))).rejects.toThrow('mp4_requires_full_validation')
         const vtt = Buffer.from('WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nWitaj')
         await expect(validateMaterialFormat('text/vtt', vtt, vtt)).resolves.toBeUndefined()
         await expect(validateMaterialFormat('text/vtt', Buffer.from('HTML'), Buffer.from('HTML'))).rejects.toThrow('invalid_vtt')

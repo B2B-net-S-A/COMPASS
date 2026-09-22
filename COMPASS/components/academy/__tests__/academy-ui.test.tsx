@@ -94,7 +94,7 @@ it('locks published content and requires creating a new draft', async () => {
 
 it('requires a confirmed actual window and another reviewer before manual attendance', () => {
     const session = { id: 'session', title: 'Warsztat', status: 'scheduled', attendanceWindowConfirmed: false } as AcademySessionDTO
-    const participant = { registrationId: 'reg', userId: 'learner', enrollmentId: 'enroll', email: 'learner@example.test', fullName: 'Uczestnik', status: 'confirmed', completedAt: null, attendance: [] } as AcademyRunParticipantDTO
+    const participant: AcademyRunParticipantDTO = { registrationId: 'reg', userId: 'learner', enrollmentId: 'enroll', email: 'learner@example.test', fullName: 'Uczestnik', status: 'confirmed', completedAt: null, completionState: 'pending', completionRevokedAt: null, progress: null, attendance: [] }
     const { rerender } = render(<AcademyAttendancePanel participants={[participant]} sessions={[session]} userId="trainer" />)
     expect(screen.getByRole('button', { name: 'Potwierdź / skoryguj' })).toBeDisabled()
     rerender(<AcademyAttendancePanel participants={[participant]} sessions={[{ ...session, attendanceWindowConfirmed: true }]} userId="learner" />)
@@ -106,7 +106,7 @@ it('requires a confirmed actual window and another reviewer before manual attend
 it('keeps unknown attendance unreviewed and submits only the explicitly confirmed duration', async () => {
     vi.mocked(recordAcademyAttendance).mockClear().mockResolvedValue({ success: true, data: { completed: true } })
     const session = { id: 'session', title: 'Warsztat', status: 'scheduled', attendanceWindowConfirmed: true } as AcademySessionDTO
-    const participant = { registrationId: 'reg', userId: 'learner', enrollmentId: 'enroll', email: 'learner@example.test', fullName: 'Uczestnik', status: 'confirmed', completedAt: null, attendance: [] } as AcademyRunParticipantDTO
+    const participant: AcademyRunParticipantDTO = { registrationId: 'reg', userId: 'learner', enrollmentId: 'enroll', email: 'learner@example.test', fullName: 'Uczestnik', status: 'confirmed', completedAt: null, completionState: 'pending', completionRevokedAt: null, progress: null, attendance: [] }
     render(<AcademyAttendancePanel participants={[participant]} sessions={[session]} userId="trainer" />)
     fireEvent.click(screen.getByRole('button', { name: 'Potwierdź / skoryguj' }))
     const minutes = screen.getByLabelText('Potwierdzony czas obecności w minutach')

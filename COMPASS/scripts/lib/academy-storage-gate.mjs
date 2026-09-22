@@ -45,7 +45,7 @@ export async function installAcademyStorageFixture(status) {
     // Supabase's postgres role is sufficient for this isolated test database.
     await sql.query('CREATE DATABASE academy_test');
     process.env.ACADEMY_TEST_DATABASE_URL=bootstrap.href;
-    const fixture=await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true});
+    const fixture=await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,completionGaps:true});
     try {
         const fixtureName=(await fixture.sql('select current_database() as name')).rows[0].name;
         assert(/^academy_fixture_[a-f0-9]{32}$/.test(fixtureName), 'invalid_fixture_database_name');

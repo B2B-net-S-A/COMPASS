@@ -1,18 +1,12 @@
 # Compass — plan panelu szkoleniowego
 
-Data: 22.09.2026. Status: realizacja w PR #384, bez wdrożenia i zmian danych produkcyjnych.
+Data: 22.09.2026. Status: podstawowy moduł wdrożony w PR #384/#386 (`cf871bb`); rollout zamknięty, pełny odbiór biznesowy otwarty.
 
-**Bieżące dowody realizacji:** [release-evidence.md](./release-evidence.md) zawiera wyniki PR #384, hosted CI oraz odczytu produkcyjnej bazy. Ma pierwszeństwo przed starszym checkpointem poniżej; plan produktu i kryteria odbioru pozostają aktualne.
+**Bieżące dowody realizacji:** [release-evidence.md](./release-evidence.md) ma pierwszeństwo przed historyczną analizą stanu wyjściowego w sekcji 2. Plan produktu i kryteria odbioru pozostają aktualne.
 
-**Tryb pracy: realizacja wznowiona.** Użytkownik polecił kontynuować aktywny cel dokończenia modułu enterprise. Prace odbywają się w izolowanym checkoutcie; plan i lokalne testy nie oznaczają gotowości produkcyjnej.
+**Tryb pracy: realizacja wznowiona.** Prace odbywają się w izolowanym checkoutcie. Hostowe zadania materiałów, synchronizacji i aktualizacji skanera działają. Testy aktualizacji schematu, natywnego Storage i ClamAV są odrębnymi dowodami; nie zastępują pilota. Obecny pakiet uzupełnia raport postępów, walidację wideo, monitoring i odzyskanie obecności. Jego stan wdrożenia jest zapisany w release-evidence.md.
 
-**Stan przygotowania:** kod obejmuje model danych, uprawnienia, wersjonowanie, panele, upload, certyfikaty, współprowadzących oraz integrację Teams. Na `f0627df` hosted PostgreSQL potwierdza aktualizację z dokładnego kontraktu zależności produkcji i 191 asercji zachowania historii; natywny Supabase potwierdza Auth/TUS/Storage (70 asercji), a ClamAV przechodzi na AMD64/ARM64. Historyczne odtwarzanie starych operacyjnych seedów pozostaje niezaliczonym, osobnym audytem. Trwa przygotowanie hosta; nie ma jeszcze testu Teams z kontami pilota ani odbioru produkcyjnego. Główny katalog użytkownika jest zachowany. Aktualne wyniki i granice zawiera release-evidence.md.
-
-**Ustalenia przeglądu przed PR:**
-
-- Naprawiono lokalnie P1 moderacji: formularz musi przekazywać token konkretnego zgłoszenia, sprawdzany atomowo w bazie. Stary ekran administratora nie może zaakceptować treści zmienionej po odrzuceniu i ponownym zgłoszeniu tej samej wersji. Podgląd PDF/wideo oraz blokada decyzji przy błędzie odczytu mają lokalną poprawkę i 6 testów jednostkowych, bez odbioru produkcyjnego.
-- Retencja osieroconych plików ma lokalne poprawki i 54 kontrole na PGlite. Pozostają rzeczywiste wyścigi w PostgreSQL, test usunięcia przez Storage i odzyskania limitu oraz odbiór filtrów/paginacji. Czyszczenie produkcyjne pozostaje wyłączone.
-- Workflow academy-storage.yml oraz scripts/test-academy-storage.mjs są przygotowane do pierwszego wykonania w hosted CI. Test obejmuje rzeczywiste Auth/TUS/Storage; osobny job odtwarza historię migracji. Lokalne testy kontraktów nie potwierdzają jeszcze wykonania tej bramki.
+Pozostają otwarte: rzeczywisty pilot z kontami użytkownika, odbiór automatycznego Teams po uzgodnieniu organizatora i uprawnień, dowód odtworzenia DB/Storage oraz przegląd pozostałych funkcji administracyjnych. Czyszczenie produkcyjne jest wyłączone do zatwierdzenia retencji. Główny katalog roboczy użytkownika pozostaje nietknięty.
 
 ## 1. Docelowy efekt i uzgodnione decyzje
 

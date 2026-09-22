@@ -268,3 +268,12 @@ export async function retryAcademyIntegration(jobId: string): Promise<ActionResu
         refresh()
     })
 }
+
+export async function reconcileAcademyAttendance(sessionId: string): Promise<ActionResult<void>> {
+    return academyAction('sessions.attendance_reconcile', async () => {
+        const { client } = await requireAcademyContext({ admin: true })
+        const { error } = await client.rpc('academy_reconcile_attendance', { p_session_id: uuid.parse(sessionId) })
+        assertDatabaseResult(error)
+        refresh()
+    })
+}

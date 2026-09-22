@@ -32,6 +32,14 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('Academy upload finalization recovery', () => {
+    it.each(['lesson', 'run'] as const)('shows the safe actionable MP4 rejection for a %s', async scope => {
+        const list = scope === 'lesson' ? mocks.lessons : mocks.runs
+        const message = 'Segmentowane nagrania MP4 nie są obsługiwane. Wyeksportuj pojedynczy plik MP4 z obrazem H.264 i dźwiękiem AAC-LC.'
+        list.mockResolvedValue({ success: true, data: [{ id: assetId, filename: 'video.mp4', status: 'rejected', error: message }] })
+        render(<MaterialUploader courseId={courseId} {...(scope === 'lesson' ? { lessonId } : { runId })} onReady={vi.fn()} />)
+        expect(await screen.findByText(message)).toBeInTheDocument()
+        expect(screen.getByText(/jedna ścieżka obrazu i najwyżej jedna dźwięku AAC-LC/)).toBeInTheDocument()
+    })
     it.each(['lesson', 'run'] as const)('reuses the reserved %s asset after a lost finalization response without uploading a duplicate', async scope => {
         const onReady = vi.fn()
         const scopeProps = scope === 'lesson' ? { lessonId } : { runId }
