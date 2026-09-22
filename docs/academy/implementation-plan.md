@@ -1,12 +1,12 @@
 # Compass — plan panelu szkoleniowego
 
-Data: 22.09.2026. Status: plan do realizacji, bez wdrożenia i zmian danych produkcyjnych.
+Data: 22.09.2026. Status: realizacja w PR #384, bez wdrożenia i zmian danych produkcyjnych.
 
 **Bieżące dowody realizacji:** [release-evidence.md](./release-evidence.md) zawiera wyniki PR #384, hosted CI oraz odczytu produkcyjnej bazy. Ma pierwszeństwo przed starszym checkpointem poniżej; plan produktu i kryteria odbioru pozostają aktualne.
 
 **Tryb pracy: realizacja wznowiona.** Użytkownik polecił kontynuować aktywny cel dokończenia modułu enterprise. Prace odbywają się w izolowanym checkoutcie; plan i lokalne testy nie oznaczają gotowości produkcyjnej.
 
-**Stan przygotowania:** istnieją robocze zmiany modelu danych, uprawnień, wersjonowania, paneli, uploadu, certyfikatów, współprowadzących oraz integracji Teams. Przeprowadzono wybrane testy jednostkowe, testy bazy na PGlite i przegląd przykładowych widoków desktop/mobile. Nie jest to odbiór całego modułu. Nie ma pełnego hosted CI, próby rzeczywistego uploadu w docelowym Storage, testu Teams z kontami pilota ani odbioru produkcyjnego. Główny katalog użytkownika jest zachowany. Macierz w §14 jest wcześniejszym checkpointem; poniższe ustalenia mają pierwszeństwo dla bieżącego stanu.
+**Stan przygotowania:** kod obejmuje model danych, uprawnienia, wersjonowanie, panele, upload, certyfikaty, współprowadzących oraz integrację Teams. Dla `b86f4df` główne hosted CI i rzeczywisty ClamAV AMD64/ARM64 przeszły; natywny fixture Supabase potwierdza Auth/TUS/Storage. Pełny historyczny replay pozostaje niezaliczony z powodu starego operacyjnego skryptu tworzenia konta. Nie ma jeszcze testu aktualizacji z pełnego schematu produkcji, testu Teams z kontami pilota ani odbioru produkcyjnego. Główny katalog użytkownika jest zachowany. Macierz w §14 i poniższy przegląd przed PR są wcześniejszymi checkpointami; aktualne wyniki i ich granice zawiera release-evidence.md.
 
 **Ustalenia przeglądu przed PR:**
 
@@ -431,6 +431,8 @@ Status „lokalny WIP” oznacza obecność roboczej implementacji. Nie jest ró
 | Dostarczenie | Brak commita, pushu i wdrożenia modułu | PR, zielone CI, migracje, merge, poprawny SHA i produkcyjny odbiór użytkowy |
 
 Zewnętrzny link Teams jest trwałym wariantem produktu. Nie potwierdza odbioru automatyzacji spotkań firmowych. Pełny zakres wymaga osobnego dowodu dla każdego wariantu.
+
+**Otwarta luka odbioru — własna frekwencja uczestnika:** obecny widok edycji pokazuje uczestnikowi stan ukończenia, ale szczegółowy panel obecności jest dostępny tylko prowadzącym. Należy dostarczyć odczyt własnej obecności dla każdej wymaganej sesji: stan do weryfikacji/potwierdzona/niewystarczająca, potwierdzony czas i próg z przypisanej wersji, z zachowaniem historii zastępstw. Kryterium odbioru: przy dwóch wymaganych sesjach uczestnik jednoznacznie widzi, która blokuje ukończenie; nie może odczytać danych innego zapisu ani ręcznie zmieniać wyniku. To osobny follow-up; poprawka obowiązkowego czasu ręcznej decyzji i komunikatu o zewnętrznym anulowaniu nie zawiera nowego API frekwencji.
 
 ### Decyzje przed pilotem
 

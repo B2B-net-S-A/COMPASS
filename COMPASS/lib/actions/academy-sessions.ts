@@ -189,9 +189,9 @@ export async function confirmAcademySessionWindow(input: { sessionId: string; st
         refresh()
     })
 }
-export async function recordAcademyAttendance(input: { sessionId: string; enrollmentId: string; status: 'present' | 'insufficient'; attendedSeconds?: number; note: string }): Promise<ActionResult<{ completed: boolean }>> {
+export async function recordAcademyAttendance(input: { sessionId: string; enrollmentId: string; status: 'present' | 'insufficient'; attendedSeconds: number; note: string }): Promise<ActionResult<{ completed: boolean }>> {
     return academyAction('sessions.attendance_review', async () => {
-        const parsed = z.object({ sessionId: uuid, enrollmentId: uuid, status: z.enum(['present', 'insufficient']), attendedSeconds: z.number().int().min(0).max(86400).optional(), note: reason }).parse(input)
+        const parsed = z.object({ sessionId: uuid, enrollmentId: uuid, status: z.enum(['present', 'insufficient']), attendedSeconds: z.number().int().min(0).max(86400), note: reason }).parse(input)
         const { client } = await requireAcademyContext({ trainer: true })
         const { data, error } = await client.rpc('academy_record_attendance', { p_input: parsed })
         assertDatabaseResult(error)

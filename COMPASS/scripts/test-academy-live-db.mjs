@@ -71,10 +71,27 @@ const started=new Date(Date.now()-7200000).toISOString(); const ended=new Date(D
 await owner(); await sql('update course_sessions set starts_at=$2,ends_at=$3 where id=$1',[session,started,ended]);
 await actor('trainer'); await denied('select academy_record_attendance($1)',[{sessionId:session,enrollmentId:promoted.enrollmentId,status:'present',note:'Confirmed attendance'}]);
 await rpc('academy_confirm_session_window',[session,started,ended]);
+// Unknown duration is not 100% attendance and cannot create a completion.
+for(const status of ['present','insufficient']) {
+    for(const duration of [{},{attendedSeconds:null},{attendedSeconds:'2880'}]) {
+        await denied('select academy_record_attendance($1)',[{sessionId:session,enrollmentId:promoted.enrollmentId,status,note:'Time has not been verified',...duration}],/potwierdzony czas/);
+    }
+}
+await owner();
+equal((await sql('select count(*)::int n from session_attendance where enrollment_id=$1',[promoted.enrollmentId])).rows[0].n,0);
+equal((await sql('select count(*)::int n from course_completions where enrollment_id=$1',[promoted.enrollmentId])).rows[0].n,0);
+await actor('trainer');
+equal((await rpc('academy_record_attendance',[{sessionId:session,enrollmentId:promoted.enrollmentId,status:'insufficient',attendedSeconds:1800,note:'Verified participant attended half the class'}])).completed,false);
+await denied('select academy_record_attendance($1)',[{sessionId:session,enrollmentId:promoted.enrollmentId,status:'present',note:'Cannot infer full attendance from a missing time'}],/potwierdzony czas/);
+equal((await sql('select status,attended_seconds from session_attendance where enrollment_id=$1',[promoted.enrollmentId])).rows[0],{status:'insufficient',attended_seconds:1800});
 await denied('select academy_record_attendance($1)',[{sessionId:session,enrollmentId:promoted.enrollmentId,status:'present',attendedSeconds:100,note:'Too short'}]);
 await denied('select academy_record_attendance($1)',[{sessionId:session,enrollmentId:promoted.enrollmentId,status:'present',note:'x'}]);
 const complete=await rpc('academy_record_attendance',[{sessionId:session,enrollmentId:promoted.enrollmentId,status:'present',attendedSeconds:2880,note:'Verified external Teams attendance'}]);
 equal(complete.completed,true);
+await owner();
+const evidence=(await sql("select details from academy_audit_events where action='ACADEMY_ATTENDANCE_REVIEWED' and details->>'enrollment_id'=$1 and details->>'status'='present'",[promoted.enrollmentId])).rows[0].details;
+equal(evidence.attended_seconds,2880);equal(evidence.teaching_duration_seconds,3600);equal(evidence.attendance_percent_required,80);
+await actor('trainer');
 await denied('select academy_record_attendance($1)',[{sessionId:session,enrollmentId:promoted.enrollmentId,status:'insufficient',attendedSeconds:0,note:'Do not silently revoke certificate'}]);
 await denied('select academy_cancel_run($1,$2)',[run,'Cannot cancel a certified run']);
 await actor('other'); assert((await rpc('academy_list_runs',[course,run]))[0].myRegistration.completedAt); checks++;

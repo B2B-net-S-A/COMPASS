@@ -4,8 +4,8 @@ import { AcademySessionForm } from '../sessions/AcademySessionForm'
 import { AcademyRunDetail } from '../sessions/AcademyRunDetail'
 import type { AcademyRunDTO, AcademySessionDTO } from '@/lib/types/academy-sessions'
 
-const mocks=vi.hoisted(()=>({save:vi.fn(),replace:vi.fn(),refresh:vi.fn(),complete:vi.fn()}))
-vi.mock('@/lib/actions/academy-sessions',()=>({saveAcademySession:mocks.save,replaceAcademySession:mocks.replace,confirmAcademySessionWindow:vi.fn(),cancelAcademyRegistration:vi.fn(),cancelAcademyRun:vi.fn(),cancelAcademySession:vi.fn(),publishAcademyRun:vi.fn(),registerAcademyRun:vi.fn(),updateAcademyRun:vi.fn()}))
+const mocks=vi.hoisted(()=>({save:vi.fn(),replace:vi.fn(),refresh:vi.fn(),complete:vi.fn(),cancelRun:vi.fn(),cancelSession:vi.fn()}))
+vi.mock('@/lib/actions/academy-sessions',()=>({saveAcademySession:mocks.save,replaceAcademySession:mocks.replace,confirmAcademySessionWindow:vi.fn(),cancelAcademyRegistration:vi.fn(),cancelAcademyRun:mocks.cancelRun,cancelAcademySession:mocks.cancelSession,publishAcademyRun:vi.fn(),registerAcademyRun:vi.fn(),updateAcademyRun:vi.fn()}))
 vi.mock('@/lib/actions/course-learning',()=>({completeAcademyCourse:mocks.complete}))
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}))
 vi.mock('@/components/shared/ConfirmDialog',()=>({useConfirm:()=>[vi.fn(),()=>null]}))
@@ -44,5 +44,16 @@ describe('Published session obligations',()=>{
   const run:AcademyRunDTO={id:'run',courseId:'course',versionId:'version',versionNumber:1,courseTitle:'Course',courseSlug:'course',title:'Run',capacity:3,status:'published',confirmedCount:1,waitlistCount:0,canManage:false,canPublish:false,myRegistration:{id:'registration',status:'confirmed',enrollmentId:'enrollment',completedAt:'2026-09-01T12:00:00Z',completionRevokedAt:'2026-09-02T12:00:00Z',completionRevokedReason:'Błędnie potwierdzona obecność'},sessions:[]};
   render(<AcademyRunDetail run={run} participants={[]} organizers={[]} managedTeamsAvailable={false} userId="student" now="2026-09-22T00:00:00Z"/>);
   expect(screen.getByText(/Zaliczenie zostało unieważnione/)).toHaveTextContent('Błędnie potwierdzona obecność');expect(screen.queryByRole('link',{name:'Pobierz certyfikat'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'Sprawdź ukończenie'})).toBeDisabled();
+ });
+ it.each(['session','run'] as const)('distinguishes Compass cancellation from the external Teams host action (%s)',async(kind)=>{
+  mocks.cancelRun.mockResolvedValue({success:true,data:undefined});mocks.cancelSession.mockResolvedValue({success:true,data:undefined});
+  const run:AcademyRunDTO={id:'run',courseId:'course',versionId:'version',versionNumber:1,courseTitle:'Course',courseSlug:'course',title:'Run',capacity:3,status:'published',confirmedCount:1,waitlistCount:0,canManage:true,canPublish:false,myRegistration:null,sessions:[session]};
+  render(<AcademyRunDetail run={run} participants={[]} organizers={[]} managedTeamsAvailable={false} userId="trainer" now="2029-01-01T00:00:00Z"/>);
+  fireEvent.click(screen.getByRole('button',{name:kind==='session'?'Odwołaj spotkanie':'Odwołaj edycję'}));
+  expect(screen.getByText(/Compass nie odwołuje spotkań w zewnętrznym Teams/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Powód odwołania'),{target:{value:'Trener przełożył warsztat'}});
+  fireEvent.click(screen.getByRole('button',{name:'Potwierdź odwołanie'}));
+  await waitFor(()=>expect(kind==='session'?mocks.cancelSession:mocks.cancelRun).toHaveBeenCalledWith(kind==='session'?{sessionId:'session',reason:'Trener przełożył warsztat'}:{runId:'run',reason:'Trener przełożył warsztat'}));
+  expect(await screen.findByRole('status')).toHaveTextContent(kind==='session'?'Odwołano w Compass; odwołaj też spotkanie u gospodarza Teams.':'Odwołano edycję w Compass; odwołaj też zewnętrzne spotkania u ich gospodarzy Teams.');
  });
 })

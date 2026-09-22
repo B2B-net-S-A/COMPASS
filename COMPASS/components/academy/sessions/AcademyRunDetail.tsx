@@ -46,6 +46,8 @@ export function AcademyRunDetail({ run, canRegister = true, participants, partic
     const waitlisted = registration?.status === 'waitlisted'
     const activeSessions = run.sessions.filter((session) => session.status !== 'cancelled')
     const upcoming = activeSessions.some((session) => Date.parse(session.endsAt) >= Date.parse(now))
+    const cancellingExternal = modal?.type === 'cancel' && (modal.session
+        ? modal.session.mode === 'external_link' : activeSessions.some((session) => session.mode === 'external_link'))
 
     function mutate(action: () => Promise<ActionResult<unknown>>, success: string) {
         setError(null)
@@ -75,7 +77,10 @@ export function AcademyRunDetail({ run, canRegister = true, participants, partic
         if (modal?.type !== 'cancel') return
         const reason = String(new FormData(event.currentTarget).get('reason') ?? '').trim()
         const session = modal.session
-        mutate(() => session ? cancelAcademySession({ sessionId: session.id, reason }) : cancelAcademyRun({ runId: run.id, reason }), session ? 'Spotkanie odwołane. Aktualizujemy powiadomienia uczestników.' : 'Edycja odwołana. Historia zapisów pozostaje zachowana.')
+        const success = cancellingExternal
+            ? session ? 'Odwołano w Compass; odwołaj też spotkanie u gospodarza Teams.' : 'Odwołano edycję w Compass; odwołaj też zewnętrzne spotkania u ich gospodarzy Teams.'
+            : session ? 'Spotkanie odwołane. Aktualizujemy powiadomienia uczestników.' : 'Edycja odwołana. Historia zapisów pozostaje zachowana.'
+        mutate(() => session ? cancelAcademySession({ sessionId: session.id, reason }) : cancelAcademyRun({ runId: run.id, reason }), success)
     }
     function saved() { setModal(null); setError(null); router.refresh() }
 
@@ -109,6 +114,7 @@ export function AcademyRunDetail({ run, canRegister = true, participants, partic
         <Dialog open={modal !== null} onOpenChange={(open) => { if (!open && !isPending && !childPending) setModal(null) }}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{modal?.type === 'replacement' ? 'Zaplanuj zastępstwo' : modal?.type === 'session' ? modal.session ? 'Edytuj spotkanie' : 'Nowe spotkanie' : modal?.type === 'actual' ? 'Rzeczywisty czas zajęć' : modal?.type === 'cancel' ? modal.session ? 'Odwołaj spotkanie' : 'Odwołaj edycję' : 'Edytuj edycję'}</DialogTitle><DialogDescription>{modal?.type === 'cancel' ? 'Podaj powód odwołania. Historia zapisów i dotychczasowych decyzji pozostanie zachowana. Odwołanie wymaganej sesji nie zalicza obecności — potrzebny jest termin zastępczy.' : run.title}</DialogDescription></DialogHeader>
             {(modal?.type === 'session' || modal?.type === 'replacement') && <AcademySessionForm runId={run.id} runCapacity={run.capacity} runPublished={run.status === 'published'} initial={modal.type === 'session' ? modal.session : undefined} replacementFor={modal.type === 'replacement' ? modal.session : undefined} organizers={organizers} managedTeamsAvailable={managedTeamsAvailable} managedTeamsReason={managedTeamsReason} onSaved={saved} onCancel={() => setModal(null)} onPendingChange={setChildPending} />}
             {modal?.type === 'actual' && <AcademyActualWindowForm session={modal.session} onSaved={saved} onCancel={() => setModal(null)} onPendingChange={setChildPending} />}
+            {cancellingExternal && <p className="text-sm text-muted-foreground">Compass nie odwołuje spotkań w zewnętrznym Teams. Po zapisaniu decyzji odwołaj je także u gospodarza i przekaż zmianę uczestnikom.</p>}
             {modal?.type === 'editRun' && <form onSubmit={saveRun} className="space-y-4"><div className="space-y-2"><label htmlFor="edit-run-title" className="text-sm font-medium">Nazwa edycji</label><Input id="edit-run-title" name="title" defaultValue={run.title} required minLength={3} maxLength={200} disabled={isPending} /></div><div className="space-y-2"><label htmlFor="edit-run-capacity" className="text-sm font-medium">Liczba miejsc</label><Input id="edit-run-capacity" name="capacity" type="number" defaultValue={run.capacity} required min={Math.max(1, run.confirmedCount)} max={activeSessions.some(session => session.mode === 'managed_teams') ? 499 : 500} disabled={isPending} /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" disabled={isPending}>{isPending && <Loader2 className="animate-spin" aria-hidden="true" />}Zapisz edycję</Button></form>}
             {modal?.type === 'cancel' && <form onSubmit={cancel} className="space-y-4"><div className="space-y-2"><label htmlFor="cancel-reason" className="text-sm font-medium">Powód odwołania</label><Textarea id="cancel-reason" name="reason" required minLength={5} maxLength={2000} disabled={isPending} /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={isPending} onClick={() => setModal(null)}>Wróć</Button><Button type="submit" variant="destructive" disabled={isPending}>{isPending && <Loader2 className="animate-spin" aria-hidden="true" />}Potwierdź odwołanie</Button></div></form>}
         </DialogContent></Dialog><ConfirmUI />

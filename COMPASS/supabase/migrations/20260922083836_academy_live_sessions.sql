@@ -504,9 +504,13 @@ BEGIN
     IF p_input->>'status' NOT IN ('present','insufficient') OR COALESCE(length(btrim(p_input->>'note')),0) NOT BETWEEN 5 AND 2000 THEN
         RAISE EXCEPTION 'Wybierz decyzję i podaj uzasadnienie (min. 5 znaków).';
     END IF;
+    IF jsonb_typeof(p_input->'attendedSeconds') IS DISTINCT FROM 'number'
+        OR (p_input->>'attendedSeconds') !~ '^[0-9]+$' THEN
+        RAISE EXCEPTION 'Podaj potwierdzony czas obecności. Brak danych nie może oznaczać zaliczenia.';
+    END IF;
     v_duration:=floor(extract(epoch FROM s.actual_ends_at-s.actual_starts_at));
     SELECT (completion_rules->>'attendance_percent')::integer INTO v_threshold FROM public.course_versions WHERE id=r.version_id;
-    v_seconds:=COALESCE((p_input->>'attendedSeconds')::integer,CASE WHEN p_input->>'status'='present' THEN v_duration ELSE 0 END);
+    v_seconds:=(p_input->>'attendedSeconds')::integer;
     IF v_seconds<0 OR v_seconds>v_duration OR (p_input->>'status'='present' AND v_seconds<ceil(v_duration*v_threshold/100.0)) THEN
         RAISE EXCEPTION 'Czas obecności nie spełnia wybranej decyzji.';
     END IF;
@@ -515,7 +519,9 @@ BEGIN
         ON CONFLICT(session_id,enrollment_id) DO UPDATE SET status=EXCLUDED.status,attended_seconds=EXCLUDED.attended_seconds,
             source='manual',reviewed_by=auth.uid(),note=EXCLUDED.note,updated_at=now();
     INSERT INTO public.academy_audit_events(actor_id,action,course_id,details)
-        VALUES(auth.uid(),'ACADEMY_ATTENDANCE_REVIEWED',r.course_id,jsonb_build_object('session_id',s.id,'enrollment_id',e.id,'status',p_input->>'status','note',p_input->>'note'));
+        VALUES(auth.uid(),'ACADEMY_ATTENDANCE_REVIEWED',r.course_id,jsonb_build_object('session_id',s.id,'enrollment_id',e.id,
+            'status',p_input->>'status','note',p_input->>'note','attended_seconds',v_seconds,
+            'teaching_duration_seconds',v_duration,'attendance_percent_required',v_threshold));
     RETURN academy_private.finalize_enrollment(e.id);
 END $$;
 

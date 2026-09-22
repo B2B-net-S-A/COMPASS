@@ -6,7 +6,7 @@ import { AcademySessionForm } from '../sessions/AcademySessionForm'
 import { AcademyAttendancePanel } from '../sessions/AcademyAttendancePanel'
 import { CourseAuthorForm } from '@/components/learning/CourseAuthorForm'
 import { CourseEditWizard } from '@/components/learning/CourseEditWizard'
-import { saveAcademySession } from '@/lib/actions/academy-sessions'
+import { saveAcademySession, recordAcademyAttendance } from '@/lib/actions/academy-sessions'
 import { beginCourseDraft, createCourse, submitForReview } from '@/lib/actions/courses'
 import type { CourseDetail } from '@/lib/types/learning'
 import type { AcademySessionDTO, AcademyRunParticipantDTO } from '@/lib/types/academy-sessions'
@@ -101,4 +101,35 @@ it('requires a confirmed actual window and another reviewer before manual attend
     expect(screen.queryByRole('button', { name: 'Potwierdź / skoryguj' })).not.toBeInTheDocument()
     rerender(<AcademyAttendancePanel participants={[participant]} sessions={[{ ...session, attendanceWindowConfirmed: true }]} userId="trainer" readOnly />)
     expect(screen.getByRole('button', { name: 'Potwierdź / skoryguj' })).toBeDisabled()
+})
+
+it('keeps unknown attendance unreviewed and submits only the explicitly confirmed duration', async () => {
+    vi.mocked(recordAcademyAttendance).mockClear().mockResolvedValue({ success: true, data: { completed: true } })
+    const session = { id: 'session', title: 'Warsztat', status: 'scheduled', attendanceWindowConfirmed: true } as AcademySessionDTO
+    const participant = { registrationId: 'reg', userId: 'learner', enrollmentId: 'enroll', email: 'learner@example.test', fullName: 'Uczestnik', status: 'confirmed', completedAt: null, attendance: [] } as AcademyRunParticipantDTO
+    render(<AcademyAttendancePanel participants={[participant]} sessions={[session]} userId="trainer" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Potwierdź / skoryguj' }))
+    const minutes = screen.getByLabelText('Potwierdzony czas obecności w minutach')
+    expect(minutes).toBeRequired()
+    expect(minutes).toHaveValue(null)
+    fireEvent.change(screen.getByLabelText('Uzasadnienie decyzji'), { target: { value: 'Zweryfikowano obecność podczas warsztatu.' } })
+    // Submit directly to exercise the guard even if browser form validation is bypassed.
+    fireEvent.submit(minutes.closest('form')!)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Jeśli go nie znasz, pozostaw obecność do weryfikacji')
+    expect(recordAcademyAttendance).not.toHaveBeenCalled()
+    fireEvent.change(minutes, { target: { value: '48' } })
+    fireEvent.submit(minutes.closest('form')!)
+    await waitFor(() => expect(recordAcademyAttendance).toHaveBeenCalledWith({
+        sessionId: 'session', enrollmentId: 'enroll', status: 'present', attendedSeconds: 2880,
+        note: 'Zweryfikowano obecność podczas warsztatu.',
+    }))
+})
+
+it('shows the existing manual decision evidence to the authorized facilitator', () => {
+    const session = { id: 'session', title: 'Warsztat', status: 'scheduled', attendanceWindowConfirmed: true } as AcademySessionDTO
+    const participant = { registrationId: 'reg', userId: 'learner', enrollmentId: 'enroll', email: 'learner@example.test', fullName: 'Uczestnik', status: 'confirmed', completedAt: null,
+        attendance: [{ sessionId: 'session', status: 'present', attendedSeconds: 2880, source: 'manual', note: 'Lista uczestników oraz potwierdzone 48 minut zajęć.' }] } as AcademyRunParticipantDTO
+    render(<AcademyAttendancePanel participants={[participant]} sessions={[session]} userId="trainer" />)
+    expect(screen.getByText('Uzasadnienie decyzji: Lista uczestników oraz potwierdzone 48 minut zajęć.')).toBeInTheDocument()
+    expect(screen.getByText(/48 min · ręcznie/)).toBeInTheDocument()
 })

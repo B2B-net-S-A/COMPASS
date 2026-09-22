@@ -39,7 +39,7 @@ try {
  const started=time(-2),ended=time(-1);
  await sql('update course_sessions set starts_at=$2,ends_at=$3 where id=$1',[first,started,ended]);
  await actor('trainer');await rpc('academy_confirm_session_window',[first,started,ended]);
- equal((await rpc('academy_record_attendance',[{sessionId:first,enrollmentId:reg.enrollmentId,status:'present',note:'Verified all teaching minutes'}])).completed,false);
+ equal((await rpc('academy_record_attendance',[{sessionId:first,enrollmentId:reg.enrollmentId,status:'present',attendedSeconds:3600,note:'Verified all teaching minutes'}])).completed,false);
  await owner();equal(await rpc('academy_attendance_satisfied',[reg.enrollmentId]),false);
  await actor('student');equal((await rpc('academy_list_runs',[course,run]))[0].sessions.find(s=>s.id===second).canReplace,false);
  await actor('trainer');await denied('select academy_replace_session($1,$2,$3,false)',[second,{...input,runId:run},'Explicit external replacement'],/zewnętrznego organizatora/);
@@ -56,7 +56,7 @@ try {
  await owner();equal(await rpc('academy_attendance_satisfied',[reg.enrollmentId]),false);
  await owner();await sql('update course_sessions set starts_at=$2,ends_at=$3 where id=$1',[replacement,started,ended]);
  await actor('trainer');await rpc('academy_confirm_session_window',[replacement,started,ended]);
- equal((await rpc('academy_record_attendance',[{sessionId:replacement,enrollmentId:reg.enrollmentId,status:'present',note:'Replacement teaching confirmed'}])).completed,true);
+ equal((await rpc('academy_record_attendance',[{sessionId:replacement,enrollmentId:reg.enrollmentId,status:'present',attendedSeconds:3600,note:'Replacement teaching confirmed'}])).completed,true);
  await actor('student');const completed=(await rpc('academy_list_runs',[course,run]))[0].myRegistration;
  assert(completed.completedAt);checks++;equal(completed.completionRevokedAt,null);equal(completed.completionRevokedReason,null);
  await actor('trainer');await denied('select academy_cancel_session($1,$2)',[replacement,'Do not change issued completion']);
