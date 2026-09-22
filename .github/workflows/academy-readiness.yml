@@ -3,7 +3,7 @@ name: Academy infrastructure inventory
 on:
   # The feature-branch push works before this new workflow exists on main.
   push:
-    branches: [feat/academy-enterprise, main]
+    branches: [feat/academy-enterprise, fix/academy-proxy-network, main]
     paths:
       - 'COMPASS/lib/academy/**'
       - 'COMPASS/lib/actions/academy*.ts'
@@ -28,7 +28,7 @@ jobs:
     name: Read-only Coolify inventory
     if: >-
       github.repository == 'B2B-net-S-A/COMPASS' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise')
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/academy-enterprise' || github.ref == 'refs/heads/fix/academy-proxy-network')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -40,7 +40,7 @@ jobs:
         with:
           node-version: '20'
       - name: Verify projection and GET-only transport without credentials
-        run: node --test ops/academy/coolify-readiness.test.mjs ops/academy/host-capacity.test.mjs
+        run: node --test ops/academy/coolify-readiness.test.mjs ops/academy/host-capacity.test.mjs ops/academy/proxy-readiness.test.mjs
       - name: Read configured application metadata using the existing deployment credentials
         env:
           COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
@@ -53,3 +53,9 @@ jobs:
           HETZNER_USER: ${{ secrets.HETZNER_USER }}
           HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
         run: node ops/academy/host-capacity.mjs
+      - name: Read app and proxy networks and local health without environment or logs
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: node ops/academy/proxy-readiness.mjs
