@@ -1,0 +1,41 @@
+# Proposal only. One-shot service; clamd must be stopped and builds excluded.
+# Run as a separate project, never merged with the daemon or app compose.
+name: compass-academy-clam-update
+services:
+  freshclam:
+    image: clamav/clamav:1.4.6-debian13-slim@sha256:b12ef8fefddbba7d88de59bea8a32622f365339154adf02d38fd089112e6745a
+    entrypoint: [freshclam]
+    command: [--foreground, --stdout, --config-file=/etc/clamav/freshclam.conf]
+    user: "1000:1000"
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 3g
+    memswap_limit: 3g
+    cpus: "2.0"
+    pids_limit: 64
+    environment:
+      TZ: Etc/UTC
+    volumes:
+      - type: bind
+        source: ${ACADEMY_CLAMAV_STATE_DIR:?Set an existing dedicated state directory}/signatures
+        target: /var/lib/clamav
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${ACADEMY_CLAMAV_STATE_DIR:?Set an existing dedicated state directory}/update-tmp
+        target: /tmp
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./freshclam.serialized.conf
+        target: /etc/clamav/freshclam.conf
+        read_only: true
+        bind: {create_host_path: false}
+    # Only this service needs DNS/CDN egress. It has no app/scanner network.
+    networks: [signature_updates]
+    healthcheck: {disable: true}
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}
+networks:
+  signature_updates: {}

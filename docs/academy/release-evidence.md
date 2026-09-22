@@ -2,6 +2,14 @@
 
 Stan na 22.09.2026, PR [#384](https://github.com/B2B-net-S-A/COMPASS/pull/384). Moduł nie jest jeszcze wdrożony ani odebrany produkcyjnie. Poniższe wyniki nie zastępują testów kolejnych commitów.
 
+## Checkpoint `b86f4df4a20b0d81a4d59ae65fd7701bd4eaebe5`
+
+- [Build check 35731018357](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731018357): **PASS**, wszystkie zadania.
+- [ClamAV 35731018470](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731018470): **PASS**, AMD64 i ARM64.
+- [Storage 35731018359](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731018359): pełny workflow nadal **FAIL**. Historyczny replay rozpoczął 46 z 255 plików i zatrzymał się na `20260220_create_centrala_user.sql` (42P10). To operacyjny seed konta zakładający pełną unikalność `auth.users.email`; odczyt produkcyjnego katalogu potwierdza indeks częściowy. Nie odtwarzamy kont ani nie zmieniamy natywnego Auth, aby wymusić przejście starego skryptu.
+- Alternatywa wymaga testu aktualizacji z pełnego eksportu samego schematu produkcji, bez danych. MCP pozwala odczytać katalog, ale nie dostarcza kompletnego `pg_dump`; w sprawdzonych lokalnych konfiguracjach nie znaleziono poświadczeń połączenia DB. Odczyt listy nazw sekretów GitHub botem zwraca 403. Następny inventory sprawdza jedynie obecność czterech nazw połączenia DB w istniejącym vault Coolify. Bramka nie została wyłączona ani oznaczona jako zaliczona.
+- [Graph 35731009774](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731009774): `Calendars.ReadWrite=true`; `OnlineMeetings.Read.All`, `OnlineMeetings.ReadWrite.All`, `OnlineMeetingArtifact.Read.All` — wszystkie **false**. Nie nadano nowych zgód. Zewnętrzny link i ręczna obecność nie zależą od tych ról.
+
 ## Checkpoint `272d2c14fd0bdd2fe9372f3502d1d545f52e4011`
 
 - [Build check 35729921406](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35729921406): **PASS**, lint, typy, testy, build i PostgreSQL authorization/concurrency.

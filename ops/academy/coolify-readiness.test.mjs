@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessOperationalRequirements, collectReadiness, environmentNames, summarizeEnvironments, summarizeTasks } from './coolify-readiness.mjs';
+import { assessOperationalRequirements, collectReadiness, databaseConnectionNames, environmentNames, summarizeDatabaseConnectionPresence, summarizeEnvironments, summarizeTasks } from './coolify-readiness.mjs';
 
 const env = { COOLIFY_URL: 'https://coolify-compass.dynaminds.pl', COOLIFY_TOKEN: 'test-token-do-not-emit', COOLIFY_APP_UUID: 'test-application-uuid' };
 const appPath = '/api/v1/applications/test-application-uuid';
@@ -103,6 +103,41 @@ test('distinguishes absent, empty, redacted, preview-only and runtime-disabled c
     assert.equal(get('CRON_SECRET').configured, true);
     assert(!JSON.stringify(result).includes(privateValue));
     assert(summarizeEnvironments({ message: privateValue }).every(row => row.present === null && row.configured === null));
+});
+
+test('reports only confirmed nonempty runtime DB presence, not values or build/preview configuration', () => {
+    const source = [
+        { key: 'DATABASE_URL', value: 'postgresql://private-user:private-password@private-host/db', is_runtime: true },
+        { key: 'DIRECT_URL', value: privateValue, is_runtime: false },
+        { key: 'DIRECT_URL', value: '  ', is_runtime: true },
+        { key: 'SUPABASE_DB_URL', value: privateValue, is_runtime: true, is_preview: true },
+        { key: 'SUPABASE_DB_PASSWORD', value: '***REDACTED***', is_runtime: true },
+    ];
+    assert.deepEqual(summarizeDatabaseConnectionPresence(source), {
+        DATABASE_URL: true, DIRECT_URL: false, SUPABASE_DB_URL: false, SUPABASE_DB_PASSWORD: null,
+    });
+    assert.deepEqual(summarizeDatabaseConnectionPresence([]), Object.fromEntries(databaseConnectionNames.map(name => [name, false])));
+    for (const unavailable of [null, { message: privateValue }, [null]]) {
+        assert.deepEqual(summarizeDatabaseConnectionPresence(unavailable), Object.fromEntries(databaseConnectionNames.map(name => [name, null])));
+    }
+    assert.equal(summarizeDatabaseConnectionPresence([{ key: 'DIRECT_URL', value: privateValue }]).DIRECT_URL, null);
+    assert.equal(summarizeDatabaseConnectionPresence([{ key: 'DIRECT_URL', value: '{{project.database}}', real_value: privateValue, is_runtime: true }]).DIRECT_URL, true);
+});
+
+test('extends the existing inventory with four DB booleans without extra endpoints or secret output', async () => {
+    const source = fixtures();
+    const secret = 'postgresql://db-username:db-password@example.invalid/db-name';
+    source[`${appPath}/envs`].push(...databaseConnectionNames.map(key => ({ key, real_value: secret, value: secret, is_runtime: true })));
+    const requests = [];
+    const report = await collectReadiness({ env, fetchImpl: async url => {
+        const path = new URL(url).pathname; requests.push(path);
+        assert(Object.hasOwn(source, path));
+        return jsonResponse(source[path]);
+    } });
+    assert.equal(requests.length, 5);
+    assert.deepEqual(report.databaseConnectionPresence, Object.fromEntries(databaseConnectionNames.map(name => [name, true])));
+    const serialized = JSON.stringify(report);
+    for (const forbidden of [secret, 'db-username', 'db-password', 'example.invalid', 'db-name', privateValue, 'real_value']) assert(!serialized.includes(forbidden));
 });
 
 test('reports unsupported API, denied requests and unknown shapes without printing response bodies', async () => {

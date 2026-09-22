@@ -11,6 +11,9 @@ export const environmentNames = Object.freeze([
     'ACADEMY_MATERIAL_CLEANUP_ENABLED', 'ACADEMY_UPLOAD_RETENTION_HOURS', 'ACADEMY_REJECTED_RETENTION_DAYS',
     'CRON_SECRET', 'SUPABASE_SERVICE_ROLE_KEY', 'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_APP_URL',
 ]);
+export const databaseConnectionNames = Object.freeze([
+    'DATABASE_URL', 'DIRECT_URL', 'SUPABASE_DB_URL', 'SUPABASE_DB_PASSWORD',
+]);
 export const schedulerContracts = Object.freeze([
     { name: 'academy-materials', frequency: '* * * * *', minimumTimeoutSeconds: 330, requiredForPilot: true },
     { name: 'academy-sync', frequency: '* * * * *', minimumTimeoutSeconds: 210, requiredForPilot: true },
@@ -44,6 +47,19 @@ export function summarizeEnvironments(rows) {
                 : values.every(value => value === '') ? false : null;
         return { name, present: valid ? matches.length > 0 : null, configured, runtime };
     });
+}
+
+/** Presence only, on the same non-preview runtime row. Null means unobservable,
+ * never permission to disclose a connection string or infer working DB access. */
+export function summarizeDatabaseConnectionPresence(rows) {
+    const valid = Array.isArray(rows) && rows.every(record);
+    return Object.fromEntries(databaseConnectionNames.map(name => {
+        if (!valid) return [name, null];
+        const candidates = rows.filter(row => row.key === name && row.is_preview !== true && row.is_runtime !== false);
+        const present = candidates.some(row => row.is_runtime === true && visibleValue(row) !== null && visibleValue(row) !== '');
+        const unknown = candidates.some(row => visibleValue(row) === null || (row.is_runtime !== true && visibleValue(row) !== ''));
+        return [name, present ? true : unknown ? null : false];
+    }));
 }
 
 function frequency(value) {
@@ -146,6 +162,7 @@ export async function collectReadiness({ env = process.env, fetchImpl = fetch, n
             urlConfigured: !!env.COOLIFY_URL, tokenConfigured: !!env.COOLIFY_TOKEN, applicationConfigured: !!env.COOLIFY_APP_UUID,
         },
         checks, application: null, servers: [], environments: summarizeEnvironments(null), tasks: summarizeTasks(null),
+        databaseConnectionPresence: summarizeDatabaseConnectionPresence(null),
         requirements: assessOperationalRequirements(summarizeEnvironments(null), summarizeTasks(null)),
         limitations: [
             'Vault presence does not prove environment delivery to the running process.',
@@ -185,6 +202,7 @@ export async function collectReadiness({ env = process.env, fetchImpl = fetch, n
     ]);
     report.application = summarizeApplication(application);
     report.environments = summarizeEnvironments(environments);
+    report.databaseConnectionPresence = summarizeDatabaseConnectionPresence(environments);
     report.tasks = summarizeTasks(tasks);
     report.requirements = assessOperationalRequirements(report.environments, report.tasks);
     if (checks.application === 'read' && !report.application) checks.application = 'unknown_schema';

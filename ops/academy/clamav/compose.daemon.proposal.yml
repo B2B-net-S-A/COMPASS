@@ -1,0 +1,62 @@
+# Proposal only. Separate from the production app compose and from the updater.
+# Requires the capacity/interlock gates in docs/academy/clamav-colocation-proposal.md.
+name: compass-academy-clamd
+services:
+  clamd:
+    image: clamav/clamav:1.4.6-debian13-slim@sha256:b12ef8fefddbba7d88de59bea8a32622f365339154adf02d38fd089112e6745a
+    entrypoint: [clamd]
+    command: [--foreground, --config-file=/etc/clamav/clamd.conf]
+    user: "1000:1000"
+    restart: unless-stopped
+    stop_grace_period: 300s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 4g
+    mem_reservation: 3g
+    memswap_limit: 4g
+    cpus: "2.0"
+    pids_limit: 128
+    environment:
+      TZ: Etc/UTC
+    # Scratch data stays on a dedicated, quota-limited disk directory, not RAM.
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700
+    volumes:
+      - type: bind
+        source: ${ACADEMY_CLAMAV_STATE_DIR:?Set an existing dedicated state directory}/signatures
+        target: /var/lib/clamav
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${ACADEMY_CLAMAV_STATE_DIR:?Set an existing dedicated state directory}/scan-tmp
+        target: /scan-tmp
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./clamd.conf
+        target: /etc/clamav/clamd.conf
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./clamd-health.conf
+        target: /etc/clamav/health.conf
+        read_only: true
+        bind: {create_host_path: false}
+    # No ports, Traefik labels, host networking or public ingress.
+    networks:
+      scanner_private:
+        aliases: [academy-clamd]
+    healthcheck:
+      test: [CMD, clamdscan, --config-file=/etc/clamav/health.conf, --ping=1]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}
+networks:
+  scanner_private:
+    # Pre-created INTERNAL network with Compass and clamd as its only members.
+    external: true
+    name: ${ACADEMY_CLAMAV_PRIVATE_NETWORK:?Set the verified app-only internal network}

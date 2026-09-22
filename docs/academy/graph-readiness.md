@@ -1,5 +1,7 @@
 # Pomocniczy odczyt istniejących ról Graph
 
+Odczyt z 22.09.2026, [run 35731009774](https://github.com/B2B-net-S-A/COMPASS/actions/runs/35731009774), commit `b86f4df`: `Calendars.ReadWrite=true`, `OnlineMeetings.Read.All=false`, `OnlineMeetings.ReadWrite.All=false`, `OnlineMeetingArtifact.Read.All=false`. Automatyczny import obecności nie ma obecnie wymaganych grantów. Wariant zewnętrznego linku Teams i ręcznej obecności nie zależy od tych grantów. Nie zmieniono uprawnień Microsoft.
+
 Workflow `.github/workflows/academy-graph-readiness.yml` sprawdza cztery wskazane role Graph: trzy minimalne uprawnienia adaptera Academy oraz szersze uprawnienie odczytu i zapisu spotkań. Nie zmienia istniejącego raportu Coolify, nie otwiera procesu nadawania zgód i nie wykonuje operacji na skrzynkach ani spotkaniach. Uruchamia się na zaufanym hosted runnerze dla wskazanej gałęzi źródłowego repozytorium; lokalne uruchomienie lub PR z forka nie otrzyma dostępu przez helper.
 
 1. Istniejący token wdrożeniowy Coolify wykonuje jeden GET `/applications/{uuid}/envs` do przypiętej domeny Compass. API dokumentuje `value` i `real_value`; wcześniejszy inventory wykazał skonfigurowane, nieredagowane wartości runtime trzech zmiennych Azure. Helper odrzuca maskowanie, nierozwiązane odwołania, duplikaty, konfigurację preview i brak `is_runtime: true`.
