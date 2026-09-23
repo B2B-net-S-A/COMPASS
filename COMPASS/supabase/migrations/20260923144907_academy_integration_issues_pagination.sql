@@ -1,10 +1,9 @@
 -- The original dashboard silently hid every issue after the newest 100.
--- Keep no-argument RPC calls compatible by giving all new parameters defaults.
+-- Add a separate RPC so the deployed dashboard keeps its old response shape
+-- until the matching application revision is live.
 BEGIN;
 
-DROP FUNCTION public.academy_integration_issues();
-
-CREATE FUNCTION public.academy_integration_issues(
+CREATE FUNCTION public.academy_integration_issues_page(
     p_after_updated_at timestamptz DEFAULT NULL,
     p_after_id uuid DEFAULT NULL,
     p_limit integer DEFAULT 50
@@ -42,8 +41,8 @@ BEGIN
     RETURN v_result;
 END $$;
 
-REVOKE ALL ON FUNCTION public.academy_integration_issues(timestamptz,uuid,integer) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.academy_integration_issues(timestamptz,uuid,integer) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.academy_integration_issues_page(timestamptz,uuid,integer) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.academy_integration_issues_page(timestamptz,uuid,integer) TO authenticated,service_role;
 
 CREATE INDEX academy_jobs_issues_page ON public.academy_integration_jobs(updated_at DESC,id DESC)
     WHERE status IN ('failed','retry','pending','processing');

@@ -6,7 +6,7 @@ const fixture = await createAcademyDatabase({ live: true });
 const { db, ids, sql, actor, owner, rpc, expectDenied } = fixture;
 let checks = 0;
 const expect = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
-const page = (cursor = null, limit = 50) => rpc('academy_integration_issues', [cursor?.updatedAt ?? null, cursor?.id ?? null, limit]);
+const page = (cursor = null, limit = 50) => rpc('academy_integration_issues_page', [cursor?.updatedAt ?? null, cursor?.id ?? null, limit]);
 
 async function seedCourse(author, count, title, baseYear, status = 'pending') {
     await actor(author);
@@ -64,16 +64,16 @@ try {
 
     expect((await page()).items.length, 50);
     expect((await page(null, 100)).items.length, 100);
-    expect((await rpc('academy_integration_issues')).items.length, 50); // old no-argument call stays valid
-    await expectDenied('select public.academy_integration_issues(null,null,101)', [], /parametry/); checks++;
-    await expectDenied('select public.academy_integration_issues(now(),null,50)', [], /parametry/); checks++;
-    await expectDenied('select public.academy_integration_issues(null,null,0)', [], /parametry/); checks++;
+    expect((await rpc('academy_integration_issues')).length, 100); // deployed UI retains its old response
+    await expectDenied('select public.academy_integration_issues_page(null,null,101)', [], /parametry/); checks++;
+    await expectDenied('select public.academy_integration_issues_page(now(),null,50)', [], /parametry/); checks++;
+    await expectDenied('select public.academy_integration_issues_page(null,null,0)', [], /parametry/); checks++;
 
     await actor('student');
     expect((await page()).items, []);
     expect((await page()).nextCursor, null);
     await actor('student', 'anon');
-    await expectDenied('select public.academy_integration_issues()', [], /permission denied/); checks++;
+    await expectDenied('select public.academy_integration_issues_page()', [], /permission denied/); checks++;
     await actor('admin');
     const adminSeen = [];
     cursor = null;

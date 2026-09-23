@@ -282,7 +282,7 @@ export async function listAcademyIntegrationIssuesPage(options: z.input<typeof i
     return academyAction('sessions.integration_issues', async () => {
         const parsed = integrationIssuesPageSchema.parse(options)
         const { client } = await requireAcademyContext({ trainer: true })
-        const { data, error } = await client.rpc('academy_integration_issues', {
+        const { data, error } = await client.rpc('academy_integration_issues_page', {
             p_after_updated_at: parsed.after?.updatedAt ?? null,
             p_after_id: parsed.after?.id ?? null,
             p_limit: parsed.limit,
