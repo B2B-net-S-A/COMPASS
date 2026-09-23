@@ -42,7 +42,7 @@ BEGIN
     RETURN v_result;
 END $$;
 
-REVOKE ALL ON FUNCTION public.academy_integration_issues(timestamptz,uuid,integer) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION public.academy_integration_issues(timestamptz,uuid,integer) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.academy_integration_issues(timestamptz,uuid,integer) TO authenticated;
 
 CREATE INDEX academy_jobs_issues_page ON public.academy_integration_jobs(updated_at DESC,id DESC)
