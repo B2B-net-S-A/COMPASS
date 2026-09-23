@@ -92,9 +92,11 @@ try {
     order by bucket_id,name`)).rows;
   assert(files.some(file => file.bucket_id === 'academy-materials'), 'storage_fixture_missing');
 
-  stage = 'source_snapshot';
+  stage = 'source_export';
   await exportDatabase(client, join(source, 'export.json'));
+  stage = 'source_storage_download';
   for (const file of files) await putObject(source, file.bucket_id, file.name, await storageBytes(file.bucket_id, file.name));
+  stage = 'source_manifest';
   const manifest = join(work, 'source-manifest.json');
   const sealed = await seal(join(source, 'export.json'), objects(source), manifest, `hosted-${randomUUID()}`);
   assert(sealed.objectCount > 0, 'source_manifest_empty');

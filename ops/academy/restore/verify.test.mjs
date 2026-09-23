@@ -69,6 +69,8 @@ test('table export SQL covers the verifier inventory and is a read-only transact
   assert.match(sql, /COMMIT;/);
   const exported = [...sql.matchAll(/^    '((?:public|academy_private)\.[a-z0-9_]+)', coalesce\(/gm)].map(match => match[1]);
   assert.deepEqual(exported, TABLES);
+  // `courses` is the only Academy course table without the `course_` prefix.
+  assert.match(sql, /c\.relname\s*=\s*'courses'/);
   assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE|CREATE|DROP|TRUNCATE)\b/i);
 });
 
