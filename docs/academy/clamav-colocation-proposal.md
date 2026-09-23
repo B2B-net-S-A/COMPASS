@@ -61,7 +61,9 @@ Repo zawiera instalator plików i nieaktywne jednostki systemd. `seed` przygotow
 
 ## Mierzalne bramki
 
-Poniżej są sprawdzalne kryteria tego wariantu, **nie uzyskane wyniki**. Dotychczasowy hosted gate sprawdza realne skanowanie na obu architekturach, ale nie raportuje szczytów ani nie testuje wrappera/compose tego wariantu. Nie dodajemy obowiązkowej doby obserwacji ani arbitralnego progu p95 jako warunku wydania.
+Hosted gate `academy-malware.yml` mierzy teraz cgroup v2 po zakończeniu aktualizacji sygnatur (kontener jest utrzymany tylko do odczytu liczników) oraz po obu fazach skanowania. Publikuje szczyt pamięci i czas CPU, a kończy się błędem przy OOM, użyciu swapu, przekroczeniu lub zmianie twardego limitu oraz restarcie. Wymaga limitów 3 GiB dla updatera i 4 GiB dla daemonu także na obu runnerach CI. To kwalifikuje zachowanie syntetycznego obciążenia w izolowanym runnerze; nie mierzy szczytu hosta produkcyjnego, jego dysku scratch ani ruchu użytkowników.
+
+Poniżej są sprawdzalne kryteria całego wariantu; wyniki nowej bramki wymagają zielonego przebiegu hosted CI. Nadal nie testuje ona produkcyjnego wrappera/compose ani pojemności współdzielonego hosta. Nie dodajemy obowiązkowej doby obserwacji ani arbitralnego progu p95 jako warunku wydania.
 
 | Bramka | Próba i dowód | Warunek przejścia |
 | --- | --- | --- |

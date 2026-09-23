@@ -45,6 +45,7 @@ export function projectHealth(raw){
  if(data.status!==expected)throw new Error('inconsistent_health_report');
  return {status:data.status,alerts};
 }
+export function watchdogExitCode(report){return report.status==='healthy'?0:1;}
 function ssh(args,input){return new Promise((resolve,reject)=>{const child=execFile('ssh',args,{encoding:'utf8',timeout:60000,maxBuffer:32768,env:{PATH:process.env.PATH,LANG:'C'}},(error,stdout)=>error?reject(new Error('watchdog_unavailable')):resolve(stdout));child.stdin.on('error',()=>{});child.stdin.end(input);});}
 export async function watchAcademy({env=process.env,run=ssh}={}){
  if(env.GITHUB_ACTIONS!=='true'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.GITHUB_REPOSITORY!=='B2B-net-S-A/COMPASS'||env.GITHUB_REF!=='refs/heads/main')throw new Error('execution_context_not_allowed');
@@ -61,6 +62,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const report=await watchAcademy();process.stdout.write(JSON.stringify(report)+'\n');
   for(const alert of report.alerts)process.stdout.write(`::${alert.severity==='critical'?'error':'warning'}::Academy: ${alert.code}. Operator techniczny: sprawdz panel Teams i synchronizacja oraz runbook.\n`);
   if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,`\nAcademy operations: **${report.status}**. [Panel](https://compass.dynaminds.pl/admin/learning/integrations). ${report.alerts.map(a=>a.code).join(', ')}\n`);
-  if(report.status==='unhealthy')process.exitCode=1;
+  // A warning needs an actionable workflow result, not only an annotation.
+  if(watchdogExitCode(report))process.exitCode=1;
  }catch{process.stderr.write('::error::Academy health unavailable; operator must inspect the monitor.\n');process.exitCode=1;}
 }

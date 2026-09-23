@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {projectHealth,watchAcademy,hostProbe,appProbe} from './health-watchdog.mjs';
+import {projectHealth,watchAcademy,hostProbe,appProbe,watchdogExitCode} from './health-watchdog.mjs';
 const env={GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'B2B-net-S-A/COMPASS',GITHUB_REF:'refs/heads/main',HETZNER_HOST:'178.104.220.48',HETZNER_USER:'root',HETZNER_SSH_KEY:'synthetic-test-key'};
 test('projects only aggregate codes, dropping arbitrary endpoint content',()=>{
  assert.deepEqual(projectHealth(JSON.stringify({status:'degraded',alerts:[{code:'scanner_unavailable',severity:'warning',secret:'not-exported'}],secret:'not-exported'})),{status:'degraded',alerts:[{code:'scanner_unavailable',severity:'warning'}]});
  for(const raw of ['{}','{"status":"healthy","alerts":[{"code":"unsafe\nvalue","severity":"critical"}]}','{"status":"healthy","alerts":[{"code":"failure","severity":"critical"}]}'])assert.throws(()=>projectHealth(raw));
+});
+test('warnings and critical alerts both fail the workflow',()=>{
+ assert.equal(watchdogExitCode({status:'healthy'}),0);
+ assert.equal(watchdogExitCode({status:'degraded'}),1);
+ assert.equal(watchdogExitCode({status:'unhealthy'}),1);
 });
 test('rejects missing config, untrusted branch and self-hosted before SSH',async()=>{
  for(const change of [{HETZNER_SSH_KEY:''},{GITHUB_REF:'refs/heads/other'},{RUNNER_ENVIRONMENT:'self-hosted'}])await assert.rejects(watchAcademy({env:{...env,...change},run:()=>{throw new Error('must not execute');}}),/configuration|context/);
