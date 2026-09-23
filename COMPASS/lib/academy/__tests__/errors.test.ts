@@ -6,6 +6,8 @@ describe('academy public error boundary', () => {
     it('explains requirements instead of returning database error codes', () => {
         expect(academyDatabaseError({ message: 'prerequisites_not_completed', code: 'P0001' })).toContain('szkolenia wstępne')
         expect(academyDatabaseError({ message: 'version_in_review', code: 'P0001' })).toContain('administrator')
+        expect(academyDatabaseError({ message: 'archive_prerequisite_in_use', code: 'P0001' })).toContain('inne opublikowane szkolenie')
+        expect(academyDatabaseError({ message: 'published_visible_prerequisites_required', code: 'P0001' })).toContain('szkolenia wstępne')
     })
     it('does not expose constraints, record contents or transport errors', () => {
         for (const code of ['23505', '23503', 'XX000', undefined]) {
