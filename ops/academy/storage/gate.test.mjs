@@ -230,7 +230,7 @@ test('integration script names match the final migrated RPC contracts',async()=>
  const {createAcademyDatabase}=await import('../../../COMPASS/scripts/lib/academy-db-fixture.mjs');
  const {default:ts}=await import('../../../COMPASS/node_modules/typescript/lib/typescript.js');
  const {default:fs}=await import('node:fs');
- const f=await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,completionGaps:true});
+ const f=await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,administrationControls:true});
  try {
   const source=ts.createSourceFile('storage-gate.mjs',fs.readFileSync(new URL('../../../COMPASS/scripts/test-academy-storage.mjs',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
   const calls=[];

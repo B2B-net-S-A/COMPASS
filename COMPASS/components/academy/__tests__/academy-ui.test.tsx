@@ -6,6 +6,7 @@ import { AcademySessionForm } from '../sessions/AcademySessionForm'
 import { AcademyAttendancePanel } from '../sessions/AcademyAttendancePanel'
 import { CourseAuthorForm } from '@/components/learning/CourseAuthorForm'
 import { CourseEditWizard } from '@/components/learning/CourseEditWizard'
+vi.mock('@/components/academy/AcademyReviewHistory', () => ({ AcademyReviewHistory: () => null }))
 import { saveAcademySession, recordAcademyAttendance } from '@/lib/actions/academy-sessions'
 import { beginCourseDraft, createCourse, submitForReview } from '@/lib/actions/courses'
 import type { CourseDetail } from '@/lib/types/learning'
@@ -132,4 +133,20 @@ it('shows the existing manual decision evidence to the authorized facilitator', 
     render(<AcademyAttendancePanel participants={[participant]} sessions={[session]} userId="trainer" />)
     expect(screen.getByText('Uzasadnienie decyzji: Lista uczestników oraz potwierdzone 48 minut zajęć.')).toBeInTheDocument()
     expect(screen.getByText(/48 min · ręcznie/)).toBeInTheDocument()
+})
+
+
+it('allows editing a draft without changing the published course lifecycle', () => {
+    render(<CourseEditWizard course={{ ...course, status: 'published', version_status: 'draft', published_version_id: 'published' }} initialLessons={[]} initialQuiz={[]} />)
+    expect(screen.getByLabelText(/Tytuł szkolenia/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Utwórz nową wersję' })).not.toBeInTheDocument()
+})
+
+it.each(['draft', 'published', 'pending_review'] as const)('locks archived course even when selected version is %s', versionStatus => {
+    render(<CourseEditWizard course={{ ...course, status: 'archived', version_status: versionStatus, published_version_id: 'published' }} initialLessons={[]} initialQuiz={[]} />)
+    expect(screen.queryByLabelText(/Tytuł szkolenia/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Utwórz nową wersję' })).not.toBeInTheDocument()
+    expect(screen.getAllByText(/To szkolenie zostało zarchiwizowane/).length).toBeGreaterThan(0)
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Akceptacja' }), { button: 0, ctrlKey: false })
+    expect(screen.queryByRole('button', { name: 'Prześlij do akceptacji' })).not.toBeInTheDocument()
 })

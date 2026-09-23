@@ -122,7 +122,7 @@ test('parity rejects table, sequence and effective inherited privileges, includi
 });
 
 test('actual Academy migrations revoke worker and legacy review RPCs under native-style default grants', async () => {
-    const f = await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,completionGaps:true,
+    const f = await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,administrationControls:true,
         afterBaselineVerification: db => db.exec(`alter default privileges grant execute on functions to authenticated,anon,service_role;
             alter default privileges in schema public grant all on functions to authenticated,anon,service_role;
             alter default privileges grant all on tables to authenticated,anon,service_role;

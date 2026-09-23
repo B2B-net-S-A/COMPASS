@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { CourseLearnerPreview } from '@/components/academy/CourseLearnerPreview'
+import { AcademyReviewHistory } from '@/components/academy/AcademyReviewHistory'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertCircle, BookOpen, CalendarDays, CheckCircle2, CopyPlus, Eye, FileText, ListChecks, Loader2, LockKeyhole, Send } from 'lucide-react'
@@ -28,7 +29,9 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
     const [success, setSuccess] = useState<string | null>(null)
     const [isPending, startTransition] = useAcademyAction()
     const [confirm, ConfirmUI] = useConfirm()
-    const editable = course.status === 'draft' || course.status === 'rejected'
+    const versionStatus = course.version_status ?? course.status
+    const archived = course.status === 'archived'
+    const editable = !archived && (versionStatus === 'draft' || versionStatus === 'rejected')
     const mode = course.delivery_mode ?? 'self_paced'
     const quizRequired = course.completion_rules?.quiz_required ?? true
     const lessonsRequired = mode !== 'live' || course.completion_rules?.require_all_lessons === true
@@ -59,6 +62,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
     }
 
     function handleNewVersion() {
+        if (archived || versionStatus !== 'published' || isPending) return
         setError(null)
         setSuccess(null)
         startTransition(async () => {
@@ -72,9 +76,11 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
         })
     }
 
-    const lockedMessage = course.status === 'published'
+    const lockedMessage = archived
+        ? 'To szkolenie zostało zarchiwizowane. Materiały i historia uczestników pozostają zachowane.'
+        : versionStatus === 'published'
         ? 'Ta wersja jest opublikowana. Aby zmienić treści lub zasady ukończenia, utwórz nową wersję roboczą.'
-        : course.status === 'pending_review'
+        : versionStatus === 'pending_review'
             ? 'Ta wersja czeka na decyzję administratora. Edycja będzie możliwa, jeśli otrzymasz prośbę o poprawki.'
             : 'To szkolenie zostało zarchiwizowane. Materiały i historia uczestników pozostają zachowane.'
 
@@ -85,10 +91,10 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                 <div className="flex flex-wrap gap-2">
                     {mode !== 'self_paced' && <Button asChild variant="outline" size="sm"><Link href={`/learning/tworze/${course.id}/edycje`}><CalendarDays aria-hidden="true" />Edycje i terminy</Link></Button>}
                     {hasPublishedVersion && <Button asChild variant="outline" size="sm"><Link href={`/learning/${course.slug}`}><Eye aria-hidden="true" /> Wersja opublikowana</Link></Button>}
-                    {course.status === 'published' && <Button onClick={handleNewVersion} disabled={isPending} size="sm">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <CopyPlus aria-hidden="true" />}Utwórz nową wersję</Button>}
+                    {!archived && versionStatus === 'published' && <Button onClick={handleNewVersion} disabled={isPending} size="sm">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <CopyPlus aria-hidden="true" />}Utwórz nową wersję</Button>}
                 </div>
             </div>
-            {course.status === 'rejected' && course.rejection_reason && <div role="note" className="space-y-1 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm"><p className="font-semibold text-foreground">Poprawki od administratora</p><p className="whitespace-pre-wrap text-muted-foreground">{course.rejection_reason}</p></div>}
+            {versionStatus === 'rejected' && course.rejection_reason && <div role="note" className="space-y-1 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm"><p className="font-semibold text-foreground">Poprawki od administratora</p><p className="whitespace-pre-wrap text-muted-foreground">{course.rejection_reason}</p></div>}
             {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"><AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{error}</div>}
             {success && <div role="status" className="flex items-start gap-2 rounded-xl border border-success/20 bg-success/5 p-4 text-sm text-success"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{success}</div>}
 
@@ -127,6 +133,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                     <aside className="space-y-2 rounded-xl border border-primary/15 bg-primary/5 p-5 text-sm"><p className="font-semibold">Co nastąpi po akceptacji?</p><p className="leading-relaxed text-muted-foreground">Szkolenie będzie dostępne w katalogu. Kolejne zmiany przygotujesz jako nową wersję, bez zmiany materiałów osób już zapisanych.{mode !== 'self_paced' && ' Terminy spotkań przygotujesz osobno w edycjach szkolenia. Administrator zatwierdzi je przed otwarciem zapisów.'}</p></aside>
                 </TabsContent>
             </Tabs>
+            <AcademyReviewHistory courseId={course.id} refreshKey={`${course.updated_at}-${course.submission_id ?? ''}-${course.version_status ?? course.status}`} />
             <ConfirmUI />
         </div>
     )
