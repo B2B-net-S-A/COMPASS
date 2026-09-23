@@ -37,11 +37,17 @@ function safeFailure(error) {
   const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
   const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
     'supabase_migrations', 'public', 'academy_private', 'cron', 'net', 'graphql']);
+  const deniedSchema = /permission denied for schema ([a-z_][a-z0-9_]*)/i.exec(stderr)?.[1];
+  const deniedExtension = /permission denied to create extension "([a-z_][a-z0-9_-]*)"/i.exec(stderr)?.[1];
+  const knownExtensions = new Set(['vector', 'pg_graphql', 'pg_net', 'pgcrypto', 'uuid-ossp',
+    'pg_stat_statements', 'pgjwt', 'supabase_vault', 'wrappers', 'http']);
+  const command = /Command was:\s*(?:--[^\n]*\n\s*)*(CREATE|ALTER|COMMENT ON|SECURITY LABEL FOR)\s+(EXTENSION|SCHEMA|EVENT TRIGGER|FUNCTION|TABLE|POLICY|TRIGGER|TYPE|VIEW|MATERIALIZED VIEW|INDEX)/i.exec(stderr);
   const classes = [
     ['archive_unreadable', /could not open input file|permission denied.*\.dump/i],
     ['missing_role', /role .{0,120} does not exist/i],
     ['missing_extension', /extension .{0,120} is not available/i],
     ['missing_schema', /schema .{0,120} does not exist/i],
+    ['superuser_required', /must be superuser|superuser is required/i],
     ['missing_relation', /relation .{0,120} does not exist/i],
     ['missing_function', /function .{0,120} does not exist/i],
     ['object_conflict', /already exists|duplicate key/i],
@@ -54,6 +60,9 @@ function safeFailure(error) {
     childExitCode: Number.isInteger(error?.status) ? error.status : undefined,
     category: classes.find(([, pattern]) => pattern.test(stderr))?.[0] ?? 'unclassified',
     missingSchema: missingSchema && knownSchemas.has(missingSchema) ? missingSchema : undefined,
+    deniedSchema: deniedSchema && knownSchemas.has(deniedSchema) ? deniedSchema : undefined,
+    deniedExtension: deniedExtension && knownExtensions.has(deniedExtension) ? deniedExtension : undefined,
+    restoreCommand: command ? `${command[1].toLowerCase()}_${command[2].toLowerCase().replaceAll(' ', '_')}` : undefined,
     stderrSha256: stderr ? digest(Buffer.from(stderr)) : undefined,
   };
 }
@@ -83,6 +92,7 @@ async function storageBytes(bucket, name) {
 let stage = 'setup';
 let targetClient;
 let sourceConnected = false;
+let restoreRoleCapabilities;
 try {
   await mkdir(join(objects(source), 'academy-materials'), { recursive: true });
   await mkdir(join(objects(source), 'documents'), { recursive: true });
@@ -143,6 +153,10 @@ try {
   assert.equal(publicSchema.rows[0]?.present, true, 'restore_public_schema_missing');
   stage = 'restore_archive_copy';
   docker('cp', join(work, 'postgres.dump'), `${container}:${restoredInContainer}`);
+  stage = 'restore_role_capabilities';
+  restoreRoleCapabilities = (await client.query(`select rolname, rolsuper, rolcreatedb,
+      pg_has_role('postgres', oid, 'MEMBER') as postgres_member
+    from pg_roles where rolname in ('postgres', 'supabase_admin') order by rolname`)).rows;
   stage = 'restore_archive_apply';
   docker('exec', container, 'pg_restore', '-U', 'postgres', '-d', targetName,
     '--no-owner', '--no-acl', '--exit-on-error', restoredInContainer);
@@ -188,7 +202,7 @@ try {
   // The ephemeral fixture can contain auth credentials. Report only bounded stage
   // and error class/fingerprint, never raw SQL, dumps, object paths, keys or response bodies.
   process.stderr.write(`${JSON.stringify({ check: 'academy_hosted_database_and_storage_restore', outcome: 'failed',
-    stage, ...safeFailure(error) })}\n`);
+    stage, ...safeFailure(error), ...(stage === 'restore_archive_apply' ? { restoreRoleCapabilities } : {}) })}\n`);
   process.exitCode = 1;
 } finally {
   if (targetClient) await targetClient.end().catch(() => {});
