@@ -245,7 +245,7 @@ try {
   assert(sealed.objectCount > 0, 'source_manifest_empty');
 
   stage = 'postgres_backup';
-  docker('exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres', '--format=custom', '--no-owner', '--no-acl', '-f', backupInContainer);
+  docker('exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres', '--format=custom', '-f', backupInContainer);
   docker('cp', `${container}:${backupInContainer}`, join(work, 'postgres.dump'));
   assert((await fs.promises.stat(join(work, 'postgres.dump'))).size > 0, 'postgres_backup_empty');
 
@@ -275,8 +275,11 @@ try {
   // The local Supabase postgres role is not a superuser. Its platform dump
   // contains privileged native functions, so use the local-only admin socket
   // in this disposable target; no admin credential leaves the container.
+  // Preserve original Storage owners and grants. Its API connects as
+  // supabase_storage_admin; a no-owner/no-acl restore leaves that role unable
+  // to start against the target even when the object metadata is present.
   docker('exec', container, 'pg_restore', '-U', 'supabase_admin', '-d', targetName,
-    '--no-owner', '--no-acl', '--exit-on-error', restoredInContainer);
+    '--exit-on-error', restoredInContainer);
   stage = 'restore_read_grants';
   docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
     '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',
