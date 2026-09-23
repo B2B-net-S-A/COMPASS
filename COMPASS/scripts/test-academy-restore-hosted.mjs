@@ -34,6 +34,9 @@ const docker = (...args) => execFileSync('docker', args, { stdio: ['ignore', 'pi
 const objects = area => join(area, 'objects');
 function safeFailure(error) {
   const stderr = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : '';
+  const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
+  const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
+    'supabase_migrations', 'public', 'academy_private', 'cron', 'net', 'graphql']);
   const classes = [
     ['archive_unreadable', /could not open input file|permission denied.*\.dump/i],
     ['missing_role', /role .{0,120} does not exist/i],
@@ -50,6 +53,7 @@ function safeFailure(error) {
     sqlState: typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined,
     childExitCode: Number.isInteger(error?.status) ? error.status : undefined,
     category: classes.find(([, pattern]) => pattern.test(stderr))?.[0] ?? 'unclassified',
+    missingSchema: missingSchema && knownSchemas.has(missingSchema) ? missingSchema : undefined,
     stderrSha256: stderr ? digest(Buffer.from(stderr)) : undefined,
   };
 }
@@ -129,15 +133,21 @@ try {
 
   stage = 'restore_database_create';
   await client.query(`CREATE DATABASE ${targetName} TEMPLATE template0`);
+  const targetUrl = new URL(settings.database); targetUrl.pathname = `/${targetName}`;
+  targetClient = new pg.Client({ connectionString: targetUrl.href });
+  stage = 'restore_target_public_drop';
+  await targetClient.connect();
+  // template0 already contains an empty public schema. The fresh archive creates
+  // it itself; --clean would try to DROP schema-qualified objects that do not yet
+  // exist, and --if-exists does not suppress a missing *containing schema*.
+  await targetClient.query('DROP SCHEMA public');
   stage = 'restore_archive_copy';
   docker('cp', join(work, 'postgres.dump'), `${container}:${restoredInContainer}`);
   stage = 'restore_archive_apply';
   docker('exec', container, 'pg_restore', '-U', 'postgres', '-d', targetName,
-    '--no-owner', '--no-acl', '--clean', '--if-exists', '--exit-on-error', restoredInContainer);
-  const targetUrl = new URL(settings.database); targetUrl.pathname = `/${targetName}`;
+    '--no-owner', '--no-acl', '--exit-on-error', restoredInContainer);
   stage = 'restore_database_connect';
-  targetClient = new pg.Client({ connectionString: targetUrl.href });
-  await targetClient.connect();
+  await targetClient.query('SELECT 1');
   stage = 'restore_metadata_check';
   const restoredMetadata = (await targetClient.query(`select bucket_id,name
     from storage.objects where bucket_id='academy-materials'
