@@ -12,7 +12,7 @@ interface QueryFilter {
     query?: string
     options?: Record<string, unknown>
     matchObj?: Record<string, unknown>
-    orExprs?: Array<{ column: string; op: 'eq' | 'ilike'; value: string }>
+    orExprs?: Array<{ column: string; op: 'eq' | 'ilike' | 'neq' | 'is'; value: string }>
 }
 
 interface QueryState {
@@ -87,6 +87,8 @@ function applyFilters(rows: Row[], filters: QueryFilter[]): Row[] {
                 // PostgREST `eq.true` dopasowuje boolean true — porównujemy po
                 // stringifikacji (wcześniej strict === gubił boole z fixtur).
                 if (expr.op === 'eq') return String(r[expr.column]) === expr.value
+                if (expr.op === 'neq') return r[expr.column] != null && String(r[expr.column]) !== expr.value
+                if (expr.op === 'is') return expr.value === 'null' && r[expr.column] == null
                 const re = new RegExp(`^${expr.value.replace(/%/g, '.*')}$`, 'i')
                 return re.test(String(r[expr.column] ?? ''))
             }))
@@ -101,12 +103,12 @@ function applyFilters(rows: Row[], filters: QueryFilter[]): Row[] {
     return out
 }
 
-function parseOrExpression(expr: string): Array<{ column: string; op: 'eq' | 'ilike'; value: string }> {
+function parseOrExpression(expr: string): Array<{ column: string; op: 'eq' | 'ilike' | 'neq' | 'is'; value: string }> {
     return expr.split(',').map(part => {
-        const m = part.match(/^([^.]+)\.(eq|ilike)\.(.*)$/)
+        const m = part.match(/^([^.]+)\.(eq|ilike|neq|is)\.(.*)$/)
         if (!m) return null
-        return { column: m[1], op: m[2] as 'eq' | 'ilike', value: m[3] }
-    }).filter(Boolean) as Array<{ column: string; op: 'eq' | 'ilike'; value: string }>
+        return { column: m[1], op: m[2] as 'eq' | 'ilike' | 'neq' | 'is', value: m[3] }
+    }).filter(Boolean) as Array<{ column: string; op: 'eq' | 'ilike' | 'neq' | 'is'; value: string }>
 }
 
 function buildQueryBuilder(state: QueryState, tables: TableData) {

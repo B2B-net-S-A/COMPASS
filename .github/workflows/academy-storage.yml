@@ -47,5 +47,5 @@ jobs:
       - name: Validate export boundary and final RPC contracts without Docker
         if: matrix.mode == 'academy-fixture'
         run: node --test ops/academy/storage/gate.test.mjs
-      - name: Real Auth, Storage, PostgREST and PostgreSQL on disposable hosted containers
+      - name: Real Auth, Storage, PostgREST and isolated backup/restore on disposable hosted containers
         run: bash ops/academy/storage/run-hosted-gate.sh '${{ matrix.mode }}'

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAcademyMaterialCleanupQueue, getAcademyMaterialQueue, getAcademyMaterialStatus, listAcademyLessonUploads, listAcademyRunMaterials, retryAcademyMaterialCleanup, retryAcademyMaterialScan } from '../academy-materials'
+import { getAcademyMaterialCleanupQueue, getAcademyMaterialQueue, getAcademyMaterialStatus, listAcademyLessonUploads, listAcademyRunMaterialReviews, listAcademyRunMaterials, retryAcademyMaterialCleanup, retryAcademyMaterialScan } from '../academy-materials'
 import { academyFixture, COURSE, RUN, USER, id } from './academy-fixtures'
 import type { MockSupabase, MockSupabaseConfig, Row } from '@/test/mocks/supabase'
 
@@ -81,6 +81,25 @@ describe('administrator scan queue', () => {
         }
         vi.stubEnv('ACADEMY_CLAMAV_HOST', 'clamav.test')
         expect(await getAcademyMaterialQueue()).toMatchObject({ success: true, data: { scannerConfigured: true } })
+    })
+})
+
+describe('run material review queue', () => {
+    it('reaches pending materials beyond 100 rows and reports the complete count', async () => {
+        setup(Array.from({ length: 126 }, (_, index) => asset(index + 100, {
+            run_id: RUN, status: 'ready', review_status: 'pending_review',
+        })))
+        const result = await listAcademyRunMaterialReviews(6)
+        expect(result).toMatchObject({ success: true, data: { total: 126, page: 6, pageSize: 25 } })
+        expect(result.success && result.data.items.map(item => item.id)).toEqual([id(225)])
+    })
+
+    it('requires administrator access and rejects invalid pages before querying materials', async () => {
+        setup([asset(100, { run_id: RUN, status: 'ready', review_status: 'pending_review' })], {}, false)
+        expect((await listAcademyRunMaterialReviews()).success).toBe(false)
+        setup()
+        for (const page of [0, -1, 1.5, 100001, NaN]) expect((await listAcademyRunMaterialReviews(page)).success).toBe(false)
+        expect(client.from).not.toHaveBeenCalledWith('course_materials')
     })
 })
 

@@ -2,6 +2,10 @@
 
 To narzędzie **nie wykonuje backupu ani restore**. Nie łączy się z siecią, nie czyta poświadczeń i nie modyfikuje bazy ani obiektów. Porównuje dwa dostarczone lokalnie zrzuty: źródłowy manifest z niezależnie zachowanym SHA-256 oraz eksport i pliki odtworzonego, odizolowanego środowiska. Uruchomienie samego testu na syntetycznych danych nie dowodzi odtwarzalności produkcji.
 
+Hosted CI (`academy-storage.yml`) wykonuje osobny **syntetyczny test odtworzenia** po teście prawdziwego Supabase Auth/Storage. Na jednorazowym runnerze eksportuje 39 tabel Akademii i pobiera rzeczywiste bajty przez Storage API, zapisuje manifest, robi `pg_dump` pełnej bazy lokalnego Supabase, odtwarza go przez `pg_restore` do nowej bazy i przesyła pliki do nowego prywatnego bucketu przez Storage API. Porównuje odtworzone metadane `storage.objects`, ponownie pobiera pliki i sprawdza eksport tym weryfikatorem. Test wymaga istniejących kursów, zapisów, ukończenia, obecności, uruchomień, sesji i gotowych materiałów; nie akceptuje pustego snapshotu. Skrypt działa tylko w GitHub-hosted Linux CI, usuwa lokalne zrzuty i nie publikuje ich jako artefaktów.
+
+Ten gate dowodzi działania ścieżki narzędziowej dla danych testowych. Docelowe bajty Storage są odtwarzane w osobnym bucketcie **tego samego jednorazowego projektu**, a baza w osobnej bazie tego samego klastra. Nie jest to próba odtworzenia do niezależnego projektu, pomiar RPO/RTO ani dowód, że produkcyjne kopie bazy i plików istnieją i dają się odtworzyć. Te warunki nadal wymagają odrębnego ćwiczenia operacyjnego.
+
 ## Zakres i warunki
 
 - Źródło i odtworzenie muszą reprezentować **ten sam punkt czasu**. Pliki `export.json` i obiekty Storage trzeba zebrać ze spójnego, zatrzymanego lub inaczej skoordynowanego snapshotu. Dwa niezależne odczyty żywego systemu mogą dać fałszywy błąd albo nie uchwycić utraty danych.

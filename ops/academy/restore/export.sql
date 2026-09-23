@@ -6,7 +6,7 @@ SELECT jsonb_build_object(
   'schemaTables', (SELECT coalesce(jsonb_agg(n.nspname || '.' || c.relname ORDER BY n.nspname, c.relname), '[]'::jsonb)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relkind = 'r' AND ((n.nspname = 'public' AND
-      (c.relname ~ '^academy_' OR c.relname ~ '^course_' OR c.relname ~ '^learning_path' OR c.relname = 'session_attendance'))
+      (c.relname ~ '^academy_' OR c.relname ~ '^course_' OR c.relname = 'courses' OR c.relname ~ '^learning_path' OR c.relname = 'session_attendance'))
       OR n.nspname = 'academy_private')),
   'tables', jsonb_build_object(
     'academy_private.run_contributors', coalesce((select jsonb_agg(to_jsonb(t)) from academy_private.run_contributors t), '[]'::jsonb),

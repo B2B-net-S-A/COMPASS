@@ -40,3 +40,4 @@ if [[ "$mode" == historical-replay ]]; then exit 0; fi
 chmod 600 "$gate_work/status.json"
 cd "$repo_dir/COMPASS"
 ACADEMY_STORAGE_STATUS_FILE="$gate_work/status.json" npx --no-install tsx scripts/test-academy-storage.mjs
+ACADEMY_STORAGE_STATUS_FILE="$gate_work/status.json" node scripts/test-academy-restore-hosted.mjs

@@ -95,14 +95,19 @@ export async function reviewAcademyRunMaterial(input: { assetId: string; decisio
     })
 }
 
-export async function listAcademyRunMaterialReviews() {
+export async function listAcademyRunMaterialReviews(page = 1) {
     return academyAction('material.review_queue', async () => {
+        if (!Number.isSafeInteger(page) || page < 1 || page > 100000) throw new Error('Nieprawidłowy numer strony kolejki.')
+        const pageSize = 25
         const { client } = await requireAcademyContext({ admin: true })
-        const { data, error } = await client.from('course_materials')
-            .select('id,filename,run_id,created_at').not('run_id', 'is', null)
-            .eq('status', 'ready').eq('review_status', 'pending_review').order('created_at').limit(100)
+        const { data, error, count } = await client.from('course_materials')
+            .select('id,filename,run_id,created_at', { count: 'exact' }).not('run_id', 'is', null)
+            .eq('status', 'ready').eq('review_status', 'pending_review').order('created_at').order('id')
+            .range((page - 1) * pageSize, page * pageSize - 1)
         assertDatabaseResult(error)
-        return (data ?? []) as { id: string; filename: string; run_id: string; created_at: string }[]
+        if (count == null) throw new Error('Nie udało się ustalić liczby materiałów do akceptacji.')
+        return { items: (data ?? []) as { id: string; filename: string; run_id: string; created_at: string }[],
+            total: count, page, pageSize }
     })
 }
 

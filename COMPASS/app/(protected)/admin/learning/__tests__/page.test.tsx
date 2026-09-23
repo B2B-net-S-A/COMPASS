@@ -2,10 +2,10 @@ import { render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminAkademiaPage from '../page'
 
-const actions = vi.hoisted(() => ({ reviewQueue: vi.fn(), legacyQueue: vi.fn() }))
+const actions = vi.hoisted(() => ({ reviewQueue: vi.fn(), legacyQueue: vi.fn(), materialQueue: vi.fn() }))
 
 vi.mock('@/lib/actions/courses-admin', () => ({ getReviewQueue: actions.reviewQueue, getLegacyReviewQueue: actions.legacyQueue }))
-vi.mock('@/components/academy/RunMaterialReviewQueue', () => ({ RunMaterialReviewQueue: () => null }))
+vi.mock('@/components/academy/RunMaterialReviewQueue', () => ({ RunMaterialReviewQueue: actions.materialQueue }))
 
 beforeEach(() => {
     actions.legacyQueue.mockResolvedValue({ success: true, data: [] })
@@ -31,5 +31,13 @@ describe('administrator review queue navigation', () => {
 
         const navigation = within(screen.getByRole('navigation', { name: 'Strony kolejki akceptacji' }))
         expect(navigation.getByRole('link', { name: 'Następna strona →' })).toHaveAttribute('href', '/admin/learning?page=21')
+    })
+
+    it('keeps the material review page when navigating the course queue', async () => {
+        render(await AdminAkademiaPage({ searchParams: { page: '20', materialPage: '5' } }))
+
+        expect(actions.materialQueue).toHaveBeenCalledWith({ page: 5, coursePage: 20 }, {})
+        const navigation = within(screen.getByRole('navigation', { name: 'Strony kolejki akceptacji' }))
+        expect(navigation.getByRole('link', { name: '← Poprzednia strona' })).toHaveAttribute('href', '/admin/learning?page=19&materialPage=5')
     })
 })
