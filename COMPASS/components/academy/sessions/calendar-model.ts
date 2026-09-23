@@ -10,6 +10,13 @@ export function shiftCalendarMonth(month: string, offset: number): string {
     const [year, number] = month.split('-').map(Number)
     return new Date(Date.UTC(year, number - 1 + offset, 1)).toISOString().slice(0, 7)
 }
+export function calendarHref(month: string, mine: boolean, courseId?: string, page = 1): string {
+    const params = new URLSearchParams({ month })
+    if (mine) params.set('mine', '1')
+    if (courseId) params.set('course', courseId)
+    if (page > 1) params.set('page', String(page))
+    return `/learning/kalendarz?${params.toString()}`
+}
 export function calendarMonthDays(month: string): string[] {
     const first = new Date(`${month}-01T12:00:00Z`)
     const mondayOffset = (first.getUTCDay() + 6) % 7

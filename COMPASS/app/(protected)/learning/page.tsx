@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { getAcademyAccess } from '@/lib/actions/academy-access'
 import { listPublishedCourses } from '@/lib/actions/courses'
 import { getAcademyCatalogOptions } from '@/lib/actions/academy-discovery'
-import { listAcademyRuns } from '@/lib/actions/academy-sessions'
+import { listAcademyRunPage } from '@/lib/actions/academy-sessions'
 import { getCatalogNextRuns } from '@/components/academy/catalog/catalog-runs'
 import {
     CATALOG_PAGE_SIZE,
@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic'
 export default async function AkademiaPage({ searchParams }: { searchParams: CatalogSearchParams }) {
     const filters = parseCatalogFilters(searchParams)
     const page = parseCatalogPage(searchParams.page)
-    const [accessResult, result, options, runs] = await Promise.all([
+    const [accessResult, result, options] = await Promise.all([
         getAcademyAccess(),
         listPublishedCourses({
             search: filters.search || undefined,
@@ -36,8 +36,9 @@ export default async function AkademiaPage({ searchParams }: { searchParams: Cat
             limit: CATALOG_PAGE_SIZE,
         }),
         getAcademyCatalogOptions(),
-        listAcademyRuns(),
     ])
+    const visibleIds = result.success ? result.data.items.map(course => course.id) : []
+    const runs = visibleIds.length ? await listAcademyRunPage({ scope: 'catalog', courseIds: visibleIds, windowStart: new Date().toISOString(), pageSize: visibleIds.length }) : null
 
     const access = accessResult.success ? accessResult.data : { isAdmin: false, canTeach: false }
     const canTeach = access.isAdmin || access.canTeach
@@ -66,8 +67,8 @@ export default async function AkademiaPage({ searchParams }: { searchParams: Cat
                 error={result.success ? undefined : result.error}
                 canTeach={canTeach}
                 options={options.success ? options.data : undefined}
-                nextRuns={runs.success ? getCatalogNextRuns(runs.data, new Date().toISOString()) : undefined}
-                discoveryError={!options.success || !runs.success ? 'Część filtrów lub terminów jest chwilowo niedostępna. Odśwież stronę, aby spróbować ponownie.' : undefined}
+                nextRuns={runs?.success ? getCatalogNextRuns(runs.data.items, new Date().toISOString()) : undefined}
+                discoveryError={!options.success || (runs !== null && !runs.success) ? 'Część filtrów lub terminów jest chwilowo niedostępna. Odśwież stronę, aby spróbować ponownie.' : undefined}
             />
         </AcademyShell>
     )

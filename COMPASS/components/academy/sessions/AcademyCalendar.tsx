@@ -8,15 +8,13 @@ import { cn } from '@/lib/utils'
 import { AcademyEmptyState } from '../AcademyEmptyState'
 import type { AcademyRunDTO } from '@/lib/types/academy-sessions'
 import { REGISTRATION_LABEL, RUN_STATUS_LABEL, sessionDate, sessionTime } from './session-format'
-import { ACADEMY_CALENDAR_ZONE, calendarDay, calendarMonthDays, calendarSessions, shiftCalendarMonth } from './calendar-model'
+import { ACADEMY_CALENDAR_ZONE, calendarDay, calendarHref, calendarMonthDays, calendarSessions, shiftCalendarMonth } from './calendar-model'
 
 const WEEKDAYS = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela']
 
-export function AcademyCalendar({ runs, now }: { runs: AcademyRunDTO[]; now: string }) {
+export function AcademyCalendar({ runs, now, month, mine, page, hasMore, courseId }: { runs: AcademyRunDTO[]; now: string; month: string; mine: boolean; page: number; hasMore: boolean; courseId?: string }) {
     const headingId = useId()
     const today = calendarDay(now)
-    const [month, setMonth] = useState(today.slice(0, 7))
-    const [mine, setMine] = useState(false)
     const [list, setList] = useState(false)
     const sessions = calendarSessions(runs, month, mine)
     const days = calendarMonthDays(month)
@@ -27,8 +25,8 @@ export function AcademyCalendar({ runs, now }: { runs: AcademyRunDTO[]; now: str
         <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2" role="group" aria-label="Zakres kalendarza">
-                    <Button variant={!mine ? 'default' : 'outline'} aria-pressed={!mine} onClick={() => setMine(false)} className="rounded-full">Wszystkie spotkania</Button>
-                    <Button variant={mine ? 'default' : 'outline'} aria-pressed={mine} onClick={() => setMine(true)} className="rounded-full">Moje zapisy</Button>
+                    <Button asChild variant={!mine ? 'default' : 'outline'} className="rounded-full"><Link href={calendarHref(month, false, courseId)} aria-current={!mine ? 'page' : undefined}>Wszystkie spotkania</Link></Button>
+                    <Button asChild variant={mine ? 'default' : 'outline'} className="rounded-full"><Link href={calendarHref(month, true, courseId)} aria-current={mine ? 'page' : undefined}>Moje zapisy</Link></Button>
                 </div>
                 <div className="hidden gap-1 md:flex" role="group" aria-label="Widok kalendarza">
                     <Button variant={!list ? 'secondary' : 'ghost'} aria-pressed={!list} onClick={() => setList(false)}><CalendarDays aria-hidden="true" />Miesiąc</Button>
@@ -37,11 +35,11 @@ export function AcademyCalendar({ runs, now }: { runs: AcademyRunDTO[]; now: str
             </div>
             <section aria-labelledby={headingId} className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
-                    <div><h2 id={headingId} className="text-lg font-semibold capitalize" aria-live="polite">{label}</h2><p className="text-xs text-muted-foreground">Strefa czasu: {ACADEMY_CALENDAR_ZONE} · spotkań: {sessions.length}</p></div>
+                    <div><h2 id={headingId} className="text-lg font-semibold capitalize" aria-live="polite">{label}</h2><p className="text-xs text-muted-foreground">Strefa czasu: {ACADEMY_CALENDAR_ZONE} · strona {page} · spotkań na stronie: {sessions.length}</p></div>
                     <div className="flex items-center gap-1">
-                        <Button variant="outline" size="icon" aria-label="Poprzedni miesiąc" onClick={() => setMonth(shiftCalendarMonth(month, -1))}><ChevronLeft aria-hidden="true" /></Button>
-                        <Button variant="outline" onClick={() => setMonth(today.slice(0, 7))}>Dzisiaj</Button>
-                        <Button variant="outline" size="icon" aria-label="Następny miesiąc" onClick={() => setMonth(shiftCalendarMonth(month, 1))}><ChevronRight aria-hidden="true" /></Button>
+                        <Button asChild variant="outline" size="icon"><Link href={calendarHref(shiftCalendarMonth(month, -1), mine, courseId)} aria-label="Poprzedni miesiąc"><ChevronLeft aria-hidden="true" /></Link></Button>
+                        <Button asChild variant="outline"><Link href={calendarHref(today.slice(0, 7), mine, courseId)}>Dzisiaj</Link></Button>
+                        <Button asChild variant="outline" size="icon"><Link href={calendarHref(shiftCalendarMonth(month, 1), mine, courseId)} aria-label="Następny miesiąc"><ChevronRight aria-hidden="true" /></Link></Button>
                     </div>
                 </div>
                 <div className={cn('overflow-hidden rounded-2xl border border-border bg-card', list ? 'hidden' : 'hidden md:block')}>
@@ -58,7 +56,7 @@ export function AcademyCalendar({ runs, now }: { runs: AcademyRunDTO[]; now: str
                         })}</tr>)}</tbody>
                     </table>
                 </div>
-                {sessions.length === 0 ? <AcademyEmptyState title={mine ? 'Brak Twoich spotkań w tym miesiącu' : 'Brak spotkań w tym miesiącu'} description="Zmień miesiąc lub sprawdź szkolenia w katalogu. Nowe terminy pojawią się po zatwierdzeniu edycji." action={<Button asChild variant="outline"><Link href="/learning">Przejdź do katalogu</Link></Button>} /> : <div className={cn('space-y-3', !list && 'md:hidden')}>
+                {sessions.length === 0 ? <AcademyEmptyState title={page > 1 || hasMore ? 'Brak spotkań na tej stronie' : mine ? 'Brak Twoich spotkań w tym miesiącu' : 'Brak spotkań w tym miesiącu'} description="Zmień miesiąc lub przejdź do kolejnej strony terminów. Nowe terminy pojawią się po zatwierdzeniu edycji." action={<Button asChild variant="outline"><Link href="/learning">Przejdź do katalogu</Link></Button>} /> : <div className={cn('space-y-3', !list && 'md:hidden')}>
                     {sessions.map(({ run, session }) => <Link key={session.id} href={`/learning/edycje/${run.id}`} className="group flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:gap-5">
                         <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><CalendarDays aria-hidden="true" className="size-6" /></span>
                         <div className="min-w-0 flex-1 space-y-2">
@@ -70,6 +68,7 @@ export function AcademyCalendar({ runs, now }: { runs: AcademyRunDTO[]; now: str
                         <div className="flex items-center justify-between gap-4 text-sm sm:flex-col sm:items-end"><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Video aria-hidden="true" className="size-4" />Teams</span><span className="inline-flex items-center gap-1 font-medium text-primary">Zobacz edycję<ArrowRight aria-hidden="true" className="size-4" /></span></div>
                     </Link>)}
                 </div>}
+                {(page > 1 || hasMore) && <nav aria-label="Strony kalendarza" className="flex items-center justify-between gap-3">{page > 1 ? <Button asChild variant="outline"><Link href={calendarHref(month, mine, courseId, page - 1)}>Poprzednia strona</Link></Button> : <span />}<span className="text-sm text-muted-foreground">Strona {page}</span>{hasMore ? <Button asChild variant="outline"><Link href={calendarHref(month, mine, courseId, page + 1)}>Następna strona</Link></Button> : <span />}</nav>}
             </section>
         </div>
     )
