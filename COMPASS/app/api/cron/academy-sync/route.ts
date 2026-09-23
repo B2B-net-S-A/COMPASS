@@ -12,7 +12,7 @@ export const maxDuration = 180
 export const GET = withCronAuth(withCronHeartbeat('ACADEMY_SYNC_RUN', async (_request, { admin }) => {
     try {
         const result = await runAcademyDatabaseSync({ client: admin as unknown as SupabaseClient })
-        const ok = result.failed === 0
+        const ok = result.failed === 0 && result.failedOperations.length === 0
         logger.info({ event: 'academy.sync.finished', ...result })
         return NextResponse.json({ ok, ...result }, { status: ok ? 200 : 503 })
     } catch {
