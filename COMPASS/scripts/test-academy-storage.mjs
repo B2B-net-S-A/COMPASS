@@ -154,6 +154,9 @@ try {
     // Time is the sole synthetic learner-state adjustment; do not bypass the download decision.
     await sql.query("update course_enrollments set lesson_completion_dates=jsonb_build_object($2::text,now()-interval '3 days') where id=$1",[enrollment,lessons[0].id]);
     await canDownload(learner,delayed,small);
+    const completion=await rpc(learner,'academy_mark_lesson_complete',{p_enrollment_id:enrollment,p_lesson_id:lessons[1].id});
+    equal(completion.completion.completed,true);
+    equal((await sql.query('select count(*)::int n from course_completions where enrollment_id=$1',[enrollment])).rows[0].n,1);
     milestone('native_storage_download_and_sign_follow_lesson_enrollment_and_drip');
     stage='run_scoped_ready_review';
     const live=await rpc(trainer,'academy_create_course',{p_input:{title:'Hosted live material scope',category:'IT',delivery_mode:'live'}});
