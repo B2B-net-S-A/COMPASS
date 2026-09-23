@@ -7,7 +7,7 @@ import { validateTeamsJoinUrl } from '@/lib/academy/teams'
 import { academyManagedTeamsConfiguration, academyAttendanceRetentionConfiguration } from '@/lib/academy/db-worker'
 import type { ActionResult } from '@/lib/types/learning'
 import type {
-    AcademyIntegrationIssueDTO, AcademyOrganizerDTO, AcademyRunDTO, AcademyM365IdentityDTO, AcademyIntegrationConfigDTO,
+    AcademyIntegrationIssuesPageDTO, AcademyOrganizerDTO, AcademyRunDTO, AcademyM365IdentityDTO, AcademyIntegrationConfigDTO,
     AcademyRunParticipantDTO, SaveAcademySessionInput, ReplaceAcademySessionInput,
 } from '@/lib/types/academy-sessions'
 
@@ -274,12 +274,21 @@ export async function saveAcademyM365Identity(input: { userId: string; tenantId:
         refresh()
     })
 }
-export async function listAcademyIntegrationIssues(): Promise<ActionResult<AcademyIntegrationIssueDTO[]>> {
+const integrationIssuesPageSchema = z.object({
+    after: z.object({ updatedAt: timestamp, id: uuid }).optional(),
+    limit: z.number().int().min(1).max(100).default(50),
+})
+export async function listAcademyIntegrationIssuesPage(options: z.input<typeof integrationIssuesPageSchema> = {}): Promise<ActionResult<AcademyIntegrationIssuesPageDTO>> {
     return academyAction('sessions.integration_issues', async () => {
+        const parsed = integrationIssuesPageSchema.parse(options)
         const { client } = await requireAcademyContext({ trainer: true })
-        const { data, error } = await client.rpc('academy_integration_issues')
+        const { data, error } = await client.rpc('academy_integration_issues', {
+            p_after_updated_at: parsed.after?.updatedAt ?? null,
+            p_after_id: parsed.after?.id ?? null,
+            p_limit: parsed.limit,
+        })
         assertDatabaseResult(error)
-        return (data ?? []) as AcademyIntegrationIssueDTO[]
+        return data as AcademyIntegrationIssuesPageDTO
     })
 }
 export async function listAcademyM365Identities(search?: string): Promise<ActionResult<AcademyM365IdentityDTO[]>> {

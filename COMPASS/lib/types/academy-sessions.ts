@@ -127,6 +127,11 @@ export interface AcademyIntegrationIssueDTO {
     nextAttemptAt: string
     updatedAt: string
 }
+export interface AcademyIntegrationIssueCursorDTO { updatedAt: string; id: string }
+export interface AcademyIntegrationIssuesPageDTO {
+    items: AcademyIntegrationIssueDTO[]
+    nextCursor: AcademyIntegrationIssueCursorDTO | null
+}
 export interface SaveAcademySessionInput {
     id?: string
     runId: string
