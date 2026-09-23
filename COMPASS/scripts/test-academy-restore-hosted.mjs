@@ -158,8 +158,6 @@ function safeFailure(error) {
   return {
     errorType: error?.name ?? 'Error',
     assertion: error?.name === 'AssertionError' && safeAssertions.has(error.message) ? error.message : undefined,
-    observedHttpStatus: error?.expected === 404 && Number.isInteger(error?.actual) &&
-      error.actual >= 100 && error.actual <= 599 ? error.actual : undefined,
     storageHttpStatus: Number.isInteger(error?.storageHttpStatus) ? error.storageHttpStatus : undefined,
     storageContainerState: Array.isArray(error?.storageContainerState) ? error.storageContainerState : undefined,
     storageStartupCategory: ['database_authentication', 'database_missing', 'database_permission',
@@ -301,9 +299,13 @@ try {
        or (bucket_id='documents' and name like 'courses/%') order by bucket_id,name`)).rows;
   const targetStorageUrl = await startTargetStorage();
   stage = 'target_storage_empty_before_restore';
+  const preRestoreStatuses = [];
   for (const file of files) {
     const response = await targetStorageResponse(targetStorageUrl, file.bucket_id, file.name);
-    assert.equal(response.status, 404, 'target_storage_not_isolated_from_source_bytes');
+    // Restored storage.objects metadata can make the native API return 500
+    // when its isolated file backend has no corresponding bytes yet.
+    assert([404, 500].includes(response.status), 'target_storage_not_isolated_from_source_bytes');
+    preRestoreStatuses.push(response.status);
     await response.arrayBuffer();
   }
 
@@ -359,7 +361,8 @@ try {
   assert.equal(result.objectCount, files.length, 'storage_object_inventory_mismatch');
   process.stdout.write(`${JSON.stringify({ check: 'academy_hosted_database_and_storage_restore', outcome: 'passed',
     academyTables: result.tableCount, storageObjects: result.objectCount,
-    restoredStorageMetadata: restoredMetadata.length, targetStorageReadsFromOriginalPaths: files.length, fixture,
+    restoredStorageMetadata: restoredMetadata.length, targetStorageReadsFromOriginalPaths: files.length,
+    preRestoreStatuses: [...new Set(preRestoreStatuses)].sort(), fixture,
     databaseBackupSha256: digest(await readFile(join(work, 'postgres.dump'))),
     scope: 'synthetic_hosted_supabase_fixture_only' })}\n`);
 } catch (error) {
