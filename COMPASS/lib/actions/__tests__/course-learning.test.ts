@@ -2,14 +2,43 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { revalidatePath } from 'next/cache'
 import type { MockSupabase, MockSupabaseConfig } from '@/test/mocks/supabase'
 import { academyFixture, courseRow, enrollmentRow, id, ATTEMPT, COURSE, ENROLLMENT, LESSON, OLD_VERSION, OPTION, OTHER, QUESTION, RUN, RUN_ENROLLMENT, USER, VERSION } from './academy-fixtures'
-import { completeAcademyCourse, enrollInCourse, getMyEnrollments, getMyQuizResult, getQuizForAttempt, markLessonComplete, recordLessonAccess, submitQuizAttempt, submitRating } from '../course-learning'
+import { completeAcademyCourse, enrollInCourse, getMyEnrollmentsPage, getMyQuizResult, getQuizForAttempt, markLessonComplete, recordLessonAccess, submitQuizAttempt, submitRating } from '../course-learning'
 import { quizAttemptWindowMessage } from '@/lib/academy/quiz-attempt-policy'
 
 let client: MockSupabase
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => client }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() }, logCompat: { error: vi.fn() } }))
 function setup(config: MockSupabaseConfig = {}) {
-    client = academyFixture({ ...config, tables: { academy_user_capabilities: [], ...config.tables }, rpcs: { academy_get_syllabus: ({ p_version_id }) => (config.tables?.course_lessons ?? []).filter(row => row.version_id === p_version_id), ...config.rpcs } })
+    client = academyFixture({ ...config, tables: { academy_user_capabilities: [], ...config.tables }, rpcs: {
+        academy_get_syllabus: ({ p_version_id }) => (config.tables?.course_lessons ?? []).filter(row => row.version_id === p_version_id),
+        academy_my_enrollments_page: ({ p_active_page, p_completed_page, p_revoked_page, p_limit }) => {
+            const completions = new Map((client._tables.course_completions ?? []).map(row => [row.enrollment_id, row]))
+            const runs = new Map((client._tables.course_runs ?? []).map(row => [row.id, row]))
+            const registrations = client._tables.course_run_registrations ?? []
+            const eligible = (client._tables.course_enrollments ?? []).filter(row => row.user_id === USER && (!row.run_id || row.completed_at || registrations.some(registration => registration.enrollment_id === row.id && registration.user_id === USER && registration.status === 'confirmed' && runs.get(registration.run_id)?.status === 'published')))
+            const sectionOf = (row: Record<string, unknown>) => completions.get(row.id)?.revoked_at ? 'revoked' : row.completed_at ? 'completed' : 'active'
+            const totals = { active: 0, completed: 0, revoked: 0 }
+            for (const row of eligible) totals[sectionOf(row) as keyof typeof totals]++
+            const pageFor = (section: keyof typeof totals, page: number) => eligible.filter(row => sectionOf(row) === section)
+                .sort((a, b) => String(b.last_accessed_at ?? b.enrolled_at).localeCompare(String(a.last_accessed_at ?? a.enrolled_at)) || String(b.id).localeCompare(String(a.id)))
+                .slice((page - 1) * Number(p_limit), page * Number(p_limit))
+            const items = [
+                ...pageFor('active', Number(p_active_page)),
+                ...pageFor('completed', Number(p_completed_page)),
+                ...pageFor('revoked', Number(p_revoked_page)),
+            ].map(row => ({
+                enrollment: { points_awarded: false, last_accessed_lesson_id: null, last_accessed_at: null, completed_at: null, run_id: null, ...row,
+                    completion_revoked_at: completions.get(row.id)?.revoked_at ?? null,
+                    completion_revoked_reason: completions.get(row.id)?.revoked_reason ?? null,
+                    section: sectionOf(row) },
+                course: client._tables.courses.find(course => course.id === row.course_id),
+                version: client._tables.course_versions.find(version => version.id === row.version_id),
+                requiredLessonIds: ((config.rpcs?.academy_get_syllabus?.({ p_version_id: row.version_id }) ?? (client._tables.course_lessons ?? []).filter(lesson => lesson.version_id === row.version_id)) as Array<{ id: string }>).map(lesson => lesson.id),
+            }))
+            return { totals, items }
+        },
+        ...config.rpcs,
+    } })
     return client
 }
 beforeEach(() => setup())
@@ -150,41 +179,54 @@ describe('ratings', () => {
 
 describe('my enrollments and version progress', () => {
     it('requires authentication and returns an empty list without enrollments', async () => {
-        setup({ user: null }); expect((await getMyEnrollments()).success).toBe(false)
-        setup(); expect(await getMyEnrollments()).toEqual({ success: true, data: [] })
+        setup({ user: null }); expect((await getMyEnrollmentsPage()).success).toBe(false)
+        setup(); expect(await getMyEnrollmentsPage()).toEqual({ success: true, data: { items: [], totals: { active: 0, completed: 0, revoked: 0 }, activePage: 1, completedPage: 1, revokedPage: 1, pageSize: 24 } })
     })
     it('uses lesson counts and metadata from the pinned version, filtering other users', async () => {
         setup({ tables: { courses: [courseRow()], course_enrollments: [enrollmentRow({ completed_lessons: [LESSON, id(41)] }), enrollmentRow({ id: id(32), user_id: OTHER })], course_lessons: [LESSON, id(41), id(42), id(43)].map(lesson => ({ id: lesson, course_id: COURSE, version_id: OLD_VERSION })).concat([{ id: id(44), course_id: COURSE, version_id: VERSION }]) } })
-        const result = await getMyEnrollments()
-        expect(result.success && result.data).toEqual([expect.objectContaining({ enrollment_id: ENROLLMENT, total_lessons: 4, progress_percent: 50, course: expect.objectContaining({ title: 'Zapisana wersja 1' }), version_id: OLD_VERSION })])
+        const result = await getMyEnrollmentsPage()
+        expect(result.success && result.data.items).toEqual([expect.objectContaining({ enrollment_id: ENROLLMENT, total_lessons: 4, progress_percent: 50, course: expect.objectContaining({ title: 'Zapisana wersja 1' }), version_id: OLD_VERSION })])
     })
     it('reserves 100 percent for completion of all rules and ignores foreign lesson IDs', async () => {
         setup({ tables: { course_enrollments: [enrollmentRow({ completed_lessons: [LESSON, LESSON, id(999)] })], course_lessons: [{ id: LESSON, version_id: OLD_VERSION }] } })
-        const incomplete = await getMyEnrollments()
-        expect(incomplete.success && incomplete.data[0].progress_percent).toBe(99)
-        expect(incomplete.success && incomplete.data[0].completed_lessons).toEqual([LESSON])
+        const incomplete = await getMyEnrollmentsPage()
+        expect(incomplete.success && incomplete.data.items[0].progress_percent).toBe(99)
+        expect(incomplete.success && incomplete.data.items[0].completed_lessons).toEqual([LESSON])
         client._tables.course_enrollments[0].completed_at = '2026-09-22'
-        const completed = await getMyEnrollments()
-        expect(completed.success && completed.data[0].progress_percent).toBe(100)
+        const completed = await getMyEnrollmentsPage()
+        expect(completed.success && completed.data.items[0].progress_percent).toBe(100)
     })
     it('keeps separate live-run enrollments and handles programs without lessons', async () => {
         setup({ tables: { course_enrollments: [enrollmentRow({ run_id: RUN }), enrollmentRow({ id: RUN_ENROLLMENT, run_id: id(51), version_id: VERSION })], course_runs: [{ id: RUN, status: 'published' }, { id: id(51), status: 'published' }], course_run_registrations: [{ run_id: RUN, enrollment_id: ENROLLMENT, user_id: USER, status: 'confirmed' }, { run_id: id(51), enrollment_id: RUN_ENROLLMENT, user_id: USER, status: 'confirmed' }] } })
-        const result = await getMyEnrollments()
-        expect(result.success && result.data.map(row => [row.enrollment_id, row.run_id, row.progress_percent])).toEqual([[ENROLLMENT, RUN, 0], [RUN_ENROLLMENT, id(51), 0]])
+        const result = await getMyEnrollmentsPage()
+        expect(result.success && result.data.items.map(row => [row.enrollment_id, row.run_id, row.progress_percent]).sort()).toEqual([[ENROLLMENT, RUN, 0], [RUN_ENROLLMENT, id(51), 0]])
+    })
+    it('reaches history beyond the default 1,000-row Data API cap and keeps exact totals', async () => {
+        const rows = Array.from({ length: 1005 }, (_, index) => enrollmentRow({ id: id(3000 + index) }))
+        setup({ tables: { course_enrollments: rows } })
+        const result = await getMyEnrollmentsPage({ activePage: 42, pageSize: 24 })
+        expect(result.success && result.data.totals.active).toBe(1005)
+        expect(result.success && result.data.items).toHaveLength(21)
+        expect(result.success && result.data.items.at(-1)?.enrollment_id).toBe(id(3000))
+        expect(client.rpc).toHaveBeenCalledWith('academy_my_enrollments_page', { p_active_page: 42, p_completed_page: 1, p_revoked_page: 1, p_limit: 24 })
+    })
+    it('fails closed when a page has fewer records than the reported count', async () => {
+        setup({ rpcs: { academy_my_enrollments_page: () => ({ totals: { active: 25, completed: 0, revoked: 0 }, items: [] }) } })
+        expect((await getMyEnrollmentsPage()).success).toBe(false)
     })
 })
 
 
 it('counts locked drip lessons through the syllabus without reading their content', async () => {
     setup({ tables: { course_enrollments: [enrollmentRow({ completed_lessons: [LESSON] })], course_lessons: [{ id: LESSON, version_id: OLD_VERSION }] }, rpcs: { academy_get_syllabus: () => [LESSON, id(41), id(42)].map(id => ({ id, version_id: OLD_VERSION })) } })
-    const result = await getMyEnrollments()
-    expect(result.success && result.data[0]).toMatchObject({ total_lessons: 3, progress_percent: 33 })
-    expect(client.rpc).toHaveBeenCalledWith('academy_get_syllabus', { p_version_id: OLD_VERSION })
+    const result = await getMyEnrollmentsPage()
+    expect(result.success && result.data.items[0]).toMatchObject({ total_lessons: 3, progress_percent: 33 })
+    expect(client.rpc).toHaveBeenCalledWith('academy_my_enrollments_page', { p_active_page: 1, p_completed_page: 1, p_revoked_page: 1, p_limit: 24 })
     expect(client.from).not.toHaveBeenCalledWith('course_lessons')
 })
 
 it('omits withdrawn or cancelled live enrollments while preserving a completed certificate', async () => {
     setup({ tables: { course_enrollments: [enrollmentRow({ run_id: RUN }), enrollmentRow({ id: RUN_ENROLLMENT, run_id: id(51), completed_at: '2026-09-20' })], course_runs: [{ id: RUN, status: 'cancelled' }], course_run_registrations: [{ run_id: RUN, enrollment_id: ENROLLMENT, user_id: USER, status: 'confirmed' }] } })
-    const result = await getMyEnrollments()
-    expect(result.success && result.data.map(row => row.enrollment_id)).toEqual([RUN_ENROLLMENT])
+    const result = await getMyEnrollmentsPage()
+    expect(result.success && result.data.items.map(row => row.enrollment_id)).toEqual([RUN_ENROLLMENT])
 })

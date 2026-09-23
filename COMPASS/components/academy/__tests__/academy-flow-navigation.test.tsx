@@ -38,6 +38,17 @@ describe('learner navigation and personal progress', () => {
         expect(screen.queryByRole('link', { name: 'Certyfikat' })).not.toBeInTheDocument()
         expect(screen.getByText('Powód: Korekta obecności')).toBeInTheDocument()
     })
+    it('shows exact totals and paginates each enrollment section independently', () => {
+        render(<AcademyMyLearning enrollments={[enrollment]} pagination={{
+            items: [enrollment], totals: { active: 1005, completed: 25, revoked: 0 },
+            activePage: 42, completedPage: 2, revokedPage: 1, pageSize: 24,
+        }} runs={[]} now="2026-09-22T10:00:00Z" />)
+        expect(screen.getByText('Do rozpoczęcia i w trakcie (1005)')).toBeInTheDocument()
+        expect(screen.getByRole('navigation', { name: 'Strony aktywnych szkoleń' })).toHaveTextContent('Strona 42 z 42 · łącznie 1005')
+        expect(screen.getByRole('navigation', { name: 'Strony aktywnych szkoleń' }).querySelector('a')).toHaveAttribute('href', '/learning/moje?activePage=41&completedPage=2&revokedPage=1')
+        expect(screen.getByRole('navigation', { name: 'Strony ukończonych szkoleń' })).toHaveTextContent('Strona 2 z 2 · łącznie 25')
+        expect(screen.getByRole('navigation', { name: 'Strony ukończonych szkoleń' }).querySelector('a')).toHaveAttribute('href', '/learning/moje?activePage=42&completedPage=1&revokedPage=1')
+    })
 })
 
 it('keeps pilot participants selected and exposes actionable errors without changing the mode', async () => {
