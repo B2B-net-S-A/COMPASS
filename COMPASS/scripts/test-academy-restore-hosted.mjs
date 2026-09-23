@@ -133,7 +133,7 @@ function safeFailure(error) {
     'invalid_storage_container_environment', 'isolated_file_storage_required',
     'isolated_file_storage_path_required', 'source_storage_database_not_local_fixture',
     'alternate_storage_database_url_not_local_fixture', 'invalid_storage_container_port',
-    'isolated_storage_loopback_port_required']);
+    'isolated_storage_loopback_port_required', 'target_storage_not_isolated_from_source_bytes']);
   const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
   const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
     'supabase_migrations', 'public', 'academy_private', 'cron', 'net', 'graphql']);
@@ -158,6 +158,8 @@ function safeFailure(error) {
   return {
     errorType: error?.name ?? 'Error',
     assertion: error?.name === 'AssertionError' && safeAssertions.has(error.message) ? error.message : undefined,
+    observedHttpStatus: error?.expected === 404 && Number.isInteger(error?.actual) &&
+      error.actual >= 100 && error.actual <= 599 ? error.actual : undefined,
     storageHttpStatus: Number.isInteger(error?.storageHttpStatus) ? error.storageHttpStatus : undefined,
     storageContainerState: Array.isArray(error?.storageContainerState) ? error.storageContainerState : undefined,
     storageStartupCategory: ['database_authentication', 'database_missing', 'database_permission',
