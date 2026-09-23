@@ -125,7 +125,7 @@ await sql("insert into course_enrollments(user_id,course_id,completed_at,points_
     const appliedMigrations = [];
     for (const suffix of suffixes) {
         if (suffix === 'academy_qa_reward_bounds' && beforeQaRewardsMigration) {
-            await beforeQaRewardsMigration(db, { ids, legacy });
+            await beforeQaRewardsMigration(db, { ids, legacy, engine, connect });
         }
         const matches = fs.readdirSync(`${root}/supabase/migrations`).filter(file => file.endsWith(`_${suffix}.sql`));
         assert.equal(matches.length, 1, `migration ${suffix} is unambiguous`);
