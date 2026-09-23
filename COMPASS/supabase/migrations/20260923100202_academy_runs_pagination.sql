@@ -34,7 +34,10 @@ BEGIN
         LEFT JOIN LATERAL (
             SELECT min(s.starts_at) AS starts_at FROM public.course_sessions s
             WHERE s.run_id=r.id AND s.status='scheduled'
-                AND s.starts_at>=p_window_start AND s.starts_at<p_window_end
+                -- Calendar inputs are nominal UTC dates for Warsaw month boundaries.
+                -- Convert each boundary separately so DST changes do not shift a page.
+                AND s.starts_at>=((p_window_start AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Warsaw')
+                AND s.starts_at<((p_window_end AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Warsaw')
         ) window_session ON p_scope IN ('calendar','my_calendar')
         WHERE (p_course_id IS NULL OR r.course_id=p_course_id)
             AND (p_course_ids IS NULL OR r.course_id=ANY(p_course_ids))

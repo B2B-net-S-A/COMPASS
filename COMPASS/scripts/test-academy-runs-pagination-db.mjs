@@ -26,8 +26,8 @@ try {
         FROM generate_series(1,203) n`, [course, version, ids.trainer]);
     await actor('trainer');
     const run = await rpc('academy_create_run', [{ courseId: course, versionId: version, title: 'Next public group', capacity: 2 }]);
-    const starts = new Date(Date.now() + 7 * 86400000).toISOString();
-    const ends = new Date(Date.now() + 7 * 86400000 + 3600000).toISOString();
+    const starts = '2030-09-15T10:00:00.000Z';
+    const ends = '2030-09-15T11:00:00.000Z';
     const link = 'https://teams.microsoft.com/meet/123456789?p=secret';
     await rpc('academy_save_session', [{ runId: run, title: 'Next session', startsAt: starts, endsAt: ends, timeZone: 'Europe/Warsaw', mode: 'external_link', externalJoinUrl: link, required: true }]);
     await actor('admin'); await rpc('academy_publish_run', [run]);
@@ -43,8 +43,8 @@ try {
     equal((await page(course, 200, 5, 'managed')).length, 4);
     equal((await page(course, 204, 5, 'managed')).length, 0);
 
-    const windowStart = new Date(Date.parse(starts) - 86400000).toISOString();
-    const windowEnd = new Date(Date.parse(ends) + 86400000).toISOString();
+    const windowStart = '2030-09-01T00:00:00.000Z';
+    const windowEnd = '2030-10-01T00:00:00.000Z';
     equal((await page(course, 0, 50, 'calendar', windowStart, windowEnd)).map(item => item.id), [run]);
     equal((await page(null, 0, 50, 'catalog', new Date().toISOString(), null, [course])).map(item => item.id), [run]);
     equal(await page(course, 0, 50, 'catalog', new Date().toISOString(), null, [ids.other]), []);
@@ -73,13 +73,30 @@ try {
     await sql(`INSERT INTO course_sessions(run_id,title,starts_at,ends_at,time_zone,meeting_mode,external_join_url,required,status,sync_status,created_by)
         SELECT r.id,'Public lesson',$2::timestamptz,$3::timestamptz,'Europe/Warsaw','external_link',$4,true,'scheduled','ready',$5
         FROM course_runs r WHERE r.course_id=$1 AND r.title LIKE 'Public group %'`, [course, starts, ends, link, ids.trainer]);
+    // These sessions fall in August Warsaw time but would fill the padded
+    // September page before the in-month runs if filtering happened later.
+    await sql(`INSERT INTO course_runs(course_id,version_id,title,capacity,created_by,created_at)
+        SELECT $1,$2,'August group '||n,20,$3,now()-interval '3 days' + (n||' seconds')::interval
+        FROM generate_series(1,55) n`, [course, version, ids.trainer]);
+    await sql(`INSERT INTO course_sessions(run_id,title,starts_at,ends_at,time_zone,meeting_mode,external_join_url,required,status,sync_status,created_by)
+        SELECT r.id,'August lesson','2030-08-31T21:30:00Z'::timestamptz,'2030-08-31T22:30:00Z'::timestamptz,
+            'Europe/Warsaw','external_link',$2,true,'scheduled','ready',$3
+        FROM course_runs r WHERE r.course_id=$1 AND r.title LIKE 'August group %'`, [course, link, ids.trainer]);
+    await sql(`INSERT INTO course_runs(course_id,version_id,title,capacity,created_by)
+        VALUES ($1,$2,'September boundary',20,$3)`, [course, version, ids.trainer]);
+    await sql(`INSERT INTO course_sessions(run_id,title,starts_at,ends_at,time_zone,meeting_mode,external_join_url,required,status,sync_status,created_by)
+        SELECT r.id,'Warsaw September 1','2030-08-31T22:30:00Z'::timestamptz,'2030-08-31T23:30:00Z'::timestamptz,
+            'Europe/Warsaw','external_link',$2,true,'scheduled','ready',$3
+        FROM course_runs r WHERE r.course_id=$1 AND r.title='September boundary'`, [course, link, ids.trainer]);
     await sql("select set_config('request.jwt.claim.sub',$1,false)", [ids.admin]);
-    await sql("UPDATE course_runs SET status='published',published_by=$2,published_at=now() WHERE course_id=$1 AND title LIKE 'Public group %'", [course, ids.admin]);
+    await sql("UPDATE course_runs SET status='published',published_by=$2,published_at=now() WHERE course_id=$1 AND (title LIKE 'Public group %' OR title LIKE 'August group %' OR title='September boundary')", [course, ids.admin]);
     await actor('student');
     const firstCalendar = await page(course, 0, 50, 'calendar', windowStart, windowEnd);
     const nextCalendar = await page(course, 50, 50, 'calendar', windowStart, windowEnd);
-    equal(firstCalendar.length, 50); equal(nextCalendar.length, 6);
-    equal(new Set([...firstCalendar, ...nextCalendar].map(item => item.id)).size, 56);
+    equal(firstCalendar.length, 50); equal(nextCalendar.length, 7);
+    equal(new Set([...firstCalendar, ...nextCalendar].map(item => item.id)).size, 57);
+    equal(firstCalendar.every(item => !item.title.startsWith('August group')), true);
+    equal(firstCalendar[0].title, 'September boundary');
     console.log(`PASS ${checks} Academy run pagination, filters and access assertions`);
 } finally {
     await db.close();
