@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
 process.on('uncaughtException', error => { console.error({error:error.message,where:error.where,query:error.query});process.exit(1); });
-const f=await createAcademyDatabase({materials:true,staff:true});
+const f=await createAcademyDatabase({materials:true,staff:true,invitationTargets:true});
 const {db,ids,sql,actor,owner,service,rpc,legacy,oldLesson}=f;
 const legacyVersion=(await sql('select published_version_id from courses where id=$1',[legacy])).rows[0].published_version_id;
 let checks=0;
@@ -93,9 +93,85 @@ let context=await rpc('academy_job_context',[job.id,job.leaseToken]);
 assert.deepEqual(context.input.attendees.map(person=>person.email).sort(),['other@example.test','student@example.test','trainer@example.test']);checks++;
 const meeting={eventId:'staff-event',joinUrl:'https://teams.microsoft.com/meet/123456789?p=secret',transactionId:'staff-marker',organizerId:'22222222-2222-4222-8222-222222222222'};
 await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+// Graph invitations use an administrator-verified M365 address, not the Compass login address.
+const tenant='33333333-3333-4333-8333-333333333333';
+const trainerObject='44444444-4444-4444-8444-444444444444';
+const otherObject='55555555-5555-4555-8555-555555555555';
+await actor('admin');
+await rpc('academy_save_m365_identity',[{userId:ids.trainer,tenantId:tenant,objectId:trainerObject,verifiedEmail:'trainer-teams@example.test'}]);
+await rpc('academy_save_m365_identity',[{userId:ids.other,tenantId:tenant,objectId:otherObject,verifiedEmail:'other-teams@example.test'}]);
+await actor('student'); await denied('select academy_private.invitation_email($1)',[ids.student],/permission denied/);
 await actor('trainer'); await rpc('academy_set_run_staff',[managed,ids.student,false]);
 await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
-assert.deepEqual(context.input.attendees.map(person=>person.email).sort(),['other@example.test','trainer@example.test']);checks++;
+assert.deepEqual(context.input.attendees.map(person=>person.email).sort(),['other-teams@example.test','trainer-teams@example.test']);checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+// Multiple distinct aliases are not guessed; the administrator must mark one invitation target.
+await actor('admin');
+await rpc('academy_save_m365_identity',[{userId:ids.trainer,tenantId:tenant,objectId:'66666666-6666-4666-8666-666666666666',verifiedEmail:'trainer-second@example.test'}]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]);
+await denied('select academy_job_context($1,$2)',[job.id,job.leaseToken],/academy_invitation_address_ambiguous/);
+await rpc('academy_fail_job',[job.id,job.leaseToken,'configuration','failed',null]);
+await actor('admin');
+await denied('select academy_save_m365_identity($1)',[{userId:ids.trainer,tenantId:tenant,objectId:trainerObject,invitationTarget:true}],/invitation_email_required/);
+await rpc('academy_save_m365_identity',[{userId:ids.trainer,tenantId:tenant,objectId:trainerObject,verifiedEmail:'trainer-teams@example.test',invitationTarget:true}]);
+const mappings=await rpc('academy_list_m365_identities',['trainer']);
+assert.equal(mappings.filter(identity=>identity.userId===ids.trainer&&identity.invitationTarget).length,1);checks++;
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert(context.input.attendees.some(person=>person.email==='trainer-teams@example.test'));checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+// One email mapped to two profiles is unsafe even though Graph would deduplicate it.
+await actor('admin');
+await rpc('academy_save_m365_identity',[{userId:ids.other,tenantId:tenant,objectId:otherObject,verifiedEmail:'trainer-teams@example.test'}]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]);
+await denied('select academy_job_context($1,$2)',[job.id,job.leaseToken],/academy_invitation_address_shared/);
+await rpc('academy_fail_job',[job.id,job.leaseToken,'configuration','failed',null]);
+await actor('admin');
+await rpc('academy_save_m365_identity',[{userId:ids.other,tenantId:tenant,objectId:otherObject,verifiedEmail:'other-teams@example.test'}]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+// Revoking the author removes them from future invites and enqueues a Graph update.
+await actor('admin'); await rpc('academy_set_trainer',[ids.trainer,false]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert.deepEqual(context.input.attendees.map(person=>person.email),['other-teams@example.test']);checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+await actor('admin'); await rpc('academy_set_trainer',[ids.trainer,true]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert(context.input.attendees.some(person=>person.email==='trainer-teams@example.test'));checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+// An HR status change also removes the former instructor from future invitations.
+await owner(); await sql("update profiles set employment_status='exited' where id=$1",[ids.trainer]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert.deepEqual(context.input.attendees.map(person=>person.email),['other-teams@example.test']);checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+await owner(); await sql("update profiles set employment_status='active' where id=$1",[ids.trainer]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert(context.input.attendees.some(person=>person.email==='trainer-teams@example.test'));checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+// A capability re-grant must roll back if capacity was raised while the author was revoked.
+await actor('admin'); await rpc('academy_set_trainer',[ids.trainer,false]);
+await rpc('academy_update_run',[managed,'Capacity while trainer revoked',499]);
+await denied('select academy_set_trainer($1,true)',[ids.trainer],/limit 500/);
+assert.equal((await sql('select can_train from academy_user_capabilities where user_id=$1',[ids.trainer])).rows[0].can_train,false);checks++;
+await rpc('academy_update_run',[managed,'Capacity restored',497]);
+await rpc('academy_set_trainer',[ids.trainer,true]);
+// A confirmed learner loses their invitation on exit, and pilot removal is
+// reflected in the next managed event update without changing enrollment data.
+await actor('student'); await rpc('academy_register_run',[managed]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert(context.input.attendees.some(person=>person.email==='student@example.test'));checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+await owner(); await sql("update profiles set employment_status='exited' where id=$1",[ids.student]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert(!context.input.attendees.some(person=>person.email==='student@example.test'));checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+await owner(); await sql("update profiles set employment_status='active' where id=$1",[ids.student]);
+await actor('admin'); await rpc('academy_set_rollout',['pilot',[ids.trainer]]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert.deepEqual(context.input.attendees.map(person=>person.email),['trainer-teams@example.test']);checks++;
+await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
+await actor('admin'); await rpc('academy_set_rollout',['open',[]]);
+await service(); [job]=await rpc('academy_claim_jobs',['staff-worker',1,180]); context=await rpc('academy_job_context',[job.id,job.leaseToken]);
+assert(context.input.attendees.some(person=>person.email==='student@example.test'));checks++;
 await rpc('academy_complete_job',[job.id,job.leaseToken,{kind:'meeting_synced',meeting}]);
 // A moderator who edited the scheduled dates cannot accept their own work.
 await actor('trainer');const independentRun=await rpc('academy_create_run',[{courseId:course.course_id,versionId:next,title:'Independent dates',capacity:3}]);
@@ -104,7 +180,7 @@ assert.equal(await rpc('academy_can_review_run',[independentRun]),false);checks+
 await denied('select academy_publish_run($1)',[independentRun],/independent_admin_review_required/);
 await actor(reviewer); await rpc('academy_publish_run',[independentRun]); checks++;
 // Content editors see program but not another learner's enrollment details.
-await actor('student'); assert.equal((await sql('select id from course_enrollments where run_id=$1',[managed])).rows.length,0);checks++;
+await actor('student'); assert.equal((await sql('select id from course_enrollments where run_id=$1 and user_id<>$2',[managed,ids.student])).rows.length,0);checks++;
 await owner(); await sql("update profiles set employment_status='exited' where id=$1",[ids.student]);
 await service(); assert.equal(await rpc('academy_can_edit_course_as',[course.course_id,ids.student]),false); checks++;
 
@@ -135,6 +211,25 @@ if(f.engine==='postgres') {
  assert.equal(results.filter(result=>result.status==='fulfilled').length,1);checks++;
  await owner(); const budget=(await sql('select r.capacity+(select count(*) from academy_private.run_instructors(r.id,r.course_id)) total from course_runs r where id=$1',[managed])).rows[0].total;
  assert.equal(Number(budget),500);checks++;
+ await actor('trainer'); await rpc('academy_set_run_staff',[managed,ids.student,false]);
+ await actor('admin'); await rpc('academy_set_trainer',[ids.trainer,false]);
+ await rpc('academy_update_run',[managed,'Trainer activation race',499]);
+ const grant=await f.connectSession('admin'); const capacity=await f.connectSession('admin');
+ const grantRace=await Promise.allSettled([
+  grant.rpc('academy_set_trainer',[ids.trainer,true]),
+  capacity.rpc('academy_update_run',[managed,'Concurrent capacity',500]),
+ ]);
+ assert.equal(grantRace.filter(result=>result.status==='fulfilled').length,1);checks++;
+ await owner(); const postGrantBudget=(await sql('select r.capacity+(select count(*) from academy_private.run_instructors(r.id,r.course_id)) total from course_runs r where id=$1',[managed])).rows[0].total;
+ assert.equal(Number(postGrantBudget),500);checks++;
+ const first=await f.connectSession('admin'); const second=await f.connectSession('admin');
+ const targets=await Promise.allSettled([
+  first.rpc('academy_save_m365_identity',[{userId:ids.trainer,tenantId:tenant,objectId:trainerObject,verifiedEmail:'trainer-teams@example.test',invitationTarget:true}]),
+  second.rpc('academy_save_m365_identity',[{userId:ids.trainer,tenantId:tenant,objectId:'66666666-6666-4666-8666-666666666666',verifiedEmail:'trainer-second@example.test',invitationTarget:true}]),
+ ]);
+ assert.equal(targets.filter(result=>result.status==='fulfilled').length,2);checks++;
+ await owner(); const selected=(await sql('select count(*)::int n from academy_m365_identities where user_id=$1 and invitation_target',[ids.trainer])).rows[0].n;
+ assert.equal(selected,1);checks++;
 }
 console.log(`PASS ${checks} staff scope, independent moderation, legacy and prerequisite assertions`);
 await db.close();

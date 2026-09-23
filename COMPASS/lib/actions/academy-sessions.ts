@@ -265,9 +265,9 @@ export async function saveAcademyOrganizer(input: { id?: string; profileId: stri
         return data as string
     })
 }
-export async function saveAcademyM365Identity(input: { userId: string; tenantId: string; objectId: string; verifiedEmail?: string }): Promise<ActionResult<void>> {
+export async function saveAcademyM365Identity(input: { userId: string; tenantId: string; objectId: string; verifiedEmail?: string; invitationTarget?: boolean }): Promise<ActionResult<void>> {
     return academyAction('sessions.identity_save', async () => {
-        const parsed = z.object({ userId: uuid, tenantId: uuid, objectId: uuid, verifiedEmail: z.email().max(254).optional() }).parse(input)
+        const parsed = z.object({ userId: uuid, tenantId: uuid, objectId: uuid, verifiedEmail: z.email().max(254).optional(), invitationTarget: z.boolean().optional() }).parse(input)
         const { client } = await requireAcademyContext({ admin: true })
         const { error } = await client.rpc('academy_save_m365_identity', { p_input: parsed })
         assertDatabaseResult(error)

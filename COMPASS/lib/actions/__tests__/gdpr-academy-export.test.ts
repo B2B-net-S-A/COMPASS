@@ -71,7 +71,7 @@ describe('Academy GDPR export', () => {
             certificate_snapshot: { course_title: 'Training', participant_name: 'Learner', version_number: 1,
                 completed_at: '2026-09-23T10:00:00Z', certificate_hash: 'hash', author_name: 'Other trainer', extra: 'other@example.com' } }]
         state.tables.academy_m365_identities = [
-            { id: 'identity', user_id: USER, tenant_id: 'tenant', object_id: 'object', verified_email: 'user@example.com', verified_by: OTHER },
+            { id: 'identity', user_id: USER, tenant_id: 'tenant', object_id: 'object', verified_email: 'user@example.com', invitation_target: true, verified_by: OTHER },
         ]
         state.tables.session_attendance = [
             { session_id: 'session', enrollment_id: 'own-enrollment', course_enrollments: { user_id: USER }, status: 'present', note: 'Przyszedł z Anną z innego działu' },
@@ -106,6 +106,7 @@ describe('Academy GDPR export', () => {
         expect(state.reads.find(read => read.table === 'course_completions')?.select).not.toContain('revoked_reason')
         expect(JSON.stringify(result.data)).not.toContain('other-enrollment')
         expect(JSON.stringify(section('academy_m365_identities'))).not.toContain('verified_by')
+        expect(section('academy_m365_identities')?.rows[0].invitation_target).toBe(true)
         expect(state.reads.find(read => read.table === 'session_attendance')?.filters).toContain('eq:course_enrollments.user_id')
     })
 

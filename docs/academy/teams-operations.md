@@ -40,6 +40,8 @@ Warunki niepotwierdzone w samym kodzie: aktywna skrzynka/Teams organizatora, lic
 
 Alternatywnie trener dostarcza link spotkania własnej organizacji. Compass obsługuje zapisy, powiadomienia, ICS i audytowaną ręczną obecność. Nie zmienia cudzego kalendarza ani nie obiecuje raportów Graph. Nagranie jest opcjonalnym materiałem edycji: upload, skan i niezależna moderacja; automatyczne nagrywanie/import nie jest zaimplementowane.
 
+Przy firmowym spotkaniu Graph zaproszenie dla każdego prowadzącego i uczestnika kieruje się na jego jedyny potwierdzony adres Teams. Jeśli administrator powiązał kilka różnych adresów, musi oznaczyć jeden jako adres zaproszeń w panelu „Teams i synchronizacja”; bez tego worker zgłosi błąd konfiguracji i nie wywoła Graph. Gdy nie ma potwierdzonego aliasu M365, używany jest tylko potwierdzony e-mail logowania Compass. Ten sam adres wybrany dla dwóch kont Compass również blokuje wysyłkę. Zmiana lub usunięcie powiązania oraz nadanie/odebranie uprawnienia trenera zleca aktualizację przyszłych firmowych spotkań. Autor z odebranym uprawnieniem trenera nie pozostaje na liście prowadzących; osoba nadal zapisana jako uczestnik zachowuje własne zaproszenie. Dla linku zewnętrznego Compass nie wysyła zaproszeń przez Graph.
+
 Przy błędzie Graph nie wklejać równoległego spotkania do tej samej sesji. Ponowić uzgodnienie kolejki albo odwołać spotkanie i użyć jawnego zastępstwa po potwierdzeniu odwołania. Odwołanie nie zwalnia uczestników z zamrożonego obowiązku. [Zasady sesji i zastępstw](./session-obligations.md).
 
 ## Minimalny dowód odbioru

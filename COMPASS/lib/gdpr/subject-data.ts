@@ -87,7 +87,7 @@ export const EMPLOYEE_SOURCES: readonly SubjectSource[] = [
     { table: 'course_staff', column: 'user_id', label: 'Funkcje przy szkoleniach', select: 'course_id,user_id,role,granted_at,revoked_at' },
     { table: 'course_run_staff', column: 'user_id', label: 'Funkcje przy edycjach szkoleń', select: 'run_id,user_id,granted_at,revoked_at' },
     { table: 'academy_organizers', column: 'profile_id', label: 'Konto organizatora Teams', select: 'id,profile_id,tenant_id,object_id,enabled,updated_at' },
-    { table: 'academy_m365_identities', column: 'user_id', label: 'Zweryfikowane tożsamości Microsoft', select: 'id,user_id,tenant_id,object_id,verified_email,verified_at' },
+    { table: 'academy_m365_identities', column: 'user_id', label: 'Zweryfikowane tożsamości Microsoft', select: 'id,user_id,tenant_id,object_id,verified_email,verified_at,invitation_target' },
     { table: 'course_materials', column: 'uploaded_by', label: 'Przesłane materiały Akademii', select: 'id,course_id,version_id,lesson_id,run_id,uploaded_by,filename,storage_path,mime_type,size_bytes,status,review_status,created_at,scanned_at,purged_at' },
     { table: 'academy_notification_receipts', column: 'user_id', label: 'Potwierdzenia powiadomień Akademii' },
     { table: 'course_quiz_attempts', column: 'user_id', label: 'Podejścia do quizów' },
