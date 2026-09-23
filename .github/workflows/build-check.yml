@@ -78,6 +78,9 @@ jobs:
       - name: Academy read-only watchdog contract
         run: node --test ../ops/academy/health-watchdog.test.mjs
 
+      - name: Academy offline restore verifier
+        run: node --test ../ops/academy/restore/verify.test.mjs
+
       - name: Availability connection scope tests
         run: python3 ../scripts/test_configure_nexus_availability.py
 
