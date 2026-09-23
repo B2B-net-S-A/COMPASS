@@ -1,4 +1,5 @@
 import { ZodError } from 'zod'
+import { quizAttemptWindowMessage } from './quiz-attempt-policy'
 
 const fallback = 'Nie udało się wykonać operacji. Odśwież stronę i spróbuj ponownie.'
 const messages: Record<string, string> = {
@@ -34,6 +35,7 @@ const messages: Record<string, string> = {
     one_answer_per_question_required: 'Odpowiedz dokładnie raz na każde pytanie.',
     invalid_quiz_answers: 'Odpowiedzi nie pasują do tego quizu. Odśwież stronę.',
     answer_not_in_enrollment_version: 'Odpowiedź nie należy do Twojej wersji quizu.',
+    quiz_attempt_window_exhausted: quizAttemptWindowMessage,
     not_enrolled: 'Najpierw zapisz się na szkolenie.',
     enrollment_not_found: 'Nie znaleziono Twojego zapisu na szkolenie.',
     own_enrollment_required: 'Nie masz dostępu do tego zapisu.',

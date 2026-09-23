@@ -12,6 +12,7 @@ Foundation migration: `20260922082902_academy_versioned_foundation.sql`.
 - `course_lessons.version_id`, `course_quiz_questions.version_id`, `course_enrollments.version_id` pin content. Filter reads by version, not just course. Questions/options still require author/admin access; students use quiz RPC without correct answers.
 - Enrollments add nullable `run_id`. Partial uniqueness: `(user_id,course_id) WHERE run_id IS NULL`; `(user_id,run_id) WHERE run_id IS NOT NULL`. The next migration owns runs and adds the FK.
 - Course IDs/slugs, existing lesson IDs, enrollments, completions and certificate hashes survive backfill. Legacy rules preserve the original 70% quiz threshold. New rules default to 80%.
+- Quiz retries are pinned to the version. Versions created after `20260923121456_academy_quiz_attempt_window.sql` allow 3 submissions per learner per rolling 24 hours, counted across every enrollment/run of that version. Earlier versions retain unlimited retries, including already published and completed programs. The policy cannot be changed after version creation; the database rejects a fourth submission without recording an attempt. A submission becomes available when the oldest counted attempt passes the 24-hour boundary.
 
 ## JSON shapes
 

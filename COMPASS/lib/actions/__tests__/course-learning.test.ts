@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import type { MockSupabase, MockSupabaseConfig } from '@/test/mocks/supabase'
 import { academyFixture, courseRow, enrollmentRow, id, ATTEMPT, COURSE, ENROLLMENT, LESSON, OLD_VERSION, OPTION, OTHER, QUESTION, RUN, RUN_ENROLLMENT, USER, VERSION } from './academy-fixtures'
 import { completeAcademyCourse, enrollInCourse, getMyEnrollments, getMyQuizResult, getQuizForAttempt, markLessonComplete, recordLessonAccess, submitQuizAttempt, submitRating } from '../course-learning'
+import { quizAttemptWindowMessage } from '@/lib/academy/quiz-attempt-policy'
 
 let client: MockSupabase
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => client }))
@@ -108,6 +109,10 @@ describe('quiz and course completion', () => {
     it('surfaces quiz RPC errors', async () => {
         setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_submit_quiz: fail('one_answer_per_question_required') } })
         expect(await submitQuizAttempt(COURSE, answers)).toEqual({ success: false, error: 'Odpowiedz dokładnie raz na każde pytanie.' })
+    })
+    it('explains the rolling attempt limit returned by the quiz RPC', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_submit_quiz: fail('quiz_attempt_window_exhausted') } })
+        expect(await submitQuizAttempt(COURSE, answers)).toEqual({ success: false, error: quizAttemptWindowMessage })
     })
     it.each([{ completed: false, reason: 'attendance_required' }, { completed: true, already_completed: true }])('returns the completion verdict without inventing eligibility: %j', async verdict => {
         setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_complete_course: () => verdict } })

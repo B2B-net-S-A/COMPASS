@@ -34,6 +34,8 @@ export interface CourseVersion {
     metadata: Partial<Course>
     completion_rules: CourseCompletionRules
     rejection_reason: string | null
+    quiz_attempt_limit?: number | null
+    quiz_attempt_window_hours?: number | null
     reviewed_by: string | null
     reviewed_at: string | null
 }
@@ -53,6 +55,8 @@ export function withCourseVersion(course: Course, version: CourseVersion): Cours
         status: course.status,
         version_status: version.status,
         completion_rules: version.completion_rules,
+        quiz_attempt_limit: version.quiz_attempt_limit ?? null,
+        quiz_attempt_window_hours: version.quiz_attempt_window_hours ?? null,
         rejection_reason: version.rejection_reason,
         reviewed_by: version.reviewed_by,
         reviewed_at: version.reviewed_at,
