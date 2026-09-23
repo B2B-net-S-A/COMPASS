@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
 
 let cutoverCommit;
+let lateReward;
+let stalledQuestion;
+let stalledAnswer;
 const fixture = await createAcademyDatabase({
     qaRewards: true,
     beforeQaRewardsMigration: async (db, { ids, legacy, engine, connect }) => {
@@ -15,6 +18,8 @@ const fixture = await createAcademyDatabase({
         const repeated = (await db.query("insert into public.course_questions(course_id,version_id,enrollment_id,user_id,question_text) values($1,$2,$3,$4,'Another historical rewarded question') returning id", [legacy, version, enrollment, ids.student])).rows[0].id;
         const repeatedAnswer = (await db.query("insert into public.course_answers(question_id,user_id,answer_text,is_author_answer) values($1,$2,'Another historical rewarded answer',true) returning id", [repeated, ids.admin])).rows[0].id;
         await db.query("insert into public.loyalty_transactions(user_id,points,source_type,source_id,description) values($1,5,'course_question_asked',$2,'Historical repeat'),($3,15,'course_answer_given',$4,'Historical repeat')", [ids.student, repeated, ids.admin, repeatedAnswer]);
+        stalledQuestion = (await db.query("insert into public.course_questions(course_id,version_id,enrollment_id,user_id,question_text) values($1,$2,$3,$4,'Question awaiting old RPC payout') returning id", [legacy, version, enrollment, ids.student])).rows[0].id;
+        stalledAnswer = (await db.query("insert into public.course_answers(question_id,user_id,answer_text,is_author_answer) values($1,$2,'Answer awaiting old RPC payout',true) returning id", [stalledQuestion, ids.admin])).rows[0].id;
         if (engine === 'postgres') {
             const pending = (await db.query("insert into public.course_questions(course_id,version_id,user_id,question_text) values($1,$2,$3,'Question paid during migration cutover') returning id", [legacy, version, ids.other])).rows[0].id;
             const writer = await connect();
@@ -35,6 +40,18 @@ const fixture = await createAcademyDatabase({
                         await new Promise(resolve => setTimeout(resolve, 25));
                     }
                     assert.ok(sawWaitingLock, 'migration must wait for an in-flight ledger INSERT');
+                    const late = await connect();
+                    const latePid = (await late.query('select pg_backend_pid() pid')).rows[0].pid;
+                    lateReward = late.query("insert into public.loyalty_transactions(user_id,points,source_type,source_id,description) values($1,5,'course_question_asked',$2,'Old body resumed after cutover')", [ids.student, stalledQuestion])
+                        .finally(() => late.close());
+                    let lateQueued = false;
+                    const lateDeadline = Date.now() + 5000;
+                    while (Date.now() < lateDeadline) {
+                        const locks = await observer.query("select 1 from pg_locks where pid=$1 and relation='public.loyalty_transactions'::regclass and mode='RowExclusiveLock' and not granted", [latePid]);
+                        if (locks.rows.length) { lateQueued = true; break; }
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    }
+                    assert.ok(lateQueued, 'old-body INSERT must queue behind migration cutover');
                     await writer.exec('COMMIT');
                 } finally {
                     if (!sawWaitingLock) await writer.exec('ROLLBACK');
@@ -46,6 +63,7 @@ const fixture = await createAcademyDatabase({
 });
 const { db, ids, legacy, query: sql, actor, owner, rpc } = fixture;
 if (cutoverCommit) await cutoverCommit;
+if (lateReward) assert.equal((await lateReward).rowCount, 0, 'a queued old-body INSERT must be suppressed by the new trigger');
 
 async function rewardCount(courseId, kind) {
     const join = kind === 'course_question_asked'
@@ -71,8 +89,13 @@ await owner();
 assert.equal(await claimCount(legacy, 'question_engagement', ids.student), 1);
 assert.equal(await claimCount(legacy, 'author_answer', ids.admin), 1);
 if (fixture.engine === 'postgres') assert.equal(await claimCount(legacy, 'question_engagement', ids.other), 1, 'cutover waits for an in-flight historical payout');
-assert.equal((await sql("select count(*)::int n from public.academy_reward_claims where course_id=$1 and legacy and reward_kind in ('question_engagement','author_answer')", [legacy])).rows[0].n, 2);
-assert.equal(await rewardCount(legacy, 'course_question_asked'), 2);
+assert.equal((await sql("select count(*)::int n from public.academy_reward_claims where course_id=$1 and legacy and reward_kind in ('question_engagement','author_answer')", [legacy])).rows[0].n, fixture.engine === 'postgres' ? 3 : 2);
+assert.equal(await rewardCount(legacy, 'course_question_asked'), fixture.engine === 'postgres' ? 3 : 2);
+assert.equal(await rewardCount(legacy, 'course_answer_given'), 2);
+// Simulate an old Q&A function body that created content before the migration
+// and reaches the ledger after it commits. The trigger must suppress a repeat.
+await sql("insert into public.loyalty_transactions(user_id,points,source_type,source_id,description) values($1,5,'course_question_asked',$2,'Late old question'),($3,15,'course_answer_given',$4,'Late old answer')", [ids.student, stalledQuestion, ids.admin, stalledAnswer]);
+assert.equal(await rewardCount(legacy, 'course_question_asked'), fixture.engine === 'postgres' ? 3 : 2);
 assert.equal(await rewardCount(legacy, 'course_answer_given'), 2);
 
 await actor('admin');
