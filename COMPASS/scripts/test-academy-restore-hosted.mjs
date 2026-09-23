@@ -32,6 +32,27 @@ const safeName = name => typeof name === 'string' && name && !name.includes('\\'
   && name.split('/').every(part => part && part !== '.' && part !== '..');
 const docker = (...args) => execFileSync('docker', args, { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 });
 const objects = area => join(area, 'objects');
+function safeFailure(error) {
+  const stderr = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : '';
+  const classes = [
+    ['archive_unreadable', /could not open input file|permission denied.*\.dump/i],
+    ['missing_role', /role .{0,120} does not exist/i],
+    ['missing_extension', /extension .{0,120} is not available/i],
+    ['missing_schema', /schema .{0,120} does not exist/i],
+    ['missing_relation', /relation .{0,120} does not exist/i],
+    ['missing_function', /function .{0,120} does not exist/i],
+    ['object_conflict', /already exists|duplicate key/i],
+    ['permission_denied', /permission denied/i],
+    ['restore_sql_error', /could not execute query/i],
+  ];
+  return {
+    errorType: error?.name ?? 'Error',
+    sqlState: typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined,
+    childExitCode: Number.isInteger(error?.status) ? error.status : undefined,
+    category: classes.find(([, pattern]) => pattern.test(stderr))?.[0] ?? 'unclassified',
+    stderrSha256: stderr ? digest(Buffer.from(stderr)) : undefined,
+  };
+}
 
 async function exportDatabase(connection, path) {
   const result = await connection.query(exportSql);
@@ -106,20 +127,25 @@ try {
   docker('cp', `${container}:${backupInContainer}`, join(work, 'postgres.dump'));
   assert((await fs.promises.stat(join(work, 'postgres.dump'))).size > 0, 'postgres_backup_empty');
 
-  stage = 'postgres_restore';
+  stage = 'restore_database_create';
   await client.query(`CREATE DATABASE ${targetName} TEMPLATE template0`);
+  stage = 'restore_archive_copy';
   docker('cp', join(work, 'postgres.dump'), `${container}:${restoredInContainer}`);
+  stage = 'restore_archive_apply';
   docker('exec', container, 'pg_restore', '-U', 'postgres', '-d', targetName,
     '--no-owner', '--no-acl', '--clean', '--if-exists', '--exit-on-error', restoredInContainer);
   const targetUrl = new URL(settings.database); targetUrl.pathname = `/${targetName}`;
+  stage = 'restore_database_connect';
   targetClient = new pg.Client({ connectionString: targetUrl.href });
   await targetClient.connect();
+  stage = 'restore_metadata_check';
   const restoredMetadata = (await targetClient.query(`select bucket_id,name
     from storage.objects where bucket_id='academy-materials'
        or (bucket_id='documents' and name like 'courses/%')
     order by bucket_id,name`)).rows;
   assert.deepEqual(restoredMetadata, files.map(({ bucket_id, name }) => ({ bucket_id, name })),
     'restored_storage_metadata_mismatch');
+  stage = 'restore_export';
   await exportDatabase(targetClient, join(target, 'export.json'));
 
   stage = 'storage_restore';
@@ -150,9 +176,9 @@ try {
     scope: 'synthetic_hosted_supabase_fixture_only' })}\n`);
 } catch (error) {
   // The ephemeral fixture can contain auth credentials. Report only bounded stage
-  // and error class, never raw SQL, dumps, object paths, keys or response bodies.
+  // and error class/fingerprint, never raw SQL, dumps, object paths, keys or response bodies.
   process.stderr.write(`${JSON.stringify({ check: 'academy_hosted_database_and_storage_restore', outcome: 'failed',
-    stage, errorType: error?.name ?? 'Error' })}\n`);
+    stage, ...safeFailure(error) })}\n`);
   process.exitCode = 1;
 } finally {
   if (targetClient) await targetClient.end().catch(() => {});
