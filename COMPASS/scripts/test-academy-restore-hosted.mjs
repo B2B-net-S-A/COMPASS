@@ -3,7 +3,7 @@
 // it does not inspect or restore production backups.
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -87,16 +87,33 @@ async function startTargetStorage() {
   const match = /^127\.0\.0\.1:(\d+)$/.exec(published);
   assert(match, 'isolated_storage_loopback_port_required');
   const baseUrl = `http://127.0.0.1:${match[1]}`;
+  let lastHttpStatus;
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
       const response = await fetch(`${baseUrl}/bucket`, {
         headers: targetStorageHeaders(), redirect: 'error', signal: AbortSignal.timeout(2000),
       });
+      lastHttpStatus = response.status;
       if (response.ok) return baseUrl;
     } catch { /* The disposable service may still be starting. */ }
     await new Promise(resolve => setTimeout(resolve, 500));
   }
-  throw new Error('isolated_storage_unavailable');
+  const state = spawnSync('docker', ['inspect', '--format', '{{.State.Running}} {{.State.ExitCode}}',
+    targetStorageContainer], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+  const logs = spawnSync('docker', ['logs', '--tail', '100', targetStorageContainer],
+    { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+  const boundedLogs = `${logs.stdout ?? ''}\n${logs.stderr ?? ''}`.slice(-65536);
+  const cause = /password authentication failed/i.test(boundedLogs) ? 'database_authentication'
+    : /database .* does not exist/i.test(boundedLogs) ? 'database_missing'
+    : /permission denied/i.test(boundedLogs) ? 'database_permission'
+    : /migration/i.test(boundedLogs) ? 'storage_migration'
+    : 'unclassified';
+  const failure = new Error('isolated_storage_unavailable');
+  failure.storageHttpStatus = lastHttpStatus;
+  failure.storageContainerState = /^(true|false) (\d+)$/.exec(state.stdout?.trim() ?? '')?.slice(1);
+  failure.storageStartupCategory = cause;
+  failure.storageLogSha256 = boundedLogs ? digest(Buffer.from(boundedLogs)) : undefined;
+  throw failure;
 }
 
 async function targetStorageResponse(baseUrl, bucket, name, method = 'GET', bytes, mime) {
@@ -141,6 +158,12 @@ function safeFailure(error) {
   return {
     errorType: error?.name ?? 'Error',
     assertion: error?.name === 'AssertionError' && safeAssertions.has(error.message) ? error.message : undefined,
+    storageHttpStatus: Number.isInteger(error?.storageHttpStatus) ? error.storageHttpStatus : undefined,
+    storageContainerState: Array.isArray(error?.storageContainerState) ? error.storageContainerState : undefined,
+    storageStartupCategory: ['database_authentication', 'database_missing', 'database_permission',
+      'storage_migration', 'unclassified'].includes(error?.storageStartupCategory)
+      ? error.storageStartupCategory : undefined,
+    storageLogSha256: /^[a-f0-9]{64}$/.test(error?.storageLogSha256 ?? '') ? error.storageLogSha256 : undefined,
     sqlState: typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined,
     childExitCode: Number.isInteger(error?.status) ? error.status : undefined,
     category: classes.find(([, pattern]) => pattern.test(stderr))?.[0] ?? 'unclassified',
