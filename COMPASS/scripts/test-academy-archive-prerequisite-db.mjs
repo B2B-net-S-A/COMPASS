@@ -84,7 +84,7 @@ try {
             await owner(); await waitForBlock(reviewerPid, archiverPid);
             await archiver.db.exec('commit');
             assert.match((await pendingReview).error?.message ?? '', /published_visible_prerequisites_required/); checks++; races++;
-            equal((await sql('select status from courses where id=$1', [firstDependent.id])).rows[0].status, 'draft');
+            equal((await sql('select status from courses where id=$1', [firstDependent.id])).rows[0].status, 'pending_review');
         } finally {
             await archiver.db.exec('rollback'); await reviewer.db.exec('rollback');
             await archiver.db.close(); await reviewer.db.close();
