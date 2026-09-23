@@ -175,72 +175,75 @@ export async function submitRating(
     }
 }
 
-/**
- * Pobiera kursy, na które user się zapisał — z postępem (% ukończonych lekcji).
- */
-export async function getMyEnrollments(): Promise<ActionResult<CourseEnrollmentWithProgress[]>> {
-    return academyAction('enrollment.mine', async () => {
-        const { client, access } = await requireAcademyContext()
-        const { data: rows, error } = await client.from('course_enrollments').select('*').eq('user_id', access.userId).order('enrolled_at', { ascending: false })
-        assertDatabaseResult(error)
-        let enrollments = rows ?? []
-        const runIds = [...new Set(enrollments.filter(enrollment => enrollment.run_id && !enrollment.completed_at).map(enrollment => enrollment.run_id))]
-        if (runIds.length) {
-            const [runs, registrations] = await Promise.all([
-                client.from('course_runs').select('id').in('id', runIds).eq('status', 'published'),
-                client.from('course_run_registrations').select('enrollment_id,run_id').eq('user_id', access.userId).eq('status', 'confirmed').in('run_id', runIds),
-            ])
-            assertDatabaseResult(runs.error)
-            assertDatabaseResult(registrations.error)
-            const activeRuns = new Set((runs.data ?? []).map(run => run.id))
-            const activeEnrollments = new Set((registrations.data ?? []).filter(registration => activeRuns.has(registration.run_id)).map(registration => registration.enrollment_id))
-            enrollments = enrollments.filter(enrollment => !enrollment.run_id || enrollment.completed_at || activeEnrollments.has(enrollment.id))
-        }
-        if (!enrollments?.length) return []
-        const { data: completions, error: completionsError } = await client.from('course_completions').select('enrollment_id,revoked_at,revoked_reason').eq('user_id', access.userId).in('enrollment_id', enrollments.map(e => e.id))
-        assertDatabaseResult(completionsError)
-        const completionMap = new Map((completions ?? []).map(c => [c.enrollment_id, c]))
-        const versionIds = [...new Set(enrollments.map(enrollment => enrollment.version_id as string))]
-        const [{ data: courses, error: courseError }, { data: versions, error: versionError }, syllabuses] = await Promise.all([
-            client.from('courses').select('*').in('id', enrollments.map(e => e.course_id)),
-            client.from('course_versions').select('*').in('id', versionIds),
-            Promise.all(versionIds.map(async versionId => {
-                const result = await client.rpc('academy_get_syllabus', { p_version_id: versionId })
-                assertDatabaseResult(result.error)
-                return { versionId, lessons: (result.data ?? []) as { id: string }[] }
-            })),
-        ])
-        assertDatabaseResult(courseError)
-        assertDatabaseResult(versionError)
-        // Lesson content RLS hides locked drip lessons; syllabus counts must include them.
-        const lessonMap = new Map(syllabuses.map(syllabus => [syllabus.versionId, syllabus.lessons]))
-        const courseMap = new Map((courses as Course[] ?? []).map(c => [c.id, c]))
-        const versionMap = new Map((versions as CourseVersion[] ?? []).map(v => [v.id, v]))
-        return enrollments.flatMap(enrollment => {
-            const course = courseMap.get(enrollment.course_id)
-            const version = versionMap.get(enrollment.version_id)
-            if (!course || !version) return []
-            const requiredLessons = lessonMap.get(version.id) ?? []
-            const completed = new Set(enrollment.completed_lessons as string[] ?? [])
-            const completedLessonIds = requiredLessons.filter(lesson => completed.has(lesson.id)).map(lesson => lesson.id)
-            const completedCount = completedLessonIds.length
-            return [{
-                enrollment_id: enrollment.id as string,
-                course: withCourseVersion(course, version),
-                enrolled_at: enrollment.enrolled_at as string,
-                completed_lessons: completedLessonIds,
-                total_lessons: requiredLessons.length,
-                completed_at: enrollment.completed_at as string | null,
-                completion_revoked_at: completionMap.get(enrollment.id)?.revoked_at as string | null ?? null,
-                completion_revoked_reason: completionMap.get(enrollment.id)?.revoked_reason as string | null ?? null,
-                points_awarded: enrollment.points_awarded as boolean,
-                progress_percent: enrollment.completed_at ? 100 : requiredLessons.length ? Math.min(99, Math.round(completedCount / requiredLessons.length * 100)) : 0,
-                last_accessed_lesson_id: enrollment.last_accessed_lesson_id as string | null,
-                last_accessed_at: enrollment.last_accessed_at as string | null,
-                version_id: version.id,
-                run_id: enrollment.run_id as string | null,
-            }]
+const enrollmentPageOptions = z.object({
+    activePage: z.number().int().min(1).max(100_000).default(1),
+    completedPage: z.number().int().min(1).max(100_000).default(1),
+    revokedPage: z.number().int().min(1).max(100_000).default(1),
+    pageSize: z.number().int().min(1).max(50).default(24),
+})
+
+const enrollmentPageResult = z.object({
+    totals: z.object({ active: z.number().int().nonnegative(), completed: z.number().int().nonnegative(), revoked: z.number().int().nonnegative() }),
+    items: z.array(z.object({
+        enrollment: z.object({
+            id: z.uuid(), version_id: z.uuid(), enrolled_at: z.string(),
+            completed_lessons: z.array(z.uuid()), completed_at: z.string().nullable(),
+            completion_revoked_at: z.string().nullable(), completion_revoked_reason: z.string().nullable(),
+            points_awarded: z.boolean(), last_accessed_lesson_id: z.string().nullable(),
+            last_accessed_at: z.string().nullable(), run_id: z.string().nullable(),
+            section: z.enum(['active', 'completed', 'revoked']),
+        }).passthrough(),
+        course: z.unknown(), version: z.unknown(), requiredLessonIds: z.array(z.uuid()),
+    })),
+})
+
+export type MyEnrollmentsPage = {
+    items: CourseEnrollmentWithProgress[]
+    totals: { active: number; completed: number; revoked: number }
+    activePage: number
+    completedPage: number
+    revokedPage: number
+    pageSize: number
+}
+
+/** Filter before paging; the overview and its counts must include older history. */
+export async function getMyEnrollmentsPage(options: z.input<typeof enrollmentPageOptions> = {}): Promise<ActionResult<MyEnrollmentsPage>> {
+    return academyAction('enrollment.mine_page', async () => {
+        const { activePage, completedPage, revokedPage, pageSize } = enrollmentPageOptions.parse(options)
+        const { client } = await requireAcademyContext()
+        const { data, error } = await client.rpc('academy_my_enrollments_page', {
+            p_active_page: activePage, p_completed_page: completedPage,
+            p_revoked_page: revokedPage, p_limit: pageSize,
         })
+        assertDatabaseResult(error)
+        const page = enrollmentPageResult.parse(data)
+        for (const [section, selectedPage] of [['active', activePage], ['completed', completedPage], ['revoked', revokedPage]] as const) {
+            const expected = Math.min(pageSize, Math.max(0, page.totals[section] - (selectedPage - 1) * pageSize))
+            if (page.items.filter(item => item.enrollment.section === section).length !== expected) {
+                throw new Error('Lista szkoleń jest niepełna. Odśwież stronę.')
+            }
+        }
+        const items = page.items.map(({ enrollment, course, version, requiredLessonIds }) => {
+            const completed = new Set(enrollment.completed_lessons)
+            const completedLessonIds = requiredLessonIds.filter(id => completed.has(id))
+            return {
+                enrollment_id: enrollment.id,
+                course: withCourseVersion(course as Course, version as CourseVersion),
+                enrolled_at: enrollment.enrolled_at,
+                completed_lessons: completedLessonIds,
+                total_lessons: requiredLessonIds.length,
+                completed_at: enrollment.completed_at,
+                completion_revoked_at: enrollment.completion_revoked_at,
+                completion_revoked_reason: enrollment.completion_revoked_reason,
+                points_awarded: enrollment.points_awarded,
+                progress_percent: enrollment.completed_at ? 100 : requiredLessonIds.length ? Math.min(99, Math.round(completedLessonIds.length / requiredLessonIds.length * 100)) : 0,
+                last_accessed_lesson_id: enrollment.last_accessed_lesson_id,
+                last_accessed_at: enrollment.last_accessed_at,
+                version_id: enrollment.version_id,
+                run_id: enrollment.run_id,
+            } satisfies CourseEnrollmentWithProgress
+        })
+        return { items, totals: page.totals, activePage, completedPage, revokedPage, pageSize }
     })
 }
 

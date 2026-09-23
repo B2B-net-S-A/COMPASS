@@ -25,7 +25,7 @@ import { TicketStatusBadge } from '@/components/support/TicketStatusBadge'
 import { getLoyaltyOverview } from '@/lib/actions/loyalty'
 import { academyResumeHref } from '@/lib/academy/navigation'
 import { getAcademyAccess } from '@/lib/actions/academy-access'
-import { getMyEnrollments } from '@/lib/actions/course-learning'
+import { getMyEnrollmentsPage } from '@/lib/actions/course-learning'
 import { listNewsForUser } from '@/lib/actions/news'
 import { listTickets } from '@/lib/actions/support-tickets'
 import { listMyPitches, listAllPitchesAdmin } from '@/lib/actions/incubator'
@@ -71,7 +71,7 @@ export default async function HomePage() {
 
     const [overviewRes, enrollRes, newsRes, ticketsRes, pitchesRes, adminTicketsRes, adminPitchesRes] = await Promise.all([
         getLoyaltyOverview(),
-        learningHidden ? Promise.resolve({ success: false as const, error: 'skip' }) : getMyEnrollments(),
+        learningHidden ? Promise.resolve({ success: false as const, error: 'skip' }) : getMyEnrollmentsPage({ pageSize: 3 }),
         listNewsForUser(),
         listTickets({ scope: 'mine', limit: 10 }),
         listMyPitches(),
@@ -82,7 +82,7 @@ export default async function HomePage() {
     const greetingName = (profile?.full_name as string)?.split(' ')[0] || 'Konsultancie'
     const overview = overviewRes.success ? overviewRes.data : null
 
-    const allEnrollments = enrollRes.success ? enrollRes.data : []
+    const allEnrollments = enrollRes.success ? enrollRes.data.items : []
     // A1.1: aktywne kursy sortowane po ostatniej wizycie (najświeższe pierwsze),
     // fallback na datę zapisu. To zasila widget "Wróć do nauki".
     const inProgress = allEnrollments
