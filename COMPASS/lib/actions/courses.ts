@@ -259,7 +259,7 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
 
         const course = await loadCourseForAuthor(supabase, courseId, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
-        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
+        if (course.status === 'archived' || !['draft', 'rejected'].includes(course.version_status ?? course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         if (!input.title || input.title.trim().length < 2) {
             return { success: false, error: 'Tytuł lekcji jest wymagany' }
@@ -320,7 +320,7 @@ export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): 
 
         const course = await loadCourseForAuthor(supabase, lesson.course_id, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień' }
-        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
+        if (course.status === 'archived' || !['draft', 'rejected'].includes(course.version_status ?? course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         const cleanPatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
         if (patch.title !== undefined) {
@@ -362,7 +362,7 @@ export async function reorderLessons(courseId: string, orderedIds: string[]): Pr
 
         const course = await loadCourseForAuthor(supabase, courseId, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
-        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
+        if (course.status === 'archived' || !['draft', 'rejected'].includes(course.version_status ?? course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         const { error } = await supabase.rpc('academy_reorder_lessons', { p_course_id: courseId, p_lesson_ids: orderedIds })
         assertDatabaseResult(error)
@@ -395,7 +395,7 @@ export async function deleteLesson(lessonId: string): Promise<ActionResult<{ cou
 
         const course = await loadCourseForAuthor(supabase, lesson.course_id, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień' }
-        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
+        if (course.status === 'archived' || !['draft', 'rejected'].includes(course.version_status ?? course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         const { error } = await supabase.from('course_lessons').delete().eq('id', lessonId)
         if (error) throw error
@@ -477,7 +477,7 @@ export async function setQuizQuestions(courseId: string, questions: QuizQuestion
 
         const course = await loadCourseForAuthor(supabase, courseId, user.id)
         if (!course) return { success: false, error: 'Brak uprawnień lub kurs nie istnieje' }
-        if (!['draft', 'rejected'].includes(course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
+        if (course.status === 'archived' || !['draft', 'rejected'].includes(course.version_status ?? course.status)) return { success: false, error: 'Utwórz nową wersję roboczą, aby edytować szkolenie.' }
 
         // Validation
         if (questions.length < QUIZ_MIN_QUESTIONS || questions.length > QUIZ_MAX_QUESTIONS) {

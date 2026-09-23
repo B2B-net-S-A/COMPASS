@@ -47,6 +47,8 @@ export interface Course {
     published_version_id?: string | null
     draft_version_id?: string | null
     version_id?: string
+    /** Status of the selected version; status remains the course lifecycle state. */
+    version_status?: CourseStatus
     submission_id?: string | null
     legacy_review_required?: boolean
     can_edit?: boolean

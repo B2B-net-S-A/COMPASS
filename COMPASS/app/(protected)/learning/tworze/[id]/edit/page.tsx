@@ -39,6 +39,7 @@ export default async function EditCoursePage({ params }: PageProps) {
     const quiz = quizResult.success ? quizResult.data : []
     const staff = await getAcademyStaff(course.id)
     const status = STATUS_LABEL[course.status]
+    const versionStatus = course.version_status ? STATUS_LABEL[course.version_status] : null
 
     return (
         <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
@@ -54,8 +55,9 @@ export default async function EditCoursePage({ params }: PageProps) {
                         </div>
                         <div className="flex items-center gap-2 mt-1">
                             <Badge variant="outline" className={`text-[10px] ${status.color}`}>
-                                {status.label}
+                                Kurs: {status.label}
                             </Badge>
+                            {versionStatus && <Badge variant="outline" className={`text-[10px] ${versionStatus.color}`}>Wersja {course.version_number}: {versionStatus.label}</Badge>}
                             <Badge variant="outline" className="text-[10px]">
                                 {course.category}
                             </Badge>

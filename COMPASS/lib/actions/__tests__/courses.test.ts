@@ -214,3 +214,20 @@ describe('lesson and quiz authoring', () => {
         expect(client.storage.from).not.toHaveBeenCalled()
     })
 })
+
+
+describe('course lifecycle is independent of the selected version', () => {
+    it('preserves archived status for author preview of a draft and blocks lesson mutations', async () => {
+        setup({ tables: { courses: [courseRow({ status: 'archived' })] }, rpcs: { academy_get_syllabus: () => [], academy_quiz_question_count: () => 0 } })
+        const detail = await getCourseDetail(COURSE, { author: true })
+        expect(detail.success && detail.data).toMatchObject({ status: 'archived', version_status: 'draft', version_id: DRAFT })
+        const result = await addLesson(COURSE, { title: 'Nowa lekcja', content_md: 'Treść' })
+        expect(result.success).toBe(false)
+        expect(client._tables.course_lessons).toHaveLength(0)
+    })
+    it('keeps the published course visible as published while its draft remains editable', async () => {
+        const result = await getMyCourses()
+        expect(result.success && result.data[0]).toMatchObject({ status: 'published', version_status: 'draft' })
+        expect((await addLesson(COURSE, { title: 'Nowa lekcja', content_md: 'Treść' })).success).toBe(true)
+    })
+})

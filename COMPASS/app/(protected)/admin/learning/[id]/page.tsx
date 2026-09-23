@@ -5,6 +5,7 @@ import { ShieldCheck, ListChecks, Clock } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CourseLearnerPreview } from '@/components/academy/CourseLearnerPreview'
+import { AcademyReviewHistory } from '@/components/academy/AcademyReviewHistory'
 import { AdminReviewActions } from '@/components/learning/AdminReviewActions'
 import {
     getCourseDetail,
@@ -62,7 +63,7 @@ export default async function AdminCourseReviewPage({ params, searchParams }: Pa
             </div>
 
             {previewLoaded ? <>
-                <AdminReviewActions legacyReview={legacy} canReview={permission.success && permission.data} versionId={course.version_id!} submissionId={course.submission_id} courseId={course.id} title={course.title} />
+                <AdminReviewActions legacyReview={legacy} canReview={course.status !== 'archived' && permission.success && permission.data} versionId={course.version_id!} submissionId={course.submission_id} courseId={course.id} title={course.title} />
                 <CourseLearnerPreview mode="review" course={course} lessons={lessons} quiz={[]} />
             </> : <Card className="border-destructive/30 bg-destructive/5"><CardContent className="space-y-2 p-5" role="alert">
                 <p className="font-semibold">Nie udało się wczytać kompletnego podglądu.</p>
@@ -104,6 +105,7 @@ export default async function AdminCourseReviewPage({ params, searchParams }: Pa
                     ))}
                 </div>
             </div>}
+            <AcademyReviewHistory courseId={course.id} refreshKey={`${course.updated_at}-${course.submission_id ?? ''}`} />
         </div>
     )
 }

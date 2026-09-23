@@ -1,9 +1,10 @@
 import Link from 'next/link'
-import { BarChart3, CalendarCheck2, Settings2, ShieldCheck, UsersRound } from 'lucide-react'
+import { BarChart3, BookOpen, CalendarCheck2, Settings2, ShieldCheck, UsersRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export function AcademyAdminNav({ active }: { active: 'review' | 'trainers' | 'integrations' | 'sessions' | 'reports' | 'certificates' }) {
+export function AcademyAdminNav({ active }: { active: 'review' | 'trainers' | 'integrations' | 'sessions' | 'reports' | 'certificates' | 'courses' }) {
     const links = [
+        { id: 'courses', href: '/admin/learning/szkolenia', label: 'Wszystkie szkolenia', icon: BookOpen },
         { id: 'certificates', href: '/admin/learning/certificates', label: 'Certyfikaty', icon: ShieldCheck },
         { id: 'reports', href: '/admin/learning/analytics', label: 'Raport', icon: BarChart3 },
         { id: 'review', href: '/admin/learning', label: 'Akceptacja szkoleń', icon: ShieldCheck },
