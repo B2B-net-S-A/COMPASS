@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: '22'
       - name: Verify read-only watchdog contracts
-        run: node --test ops/academy/health-watchdog.test.mjs ops/academy/watchdog-schedule-audit.test.mjs
+        run: node --test ops/academy/health-watchdog.test.mjs ops/academy/watchdog-schedule-audit.test.mjs ops/academy/grafana-schedule-check.test.mjs
       - name: Check Academy workers, scanner, queues and host disk
         env:
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
