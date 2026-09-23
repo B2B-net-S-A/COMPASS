@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { submitQuizAttempt } from '@/lib/actions/course-learning'
 import type { QuizQuestionForAttempt, QuizSubmissionResult } from '@/lib/types/learning'
+import { quizAttemptWindowMessage } from '@/lib/academy/quiz-attempt-policy'
 
 interface QuizFormProps {
     courseId: string
@@ -17,11 +18,13 @@ interface QuizFormProps {
     questions: QuizQuestionForAttempt[]
     enrollmentId: string
     passPercent: number
+    attemptLimit?: number | null
+    attemptWindowHours?: number | null
 }
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D']
 
-export function QuizForm({ courseId, courseSlug, questions, enrollmentId, passPercent }: QuizFormProps) {
+export function QuizForm({ courseId, courseSlug, questions, enrollmentId, passPercent, attemptLimit, attemptWindowHours }: QuizFormProps) {
     const router = useRouter()
     const [answers, setAnswers] = useState<Record<string, string>>({}) // questionId → selectedOptionId
     const [error, setError] = useState<string | null>(null)
@@ -95,7 +98,10 @@ export function QuizForm({ courseId, courseSlug, questions, enrollmentId, passPe
             <div className="p-4 rounded-lg bg-warning/10 border border-warning/20 text-sm text-warning">
                 <p className="font-medium mb-1">Quiz końcowy</p>
                 <p className="text-xs">
-                    Próg zaliczenia: <strong>{passPercent}%</strong>. Możesz ponowić próbę.
+                    Próg zaliczenia: <strong>{passPercent}%</strong>.{' '}
+                    {attemptLimit && attemptWindowHours
+                        ? `Możesz wykonać maksymalnie ${attemptLimit} próby w ruchomych ${attemptWindowHours} godzinach.`
+                        : 'Możesz ponowić próbę.'}
                     Ukończenie szkolenia wymaga również spełnienia pozostałych warunków programu.
                 </p>
             </div>
@@ -106,7 +112,7 @@ export function QuizForm({ courseId, courseSlug, questions, enrollmentId, passPe
                     <div className="flex-1">
                         <p>{error}</p>
                         {/* Retry pokazuje się tylko gdy submit się wykonał (allAnswered) ale failował */}
-                        {allAnswered && !isPending && (
+                        {allAnswered && !isPending && error !== quizAttemptWindowMessage && (
                             <Button
                                 onClick={handleRetry}
                                 size="sm"

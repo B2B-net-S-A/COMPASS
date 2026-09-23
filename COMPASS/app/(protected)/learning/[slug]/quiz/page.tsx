@@ -50,7 +50,7 @@ export default async function QuizPage({ params, searchParams }: PageProps) {
             )}
 
             {quizResult.success && quizResult.data.length > 0 && (
-                <QuizForm key={course.enrollment_id} courseId={course.id} courseSlug={course.slug} enrollmentId={course.enrollment_id} passPercent={course.completion_rules?.quiz_pass_percent ?? 70} questions={quizResult.data} />
+                <QuizForm key={course.enrollment_id} courseId={course.id} courseSlug={course.slug} enrollmentId={course.enrollment_id} passPercent={course.completion_rules?.quiz_pass_percent ?? 70} attemptLimit={course.quiz_attempt_limit} attemptWindowHours={course.quiz_attempt_window_hours} questions={quizResult.data} />
             )}
         </div>
     )

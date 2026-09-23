@@ -56,6 +56,9 @@ export interface Course {
     can_manage_assigned_runs?: boolean
     version_number?: number
     completion_rules?: CourseCompletionRules
+    /** Null for versions published before the attempt policy was introduced. */
+    quiz_attempt_limit?: number | null
+    quiz_attempt_window_hours?: number | null
 }
 
 export interface CourseListItem extends Course {
