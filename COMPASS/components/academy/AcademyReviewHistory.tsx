@@ -41,7 +41,7 @@ export function AcademyReviewHistory({ courseId, refreshKey }: { courseId: strin
                 if (request === generation.current) setError('Nie udało się wczytać historii decyzji. Spróbuj ponownie.')
             } finally { if (request === generation.current) setLoading(false) }
         })()
-        return () => { generation.current++ }
+        return () => { generation.current = request + 1 }
     }, [courseId, refreshKey, refresh])
 
     function loadMore() {
