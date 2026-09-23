@@ -98,8 +98,9 @@ export function subjectTeamsReportRows(report: Row, participants: AttendancePart
         if (match.status !== 'matched') { needsReview = true; continue }
         if (match.profileId !== subjectId) continue
         const own = participants.find(participant => participant.profileId === subjectId)
-        if (match.method !== 'identity' || !own || (typeof record.emailAddress === 'string' && record.emailAddress.trim() !== ''
-            && !own.verifiedEmails.some(email => email.trim().toLowerCase() === record.emailAddress!.trim().toLowerCase()))) {
+        const graphEmail = record.emailAddress
+        if (match.method !== 'identity' || !own || (typeof graphEmail === 'string' && graphEmail.trim() !== ''
+            && !own.verifiedEmails.some(email => email.trim().toLowerCase() === graphEmail.trim().toLowerCase()))) {
             needsReview = true
             continue
         }
