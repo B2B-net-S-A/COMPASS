@@ -44,6 +44,7 @@ function safeFailure(error) {
   const command = /Command was:\s*(?:--[^\n]*\n\s*)*(CREATE|ALTER|COMMENT ON|SECURITY LABEL FOR)\s+(EXTENSION|SCHEMA|EVENT TRIGGER|FUNCTION|TABLE|POLICY|TRIGGER|TYPE|VIEW|MATERIALIZED VIEW|INDEX)/i.exec(stderr);
   const classes = [
     ['archive_unreadable', /could not open input file|permission denied.*\.dump/i],
+    ['authentication_failed', /password authentication failed|peer authentication failed|not permitted to log in/i],
     ['missing_role', /role .{0,120} does not exist/i],
     ['missing_extension', /extension .{0,120} is not available/i],
     ['missing_schema', /schema .{0,120} does not exist/i],
@@ -154,12 +155,25 @@ try {
   stage = 'restore_archive_copy';
   docker('cp', join(work, 'postgres.dump'), `${container}:${restoredInContainer}`);
   stage = 'restore_role_capabilities';
-  restoreRoleCapabilities = (await client.query(`select rolname, rolsuper, rolcreatedb,
+  restoreRoleCapabilities = (await client.query(`select rolname, rolsuper, rolcreatedb, rolcanlogin,
       pg_has_role('postgres', oid, 'MEMBER') as postgres_member
     from pg_roles where rolname in ('postgres', 'supabase_admin') order by rolname`)).rows;
+  assert(restoreRoleCapabilities.some(role => role.rolname === 'supabase_admin' && role.rolsuper && role.rolcanlogin),
+    'isolated_restore_admin_unavailable');
+  stage = 'restore_admin_connection_probe';
+  const restoreIdentity = docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
+    '-X', '-A', '-t', '-c', 'select current_user').toString('utf8').trim();
+  assert.equal(restoreIdentity, 'supabase_admin', 'isolated_restore_admin_connection_required');
   stage = 'restore_archive_apply';
-  docker('exec', container, 'pg_restore', '-U', 'postgres', '-d', targetName,
+  // The local Supabase postgres role is not a superuser. Its platform dump
+  // contains privileged native functions, so use the local-only admin socket
+  // in this disposable target; no admin credential leaves the container.
+  docker('exec', container, 'pg_restore', '-U', 'supabase_admin', '-d', targetName,
     '--no-owner', '--no-acl', '--exit-on-error', restoredInContainer);
+  stage = 'restore_read_grants';
+  docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
+    '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',
+    'GRANT USAGE ON SCHEMA public, academy_private, storage TO postgres; GRANT SELECT ON ALL TABLES IN SCHEMA public, academy_private, storage TO postgres');
   stage = 'restore_database_connect';
   await targetClient.query('SELECT 1');
   stage = 'restore_metadata_check';
@@ -202,7 +216,8 @@ try {
   // The ephemeral fixture can contain auth credentials. Report only bounded stage
   // and error class/fingerprint, never raw SQL, dumps, object paths, keys or response bodies.
   process.stderr.write(`${JSON.stringify({ check: 'academy_hosted_database_and_storage_restore', outcome: 'failed',
-    stage, ...safeFailure(error), ...(stage === 'restore_archive_apply' ? { restoreRoleCapabilities } : {}) })}\n`);
+    stage, ...safeFailure(error), ...(['restore_admin_connection_probe', 'restore_archive_apply', 'restore_read_grants']
+      .includes(stage) ? { restoreRoleCapabilities } : {}) })}\n`);
   process.exitCode = 1;
 } finally {
   if (targetClient) await targetClient.end().catch(() => {});
