@@ -8,25 +8,54 @@ export async function getAcademyAccess() {
     return academyAction('access', async () => (await requireAcademyContext()).access)
 }
 
+const trainerPageSchema = z.object({
+    search: z.string().max(100).default(''),
+    page: z.number().int().min(1).max(100_000).default(1),
+    pageSize: z.number().int().min(1).max(100).default(25),
+})
+
+async function loadAcademyTrainerPage(input: z.input<typeof trainerPageSchema>) {
+    const { search, page, pageSize } = trainerPageSchema.parse(input)
+    const { client } = await requireAcademyContext({ admin: true })
+    let query = client.from('profiles').select('id, full_name, email, role', { count: 'exact' })
+        .in('role', ['consultant', 'admin']).eq('is_external', false)
+        .or('employment_status.is.null,employment_status.neq.exited')
+    const term = search.trim().replace(/[,%_()]/g, '')
+    if (term) query = query.or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
+    const { data: people, error, count } = await query.order('full_name').order('email').order('id')
+        .range((page - 1) * pageSize, page * pageSize - 1)
+    assertDatabaseResult(error)
+    if (count === null || !Number.isSafeInteger(count) || count < 0) throw new Error('Nie udało się ustalić liczby kont Akademii.')
+    const expectedRows = Math.min(pageSize, Math.max(0, count - (page - 1) * pageSize))
+    if ((people ?? []).length !== expectedRows) throw new Error('Lista kont Akademii jest niepełna.')
+
+    // PostgREST caps unpaged reads. Only fetch grants for visible consultants so
+    // a large global grant table cannot silently turn a trainer into a learner.
+    const consultantIds = (people ?? []).filter(person => person.role === 'consultant').map(person => person.id as string)
+    const { data: grants, error: grantsError, count: grantCount } = consultantIds.length
+        ? await client.from('academy_user_capabilities').select('user_id,can_train,revoked_at,granted_at', { count: 'exact' }).in('user_id', consultantIds)
+        : { data: [], error: null, count: 0 }
+    assertDatabaseResult(grantsError)
+    if (grantCount === null || !Number.isSafeInteger(grantCount) || grantCount !== (grants ?? []).length) {
+        throw new Error('Lista uprawnień trenerów jest niepełna.')
+    }
+    const byUserId = new Map((grants ?? []).map(grant => [grant.user_id, grant]))
+    return {
+        page, pageSize, total: count,
+        items: (people ?? []).map((person: { id: string; full_name: string | null; email: string; role: string }) => {
+            const grant = byUserId.get(person.id)
+            return { ...person, canTeach: person.role === 'admin' || (grant?.can_train === true && !grant.revoked_at), grantedAt: (grant?.granted_at as string | null | undefined) ?? null }
+        }),
+    }
+}
+
+/** Kept for the pilot-account search, which intentionally shows its first 100 matches. */
 export async function listAcademyTrainers(search = '') {
-    return academyAction('trainers.list', async () => {
-        const { client } = await requireAcademyContext({ admin: true })
-        let query = client.from('profiles').select('id, full_name, email, role')
-            .in('role', ['consultant', 'admin']).eq('is_external', false)
-            .or('employment_status.is.null,employment_status.neq.exited')
-            .order('full_name').limit(100)
-        const term = search.trim().slice(0, 100).replace(/[,%_()]/g, '')
-        if (term) query = query.or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
-        const { data: people, error } = await query
-        assertDatabaseResult(error)
-        const { data: grants, error: grantsError } = await client.from('academy_user_capabilities')
-            .select('user_id,can_train,revoked_at,granted_at')
-        assertDatabaseResult(grantsError)
-        return (people ?? []).map((person: { id: string; full_name: string | null; email: string; role: string }) => {
-            const grant = grants?.find((item) => item.user_id === person.id)
-            return { ...person, canTeach: person.role === 'admin' || (grant?.can_train === true && !grant.revoked_at), grantedAt: grant?.granted_at as string | null }
-        })
-    })
+    return academyAction('trainers.list', async () => (await loadAcademyTrainerPage({ search, pageSize: 100 })).items)
+}
+
+export async function listAcademyTrainerPage(input: { search?: string; page?: number } = {}) {
+    return academyAction('trainers.page', async () => loadAcademyTrainerPage(input))
 }
 
 export async function setAcademyTrainer(userId: string, enabled: boolean) {
