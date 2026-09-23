@@ -31,13 +31,28 @@ docker pull "$clam_image"
 docker volume create "$clam_volume" >/dev/null
 # The full image seeds the new volume with bundled signatures; FreshClam applies updates.
 # FreshClam failure must fail this gate, never accept old or unavailable definitions silently.
-timeout 600 docker run --rm --name "$clam_updater" --memory=3g --cpus=2 \
+docker run --detach --name "$clam_updater" --memory=3g --memory-swap=3g --cpus=2 --pids-limit=64 \
   --mount "type=volume,source=$clam_volume,target=/var/lib/clamav" \
   --mount "type=bind,source=$clam_work/freshclam.conf,target=/etc/clamav/freshclam.conf,readonly" \
-  --entrypoint freshclam "$clam_image" --foreground --stdout --config-file=/etc/clamav/freshclam.conf
+  --entrypoint /bin/sh "$clam_image" -c \
+  'freshclam --foreground --stdout --config-file=/etc/clamav/freshclam.conf; result=$?; printf "%s\n" "$result" >/tmp/academy-update-status; while [ ! -e /tmp/academy-gate-release ]; do sleep 1; done; exit "$result"' >/dev/null
+# Hold the updater cgroup after freshclam exits so memory.peak survives long
+# enough to measure its complete run. The shell does no update or scan work.
+updater_done=0
+for ((attempt=0; attempt<600; attempt++)); do
+  if docker exec "$clam_updater" test -f /tmp/academy-update-status 2>/dev/null; then updater_done=1; break; fi
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$clam_updater")" != true ]]; then break; fi
+  sleep 1
+done
+if [[ "$updater_done" != 1 ]]; then echo 'FreshClam did not finish within 600 seconds.' >&2; exit 1; fi
+node "$repo_dir/ops/academy/clamav/cgroup-metrics.mjs" "$clam_updater" update
+docker exec "$clam_updater" touch /tmp/academy-gate-release
+updater_exit="$(docker wait "$clam_updater")"
+if [[ "$updater_exit" != 0 ]]; then echo 'FreshClam database update failed.' >&2; exit 1; fi
+docker rm "$clam_updater" >/dev/null
 
 start_daemon() {
-  docker run --detach --name "$clam_container" --memory=4g --cpus=2 --pids-limit=128 \
+  docker run --detach --name "$clam_container" --memory=4g --memory-swap=4g --cpus=2 --pids-limit=128 \
     --security-opt=no-new-privileges --cap-drop=ALL --read-only --user=clamav \
     --tmpfs /tmp:rw,noexec,nosuid,size=16m \
     --mount "type=volume,source=$clam_volume,target=/var/lib/clamav,readonly" \
@@ -49,6 +64,7 @@ start_daemon() {
 }
 start_daemon
 (cd "$repo_dir/COMPASS" && npx --no-install tsx scripts/test-academy-clamav.ts baseline)
+node "$repo_dir/ops/academy/clamav/cgroup-metrics.mjs" "$clam_container" baseline
 docker logs "$clam_container"
 docker rm -f "$clam_container" >/dev/null
 
@@ -56,4 +72,5 @@ docker rm -f "$clam_container" >/dev/null
 sed -i -e 's/^MaxFileSize .*/MaxFileSize 1024/' -e 's/^StreamMaxLength .*/StreamMaxLength 4096/' "$clam_work/clamd.conf"
 start_daemon
 (cd "$repo_dir/COMPASS" && npx --no-install tsx scripts/test-academy-clamav.ts limits)
+node "$repo_dir/ops/academy/clamav/cgroup-metrics.mjs" "$clam_container" limits
 printf '%s\n' 'ClamAV: fresh database; clean/EICAR/encrypted/1 GiB/scan-limit/stream-limit checks passed.' >> "$GITHUB_STEP_SUMMARY"
