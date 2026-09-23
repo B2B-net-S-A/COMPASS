@@ -42,6 +42,36 @@ describe('Academy durable worker boundary',()=>{
         expect(result).toMatchObject({managedTeamsEnabled:false,retentionConfigured:true,rawReportsPurged:2})
         expect(rpc).toHaveBeenCalledWith('academy_purge_attendance_reports',{p_retention_days:90})
     })
+    it('still claims Teams jobs and reports failure when reminders fail',async()=>{
+        const rpc=vi.fn(async(name:string)=>{
+            if(name==='academy_dispatch_reminders') return {data:null,error:{code:'PGRST000',message:'private diagnostic'}}
+            if(name==='academy_claim_jobs') return {data:[],error:null}
+            return {data:0,error:null}
+        })
+        const result=await runAcademyDatabaseSync({client:{rpc} as unknown as SupabaseClient,env:validEnv})
+        expect(rpc).toHaveBeenCalledWith('academy_claim_jobs',expect.any(Object))
+        expect(result).toMatchObject({managedTeamsEnabled:true,claimed:0,notifications:null,rawReportsPurged:0,failedOperations:['reminders']})
+        expect(JSON.stringify(result)).not.toContain('private diagnostic')
+    })
+    it('keeps reminders and Teams independent of retention failure',async()=>{
+        const rpc=vi.fn(async(name:string)=>{
+            if(name==='academy_purge_attendance_reports') return {data:null,error:{code:'PGRST000',message:'private diagnostic'}}
+            if(name==='academy_claim_jobs') return {data:[],error:null}
+            return {data:2,error:null}
+        })
+        const result=await runAcademyDatabaseSync({client:{rpc} as unknown as SupabaseClient,env:{...validEnv,ACADEMY_ATTENDANCE_RETENTION_DAYS:'90'}})
+        expect(result).toMatchObject({managedTeamsEnabled:true,notifications:2,rawReportsPurged:null,retentionConfigured:true,failedOperations:['retention']})
+        expect(rpc).toHaveBeenCalledWith('academy_claim_jobs',expect.any(Object))
+    })
+    it('reports an integration claim failure after reminders still run',async()=>{
+        const rpc=vi.fn(async(name:string)=>{
+            if(name==='academy_claim_jobs') return {data:null,error:{code:'PGRST000',message:'private diagnostic'}}
+            return {data:3,error:null}
+        })
+        const result=await runAcademyDatabaseSync({client:{rpc} as unknown as SupabaseClient,env:validEnv})
+        expect(result).toMatchObject({managedTeamsEnabled:true,notifications:3,failedOperations:['integration']})
+        expect(JSON.stringify(result)).not.toContain('private diagnostic')
+    })
     it('rejects malformed claims before any Graph operation',async()=>{
         const {client}=mockClient([{...job,revision:-1}])
         await expect(createAcademyIntegrationPorts(client).claim({workerId:'worker',limit:1,leaseSeconds:180})).rejects.toMatchObject({code:'invalid_response'})

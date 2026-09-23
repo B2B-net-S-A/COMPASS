@@ -14,6 +14,8 @@ Panel administratora `/admin/learning/integrations` pokazuje ostatni zakończony
 
 `GET /api/cron/academy-health` wymaga istniejącego sekretu crona. Zwraca 503 dla krytycznego stanu lub błędu odczytu; 200 z jawnym `degraded` dla ostrzeżenia. Nie zmienia kontraktu publicznego `/api/health`. Funkcja agregująca jest dostępna wyłącznie roli technicznej; panel tworzy klienta technicznego dopiero po sprawdzeniu aktywnego administratora Akademii.
 
+`academy-sync` wykonuje przypomnienia, retencję i (po włączeniu) integrację Teams niezależnie. Odpowiedź zawiera `failedOperations` z nazwami nieudanych części oraz `null` zamiast nieznanego licznika; każde niepowodzenie zwraca HTTP 503 i nie zapisuje fałszywie poprawnego heartbeatu. Awaria przypomnień lub retencji nie zatrzymuje pobrania kolejki spotkań i obecności.
+
 Workflow `Academy operations watchdog` jest niezależny od timerów, które obserwuje. Co 10 minut i ręcznie wykonuje stały odczyt przez istniejący SSH z przypiętym kluczem hosta. Sekret HTTP pozostaje wewnątrz kontenera aplikacji. Wynik zawiera wyłącznie status i kontrolowane kody problemów, bez danych osób, ścieżek plików ani treści audytu. Awaria sondy kończy workflow błędem, nie pominięciem. Alarmy są widoczne jako błędny przebieg i adnotacje GitHub Actions; dostarczenie powiadomień GitHub zależy od ustawień odbiorcy. Nie skonfigurowano dodatkowego kanału e-mail/Teams ani personalnej obsady operatora.
 
 Harmonogram GitHub może się opóźnić — nie jest to gwarancja reakcji w 10 minut. Okno ostrzegawcze uwzględnia krótki build/aktualizację; długie przerwanie nadal wymaga kontroli. Monitor nie podejmuje automatycznych restartów, nie omija skanowania i nie zmienia uprawnień.

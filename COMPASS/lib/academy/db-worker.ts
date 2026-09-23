@@ -120,22 +120,39 @@ export async function runAcademyDatabaseSync(input: {
     adapter?: AcademyTeamsAdapter
     env?: NodeJS.ProcessEnv
     workerId?: string
-}): Promise<AcademyBatchResult & { managedTeamsEnabled: boolean; notifications: number; rawReportsPurged: number; retentionConfigured: boolean; reason?: string }> {
-    // External-link sessions need reminders even when Microsoft integration is disabled.
-    const notifications = await rpc<number>(input.client, 'academy_dispatch_reminders', { p_limit: 500 })
+}): Promise<AcademyBatchResult & {
+    managedTeamsEnabled: boolean
+    notifications: number | null
+    rawReportsPurged: number | null
+    retentionConfigured: boolean
+    failedOperations: Array<'reminders' | 'retention' | 'integration'>
+    reason?: string
+}> {
     const retention = academyAttendanceRetentionConfiguration(input.env)
-    const rawReportsPurged = retention.rawAttendanceRetentionDays === null ? 0 : await rpc<number>(input.client, 'academy_purge_attendance_reports', {
-        p_retention_days: retention.rawAttendanceRetentionDays,
-    })
     const retentionConfigured = retention.rawAttendanceRetentionDays !== null
     const config = academyManagedTeamsConfiguration(input.env)
-    if (!config.managedTeamsAvailable) return {
-        managedTeamsEnabled: false, reason: config.reason, notifications, rawReportsPurged, retentionConfigured,
-        claimed: 0, completed: 0, skipped: 0, retry: 0, failed: 0, interrupted: 0,
+    const emptyBatch: AcademyBatchResult = { claimed: 0, completed: 0, skipped: 0, retry: 0, failed: 0, interrupted: 0 }
+    // Each operation has its own outcome. A failed reminder or retention RPC must not
+    // prevent a meeting/attendance job from being claimed, and vice versa.
+    const [reminders, purge, integration] = await Promise.allSettled([
+        rpc<number>(input.client, 'academy_dispatch_reminders', { p_limit: 500 }),
+        retention.rawAttendanceRetentionDays === null ? Promise.resolve(0) : rpc<number>(input.client, 'academy_purge_attendance_reports', {
+            p_retention_days: retention.rawAttendanceRetentionDays,
+        }),
+        config.managedTeamsAvailable ? runAcademyIntegrationBatch({
+            ports: createAcademyIntegrationPorts(input.client), adapter: input.adapter,
+            workerId: input.workerId ?? `academy-${randomUUID()}`, limit: 5, timeBudgetMs: 45_000,
+        }) : Promise.resolve(emptyBatch),
+    ])
+    const failedOperations: Array<'reminders' | 'retention' | 'integration'> = []
+    if (reminders.status === 'rejected') failedOperations.push('reminders')
+    if (purge.status === 'rejected') failedOperations.push('retention')
+    if (integration.status === 'rejected') failedOperations.push('integration')
+    return {
+        ...(integration.status === 'fulfilled' ? integration.value : emptyBatch),
+        managedTeamsEnabled: config.managedTeamsAvailable, reason: config.reason,
+        notifications: reminders.status === 'fulfilled' ? reminders.value : null,
+        rawReportsPurged: purge.status === 'fulfilled' ? purge.value : null,
+        retentionConfigured, failedOperations,
     }
-    const result = await runAcademyIntegrationBatch({
-        ports: createAcademyIntegrationPorts(input.client), adapter: input.adapter,
-        workerId: input.workerId ?? `academy-${randomUUID()}`, limit: 5, timeBudgetMs: 45_000,
-    })
-    return { ...result, managedTeamsEnabled: true, notifications, rawReportsPurged, retentionConfigured }
 }
