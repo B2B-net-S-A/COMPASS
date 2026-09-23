@@ -25,6 +25,7 @@ import {
     type GdprSubjectType,
     type RetainedRecord,
 } from '@/lib/gdpr/subject-data'
+import { ACADEMY_EXPORT_FOLLOW_UPS, SUBJECT_ACADEMY_AUDIT_ACTIONS, parseAttendanceRosterRows, subjectAcademyAuditRow, subjectCompletionRow, subjectTeamsReportRows } from '@/lib/gdpr/academy-export'
 
 /**
  * Górny limit wierszy na jedno źródło. `audit_logs` osoby aktywnej od roku to
@@ -33,6 +34,7 @@ import {
  * nie realizuje art. 15.
  */
 const MAX_ROWS_PER_SOURCE = 5000
+const PAGE_SIZE = 500
 
 // Supabase-js typuje `.from()` literałem tabeli, więc zapytanie budowane w pętli
 // po liście źródeł nie przechodzi kontroli typów (unia ~45 tabel × unia kolumn).
@@ -45,7 +47,11 @@ interface PgError {
 }
 interface FilterLike extends PromiseLike<{ data: RowBag[] | null; error: PgError | null }> {
     eq(column: string, value: string): FilterLike
+    in(column: string, values: readonly string[]): FilterLike
+    contains(column: string, value: RowBag): FilterLike
     limit(count: number): FilterLike
+    order(column: string): FilterLike
+    range(from: number, to: number): FilterLike
 }
 interface WriteLike extends PromiseLike<{ error: PgError | null }> {
     eq(column: string, value: string): WriteLike
@@ -57,10 +63,48 @@ interface GenericTable {
 }
 interface GenericDb {
     from(table: string): GenericTable
+    rpc(name: string, args: RowBag): Promise<{ data: unknown; error: PgError | null }>
 }
 
 function genericDb(): GenericDb {
     return createServiceClient() as unknown as GenericDb
+}
+
+function primaryKeyColumns(table: string): string[] {
+    // Confirmed against the deployed public schema; every other source has id PK.
+    switch (table) {
+        case 'academy_notification_receipts': return ['dedupe_key']
+        case 'academy_user_capabilities':
+        case 'work_clock_consents': return ['user_id']
+        case 'contractor_success_settings': return ['contractor_id']
+        case 'support_inbox_meta': return ['ticket_id']
+        case 'course_staff': return ['course_id', 'user_id', 'role']
+        case 'course_run_staff': return ['run_id', 'user_id']
+        case 'news_post_reads': return ['post_id', 'user_id']
+        case 'task_assignments': return ['task_id', 'user_id']
+        case 'session_attendance':
+        case 'academy_attendance_reports': return ['session_id', table === 'session_attendance' ? 'enrollment_id' : 'report_id']
+        default: return ['id']
+    }
+}
+
+async function readBoundedRows(table: string, query: () => FilterLike): Promise<{ rows: RowBag[]; truncated: boolean; error?: string }> {
+    const rows: RowBag[] = []
+    // Explicit pages avoid PostgREST's server max-rows silently shortening a 5001-row request.
+    while (rows.length <= MAX_ROWS_PER_SOURCE) {
+        const requested = Math.min(PAGE_SIZE, MAX_ROWS_PER_SOURCE + 1 - rows.length)
+        const ordered = primaryKeyColumns(table).reduce((builder, column) => builder.order(column), query())
+        const { data, error } = await ordered.range(rows.length, rows.length + requested - 1)
+        if (error) return { rows: [], truncated: false, error: error.message }
+        const page = data ?? []
+        rows.push(...page)
+        if (page.length < requested) break
+    }
+    return { rows: rows.slice(0, MAX_ROWS_PER_SOURCE), truncated: rows.length > MAX_ROWS_PER_SOURCE }
+}
+
+function exportSection(table: string, label: string, result: { rows: RowBag[]; truncated: boolean }): GdprExportSection {
+    return { table, label, rowCount: result.rows.length, truncated: result.truncated, rows: result.rows }
 }
 
 // ─── art. 15 — eksport ──────────────────────────────────────────────────────
@@ -130,26 +174,103 @@ export async function exportPersonalData(input: {
         const unavailable: { table: string; reason: string }[] = []
 
         for (const source of sourcesFor(input.subjectType)) {
-            const { data, error } = await db
-                .from(source.table)
-                .select('*')
-                .eq(source.column, input.subjectId)
-                .limit(MAX_ROWS_PER_SOURCE + 1)
-
-            if (error) {
-                unavailable.push({ table: source.table, reason: error.message })
+            const result = await readBoundedRows(source.table, () => db.from(source.table)
+                .select(source.select ?? '*').eq(source.column, input.subjectId))
+            if (result.error) {
+                unavailable.push({ table: source.table, reason: result.error })
                 continue
             }
+            sections.push(exportSection(source.table, source.label, source.table === 'course_completions' ? {
+                ...result,
+                rows: result.rows.flatMap(row => {
+                    const projected = subjectCompletionRow(row, input.subjectId)
+                    return projected ? [projected] : []
+                }),
+            } : result))
+        }
 
-            const rows = data ?? []
-            const truncated = rows.length > MAX_ROWS_PER_SOURCE
-            sections.push({
-                table: source.table,
-                label: source.label,
-                rowCount: truncated ? MAX_ROWS_PER_SOURCE : rows.length,
-                truncated,
-                rows: truncated ? rows.slice(0, MAX_ROWS_PER_SOURCE) : rows,
-            })
+        if (input.subjectType === 'employee') {
+            // session_attendance has no user_id; its enrollment FK identifies the learner.
+            const attendance = await readBoundedRows('session_attendance', () => db.from('session_attendance')
+                .select('session_id,enrollment_id,status,attended_seconds,source,note,report_ids,updated_at,course_enrollments!inner(user_id)')
+                .eq('course_enrollments.user_id', input.subjectId))
+            if (attendance.error) unavailable.push({ table: 'session_attendance', reason: attendance.error })
+            else {
+                const hasManualNotes = attendance.rows.some(row => typeof row.note === 'string' && row.note.trim() !== '')
+                sections.push(exportSection('session_attendance', 'Obecność na spotkaniach szkoleniowych', {
+                    ...attendance, rows: attendance.rows.map(({ course_enrollments: _enrollment, note: _note, ...row }) => row),
+                }))
+                if (hasManualNotes) unavailable.push({ table: 'session_attendance', reason: 'Notatki ręcznej obecności mogą zawierać dane innych osób i wymagają przeglądu przed udostępnieniem.' })
+            }
+
+            const audit = await readBoundedRows('academy_audit_events', () => db.from('academy_audit_events')
+                .select('id,action,course_id,details,created_at')
+                .contains('details', { user_id: input.subjectId })
+                .in('action', SUBJECT_ACADEMY_AUDIT_ACTIONS))
+            if (audit.error) unavailable.push({ table: 'academy_audit_events', reason: audit.error })
+            else sections.push(exportSection('academy_audit_events', 'Zdarzenia Akademii dotyczące osoby', {
+                ...audit, rows: audit.rows.flatMap(row => {
+                    const projected = subjectAcademyAuditRow(row, input.subjectId)
+                    return projected ? [projected] : []
+                }),
+            }))
+
+            const registrations = sections.find(section => section.table === 'course_run_registrations')
+            const trainerSources = ['academy_user_capabilities', 'course_staff', 'course_run_staff', 'academy_organizers']
+            const trainerScopeUnknown = trainerSources.some(table => !sections.some(section => section.table === table))
+            const trainerHistory = trainerSources.some(table => sections.some(section => section.table === table && section.rows.length > 0))
+            const authored = await db.from('courses').select('id').eq('author_id', input.subjectId).limit(1)
+            const trainerScopeIncomplete = trainerScopeUnknown || !!authored.error || trainerHistory || !!authored.data?.length
+            const runIds = registrations?.rows.map(row => row.run_id).filter((id): id is string => typeof id === 'string') ?? []
+            const sessionIds = new Set(attendance.rows.map(row => row.session_id).filter((id): id is string => typeof id === 'string'))
+            let sessionsFailed = false
+            for (let offset = 0; offset < runIds.length && !sessionsFailed; offset += 50) {
+                const runs = [...new Set(runIds.slice(offset, offset + 50))]
+                const sessions = await readBoundedRows('course_sessions', () => db.from('course_sessions')
+                    .select('id,run_id').in('run_id', runs))
+                if (sessions.error || sessions.truncated) { sessionsFailed = true; break }
+                for (const session of sessions.rows) if (typeof session.id === 'string') sessionIds.add(session.id)
+            }
+            if (trainerScopeIncomplete || attendance.error || attendance.truncated || !registrations || registrations.truncated
+                || sessionsFailed || sessionIds.size > MAX_ROWS_PER_SOURCE) {
+                unavailable.push({ table: 'academy_attendance_reports', reason: 'Nie można bezpiecznie ustalić pełnego zakresu raportów obecności osoby, w tym edycji prowadzonych jako trener.' })
+            } else if (sessionIds.size === 0) {
+                sections.push(exportSection('academy_attendance_reports', 'Własne zapisy z raportów Teams', { rows: [], truncated: false }))
+            } else {
+                const reportRows: RowBag[] = []
+                let reportsTruncated = false
+                let reportError: string | undefined
+                let needsReview = false
+                // Keep IN filters and responses bounded, even for long-lived learners.
+                const ownSessionIds = [...sessionIds]
+                for (let offset = 0; offset < ownSessionIds.length && !reportsTruncated && !reportError; offset += 50) {
+                    const ids = ownSessionIds.slice(offset, offset + 50)
+                    const rosterResponse = await db.rpc('academy_gdpr_attendance_roster', { p_session_ids: ids })
+                    if (rosterResponse.error) { reportError = rosterResponse.error.message; break }
+                    const rosters = parseAttendanceRosterRows(rosterResponse.data, ids)
+                    if (!rosters) { reportError = 'Niepełna lub niepoprawna lista potwierdzonych uczestników; raporty wymagają ręcznego przeglądu.'; break }
+                    const reports = await readBoundedRows('academy_attendance_reports', () => db.from('academy_attendance_reports')
+                        .select('session_id,report_id,evidence,imported_at').in('session_id', ids))
+                    if (reports.error) { reportError = reports.error; break }
+                    reportsTruncated = reports.truncated
+                    for (const report of reports.rows) {
+                        const participants = rosters.get(String(report.session_id))
+                        if (!participants) { reportError = 'Raport spoza potwierdzonej listy sesji.'; break }
+                        needsReview ||= !participants.some(participant => participant.profileId === input.subjectId)
+                        const projected = subjectTeamsReportRows(report, participants, input.subjectId)
+                        reportRows.push(...projected.rows)
+                        needsReview ||= projected.needsReview
+                        if (reportRows.length > MAX_ROWS_PER_SOURCE) { reportsTruncated = true; break }
+                    }
+                }
+                if (reportError) unavailable.push({ table: 'academy_attendance_reports', reason: reportError })
+                else {
+                    sections.push(exportSection('academy_attendance_reports', 'Własne zapisy z raportów Teams', {
+                        rows: reportRows.slice(0, MAX_ROWS_PER_SOURCE), truncated: reportsTruncated,
+                    }))
+                    if (needsReview) unavailable.push({ table: 'academy_attendance_reports', reason: 'Część surowych wpisów Teams jest niejednoznaczna lub niepoprawna; pominięte wpisy wymagają ręcznego przeglądu.' })
+                }
+            }
         }
 
         // Sam eksport jest czynnością na danych osobowych — musi zostawić ślad,
@@ -169,7 +290,10 @@ export async function exportPersonalData(input: {
             generatedAt: new Date().toISOString(),
             sections,
             unavailable,
-            manualFollowUps: [...manualFollowUpsFor(input.subjectType)],
+            manualFollowUps: [
+                ...manualFollowUpsFor(input.subjectType),
+                ...(input.subjectType === 'employee' ? ACADEMY_EXPORT_FOLLOW_UPS : []),
+            ],
         }
     })
 }
