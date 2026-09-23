@@ -7,24 +7,39 @@ import { withCourseVersion, type CourseVersion } from '@/lib/academy/course-data
 import type { Course, CourseListItem, ActionResult } from '@/lib/types/learning'
 import type { AcademyAdminCoursePage, AcademyAdminCourseStatus } from '@/lib/types/academy-admin'
 
-export async function getReviewQueue(): Promise<ActionResult<CourseListItem[]>> {
+const REVIEW_QUEUE_PAGE_SIZE = 50
+
+type ReviewQueuePage = { items: CourseListItem[]; total: number; page: number; pageSize: number }
+
+export async function getReviewQueue(page = 1): Promise<ActionResult<ReviewQueuePage>> {
     return academyAction('review.queue', async () => {
         const { client } = await requireAcademyContext({ admin: true })
-        const { data: versions, error } = await client.from('course_versions')
-            .select('*,courses!inner(id,status)').eq('status', 'pending_review').neq('courses.status', 'archived').order('submitted_at')
+        if (!Number.isSafeInteger(page) || page < 1 || page > Math.floor(Number.MAX_SAFE_INTEGER / REVIEW_QUEUE_PAGE_SIZE)) {
+            throw new Error('Nieprawidłowy numer strony kolejki.')
+        }
+        const offset = (page - 1) * REVIEW_QUEUE_PAGE_SIZE
+        const { data: versions, error, count } = await client.from('course_versions')
+            .select('*,courses!inner(id,status)', { count: 'exact' })
+            .eq('status', 'pending_review').neq('courses.status', 'archived')
+            .order('submitted_at').order('id')
+            .range(offset, offset + REVIEW_QUEUE_PAGE_SIZE - 1)
         assertDatabaseResult(error)
-        if (!versions?.length) return []
+        if (count == null) throw new Error('Nie udało się ustalić liczby zgłoszeń.')
+        const total = count
+        const emptyPage = { items: [], total, page, pageSize: REVIEW_QUEUE_PAGE_SIZE }
+        if (!versions?.length) return emptyPage
         const { data: courses, error: coursesError } = await client.from('courses').select('*').in('id', versions.map(v => v.course_id)).neq('status', 'archived')
         assertDatabaseResult(coursesError)
-        if (!courses?.length) return []
+        if (!courses?.length) return emptyPage
         const { data: authors, error: authorsError } = await client.from('profiles').select('id,full_name,avatar_url').in('id', [...new Set((courses ?? []).map(c => c.author_id))])
         assertDatabaseResult(authorsError)
-        return (versions as CourseVersion[]).flatMap(version => {
+        const items = (versions as CourseVersion[]).flatMap(version => {
             const course = courses?.find(c => c.id === version.course_id) as Course | undefined
             if (!course) return []
             const author = authors?.find(a => a.id === course.author_id)
             return [{ ...withCourseVersion(course, version), author_name: author?.full_name ?? null, author_avatar_url: author?.avatar_url ?? null }]
         })
+        return { items, total, page, pageSize: REVIEW_QUEUE_PAGE_SIZE }
     })
 }
 
