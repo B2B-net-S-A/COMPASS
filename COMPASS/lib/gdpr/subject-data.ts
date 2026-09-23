@@ -25,7 +25,13 @@
 
 import type { Database } from '@/lib/supabase/database.types'
 
-export type TableName = keyof Database['public']['Tables']
+// The generated Database type predates the additive Academy migrations. Keep
+// those names explicit until the next full type regeneration.
+type AcademyTableName = 'course_completions' | 'course_run_registrations' | 'course_materials'
+    | 'academy_user_capabilities' | 'course_staff' | 'course_run_staff'
+    | 'academy_organizers' | 'academy_m365_identities' | 'academy_notification_receipts'
+    | 'session_attendance'
+export type TableName = keyof Database['public']['Tables'] | AcademyTableName
 
 /** Osoba z kontem w aplikacji (`profiles`) albo kontraktor u klienta (`contractors`). */
 export type GdprSubjectType = 'employee' | 'contractor'
@@ -37,6 +43,8 @@ export interface SubjectSource {
     column: string
     /** Nagłówek sekcji w pliku wręczanym osobie — po polsku. */
     label: string
+    /** Restrict columns when the row also names an administrator or another actor. */
+    select?: string
 }
 
 /**
@@ -73,6 +81,15 @@ export const EMPLOYEE_SOURCES: readonly SubjectSource[] = [
     { table: 'lifecycle_notes', column: 'user_id', label: 'Notatki HR' },
     { table: 'lifecycle_events', column: 'user_id', label: 'Zdarzenia cyklu życia' },
     { table: 'course_enrollments', column: 'user_id', label: 'Zapisy na szkolenia' },
+    { table: 'course_run_registrations', column: 'user_id', label: 'Rejestracje na edycje szkoleń' },
+    { table: 'course_completions', column: 'user_id', label: 'Ukończenia i dane certyfikatów', select: 'id,enrollment_id,user_id,course_id,version_id,completed_at,revoked_at,legacy,certificate_snapshot' },
+    { table: 'academy_user_capabilities', column: 'user_id', label: 'Uprawnienia prowadzącego', select: 'user_id,can_train,granted_at,revoked_at' },
+    { table: 'course_staff', column: 'user_id', label: 'Funkcje przy szkoleniach', select: 'course_id,user_id,role,granted_at,revoked_at' },
+    { table: 'course_run_staff', column: 'user_id', label: 'Funkcje przy edycjach szkoleń', select: 'run_id,user_id,granted_at,revoked_at' },
+    { table: 'academy_organizers', column: 'profile_id', label: 'Konto organizatora Teams', select: 'id,profile_id,tenant_id,object_id,enabled,updated_at' },
+    { table: 'academy_m365_identities', column: 'user_id', label: 'Zweryfikowane tożsamości Microsoft', select: 'id,user_id,tenant_id,object_id,verified_email,verified_at' },
+    { table: 'course_materials', column: 'uploaded_by', label: 'Przesłane materiały Akademii', select: 'id,course_id,version_id,lesson_id,run_id,uploaded_by,filename,storage_path,mime_type,size_bytes,status,review_status,created_at,scanned_at,purged_at' },
+    { table: 'academy_notification_receipts', column: 'user_id', label: 'Potwierdzenia powiadomień Akademii' },
     { table: 'course_quiz_attempts', column: 'user_id', label: 'Podejścia do quizów' },
     { table: 'course_ratings', column: 'user_id', label: 'Oceny szkoleń' },
     { table: 'course_survey_responses', column: 'user_id', label: 'Ankiety po szkoleniach' },
