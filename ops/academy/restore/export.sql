@@ -2,12 +2,16 @@
 -- psql -X -q -t -A -v ON_ERROR_STOP=1 -f ops/academy/restore/export.sql > export.json
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SELECT jsonb_build_object(
-  'format', 'compass-academy-restore-v1',
+  'format', 'compass-academy-restore-v2',
   'schemaTables', (SELECT coalesce(jsonb_agg(n.nspname || '.' || c.relname ORDER BY n.nspname, c.relname), '[]'::jsonb)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relkind = 'r' AND ((n.nspname = 'public' AND
       (c.relname ~ '^academy_' OR c.relname ~ '^course_' OR c.relname = 'courses' OR c.relname ~ '^learning_path' OR c.relname = 'session_attendance'))
       OR n.nspname = 'academy_private')),
+  'storageObjects', (SELECT coalesce(jsonb_agg(jsonb_build_object('bucket', bucket_id, 'path', name)
+      ORDER BY bucket_id, name), '[]'::jsonb)
+    FROM storage.objects
+    WHERE bucket_id = 'academy-materials' OR (bucket_id = 'documents' AND name LIKE 'courses/%')),
   'tables', jsonb_build_object(
     'academy_private.run_contributors', coalesce((select jsonb_agg(to_jsonb(t)) from academy_private.run_contributors t), '[]'::jsonb),
     'academy_private.run_obligations', coalesce((select jsonb_agg(to_jsonb(t)) from academy_private.run_obligations t), '[]'::jsonb),

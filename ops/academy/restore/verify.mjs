@@ -7,7 +7,7 @@ import { lstat, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const FORMAT = 'compass-academy-restore-v1';
+export const FORMAT = 'compass-academy-restore-v2';
 export const TABLES = Object.freeze([
   'academy_private.run_contributors', 'academy_private.run_obligations', 'academy_private.version_contributors',
   'public.academy_attendance_reports', 'public.academy_audit_events', 'public.academy_completion_revocations',
@@ -55,9 +55,25 @@ async function parseJson(path, maxBytes = MAX_EXPORT_BYTES) {
 function validateExport(data) {
   if (!plainObject(data) || data.format !== FORMAT || !plainObject(data.tables) || Object.keys(data.tables).length !== TABLES.length) fail('invalid_export_tables');
   if (!Array.isArray(data.schemaTables) || canonical(data.schemaTables) !== canonical(TABLES)) fail('academy_schema_inventory_changed');
+  if (!Array.isArray(data.storageObjects)) fail('storage_inventory_missing');
   for (const table of TABLES) if (!Array.isArray(data.tables[table])) fail(`missing_or_invalid_table:${table}`);
   for (const name of Object.keys(data.tables)) if (!TABLES.includes(name)) fail('unexpected_table');
   return data;
+}
+function validateStorageInventory(data, objects) {
+  const expected = new Set();
+  for (const entry of data.storageObjects) {
+    if (!plainObject(entry) || canonical(Object.keys(entry).sort()) !== canonical(['bucket', 'path']) ||
+      (entry.bucket !== 'academy-materials' && entry.bucket !== 'documents') || typeof entry.path !== 'string') fail('invalid_storage_inventory');
+    const path = safeName(entry.path);
+    if (entry.bucket === 'documents' && !path.startsWith('courses/')) fail('invalid_storage_inventory');
+    const key = `${entry.bucket}/${path}`;
+    if (expected.has(key)) fail('duplicate_storage_inventory');
+    expected.add(key);
+  }
+  const actual = new Set(objects.map(object => `${object.bucket}/${object.path}`));
+  for (const key of expected) if (!actual.has(key)) fail('storage_inventory_bytes_missing');
+  for (const key of actual) if (!expected.has(key)) fail('storage_bytes_without_metadata');
 }
 function rowSummaries(data) {
   return Object.fromEntries(TABLES.map(table => {
@@ -130,6 +146,7 @@ export async function snapshot(exportPath, objectsRoot) {
   const data = validateExport((await parseJson(exportPath)).value);
   const objects = await listObjects(objectsRoot);
   references(data, objects);
+  validateStorageInventory(data, objects);
   return { tables: rowSummaries(data), objects };
 }
 export async function seal(exportPath, objectsRoot, manifestPath, snapshotId) {
