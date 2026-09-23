@@ -198,10 +198,11 @@ function applyProjection(rows: Row[], columns?: string): Row[] {
 async function execute(state: QueryState, tables: TableData): Promise<{ data: any; error: any }> {
     const rows = tables[state.table] || []
     if (state.operation === 'select') {
-        // The review queue embeds courses!inner and filters by courses.status.
+        // The review queue names the FK because courses and course_versions
+        // have more than one relationship in PostgREST.
         // Apply that relation before range/count, matching PostgREST's server-side filter.
         let sourceRows = rows
-        if (state.table === 'course_versions' && state.columns?.includes('courses!inner(')) {
+        if (state.table === 'course_versions' && state.columns?.includes('courses!course_versions_course_id_fkey!inner(')) {
             const relatedCourses = new Map((tables.courses ?? []).map(course => [course.id, course]))
             sourceRows = rows.flatMap(row => {
                 const course = relatedCourses.get(row.course_id)

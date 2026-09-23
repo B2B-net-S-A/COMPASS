@@ -19,7 +19,7 @@ export async function getReviewQueue(page = 1): Promise<ActionResult<ReviewQueue
         }
         const offset = (page - 1) * REVIEW_QUEUE_PAGE_SIZE
         const { data: versions, error, count } = await client.from('course_versions')
-            .select('*,courses!inner(id,status)', { count: 'exact' })
+            .select('*,courses!course_versions_course_id_fkey!inner(id,status)', { count: 'exact' })
             .eq('status', 'pending_review').neq('courses.status', 'archived')
             .order('submitted_at').order('id')
             .range(offset, offset + REVIEW_QUEUE_PAGE_SIZE - 1)
