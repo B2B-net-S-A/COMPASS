@@ -55,11 +55,19 @@ async function startTargetStorage() {
   assert(fileRoot?.startsWith('/') && fileRoot !== '/', 'isolated_file_storage_path_required');
   const databaseUrl = new URL(env.get('DATABASE_URL'));
   const dbAliases = new Set([dbInfo.Name.replace(/^\//, ''), ...(dbInfo.NetworkSettings.Networks[network].Aliases ?? [])]);
-  assert(dbAliases.has(databaseUrl.hostname) && databaseUrl.pathname === '/postgres', 'source_storage_database_not_local_fixture');
+  assert(['postgres:', 'postgresql:'].includes(databaseUrl.protocol) &&
+    dbAliases.has(databaseUrl.hostname) && databaseUrl.pathname === '/postgres',
+  'source_storage_database_not_local_fixture');
   databaseUrl.pathname = `/${targetName}`;
   env.set('DATABASE_URL', databaseUrl.href);
   for (const key of ['DATABASE_POOL_URL', 'DATABASE_MULTITENANT_URL', 'VECTOR_DATABASE_URL']) {
-    assert(!env.has(key), 'alternate_storage_database_url_forbidden');
+    if (!env.has(key)) continue;
+    const alternateUrl = new URL(env.get(key));
+    assert(['postgres:', 'postgresql:'].includes(alternateUrl.protocol) &&
+      dbAliases.has(alternateUrl.hostname) && alternateUrl.pathname === '/postgres',
+    'alternate_storage_database_url_not_local_fixture');
+    alternateUrl.pathname = `/${targetName}`;
+    env.set(key, alternateUrl.href);
   }
   env.set('DB_INSTALL_ROLES', 'false');
   env.set('DB_ALLOW_MIGRATION_REFRESH', 'false');
@@ -107,7 +115,7 @@ function safeFailure(error) {
   const safeAssertions = new Set(['isolated_restore_database_required', 'isolated_storage_database_network_missing',
     'invalid_storage_container_environment', 'isolated_file_storage_required',
     'isolated_file_storage_path_required', 'source_storage_database_not_local_fixture',
-    'alternate_storage_database_url_forbidden', 'invalid_storage_container_port',
+    'alternate_storage_database_url_not_local_fixture', 'invalid_storage_container_port',
     'isolated_storage_loopback_port_required']);
   const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
   const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
