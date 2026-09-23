@@ -31,7 +31,8 @@ export interface MeetingReference {
 }
 export type IntegrationErrorCode = 'invalid_input' | 'configuration' | 'forbidden' | 'not_found'
     | 'conflict' | 'throttled' | 'unavailable' | 'invalid_response' | 'meeting_not_ready'
-    | 'attendance_pending' | 'unknown'
+    | 'attendance_pending' | 'invitation_address_ambiguous' | 'invitation_address_missing'
+    | 'invitation_address_shared' | 'unknown'
 
 /** Safe, bounded messages only: Graph errors may contain participant data or join URLs. */
 export class AcademyIntegrationError extends Error {

@@ -93,6 +93,18 @@ describe('Academy durable worker boundary',()=>{
         const {client}=mockClient(null,{code:'40001',message:'raw private email and URL'})
         await expect(createAcademyIntegrationPorts(client).isLeaseCurrent(job)).rejects.toMatchObject({code:'unavailable',retryable:true,message:'academy_integration:unavailable'})
     })
+    it('preserves only allowlisted invitation configuration codes without leaking DB details',async()=>{
+        for(const [message,code] of [
+            ['academy_invitation_address_ambiguous','invitation_address_ambiguous'],
+            ['academy_invitation_address_missing','invitation_address_missing'],
+            ['academy_invitation_address_shared','invitation_address_shared'],
+        ]) {
+            const {client}=mockClient(null,{code:'P0001',message})
+            await expect(createAcademyIntegrationPorts(client).loadSession(job)).rejects.toMatchObject({code,retryable:false})
+        }
+        const {client}=mockClient(null,{code:'P0001',message:'private@example.test'})
+        await expect(createAcademyIntegrationPorts(client).loadSession(job)).rejects.toMatchObject({code:'configuration',message:'academy_integration:configuration'})
+    })
     it('passes the exact lease token when atomically acknowledging results',async()=>{
         const {client,rpc}=mockClient(null)
         await createAcademyIntegrationPorts(client).complete(job,{kind:'meeting_cancelled'})

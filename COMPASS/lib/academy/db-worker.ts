@@ -65,6 +65,14 @@ async function rpc<T>(client: SupabaseClient, name: string, args?: Record<string
     const { data, error } = await client.rpc(name, args)
     if (error) {
         // Keep raw DB details out of queue/public errors; codes are sufficient for safe diagnostics.
+        const invitationErrors = {
+            academy_invitation_address_ambiguous: 'invitation_address_ambiguous',
+            academy_invitation_address_missing: 'invitation_address_missing',
+            academy_invitation_address_shared: 'invitation_address_shared',
+        } as const
+        const invitationCode = error.code === 'P0001'
+            ? invitationErrors[error.message as keyof typeof invitationErrors] : undefined
+        if (invitationCode) throw new AcademyIntegrationError(invitationCode, false)
         const retryable = ['40001', '40P01', '55P03', '57014', 'PGRST000', 'PGRST001', 'PGRST002', 'PGRST003'].includes(error.code)
         throw new AcademyIntegrationError(retryable ? 'unavailable' : 'configuration', retryable)
     }

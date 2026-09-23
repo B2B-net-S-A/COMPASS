@@ -114,6 +114,7 @@ export interface AcademyM365IdentityDTO {
     objectId: string
     verifiedEmail: string | null
     verifiedAt: string
+    invitationTarget: boolean
 }
 export interface AcademyIntegrationIssueDTO {
     id: string

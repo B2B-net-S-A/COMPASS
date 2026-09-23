@@ -12,6 +12,11 @@ import { sessionDate, sessionTime } from './session-format'
 
 const JOB_LABEL = { sync_meeting: 'Aktualizacja spotkania', cancel_meeting: 'Odwołanie spotkania', sync_attendance: 'Pobranie obecności' }
 const JOB_STATUS = { pending: 'W kolejce', processing: 'W trakcie', retry: 'Oczekuje na ponowienie', done: 'Zakończono', failed: 'Wymaga interwencji', skipped: 'Pominięto' }
+const INVITATION_ERROR: Record<string, string> = {
+    invitation_address_ambiguous: 'Osoba ma kilka potwierdzonych adresów Teams. Administrator musi wybrać jeden adres zaproszeń w powiązaniach kont.',
+    invitation_address_missing: 'Uczestnik lub prowadzący nie ma potwierdzonego adresu do zaproszeń Teams. Administrator powinien zweryfikować konto.',
+    invitation_address_shared: 'Ten sam adres zaproszeń należy do kilku kont Compass. Administrator musi poprawić powiązania przed ponowieniem.',
+}
 
 export function AcademyIntegrationIssuesQueue({ initialPage }: { initialPage: AcademyIntegrationIssuesPageDTO }) {
     const router = useRouter()
@@ -83,7 +88,7 @@ export function AcademyIntegrationIssuesQueue({ initialPage }: { initialPage: Ac
                     <p className="text-xs text-muted-foreground">Próby: {job.attempts} · aktualizacja {sessionDate(job.updatedAt)} {sessionTime(job.updatedAt)}</p>
                     {(job.status === 'retry' || job.status === 'pending') && <p className="text-xs text-muted-foreground">Następna próba: {sessionDate(job.nextAttemptAt)} {sessionTime(job.nextAttemptAt)} (Europe/Warsaw)</p>}
                 </div>{(job.status === 'failed' || job.status === 'retry') && <Button variant="outline" size="sm" disabled={isRetrying || isLoadingMore || busyJob !== null} onClick={() => retry(job.id)}>{busyJob === job.id ? <Loader2 aria-hidden="true" className="animate-spin" /> : <RefreshCw aria-hidden="true" />}Ponów</Button>}</div>
-                {job.lastError && <p className="break-words rounded-lg bg-destructive/5 p-3 text-sm text-destructive">{job.lastError}</p>}
+                {job.lastError && <p className="break-words rounded-lg bg-destructive/5 p-3 text-sm text-destructive">{INVITATION_ERROR[job.lastError] ?? job.lastError}</p>}
             </div>)}
         </div>
         {nextCursor && <div className="flex justify-center"><Button variant="outline" onClick={loadMore} disabled={isLoadingMore || isRetrying}>{isLoadingMore && <Loader2 aria-hidden="true" className="animate-spin" />}Pokaż starsze operacje</Button></div>}
