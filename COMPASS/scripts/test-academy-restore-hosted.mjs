@@ -135,12 +135,12 @@ try {
   await client.query(`CREATE DATABASE ${targetName} TEMPLATE template0`);
   const targetUrl = new URL(settings.database); targetUrl.pathname = `/${targetName}`;
   targetClient = new pg.Client({ connectionString: targetUrl.href });
-  stage = 'restore_target_public_drop';
+  stage = 'restore_target_public_check';
   await targetClient.connect();
-  // template0 already contains an empty public schema. The fresh archive creates
-  // it itself; --clean would try to DROP schema-qualified objects that do not yet
-  // exist, and --if-exists does not suppress a missing *containing schema*.
-  await targetClient.query('DROP SCHEMA public');
+  // template0 supplies public; pg_dump omits its CREATE SCHEMA entry. Keep it
+  // while restoring into this otherwise empty database.
+  const publicSchema = await targetClient.query("select to_regnamespace('public') is not null as present");
+  assert.equal(publicSchema.rows[0]?.present, true, 'restore_public_schema_missing');
   stage = 'restore_archive_copy';
   docker('cp', join(work, 'postgres.dump'), `${container}:${restoredInContainer}`);
   stage = 'restore_archive_apply';
