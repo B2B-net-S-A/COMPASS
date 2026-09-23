@@ -48,6 +48,59 @@ JOIN public.course_questions q ON q.id = a.question_id
 WHERE tx.source_type = 'course_answer_given' AND tx.points > 0
 ON CONFLICT DO NOTHING;
 
+-- Loyalty balance serialization must coexist with Q&A foreign-key checks
+-- that take KEY SHARE on the same profile. NO KEY UPDATE still serializes
+-- balance updates without deadlocking concurrent author answers.
+CREATE OR REPLACE FUNCTION update_loyalty_status()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path=public,pg_temp
+AS $$
+DECLARE
+    new_total_points INTEGER;
+    new_tier loyalty_tier_t;
+    old_tier loyalty_tier_t;
+BEGIN
+    -- Lock before aggregation so concurrent awards/reversals cannot lose a balance update.
+    SELECT loyalty_tier INTO old_tier FROM profiles WHERE id = NEW.user_id FOR NO KEY UPDATE;
+    SELECT COALESCE(SUM(points), 0)
+    INTO new_total_points
+    FROM loyalty_transactions
+    WHERE user_id = NEW.user_id AND status = 'confirmed';
+
+    new_tier := CASE
+        WHEN new_total_points >= 25000 THEN 'legend'::loyalty_tier_t
+        WHEN new_total_points >= 10000 THEN 'admiral'::loyalty_tier_t
+        WHEN new_total_points >= 5000  THEN 'captain'::loyalty_tier_t
+        WHEN new_total_points >= 2000  THEN 'navigator'::loyalty_tier_t
+        WHEN new_total_points >= 750   THEN 'pathfinder'::loyalty_tier_t
+        WHEN new_total_points >= 250   THEN 'explorer'::loyalty_tier_t
+        ELSE 'scout'::loyalty_tier_t
+    END;
+
+    UPDATE profiles
+    SET loyalty_points = new_total_points,
+        loyalty_tier = new_tier
+    WHERE id = NEW.user_id;
+
+    IF new_tier > old_tier THEN
+        INSERT INTO notifications (user_id, type, title_pl, title_en, body_pl, body_en, priority, created_at)
+        VALUES (
+            NEW.user_id,
+            'loyalty_tier_up',
+            'Awans w B2Bnetwork League!',
+            'Promoted in B2Bnetwork League!',
+            format('Osiągnąłeś poziom %s!', new_tier::TEXT),
+            format('You reached the %s tier!', new_tier::TEXT),
+            'normal',
+            NOW()
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
 -- The ledger is the shared payout boundary for both the old and current Q&A
 -- function bodies. A request already executing the old body after this commit
 -- still passes through this trigger before any points can be recorded.
