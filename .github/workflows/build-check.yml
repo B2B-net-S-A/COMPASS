@@ -78,6 +78,9 @@ jobs:
       - name: Academy learner history pagination
         run: node scripts/test-academy-enrollments-pagination-db.mjs
 
+      - name: Academy learner waitlist and next-session overview
+        run: node scripts/test-academy-my-run-overview-db.mjs
+
       - name: Academy M365 identity pagination
         run: node scripts/test-academy-m365-identities-pagination-db.mjs
 
@@ -135,6 +138,10 @@ jobs:
         env:
           ACADEMY_TEST_DATABASE_URL: postgresql://postgres:isolated-academy-ci@localhost:5432/academy_test
         run: node scripts/test-academy-enrollments-pagination-db.mjs
+      - name: Real PostgreSQL learner waitlist and next-session overview
+        env:
+          ACADEMY_TEST_DATABASE_URL: postgresql://postgres:isolated-academy-ci@localhost:5432/academy_test
+        run: node scripts/test-academy-my-run-overview-db.mjs
       - name: Real PostgreSQL M365 identity pagination
         env:
           ACADEMY_TEST_DATABASE_URL: postgresql://postgres:isolated-academy-ci@localhost:5432/academy_test
