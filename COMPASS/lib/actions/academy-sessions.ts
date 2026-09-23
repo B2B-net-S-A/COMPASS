@@ -40,12 +40,51 @@ export async function getAcademyIntegrationConfig(): Promise<ActionResult<Academ
     })
 }
 
-export async function listAcademyRuns(courseId?: string): Promise<ActionResult<AcademyRunDTO[]>> {
-    return academyAction('sessions.runs', async () => {
+const runPageSchema = z.object({
+    courseId: uuid.optional(), page: z.number().int().min(1).max(20_000_000).default(1),
+    pageSize: z.number().int().min(1).max(100).default(24),
+    scope: z.enum(['managed', 'registered', 'calendar', 'my_calendar', 'catalog']),
+    windowStart: timestamp.optional(), windowEnd: timestamp.optional(),
+    courseIds: z.array(uuid).min(1).max(50).optional(),
+})
+type RunPageOptions = z.input<typeof runPageSchema>
+type RunPage = { items: AcademyRunDTO[]; page: number; hasMore: boolean }
+
+async function fetchRunPage(client: Awaited<ReturnType<typeof requireAcademyContext>>['client'], options: RunPageOptions): Promise<RunPage> {
+    const parsed = runPageSchema.parse(options)
+    const { data, error } = await client.rpc('academy_list_runs_page', {
+        p_course_id: parsed.courseId ?? null,
+        p_offset: (parsed.page - 1) * parsed.pageSize,
+        p_limit: parsed.pageSize + 1,
+        p_scope: parsed.scope,
+        p_window_start: parsed.windowStart ?? null,
+        p_window_end: parsed.windowEnd ?? null,
+        p_course_ids: parsed.courseIds ?? null,
+    })
+    assertDatabaseResult(error)
+    const rows = (data ?? []) as AcademyRunDTO[]
+    return { items: rows.slice(0, parsed.pageSize), page: parsed.page, hasMore: rows.length > parsed.pageSize }
+}
+
+/** Filter before paging: an assigned trainer must not lose later manageable runs. */
+export async function listAcademyRunPage(options: RunPageOptions): Promise<ActionResult<RunPage>> {
+    return academyAction('sessions.runs_page', async () => {
         const { client } = await requireAcademyContext()
-        const { data, error } = await client.rpc('academy_list_runs', { p_course_id: courseId ? uuid.parse(courseId) : null, p_run_id: null })
-        assertDatabaseResult(error)
-        return (data ?? []) as AcademyRunDTO[]
+        return fetchRunPage(client, options)
+    })
+}
+
+/** The learner overview needs every active reservation for an exact waitlist. */
+export async function listMyAcademyRuns(): Promise<ActionResult<AcademyRunDTO[]>> {
+    return academyAction('sessions.my_runs', async () => {
+        const { client } = await requireAcademyContext()
+        const items: AcademyRunDTO[] = []
+        for (let page = 1; page <= 20_000; page++) {
+            const result = await fetchRunPage(client, { scope: 'registered', page, pageSize: 100 })
+            items.push(...result.items)
+            if (!result.hasMore) return items
+        }
+        throw new Error('Lista zapisów jest zbyt długa. Skontaktuj się z administratorem.')
     })
 }
 export async function getAcademyRun(runId: string): Promise<ActionResult<AcademyRunDTO>> {

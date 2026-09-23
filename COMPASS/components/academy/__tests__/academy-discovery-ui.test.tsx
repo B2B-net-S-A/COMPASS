@@ -2,8 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseCatalogFilters, catalogHref } from '../catalog/catalog-filters'
 import { getCatalogNextRuns } from '../catalog/catalog-runs'
-import { calendarDay, calendarMonthDays, calendarSessions, shiftCalendarMonth } from '../sessions/calendar-model'
+import { calendarDay, calendarHref, calendarMonthDays, calendarSessions, shiftCalendarMonth } from '../sessions/calendar-model'
 import { AcademyCalendar } from '../sessions/AcademyCalendar'
+import { AcademyRunList } from '../sessions/AcademyRunList'
 import { CourseLearnerPreview } from '../CourseLearnerPreview'
 import { CoursePrerequisitesEditor } from '../CoursePrerequisitesEditor'
 import { AcademyPrerequisites } from '../AcademyPrerequisites'
@@ -49,16 +50,21 @@ describe('monthly calendar', () => {
         expect(calendarSessions(runs, '2026-09', true).map((item) => item.session.id)).toEqual(['1'])
         expect(calendarSessions(runs, '2026-09', false)).toHaveLength(2)
     })
-    it('navigates month and personal scope with labelled controls', () => {
-        render(<AcademyCalendar now={now} runs={[run('test', [session('1', '2026-09-23T09:00:00Z')])]} />)
+    it('navigates month, personal scope and pages with stable links', () => {
+        render(<AcademyCalendar now={now} month="2026-09" mine={false} page={1} hasMore={true} runs={[run('test', [session('1', '2026-09-23T09:00:00Z')])]} />)
         expect(screen.getByRole('heading', { name: 'wrzesień 2026' })).toBeInTheDocument()
-        fireEvent.click(screen.getByRole('button', { name: 'Następny miesiąc' }))
-        expect(screen.getByRole('heading', { name: 'październik 2026' })).toBeInTheDocument()
-        expect(screen.getByText('Brak spotkań w tym miesiącu')).toBeInTheDocument()
-        fireEvent.click(screen.getByRole('button', { name: 'Dzisiaj' }))
-        fireEvent.click(screen.getByRole('button', { name: 'Moje zapisy' }))
-        expect(screen.getByText('Brak Twoich spotkań w tym miesiącu')).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Następny miesiąc' })).toHaveAttribute('href', calendarHref('2026-10', false))
+        expect(screen.getByRole('link', { name: 'Moje zapisy' })).toHaveAttribute('href', calendarHref('2026-09', true))
+        expect(screen.getByRole('link', { name: 'Następna strona' })).toHaveAttribute('href', calendarHref('2026-09', false, undefined, 2))
+        expect(screen.getByRole('link', { name: 'Dzisiaj' })).toHaveAttribute('href', calendarHref('2026-09', false))
     })
+})
+
+it('links an assigned trainer to older edition pages without dropping the selected course', () => {
+    render(<AcademyRunList runs={[run('older', [])]} courseId="course" versionId={null} canCreate={false} page={3} hasMore={true} />)
+    expect(screen.getByRole('link', { name: /Edycja older/ })).toHaveAttribute('href', '/learning/edycje/older')
+    expect(screen.getByRole('link', { name: 'Poprzednie' })).toHaveAttribute('href', '/learning/tworze/course/edycje?page=2')
+    expect(screen.getByRole('link', { name: 'Następne' })).toHaveAttribute('href', '/learning/tworze/course/edycje?page=4')
 })
 
 it('previews saved lesson markdown and checks a quiz locally', () => {

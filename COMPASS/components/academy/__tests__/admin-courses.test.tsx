@@ -41,11 +41,11 @@ describe('administrator course inventory', () => {
         expect(screen.queryByRole('button', { name: 'Zarchiwizuj' })).not.toBeInTheDocument()
     })
     it('retains the course and surfaces rejected archive attempts', async () => {
-        vi.mocked(archiveCourse).mockResolvedValue({ success: false, error: 'Brak uprawnień do archiwizacji.' })
+        vi.mocked(archiveCourse).mockResolvedValue({ success: false, error: 'Nie można zarchiwizować tego szkolenia: wymaga go inne opublikowane szkolenie.' })
         mount()
         fireEvent.click(screen.getByRole('button', { name: 'Zarchiwizuj' }))
         fireEvent.click(await screen.findByRole('button', { name: 'Zarchiwizuj szkolenie' }))
-        expect(await screen.findByRole('alert')).toHaveTextContent('Brak uprawnień do archiwizacji.')
+        expect(await screen.findByRole('alert')).toHaveTextContent('wymaga go inne opublikowane szkolenie')
         expect(screen.getByRole('button', { name: 'Zarchiwizuj' })).toBeEnabled()
     })
     it('shows archived courses without mutation and preserves filters across pages', () => {

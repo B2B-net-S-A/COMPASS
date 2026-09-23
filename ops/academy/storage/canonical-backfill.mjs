@@ -11,7 +11,7 @@ export async function verifyCanonicalBackfill() {
     const id = () => `10000000-0000-0000-0000-${String(serial++).padStart(12,'0')}`;
     const record = {};
     const oldDate = '2026-08-10T12:00:00+00:00';
-    const f = await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,administrationControls:true,
+    const f = await createAcademyDatabase({materials:true,live:true,staff:true,runMaterials:true,revocations:true,rollout:true,obligations:true,cleanup:true,reviewSubmissions:true,administrationControls:true,runsPagination:true,
         beforeAcademyMigrations: async db => {
             const sql = (query,args=[]) => db.query(query,args);
             await sql("insert into auth.users(id,email)values($1,'new@example.test')",[ids.newStudent]);
@@ -58,7 +58,7 @@ export async function verifyCanonicalBackfill() {
     const row = async (table,recordId) => (await sql(`select to_jsonb(t) as row from ${table} t where id=$1`,[recordId])).rows[0]?.row;
     try {
         equal(f.baselineProof.dependencyParity,true);
-        equal(f.appliedMigrations.length,15);
+        equal(f.appliedMigrations.length,17);
         equal((await sql('select count(*)::integer n from course_versions')).rows[0].n,before.courses.length);
         for (const previous of before.courses) {
             const current = await row('courses',previous.id);

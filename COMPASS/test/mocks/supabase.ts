@@ -26,7 +26,7 @@ interface QueryState {
     rangeTo?: number
     countMode?: 'exact' | 'planned' | 'estimated'
     headOnly?: boolean
-    orderBy?: { column: string; ascending: boolean }
+    orderBy?: Array<{ column: string; ascending: boolean }>
     single?: boolean
     maybeSingle?: boolean
     selectAfterMutation?: boolean
@@ -140,7 +140,7 @@ function buildQueryBuilder(state: QueryState, tables: TableData) {
         match(obj: Record<string, unknown>) { state.filters.push({ kind: 'match', matchObj: obj }); return builder },
         or(expr: string) { state.filters.push({ kind: 'or', orExprs: parseOrExpression(expr) }); return builder },
         textSearch(column: string, query: string, options?: Record<string, unknown>) { state.filters.push({ kind: 'textSearch', column, query, options }); return builder },
-        order(column: string, opts?: { ascending?: boolean }) { state.orderBy = { column, ascending: opts?.ascending ?? true }; return builder },
+        order(column: string, opts?: { ascending?: boolean }) { (state.orderBy ??= []).push({ column, ascending: opts?.ascending ?? true }); return builder },
         limit(n: number) { state.limitN = n; return builder },
         range(from: number, to: number) { state.rangeFrom = from; state.rangeTo = to; return builder },
         contains(column: string, values: unknown[]) { state.filters.push({ kind: 'contains', column, values }); return builder },
@@ -198,14 +198,27 @@ function applyProjection(rows: Row[], columns?: string): Row[] {
 async function execute(state: QueryState, tables: TableData): Promise<{ data: any; error: any }> {
     const rows = tables[state.table] || []
     if (state.operation === 'select') {
-        let filtered = applyFilters(rows, state.filters)
+        // The review queue embeds courses!inner and filters by courses.status.
+        // Apply that relation before range/count, matching PostgREST's server-side filter.
+        let sourceRows = rows
+        if (state.table === 'course_versions' && state.columns?.includes('courses!inner(')) {
+            const relatedCourses = new Map((tables.courses ?? []).map(course => [course.id, course]))
+            sourceRows = rows.flatMap(row => {
+                const course = relatedCourses.get(row.course_id)
+                return course ? [{ ...row, 'courses.status': course.status }] : []
+            })
+        }
+        let filtered = applyFilters(sourceRows, state.filters)
+        if (sourceRows !== rows) filtered = filtered.map(row => { delete row['courses.status']; return row })
         if (state.orderBy) {
-            const { column, ascending } = state.orderBy
             filtered = filtered.sort((a, b) => {
-                const av = a[column], bv = b[column]
-                if (av === bv) return 0
-                const cmp = (av as any) < (bv as any) ? -1 : 1
-                return ascending ? cmp : -cmp
+                for (const { column, ascending } of state.orderBy!) {
+                    const av = a[column], bv = b[column]
+                    if (av === bv) continue
+                    const cmp = (av as number) < (bv as number) ? -1 : 1
+                    return ascending ? cmp : -cmp
+                }
+                return 0
             })
         }
         const totalCount = filtered.length

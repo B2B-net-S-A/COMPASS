@@ -34,8 +34,8 @@ export async function getAcademyCourseManagement(courseId: string) {
     return academyAction('staff.permissions', async () => {
         const { client } = await requireAcademyContext({ trainer: true })
         const params = { p_course_id: z.uuid().parse(courseId) }
-        const [edit, lead] = await Promise.all([client.rpc('academy_can_manage_course', params), client.rpc('academy_can_lead_course', params)])
-        assertDatabaseResult(edit.error); assertDatabaseResult(lead.error)
-        return { canEdit: edit.data === true, canLead: lead.data === true }
+        const [edit, lead, assigned] = await Promise.all([client.rpc('academy_can_manage_course', params), client.rpc('academy_can_lead_course', params), client.rpc('academy_has_assigned_runs', params)])
+        assertDatabaseResult(edit.error); assertDatabaseResult(lead.error); assertDatabaseResult(assigned.error)
+        return { canEdit: edit.data === true, canLead: lead.data === true, hasAssignedRuns: assigned.data === true }
     })
 }

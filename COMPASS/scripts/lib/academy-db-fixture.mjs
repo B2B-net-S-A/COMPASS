@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { installCanonicalBaseline, assertCanonicalBaseline } from '../../../ops/academy/storage/canonical-contract.mjs';
 
-export async function createAcademyDatabase({ materials = false, live = false, staff = false, runMaterials = false, cleanup = false, revocations = false, rollout = false, obligations = false, reviewSubmissions = false, completionGaps = false, administrationControls = false, beforeAcademyMigrations, afterBaselineVerification } = {}) {
+export async function createAcademyDatabase({ materials = false, live = false, staff = false, runMaterials = false, cleanup = false, revocations = false, rollout = false, obligations = false, reviewSubmissions = false, completionGaps = false, administrationControls = false, runsPagination = false, beforeAcademyMigrations, afterBaselineVerification } = {}) {
+    if (runsPagination) administrationControls = true;
     if (administrationControls) completionGaps = true;
     if (completionGaps) { materials = true; live = true; staff = true; runMaterials = true; cleanup = true; revocations = true; rollout = true; obligations = true; reviewSubmissions = true; }
     if (rollout || obligations) revocations = true;
@@ -118,7 +119,7 @@ await sql("insert into course_enrollments(user_id,course_id,completed_at,points_
         baselineProof.dependencyParity = false;
         baselineProof.variation = 'intentional_adversarial_test_mutation';
     }
-    const suffixes = ['academy_versioned_foundation', ...(materials ? ['academy_materials'] : []), ...(live ? ['academy_live_sessions'] : []), ...(staff ? ['academy_staff_and_legacy_review'] : []), ...(runMaterials ? ['academy_run_materials'] : []), ...(revocations ? ['academy_completion_revocations'] : []), ...(rollout ? ['academy_rollout_gate'] : []), ...(obligations ? ['academy_session_obligations'] : []), ...(cleanup ? ['academy_material_cleanup'] : []), ...(reviewSubmissions ? ['academy_review_submission_token'] : []), ...(completionGaps ? ['academy_roster_progress', 'academy_operations_health', 'academy_attendance_recovery'] : []), ...(administrationControls ? ['academy_archive_controls', 'academy_review_history'] : [])];
+    const suffixes = ['academy_versioned_foundation', ...(materials ? ['academy_materials'] : []), ...(live ? ['academy_live_sessions'] : []), ...(staff ? ['academy_staff_and_legacy_review'] : []), ...(runMaterials ? ['academy_run_materials'] : []), ...(revocations ? ['academy_completion_revocations'] : []), ...(rollout ? ['academy_rollout_gate'] : []), ...(obligations ? ['academy_session_obligations'] : []), ...(cleanup ? ['academy_material_cleanup'] : []), ...(reviewSubmissions ? ['academy_review_submission_token'] : []), ...(completionGaps ? ['academy_roster_progress', 'academy_operations_health', 'academy_attendance_recovery'] : []), ...(administrationControls ? ['academy_archive_controls', 'academy_review_history', 'academy_archive_prerequisite_guard'] : []), ...(runsPagination ? ['academy_runs_pagination'] : [])];
     const appliedMigrations = [];
     for (const suffix of suffixes) {
         const matches = fs.readdirSync(`${root}/supabase/migrations`).filter(file => file.endsWith(`_${suffix}.sql`));

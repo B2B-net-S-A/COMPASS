@@ -39,14 +39,35 @@ describe('review queue', () => {
     it('returns pending versions rather than relying on course-level publication status', async () => {
         setup({ tables: { courses: [courseRow({ author_id: OTHER })], profiles: [{ id: USER, role: 'admin' }, { id: OTHER, full_name: 'Autorka', avatar_url: 'avatar' }], course_versions: [versionRow(), versionRow({ id: DRAFT, status: 'pending_review', version_number: 3, metadata: { title: 'Nowy szkic do akceptacji' }, submitted_at: '2026-09-22T10:00:00Z' }), versionRow({ id: id(23), status: 'draft' })] } })
         const result = await getReviewQueue()
-        expect(result.success && result.data).toEqual([expect.objectContaining({ id: COURSE, title: 'Nowy szkic do akceptacji', version_id: DRAFT, version_number: 3, status: 'published', version_status: 'pending_review', author_name: 'Autorka' })])
+        expect(result.success && result.data).toEqual({ items: [expect.objectContaining({ id: COURSE, title: 'Nowy szkic do akceptacji', version_id: DRAFT, version_number: 3, status: 'published', version_status: 'pending_review', author_name: 'Autorka' })], total: 1, page: 1, pageSize: 50 })
     })
     it('returns an empty queue when no versions are pending', async () => {
-        expect(await getReviewQueue()).toEqual({ success: true, data: [] })
+        expect(await getReviewQueue()).toEqual({ success: true, data: { items: [], total: 0, page: 1, pageSize: 50 } })
     })
     it('does not expose a version whose course is not visible', async () => {
         setup({ tables: { courses: [], course_versions: [versionRow({ status: 'pending_review' })] } })
-        expect(await getReviewQueue()).toEqual({ success: true, data: [] })
+        expect(await getReviewQueue()).toEqual({ success: true, data: { items: [], total: 0, page: 1, pageSize: 50 } })
+    })
+    it('pages beyond 1000 pending versions after filtering archived courses in the database', async () => {
+        const courses = Array.from({ length: 2001 }, (_, index) => courseRow({ id: id(20000 + index), status: index < 1000 ? 'archived' : 'published' }))
+        const versions = courses.map((course, index) => versionRow({ id: id(10000 + index), course_id: course.id, status: 'pending_review', submitted_at: new Date(Date.UTC(2026, 8, 22, 0, index)).toISOString() }))
+        setup({ tables: { courses, course_versions: versions } })
+
+        const first = await getReviewQueue(1)
+        expect(first.success && first.data).toMatchObject({ total: 1001, page: 1, pageSize: 50 })
+        expect(first.success && first.data.items).toHaveLength(50)
+        expect(first.success && first.data.items[0].version_id).toBe(id(11000))
+
+        const beyondDefaultLimit = await getReviewQueue(21)
+        expect(beyondDefaultLimit.success && beyondDefaultLimit.data).toMatchObject({ total: 1001, page: 21, pageSize: 50 })
+        expect(beyondDefaultLimit.success && beyondDefaultLimit.data.items.map(item => item.version_id)).toEqual([id(12000)])
+
+        const beyondEnd = await getReviewQueue(22)
+        expect(beyondEnd.success && beyondEnd.data).toMatchObject({ total: 1001, page: 22, items: [] })
+    })
+    it('rejects an invalid page instead of returning an unbounded result', async () => {
+        expect((await getReviewQueue(0)).success).toBe(false)
+        expect((await getReviewQueue(Number.MAX_SAFE_INTEGER)).success).toBe(false)
     })
 })
 
@@ -117,7 +138,7 @@ describe('version rejection and archive', () => {
 describe('administrator course inventory', () => {
     it('excludes archived courses from pending review even when their version remains pending', async () => {
         setup({ tables: { courses: [courseRow({ status: 'archived' })], course_versions: [versionRow({ status: 'pending_review' })] } })
-        expect(await getReviewQueue()).toEqual({ success: true, data: [] })
+        expect(await getReviewQueue()).toEqual({ success: true, data: { items: [], total: 0, page: 1, pageSize: 50 } })
     })
     it('includes every lifecycle state and keeps the draft state separate from the course', async () => {
         setup({ tables: { courses: [courseRow(), courseRow({ id: id(11), status: 'archived', draft_version_id: null, published_version_id: null })],
