@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 
-const MAX_INPUT_BYTES = 128 * 1024;
-const MAX_AGE_MS = 30 * 60_000;
+export const MAX_INPUT_BYTES = 128 * 1024;
+export const MAX_AGE_MS = 30 * 60_000;
 
 /** Manual audit of GitHub Actions metadata; this cannot detect its own missed invocation. */
 export function auditWatchdogSchedule(payload, now = Date.now()) {
