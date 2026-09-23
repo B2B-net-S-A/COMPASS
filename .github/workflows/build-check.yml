@@ -75,8 +75,8 @@ jobs:
       - name: Academy migration and authorization contracts
         run: npm run test:academy-db
 
-      - name: Academy read-only watchdog contract
-        run: node --test ../ops/academy/health-watchdog.test.mjs
+      - name: Academy read-only watchdog contracts
+        run: node --test ../ops/academy/health-watchdog.test.mjs ../ops/academy/watchdog-schedule-audit.test.mjs
 
       - name: Availability connection scope tests
         run: python3 ../scripts/test_configure_nexus_availability.py
