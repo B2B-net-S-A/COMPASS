@@ -18,7 +18,7 @@ try {
 
     // An existing rejection predates this migration: no token is inferred from
     // a later submission or from its adjacent COURSE_REVIEW_DECIDED record.
-    await owner(); await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260922160100_academy_review_history.sql', import.meta.url), 'utf8'));
+    await owner(); await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260923093432_academy_review_history.sql', import.meta.url), 'utf8'));
     await actor('trainer'); await rpc('academy_update_course', [course, { description: 'Poprawiony program' }]);
     await rpc('academy_submit_for_review', [course]); const second = await token(version);
     await actor('admin'); await rpc('academy_review_course', [version, false, 'Drugi powód po poprawkach', second]);

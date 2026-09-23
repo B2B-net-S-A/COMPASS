@@ -77,7 +77,7 @@ async function archiveFirst(c, who, operation, expectedError) {
 }
 
 try {
-    const migration = await fs.readFile(new URL('../supabase/migrations/20260922153700_academy_archive_controls.sql', import.meta.url), 'utf8');
+    const migration = await fs.readFile(new URL('../supabase/migrations/20260923093316_academy_archive_controls.sql', import.meta.url), 'utf8');
     await db.exec(migration); await db.exec(migration);
     const privileges = (await sql("select has_function_privilege('anon','public.academy_archive_course(uuid)','execute') anon_archive,has_function_privilege('authenticated','public.academy_archive_course(uuid)','execute') auth_archive,has_function_privilege('authenticated','academy_private.promote_run_waitlist(uuid)','execute') auth_promote,has_function_privilege('service_role','academy_private.confirm_registration(uuid)','execute') service_confirm")).rows[0];
     equal(privileges, { anon_archive: false, auth_archive: true, auth_promote: false, service_confirm: false });
