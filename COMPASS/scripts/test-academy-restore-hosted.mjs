@@ -104,6 +104,11 @@ async function targetStorageResponse(baseUrl, bucket, name, method = 'GET', byte
 }
 function safeFailure(error) {
   const stderr = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : '';
+  const safeAssertions = new Set(['isolated_restore_database_required', 'isolated_storage_database_network_missing',
+    'invalid_storage_container_environment', 'isolated_file_storage_required',
+    'isolated_file_storage_path_required', 'source_storage_database_not_local_fixture',
+    'alternate_storage_database_url_forbidden', 'invalid_storage_container_port',
+    'isolated_storage_loopback_port_required']);
   const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
   const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
     'supabase_migrations', 'public', 'academy_private', 'cron', 'net', 'graphql']);
@@ -127,6 +132,7 @@ function safeFailure(error) {
   ];
   return {
     errorType: error?.name ?? 'Error',
+    assertion: error?.name === 'AssertionError' && safeAssertions.has(error.message) ? error.message : undefined,
     sqlState: typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined,
     childExitCode: Number.isInteger(error?.status) ? error.status : undefined,
     category: classes.find(([, pattern]) => pattern.test(stderr))?.[0] ?? 'unclassified',
