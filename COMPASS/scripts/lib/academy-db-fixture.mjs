@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { installCanonicalBaseline, assertCanonicalBaseline } from '../../../ops/academy/storage/canonical-contract.mjs';
 
 export async function createAcademyDatabase({ materials = false, live = false, staff = false, runMaterials = false, cleanup = false, revocations = false, rollout = false, obligations = false, reviewSubmissions = false, completionGaps = false, administrationControls = false, runsPagination = false, materialReviewIndependence = false, beforeAcademyMigrations, afterBaselineVerification } = {}) {
-    if (materialReviewIndependence) runMaterials = true;
+    if (materialReviewIndependence) { runMaterials = true; reviewSubmissions = true; }
     if (runsPagination) administrationControls = true;
     if (administrationControls) completionGaps = true;
     if (completionGaps) { materials = true; live = true; staff = true; runMaterials = true; cleanup = true; revocations = true; rollout = true; obligations = true; reviewSubmissions = true; }

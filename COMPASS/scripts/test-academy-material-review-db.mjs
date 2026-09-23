@@ -34,15 +34,16 @@ await actor('admin');
 assert.equal(await rpc('academy_can_review_version', [course.version_id]), false); checks++;
 await actor('trainer');
 await rpc('academy_submit_for_review', [course.course_id]);
+const submission = (await sql('select submission_id from course_versions where id=$1', [course.version_id])).rows[0].submission_id;
 await actor('admin');
-await f.expectDenied('select academy_review_course($1,true,null)', [course.version_id], /independent_admin_review_required/); checks++;
+await f.expectDenied('select academy_review_course($1,true,null,$2)', [course.version_id, submission], /independent_admin_review_required/); checks++;
 
 const independent = '00000000-0000-0000-0000-000000000098';
 await owner();
 await sql("insert into auth.users(id,email) values($1,'independent@example.test')", [independent]);
 await sql("insert into profiles(id,role,email) values($1,'admin','independent@example.test')", [independent]);
 await actor(independent);
-await rpc('academy_review_course', [course.version_id, true, null]); checks++;
+await rpc('academy_review_course', [course.version_id, true, null, submission]); checks++;
 
 // Cloning keeps the same asset reference. The original uploader must not be
 // allowed to approve a later version that still contains their file.
@@ -62,7 +63,7 @@ await db.close();
 
 // Upgrade proof: a file linked before this migration must immediately block
 // its uploader from approving the existing version, without a fresh edit.
-const prior = await createAcademyDatabase({ runMaterials: true });
+const prior = await createAcademyDatabase({ runMaterials: true, reviewSubmissions: true });
 const p = prior;
 await p.actor('admin');
 await p.rpc('academy_set_trainer', [p.ids.trainer, true]);
