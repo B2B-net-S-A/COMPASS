@@ -3,7 +3,7 @@
 // it does not inspect or restore production backups.
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -24,6 +24,9 @@ const backupInContainer = `/tmp/academy-restore-${randomUUID()}.dump`;
 const restoredInContainer = `/tmp/academy-restore-${randomUUID()}.dump`;
 const targetName = `academy_restore_${randomUUID().replaceAll('-', '')}`;
 const container = 'supabase_db_academy-storage-ci';
+const sourceStorageContainer = 'supabase_storage_academy-storage-ci';
+const targetStorageContainer = `academy_restore_storage_${randomUUID().replaceAll('-', '')}`;
+const targetStorageVolume = `academy_restore_files_${randomUUID().replaceAll('-', '')}`;
 const client = new pg.Client({ connectionString: settings.database });
 const service = createClient(settings.api, settings.service, { auth: { persistSession: false, autoRefreshToken: false } });
 const exportSql = await readFile(new URL('../../ops/academy/restore/export.sql', import.meta.url), 'utf8');
@@ -32,8 +35,105 @@ const safeName = name => typeof name === 'string' && name && !name.includes('\\'
   && name.split('/').every(part => part && part !== '.' && part !== '..');
 const docker = (...args) => execFileSync('docker', args, { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 });
 const objects = area => join(area, 'objects');
+const storagePath = (bucket, name) => `${bucket}/${name.split('/').map(encodeURIComponent).join('/')}`;
+const inspectContainer = name => JSON.parse(docker('inspect', name).toString('utf8'))[0];
+const targetStorageHeaders = () => ({ Authorization: `Bearer ${settings.service}`, apikey: settings.service });
+
+async function startTargetStorage() {
+  assert(/^academy_restore_[a-f0-9]{32}$/.test(targetName), 'isolated_restore_database_required');
+  const sourceInfo = inspectContainer(sourceStorageContainer);
+  const dbInfo = inspectContainer(container);
+  const network = Object.keys(sourceInfo.NetworkSettings.Networks).find(name => dbInfo.NetworkSettings.Networks[name]);
+  assert(network, 'isolated_storage_database_network_missing');
+  const env = new Map(sourceInfo.Config.Env.map(entry => {
+    const separator = entry.indexOf('=');
+    assert(separator > 0 && !entry.includes('\n'), 'invalid_storage_container_environment');
+    return [entry.slice(0, separator), entry.slice(separator + 1)];
+  }));
+  assert(env.get('STORAGE_BACKEND') === 'file', 'isolated_file_storage_required');
+  const fileRoot = env.get('STORAGE_FILE_BACKEND_PATH') ?? env.get('FILE_STORAGE_BACKEND_PATH');
+  assert(fileRoot?.startsWith('/') && fileRoot !== '/', 'isolated_file_storage_path_required');
+  const databaseUrl = new URL(env.get('DATABASE_URL'));
+  const dbAliases = new Set([dbInfo.Name.replace(/^\//, ''), ...(dbInfo.NetworkSettings.Networks[network].Aliases ?? [])]);
+  assert(['postgres:', 'postgresql:'].includes(databaseUrl.protocol) &&
+    dbAliases.has(databaseUrl.hostname) && databaseUrl.pathname === '/postgres',
+  'source_storage_database_not_local_fixture');
+  databaseUrl.pathname = `/${targetName}`;
+  env.set('DATABASE_URL', databaseUrl.href);
+  for (const key of ['DATABASE_POOL_URL', 'DATABASE_MULTITENANT_URL', 'VECTOR_DATABASE_URL']) {
+    if (!env.has(key)) continue;
+    const alternateUrl = new URL(env.get(key));
+    assert(['postgres:', 'postgresql:'].includes(alternateUrl.protocol) &&
+      dbAliases.has(alternateUrl.hostname) && alternateUrl.pathname === '/postgres',
+    'alternate_storage_database_url_not_local_fixture');
+    alternateUrl.pathname = `/${targetName}`;
+    env.set(key, alternateUrl.href);
+  }
+  env.set('DB_INSTALL_ROLES', 'false');
+  env.set('DB_ALLOW_MIGRATION_REFRESH', 'false');
+  const containerPort = Number(env.get('SERVER_PORT') ?? env.get('PORT') ?? 5000);
+  assert(Number.isInteger(containerPort) && containerPort > 0 && containerPort < 65536, 'invalid_storage_container_port');
+  const envFile = join(work, 'target-storage.env');
+  await writeFile(envFile, [...env].map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { mode: 0o600 });
+  docker('volume', 'create', targetStorageVolume);
+  try {
+    docker('run', '--detach', '--pull=never', '--name', targetStorageContainer, '--network', network,
+      '--env-file', envFile, '--mount', `type=volume,source=${targetStorageVolume},target=${fileRoot}`,
+      '--publish', `127.0.0.1::${containerPort}`, sourceInfo.Config.Image);
+  } finally {
+    await rm(envFile, { force: true });
+  }
+  const published = docker('port', targetStorageContainer, `${containerPort}/tcp`).toString('utf8').trim();
+  const match = /^127\.0\.0\.1:(\d+)$/.exec(published);
+  assert(match, 'isolated_storage_loopback_port_required');
+  const baseUrl = `http://127.0.0.1:${match[1]}`;
+  let lastHttpStatus;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      const response = await fetch(`${baseUrl}/bucket`, {
+        headers: targetStorageHeaders(), redirect: 'error', signal: AbortSignal.timeout(2000),
+      });
+      lastHttpStatus = response.status;
+      if (response.ok) return baseUrl;
+    } catch { /* The disposable service may still be starting. */ }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  const state = spawnSync('docker', ['inspect', '--format', '{{.State.Running}} {{.State.ExitCode}}',
+    targetStorageContainer], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+  const logs = spawnSync('docker', ['logs', '--tail', '100', targetStorageContainer],
+    { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+  const boundedLogs = `${logs.stdout ?? ''}\n${logs.stderr ?? ''}`.slice(-65536);
+  const cause = /password authentication failed/i.test(boundedLogs) ? 'database_authentication'
+    : /database .* does not exist/i.test(boundedLogs) ? 'database_missing'
+    : /permission denied/i.test(boundedLogs) ? 'database_permission'
+    : /migration/i.test(boundedLogs) ? 'storage_migration'
+    : 'unclassified';
+  const failure = new Error('isolated_storage_unavailable');
+  failure.storageHttpStatus = lastHttpStatus;
+  failure.storageContainerState = /^(true|false) (\d+)$/.exec(state.stdout?.trim() ?? '')?.slice(1);
+  failure.storageStartupCategory = cause;
+  failure.storageLogSha256 = boundedLogs ? digest(Buffer.from(boundedLogs)) : undefined;
+  throw failure;
+}
+
+async function targetStorageResponse(baseUrl, bucket, name, method = 'GET', bytes, mime) {
+  assert(['academy-materials', 'documents'].includes(bucket) && safeName(name), 'unsafe_storage_object_path');
+  const url = `${baseUrl}/object/${method === 'GET' ? 'authenticated/' : ''}${storagePath(bucket, name)}`;
+  return fetch(url, {
+    method,
+    headers: { ...targetStorageHeaders(), ...(method === 'POST' ? {
+      'x-upsert': 'true', 'cache-control': 'max-age=3600', 'content-type': mime ?? 'application/octet-stream',
+    } : {}) },
+    ...(bytes ? { body: bytes } : {}), redirect: 'error', signal: AbortSignal.timeout(30000),
+  });
+}
 function safeFailure(error) {
   const stderr = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : '';
+  const safeAssertions = new Set(['isolated_restore_database_required', 'isolated_storage_database_network_missing',
+    'invalid_storage_container_environment', 'isolated_file_storage_required',
+    'isolated_file_storage_path_required', 'source_storage_database_not_local_fixture',
+    'alternate_storage_database_url_not_local_fixture', 'invalid_storage_container_port',
+    'isolated_storage_loopback_port_required', 'target_storage_not_isolated_from_source_bytes']);
   const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
   const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
     'supabase_migrations', 'public', 'academy_private', 'cron', 'net', 'graphql']);
@@ -57,6 +157,13 @@ function safeFailure(error) {
   ];
   return {
     errorType: error?.name ?? 'Error',
+    assertion: error?.name === 'AssertionError' && safeAssertions.has(error.message) ? error.message : undefined,
+    storageHttpStatus: Number.isInteger(error?.storageHttpStatus) ? error.storageHttpStatus : undefined,
+    storageContainerState: Array.isArray(error?.storageContainerState) ? error.storageContainerState : undefined,
+    storageStartupCategory: ['database_authentication', 'database_missing', 'database_permission',
+      'storage_migration', 'unclassified'].includes(error?.storageStartupCategory)
+      ? error.storageStartupCategory : undefined,
+    storageLogSha256: /^[a-f0-9]{64}$/.test(error?.storageLogSha256 ?? '') ? error.storageLogSha256 : undefined,
     sqlState: typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined,
     childExitCode: Number.isInteger(error?.status) ? error.status : undefined,
     category: classes.find(([, pattern]) => pattern.test(stderr))?.[0] ?? 'unclassified',
@@ -138,7 +245,7 @@ try {
   assert(sealed.objectCount > 0, 'source_manifest_empty');
 
   stage = 'postgres_backup';
-  docker('exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres', '--format=custom', '--no-owner', '--no-acl', '-f', backupInContainer);
+  docker('exec', container, 'pg_dump', '-U', 'postgres', '-d', 'postgres', '--format=custom', '-f', backupInContainer);
   docker('cp', `${container}:${backupInContainer}`, join(work, 'postgres.dump'));
   assert((await fs.promises.stat(join(work, 'postgres.dump'))).size > 0, 'postgres_backup_empty');
 
@@ -168,8 +275,11 @@ try {
   // The local Supabase postgres role is not a superuser. Its platform dump
   // contains privileged native functions, so use the local-only admin socket
   // in this disposable target; no admin credential leaves the container.
+  // Preserve original Storage owners and grants. Its API connects as
+  // supabase_storage_admin; a no-owner/no-acl restore leaves that role unable
+  // to start against the target even when the object metadata is present.
   docker('exec', container, 'pg_restore', '-U', 'supabase_admin', '-d', targetName,
-    '--no-owner', '--no-acl', '--exit-on-error', restoredInContainer);
+    '--exit-on-error', restoredInContainer);
   stage = 'restore_read_grants';
   docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
     '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',
@@ -183,25 +293,67 @@ try {
     order by bucket_id,name`)).rows;
   assert.deepEqual(restoredMetadata, files.map(({ bucket_id, name }) => ({ bucket_id, name })),
     'restored_storage_metadata_mismatch');
-  stage = 'restore_export';
-  await exportDatabase(targetClient, join(target, 'export.json'));
+  stage = 'isolated_storage_start';
+  const sourceMetadataBefore = (await client.query(`select bucket_id,name,version,metadata,owner_id,updated_at
+    from storage.objects where bucket_id='academy-materials'
+       or (bucket_id='documents' and name like 'courses/%') order by bucket_id,name`)).rows;
+  const targetStorageUrl = await startTargetStorage();
+  stage = 'target_storage_empty_before_restore';
+  const preRestoreStatuses = [];
+  for (const file of files) {
+    const response = await targetStorageResponse(targetStorageUrl, file.bucket_id, file.name);
+    // Restored storage.objects metadata can make the native API return 500
+    // when its isolated file backend has no corresponding bytes yet.
+    assert([404, 500].includes(response.status), 'target_storage_not_isolated_from_source_bytes');
+    preRestoreStatuses.push(response.status);
+    await response.arrayBuffer();
+  }
 
   stage = 'storage_restore';
-  const restoreBucket = `academy-restore-${randomUUID()}`;
-  const created = await service.storage.createBucket(restoreBucket, { public: false });
-  assert.ifError(created.error);
-  for (const file of files) {
-    const logicalPath = `${file.bucket_id}/${file.name}`;
-    const bytes = await readFile(join(objects(source), file.bucket_id, file.name));
-    const uploaded = await service.storage.from(restoreBucket).upload(logicalPath, bytes,
-      { upsert: false, contentType: file.mime ?? 'application/octet-stream' });
-    assert.ifError(uploaded.error);
-    await putObject(target, file.bucket_id, file.name, await storageBytes(restoreBucket, logicalPath));
+  // The full DB restore includes storage.objects metadata. The Academy guard
+  // rejects overwriting ready files, so bypass it only in this disposable DB.
+  docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
+    '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',
+    'ALTER TABLE storage.objects DISABLE TRIGGER academy_stored_material_guard');
+  try {
+    for (const file of files) {
+      const bytes = await readFile(join(objects(source), file.bucket_id, file.name));
+      const uploaded = await targetStorageResponse(targetStorageUrl, file.bucket_id, file.name,
+        'POST', bytes, file.mime);
+      assert(uploaded.ok, `target_storage_upload_failed_${uploaded.status}`);
+      await uploaded.arrayBuffer();
+    }
+  } finally {
+    docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
+      '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',
+      'ALTER TABLE storage.objects ENABLE TRIGGER academy_stored_material_guard');
   }
-  const uploadedMetadata = (await client.query('select name from storage.objects where bucket_id=$1 order by name',
-    [restoreBucket])).rows.map(row => row.name);
-  assert.deepEqual(uploadedMetadata, files.map(file => `${file.bucket_id}/${file.name}`),
+  stage = 'target_storage_guard_check';
+  const guard = (await targetClient.query(`select tgenabled from pg_trigger
+    where tgrelid='storage.objects'::regclass and tgname='academy_stored_material_guard'`)).rows;
+  assert.deepEqual(guard, [{ tgenabled: 'O' }], 'restored_storage_guard_not_enabled');
+  const uploadedMetadata = (await targetClient.query(`select bucket_id,name from storage.objects
+    where bucket_id='academy-materials' or (bucket_id='documents' and name like 'courses/%')
+    order by bucket_id,name`)).rows;
+  assert.deepEqual(uploadedMetadata, files.map(({ bucket_id, name }) => ({ bucket_id, name })),
     'restored_storage_api_metadata_mismatch');
+  stage = 'target_storage_download';
+  for (const file of files) {
+    const response = await targetStorageResponse(targetStorageUrl, file.bucket_id, file.name);
+    assert(response.ok, `target_storage_download_failed_${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const original = await readFile(join(objects(source), file.bucket_id, file.name));
+    assert.equal(digest(bytes), digest(original), 'restored_storage_bytes_mismatch');
+    await putObject(target, file.bucket_id, file.name, bytes);
+    assert.equal(digest(await storageBytes(file.bucket_id, file.name)), digest(original),
+      'source_storage_bytes_changed');
+  }
+  const sourceMetadataAfter = (await client.query(`select bucket_id,name,version,metadata,owner_id,updated_at
+    from storage.objects where bucket_id='academy-materials'
+       or (bucket_id='documents' and name like 'courses/%') order by bucket_id,name`)).rows;
+  assert.deepEqual(sourceMetadataAfter, sourceMetadataBefore, 'source_storage_metadata_changed');
+  stage = 'restore_export';
+  await exportDatabase(targetClient, join(target, 'export.json'));
 
   stage = 'verify';
   const result = await verify(manifest, sealed.manifestSha256, join(target, 'export.json'), objects(target));
@@ -209,7 +361,8 @@ try {
   assert.equal(result.objectCount, files.length, 'storage_object_inventory_mismatch');
   process.stdout.write(`${JSON.stringify({ check: 'academy_hosted_database_and_storage_restore', outcome: 'passed',
     academyTables: result.tableCount, storageObjects: result.objectCount,
-    restoredStorageMetadata: restoredMetadata.length, fixture,
+    restoredStorageMetadata: restoredMetadata.length, targetStorageReadsFromOriginalPaths: files.length,
+    preRestoreStatuses: [...new Set(preRestoreStatuses)].sort(), fixture,
     databaseBackupSha256: digest(await readFile(join(work, 'postgres.dump'))),
     scope: 'synthetic_hosted_supabase_fixture_only' })}\n`);
 } catch (error) {
@@ -220,6 +373,8 @@ try {
       .includes(stage) ? { restoreRoleCapabilities } : {}) })}\n`);
   process.exitCode = 1;
 } finally {
+  try { docker('rm', '--force', targetStorageContainer); } catch { /* disposable container may not exist */ }
+  try { docker('volume', 'rm', '--force', targetStorageVolume); } catch { /* disposable volume may not exist */ }
   if (targetClient) await targetClient.end().catch(() => {});
   if (sourceConnected) await client.end().catch(() => {});
   for (const name of [backupInContainer, restoredInContainer]) {
