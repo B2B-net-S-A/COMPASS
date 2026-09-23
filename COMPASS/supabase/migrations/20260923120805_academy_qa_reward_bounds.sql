@@ -70,6 +70,11 @@ BEGIN
         v_kind:='author_answer';
     END IF;
     IF v_course IS NULL THEN RAISE EXCEPTION 'academy_qa_reward_source_required'; END IF;
+    -- Order same-user/course payouts before touching the unique claim index.
+    -- Concurrent author answers otherwise can deadlock after locking their
+    -- separate question rows and attempting the same claim simultaneously.
+    PERFORM pg_advisory_xact_lock(hashtextextended(
+        NEW.user_id::text || ':' || v_course::text || ':' || v_kind, 0));
     INSERT INTO public.academy_reward_claims(user_id,course_id,reward_kind)
     VALUES(NEW.user_id,v_course,v_kind) ON CONFLICT DO NOTHING RETURNING id INTO v_claim;
     IF v_claim IS NULL THEN RETURN NULL; END IF;
