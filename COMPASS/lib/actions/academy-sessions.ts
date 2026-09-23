@@ -7,7 +7,7 @@ import { validateTeamsJoinUrl } from '@/lib/academy/teams'
 import { academyManagedTeamsConfiguration, academyAttendanceRetentionConfiguration } from '@/lib/academy/db-worker'
 import type { ActionResult } from '@/lib/types/learning'
 import type {
-    AcademyIntegrationIssuesPageDTO, AcademyOrganizerDTO, AcademyRunDTO, AcademyM365IdentityDTO, AcademyIntegrationConfigDTO,
+    AcademyIntegrationIssuesPageDTO, AcademyOrganizerDTO, AcademyRunDTO, AcademyM365IdentityDTO, AcademyM365IdentitiesPageDTO, AcademyIntegrationConfigDTO,
     AcademyRunParticipantDTO, SaveAcademySessionInput, ReplaceAcademySessionInput,
 } from '@/lib/types/academy-sessions'
 
@@ -297,6 +297,32 @@ export async function listAcademyM365Identities(search?: string): Promise<Action
         const { data, error } = await client.rpc('academy_list_m365_identities', { p_search: z.string().trim().max(100).parse(search ?? '') })
         assertDatabaseResult(error)
         return (data ?? []) as AcademyM365IdentityDTO[]
+    })
+}
+const identitiesPageSchema = z.object({
+    search: z.string().trim().max(100).default(''),
+    page: z.number().int().min(1).max(100_000).default(1),
+})
+const identityPageResultSchema = z.object({
+    page: z.number().int().min(1), pageSize: z.number().int().min(1).max(100),
+    total: z.number().int().min(0),
+    items: z.array(z.object({
+        id: uuid, userId: uuid, fullName: z.string().nullable(), email: z.string(),
+        tenantId: uuid, objectId: uuid, verifiedEmail: z.string().nullable(),
+        verifiedAt: z.string(), invitationTarget: z.boolean(),
+    })),
+})
+export async function listAcademyM365IdentitiesPage(input: z.input<typeof identitiesPageSchema> = {}): Promise<ActionResult<AcademyM365IdentitiesPageDTO>> {
+    return academyAction('sessions.identities_page', async () => {
+        const { search, page } = identitiesPageSchema.parse(input)
+        const { client } = await requireAcademyContext({ admin: true })
+        const { data, error } = await client.rpc('academy_list_m365_identities_page', { p_search: search, p_page: page, p_limit: 25 })
+        assertDatabaseResult(error)
+        const result = identityPageResultSchema.parse(data)
+        if (result.page !== page || result.pageSize !== 25 || result.items.length !== Math.min(25, Math.max(0, result.total - (page - 1) * 25))) {
+            throw new Error('Lista powiązań kont Teams jest niepełna.')
+        }
+        return result
     })
 }
 export async function removeAcademyM365Identity(input: { identityId: string; note: string }): Promise<ActionResult<void>> {

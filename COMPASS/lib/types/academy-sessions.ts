@@ -116,6 +116,12 @@ export interface AcademyM365IdentityDTO {
     verifiedAt: string
     invitationTarget: boolean
 }
+export interface AcademyM365IdentitiesPageDTO {
+    items: AcademyM365IdentityDTO[]
+    total: number
+    page: number
+    pageSize: number
+}
 export interface AcademyIntegrationIssueDTO {
     id: string
     sessionId: string

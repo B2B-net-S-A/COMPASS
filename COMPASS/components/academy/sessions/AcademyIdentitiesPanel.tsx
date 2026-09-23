@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Loader2, Plus, Search, Unlink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,20 +10,23 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAcademyAction } from '../useAcademyAction'
 import { listAcademyOrganizerCandidates, removeAcademyM365Identity, saveAcademyM365Identity } from '@/lib/actions/academy-sessions'
-import type { AcademyM365IdentityDTO } from '@/lib/types/academy-sessions'
+import type { AcademyM365IdentityDTO, AcademyM365IdentitiesPageDTO } from '@/lib/types/academy-sessions'
 import { SESSION_SELECT_CLASS, sessionDate } from './session-format'
 
 interface Candidate { id: string; fullName: string | null; email: string }
-interface Props { identities: AcademyM365IdentityDTO[]; initialCandidates: Candidate[]; search: string }
+interface Props { identitiesPage: AcademyM365IdentitiesPageDTO; initialCandidates: Candidate[]; search: string }
 const UUID_PATTERN = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 
-export function AcademyIdentitiesPanel({ identities, initialCandidates, search }: Props) {
+export function AcademyIdentitiesPanel({ identitiesPage, initialCandidates, search }: Props) {
     const router = useRouter()
     const [editing, setEditing] = useState<AcademyM365IdentityDTO | null | undefined>(undefined)
     const [removing, setRemoving] = useState<AcademyM365IdentityDTO | null>(null)
     const [formPending, setFormPending] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [pending, remove] = useAcademyAction()
+    const { items: identities, total, page, pageSize } = identitiesPage
+    const pageCount = Math.max(1, Math.ceil(total / pageSize))
+    const pageHref = (target: number) => `/admin/learning/integrations?${new URLSearchParams({ ...(search ? { identity: search } : {}), identityPage: String(target) })}`
 
     function revoke(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault()
@@ -43,7 +47,8 @@ export function AcademyIdentitiesPanel({ identities, initialCandidates, search }
     return <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="space-y-1"><h2 className="text-lg font-semibold">Konta uczestników w Teams</h2><p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">Powiązania służą do przypisywania raportów obecności i kierowania zaproszeń na potwierdzony adres Teams. Jeśli osoba ma kilka różnych adresów, wybierz jeden do zaproszeń. Zapisuj wyłącznie tożsamość sprawdzoną w Microsoft 365.</p></div><Button variant="outline" onClick={() => setEditing(null)}><Plus aria-hidden="true" />Powiąż konto</Button></div>
         <form method="get" action="/admin/learning/integrations" className="flex max-w-xl flex-wrap items-end gap-2"><div className="min-w-0 flex-1 space-y-2"><label htmlFor="identity-filter" className="text-sm font-medium">Znajdź powiązanie</label><Input key={search} id="identity-filter" name="identity" defaultValue={search} maxLength={100} placeholder="Imię lub e-mail" /></div><Button type="submit" variant="outline"><Search aria-hidden="true" />Szukaj</Button></form>
-        <div className="divide-y divide-border rounded-2xl border border-border bg-card">{identities.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Nie znaleziono powiązań kont dla tych kryteriów.</p> : identities.map(identity => <div key={identity.id} className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="min-w-0 space-y-1"><p className="break-words font-medium">{identity.fullName || identity.email}</p><p className="break-all text-sm text-muted-foreground">Compass: {identity.email}</p><p className="break-all text-sm text-muted-foreground">Teams: {identity.verifiedEmail || 'Identyfikator Microsoft 365'}</p>{identity.invitationTarget && <p className="text-xs font-medium text-primary">Wybrany adres zaproszeń</p>}<p className="break-all text-xs text-muted-foreground">Tenant: {identity.tenantId} · Object: {identity.objectId}</p><p className="text-xs text-muted-foreground">Potwierdzono {sessionDate(identity.verifiedAt)}</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(identity)}>Edytuj powiązanie</Button><Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => { setError(null); setRemoving(identity) }}><Unlink aria-hidden="true" />Usuń powiązanie</Button></div></div>)}</div>
+        <div className="divide-y divide-border rounded-2xl border border-border bg-card">{identities.length === 0 ? <p className="p-5 text-sm text-muted-foreground">{total === 0 ? 'Nie znaleziono powiązań kont dla tych kryteriów.' : 'Na tej stronie nie ma powiązań. Wróć na poprzednią stronę.'}</p> : identities.map(identity => <div key={identity.id} className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div className="min-w-0 space-y-1"><p className="break-words font-medium">{identity.fullName || identity.email}</p><p className="break-all text-sm text-muted-foreground">Compass: {identity.email}</p><p className="break-all text-sm text-muted-foreground">Teams: {identity.verifiedEmail || 'Identyfikator Microsoft 365'}</p>{identity.invitationTarget && <p className="text-xs font-medium text-primary">Wybrany adres zaproszeń</p>}<p className="break-all text-xs text-muted-foreground">Tenant: {identity.tenantId} · Object: {identity.objectId}</p><p className="text-xs text-muted-foreground">Potwierdzono {sessionDate(identity.verifiedAt)}</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(identity)}>Edytuj powiązanie</Button><Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => { setError(null); setRemoving(identity) }}><Unlink aria-hidden="true" />Usuń powiązanie</Button></div></div>)}</div>
+        <nav aria-label="Strony powiązań kont Teams" className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"><span>{total === 0 ? '0 powiązań' : identities.length === 0 ? `0 na tej stronie z ${total} powiązań` : `Wyświetlono ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + identities.length} z ${total} powiązań`}</span>{total > pageSize && <><span>Strona {page} z {pageCount}</span>{page <= 1 ? <Button size="sm" variant="outline" disabled>Poprzednia strona</Button> : <Button asChild size="sm" variant="outline"><Link href={pageHref(page - 1)}>Poprzednia strona</Link></Button>}{page >= pageCount ? <Button size="sm" variant="outline" disabled>Następna strona</Button> : <Button asChild size="sm" variant="outline"><Link href={pageHref(page + 1)}>Następna strona</Link></Button>}</>}</nav>
         <Dialog open={editing !== undefined} onOpenChange={open => { if (!open && !formPending) setEditing(undefined) }}><DialogContent><DialogHeader><DialogTitle>{editing ? 'Zmień potwierdzony adres Teams' : 'Powiąż konto Microsoft 365'}</DialogTitle><DialogDescription>Wybierz uczestnika i podaj sprawdzone dane jego konta Teams. Nie przypisujemy osób automatycznie na podstawie podobnej nazwy.</DialogDescription></DialogHeader>{editing !== undefined && <IdentityForm key={editing?.id ?? 'new'} initial={editing} initialCandidates={initialCandidates} onPendingChange={setFormPending} onSaved={() => { setEditing(undefined); router.refresh() }} />}</DialogContent></Dialog>
         <Dialog open={Boolean(removing)} onOpenChange={open => { if (!open && !pending) setRemoving(null) }}><DialogContent><DialogHeader><DialogTitle>Usuń powiązanie konta</DialogTitle><DialogDescription>Nowe raporty nie będą już dopasowywane przez to powiązanie. Usunięcie nie cofa zapisanych wcześniej decyzji o obecności.</DialogDescription></DialogHeader><form onSubmit={revoke} className="space-y-4"><p className="break-all text-sm">{removing?.fullName || removing?.email} · {removing?.verifiedEmail || removing?.objectId}</p><div className="space-y-2"><label htmlFor="identity-remove-note" className="text-sm font-medium">Uzasadnienie</label><Textarea id="identity-remove-note" name="note" required minLength={5} maxLength={2000} disabled={pending} /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setRemoving(null)} disabled={pending}>Anuluj</Button><Button type="submit" variant="destructive" disabled={pending}>{pending && <Loader2 className="animate-spin" aria-hidden="true" />}Usuń powiązanie</Button></div></form></DialogContent></Dialog>
     </section>
