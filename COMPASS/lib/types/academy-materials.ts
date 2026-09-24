@@ -8,4 +8,5 @@ export interface AcademyRunMaterial {
     review_status: 'pending_review' | 'published' | 'rejected' | 'withdrawn'
     review_note: string | null
     uploaded_by: string | null
+    caption_for_asset_id: string | null
 }

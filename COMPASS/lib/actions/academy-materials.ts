@@ -74,7 +74,7 @@ export async function listAcademyRunMaterials(runId: string) {
     return academyAction('material.run_materials', async () => {
         const { client } = await requireAcademyContext()
         const { data, error } = await client.from('academy_material_catalog')
-            .select('id,filename,storage_path,mime_type,size_bytes,status,review_status,review_note,uploaded_by,scan_error')
+            .select('id,filename,storage_path,mime_type,size_bytes,status,review_status,review_note,uploaded_by,scan_error,caption_for_asset_id')
             .eq('run_id', z.uuid().parse(runId)).is('purged_at', null).or('scan_error.is.null,scan_error.neq.discarded_by_author')
             .order('created_at')
         assertDatabaseResult(error)
@@ -90,6 +90,17 @@ export async function reviewAcademyRunMaterial(input: { assetId: string; decisio
         const { client } = await requireAcademyContext({ admin: true })
         const { error } = await client.rpc('academy_review_run_material', {
             p_asset_id: parsed.assetId, p_decision: parsed.decision, p_note: parsed.note ?? null,
+        })
+        assertDatabaseResult(error)
+    })
+}
+
+export async function assignAcademyRunCaption(input: { captionId: string; videoId: string | null }) {
+    return academyAction('material.assign_caption', async () => {
+        const parsed = z.object({ captionId: z.uuid(), videoId: z.uuid().nullable() }).parse(input)
+        const { client } = await requireAcademyContext({ admin: true })
+        const { error } = await client.rpc('academy_set_run_caption', {
+            p_caption_id: parsed.captionId, p_video_id: parsed.videoId,
         })
         assertDatabaseResult(error)
     })
