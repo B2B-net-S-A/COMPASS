@@ -61,6 +61,12 @@ function validateExport(data) {
   return data;
 }
 function validateStorageInventory(data, objects) {
+  const expected = new Set(storageInventory(data).map(entry => `${entry.bucket}/${entry.path}`));
+  const actual = new Set(objects.map(object => `${object.bucket}/${object.path}`));
+  for (const key of expected) if (!actual.has(key)) fail('storage_inventory_bytes_missing');
+  for (const key of actual) if (!expected.has(key)) fail('storage_bytes_without_metadata');
+}
+function storageInventory(data) {
   const expected = new Set();
   for (const entry of data.storageObjects) {
     if (!plainObject(entry) || canonical(Object.keys(entry).sort()) !== canonical(['bucket', 'path']) ||
@@ -71,9 +77,10 @@ function validateStorageInventory(data, objects) {
     if (expected.has(key)) fail('duplicate_storage_inventory');
     expected.add(key);
   }
-  const actual = new Set(objects.map(object => `${object.bucket}/${object.path}`));
-  for (const key of expected) if (!actual.has(key)) fail('storage_inventory_bytes_missing');
-  for (const key of actual) if (!expected.has(key)) fail('storage_bytes_without_metadata');
+  return data.storageObjects;
+}
+export async function readStorageInventory(exportPath) {
+  return storageInventory(validateExport((await parseJson(exportPath)).value));
 }
 function rowSummaries(data) {
   return Object.fromEntries(TABLES.map(table => {
