@@ -118,13 +118,13 @@ jobs:
           fi
           echo "✅ Build check dla ${TARGET_SHA}: success"
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         if: env.ACADEMY_CLAMAV_COLOCATED == 'true'
         with:
           ref: ${{ env.TARGET_SHA }}
           persist-credentials: false
           sparse-checkout: ops/academy/clamav
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: env.ACADEMY_CLAMAV_COLOCATED == 'true'
         with:
           node-version: '20'
