@@ -207,18 +207,21 @@ try {
   await mkdir(join(objects(target), 'academy-materials'), { recursive: true });
   await mkdir(join(objects(target), 'documents'), { recursive: true });
   await client.connect(); sourceConnected = true;
-  // Exercise a populated attendance table as well as a real learner completion.
-  // The fixture is disposable; this synthetic review row is restore data only.
-  const attendance = (await client.query(`select s.id as session_id, r.enrollment_id,
-      (select id from public.profiles where role='admin' order by id limit 1) as reviewer_id
-    from public.course_sessions s
-    join public.course_run_registrations r on r.run_id=s.run_id and r.status='confirmed'
-    where s.status='scheduled' order by s.id limit 1`)).rows[0];
-  assert(attendance?.session_id && attendance.enrollment_id && attendance.reviewer_id, 'attendance_fixture_missing');
-  await client.query(`insert into public.session_attendance
-    (session_id,enrollment_id,status,attended_seconds,source,reviewed_by,note)
-    values($1,$2,'insufficient',0,'manual',$3,'Synthetic CI restore evidence')`,
-    [attendance.session_id, attendance.enrollment_id, attendance.reviewer_id]);
+  // Older fixtures lack attendance. The live-flow gate now leaves real synthetic
+  // review evidence; do not insert a second row for the same session/enrollment.
+  const attendanceCount = (await client.query('select count(*)::int as total from public.session_attendance')).rows[0].total;
+  if (attendanceCount === 0) {
+    const attendance = (await client.query(`select s.id as session_id, r.enrollment_id,
+        (select id from public.profiles where role='admin' order by id limit 1) as reviewer_id
+      from public.course_sessions s
+      join public.course_run_registrations r on r.run_id=s.run_id and r.status='confirmed'
+      where s.status='scheduled' order by s.id limit 1`)).rows[0];
+    assert(attendance?.session_id && attendance.enrollment_id && attendance.reviewer_id, 'attendance_fixture_missing');
+    await client.query(`insert into public.session_attendance
+      (session_id,enrollment_id,status,attended_seconds,source,reviewed_by,note)
+      values($1,$2,'insufficient',0,'manual',$3,'Synthetic CI restore evidence')`,
+      [attendance.session_id, attendance.enrollment_id, attendance.reviewer_id]);
+  }
   stage = 'fixture_presence';
   const fixture = (await client.query(`select
     (select count(*)::int from public.courses) as courses,
