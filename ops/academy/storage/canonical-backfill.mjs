@@ -58,7 +58,7 @@ export async function verifyCanonicalBackfill() {
     const row = async (table,recordId) => (await sql(`select to_jsonb(t) as row from ${table} t where id=$1`,[recordId])).rows[0]?.row;
     try {
         equal(f.baselineProof.dependencyParity,true);
-        equal(f.appliedMigrations.length,17);
+        equal(f.appliedMigrations.length,18);
         equal((await sql('select count(*)::integer n from course_versions')).rows[0].n,before.courses.length);
         for (const previous of before.courses) {
             const current = await row('courses',previous.id);

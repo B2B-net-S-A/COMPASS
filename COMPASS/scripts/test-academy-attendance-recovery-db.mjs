@@ -69,8 +69,8 @@ try {
     await rpc('academy_reconcile_attendance', [initial.session]);
     await rpc('academy_reconcile_attendance', [initial.session]);
     equal((await sql("select count(*)::int n from academy_integration_jobs where session_id=$1 and kind='sync_attendance' and status='pending'", [initial.session])).rows[0].n, 1);
-    equal((await sql('select to_jsonb(s) snapshot from course_sessions s where id=$1', [initial.session])).rows[0].snapshot, window);
     await service();
+    equal((await sql('select to_jsonb(s) snapshot from course_sessions s where id=$1', [initial.session])).rows[0].snapshot, window);
     equal((await sql("select count(*)::int n from academy_audit_events where action='ACADEMY_ATTENDANCE_RECONCILIATION_REQUESTED' and details->>'session_id'=$1", [initial.session])).rows[0].n, 1);
     const [recovery] = await rpc('academy_claim_jobs', ['recovery', 1, 180]);
     equal(recovery.id, firstImport.id); equal(recovery.revision, firstImport.revision); equal(recovery.attempt, 1);
