@@ -26,6 +26,8 @@ try {
  }
  const {run,sessions:[first,second]}=await makeRun('Two obligations',[input,{...input,title:'Second workshop'}]);
  await actor('student');const reg=await rpc('academy_register_run',[run]);
+ equal((await rpc('academy_list_runs',[course,run]))[0].sessions.find(s=>s.id===second).joinUrl,input.externalJoinUrl);
+ await denied('select external_join_url from course_sessions where id=$1',[second]);
  let learner=(await rpc('academy_list_runs',[course,run]))[0].myRegistration.learnerProgress;
  equal(learner.completionState,'pending');equal(learner.readyToComplete,false);
  equal(learner.attendance.map(a=>[a.status,a.attendedSeconds,a.requiredSeconds,a.requiredForCompletion,a.requirementMet]),[
@@ -44,6 +46,9 @@ try {
  await rpc('academy_save_session',[{...input,runId:run,id:first,startsAt:time(26),endsAt:time(27)}]);
  await owner();equal((await sql('select active_session_id from academy_private.run_obligations where original_session_id=$1',[first])).rows[0].active_session_id,first);
  await actor('trainer');await rpc('academy_cancel_session',[second,'Trainer unavailable; replacement to follow']);
+ await actor('student');equal((await rpc('academy_list_runs',[course,run]))[0].sessions.find(s=>s.id===second).joinUrl,null);
+ await denied('select external_join_url from course_sessions where id=$1',[second]);
+ await actor('trainer');
  await owner();equal((await sql('select count(*)::int n from academy_private.run_obligations where run_id=$1',[run])).rows[0].n,2);
  const started=time(-2),ended=time(-1);
  await sql('update course_sessions set starts_at=$2,ends_at=$3 where id=$1',[first,started,ended]);
