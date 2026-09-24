@@ -64,31 +64,20 @@ end;$$;
 revoke all on function public.academy_set_run_caption(uuid,uuid) from public,anon;
 grant execute on function public.academy_set_run_caption(uuid,uuid) to authenticated;
 
--- Extend the curated read projection without granting clients access to the
--- underlying material table. The explicit row predicate remains mandatory.
-create or replace view public.academy_material_catalog with (security_barrier = true) as
+-- Preserve the invoker projection when adding the safe caption association.
+grant select (caption_for_asset_id) on public.course_materials to authenticated;
+create or replace view public.academy_material_catalog with (security_barrier = true, security_invoker = true) as
 select a.id, a.course_id, a.version_id, a.lesson_id, a.run_id,
   a.filename, a.storage_path, a.mime_type, a.size_bytes, a.status,
   a.review_status, a.created_at, a.purged_at,
-  case when public.is_admin() or public.academy_can_manage_course(a.course_id)
-       or (a.run_id is not null and public.academy_can_manage_run(a.run_id))
-       then a.uploaded_by end as uploaded_by,
-  case when public.is_admin() or public.academy_can_manage_course(a.course_id)
-       or (a.run_id is not null and public.academy_can_manage_run(a.run_id))
-       then a.review_note end as review_note,
-  case when public.is_admin() or public.academy_can_manage_course(a.course_id)
-       or (a.run_id is not null and public.academy_can_manage_run(a.run_id))
-       then a.scan_error end as scan_error,
-  case when public.is_admin() then a.scan_attempts end as scan_attempts,
-  case when public.is_admin() then a.scan_started_at end as scan_started_at,
-  case when public.is_admin() then a.scan_next_attempt_at end as scan_next_attempt_at,
-  case when public.is_admin() then a.cleanup_token end as cleanup_token,
-  case when public.is_admin() then a.cleanup_attempts end as cleanup_attempts,
-  case when public.is_admin() then a.cleanup_claimed_at end as cleanup_claimed_at,
-  case when public.is_admin() then a.cleanup_error end as cleanup_error,
+  staff.uploaded_by, staff.review_note, staff.scan_error,
+  staff.scan_attempts, staff.scan_started_at, staff.scan_next_attempt_at,
+  staff.cleanup_token, staff.cleanup_attempts, staff.cleanup_claimed_at,
+  staff.cleanup_error,
   a.caption_for_asset_id
 from public.course_materials a
-where public.academy_can_read_asset(a.id);
+left join lateral academy_material_policy.staff_metadata(a.id) staff on true;
+alter view public.academy_material_catalog set (security_invoker = true);
 revoke all on public.academy_material_catalog from public, anon;
 grant select on public.academy_material_catalog to authenticated;
 

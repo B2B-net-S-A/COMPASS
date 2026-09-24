@@ -27,7 +27,7 @@ eq(asset.version_id,c.version_id);eq(asset.run_id,run);eq(asset.lesson_id,null);
 eq((await reserve()).id,asset.id);
 await denied('select academy_review_run_material($1,$2,null)',[asset.id,'approve'],/admin_required/);
 await actor('student');await denied('select academy_reserve_run_material($1,$2,$3,100,0)',[run,'forged.mp4','video/mp4']);
-await denied('select id from course_materials where run_id=$1',[run],/permission denied/);
+eq((await sql('select id from course_materials where run_id=$1',[run])).rows.length,0);
 eq((await sql('select id from academy_material_catalog where run_id=$1',[run])).rows.length,0);
 await actor('trainer');
 await db.exec('BEGIN');
@@ -49,6 +49,9 @@ await denied("update course_materials set review_status='published' where id=$1"
 await actor('admin');await rpc('academy_review_run_material',[asset.id,'approve','Internal reviewer note']);
 await actor('student');eq(await rpc('academy_can_read_asset',[asset.id]),true);
 eq((await sql('select review_note,uploaded_by,scan_error from academy_material_catalog where id=$1',[asset.id])).rows[0],{review_note:null,uploaded_by:null,scan_error:null});
+eq((await sql('select * from academy_material_policy.staff_metadata($1)',[asset.id])).rows.length,0);
+eq((await sql("select has_column_privilege('authenticated','public.course_materials','review_note','select') allowed")).rows[0].allowed,false);
+eq((await sql("select reloptions @> array['security_invoker=true'] invoker from pg_class where oid='public.academy_material_catalog'::regclass")).rows[0].invoker,true);
 await denied('select review_note,sha256 from course_materials where id=$1',[asset.id],/permission denied/);
 eq((await sql("select name from storage.objects where bucket_id='academy-materials'")).rows.length,1);
 await actor('trainer');eq((await sql('select review_note,uploaded_by from academy_material_catalog where id=$1',[asset.id])).rows[0],{review_note:'Internal reviewer note',uploaded_by:ids.trainer});
