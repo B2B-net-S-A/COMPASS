@@ -212,8 +212,10 @@ try {
         await actor('admin');
         await rpc('academy_set_rollout', ['pilot', [ids.other]]);
         await rpc('academy_update_run', [draftRun, 'Pilot publication race', 499]);
+        await owner();
+        await sql("update profiles set role='admin' where id=$1", [ids.internal]);
         const rolloutWriter = await fixture.connectSession('admin');
-        const publishWriter = await fixture.connectSession('admin');
+        const publishWriter = await fixture.connectSession('internal');
         const publishRace = await Promise.allSettled([
             rolloutWriter.rpc('academy_set_rollout', ['open', []]),
             publishWriter.rpc('academy_publish_run', [draftRun]),
@@ -221,6 +223,7 @@ try {
         assert.equal(publishRace[0].status, 'rejected'); checks++;
         assert.equal(publishRace[1].status, 'fulfilled'); checks++;
         assert.equal((await sql('select status from course_runs where id=$1', [draftRun])).rows[0].status, 'published'); checks++;
+        await actor('admin');
         await rpc('academy_update_run', [draftRun, 'Publication race reset', 498]);
         await rpc('academy_set_rollout', ['open', []]);
 
