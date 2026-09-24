@@ -4,7 +4,7 @@ import {createAcademyDatabase} from './lib/academy-db-fixture.mjs';
 const f=await createAcademyDatabase({cleanup:true});
 const {db,sql,actor,owner,service,rpc,ids}=f;let checks=0;
 try{
- await owner();await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260922152000_academy_operations_health.sql',import.meta.url),'utf8'));
+ await owner();await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260922154414_academy_operations_health.sql',import.meta.url),'utf8'));
  for(const role of ['student','trainer','admin']){await actor(role);await f.expectDenied('select academy_operations_health()',[],/permission denied/);checks++;}
  await actor('','anon');await f.expectDenied('select academy_operations_health()',[],/permission denied/);checks++;
  await service();let report=await rpc('academy_operations_health');assert.equal(report.workers.length,2);assert(report.workers.every(w=>!w.ok&&w.lastFinishedAt===null));assert.equal(report.materials.pending,0);checks+=3;

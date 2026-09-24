@@ -38,7 +38,7 @@ try {
     await actor('trainer');
     expect((await rpc('academy_integration_issues')).length, 100);
     await owner();
-    await db.exec(readFileSync(new URL('../supabase/migrations/20260923144907_academy_integration_issues_pagination.sql', import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/migrations/20260923154003_academy_integration_issues_pagination.sql', import.meta.url), 'utf8'));
     await actor('trainer');
 
     const seen = [];
