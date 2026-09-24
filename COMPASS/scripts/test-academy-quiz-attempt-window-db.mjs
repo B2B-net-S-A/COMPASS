@@ -35,7 +35,7 @@ const oldEnrollmentId = await rpc('academy_enroll', [courseId, null]);
 
 // Apply the migration after an approved version and its enrollment exist.
 await owner();
-const migrationPath = fileURLToPath(new URL('../supabase/migrations/20260923121456_academy_quiz_attempt_window.sql', import.meta.url));
+const migrationPath = fileURLToPath(new URL('../supabase/migrations/20260923125544_academy_quiz_attempt_window.sql', import.meta.url));
 await db.exec(fs.readFileSync(migrationPath, 'utf8'));
 assert.deepEqual((await sql('select quiz_attempt_limit,quiz_attempt_window_hours from public.course_versions where id=$1', [oldVersionId])).rows[0],
     { quiz_attempt_limit: null, quiz_attempt_window_hours: null }); checks++;

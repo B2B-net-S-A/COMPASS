@@ -5,9 +5,9 @@ import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
 
 const fixture = await createAcademyDatabase({ runMaterials: true, materialProjection: true });
 const { db, sql, ids, actor, owner, service, rpc } = fixture;
-const migration = fileURLToPath(new URL('../supabase/migrations/20260924100309_academy_run_caption_association.sql', import.meta.url));
-const rawReadRevoke = fileURLToPath(new URL('../supabase/migrations/20260924100212_academy_material_revoke_raw_read.sql', import.meta.url));
-const captionGrantRepair = fileURLToPath(new URL('../supabase/migrations/20260924113024_academy_material_catalog_caption_grant.sql', import.meta.url));
+const migration = fileURLToPath(new URL('../supabase/migrations/20260924101350_academy_run_caption_association.sql', import.meta.url));
+const rawReadRevoke = fileURLToPath(new URL('../supabase/migrations/20260924104028_academy_material_revoke_raw_read.sql', import.meta.url));
+const captionGrantRepair = fileURLToPath(new URL('../supabase/migrations/20260924115540_academy_material_catalog_caption_grant.sql', import.meta.url));
 let checks = 0;
 const eq = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
 const denied = async (statement, params, reason) => {

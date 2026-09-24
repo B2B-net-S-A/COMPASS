@@ -29,9 +29,9 @@ async function progressQuiz(enrollmentId, correct) {
 }
 
 try {
-    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260922151500_academy_roster_progress.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260922154408_academy_roster_progress.sql', import.meta.url), 'utf8'));
     // CREATE OR REPLACE remains re-applicable and does not acquire PUBLIC execute.
-    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260922151500_academy_roster_progress.sql', import.meta.url), 'utf8'));
+    await db.exec(await fs.readFile(new URL('../supabase/migrations/20260922154408_academy_roster_progress.sql', import.meta.url), 'utf8'));
     equal((await sql("select has_function_privilege('anon','public.academy_run_participants(uuid)','execute') anon,has_function_privilege('authenticated','public.academy_run_participants(uuid)','execute') auth")).rows[0], { anon: false, auth: true });
     await actor('admin'); await rpc('academy_set_rollout', ['open', []]); await rpc('academy_set_trainer', [ids.trainer, true]);
     const facilitator = '00000000-0000-4000-8000-000000000011';

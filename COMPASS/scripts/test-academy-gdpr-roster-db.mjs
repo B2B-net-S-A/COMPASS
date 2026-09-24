@@ -16,7 +16,7 @@ const endsAt = new Date(Date.now() + 90000000).toISOString();
 
 try {
     await owner();
-    await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260923135155_academy_gdpr_attendance_roster.sql', import.meta.url), 'utf8'));
+    await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260923141526_academy_gdpr_attendance_roster.sql', import.meta.url), 'utf8'));
     equal((await sql("select has_function_privilege('anon','public.academy_gdpr_attendance_roster(uuid[])','execute') anon,has_function_privilege('authenticated','public.academy_gdpr_attendance_roster(uuid[])','execute') auth,has_function_privilege('service_role','public.academy_gdpr_attendance_roster(uuid[])','execute') service")).rows[0],
         { anon: false, auth: false, service: true });
 

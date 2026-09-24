@@ -71,6 +71,16 @@ test('prepares every repository migration without silently dropping duplicate co
             const positions = exception.files.map(([name]) => manifest.find(row => row.original === name).replayIndex);
             assert.deepEqual(positions, [...positions].sort((a, b) => a - b), exception.id);
         }
+        // Match the production registry: the caption column and invoker view
+        // existed before raw table reads were revoked, then the grant was repaired.
+        const academyProjection = [
+            '20260924100852_academy_material_read_projection.sql',
+            '20260924101249_academy_material_invoker_projection.sql',
+            '20260924101350_academy_run_caption_association.sql',
+            '20260924104028_academy_material_revoke_raw_read.sql',
+            '20260924115540_academy_material_catalog_caption_grant.sql',
+        ];
+        assert.deepEqual(manifest.filter(row => academyProjection.includes(row.original)).map(row => row.original), academyProjection);
         assert(manifest.some(row => row.original === '20260216_chat_attachments_backup.sql'));
         for (const row of manifest) assert.deepEqual(fs.readFileSync(path.join(root, row.replay)), fs.readFileSync(path.resolve(source, row.sourceRelativePath)));
     } finally { fs.rmSync(root, { recursive: true, force: true }); }

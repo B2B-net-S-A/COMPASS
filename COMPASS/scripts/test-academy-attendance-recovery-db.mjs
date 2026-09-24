@@ -18,7 +18,7 @@ const meeting = { eventId: 'managed-event', organizerId: object, joinUrl: 'https
 
 try {
     await owner();
-    await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260922152500_academy_attendance_recovery.sql', import.meta.url), 'utf8'));
+    await db.exec(fs.readFileSync(new URL('../supabase/migrations/20260922154418_academy_attendance_recovery.sql', import.meta.url), 'utf8'));
     await actor('admin'); await rpc('academy_set_rollout', ['open', []]);
     await rpc('academy_set_trainer', [ids.trainer, true]);
     const organizer = await rpc('academy_save_organizer', [{ profileId: ids.internal, tenantId: tenant, objectId: object, enabled: true }]);

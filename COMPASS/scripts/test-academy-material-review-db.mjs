@@ -77,7 +77,7 @@ await p.sql('update course_lessons set attachments=$1 where id=$2', [JSON.string
 await p.actor('admin');
 assert.equal(await p.rpc('academy_can_review_version', [oldCourse.version_id]), true); checks++;
 await p.owner();
-await p.db.exec(readFileSync(new URL('../supabase/migrations/20260923114717_academy_material_review_independence.sql', import.meta.url), 'utf8'));
+await p.db.exec(readFileSync(new URL('../supabase/migrations/20260923121227_academy_material_review_independence.sql', import.meta.url), 'utf8'));
 assert.equal((await p.sql('select 1 from academy_private.version_contributors where version_id=$1 and user_id=$2', [oldCourse.version_id, p.ids.admin])).rows.length, 1); checks++;
 await p.actor('admin');
 assert.equal(await p.rpc('academy_can_review_version', [oldCourse.version_id]), false); checks++;

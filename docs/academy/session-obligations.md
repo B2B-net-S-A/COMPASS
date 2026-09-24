@@ -1,6 +1,6 @@
 # Wymagania obecności i zastępstwa
 
-Migracja `20260922102931_academy_session_obligations.sql` zamraża listę wymaganych sesji przy publikacji edycji. Zamknięty program i jego kryteria ukończenia pochodzą z przypiętej wersji kursu. Edycja opublikowana nie może wrócić do szkicu ani zmienić przypiętej wersji.
+Migracja `20260922141958_academy_session_obligations.sql` zamraża listę wymaganych sesji przy publikacji edycji. Zamknięty program i jego kryteria ukończenia pochodzą z przypiętej wersji kursu. Edycja opublikowana nie może wrócić do szkicu ani zmienić przypiętej wersji.
 
 - Zmiana daty przyszłej sesji zachowuje jej identyfikator i obowiązek obecności. Wysłane wcześniej zaproszenie firmowe aktualizuje worker; użytkownik linku zewnętrznego aktualizuje termin także u organizatora i pobiera ponownie ICS.
 - Po publikacji nie można zmienić pola „wymagana” ani dodać nowego obowiązku. Dodatkowe zwykłe spotkania są opcjonalne; inny wymagany program potrzebuje nowej edycji.

@@ -1,6 +1,6 @@
 # Academy database contract
 
-Foundation migration: `20260922082902_academy_versioned_foundation.sql`.
+Foundation migration: `20260922141922_academy_versioned_foundation.sql`.
 
 ## Access and versioning
 
@@ -12,7 +12,7 @@ Foundation migration: `20260922082902_academy_versioned_foundation.sql`.
 - `course_lessons.version_id`, `course_quiz_questions.version_id`, `course_enrollments.version_id` pin content. Filter reads by version, not just course. Questions/options still require author/admin access; students use quiz RPC without correct answers.
 - Enrollments add nullable `run_id`. Partial uniqueness: `(user_id,course_id) WHERE run_id IS NULL`; `(user_id,run_id) WHERE run_id IS NOT NULL`. The next migration owns runs and adds the FK.
 - Course IDs/slugs, existing lesson IDs, enrollments, completions and certificate hashes survive backfill. Legacy rules preserve the original 70% quiz threshold. New rules default to 80%.
-- Quiz retries are pinned to the version. Versions created after `20260923121456_academy_quiz_attempt_window.sql` allow 3 submissions per learner per rolling 24 hours, counted across every enrollment/run of that version. Earlier versions retain unlimited retries, including already published and completed programs. The policy cannot be changed after version creation; the database rejects a fourth submission without recording an attempt. A submission becomes available when the oldest counted attempt passes the 24-hour boundary.
+- Quiz retries are pinned to the version. Versions created after `20260923125544_academy_quiz_attempt_window.sql` allow 3 submissions per learner per rolling 24 hours, counted across every enrollment/run of that version. Earlier versions retain unlimited retries, including already published and completed programs. The policy cannot be changed after version creation; the database rejects a fourth submission without recording an attempt. A submission becomes available when the oldest counted attempt passes the 24-hour boundary.
 
 ## JSON shapes
 
@@ -97,7 +97,7 @@ Cofnięcie dostępu blokuje wydawanie nowych adresów pobierania. Już wydany si
 
 ### Przypisania i ponowna akceptacja historycznych publikacji
 
-Migracja `20260922093544_academy_staff_and_legacy_review.sql` rozdziela `course_staff.role=editor` (program, quiz, upload) i `facilitator` (edycje i obecność). `course_run_staff` daje prowadzenie tylko wskazanej edycji. Właściciel i administrator nadają/odbierają przypisania; wymagane jest aktywne konto Compass i aktualny grant trenera. Cofnięcie grantu lub zatrudnienia natychmiast wyłącza dostęp. Uprawnienia HR nie zmieniają się.
+Migracja `20260922141936_academy_staff_and_legacy_review.sql` rozdziela `course_staff.role=editor` (program, quiz, upload) i `facilitator` (edycje i obecność). `course_run_staff` daje prowadzenie tylko wskazanej edycji. Właściciel i administrator nadają/odbierają przypisania; wymagane jest aktywne konto Compass i aktualny grant trenera. Cofnięcie grantu lub zatrudnienia natychmiast wyłącza dostęp. Uprawnienia HR nie zmieniają się.
 
 - `academy_can_edit_course_as(p_course_id,p_user_id)` i `academy_can_lead_run_as(p_run_id,p_user_id)` są helperami service-only; finalizacja Storage sprawdza faktycznego `uploaded_by`, a nie tożsamość worker.
 - `academy_can_manage_course` oznacza redakcję; `academy_can_lead_course` / `academy_can_manage_run` oznaczają prowadzenie. `academy_can_preview_version` daje prowadzącemu pełen program wyłącznie zatwierdzonej wersji jego kursu/edycji. Editor nie otrzymuje automatycznie list uczestników.
@@ -114,7 +114,7 @@ Podgląd prowadzącego: `/learning/edycje/[id]/program` wybiera dokładnie `run.
 
 ## Audytowane unieważnienie ukończenia
 
-Migracja `20260922102847_academy_completion_revocations.sql` dodaje `course_completions.revoked_at/revoked_by/revoked_reason` oraz niezmienną decyzję `academy_completion_revocations`. RPC `academy_revoke_completion(p_completion_id uuid,p_reason text)` wymaga aktywnego administratora, uzasadnienia 10–2000 znaków oraz innego uczestnika niż administrator. Powtórzenie zwraca pierwszą decyzję bez ponownego audytu, powiadomienia lub zmiany salda. Snapshot certyfikatu, historia lekcji, wyników i `enrollment.completed_at` pozostają historyczne. Decyzja nie jest cofana poprzez ponowne sprawdzenie warunków ukończenia.
+Migracja `20260922141946_academy_completion_revocations.sql` dodaje `course_completions.revoked_at/revoked_by/revoked_reason` oraz niezmienną decyzję `academy_completion_revocations`. RPC `academy_revoke_completion(p_completion_id uuid,p_reason text)` wymaga aktywnego administratora, uzasadnienia 10–2000 znaków oraz innego uczestnika niż administrator. Powtórzenie zwraca pierwszą decyzję bez ponownego audytu, powiadomienia lub zmiany salda. Snapshot certyfikatu, historia lekcji, wyników i `enrollment.completed_at` pozostają historyczne. Decyzja nie jest cofana poprzez ponowne sprawdzenie warunków ukończenia.
 
 Nowe, aktywne ukończenia rozstrzygają prerequisites i ukończenie ścieżki (`revoked_at IS NULL`); istniejące zapisy i wcześniejsze ukończenia ścieżek pozostają zachowane. `academy_private.user_may_register`, finalizacja, unieważnienie i zaliczenie ścieżki współdzielą blokadę kwalifikacji użytkownika. Kursy live blokują edycję przed zapisem (`run → enrollment`).
 
@@ -124,10 +124,10 @@ API certyfikatu zwraca HTTP 410 po unieważnieniu. Nowe PDF zawierają odsyłacz
 
 ## Etapowe udostępnienie Akademii
 
-Migracja `20260922102848_academy_rollout_gate.sql`: jedyne źródło polityki to `academy_rollout_settings` (domyślnie `closed`). `academy_rollout_access()` zwraca `{mode,allowed,isPilot}` bez ujawniania listy pilotowej. `academy_set_rollout(p_mode text,p_user_ids uuid[])` jest audytowanym RPC administratora; pilot dopuszcza wyłącznie wskazane aktywne konta Compass konsultantów/administratorów. Administrator zachowuje dostęp do przygotowania. `academy_can_access`, kwalifikacja trenerów i kolejka zapisów sprawdzają tę samą politykę również przy bezpośrednim dostępie przez PostgREST i przy finalizacji materiału przez worker w imieniu autora. Zmiana rollout nie nadaje uprawnień HR ani grantu trenera.
+Migracja `20260922141952_academy_rollout_gate.sql`: jedyne źródło polityki to `academy_rollout_settings` (domyślnie `closed`). `academy_rollout_access()` zwraca `{mode,allowed,isPilot}` bez ujawniania listy pilotowej. `academy_set_rollout(p_mode text,p_user_ids uuid[])` jest audytowanym RPC administratora; pilot dopuszcza wyłącznie wskazane aktywne konta Compass konsultantów/administratorów. Administrator zachowuje dostęp do przygotowania. `academy_can_access`, kwalifikacja trenerów i kolejka zapisów sprawdzają tę samą politykę również przy bezpośrednim dostępie przez PostgREST i przy finalizacji materiału przez worker w imieniu autora. Zmiana rollout nie nadaje uprawnień HR ani grantu trenera.
 
 ## Tożsamość zgłoszenia do moderacji
 
-`course_versions.submission_id` identyfikuje konkretne zgłoszenie. Przy każdym przejściu do `pending_review` baza generuje nowy UUID, również po odrzuceniu i poprawkach w tej samej wersji. Migracja `20260922105234_academy_review_submission_token.sql` nadaje tokeny już oczekującym wersjom.
+`course_versions.submission_id` identyfikuje konkretne zgłoszenie. Przy każdym przejściu do `pending_review` baza generuje nowy UUID, również po odrzuceniu i poprawkach w tej samej wersji. Migracja `20260922142007_academy_review_submission_token.sql` nadaje tokeny już oczekującym wersjom.
 
 Podgląd administratora przenosi `submission_id` przez `CourseDetail`, `AdminReviewActions` i server action bez ponownego pobierania aktualnego tokenu. RPC `academy_review_course(p_version_id,p_approve,p_reason,p_submission_id)` porównuje przesłany token pod blokadą kursu i wersji przed zmianą statusu lub nagrodą. Stary formularz otrzymuje `review_submission_changed`; brak tokenu blokuje decyzję. Stary podpis z trzema argumentami, w tym wariant dwóch argumentów z wartością domyślną, nie jest wykonywalny przez `authenticated` ani `service_role`. Zostaje wewnętrznym rdzeniem operacji. Poprawny retry zaakceptowanego zgłoszenia nie powtarza nagrody ani audytu decyzji. Niezmienna historyczna publikacja korzysta nadal z osobnego RPC legacy.

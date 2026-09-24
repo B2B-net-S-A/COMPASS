@@ -72,6 +72,12 @@ Odmienny MD5 poza Akademią nie przesądza, że migracja miała inne działanie:
 
 **Nie wykonywać teraz:** `supabase db push`, hurtowego `supabase migration repair`, ręcznego `INSERT`/`DELETE` w `supabase_migrations.schema_migrations`, ponownego uruchamiania starych plików, ani `db reset` na produkcji. Według [dokumentacji Supabase](https://supabase.com/docs/reference/cli/supabase-migration-repair) `migration repair --status applied|reverted` zmienia tylko wpis rejestru, a nie schemat; użycie go do masowego „zazielenienia” historii stworzyłoby fałszywy dowód. Również `db push` mógłby wykonać historyczne DDL drugi raz lub w niewłaściwej kolejności.
 
+## Aktualizacja po wdrożeniu kolejnych migracji Akademii
+
+Przed zmianą nazw odświeżono odczytowo rejestr produkcyjny i `origin/main` (`dfced4c3ce98ce85c3ec93bd47c2280476eb4ffe`). Repozytorium miało 279 plików SQL, produkcja 220 wpisów; w obu były 34 jednoznacznie dopasowane migracje `academy_*`. Do powyższych 32 doszły `academy_session_link_read_guard` (`20260924104558` w repo, `20260924112522` w produkcji) i `academy_material_catalog_caption_grant` (`20260924113024` w repo, `20260924115540` w produkcji). W obu zapisany SQL różnił się od pliku tylko brakiem końcowego znaku nowej linii. Pozostałe 32 porównano ponownie: 31 par było identycznych, a `academy_activation_invitation_budget` różniła się wyłącznie instrukcjami `BEGIN;` i `COMMIT;`.
+
+W odrębnej zmianie repozytorium skorygowano nazwy 30 plików do wersji już zapisanych w rejestrze. Cztery nazwy były zgodne wcześniej. Treści SQL nie zmieniono i niczego nie uruchomiono w produkcji. Kolejność nazw odzwierciedla rzeczywiste wykonanie: `academy_run_caption_association` (`20260924101350`) przed `academy_material_revoke_raw_read` (`20260924104028`), a następnie `academy_material_catalog_caption_grant` (`20260924115540`). Test odtwarzania historii sprawdza tę kolejność. **Jest to wyłącznie częściowe uzgodnienie Akademii; historyczny rozjazd innych migracji i zakaz `db push` pozostają.**
+
 Odczytowy punkt startowy do ponownej weryfikacji (bez zapisu treści SQL ani danych):
 
 ```bash
