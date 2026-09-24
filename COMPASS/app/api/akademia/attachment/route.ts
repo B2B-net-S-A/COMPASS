@@ -20,7 +20,7 @@ export const GET = withAuth(async request => {
     let attachment: CourseAttachment | undefined
     if (runId) {
         // RLS requires the exact confirmed run and an approved material; staff can preview.
-        const { data: asset, error } = await client.from('course_materials')
+        const { data: asset, error } = await client.from('academy_material_catalog')
             .select('id,filename,storage_path,status,mime_type,size_bytes').eq('id', assetId!).eq('run_id', runId).maybeSingle()
         if (error || !asset || asset.status !== 'ready') return new Response('Materiał jest niedostępny.', { status: 404 })
         attachment = { asset_id: asset.id, name: asset.filename, storage_path: asset.storage_path, mime_type: asset.mime_type, size_bytes: asset.size_bytes }
@@ -33,7 +33,7 @@ export const GET = withAuth(async request => {
     if (!attachment) return new Response('Materiał jest niedostępny.', { status: 404 })
     let bucket = 'documents'
     if (attachment.asset_id) {
-        const { data: asset } = await client.from('course_materials').select('storage_path,status').eq('id', attachment.asset_id).maybeSingle()
+        const { data: asset } = await client.from('academy_material_catalog').select('storage_path,status').eq('id', attachment.asset_id).maybeSingle()
         if (!asset || asset.status !== 'ready' || asset.storage_path !== attachment.storage_path) return new Response('Materiał oczekuje na weryfikację.', { status: 404 })
         bucket = 'academy-materials'
     } else if (!attachment.storage_path.startsWith('courses/')) {

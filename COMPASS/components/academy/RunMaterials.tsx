@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { MaterialUploader } from './MaterialUploader'
 import { AcademyVideo } from './AcademyVideo'
 import { useAcademyAction } from './useAcademyAction'
-import { listAcademyRunMaterials, reviewAcademyRunMaterial } from '@/lib/actions/academy-materials'
+import { assignAcademyRunCaption, listAcademyRunMaterials, reviewAcademyRunMaterial } from '@/lib/actions/academy-materials'
 import type { AcademyRunMaterial } from '@/lib/types/academy-materials'
 import type { CourseAttachment } from '@/lib/types/learning'
 
@@ -17,6 +17,10 @@ const asAttachment = (file: AcademyRunMaterial): CourseAttachment => ({
     asset_id: file.id, name: file.filename, mime_type: file.mime_type,
     size_bytes: Number(file.size_bytes), storage_path: file.storage_path,
 })
+const linkedCaption = (items: AcademyRunMaterial[], videoId: string): CourseAttachment | undefined => {
+    const caption = items.find(file => file.status === 'ready' && file.review_status === 'published' && file.mime_type === 'text/vtt' && file.caption_for_asset_id === videoId)
+    return caption ? asAttachment(caption) : undefined
+}
 
 export function RunMaterials({ runId, courseId, canManage, isAdmin, userId, readOnly = false }: {
     runId: string; courseId: string; canManage: boolean; isAdmin: boolean; userId: string; readOnly?: boolean
@@ -54,6 +58,19 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, userId, read
         })
     }
 
+    function assignCaption(captionId: string, videoId: string | null) {
+        perform(async () => {
+            try {
+                const result = await assignAcademyRunCaption({ captionId, videoId })
+                if (!result.success) { setError(result.error); return }
+                setError(null)
+                await refresh()
+            } catch { setError('Nie udało się przypisać napisów. Spróbuj ponownie.') }
+        })
+    }
+
+    const publishedVideos = items.filter(file => file.status === 'ready' && file.review_status === 'published' && file.mime_type === 'video/mp4')
+
     return <section aria-labelledby={'run-materials-' + runId} className="space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
             <div><h2 id={'run-materials-' + runId} className="text-lg font-semibold">Materiały po szkoleniu</h2><p className="mt-1 text-sm text-muted-foreground">Nagrania i pliki dla tej edycji. Nie zmieniają programu ani warunków zaliczenia.</p></div>
@@ -66,7 +83,19 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, userId, read
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div className="min-w-0"><h3 className="break-words font-medium">{item.filename}</h3><p className="mt-1 text-xs text-muted-foreground">{(Number(item.size_bytes) / 1024 / 1024).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} MB{canManage ? ' · ' + reviewLabels[item.review_status] : ''}</p>{canManage && item.review_note && <p className="mt-2 text-sm text-muted-foreground">{item.review_note}</p>}</div>
                 <Button asChild size="sm" variant="outline"><a href={'/api/akademia/attachment?' + new URLSearchParams({ runId, assetId: item.id })}><Download aria-hidden="true" className="size-4" />{canManage && item.review_status !== 'published' ? 'Podgląd pliku' : 'Otwórz plik'}</a></Button>
             </div>
-            {item.mime_type === 'video/mp4' && <AcademyVideo runId={runId} video={asAttachment(item)} captions={items.find(file => file.status === 'ready' && file.review_status === item.review_status && file.mime_type === 'text/vtt') ? asAttachment(items.find(file => file.status === 'ready' && file.review_status === item.review_status && file.mime_type === 'text/vtt')!) : undefined} />}
+            {item.mime_type === 'video/mp4' && <AcademyVideo runId={runId} video={asAttachment(item)} captions={item.review_status === 'published' ? linkedCaption(items, item.id) : undefined} />}
+            {isAdmin && !readOnly && item.mime_type === 'text/vtt' && item.review_status === 'published' && <div className="flex flex-col gap-1 sm:max-w-sm">
+                <label htmlFor={`caption-target-${item.id}`} className="text-sm font-medium">Nagranie dla napisów</label>
+                <select id={`caption-target-${item.id}`} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" disabled={pending}
+                    value={item.caption_for_asset_id ?? ''} onChange={event => assignCaption(item.id, event.target.value || null)}>
+                    <option value="">Bez przypisania</option>
+                    {item.caption_for_asset_id && !publishedVideos.some(video => video.id === item.caption_for_asset_id) &&
+                        <option value={item.caption_for_asset_id} disabled>Wycofane nagranie</option>}
+                    {publishedVideos.filter(video => !items.some(caption => caption.id !== item.id && caption.caption_for_asset_id === video.id)).map(video =>
+                        <option key={video.id} value={video.id}>{video.filename}</option>)}
+                </select>
+                <p className="text-xs text-muted-foreground">Jedne napisy można przypisać do jednego opublikowanego nagrania.</p>
+            </div>}
             {isAdmin && !readOnly && <div className="flex flex-wrap gap-2">
                 {item.review_status === 'pending_review' && <><Button size="sm" disabled={pending || item.uploaded_by === userId} onClick={() => { setError(null); setDecision({ item, value: 'approve' }) }}><FileCheck2 className="size-4" aria-hidden="true" />Zatwierdź dla uczestników</Button><Button size="sm" variant="outline" disabled={pending} onClick={() => { setError(null); setDecision({ item, value: 'reject' }) }}>Odrzuć z komentarzem</Button>{item.uploaded_by === userId && <span className="w-full text-xs text-muted-foreground">Własny materiał musi zatwierdzić inny administrator.</span>}</>}
                 {item.review_status === 'published' && <Button size="sm" variant="outline" disabled={pending} onClick={() => { setError(null); setDecision({ item, value: 'withdraw' }) }}>Wycofaj materiał</Button>}
