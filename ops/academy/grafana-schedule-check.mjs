@@ -9,7 +9,7 @@ export function renderGrafanaScheduleCheck() {
 import http from 'k6/http';
 import { check, fail } from 'k6';
 
-const URL = 'https://api.github.com/repos/B2B-net-S-A/COMPASS/actions/workflows/academy-health.yml/runs?event=schedule&status=success&per_page=1';
+const URL = 'https://api.github.com/repos/B2B-net-S-A/COMPASS/actions/workflows/academy-health.yml/runs?event=schedule&per_page=1';
 const MAX_INPUT_BYTES = ${MAX_INPUT_BYTES};
 const MAX_AGE_MS = ${MAX_AGE_MS};
 

@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+import { PDFDocument } from 'pdf-lib';
 import { uploadAcademyFile } from '../lib/academy/resumable-upload.ts';
+import { generateCertificatePdf } from '../lib/pdf/certificate.ts';
 import { assertHostedStorage, localStatus, installAcademyStorageFixture, appendStorageReport } from './lib/academy-storage-gate.mjs';
 
 assertHostedStorage();
@@ -161,7 +163,10 @@ try {
     stage='run_scoped_ready_review';
     const live=await rpc(trainer,'academy_create_course',{p_input:{title:'Hosted live material scope',category:'IT',delivery_mode:'live'}});
     await rpc(trainer,'academy_update_course',{p_course_id:live.course_id,p_patch:{completion_rules:{quiz_required:false,quiz_pass_percent:80,require_all_lessons:false,attendance_percent:80}}});
-    await rpc(trainer,'academy_submit_for_review',{p_course_id:live.course_id});await review(admin,live.version_id);
+    await rpc(trainer,'academy_submit_for_review',{p_course_id:live.course_id});
+    const liveSubmission=ok(await trainer.from('course_versions').select('submission_id').eq('id',live.version_id).single(),'live_submission');
+    await fails(trainer.rpc('academy_review_course',{p_version_id:live.version_id,p_approve:true,p_reason:null,p_submission_id:liveSubmission.submission_id}),'author_cannot_approve_live_course');
+    await review(admin,live.version_id);
     async function makeRun(title){
         const run=await rpc(trainer,'academy_create_run',{p_input:{courseId:live.course_id,versionId:live.version_id,title,capacity:3}});
         await rpc(trainer,'academy_save_session',{p_input:{runId:run,title:'Fixture meeting metadata',startsAt:new Date(Date.now()+86400000).toISOString(),endsAt:new Date(Date.now()+90000000).toISOString(),timeZone:'UTC',mode:'external_link',externalJoinUrl:'https://teams.microsoft.com/meet/123456789',required:true}});
@@ -179,7 +184,50 @@ try {
     await rpc(admin,'academy_review_run_material',{p_asset_id:runAsset.id,p_decision:'withdraw',p_note:'Fixture review withdrawal'});
     await cannotDownload(other,runAsset,'withdrawn_material');
     milestone('native_storage_run_isolation_moderation_and_cancellation');
-    appendStorageReport({outcome:'passed',assertions:checks,passed,realAuth:true,realStorage:true,realTus:true,fullHistoricalReplay:'separate_manual_history_audit',limits:['Canonical Academy dependencies only; unrelated application schemas and full database restoration are outside this gate.','Native auth and storage schemas/functions/grants were preserved.','Trusted scanner verdict is simulated here; real ClamAV has a separate gate.','No Next.js/browser or production deployment proof; app routes have separate unit/UI gates.','Previously issued signed download URLs remain valid until their short expiry.']});
+    stage='external_teams_attendance_and_certificate';
+    const attendedRun=await makeRun('Attendance and certificate');
+    const attendedSession=ok(await trainer.rpc('academy_list_runs',{p_course_id:live.course_id,p_run_id:attendedRun}),'trainer_run').at(0)?.sessions?.at(0)?.id;
+    assert(attendedSession);checks++;
+    const joinBefore=ok(await learner.rpc('academy_list_runs',{p_course_id:live.course_id,p_run_id:attendedRun}),'learner_run_before_registration').at(0)?.sessions?.at(0)?.joinUrl;
+    equal(joinBefore,null);
+    const registration=await rpc(learner,'academy_register_run',{p_run_id:attendedRun});
+    equal(registration.status,'confirmed');assert(registration.enrollmentId);checks++;
+    const learnerRun=ok(await learner.rpc('academy_list_runs',{p_course_id:live.course_id,p_run_id:attendedRun}),'learner_registered_run').at(0);
+    equal(learnerRun.sessions[0].joinUrl,'https://teams.microsoft.com/meet/123456789');
+    const handout=await rpc(trainer,'academy_reserve_run_material',{p_run_id:attendedRun,p_filename:'attendance-handout.pdf',p_mime_type:'application/pdf',p_size_bytes:small.length,p_file_modified_at:0});
+    await upload(handout,small,await signed(trainer,handout),people.trainer.id);await finish(trainer,handout);await scan(handout,small);
+    await cannotDownload(learner,handout,'unreviewed_live_handout');
+    await fails(trainer.rpc('academy_review_run_material',{p_asset_id:handout.id,p_decision:'approve',p_note:null}),'author_cannot_approve_live_handout');
+    await rpc(admin,'academy_review_run_material',{p_asset_id:handout.id,p_decision:'approve',p_note:null});
+    await canDownload(learner,handout,small);
+    equal((await rpc(learner,'academy_complete_course',{p_enrollment_id:registration.enrollmentId})).completed,false);
+    await fails(other.rpc('academy_complete_course',{p_enrollment_id:registration.enrollmentId}),'outsider_cannot_complete_learner_enrollment');
+    // Only the disposable fixture clock is advanced; no external Teams meeting is created.
+    const started=new Date(Date.now()-2*60*60*1000).toISOString(),ended=new Date(Date.now()-60*60*1000).toISOString();
+    await sql.query('update public.course_sessions set starts_at=$2,ends_at=$3 where id=$1',[attendedSession,started,ended]);
+    await fails(learner.rpc('academy_confirm_session_window',{p_session_id:attendedSession,p_starts_at:started,p_ends_at:ended}),'learner_cannot_confirm_teaching_window');
+    await rpc(trainer,'academy_confirm_session_window',{p_session_id:attendedSession,p_starts_at:started,p_ends_at:ended});
+    const attendance={sessionId:attendedSession,enrollmentId:registration.enrollmentId,status:'present',attendedSeconds:48*60,note:'Verified 48 minutes in the synthetic external Teams session'};
+    await fails(learner.rpc('academy_record_attendance',{p_input:attendance}),'learner_cannot_confirm_own_attendance');
+    await fails(other.rpc('academy_record_attendance',{p_input:attendance}),'outsider_cannot_confirm_attendance');
+    await fails(trainer.rpc('academy_record_attendance',{p_input:{...attendance,attendedSeconds:1}}),'insufficient_time_cannot_create_certificate');
+    const result=await rpc(trainer,'academy_record_attendance',{p_input:attendance});
+    equal(result.completed,true);assert(result.completion_id);checks++;
+    const liveCompletion=ok(await learner.from('course_completions').select('id,user_id,course_id,version_id,certificate_snapshot,revoked_at').eq('enrollment_id',registration.enrollmentId).single(),'learner_completion');
+    equal(liveCompletion.id,result.completion_id);equal(liveCompletion.user_id,people.learner.id);
+    equal(liveCompletion.course_id,live.course_id);equal(liveCompletion.version_id,live.version_id);
+    equal(liveCompletion.revoked_at,null);
+    const snapshot=liveCompletion.certificate_snapshot;
+    equal(snapshot.course_title,'Hosted live material scope');equal(snapshot.participant_name,'learner');
+    assert(Number.isFinite(Date.parse(snapshot.completed_at)));assert.match(snapshot.certificate_hash,/^[a-f0-9]{64}$/);checks+=2;
+    const outsiderCompletion=ok(await other.from('course_completions').select('id').eq('enrollment_id',registration.enrollmentId),'outsider_completion_read');
+    equal(outsiderCompletion.length,0);
+    const pdf=await generateCertificatePdf({fullName:snapshot.participant_name,courseTitle:snapshot.course_title,courseAuthorName:snapshot.author_name,completedAt:snapshot.completed_at,certificateHash:snapshot.certificate_hash,versionNumber:snapshot.version_number});
+    assert.equal(Buffer.from(pdf).subarray(0,5).toString(),'%PDF-');
+    equal((await PDFDocument.load(pdf)).getPageCount(),1);
+    await fails(trainer.rpc('academy_record_attendance',{p_input:attendance}),'issued_certificate_cannot_be_silently_rewritten');
+    milestone('distinct_trainer_admin_learner_external_teams_attendance_completion_and_pdf');
+    appendStorageReport({outcome:'passed',assertions:checks,passed,realAuth:true,realStorage:true,realTus:true,fullHistoricalReplay:'separate_manual_history_audit',limits:['Canonical Academy dependencies only; unrelated application schemas and full database restoration are outside this gate.','Native auth and storage schemas/functions/grants were preserved.','Trusted scanner verdict is simulated here; real ClamAV has a separate gate.','External Teams meeting and attendance evidence are synthetic; no Microsoft Graph call or actual meeting occurs.','Certificate PDF is generated from the persisted snapshot; the Next.js download route and browser are not exercised.','No production deployment proof; app routes have separate unit/UI gates.','Previously issued signed download URLs remain valid until their short expiry.']});
 } catch(error) {
     // Never emit response bodies, URLs, keys, auth sessions, SQL parameters or raw logs.
     const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,12}$/.test(error.code)?error.code:null;
