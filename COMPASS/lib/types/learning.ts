@@ -72,6 +72,8 @@ export interface CourseAttachment {
     size_bytes: number
     asset_id?: string
     mime_type?: string
+    /** Explicit VTT association within this lesson version. */
+    caption_for_asset_id?: string | null
 }
 
 export interface CourseLesson {

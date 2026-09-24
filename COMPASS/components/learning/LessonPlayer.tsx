@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { MarkdownView } from './MarkdownView'
 import { EmbedVideo } from './EmbedVideo'
 import { AcademyVideo } from '@/components/academy/AcademyVideo'
+import { lessonCaptionForVideo } from '@/lib/academy/lesson-captions'
 import { CourseCompletion } from '@/components/academy/CourseCompletion'
 import { academyCourseHref } from '@/lib/academy/navigation'
 import { markLessonComplete } from '@/lib/actions/course-learning'
@@ -47,7 +48,6 @@ export function LessonPlayer({
     const [error, setError] = useState<string | null>(null)
 
     const videos = lesson.attachments.filter(attachment => attachment.mime_type === 'video/mp4' && attachment.asset_id)
-    const captions = lesson.attachments.find(attachment => attachment.mime_type === 'text/vtt' && attachment.asset_id)
 
     const currentIdx = allLessons.findIndex((l) => l.id === lesson.id)
     const prevLesson = currentIdx > 0 ? allLessons[currentIdx - 1] : null
@@ -105,7 +105,7 @@ export function LessonPlayer({
                 )}
             </div>
 
-            {videos.map((video, index) => <AcademyVideo key={video.asset_id} lessonId={lesson.id} video={video} captions={index === 0 ? captions : undefined} />)}
+            {videos.map(video => <AcademyVideo key={video.asset_id} lessonId={lesson.id} video={video} captions={lessonCaptionForVideo(lesson.attachments, video.asset_id!)} />)}
 
             {lesson.video_url && <EmbedVideo url={lesson.video_url} title={lesson.title} />}
 

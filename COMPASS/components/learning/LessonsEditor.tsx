@@ -125,8 +125,17 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
     const handleRemoveAttachment = (lessonId: string, idx: number) => {
         const lesson = lessons.find((l) => l.id === lessonId)
         if (!lesson) return
-        const newAttachments = lesson.attachments.filter((_, i) => i !== idx)
+        const removedId = lesson.attachments[idx]?.asset_id
+        const newAttachments = lesson.attachments.filter((_, i) => i !== idx).map(item =>
+            removedId && item.caption_for_asset_id === removedId ? { ...item, caption_for_asset_id: null } : item)
         handleSaveLesson(lessonId, { attachments: newAttachments })
+    }
+
+    const handleAssignCaption = (lessonId: string, captionId: string, videoId: string | null) => {
+        const lesson = lessons.find((l) => l.id === lessonId)
+        if (!lesson) return
+        handleSaveLesson(lessonId, { attachments: lesson.attachments.map(item =>
+            item.asset_id === captionId ? { ...item, caption_for_asset_id: videoId } : item) })
     }
 
     return (
@@ -168,6 +177,7 @@ export function LessonsEditor({ courseId, initialLessons, onChanged }: LessonsEd
                         onMove={(dir) => handleMove(lesson.id, dir)}
                         onMaterialReady={refreshAfterChange}
                         onRemoveAttachment={(i) => handleRemoveAttachment(lesson.id, i)}
+                        onAssignCaption={(captionId, videoId) => handleAssignCaption(lesson.id, captionId, videoId)}
                     />
                 ))}
             </div>
@@ -188,6 +198,7 @@ interface LessonRowProps {
     onMove: (dir: 'up' | 'down') => void
     onMaterialReady: () => void
     onRemoveAttachment: (idx: number) => void
+    onAssignCaption: (captionId: string, videoId: string | null) => void
 }
 
 function LessonRow({
@@ -202,6 +213,7 @@ function LessonRow({
     onMove,
     onMaterialReady,
     onRemoveAttachment,
+    onAssignCaption,
 }: LessonRowProps) {
     const [title, setTitle] = useState(lesson.title)
     const [contentMd, setContentMd] = useState(lesson.content_md ?? '')
@@ -353,25 +365,33 @@ function LessonRow({
 
                         <div>
                             <label className="text-xs text-muted-foreground mb-2 block">Materiały lekcji</label>
+                            <p className="mb-2 text-xs text-muted-foreground">Przypisz napisy VTT do właściwego nagrania MP4 przed wysłaniem programu do akceptacji.</p>
                             <div className="space-y-2">
                                 {lesson.attachments.map((att, i) => (
                                     <div
                                         key={`${att.storage_path}-${i}`}
-                                        className="flex items-center gap-2 p-2 rounded bg-muted border border-border"
+                                        className="space-y-2 rounded border border-border bg-muted p-2"
                                     >
-                                        <FileText className="w-4 h-4 text-muted-foreground" />
-                                        <span className="flex-1 text-xs">{att.name}</span>
-                                        <span className="text-[10px] text-muted-foreground">{(att.size_bytes / 1024).toFixed(0)} KB</span>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => onRemoveAttachment(i)}
-                                            disabled={disabled}
-                                            aria-label={`Usuń załącznik ${att.name}`}
-                                            className="h-6 w-6 p-0 text-destructive"
-                                        >
-                                            <X className="w-3 h-3" />
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <FileText className="h-4 w-4 text-muted-foreground" />
+                                            <span className="min-w-0 flex-1 break-all text-xs">{att.name}</span>
+                                            <span className="text-[10px] text-muted-foreground">{(att.size_bytes / 1024).toFixed(0)} KB</span>
+                                            <Button variant="ghost" size="sm" onClick={() => onRemoveAttachment(i)} disabled={disabled}
+                                                aria-label={`Usuń załącznik ${att.name}`} className="h-6 w-6 p-0 text-destructive">
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                        {att.mime_type === 'text/vtt' && att.asset_id && <label className="block text-xs">
+                                            Nagranie dla napisów {att.name}
+                                            <select className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={att.caption_for_asset_id ?? ''}
+                                                disabled={disabled} onChange={event => onAssignCaption(att.asset_id!, event.target.value || null)}>
+                                                <option value="">Bez przypisania</option>
+                                                {lesson.attachments.filter(video => video.mime_type === 'video/mp4' && video.asset_id
+                                                    && (video.asset_id === att.caption_for_asset_id || !lesson.attachments.some(caption =>
+                                                        caption.asset_id !== att.asset_id && caption.caption_for_asset_id === video.asset_id))).map(video =>
+                                                    <option key={video.asset_id} value={video.asset_id}>{video.name}</option>)}
+                                            </select>
+                                        </label>}
                                     </div>
                                 ))}
                                 <MaterialUploader courseId={lesson.course_id} lessonId={lesson.id} disabled={disabled} onReady={onMaterialReady} />

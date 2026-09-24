@@ -47,6 +47,22 @@ describe('complete administrator moderation preview', () => {
         expect(screen.getByRole('button', { name: 'Zatwierdź i opublikuj' })).toBeEnabled()
         expect(screen.getByRole('button', { name: 'Zatwierdź i opublikuj' })).toHaveAttribute('data-submission', 'rendered-submission')
     })
+    it('pairs each caption with the selected recording instead of list order', async () => {
+        const attachments = [
+            { asset_id: 'video-1', name: 'Pierwsze.mp4', storage_path: 'course/1.mp4', mime_type: 'video/mp4', size_bytes: 100 },
+            { asset_id: 'video-2', name: 'Drugie.mp4', storage_path: 'course/2.mp4', mime_type: 'video/mp4', size_bytes: 100 },
+            { asset_id: 'caption-2', name: 'Drugie.vtt', storage_path: 'course/2.vtt', mime_type: 'text/vtt', size_bytes: 100, caption_for_asset_id: 'video-2' },
+            { asset_id: 'caption-1', name: 'Pierwsze.vtt', storage_path: 'course/1.vtt', mime_type: 'text/vtt', size_bytes: 100, caption_for_asset_id: 'video-1' },
+        ]
+        vi.mocked(getCourseLessons).mockResolvedValue({ success: true, data: [{ ...lesson, attachments }] })
+        await show()
+        const videos = screen.getAllByTestId('review-video')
+        expect(videos).toHaveLength(2)
+        expect(videos[0]).toHaveAttribute('data-video', 'video-1')
+        expect(videos[0]).toHaveAttribute('data-captions', 'caption-1')
+        expect(videos[1]).toHaveAttribute('data-video', 'video-2')
+        expect(videos[1]).toHaveAttribute('data-captions', 'caption-2')
+    })
     it.each(['lessons', 'quiz', 'permission'])('blocks publication if %s cannot be loaded', async failed => {
         if (failed === 'lessons') vi.mocked(getCourseLessons).mockResolvedValue({ success: false, error: 'Temporary read failure' })
         if (failed === 'quiz') vi.mocked(getCourseQuizForAuthor).mockResolvedValue({ success: false, error: 'Temporary read failure' })
