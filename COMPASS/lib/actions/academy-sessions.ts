@@ -8,7 +8,7 @@ import { academyManagedTeamsConfiguration, academyAttendanceRetentionConfigurati
 import type { ActionResult } from '@/lib/types/learning'
 import type {
     AcademyIntegrationIssuesPageDTO, AcademyOrganizerDTO, AcademyRunDTO, AcademyM365IdentityDTO, AcademyM365IdentitiesPageDTO, AcademyIntegrationConfigDTO,
-    AcademyRunParticipantDTO, SaveAcademySessionInput, ReplaceAcademySessionInput,
+    AcademyRunParticipantDTO, SaveAcademySessionInput, ReplaceAcademySessionInput, AcademyMyRunOverview,
 } from '@/lib/types/academy-sessions'
 
 const uuid = z.uuid()
@@ -49,6 +49,13 @@ const runPageSchema = z.object({
 })
 type RunPageOptions = z.input<typeof runPageSchema>
 type RunPage = { items: AcademyRunDTO[]; page: number; hasMore: boolean }
+const myRunOverviewSchema = z.object({
+    waiting: z.object({
+        items: z.array(z.object({ runId: uuid, courseTitle: z.string(), runTitle: z.string() })).max(25),
+        total: z.number().int().nonnegative(), page: z.number().int().positive(), pageSize: z.number().int().positive(),
+    }),
+    upcoming: z.object({ runId: uuid, sessionTitle: z.string(), startsAt: timestamp, timeZone: z.string() }).nullable(),
+})
 
 async function fetchRunPage(client: Awaited<ReturnType<typeof requireAcademyContext>>['client'], options: RunPageOptions): Promise<RunPage> {
     const parsed = runPageSchema.parse(options)
@@ -74,19 +81,22 @@ export async function listAcademyRunPage(options: RunPageOptions): Promise<Actio
     })
 }
 
-/** The learner overview needs every active reservation for an exact waitlist. */
-export async function listMyAcademyRuns(): Promise<ActionResult<AcademyRunDTO[]>> {
-    return academyAction('sessions.my_runs', async () => {
+/** A bounded waitlist page and the single next session for this learner. */
+export async function getMyAcademyRunOverview(waitlistPage = 1): Promise<ActionResult<AcademyMyRunOverview>> {
+    return academyAction('sessions.my_overview', async () => {
+        const page = z.number().int().min(1).max(100_000).parse(waitlistPage)
         const { client } = await requireAcademyContext()
-        const items: AcademyRunDTO[] = []
-        for (let page = 1; page <= 20_000; page++) {
-            const result = await fetchRunPage(client, { scope: 'registered', page, pageSize: 100 })
-            items.push(...result.items)
-            if (!result.hasMore) return items
+        const { data, error } = await client.rpc('academy_my_run_overview', { p_waitlist_page: page, p_limit: 25 })
+        assertDatabaseResult(error)
+        const overview = myRunOverviewSchema.parse(data)
+        const expected = Math.min(25, Math.max(0, overview.waiting.total - (page - 1) * 25))
+        if (overview.waiting.page !== page || overview.waiting.pageSize !== 25 || overview.waiting.items.length !== expected) {
+            throw new Error('Lista rezerwowa jest niepełna.')
         }
-        throw new Error('Lista zapisów jest zbyt długa. Skontaktuj się z administratorem.')
+        return overview
     })
 }
+
 export async function getAcademyRun(runId: string): Promise<ActionResult<AcademyRunDTO>> {
     return academyAction('sessions.run', async () => {
         const { client } = await requireAcademyContext()

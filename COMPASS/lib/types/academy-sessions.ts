@@ -65,6 +65,15 @@ export interface AcademyRunDTO {
     myRegistration: { id: string; status: AcademyRegistrationStatus; enrollmentId: string | null; completedAt: string | null; completionRevokedAt?: string | null; completionRevokedReason?: string | null; learnerProgress?: AcademyLearnerRunProgress | null } | null
     sessions: AcademySessionDTO[]
 }
+export interface AcademyMyRunOverview {
+    waiting: {
+        items: Array<{ runId: string; courseTitle: string; runTitle: string }>
+        total: number
+        page: number
+        pageSize: number
+    }
+    upcoming: { runId: string; sessionTitle: string; startsAt: string; timeZone: string } | null
+}
 export interface AcademyParticipantProgress {
     versionNumber: number
     totalLessons: number
