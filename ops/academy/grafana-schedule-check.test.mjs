@@ -24,7 +24,7 @@ function executeGenerated(response) {
       http: { get: (url, options) => {
         requests.push({ url, options });
         if (response instanceof Error) throw response;
-        return response;
+        return typeof response === 'function' ? response(url) : response;
       } },
       check: (value, assertions) => {
         const result = Object.values(assertions).every((assertion) => assertion(value));
@@ -45,7 +45,7 @@ test('generated k6 check passes only with a recent successful scheduled run', ()
   const fresh = executeGenerated(jsonResponse([successfulRun(10)]));
   assert.deepEqual(fresh.checks, [true]);
   assert.deepEqual(fresh.failures, []);
-  assert.match(fresh.requests[0].url, /event=schedule&status=success&per_page=1$/);
+  assert.match(fresh.requests[0].url, /event=schedule&per_page=1$/);
   assert.equal(fresh.requests[0].options.headers.Authorization, undefined);
 
   for (const [response, expectedCode] of [
@@ -61,6 +61,22 @@ test('generated k6 check passes only with a recent successful scheduled run', ()
     const result = executeGenerated(response);
     assert.deepEqual(result.checks, [false]);
     assert.deepEqual(result.failures, [`academy_schedule_check=${expectedCode}`]);
+  }
+});
+
+test('GitHub query exposes a failed or unfinished run after an earlier success', () => {
+  const olderSuccess = successfulRun(15);
+  for (const latestRun of [
+    successfulRun(1, { id: 35903386131, conclusion: 'failure' }),
+    successfulRun(1, { id: 35903386132, status: 'in_progress', conclusion: null }),
+  ]) {
+    const result = executeGenerated((url) => jsonResponse(
+      url.includes('status=success') ? [olderSuccess] : [latestRun],
+    ));
+    assert.deepEqual(result.checks, [false]);
+    assert.deepEqual(result.failures, [
+      `academy_schedule_check=${latestRun.status === 'completed' ? 'scheduled_run_failed' : 'scheduled_run_unfinished'}`,
+    ]);
   }
 });
 
