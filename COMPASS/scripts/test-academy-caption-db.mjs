@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
 
 const fixture = await createAcademyDatabase({ runMaterials: true, materialProjection: true });
-const { db, sql, ids, actor, service, rpc } = fixture;
+const { db, sql, ids, actor, owner, service, rpc } = fixture;
 const migration = fileURLToPath(new URL('../supabase/migrations/20260924100309_academy_run_caption_association.sql', import.meta.url));
+const rawReadRevoke = fileURLToPath(new URL('../supabase/migrations/20260924100212_academy_material_revoke_raw_read.sql', import.meta.url));
+const captionGrantRepair = fileURLToPath(new URL('../supabase/migrations/20260924113024_academy_material_catalog_caption_grant.sql', import.meta.url));
 let checks = 0;
 const eq = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
 const denied = async (statement, params, reason) => {
@@ -18,6 +20,17 @@ const denied = async (statement, params, reason) => {
 
 try {
   await db.exec(fs.readFileSync(migration, 'utf8'));
+  // Production applied the raw-read revocation after the caption migration.
+  await db.exec(fs.readFileSync(rawReadRevoke, 'utf8'));
+  await actor('admin');
+  await denied('select id from academy_material_catalog limit 1', [], /permission denied for table course_materials/);
+  await owner();
+  await db.exec(fs.readFileSync(captionGrantRepair, 'utf8'));
+  await actor('admin');
+  eq((await sql('select id from academy_material_catalog limit 1')).rows.length, 0);
+  eq((await sql("select count(*)::int n from academy_material_catalog where status <> 'ready' and purged_at is null and cleanup_token is null and (scan_error is null or scan_error <> 'discarded_by_author')")).rows[0].n, 0);
+  eq((await sql('select count(*)::int n from academy_material_catalog where purged_at is null and cleanup_token is not null')).rows[0].n, 0);
+  await denied('select review_note,scan_error,cleanup_token from course_materials limit 1', [], /permission denied for table course_materials/);
   await actor('admin');
   await rpc('academy_set_trainer', [ids.trainer, true]);
   await actor('trainer');
