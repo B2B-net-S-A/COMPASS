@@ -50,7 +50,7 @@ export async function finishAcademyUpload(assetId: string) {
 export async function getAcademyMaterialStatus(assetId: string) {
     return academyAction('material.status', async () => {
         const { client } = await requireAcademyContext({ trainer: true })
-        const { data, error } = await client.from('course_materials').select('id,filename,storage_path,size_bytes,mime_type,status,scan_error').eq('id', z.uuid().parse(assetId)).single()
+        const { data, error } = await client.from('academy_material_catalog').select('id,filename,storage_path,size_bytes,mime_type,status,scan_error').eq('id', z.uuid().parse(assetId)).single()
         assertDatabaseResult(error)
         if (!data) throw new Error('Materiał jest niedostępny.')
         return { asset_id: data.id as string, name: data.filename as string, storage_path: data.storage_path as string,
@@ -62,7 +62,7 @@ export async function getAcademyMaterialStatus(assetId: string) {
 export async function listAcademyLessonUploads(lessonId: string) {
     return academyAction('material.lesson_uploads', async () => {
         const { client } = await requireAcademyContext({ trainer: true })
-        const { data, error } = await client.from('course_materials').select('id,filename,status,scan_error')
+        const { data, error } = await client.from('academy_material_catalog').select('id,filename,status,scan_error')
             .eq('lesson_id', z.uuid().parse(lessonId)).is('purged_at', null).or('scan_error.is.null,scan_error.neq.discarded_by_author').order('created_at')
         assertDatabaseResult(error)
         return (data ?? []).map(item => ({ id: item.id as string, filename: item.filename as string, status: item.status as string,
@@ -73,7 +73,7 @@ export async function listAcademyLessonUploads(lessonId: string) {
 export async function listAcademyRunMaterials(runId: string) {
     return academyAction('material.run_materials', async () => {
         const { client } = await requireAcademyContext()
-        const { data, error } = await client.from('course_materials')
+        const { data, error } = await client.from('academy_material_catalog')
             .select('id,filename,storage_path,mime_type,size_bytes,status,review_status,review_note,uploaded_by,scan_error')
             .eq('run_id', z.uuid().parse(runId)).is('purged_at', null).or('scan_error.is.null,scan_error.neq.discarded_by_author')
             .order('created_at')
@@ -100,7 +100,7 @@ export async function listAcademyRunMaterialReviews(page = 1) {
         if (!Number.isSafeInteger(page) || page < 1 || page > 100000) throw new Error('Nieprawidłowy numer strony kolejki.')
         const pageSize = 25
         const { client } = await requireAcademyContext({ admin: true })
-        const { data, error, count } = await client.from('course_materials')
+        const { data, error, count } = await client.from('academy_material_catalog')
             .select('id,filename,run_id,created_at', { count: 'exact' }).not('run_id', 'is', null)
             .eq('status', 'ready').eq('review_status', 'pending_review').order('created_at').order('id')
             .range((page - 1) * pageSize, page * pageSize - 1)
@@ -124,7 +124,7 @@ export async function getAcademyMaterialQueue(input: { page?: number; filter?: '
         const { page, filter } = z.object({ page: z.number().int().min(1).max(100000).default(1), filter: z.enum(['pending', 'failed', 'rejected', 'all']).default('pending') }).parse(input)
         const pageSize = 25
         const { client } = await requireAcademyContext({ admin: true })
-        let query = client.from('course_materials')
+        let query = client.from('academy_material_catalog')
             .select('id,filename,status,scan_attempts,scan_started_at,scan_next_attempt_at,created_at,course_id,run_id', { count: 'exact' })
             .neq('status', 'ready').is('purged_at', null).is('cleanup_token', null).or('scan_error.is.null,scan_error.neq.discarded_by_author')
         if (filter === 'pending') query = query.in('status', ['uploading', 'quarantined', 'scanning'])
@@ -160,7 +160,7 @@ export async function getAcademyMaterialCleanupQueue(input: { page?: number; fil
         const { client } = await requireAcademyContext({ admin: true })
         const { academyMaterialRetentionPolicy } = await import('@/lib/academy/material-cleanup')
         const policy = academyMaterialRetentionPolicy()
-        let query = client.from('course_materials')
+        let query = client.from('academy_material_catalog')
             .select('id,filename,cleanup_attempts,cleanup_claimed_at,cleanup_error', { count: 'exact' })
             .is('purged_at', null).not('cleanup_token', 'is', null)
         if (filter === 'failed') query = query.gte('cleanup_attempts', 5)

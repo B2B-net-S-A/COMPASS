@@ -7,5 +7,5 @@ export interface AcademyRunMaterial {
     status: 'uploading' | 'quarantined' | 'scanning' | 'ready' | 'rejected'
     review_status: 'pending_review' | 'published' | 'rejected' | 'withdrawn'
     review_note: string | null
-    uploaded_by: string
+    uploaded_by: string | null
 }

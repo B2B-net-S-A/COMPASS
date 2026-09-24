@@ -117,7 +117,7 @@ describe('Academy authenticated download boundary', () => {
 
     it.each(['hidden', 'quarantined', 'path-mismatch'])('requires the referenced asset to remain visible, ready and on the exact stored path (%s)', async state => {
         result('course_lessons', lessonReference())
-        result('course_materials', state === 'hidden' ? null : readyAsset(state === 'quarantined' ? { status: 'quarantined' } : { storage_path: 'other/private.pdf' }))
+        result('academy_material_catalog', state === 'hidden' ? null : readyAsset(state === 'quarantined' ? { status: 'quarantined' } : { storage_path: 'other/private.pdf' }))
         expect((await attachment(request('attachment', { lessonId, assetId }))).status).toBe(404)
         expect(reads[1].filters).toEqual([['eq', 'id', assetId]])
         expect(sign).not.toHaveBeenCalled()
@@ -125,7 +125,7 @@ describe('Academy authenticated download boundary', () => {
 
     it('signs only the resolved lesson reference and returns a private, short-lived JSON URL', async () => {
         result('course_lessons', lessonReference())
-        result('course_materials', readyAsset())
+        result('academy_material_catalog', readyAsset())
         const response = await attachment(request('attachment', { lessonId, assetId, path: 'forged/path.pdf', format: 'json' }))
         expect(response.status).toBe(200)
         expect(await response.json()).toEqual({ url: signedUrl, expiresIn: 300 })
@@ -137,7 +137,7 @@ describe('Academy authenticated download boundary', () => {
 
     it('binds an edition attachment to both asset and run, and keeps the RLS approval boundary', async () => {
         // RLS hides an unpublished review, a cancelled registration, or another run's material.
-        result('course_materials', null)
+        result('academy_material_catalog', null)
         const response = await attachment(request('attachment', { runId, assetId }))
         expect(response.status).toBe(404)
         expect(reads[0].filters).toEqual([['eq', 'id', assetId], ['eq', 'run_id', runId]])
@@ -145,8 +145,8 @@ describe('Academy authenticated download boundary', () => {
     })
 
     it('allows an RLS-authorized staff preview and an approved participant download only after a ready scan', async () => {
-        result('course_materials', readyAsset())
-        result('course_materials', readyAsset())
+        result('academy_material_catalog', readyAsset())
+        result('academy_material_catalog', readyAsset())
         const response = await attachment(request('attachment', { runId, assetId }))
         expect(response.status).toBe(303)
         expect(response.headers.get('location')).toBe(signedUrl)
@@ -155,7 +155,7 @@ describe('Academy authenticated download boundary', () => {
     })
 
     it('does not let staff preview an edition asset that is still scanning', async () => {
-        result('course_materials', readyAsset({ status: 'scanning' }))
+        result('academy_material_catalog', readyAsset({ status: 'scanning' }))
         expect((await attachment(request('attachment', { runId, assetId }))).status).toBe(404)
         expect(sign).not.toHaveBeenCalled()
     })
@@ -182,7 +182,7 @@ describe('Academy authenticated download boundary', () => {
     })
 
     it('returns no usable URL when Storage refuses signing after successful RLS reads', async () => {
-        result('course_lessons', lessonReference()); result('course_materials', readyAsset())
+        result('course_lessons', lessonReference()); result('academy_material_catalog', readyAsset())
         sign.mockResolvedValue({ data: null, error: { message: 'secret storage detail' } })
         const response = await attachment(request('attachment', { lessonId, assetId }))
         expect(response.status).toBe(503)

@@ -17,11 +17,11 @@ function asset(n: number, patch: Row = {}): Row {
         created_at: new Date(now - (10000 - n) * 60_000).toISOString(), ...patch }
 }
 function setup(rows: Row[] = [], config: MockSupabaseConfig = {}, admin = true) {
-    client = academyFixture({ ...config, tables: { profiles: [{ id: USER, role: admin ? 'admin' : 'consultant', is_external: false, employment_status: 'active' }], course_materials: rows, ...config.tables } })
+    client = academyFixture({ ...config, tables: { profiles: [{ id: USER, role: admin ? 'admin' : 'consultant', is_external: false, employment_status: 'active' }], academy_material_catalog: rows, ...config.tables } })
     const from = client.from.getMockImplementation()!
     client.from.mockImplementation((table: string) => {
         const query = from(table)
-        if (table === 'course_materials') {
+        if (table === 'academy_material_catalog') {
             // The shared fixture only parses eq/ilike OR expressions. Model this
             // nullable discard predicate locally, preserving all other filters.
             query.or = (expression: string) => {
@@ -99,7 +99,7 @@ describe('run material review queue', () => {
         expect((await listAcademyRunMaterialReviews()).success).toBe(false)
         setup()
         for (const page of [0, -1, 1.5, 100001, NaN]) expect((await listAcademyRunMaterialReviews(page)).success).toBe(false)
-        expect(client.from).not.toHaveBeenCalledWith('course_materials')
+        expect(client.from).not.toHaveBeenCalledWith('academy_material_catalog')
     })
 })
 
@@ -133,7 +133,7 @@ describe.each([
         setup([asset(101)], {}, false)
         expect((await get()).success).toBe(false)
         expect((await retry(id(101))).success).toBe(false)
-        expect(client.from).not.toHaveBeenCalledWith('course_materials')
+        expect(client.from).not.toHaveBeenCalledWith('academy_material_catalog')
         expect(client.rpc).not.toHaveBeenCalledWith(rpc, expect.anything())
         setup([], { user: null })
         expect((await get()).success).toBe(false)
@@ -142,13 +142,13 @@ describe.each([
         for (const page of [0, -1, 1.5, 100001, NaN]) expect((await get({ page })).success).toBe(false)
         // Verify the runtime boundary even when a caller bypasses TypeScript.
         expect((await get({ filter: 'invalid' as 'all' })).success).toBe(false)
-        expect(client.from).not.toHaveBeenCalledWith('course_materials')
+        expect(client.from).not.toHaveBeenCalledWith('academy_material_catalog')
     })
     it('reports query failures rather than a false empty success', async () => {
         const from = client.from.getMockImplementation()!
-        client.from.mockImplementation((table: string) => { if (table === 'course_materials') throw new Error('read failed'); return from(table) })
+        client.from.mockImplementation((table: string) => { if (table === 'academy_material_catalog') throw new Error('read failed'); return from(table) })
         expect((await get()).success).toBe(false)
-        expect(client.from).toHaveBeenCalledWith('course_materials')
+        expect(client.from).toHaveBeenCalledWith('academy_material_catalog')
     })
     it('validates the retry ID and sends only the scoped asset RPC', async () => {
         setup([], { rpcs: { [rpc]: () => null } })
