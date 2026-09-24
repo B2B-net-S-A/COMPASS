@@ -110,6 +110,7 @@ try {
     await rpc('academy_set_rollout', ['open', []]);
 
     // Drafts must reserve the same Teams budget before publication.
+    await actor('trainer');
     const draftRun = await rpc('academy_create_run', [{ courseId: course.course_id, versionId: course.version_id, title: 'Draft activation budget', capacity: 498 }]);
     await rpc('academy_save_session', [{ ...baseSession, runId: draftRun, organizerId: host }]);
     await owner();
