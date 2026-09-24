@@ -261,6 +261,7 @@ try {
             }]),
         ]);
         assert.equal(hostRace.filter(result => result.status === 'fulfilled').length, 1); checks++;
+        await owner();
         const hostState = (await sql(`select o.profile_id,
             (select count(*)::int from course_sessions s where s.organizer_id=o.id and s.run_id=$2) sessions
             from academy_organizers o where o.id=$1`, [movableHost, hostRaceRun])).rows[0];
