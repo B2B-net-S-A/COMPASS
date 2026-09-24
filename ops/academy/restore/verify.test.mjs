@@ -30,7 +30,10 @@ async function fixture(t) {
     tables['public.course_enrollments'].push({ id: 'enrollment-1', version_id: 'version-1' });
     tables['public.course_completions'].push({ id: 'completion-1', enrollment_id: 'enrollment-1', certificate_snapshot: { certificate_hash: 'abc' } });
     tables['public.session_attendance'].push({ session_id: 'session-1', enrollment_id: 'enrollment-1', status: 'present' });
-    return { format: FORMAT, schemaTables: [...TABLES], tables };
+    return { format: FORMAT, schemaTables: [...TABLES], storageObjects: [
+      { bucket: 'academy-materials', path: 'course-1/asset-1/file.pdf' },
+      { bucket: 'documents', path: 'courses/old-course/file.pdf' },
+    ], tables };
   };
   async function writeExport(area, exportData) {
     await writeFile(join(area, 'export.json'), JSON.stringify(exportData));
@@ -66,6 +69,8 @@ test('table export SQL covers the verifier inventory and is a read-only transact
   const sql = await readFile(new URL('./export.sql', import.meta.url), 'utf8');
   assert.match(sql, /BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;/);
   assert.match(sql, /'schemaTables'/);
+  assert.match(sql, /'storageObjects', \(SELECT coalesce\(jsonb_agg/);
+  assert.match(sql, /FROM storage\.objects\s+WHERE bucket_id = 'academy-materials' OR \(bucket_id = 'documents' AND name LIKE 'courses\/%'\)/);
   assert.match(sql, /COMMIT;/);
   const exported = [...sql.matchAll(/^    '((?:public|academy_private)\.[a-z0-9_]+)', coalesce\(/gm)].map(match => match[1]);
   assert.deepEqual(exported, TABLES);
@@ -114,10 +119,39 @@ test('detects missing, altered, and extra Storage bytes', async t => {
   await assert.rejects(verify(f.manifest, sealed.manifestSha256, f.exportPath(f.restored), f.objectsPath(f.restored)), /lesson_attachment_bytes_missing/);
   await f.writeObject(f.restored, 'documents', 'courses/old-course/file.pdf', f.oldBytes);
   await f.writeObject(f.restored, 'academy-materials', 'extra/file.pdf', Buffer.from('extra'));
-  const result = await verify(f.manifest, sealed.manifestSha256, f.exportPath(f.restored), f.objectsPath(f.restored));
-  assert.equal(result.ok, false);
-  assert.equal(result.objectMismatchKeyHashes.length, 1);
-  assert.equal(JSON.stringify(result).includes('extra/file.pdf'), false);
+  await assert.rejects(verify(f.manifest, sealed.manifestSha256, f.exportPath(f.restored), f.objectsPath(f.restored)), /storage_bytes_without_metadata/);
+});
+
+test('rejects omitted nonready or orphan Storage bytes from the source and target inventories', async t => {
+  const f = await fixture(t);
+  const data = f.data();
+  const path = 'course-1/pending-upload/file.pdf';
+  data.storageObjects.push({ bucket: 'academy-materials', path });
+  await f.writeExport(f.source, data);
+  await assert.rejects(seal(f.exportPath(f.source), f.objectsPath(f.source), f.manifest, 'pilot-20260923'), /storage_inventory_bytes_missing/);
+
+  await f.writeObject(f.source, 'academy-materials', path, Buffer.from('pending upload'));
+  const sealed = await seal(f.exportPath(f.source), f.objectsPath(f.source), f.manifest, 'pilot-20260923');
+  await f.writeExport(f.restored, data);
+  await assert.rejects(verify(f.manifest, sealed.manifestSha256, f.exportPath(f.restored), f.objectsPath(f.restored)), /storage_inventory_bytes_missing/);
+  await f.writeObject(f.restored, 'academy-materials', path, Buffer.from('pending upload'));
+  assert.equal((await verify(f.manifest, sealed.manifestSha256, f.exportPath(f.restored), f.objectsPath(f.restored))).ok, true);
+});
+
+test('rejects metadata drift, duplicate keys and objects outside the Academy Storage scope', async t => {
+  const f = await fixture(t);
+  const data = f.data();
+  data.storageObjects.pop();
+  await f.writeExport(f.source, data);
+  await assert.rejects(seal(f.exportPath(f.source), f.objectsPath(f.source), f.manifest, 'pilot-20260923'), /storage_bytes_without_metadata/);
+
+  data.storageObjects.push({ ...data.storageObjects[0] });
+  await f.writeExport(f.source, data);
+  await assert.rejects(seal(f.exportPath(f.source), f.objectsPath(f.source), f.manifest, 'pilot-20260923'), /duplicate_storage_inventory/);
+
+  data.storageObjects[1] = { bucket: 'documents', path: 'unrelated/file.pdf' };
+  await f.writeExport(f.source, data);
+  await assert.rejects(seal(f.exportPath(f.source), f.objectsPath(f.source), f.manifest, 'pilot-20260923'), /invalid_storage_inventory/);
 });
 
 test('rejects a ready material whose database size differs from its restored bytes', async t => {
