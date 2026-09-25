@@ -28,6 +28,7 @@ import {
     getGraphClient,
     isRetryableGraphStatus,
 } from '@/lib/graph/client'
+import { isNoExchangeMailboxError } from '@/lib/graph/no-mailbox'
 import { logger } from '@/lib/logger'
 
 const MAX_ATTEMPTS = 3
@@ -39,6 +40,55 @@ const BASE_BACKOFF_MS = 1000
  * Users see this name in Outlook, so it stays human-readable.
  */
 export const COMPASS_FORWARD_RULE_PREFIX = 'COMPASS · zastępstwo · '
+
+/** Colleagues see the leave and the OOF reply naming the substitute — no copy needed. */
+const COMPANY_MAIL_DOMAIN = '@b2bnetwork.pl'
+
+/**
+ * Sender fragments that never need a human substitute: colleagues, noreply senders and
+ * Microsoft 365 notifications (Teams, SharePoint, Planner). 2026-09-25: a forward-all
+ * rule was copying Teams "you have new messages" mail to substitutes.
+ */
+const EXCLUDED_SENDER_FRAGMENTS = [
+    COMPANY_MAIL_DOMAIN,
+    'no-reply',
+    'noreply',
+    'donotreply',
+    'do-not-reply',
+    'teams.mail.microsoft',
+    'sharepointonline.com',
+    'microsoft.com',
+    'mailer-daemon',
+    'postmaster',
+]
+
+/**
+ * What a forwarding rule matches: mail from outside the company, addressed to the owner
+ * directly (not via a group list or BCC), minus bulk mail and calendar traffic.
+ * Shared by create and update, so a live rule can be brought in line with new filters.
+ *
+ * The automatic-reply/forward exceptions also break mail loops — without them two
+ * people on leave who substitute for each other would bounce messages back and forth.
+ *
+ * Pure function — exported for unit testing.
+ */
+export function buildForwardRuleFilters() {
+    return {
+        conditions: {
+            sentToOrCcMe: true,
+        },
+        exceptions: {
+            senderContains: [...EXCLUDED_SENDER_FRAGMENTS],
+            headerContains: ['List-Unsubscribe'],
+            isAutomaticReply: true,
+            isAutomaticForward: true,
+            isMeetingRequest: true,
+            isMeetingResponse: true,
+            isReadReceipt: true,
+            isNonDeliveryReport: true,
+        },
+    }
+}
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
@@ -104,17 +154,12 @@ export interface CreateForwardRuleInput {
 }
 
 /**
- * Create the forwarding rule in the employee's inbox.
- *
- * No `conditions` block → the rule matches every incoming message.
+ * Create the forwarding rule in the employee's inbox. What it matches comes from
+ * buildForwardRuleFilters.
  *
  * `stopProcessingRules: false` is load-bearing: the employee's own rules (filing into
  * folders, flagging, etc.) must keep running after ours. `sequence: 1` puts us first
  * so a user rule that *does* stop processing cannot suppress the forward.
- *
- * The exceptions block breaks mail loops — without `isAutomaticForward` two people on
- * leave who substitute for each other would bounce messages back and forth, and
- * without `isAutomaticReply` the substitute gets buried in other people's autoresponders.
  */
 export async function createForwardRule(
     input: CreateForwardRuleInput,
@@ -142,10 +187,7 @@ export async function createForwardRule(
             ],
             stopProcessingRules: false,
         },
-        exceptions: {
-            isAutomaticReply: true,
-            isAutomaticForward: true,
-        },
+        ...buildForwardRuleFilters(),
     }
 
     let client
@@ -289,10 +331,87 @@ export async function deleteForwardRule(
     return { success: false, error: message }
 }
 
+export interface UpdateForwardRuleFiltersInput {
+    userEmail: string
+    ruleId: string
+}
+
+/**
+ * Re-apply buildForwardRuleFilters to a live rule. Only conditions and exceptions are
+ * sent: the display name is the orphan sweep's anchor and the forward target belongs
+ * to the leave, so neither is touched.
+ *
+ * Unlike delete, a 404 is a failure here — the rule we meant to fix is gone. The next
+ * reconcile run notices that on its own.
+ */
+export async function updateForwardRuleFilters(
+    input: UpdateForwardRuleFiltersInput,
+): Promise<ForwardRuleResult> {
+    if (!credsConfigured()) {
+        return { success: true, skipped: true, skipReason: 'no_credentials' }
+    }
+
+    let client
+    try {
+        client = await getGraphClient()
+    } catch (err) {
+        return {
+            success: false,
+            error: err instanceof Error ? err.message : 'graph_client_setup_failed',
+        }
+    }
+
+    let lastErr: unknown = null
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            await client
+                .api(
+                    `/users/${encodeURIComponent(input.userEmail)}/mailFolders/inbox/messageRules/${encodeURIComponent(input.ruleId)}`,
+                )
+                .patch(buildForwardRuleFilters())
+            return { success: true }
+        } catch (err) {
+            lastErr = err
+            const { statusCode, retryAfterMs } = extractGraphErrorInfo(err)
+
+            if (statusCode === 404) {
+                logger.warn({
+                    event: 'forward_rule.graph.update_not_found',
+                    userEmail: input.userEmail,
+                    ruleId: input.ruleId,
+                })
+                return { success: false, error: 'rule_not_found' }
+            }
+
+            const retryable = isRetryableGraphStatus(statusCode)
+            const moreAttempts = attempt < MAX_ATTEMPTS
+            if (!retryable || !moreAttempts) break
+
+            const backoff = retryAfterMs ?? BASE_BACKOFF_MS * Math.pow(2, attempt - 1)
+            await sleep(backoff)
+        }
+    }
+
+    const message = lastErr instanceof Error ? lastErr.message : 'unknown_graph_error'
+    logger.error({
+        event: 'forward_rule.graph.update_failed',
+        error: message,
+        userEmail: input.userEmail,
+        ruleId: input.ruleId,
+    })
+    Sentry.captureMessage('forward_rule_update_failed', {
+        level: 'warning',
+        tags: { kind: 'graph_forward_rule_update' },
+        extra: { userEmail: input.userEmail, ruleId: input.ruleId, error: message },
+    })
+    return { success: false, error: message }
+}
+
 /**
  * List the Compass-managed forwarding rules in a mailbox. Returns null on any failure
  * (network, 403, 404) — callers must treat null as "unknown" and skip the sweep for
- * that mailbox rather than concluding there is nothing to clean up.
+ * that mailbox rather than concluding there is nothing to clean up. The one exception
+ * is an account with no Exchange mailbox at all: that returns [] (see no-mailbox.ts).
  *
  * No retry, matching getCurrentOof: this runs across every HR mailbox in one cron
  * pass, and retry storms there are worse than a mailbox skipped until tomorrow.
@@ -326,6 +445,11 @@ export async function listCompassForwardRules(
         }
         return rules
     } catch (err) {
+        // No Exchange mailbox → nowhere a Compass rule could live. Known, not unknown.
+        if (isNoExchangeMailboxError(err)) {
+            logger.info({ event: 'forward_rule.graph.list_no_mailbox', userEmail })
+            return []
+        }
         const { statusCode } = extractGraphErrorInfo(err)
         logger.warn({
             event: 'forward_rule.graph.list_failed',

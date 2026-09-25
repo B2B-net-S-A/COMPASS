@@ -360,10 +360,13 @@ export function LeaveRequestForm({ isUop = false, hasPool = false }: LeaveReques
                                 </span>
                             </label>
                             <p className="text-[11px] text-muted-foreground pl-6">
-                                Zastępca dostanie kopię każdej wiadomości, która przyjdzie na Twoją
-                                skrzynkę między pierwszym a ostatnim dniem urlopu — oryginały
-                                zostają u Ciebie. Możesz to wyłączyć w każdej chwili, także
-                                w trakcie urlopu, na liście swoich wniosków.
+                                Zastępca dostanie kopię wiadomości od osób spoza firmy (klienci,
+                                kandydaci), wysłanych bezpośrednio do Ciebie między pierwszym
+                                a ostatnim dniem urlopu — oryginały zostają u Ciebie. Maile od
+                                współpracowników, zaproszenia na spotkania i powiadomienia
+                                automatyczne (Teams, noreply) nie są przekazywane. Możesz to
+                                wyłączyć w każdej chwili, także w trakcie urlopu, na liście
+                                swoich wniosków.
                             </p>
                         </div>
                     )}
