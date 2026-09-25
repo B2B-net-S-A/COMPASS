@@ -297,8 +297,10 @@ export function CreateLeaveOnBehalfForm({ candidates }: Props) {
                                     </label>
                                     <p className="text-[11px] text-muted-foreground pl-6">
                                         Zaznacz tylko, jeśli pracownik o to poprosił — zastępca
-                                        zobaczy wszystko, co przyjdzie na jego skrzynkę w czasie
-                                        urlopu. Pracownik może to sam wyłączyć w swoich wnioskach.
+                                        zobaczy maile od osób spoza firmy wysłane do pracownika
+                                        w czasie urlopu (bez maili od współpracowników
+                                        i powiadomień automatycznych). Pracownik może to sam
+                                        wyłączyć w swoich wnioskach.
                                     </p>
                                 </div>
                             )}

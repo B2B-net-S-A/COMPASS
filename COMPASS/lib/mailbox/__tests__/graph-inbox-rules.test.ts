@@ -24,11 +24,13 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@sentry/nextjs', () => ({ captureMessage: vi.fn(), captureException: vi.fn() }))
 
 import {
+    buildForwardRuleFilters,
     buildForwardRuleName,
     createForwardRule,
     deleteForwardRule,
     listCompassForwardRules,
     parseLeaveIdFromRuleName,
+    updateForwardRuleFilters,
     COMPASS_FORWARD_RULE_PREFIX,
 } from '../graph-inbox-rules'
 
@@ -37,7 +39,7 @@ const OTHER_LEAVE_ID = '9c858901-8a57-4791-81fe-4c455b099bc9'
 
 interface GraphCall {
     path: string
-    method: 'get' | 'post' | 'delete'
+    method: 'get' | 'post' | 'patch' | 'delete'
     body?: unknown
 }
 
@@ -57,6 +59,10 @@ function stubGraph(outcomes: Array<{ throws?: unknown; returns?: unknown }>) {
             },
             post: (body: unknown) => {
                 calls.push({ path, method: 'post', body })
+                return settle(next())
+            },
+            patch: (body: unknown) => {
+                calls.push({ path, method: 'patch', body })
                 return settle(next())
             },
             delete: () => {
@@ -114,7 +120,7 @@ describe('buildForwardRuleName / parseLeaveIdFromRuleName', () => {
 // ─── createForwardRule ───────────────────────────────────────────────────────
 
 describe('createForwardRule', () => {
-    it('posts a forward-all rule and returns the graph rule id', async () => {
+    it('posts a filtered forwarding rule and returns the graph rule id', async () => {
         const calls = stubGraph([{ returns: { id: 'rule-123' } }])
 
         const res = await createForwardRule({
@@ -136,10 +142,20 @@ describe('createForwardRule', () => {
         expect(body.actions.forwardTo[0].emailAddress.address).toBe('piotr@b2bnetwork.pl')
         // The owner's own rules must keep running after ours.
         expect(body.actions.stopProcessingRules).toBe(false)
-        // No conditions block — every incoming message matches.
-        expect(body.conditions).toBeUndefined()
-        // Loop protection.
-        expect(body.exceptions).toEqual({ isAutomaticReply: true, isAutomaticForward: true })
+        // Only mail addressed to the owner — not group lists or BCC.
+        expect(body.conditions).toEqual({ sentToOrCcMe: true })
+        // 2026-09-25: a forward-all rule sent Teams notifications to the substitute.
+        expect(body.exceptions.senderContains).toEqual(
+            expect.arrayContaining(['@b2bnetwork.pl', 'no-reply', 'teams.mail.microsoft']),
+        )
+        expect(body.exceptions).toMatchObject({
+            // Loop protection.
+            isAutomaticReply: true,
+            isAutomaticForward: true,
+            isMeetingRequest: true,
+            isMeetingResponse: true,
+        })
+        expect(body).toMatchObject(buildForwardRuleFilters())
     })
 
     it('falls back to the email as display name when the substitute has no name', async () => {
@@ -247,6 +263,65 @@ describe('deleteForwardRule', () => {
         })
         expect(res).toEqual({ success: true })
         expect(calls).toHaveLength(2)
+    })
+})
+
+// ─── updateForwardRuleFilters ────────────────────────────────────────────────
+
+describe('updateForwardRuleFilters', () => {
+    it('patches only the filters of an existing rule', async () => {
+        const calls = stubGraph([{ returns: { id: 'rule-123' } }])
+        const res = await updateForwardRuleFilters({
+            userEmail: 'anna@b2bnetwork.pl',
+            ruleId: 'rule-123',
+        })
+        expect(res).toEqual({ success: true })
+        expect(calls).toHaveLength(1)
+        expect(calls[0].method).toBe('patch')
+        expect(calls[0].path).toBe(
+            '/users/anna%40b2bnetwork.pl/mailFolders/inbox/messageRules/rule-123',
+        )
+        // Name and forward target stay as created — the name is the orphan-sweep anchor.
+        expect(calls[0].body).toEqual(buildForwardRuleFilters())
+    })
+
+    it('retries a 503 and succeeds', async () => {
+        const calls = stubGraph([{ throws: graphError(503) }, { returns: {} }])
+        const res = await updateForwardRuleFilters({
+            userEmail: 'anna@b2bnetwork.pl',
+            ruleId: 'rule-123',
+        })
+        expect(res).toEqual({ success: true })
+        expect(calls).toHaveLength(2)
+    })
+
+    it('reports a missing rule without burning retries', async () => {
+        const calls = stubGraph([{ throws: graphError(404) }])
+        const res = await updateForwardRuleFilters({
+            userEmail: 'anna@b2bnetwork.pl',
+            ruleId: 'gone',
+        })
+        expect(res).toEqual({ success: false, error: 'rule_not_found' })
+        expect(calls).toHaveLength(1)
+    })
+
+    it('reports failure on 403', async () => {
+        stubGraph([{ throws: graphError(403) }])
+        const res = await updateForwardRuleFilters({
+            userEmail: 'anna@b2bnetwork.pl',
+            ruleId: 'rule-123',
+        })
+        expect(res.success).toBe(false)
+    })
+
+    it('skips without credentials', async () => {
+        delete process.env.AZURE_CLIENT_ID
+        const res = await updateForwardRuleFilters({
+            userEmail: 'anna@b2bnetwork.pl',
+            ruleId: 'rule-123',
+        })
+        expect(res).toEqual({ success: true, skipped: true, skipReason: 'no_credentials' })
+        expect(mockGetGraphClient).not.toHaveBeenCalled()
     })
 })
 

@@ -80,7 +80,7 @@ export function AdminForwardRules({ initial }: Props) {
             try {
                 const res = await runForwardReconcileNow()
                 toastSuccess(
-                    `Uzgodniono: założono ${res.opened}, zamknięto ${res.closed}, usunięto osieroconych ${res.orphansRemoved}.`,
+                    `Uzgodniono: założono ${res.opened}, zamknięto ${res.closed}, usunięto osieroconych ${res.orphansRemoved}, zaktualizowano filtry ${res.filtersUpdated}.`,
                 )
                 if (res.errors.length > 0) {
                     toast.warning(`Zgłoszone problemy: ${res.errors.slice(0, 3).join('; ')}`)
