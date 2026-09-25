@@ -71,6 +71,24 @@ describe('reconcileOutlookOof', () => {
         expect(stats.errors).toHaveLength(2)
     })
 
+    it('konto bez skrzynki Exchange nie jest błędem odczytu', async () => {
+        graphOof.readCurrentOof
+            .mockResolvedValueOnce({ ok: false, error: 'no mailbox', statusCode: 404, noMailbox: true })
+            .mockResolvedValueOnce({ ok: true, state: { status: 'disabled' } })
+        const stats = await reconcileOutlookOof(db())
+        expect(stats).toMatchObject({ scanned: 1, readErrors: 0, noMailbox: 1 })
+        expect(stats.errors).toEqual([])
+    })
+
+    it('konto bez skrzynki nie maskuje ślepego przebiegu', async () => {
+        graphOof.readCurrentOof
+            .mockResolvedValueOnce({ ok: false, error: 'no mailbox', statusCode: 404, noMailbox: true })
+            .mockResolvedValueOnce({ ok: false, error: 'Forbidden', statusCode: 403 })
+        const stats = await reconcileOutlookOof(db())
+        expect(stats.readErrors).toBe(stats.scanned)
+        expect(stats.scanned).toBe(1)
+    })
+
     it('INT-08: wyłączony OOF to udany odczyt, nie błąd', async () => {
         graphOof.readCurrentOof.mockResolvedValue({ ok: true, state: { status: 'disabled' } })
         const stats = await reconcileOutlookOof(db())

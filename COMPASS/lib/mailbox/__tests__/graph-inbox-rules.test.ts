@@ -359,6 +359,23 @@ describe('listCompassForwardRules', () => {
         expect(await listCompassForwardRules('anna@b2bnetwork.pl')).toEqual([])
     })
 
+    it('returns an empty list for a user without an Exchange mailbox — no mailbox, no rules', async () => {
+        stubGraph([
+            {
+                throws: Object.assign(new Error('The mailbox is either inactive, soft-deleted, or is hosted on-premise.'), {
+                    statusCode: 404,
+                    code: 'MailboxNotEnabledForRESTAPI',
+                }),
+            },
+        ])
+        expect(await listCompassForwardRules('zbigniew@b2bnetwork.pl')).toEqual([])
+    })
+
+    it('still returns null for any other 404 (e.g. an address that is not in the tenant)', async () => {
+        stubGraph([{ throws: graphError(404) }])
+        expect(await listCompassForwardRules('literowka@b2bnetwork.pl')).toBeNull()
+    })
+
     it('returns null on error — "unknown" must not be read as "nothing to clean up"', async () => {
         stubGraph([{ throws: graphError(403) }])
         expect(await listCompassForwardRules('anna@b2bnetwork.pl')).toBeNull()

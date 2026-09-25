@@ -28,6 +28,7 @@ import {
     getGraphClient,
     isRetryableGraphStatus,
 } from '@/lib/graph/client'
+import { isNoExchangeMailboxError } from '@/lib/graph/no-mailbox'
 import { logger } from '@/lib/logger'
 
 const MAX_ATTEMPTS = 3
@@ -409,7 +410,8 @@ export async function updateForwardRuleFilters(
 /**
  * List the Compass-managed forwarding rules in a mailbox. Returns null on any failure
  * (network, 403, 404) — callers must treat null as "unknown" and skip the sweep for
- * that mailbox rather than concluding there is nothing to clean up.
+ * that mailbox rather than concluding there is nothing to clean up. The one exception
+ * is an account with no Exchange mailbox at all: that returns [] (see no-mailbox.ts).
  *
  * No retry, matching getCurrentOof: this runs across every HR mailbox in one cron
  * pass, and retry storms there are worse than a mailbox skipped until tomorrow.
@@ -443,6 +445,11 @@ export async function listCompassForwardRules(
         }
         return rules
     } catch (err) {
+        // No Exchange mailbox → nowhere a Compass rule could live. Known, not unknown.
+        if (isNoExchangeMailboxError(err)) {
+            logger.info({ event: 'forward_rule.graph.list_no_mailbox', userEmail })
+            return []
+        }
         const { statusCode } = extractGraphErrorInfo(err)
         logger.warn({
             event: 'forward_rule.graph.list_failed',

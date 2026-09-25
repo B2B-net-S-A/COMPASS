@@ -58,6 +58,8 @@ export interface OofReconcileStats {
      * zwraca wtedy `ok:false`, zamiast udawać „0 nieobecności".
      */
     readErrors: number
+    /** Konta bez skrzynki Exchange — pominięte, nie liczone jako błąd odczytu. */
+    noMailbox: number
     /** INT-02 — OOF COMPASS ustawione przez cron dla urlopów odroczonych przy akceptacji. */
     deferredOofSet: number
     errors: string[]
@@ -102,6 +104,7 @@ export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats
         gapsFound: 0,
         created: 0,
         readErrors: 0,
+        noMailbox: 0,
         deferredOofSet: 0,
         errors: [],
     }
@@ -147,10 +150,15 @@ export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats
     const dueByUser = await loadDueCompassLeaves(admin, stats)
 
     for (const u of roster) {
-        stats.scanned++
         const email = u.email as string
         // INT-08: błąd odczytu jest liczony i raportowany, a nie mylony z „brak OOF".
         const read = await readCurrentOof(email)
+        // Poza `scanned`, żeby nie rozwadniać testu „readErrors === scanned" (ślepy bieg).
+        if (!read.ok && read.noMailbox) {
+            stats.noMailbox++
+            continue
+        }
+        stats.scanned++
         if (!read.ok) {
             stats.readErrors++
             stats.errors.push(`${email}: odczyt OOF nieudany (${read.statusCode ?? read.error})`)

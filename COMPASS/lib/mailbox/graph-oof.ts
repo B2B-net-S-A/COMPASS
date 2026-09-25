@@ -19,6 +19,7 @@ import {
     getGraphClient,
     isRetryableGraphStatus,
 } from '@/lib/graph/client'
+import { isNoExchangeMailboxError } from '@/lib/graph/no-mailbox'
 import { logger } from '@/lib/logger'
 
 const MAX_ATTEMPTS = 3
@@ -120,7 +121,14 @@ export interface CurrentOofState {
  */
 export type OofReadResult =
     | { ok: true; state: CurrentOofState }
-    | { ok: false; error: string; statusCode?: number; noCredentials?: boolean }
+    | {
+          ok: false
+          error: string
+          statusCode?: number
+          noCredentials?: boolean
+          /** Konto bez skrzynki Exchange — stan, nie awaria (lib/graph/no-mailbox.ts). */
+          noMailbox?: boolean
+      }
 
 /**
  * Odczyt bieżącego automaticRepliesSetting. Nigdy nie rzuca; błąd odczytu jest
@@ -150,6 +158,10 @@ export async function readCurrentOof(userEmail: string): Promise<OofReadResult> 
     } catch (err) {
         const { statusCode } = extractGraphErrorInfo(err)
         const error = err instanceof Error ? err.message : String(err)
+        if (isNoExchangeMailboxError(err)) {
+            logger.info({ event: 'oof.graph.get_no_mailbox', userEmail })
+            return { ok: false, error, statusCode, noMailbox: true }
+        }
         logger.warn({
             event: 'oof.graph.get_failed',
             statusCode,
