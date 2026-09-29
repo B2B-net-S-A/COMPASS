@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockGetUser = vi.fn()
 const mockGetUserById = vi.fn()
+const mockUpdateUserById = vi.fn()
+const mockProfileRead = vi.fn()
 const mockProfilesUpdate = vi.fn()
 const mockProfilesUpdateEq = vi.fn()
 const mockLifecycleInsert = vi.fn()
@@ -17,9 +19,14 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/supabase/admin', () => ({
     createServiceClient: () => ({
-        auth: { admin: { getUserById: mockGetUserById } },
+        auth: { admin: { getUserById: mockGetUserById, updateUserById: mockUpdateUserById } },
         from: (table: string) => {
-            if (table === 'profiles') return { update: mockProfilesUpdate }
+            if (table === 'profiles') {
+                return {
+                    update: mockProfilesUpdate,
+                    select: () => ({ eq: () => ({ maybeSingle: mockProfileRead }) }),
+                }
+            }
             if (table === 'lifecycle_events') return { insert: mockLifecycleInsert }
             throw new Error(`Unexpected table: ${table}`)
         },
@@ -48,6 +55,11 @@ beforeEach(() => {
     mockProfilesUpdate.mockImplementation(() => ({ eq: mockProfilesUpdateEq }))
     mockLifecycleInsert.mockResolvedValue({ error: null })
     mockRevoke.mockResolvedValue(undefined)
+    mockUpdateUserById.mockResolvedValue({ data: { user: {} }, error: null })
+    mockProfileRead.mockResolvedValue({
+        data: { employment_status: 'exited', termination_date: '2026-09-30' },
+        error: null,
+    })
     mockLogAudit.mockResolvedValue(undefined)
 })
 
@@ -130,5 +142,63 @@ describe('deactivateEmployee', () => {
 
         expect(res.success).toBe(false)
         expect(mockRevoke).not.toHaveBeenCalled()
+    })
+})
+
+describe('reactivateEmployee', () => {
+    it('restores active status, clears the end date and lifts the Auth ban', async () => {
+        const { reactivateEmployee } = await import('../user-admin')
+        const res = await reactivateEmployee('target-1')
+
+        expect(res).toEqual({ success: true, data: undefined })
+        expect(mockProfilesUpdate).toHaveBeenCalledWith({ employment_status: 'active', termination_date: null })
+        expect(mockUpdateUserById).toHaveBeenCalledWith('target-1', { ban_duration: 'none' })
+        expect(mockLogAudit).toHaveBeenCalledWith(
+            'super-1',
+            'EMPLOYEE_REACTIVATED',
+            expect.objectContaining({ user_id: 'target-1', previous_termination_date: '2026-09-30' }),
+        )
+    })
+
+    it('refuses an account that is not deactivated (nothing to restore)', async () => {
+        mockProfileRead.mockResolvedValue({ data: { employment_status: 'offboarding', termination_date: null }, error: null })
+        const { reactivateEmployee } = await import('../user-admin')
+        const res = await reactivateEmployee('target-1')
+
+        expect(!res.success && res.error).toMatch(/nie jest nieaktywne/)
+        expect(mockProfilesUpdate).not.toHaveBeenCalled()
+        expect(mockUpdateUserById).not.toHaveBeenCalled()
+    })
+
+    it('is super-admin only and protects own / other super admin accounts', async () => {
+        loginAs('user-1', 'user@b2b.pl')
+        const { reactivateEmployee } = await import('../user-admin')
+        expect(!((await reactivateEmployee('target-1')).success)).toBe(true)
+
+        loginAs('super-1', 'admin@b2b.pl')
+        mockGetUserById.mockResolvedValue({ data: { user: { id: 'super-2', email: 'other-super@b2b.pl' } }, error: null })
+        const res = await reactivateEmployee('super-2')
+        expect(!res.success && res.error).toMatch(/innego Super Admina/)
+        expect(mockUpdateUserById).not.toHaveBeenCalled()
+    })
+
+    it('changes nothing when lifting the ban fails, so a retry still finds the account inactive', async () => {
+        mockUpdateUserById.mockResolvedValue({ data: null, error: { message: 'auth down' } })
+        const { reactivateEmployee } = await import('../user-admin')
+        const res = await reactivateEmployee('target-1')
+
+        expect(!res.success && res.error).toMatch(/Nie udało się odblokować logowania/)
+        expect(mockProfilesUpdate).not.toHaveBeenCalled()
+        expect(mockLogAudit).not.toHaveBeenCalled()
+    })
+
+    it('leaves status exited when the status write fails after unban (app still blocks, retry works)', async () => {
+        mockProfilesUpdateEq.mockResolvedValue({ error: { message: 'boom' } })
+        const { reactivateEmployee } = await import('../user-admin')
+        const res = await reactivateEmployee('target-1')
+
+        expect(res.success).toBe(false)
+        expect(mockUpdateUserById).toHaveBeenCalledTimes(1)
+        expect(mockLogAudit).not.toHaveBeenCalled()
     })
 })
