@@ -900,6 +900,51 @@ export async function deactivateEmployee(targetUserId: string, lastWorkDay?: str
     })
 }
 
+/**
+ * „Przywróć konto" — odwrotność `deactivateEmployee` (np. pomyłkowa dezaktywacja albo powrót).
+ * Status → `active`, `termination_date` → NULL (inaczej raporty miesięczne dalej traktowałyby
+ * osobę jako odeszłą), zdjęcie blokady w Auth. Poprzednią datę zakończenia zapisujemy w audycie.
+ * Działa tylko dla `exited` — offboarding ma własny przebieg w /internal/lifecycle.
+ */
+export async function reactivateEmployee(targetUserId: string): Promise<ActionResult<void>> {
+    return runAction('reactivateEmployee', async () => {
+        const { user: actor } = await requireSuperAdmin()
+        const target = await fetchTargetUser(targetUserId)
+        ensureCanModify(actor.id, target)
+
+        const admin = createServiceClient()
+        const { data: profile, error: readErr } = await admin
+            .from('profiles')
+            .select('employment_status, termination_date')
+            .eq('id', target.id)
+            .maybeSingle<{ employment_status: string | null; termination_date: string | null }>()
+        if (readErr) throw new Error(`reactivateEmployee: odczyt profilu: ${readErr.message}`)
+        if (profile?.employment_status !== 'exited') {
+            throw new ExpectedError('To konto nie jest nieaktywne — nie ma czego przywracać.')
+        }
+
+        // Najpierw Auth, potem status: dopóki status to `exited`, aplikacja i tak nie wpuszcza,
+        // a ponowne kliknięcie po częściowej awarii wciąż przechodzi przez warunek `exited` wyżej.
+        const { error: unbanErr } = await admin.auth.admin.updateUserById(target.id, { ban_duration: 'none' })
+        if (unbanErr) {
+            logCompat.error('[reactivateEmployee] unban failed:', unbanErr)
+            throw new ExpectedError('Nie udało się odblokować logowania — nic nie zmieniono, spróbuj ponownie.')
+        }
+
+        const { error: statusErr } = await admin
+            .from('profiles')
+            .update({ employment_status: 'active', termination_date: null })
+            .eq('id', target.id)
+        if (statusErr) throw new Error(`reactivateEmployee: zapis statusu: ${statusErr.message}`)
+
+        await logAudit(actor.id, 'EMPLOYEE_REACTIVATED', {
+            user_id: target.id,
+            target_email: target.email ?? null,
+            previous_termination_date: profile.termination_date,
+        })
+    })
+}
+
 // Structured result so the real reason survives Next.js prod error masking
 // (a thrown server-action error is replaced with a generic message in prod,
 // which is exactly why hard-delete failures were previously undiagnosable).

@@ -73,6 +73,7 @@ export type AuditAction =
     | 'EXIT_INTERVIEW_ANONYMIZED'
     | 'OFFBOARDING_TASK_COMPLETED'
     | 'EMPLOYEE_EXITED'
+    | 'EMPLOYEE_REACTIVATED'
     // Phase 22f — Cancellation + notes + external + duplicates
     | 'ONBOARDING_CANCELLED'
     | 'ONBOARDING_RESTARTED'

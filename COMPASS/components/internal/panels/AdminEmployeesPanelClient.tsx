@@ -18,11 +18,16 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Pencil, Archive, Trash2, Loader2, AlertTriangle, UserX } from 'lucide-react'
+import { Pencil, Archive, Trash2, Loader2, AlertTriangle, UserX, UserCheck } from 'lucide-react'
 import { roleLabelPl } from '@/lib/types/role'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { archiveEmployee, deactivateEmployee, deleteUserAccount } from '@/lib/actions/user-admin'
+import {
+    archiveEmployee,
+    deactivateEmployee,
+    deleteUserAccount,
+    reactivateEmployee,
+} from '@/lib/actions/user-admin'
 import { EditEmployeeDialog, type ManagerCandidateRow } from '@/components/admin/EditEmployeeDialog'
 
 export interface EmployeeRow {
@@ -88,6 +93,7 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
     const [archiveTarget, setArchiveTarget] = useState<EmployeeRow | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<EmployeeRow | null>(null)
     const [deactivateTarget, setDeactivateTarget] = useState<EmployeeRow | null>(null)
+    const [reactivateTarget, setReactivateTarget] = useState<EmployeeRow | null>(null)
 
     const byStatus =
         statusFilter === 'all'
@@ -132,6 +138,12 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
         // `exited` → wiersz przechodzi pod „Nieaktywni" z plakietką „Konto nieaktywne".
         setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, employment_status: 'exited' } : e)))
         setDeactivateTarget(null)
+    }
+
+    function onReactivated(id: string) {
+        // `active` → wiersz wraca pod „Aktywni".
+        setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, employment_status: 'active' } : e)))
+        setReactivateTarget(null)
     }
 
     function onDeleted(id: string) {
@@ -290,6 +302,18 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                                                             <Archive className="h-3.5 w-3.5" />
                                                         </Button>
                                                     )}
+                                                    {isInactive(e) && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => setReactivateTarget(e)}
+                                                            className="h-7 px-2 text-success hover:text-success hover:bg-success/10"
+                                                            title="Przywróć konto — odblokowuje logowanie"
+                                                            aria-label="Przywróć konto"
+                                                        >
+                                                            <UserCheck className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
                                                     {!isInactive(e) && (
                                                         <Button
                                                             size="sm"
@@ -342,6 +366,12 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                 employee={deactivateTarget}
                 onOpenChange={(o) => !o && setDeactivateTarget(null)}
                 onDeactivated={onDeactivated}
+            />
+
+            <ReactivateEmployeeDialog
+                employee={reactivateTarget}
+                onOpenChange={(o) => !o && setReactivateTarget(null)}
+                onReactivated={onReactivated}
             />
 
             <DeleteEmployeeDialog
@@ -581,6 +611,83 @@ function DeactivateEmployeeDialog({ employee, onOpenChange, onDeactivated }: Dea
                         ) : (
                             <>
                                 <UserX className="mr-2 h-4 w-4" /> Dezaktywuj konto
+                            </>
+                        )}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    )
+}
+
+// ─── Reactivate dialog (odwrotność dezaktywacji) ────────────────────────────
+
+interface ReactivateProps {
+    employee: EmployeeRow | null
+    onOpenChange: (open: boolean) => void
+    onReactivated: (id: string) => void
+}
+
+function ReactivateEmployeeDialog({ employee, onOpenChange, onReactivated }: ReactivateProps) {
+    const [isPending, startTransition] = useTransition()
+    const name = employee?.full_name ?? employee?.email
+
+    function handleConfirm() {
+        if (!employee) return
+        startTransition(async () => {
+            try {
+                const res = await reactivateEmployee(employee.id)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się przywrócić konta.')
+                    return
+                }
+                toastSuccess(`Konto przywrócone — ${name} może się znowu zalogować.`)
+                onReactivated(employee.id)
+            } catch {
+                toast.error('Nie udało się przywrócić konta. Odśwież stronę i spróbuj ponownie.')
+            }
+        })
+    }
+
+    return (
+        <AlertDialog open={!!employee} onOpenChange={onOpenChange}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                        <UserCheck className="h-4 w-4 text-success" />
+                        Przywróć konto
+                    </AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                        <div className="space-y-2 text-sm">
+                            <p>
+                                <strong>{name}</strong> odzyska dostęp do COMPASS-a (logowanie hasłem i przez
+                                Microsoft) z dotychczasową rolą.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Status wraca na „aktywny”, a data zakończenia pracy zostaje wyczyszczona (poprzednia
+                                zostaje w audycie). Konto w Microsoft 365, jeśli zostało wyłączone, trzeba włączyć
+                                osobno.
+                            </p>
+                        </div>
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isPending}>Anuluj</AlertDialogCancel>
+                    <AlertDialogAction
+                        onClick={(e) => {
+                            e.preventDefault()
+                            handleConfirm()
+                        }}
+                        disabled={isPending}
+                    >
+                        {isPending ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Przywracam…
+                            </>
+                        ) : (
+                            <>
+                                <UserCheck className="mr-2 h-4 w-4" /> Przywróć konto
                             </>
                         )}
                     </AlertDialogAction>
