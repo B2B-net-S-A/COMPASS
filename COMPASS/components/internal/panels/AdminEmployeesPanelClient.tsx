@@ -18,11 +18,11 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Pencil, Archive, Trash2, Loader2, AlertTriangle } from 'lucide-react'
+import { Pencil, Archive, Trash2, Loader2, AlertTriangle, UserX } from 'lucide-react'
 import { roleLabelPl } from '@/lib/types/role'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
-import { archiveEmployee, deleteUserAccount } from '@/lib/actions/user-admin'
+import { archiveEmployee, deactivateEmployee, deleteUserAccount } from '@/lib/actions/user-admin'
 import { EditEmployeeDialog, type ManagerCandidateRow } from '@/components/admin/EditEmployeeDialog'
 
 export interface EmployeeRow {
@@ -62,10 +62,19 @@ function isInactive(e: EmployeeRow): boolean {
 }
 
 // Badge statusu w wierszu — pokazywany tylko dla statusów != 'active'.
-const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+// Offboarding NIE odcina dostępu (dopiero `exited`), więc mówimy to wprost na plakietce.
+const STATUS_BADGE: Record<string, { label: string; className: string; title?: string }> = {
     onboarding: { label: 'Onboarding', className: 'border-primary/40 text-primary' },
-    offboarding: { label: 'Offboarding', className: 'border-warning/50 text-warning' },
-    exited: { label: 'Odszedł', className: 'border-destructive/40 text-destructive' },
+    offboarding: {
+        label: 'Offboarding · konto aktywne',
+        className: 'border-warning/50 text-warning',
+        title: 'Pracownik nadal może się logować. Aby od razu odciąć dostęp, użyj „Dezaktywuj konto”.',
+    },
+    exited: {
+        label: 'Konto nieaktywne',
+        className: 'border-destructive/40 text-destructive',
+        title: 'Nie może się zalogować — konto zablokowane.',
+    },
     pending: { label: 'Zaproszony', className: 'border-border text-muted-foreground' },
 }
 
@@ -78,6 +87,7 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
     const [editTarget, setEditTarget] = useState<EmployeeRow | null>(null)
     const [archiveTarget, setArchiveTarget] = useState<EmployeeRow | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<EmployeeRow | null>(null)
+    const [deactivateTarget, setDeactivateTarget] = useState<EmployeeRow | null>(null)
 
     const byStatus =
         statusFilter === 'all'
@@ -116,6 +126,12 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
             )
         }
         setArchiveTarget(null)
+    }
+
+    function onDeactivated(id: string) {
+        // `exited` → wiersz przechodzi pod „Nieaktywni" z plakietką „Konto nieaktywne".
+        setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, employment_status: 'exited' } : e)))
+        setDeactivateTarget(null)
     }
 
     function onDeleted(id: string) {
@@ -232,6 +248,7 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                                                         STATUS_BADGE[e.employment_status] && (
                                                             <Badge
                                                                 variant="outline"
+                                                                title={STATUS_BADGE[e.employment_status].title}
                                                                 className={`text-[10px] ${STATUS_BADGE[e.employment_status].className}`}
                                                             >
                                                                 {STATUS_BADGE[e.employment_status].label}
@@ -261,15 +278,30 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                                                     >
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() => setArchiveTarget(e)}
-                                                        className="h-7 px-2 text-warning hover:text-warning hover:bg-warning/10"
-                                                        title="Archiwizuj — uruchom offboarding + exit interview"
-                                                    >
-                                                        <Archive className="h-3.5 w-3.5" />
-                                                    </Button>
+                                                    {!isInactive(e) && e.employment_status !== 'offboarding' && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => setArchiveTarget(e)}
+                                                            className="h-7 px-2 text-warning hover:text-warning hover:bg-warning/10"
+                                                            title="Archiwizuj — uruchom offboarding + exit interview (konto działa do końca offboardingu)"
+                                                            aria-label="Archiwizuj"
+                                                        >
+                                                            <Archive className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
+                                                    {!isInactive(e) && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => setDeactivateTarget(e)}
+                                                            className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            title="Dezaktywuj konto — od razu blokuje logowanie"
+                                                            aria-label="Dezaktywuj konto"
+                                                        >
+                                                            <UserX className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
@@ -304,6 +336,12 @@ export function AdminEmployeesPanelClient({ initialEmployees, managerCandidates 
                 employee={archiveTarget}
                 onOpenChange={(o) => !o && setArchiveTarget(null)}
                 onArchived={onArchived}
+            />
+
+            <DeactivateEmployeeDialog
+                employee={deactivateTarget}
+                onOpenChange={(o) => !o && setDeactivateTarget(null)}
+                onDeactivated={onDeactivated}
             />
 
             <DeleteEmployeeDialog
@@ -380,6 +418,10 @@ function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchivePr
                                 Konto <strong>nie znika</strong> z listy. Kolejka: <code>/internal/lifecycle</code>.
                                 Po wykonaniu wszystkich required tasks admin/TCM klika &quot;Mark as exited&quot;.
                             </p>
+                            <p className="text-xs text-warning">
+                                W trakcie offboardingu pracownik <strong>nadal może się logować</strong>. Jeśli nie
+                                potrzebujesz offboardingu i chcesz od razu odciąć dostęp, użyj „Dezaktywuj konto”.
+                            </p>
                         </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -449,6 +491,96 @@ function ArchiveEmployeeDialog({ employee, onOpenChange, onArchived }: ArchivePr
                         ) : (
                             <>
                                 <Archive className="mr-2 h-4 w-4" /> Archiwizuj
+                            </>
+                        )}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    )
+}
+
+// ─── Deactivate dialog (natychmiastowe odcięcie dostępu, bez offboardingu) ────
+
+interface DeactivateProps {
+    employee: EmployeeRow | null
+    onOpenChange: (open: boolean) => void
+    onDeactivated: (id: string) => void
+}
+
+function DeactivateEmployeeDialog({ employee, onOpenChange, onDeactivated }: DeactivateProps) {
+    const today = new Date().toISOString().slice(0, 10)
+    const [lastWorkDay, setLastWorkDay] = useState<string>(today)
+    const [isPending, startTransition] = useTransition()
+    const name = employee?.full_name ?? employee?.email
+
+    function handleConfirm() {
+        if (!employee) return
+        startTransition(async () => {
+            try {
+                const res = await deactivateEmployee(employee.id, lastWorkDay)
+                if (!res?.success) {
+                    toast.error(res?.error ?? 'Nie udało się dezaktywować konta.')
+                    return
+                }
+                toastSuccess(`Konto dezaktywowane — ${name} nie może się już zalogować.`)
+                onDeactivated(employee.id)
+            } catch {
+                toast.error('Nie udało się dezaktywować konta. Odśwież stronę i spróbuj ponownie.')
+            }
+        })
+    }
+
+    return (
+        <AlertDialog open={!!employee} onOpenChange={onOpenChange}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                        <UserX className="h-4 w-4 text-destructive" />
+                        Dezaktywuj konto
+                    </AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                        <div className="space-y-2 text-sm">
+                            <p>
+                                <strong>{name}</strong> od razu straci dostęp do COMPASS-a: nie zaloguje się (hasłem
+                                ani przez Microsoft), a otwarte sesje zostaną unieważnione.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Bez offboardingu i exit interview. Dane (stawki, urlopy, timesheety) zostają; osoba
+                                trafia pod „Nieaktywni”, a w rozliczeniu liczy się do ostatniego dnia pracy.
+                            </p>
+                        </div>
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <div className="space-y-1.5">
+                    <Label htmlFor="deactivate-last-day">Ostatni dzień pracy</Label>
+                    <Input
+                        id="deactivate-last-day"
+                        type="date"
+                        value={lastWorkDay}
+                        onChange={(e) => setLastWorkDay(e.target.value)}
+                        disabled={isPending}
+                    />
+                </div>
+
+                <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isPending}>Anuluj</AlertDialogCancel>
+                    <AlertDialogAction
+                        onClick={(e) => {
+                            e.preventDefault()
+                            handleConfirm()
+                        }}
+                        disabled={isPending || !lastWorkDay}
+                        className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    >
+                        {isPending ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Dezaktywuję…
+                            </>
+                        ) : (
+                            <>
+                                <UserX className="mr-2 h-4 w-4" /> Dezaktywuj konto
                             </>
                         )}
                     </AlertDialogAction>

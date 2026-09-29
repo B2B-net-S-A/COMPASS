@@ -1,7 +1,8 @@
 'use client'
 
 // Phase 27i — "Zarządzaj stawką" dialog: hourly rate only.
-// Fixed rate or a forward progression (24-month grid), plus copy-progression-from-another.
+// Fixed rate from any month (12 back … 12 ahead) or a forward progression (24-month grid),
+// plus copy-progression-from-another. Zapis od miesiąca X zastępuje wszystko od X.
 // Contract type + documents live in ManageContractDialog ("Zarządzaj umową").
 
 import { useMemo, useState } from 'react'
@@ -30,6 +31,7 @@ import type {
     CopyProgressionResult,
     SkippedCopyReason,
 } from '@/lib/types/rates'
+import { RATE_BACKDATE_MAX_MONTHS } from '@/lib/types/rates'
 import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
 import { RateProgressionGrid } from './RateProgressionGrid'
 
@@ -42,19 +44,22 @@ interface Props {
 interface MonthOption {
     value: string
     label: string
+    /** -N = N miesięcy wstecz, 0 = bieżący, >0 = przyszły. */
+    offset: number
 }
 
-function buildFutureMonthOptions(count = 12): MonthOption[] {
+function buildMonthOptions(back: number, ahead: number): MonthOption[] {
     const now = new Date()
     const opts: MonthOption[] = []
-    for (let i = 1; i <= count; i++) {
+    for (let i = ahead; i >= -back; i--) {
         const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + i, 1))
         const y = d.getUTCFullYear()
         const m = d.getUTCMonth() + 1
         const iso = `${y}-${String(m).padStart(2, '0')}-01`
-        opts.push({ value: iso, label: `${BONUS_MONTHS_PL[m - 1]} ${y}` })
+        const suffix = i === 0 ? ' — bieżący' : i < 0 ? ' — wstecz' : ''
+        opts.push({ value: iso, label: `${BONUS_MONTHS_PL[m - 1]} ${y}${suffix}`, offset: i })
     }
-    return opts
+    return opts.reverse()
 }
 
 const SKIP_REASON_PL: Record<SkippedCopyReason, string> = {
@@ -65,7 +70,7 @@ const SKIP_REASON_PL: Record<SkippedCopyReason, string> = {
 
 export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
     const router = useRouter()
-    const monthOptions = useMemo(() => buildFutureMonthOptions(12), [])
+    const monthOptions = useMemo(() => buildMonthOptions(RATE_BACKDATE_MAX_MONTHS, 12), [])
     const name = target.full_name ?? target.email
 
     // Rate mode
@@ -74,7 +79,10 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
     // Fixed (single) rate
     const [rate, setRate] = useState<string>(target.current_rate?.toString() ?? '')
     const [currency, setCurrency] = useState<RateCurrency>(target.current_currency ?? 'PLN')
-    const [effFrom, setEffFrom] = useState<string>(monthOptions[0]?.value ?? '')
+    const [effFrom, setEffFrom] = useState<string>(
+        monthOptions.find((o) => o.offset === 1)?.value ?? monthOptions[0]?.value ?? '',
+    )
+    const effOffset = monthOptions.find((o) => o.value === effFrom)?.offset ?? 1
     const [reason, setReason] = useState<string>('')
     const [savingFixed, setSavingFixed] = useState(false)
 
@@ -101,17 +109,22 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
         }
         setSavingFixed(true)
         try {
-            await setRateProgression({
+            const res = await setRateProgression({
                 user_id: target.user_id,
                 currency,
+                replace_from: effFrom,
                 entries: [{ effective_from: effFrom, hourly_rate: rateNum }],
                 reason: reason.trim() || null,
             })
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Błąd zapisu stawki.')
+                return
+            }
             toast.success(`Stawka ${rateNum.toFixed(2)} ${currency}/h od ${effFrom}. Wysłano powiadomienia.`)
             refreshDirectory()
             onOpenChange(false)
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Błąd zapisu stawki.')
+        } catch {
+            toast.error('Błąd zapisu stawki. Odśwież stronę i spróbuj ponownie.')
         } finally {
             setSavingFixed(false)
         }
@@ -126,12 +139,16 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
         setPreview(null)
         try {
             const res = await previewCopyProgression({ from_user_id: copyFrom, to_user_id: target.user_id })
-            setPreview(res)
-            if (res.applied.length === 0 && res.skipped.length === 0) {
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Błąd podglądu kopii.')
+                return
+            }
+            setPreview(res.data)
+            if (res.data.applied.length === 0 && res.data.skipped.length === 0) {
                 toast.info('Wybrany pracownik nie ma zaplanowanej progresji do skopiowania.')
             }
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Błąd podglądu kopii.')
+        } catch {
+            toast.error('Błąd podglądu kopii. Odśwież stronę i spróbuj ponownie.')
         } finally {
             setPreviewing(false)
         }
@@ -141,17 +158,22 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
         setApplyingCopy(true)
         try {
             const res = await copyRateProgression({ from_user_id: copyFrom, to_user_id: target.user_id })
-            if (res.inserted_count === 0) {
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Błąd kopiowania progresji.')
+                return
+            }
+            const count = res.data.inserted_count
+            if (count === 0) {
                 toast.error('Nic nie skopiowano (brak pasujących miesięcy).')
             } else {
                 toast.success(
-                    `Skopiowano ${res.inserted_count} ${res.inserted_count === 1 ? 'zmianę' : 'zmiany/zmian'}. Wysłano powiadomienia.`,
+                    `Skopiowano ${count} ${count === 1 ? 'zmianę' : 'zmiany/zmian'}. Wysłano powiadomienia.`,
                 )
                 refreshDirectory()
                 onOpenChange(false)
             }
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Błąd kopiowania progresji.')
+        } catch {
+            toast.error('Błąd kopiowania progresji. Odśwież stronę i spróbuj ponownie.')
         } finally {
             setApplyingCopy(false)
         }
@@ -238,6 +260,20 @@ export function ManageRateDialog({ target, employees, onOpenChange }: Props) {
                                             </option>
                                         ))}
                                     </select>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                        Stawka obowiązuje od wybranego miesiąca bezterminowo i zastępuje wszystko, co
+                                        było ustawione od tego miesiąca
+                                        {target.scheduled_changes_count > 0 && target.next_scheduled_from
+                                            ? ` — także ${target.scheduled_changes_count} zaplanowane zmiany (najbliższa od ${target.next_scheduled_from}: ${target.next_scheduled_rate?.toFixed(2) ?? '—'})`
+                                            : ''}
+                                        .
+                                    </p>
+                                    {effOffset <= 0 && (
+                                        <p className="mt-1 text-[11px] text-warning">
+                                            Zmiana {effOffset === 0 ? 'od bieżącego miesiąca' : 'wstecz'} przeliczy
+                                            rozliczenie (payroll) za miesiące od {effFrom}.
+                                        </p>
+                                    )}
                                 </div>
                                 <div>
                                     <Label htmlFor="fixed-reason">Notatka (opcjonalna)</Label>

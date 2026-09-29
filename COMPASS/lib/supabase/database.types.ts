@@ -7423,6 +7423,17 @@ export type Database = {
           project: string;
         }[];
       };
+      replace_user_rate_schedule: {
+        Args: {
+          p_currency: string;
+          p_entries: Json;
+          p_reason: string | null;
+          p_replace_from: string;
+          p_set_by: string;
+          p_user_id: string;
+        };
+        Returns: number;
+      };
       set_user_rate_progression: {
         Args: {
           p_currency: string;
