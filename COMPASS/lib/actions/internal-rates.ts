@@ -669,7 +669,7 @@ export async function setRateProgression(
             p_reason: reason,
         })
         if (error) {
-            // PGRST202 / 42883 = funkcji jeszcze nie ma w bazie (migracja 20260929120000).
+            // PGRST202 / 42883 = funkcji jeszcze nie ma w bazie (migracja 20260929122811).
             if (error.code === 'PGRST202' || error.code === '42883') {
                 throw new ExpectedError('Zapis stawek czeka na aktualizację bazy danych. Daj znać administratorowi.')
             }
