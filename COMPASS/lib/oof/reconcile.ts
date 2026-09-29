@@ -192,7 +192,7 @@ export async function reconcileOutlookOof(admin: any): Promise<OofReconcileStats
         }
         const range = oofScheduledToDates(oof.scheduledStartDateTime, oof.scheduledEndDateTime)
         if (!range) {
-            stats.errors.push(`${email}: nie sparsowano zakresu OOF`)
+            stats.errors.push(`${email}: OOF bez pełnego dnia nieobecności albo nie sparsowano zakresu — pominięto`)
             continue
         }
 

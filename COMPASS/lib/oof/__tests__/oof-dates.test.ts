@@ -19,6 +19,43 @@ describe('oofScheduledToDates', () => {
         })
     })
 
+    it('OOF włączony po pracy nie liczy dnia startu — 15.09 16:30 → urlop od 16.09', () => {
+        // 14:30Z = 16:30 CEST; koniec 22:00Z = 00:00 CEST 19.09 (wyłącznie)
+        expect(oofScheduledToDates(utc('2026-09-15T14:30:00'), utc('2026-09-18T22:00:00'))).toEqual({
+            startDate: '2026-09-16',
+            endDate: '2026-09-18',
+        })
+    })
+
+    it('próg startu 15:00 — 14:59 liczy dzień, 15:00 już nie', () => {
+        expect(oofScheduledToDates(utc('2026-09-15T12:59:00'), utc('2026-09-18T22:00:00'))?.startDate).toBe(
+            '2026-09-15',
+        )
+        expect(oofScheduledToDates(utc('2026-09-15T13:00:00'), utc('2026-09-18T22:00:00'))?.startDate).toBe(
+            '2026-09-16',
+        )
+    })
+
+    it('próg startu liczony w czasie Warszawy także zimą (CET)', () => {
+        // 14:00Z = 15:00 CET → dzień startu nie liczy się
+        expect(oofScheduledToDates(utc('2026-12-01T14:00:00'), utc('2026-12-04T23:00:00'))).toEqual({
+            startDate: '2026-12-02',
+            endDate: '2026-12-04',
+        })
+    })
+
+    it('koniec rano przed pracą nie liczy dnia powrotu — do pon. 08:00', () => {
+        // pt 18.09 06:00 CEST → pon 21.09 08:00 CEST; poniedziałek to dzień powrotu
+        expect(oofScheduledToDates(utc('2026-09-18T04:00:00'), utc('2026-09-21T06:00:00'))).toEqual({
+            startDate: '2026-09-18',
+            endDate: '2026-09-20',
+        })
+    })
+
+    it('OOF tylko na wieczór jednego dnia → brak dnia urlopu', () => {
+        expect(oofScheduledToDates(utc('2026-09-15T14:30:00'), utc('2026-09-15T21:00:00'))).toBeNull()
+    })
+
     it('returns null on missing / unparseable input', () => {
         expect(oofScheduledToDates(null, utc('2026-06-12T14:00:00'))).toBeNull()
         expect(oofScheduledToDates(utc('not-a-date'), utc('2026-06-12T14:00:00'))).toBeNull()
