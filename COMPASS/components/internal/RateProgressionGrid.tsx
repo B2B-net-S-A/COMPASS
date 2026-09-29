@@ -1,18 +1,20 @@
 'use client'
 
-// Phase 27h — 24-month progression grid. Append-only: months at or before the user's
-// latest already-scheduled month are locked. The user fills only the months where the
-// rate changes; equal/empty months collapse server-side (buildChangePoints).
+// Phase 27h — 24-month progression grid. Siatka JEST harmonogramem od przyszłego miesiąca:
+// zaplanowane zmiany są wstępnie wpisane i edytowalne, a zapis zastępuje wszystko od
+// pierwszego miesiąca siatki (wcześniej: tylko dopisywanie za ostatnim krokiem rampy).
+// The user fills only the months where the rate changes; equal/empty months collapse
+// server-side (buildChangePoints).
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Lock } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
 import { listScheduledRateChanges, setRateProgression } from '@/lib/actions/internal-rates'
 import type { RateCurrency, RateProgressionEntry } from '@/lib/types/rates'
-import { RATE_PROGRESSION_MAX_MONTHS } from '@/lib/types/rates'
+import { horizonMonthsFor } from '@/lib/rates/progression'
 import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
 
 interface MonthCell {
@@ -40,11 +42,16 @@ interface Props {
 }
 
 export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSaved }: Props) {
-    const months = useMemo(() => buildMonths(RATE_PROGRESSION_MAX_MONTHS), [])
+    const [latestScheduled, setLatestScheduled] = useState<string | null>(null)
+    // Siatka sięga co najmniej do ostatniego zaplanowanego kroku — zapis zastępuje wszystko od
+    // pierwszego miesiąca siatki, więc krok poza nią zostałby skasowany bez ostrzeżenia.
+    const months = useMemo(() => {
+        const first = buildMonths(1)[0].iso
+        return buildMonths(horizonMonthsFor(first, latestScheduled))
+    }, [latestScheduled])
     const [currency, setCurrency] = useState<RateCurrency>(currentCurrency ?? 'PLN')
     const [values, setValues] = useState<Record<string, string>>({})
-    const [scheduled, setScheduled] = useState<Record<string, number>>({})
-    const [latestScheduled, setLatestScheduled] = useState<string | null>(null)
+    const [scheduledCount, setScheduledCount] = useState(0)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
 
@@ -54,9 +61,10 @@ export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSa
         listScheduledRateChanges(userId)
             .then((rows) => {
                 if (!active) return
-                const map: Record<string, number> = {}
-                for (const r of rows) map[r.effective_from] = r.hourly_rate
-                setScheduled(map)
+                const prefill: Record<string, string> = {}
+                for (const r of rows) prefill[r.effective_from] = r.hourly_rate.toFixed(2)
+                setValues(prefill)
+                setScheduledCount(rows.length)
                 setLatestScheduled(rows.length ? rows[rows.length - 1].effective_from : null)
             })
             .catch((e) => toast.error(e instanceof Error ? e.message : 'Błąd ładowania harmonogramu.'))
@@ -68,14 +76,9 @@ export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSa
         }
     }, [userId])
 
-    function isLocked(iso: string): boolean {
-        return latestScheduled !== null && iso <= latestScheduled
-    }
-
     async function handleSave() {
         const entries: RateProgressionEntry[] = []
         for (const m of months) {
-            if (isLocked(m.iso)) continue
             const raw = values[m.iso]?.trim()
             if (!raw) continue
             const num = Number(raw)
@@ -85,19 +88,31 @@ export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSa
             }
             entries.push({ effective_from: m.iso, hourly_rate: num })
         }
-        if (entries.length === 0) {
-            toast.error('Wpisz stawkę w co najmniej jednym (odblokowanym) miesiącu.')
+        if (entries.length === 0 && scheduledCount === 0) {
+            toast.error('Wpisz stawkę w co najmniej jednym miesiącu.')
             return
         }
         setSaving(true)
         try {
-            const res = await setRateProgression({ user_id: userId, currency, entries })
+            const res = await setRateProgression({
+                user_id: userId,
+                currency,
+                replace_from: months[0].iso,
+                entries,
+            })
+            if (!res?.success) {
+                toast.error(res?.error ?? 'Błąd zapisu progresji.')
+                return
+            }
+            const count = res.data.inserted_count
             toast.success(
-                `Zapisano progresję: ${res.inserted_count} ${res.inserted_count === 1 ? 'zmiana' : 'zmiany/zmian'}. Wysłano powiadomienia.`,
+                count === 0
+                    ? 'Usunięto zaplanowane zmiany stawki.'
+                    : `Zapisano progresję: ${count} ${count === 1 ? 'zmiana' : 'zmiany/zmian'}. Wysłano powiadomienia.`,
             )
             onSaved()
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Błąd zapisu progresji.')
+        } catch {
+            toast.error('Błąd zapisu progresji. Odśwież stronę i spróbuj ponownie.')
         } finally {
             setSaving(false)
         }
@@ -110,8 +125,6 @@ export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSa
             </div>
         )
     }
-
-    const hasLocked = latestScheduled !== null
 
     return (
         <div className="space-y-3">
@@ -139,47 +152,34 @@ export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSa
                 </div>
             </div>
 
-            {hasLocked && (
-                <p className="text-[11px] text-warning">
-                    Miesiące do {latestScheduled} są już zaplanowane i zablokowane (dozwolone tylko dopisywanie
-                    kolejnych).
-                </p>
-            )}
+            <p className="text-[11px] text-muted-foreground">
+                Zapis zastępuje cały harmonogram od {months[0].label}
+                {scheduledCount > 0 ? ` (wpisane niżej ${scheduledCount} zaplanowane zmiany możesz poprawić lub wyczyścić)` : ''}.
+                Zmianę bieżącego lub minionego miesiąca zrobisz w trybie „Stała”.
+            </p>
 
             <div className="max-h-[40vh] overflow-y-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                     <tbody>
-                        {months.map((m) => {
-                            const locked = isLocked(m.iso)
-                            const lockedRate = scheduled[m.iso]
-                            return (
-                                <tr key={m.iso} className="border-b border-border/20 last:border-0">
-                                    <td className="p-2 whitespace-nowrap">{m.label}</td>
-                                    <td className="p-2">
-                                        {locked ? (
-                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                                <Lock className="h-3 w-3" />
-                                                {lockedRate != null ? `${lockedRate.toFixed(2)} ${currency}/h` : 'zaplanowane'}
-                                            </div>
-                                        ) : (
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                inputMode="decimal"
-                                                value={values[m.iso] ?? ''}
-                                                onChange={(e) =>
-                                                    setValues((prev) => ({ ...prev, [m.iso]: e.target.value }))
-                                                }
-                                                placeholder="—"
-                                                disabled={saving}
-                                                className="h-8"
-                                            />
-                                        )}
-                                    </td>
-                                </tr>
-                            )
-                        })}
+                        {months.map((m) => (
+                            <tr key={m.iso} className="border-b border-border/20 last:border-0">
+                                <td className="p-2 whitespace-nowrap">{m.label}</td>
+                                <td className="p-2">
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        inputMode="decimal"
+                                        aria-label={`Stawka od ${m.label}`}
+                                        value={values[m.iso] ?? ''}
+                                        onChange={(e) => setValues((prev) => ({ ...prev, [m.iso]: e.target.value }))}
+                                        placeholder="—"
+                                        disabled={saving}
+                                        className="h-8"
+                                    />
+                                </td>
+                            </tr>
+                        ))}
                     </tbody>
                 </table>
             </div>
