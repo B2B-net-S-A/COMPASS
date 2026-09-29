@@ -9,6 +9,7 @@ import {
     validateScheduleReplacement,
     rateInEffectBefore,
     isSameSchedule,
+    horizonMonthsFor,
     RATE_MAX,
 } from '../progression'
 import { ExpectedError } from '@/lib/actions/expected-error'
@@ -311,5 +312,24 @@ describe('isSameSchedule', () => {
     it('treats removal of scheduled steps as a change', () => {
         expect(isSameSchedule([{ effective_from: '2027-01-01', hourly_rate: 50 }], [])).toBe(false)
         expect(isSameSchedule([], [])).toBe(true)
+    })
+})
+
+describe('horizonMonthsFor', () => {
+    it('keeps the default 24 months when nothing is scheduled that far', () => {
+        expect(horizonMonthsFor('2026-10-01', null)).toBe(24)
+        expect(horizonMonthsFor('2026-10-01', '2027-07-01')).toBe(24)
+    })
+    it('stretches to cover the last scheduled step so saving never drops it', () => {
+        // 2026-10 … 2028-12 = 27 miesięcy (7 osób na prodzie ma kroki po 2028-09).
+        expect(horizonMonthsFor('2026-10-01', '2028-12-01')).toBe(27)
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2028-12-01', hourly_rate: 48 }], {
+                replaceFrom: '2026-10-01',
+                earliestAllowed: '2025-09-01',
+                nextMonthFirst: '2026-10-01',
+                maxMonths: horizonMonthsFor('2026-10-01', '2028-12-01'),
+            }),
+        ).not.toThrow()
     })
 })

@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
 import { listScheduledRateChanges, setRateProgression } from '@/lib/actions/internal-rates'
 import type { RateCurrency, RateProgressionEntry } from '@/lib/types/rates'
-import { RATE_PROGRESSION_MAX_MONTHS } from '@/lib/types/rates'
+import { horizonMonthsFor } from '@/lib/rates/progression'
 import { BONUS_MONTHS_PL } from '@/lib/types/bonus'
 
 interface MonthCell {
@@ -42,7 +42,13 @@ interface Props {
 }
 
 export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSaved }: Props) {
-    const months = useMemo(() => buildMonths(RATE_PROGRESSION_MAX_MONTHS), [])
+    const [latestScheduled, setLatestScheduled] = useState<string | null>(null)
+    // Siatka sięga co najmniej do ostatniego zaplanowanego kroku — zapis zastępuje wszystko od
+    // pierwszego miesiąca siatki, więc krok poza nią zostałby skasowany bez ostrzeżenia.
+    const months = useMemo(() => {
+        const first = buildMonths(1)[0].iso
+        return buildMonths(horizonMonthsFor(first, latestScheduled))
+    }, [latestScheduled])
     const [currency, setCurrency] = useState<RateCurrency>(currentCurrency ?? 'PLN')
     const [values, setValues] = useState<Record<string, string>>({})
     const [scheduledCount, setScheduledCount] = useState(0)
@@ -59,6 +65,7 @@ export function RateProgressionGrid({ userId, currentRate, currentCurrency, onSa
                 for (const r of rows) prefill[r.effective_from] = r.hourly_rate.toFixed(2)
                 setValues(prefill)
                 setScheduledCount(rows.length)
+                setLatestScheduled(rows.length ? rows[rows.length - 1].effective_from : null)
             })
             .catch((e) => toast.error(e instanceof Error ? e.message : 'Błąd ładowania harmonogramu.'))
             .finally(() => {

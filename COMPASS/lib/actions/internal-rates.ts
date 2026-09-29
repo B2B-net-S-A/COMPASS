@@ -46,6 +46,7 @@ import {
     validateScheduleReplacement,
     rateInEffectBefore,
     isSameSchedule,
+    horizonMonthsFor,
     buildCopyEntries,
 } from '@/lib/rates/progression'
 import { activeRoster } from '@/lib/hr/employment-window'
@@ -627,18 +628,23 @@ export async function setRateProgression(
         const replaceFrom = input.replace_from ?? entries[0]?.effective_from
         if (!replaceFrom) throw new ExpectedError('Brak miesięcy w progresji.')
 
+        const admin = createServiceClient()
+        const target = await fetchRateTarget(admin, input.user_id)
+        const schedule = await fetchRateSchedule(admin, input.user_id)
+
         const nextMonthFirst = firstDayOfNextMonth()
         const thisMonthFirst = addMonths(nextMonthFirst, -1)
         validateScheduleReplacement(entries, {
             replaceFrom,
             earliestAllowed: addMonths(thisMonthFirst, -RATE_BACKDATE_MAX_MONTHS),
             nextMonthFirst,
+            // Nigdy krócej niż do ostatniego zaplanowanego kroku — inaczej nie dałoby się go zachować.
+            maxMonths: horizonMonthsFor(nextMonthFirst, schedule[schedule.length - 1]?.effective_from ?? null),
         })
 
-        const admin = createServiceClient()
-        const target = await fetchRateTarget(admin, input.user_id)
-        const schedule = await fetchRateSchedule(admin, input.user_id)
         const baseline = rateInEffectBefore(schedule, replaceFrom)
+        // Stawka faktycznie obowiązująca W miesiącu zmiany (do „stara → nowa" w powiadomieniu).
+        const runningAtReplaceFrom = rateInEffectBefore(schedule, addMonths(replaceFrom, 1))
 
         const currency: RateCurrency =
             input.currency ?? baseline?.currency ?? schedule[schedule.length - 1]?.currency ?? 'PLN'
@@ -678,8 +684,13 @@ export async function setRateProgression(
             changePoints,
             reason,
             auditAction: 'USER_RATE_PROGRESSION_SET',
-            oldRate: baseline?.hourly_rate ?? null,
-            extraAudit: { replace_from: replaceFrom, replaced_count: replaced.length },
+            oldRate: runningAtReplaceFrom?.hourly_rate ?? null,
+            // Pełne usunięte wiersze, nie tylko liczba — korekta wstecz musi dać się odtworzyć z audytu.
+            extraAudit: {
+                replace_from: replaceFrom,
+                replaced_count: replaced.length,
+                replaced: schedule.filter((r) => r.effective_from >= replaceFrom),
+            },
         })
         return { inserted_count: Number(insertedCount ?? changePoints.length), applied: changePoints }
     })

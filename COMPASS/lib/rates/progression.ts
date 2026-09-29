@@ -190,6 +190,19 @@ export function rateInEffectBefore<T extends RateRowLite>(rows: T[], month: stri
     return found
 }
 
+/**
+ * Horyzont siatki/walidacji w miesiącach od `nextMonthFirst`: domyślne 24, ale nie mniej niż
+ * do ostatniego zaplanowanego kroku. Import XLS zasiał kroki aż do 2028-12 — krótsza siatka
+ * przy zapisie „od X w górę" skasowałaby kroki, których nie widać.
+ */
+export function horizonMonthsFor(nextMonthFirst: string, latestScheduled: string | null): number {
+    if (!latestScheduled || latestScheduled < nextMonthFirst) return RATE_PROGRESSION_MAX_MONTHS
+    const diff =
+        (Number(latestScheduled.slice(0, 4)) - Number(nextMonthFirst.slice(0, 4))) * 12 +
+        (Number(latestScheduled.slice(5, 7)) - Number(nextMonthFirst.slice(5, 7)))
+    return Math.max(RATE_PROGRESSION_MAX_MONTHS, diff + 1)
+}
+
 /** Czy nowy harmonogram od miesiąca X jest identyczny z tym, co już jest w bazie od X. */
 export function isSameSchedule(existing: RateProgressionEntry[], next: RateProgressionEntry[]): boolean {
     if (existing.length !== next.length) return false
