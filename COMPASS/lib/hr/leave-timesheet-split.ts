@@ -9,7 +9,7 @@
 //     (zachowanie sprzed Phase 30b — etatowiec nie rozlicza godzin za urlop).
 //
 // Helper jest czysty (bez I/O) — używany przez syncAttendanceFromLeave (server),
-// getTimesheetBlockedDates (editor/preview) i backfill, żeby logika podziału była
+// getTimesheetLeaveDays (editor/preview) i backfill, żeby logika podziału była
 // jednym źródłem prawdy.
 
 import { parseISO, format } from 'date-fns'
