@@ -1951,16 +1951,25 @@ export async function listLeavesForUserMonth(
  *     blokują (mają auto-wpis godzin), nadwyżkowe/UoP/non-pool dni blokują.
  *   - pending urlop → wszystkie dni robocze blokują (zachowawczo, jak dotąd — split
  *     jest prowizoryczny dopóki wniosek nie zatwierdzony).
+ *   - połowa dnia urlopu NIE blokuje dnia — trafia do `halfDay`: urlop zajmuje 4h,
+ *     resztę dnia wolno zalogować (serwer pilnuje tego w `leaveHoursOnWorkDate`).
  *
  * Scope: własny timesheet (bez `targetUserId`) lub — dla approvera (admin / manager
  * pracownika) — wskazany pracownik.
  */
-export async function getTimesheetBlockedDates(
+export interface TimesheetLeaveDays {
+    /** Dni w pełni zablokowane (urlop/L4 na cały dzień). */
+    blocked: string[]
+    /** Dni z połową urlopu — do zalogowania pozostaje pół dnia. */
+    halfDay: string[]
+}
+
+export async function getTimesheetLeaveDays(
     year: number,
     month: number,
     targetUserId?: string,
-): Promise<ActionResult<string[]>> {
-    return runAction('getTimesheetBlockedDates', async () => {
+): Promise<ActionResult<TimesheetLeaveDays>> {
+    return runAction('getTimesheetLeaveDays', async () => {
         const ctx = await requireInternalOrAdminAction()
         const admin = createServiceClient()
 
@@ -2005,7 +2014,7 @@ export async function getTimesheetBlockedDates(
             status: LeaveStatus
             paid_days: number | string | null
         }>
-        if (leaves.length === 0) return []
+        if (leaves.length === 0) return { blocked: [], halfDay: [] }
 
         // Święta dla pełnego zakresu wszystkich urlopów (urlop może zaczynać się w
         // poprzednim miesiącu — split liczy dni robocze całego urlopu, by poprawnie
@@ -2021,6 +2030,7 @@ export async function getTimesheetBlockedDates(
         const employmentType = profRes.data?.employment_type ?? null
 
         const blocked = new Set<string>()
+        const halfDay = new Set<string>()
         for (const lv of leaves) {
             // Pending → traktuj jak w pełni blokujący (paidDays=0); approved → realny split.
             const effectivePaid = lv.status === 'approved' ? Number(lv.paid_days ?? 0) : 0
@@ -2033,11 +2043,15 @@ export async function getTimesheetBlockedDates(
                 employmentType,
                 holidays,
             })
+            const target = lv.half_day ? halfDay : blocked
             for (const d of split.blockedDays) {
-                if (d >= monthStart && d <= monthEnd) blocked.add(d)
+                if (d >= monthStart && d <= monthEnd) target.add(d)
             }
         }
-        return Array.from(blocked).sort()
+        return {
+            blocked: Array.from(blocked).sort(),
+            halfDay: Array.from(halfDay).filter((d) => !blocked.has(d)).sort(),
+        }
     })
 }
 

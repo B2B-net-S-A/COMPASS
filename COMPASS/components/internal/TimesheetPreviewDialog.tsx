@@ -39,7 +39,7 @@ import {
 } from '@/lib/actions/internal-timesheet'
 import {
     cancelTeamLeave,
-    getTimesheetBlockedDates,
+    getTimesheetLeaveDays,
     listLeavesForUserMonth,
     type TeamLeaveRow,
 } from '@/lib/actions/internal-leave'
@@ -114,6 +114,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
     // the entry dialog can pre-warn instead of hitting the prod-masked server error.
     const [leaves, setLeaves] = useState<TeamLeaveRow[]>([])
     const [blockedLeaveDates, setBlockedLeaveDates] = useState<string[]>([])
+    const [halfLeaveDates, setHalfLeaveDates] = useState<string[]>([])
     const [leavesLoadedId, setLeavesLoadedId] = useState<string | null>(null)
     const [cancellingLeaveId, setCancellingLeaveId] = useState<string | null>(null)
 
@@ -130,12 +131,13 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         Promise.all([
             listLeavesForUserMonth(timesheet.user_id, timesheet.year, timesheet.month),
             // Phase 30b — split-aware: płatny urlop z puli (B2B/zlecenie) NIE blokuje.
-            getTimesheetBlockedDates(timesheet.year, timesheet.month, timesheet.user_id),
+            getTimesheetLeaveDays(timesheet.year, timesheet.month, timesheet.user_id),
         ])
             .then(([data, blocked]) => {
                 if (!cancelled) {
                     setLeaves(data?.success ? data.data : [])
-                    setBlockedLeaveDates(blocked?.success ? blocked.data : [])
+                    setBlockedLeaveDates(blocked?.success ? blocked.data.blocked : [])
+                    setHalfLeaveDates(blocked?.success ? blocked.data.halfDay : [])
                     setLeavesLoadedId(timesheet.id)
                 }
             })
@@ -143,6 +145,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                 if (!cancelled) {
                     setLeaves([])
                     setBlockedLeaveDates([])
+                    setHalfLeaveDates([])
                     setLeavesLoadedId(timesheet.id)
                 }
             })
@@ -603,6 +606,7 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                 saving={pending}
                 existingEntries={entries}
                 blockedLeaveDates={blockedLeaveDates}
+                halfLeaveDates={halfLeaveDates}
                 allowOvertime={canOvertime}
                 onOpenChange={(o) => {
                     if (!o) {

@@ -169,6 +169,90 @@ describe('addEntry/updateEntry — HF-02/HF-03 (miesiąc nagłówka, urlop, leav
     })
 })
 
+describe('addEntry/updateEntry — połowa dnia urlopu zajmuje 4h, reszta dnia jest do zalogowania', () => {
+    /** Dzień z wierszem urlopowym w attendance; `halfDay` = jaki wniosek go wystawił. */
+    function leaveDayResolver(halfDay: 'morning' | 'afternoon' | null, dayEntries: Array<{ id: string; hours: number }> = []) {
+        return (q: RecordedQuery) => {
+            if (q.table === 'attendance_records') return { data: { status: 'vacation' }, error: null }
+            if (q.table === 'leave_requests') return { data: [{ half_day: halfDay }], error: null }
+            return entryResolver(dayEntries)(q)
+        }
+    }
+
+    it('4h na dzień z połówką urlopu przechodzi', async () => {
+        recorder.resolver = leaveDayResolver('morning')
+
+        const res = await addEntry({ ...base, hours: 4 })
+
+        expect(res.success).toBe(true)
+        expect(recorder.find('timesheet_entries', 'insert')).toHaveLength(1)
+    })
+
+    it('ponad 4h na dzień z połówką urlopu jest odrzucone bez zapisu', async () => {
+        recorder.resolver = leaveDayResolver('afternoon', [{ id: 'e-1', hours: 2 }])
+
+        const res = await addEntry({ ...base, hours: 3 })
+
+        expect(res).toEqual({ success: false, error: expect.stringMatching(/pół dnia urlopu/) })
+        expect(recorder.find('timesheet_entries', 'insert')).toHaveLength(0)
+    })
+
+    it('pełny dzień urlopu nadal blokuje logowanie godzin', async () => {
+        recorder.resolver = leaveDayResolver(null)
+
+        const res = await addEntry({ ...base, hours: 4 })
+
+        expect(res).toEqual({ success: false, error: expect.stringMatching(/urlopowy/) })
+        expect(recorder.find('timesheet_entries', 'insert')).toHaveLength(0)
+    })
+
+    it('wiersz urlopowy bez wniosku (wpis ręczny w ewidencji) nadal blokuje', async () => {
+        recorder.resolver = (q) => {
+            if (q.table === 'leave_requests') return { data: [], error: null }
+            return leaveDayResolver(null)(q)
+        }
+
+        const res = await addEntry({ ...base, hours: 4 })
+
+        expect(res).toEqual({ success: false, error: expect.stringMatching(/urlopowy/) })
+    })
+
+    it('podniesienie godzin istniejącego wpisu ponad 4h na dzień z połówką jest odrzucone', async () => {
+        recorder.resolver = (q) => {
+            if (q.table === 'timesheet_entries' && q.op === 'select' && q.terminal === 'single') {
+                return {
+                    data: {
+                        id: 'e-1',
+                        timesheet_id: 'ts-1',
+                        work_date: '2026-06-02',
+                        hours: 4,
+                        source: 'manual',
+                        timesheets: { user_id: 'emp-1', status: 'draft', year: 2026, month: 6 },
+                    },
+                    error: null,
+                }
+            }
+            return leaveDayResolver('morning', [{ id: 'e-1', hours: 4 }])(q)
+        }
+
+        const res = await updateEntry({ entryId: 'e-1', hours: 6 })
+
+        expect(res).toEqual({ success: false, error: expect.stringMatching(/pół dnia urlopu/) })
+        expect(recorder.find('timesheet_entries', 'update')).toHaveLength(0)
+    })
+
+    it('approverAddEntry: 4h na dzień z połówką przechodzi', async () => {
+        ctx.userId = 'admin-1'
+        ctx.role = 'admin'
+        ctx.isAdmin = true
+        recorder.resolver = leaveDayResolver('morning')
+
+        const res = await approverAddEntry({ ...base, hours: 4 })
+
+        expect(res.success).toBe(true)
+    })
+})
+
 describe('quickFillMonth — HF-10 (overwrite nie rusza leave_paid)', () => {
     it('kasuje tylko wpisy spoza leave_paid i pomija ich dni', async () => {
         recorder.resolver = (q) => {
