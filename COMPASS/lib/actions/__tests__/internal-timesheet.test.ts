@@ -29,6 +29,7 @@ vi.mock('@/lib/actions/audit', () => ({ logAudit: vi.fn(async () => {}) }))
 vi.mock('@/lib/email', () => ({
     sendTimesheetDecision: vi.fn(async () => ({ success: true })),
     sendTimesheetSubmitted: vi.fn(async () => ({ success: true })),
+    sendTimesheetApprovalRevoked: vi.fn(async () => ({ success: true })),
 }))
 vi.mock('@/lib/teams/webhook', () => ({ postToTeamsAlert: vi.fn(async () => {}) }))
 vi.mock('@/lib/push/dispatch', () => ({
@@ -44,14 +45,20 @@ const state = vi.hoisted(() => ({
     insertedTimesheet: null as Record<string, unknown> | null,
     // Phase 33b — captures the timesheet_entries insert for overtime assertions.
     insertedEntry: null as Record<string, unknown> | null,
+    // unlockTimesheet — patch zapisany na `timesheets` i adresaci z finansów.
+    timesheetUpdate: null as Record<string, unknown> | null,
+    timesheetUpdateFilters: [] as Array<[string, unknown]>,
+    financeProfiles: [] as Array<{ id: string; email: string | null }>,
 }))
 
 function makeChain(table: string) {
     let selectArg = ''
     let insertedRow: Record<string, unknown> | null = null
+    let updatePatch: Record<string, unknown> | null = null
 
     const resolve = () => {
         if (table === 'profiles') {
+            if (selectArg === 'id, email') return { data: state.financeProfiles, error: null }
             // assertApproverTeamScope reads manager_id; fetchUserContact reads email+full_name.
             if (selectArg.includes('manager_id') && !selectArg.includes('email')) {
                 return { data: { manager_id: state.targetManagerId }, error: null }
@@ -59,6 +66,10 @@ function makeChain(table: string) {
             return { data: state.contact, error: null }
         }
         if (table === 'timesheets') {
+            if (updatePatch) {
+                state.timesheetUpdate = updatePatch
+                return { data: [{ id: 'ts-1' }], error: null }
+            }
             if (insertedRow) {
                 const row = {
                     id: 'ts-new',
@@ -102,7 +113,14 @@ function makeChain(table: string) {
             selectArg = arg ?? ''
             return chain
         }),
-        eq: vi.fn(() => chain),
+        eq: vi.fn((col: string, val: unknown) => {
+            if (updatePatch && table === 'timesheets') state.timesheetUpdateFilters.push([col, val])
+            return chain
+        }),
+        update: vi.fn((patch: Record<string, unknown>) => {
+            updatePatch = patch
+            return chain
+        }),
         neq: vi.fn(() => chain),
         in: vi.fn(() => chain),
         order: vi.fn(() => chain),
@@ -130,7 +148,8 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
-import { approverAddEntry, ensureTeamTimesheet } from '@/lib/actions/internal-timesheet'
+import { approverAddEntry, ensureTeamTimesheet, unlockTimesheet } from '@/lib/actions/internal-timesheet'
+import { sendTimesheetApprovalRevoked } from '@/lib/email'
 
 // Audyt 2026-08 (B1) — akcje zwracają ActionResult, odmowa to `{ success: false }`
 // z treścią dla użytkownika, nie wyjątek.
@@ -158,6 +177,9 @@ beforeEach(() => {
     state.contact = { email: 'emp@b2bnetwork.pl', full_name: 'Emp Loyee' }
     state.insertedTimesheet = null
     state.insertedEntry = null
+    state.timesheetUpdate = null
+    state.timesheetUpdateFilters = []
+    state.financeProfiles = []
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -308,5 +330,70 @@ describe('approverAddEntry — admin overtime > 8h (Phase 33b)', () => {
             override_by: null,
             override_at: null,
         })
+    })
+})
+
+describe('unlockTimesheet — cofnięcie akceptacji przez managera', () => {
+    beforeEach(() => {
+        state.existingTimesheet = {
+            id: 'ts-1',
+            user_id: 'emp-1',
+            year: 2026,
+            month: 9,
+            status: 'approved',
+        }
+        state.financeProfiles = [
+            { id: 'fin-1', email: 'finanse@b2bnetwork.pl' },
+            { id: 'fin-2', email: null },
+        ]
+    })
+
+    it('manager cofa zaakceptowany timesheet swojego zespołu do akceptacji i powiadamia finanse', async () => {
+        await expectSuccess(unlockTimesheet('ts-1'))
+
+        // Wraca do „oczekuje", nie do szkicu — manager poprawia wpis i akceptuje
+        // ponownie, bez czekania aż pracownik złoży timesheet od nowa.
+        expect(state.timesheetUpdate).toEqual({
+            status: 'submitted',
+            approved_at: null,
+            approved_by: null,
+            pdf_hash: null,
+        })
+        // Warunkowy zapis — równoległa decyzja nie zostaje nadpisana.
+        expect(state.timesheetUpdateFilters).toContainEqual(['status', 'approved'])
+        expect(sendTimesheetApprovalRevoked).toHaveBeenCalledWith(
+            ['finanse@b2bnetwork.pl'],
+            expect.objectContaining({ employeeName: 'Emp Loyee', year: 2026, month: 9 }),
+        )
+    })
+
+    it('finanse cofające akceptację nie dostają maila o własnym kroku', async () => {
+        authContextMock.role = 'finanse'
+        authContextMock.isManager = false
+        authContextMock.userId = 'fin-1'
+        // Poza adminem zakres zespołu obowiązuje każdego approvera.
+        state.targetManagerId = 'fin-1'
+
+        await expectSuccess(unlockTimesheet('ts-1'))
+
+        expect(state.timesheetUpdate).toMatchObject({ status: 'submitted' })
+        expect(sendTimesheetApprovalRevoked).not.toHaveBeenCalled()
+    })
+
+    it('manager spoza zespołu nie może cofnąć akceptacji', async () => {
+        state.targetManagerId = 'other-manager'
+
+        await expectRejection(unlockTimesheet('ts-1'), /swojego zespołu/i)
+        expect(state.timesheetUpdate).toBeNull()
+        expect(sendTimesheetApprovalRevoked).not.toHaveBeenCalled()
+    })
+
+    it('odrzucony timesheet nadal wraca do szkicu bez maila do finansów', async () => {
+        state.existingTimesheet = { ...state.existingTimesheet, status: 'rejected' }
+
+        await expectSuccess(unlockTimesheet('ts-1'))
+
+        expect(state.timesheetUpdate).toMatchObject({ status: 'draft', submitted_at: null })
+        expect(sendTimesheetApprovalRevoked).not.toHaveBeenCalled()
     })
 })
