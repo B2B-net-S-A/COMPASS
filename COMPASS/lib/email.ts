@@ -750,6 +750,46 @@ export async function sendTimesheetDecision(
     }
 }
 
+/**
+ * Zaakceptowany timesheet wrócił do akceptacji (cofnięcie przez approvera).
+ * Finanse dostają sygnał, że obraz miesiąca do wypłaty się zmienia.
+ */
+export async function sendTimesheetApprovalRevoked(
+    recipientEmails: string[],
+    data: { employeeName: string; actorName: string; year: number; month: number },
+): Promise<{ success: boolean }> {
+    if (recipientEmails.length === 0) return { success: true }
+    const monthLabel = `${data.year}-${String(data.month).padStart(2, '0')}`
+    const subject = `[COMPASS HR] Cofnięta akceptacja timesheetu ${monthLabel} — ${data.employeeName}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">
+            ${escapeHtml(data.actorName)} cofnął akceptację timesheetu
+            <strong>${escapeHtml(data.employeeName)}</strong> za <strong>${monthLabel}</strong>.
+        </p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Timesheet wrócił do statusu „oczekuje" — godziny mogą się jeszcze zmienić.
+            Jeśli rozliczenie za ten miesiąc jest już przygotowane, sprawdź je po ponownej akceptacji.
+        </p>
+    `
+    const html = wrapHrEmail({ tag: 'Cofnięta akceptacja', heading: subject, bodyHtml, accent: '#f59e0b' })
+    try {
+        for (const to of recipientEmails) {
+            const { error } = await getResend().emails.send({
+                from: 'COMPASS System <noreply@compass.b2bnetwork.pl>',
+                to,
+                subject,
+                saveToSentItems: true, // ślad: kto i kiedy zmienił zaakceptowany miesiąc
+                html,
+            })
+            if (error) logCompat.error('Resend timesheet-approval-revoked error:', error)
+        }
+        return { success: true }
+    } catch (err) {
+        logCompat.error('Timesheet-approval-revoked email failed:', err)
+        return { success: false }
+    }
+}
+
 // ─── Phase 19 — Invoices (finanse role) ─────────────────────────────────────
 
 export async function sendInvoiceSubmitted(

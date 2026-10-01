@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Check, X, Loader2, FileDown, Unlock, Clock, AlertTriangle, Pencil, Trash2, Plus, Ban, CalendarOff } from 'lucide-react'
+import { Check, X, Loader2, FileDown, Unlock, Undo2, Clock, AlertTriangle, Pencil, Trash2, Plus, Ban, CalendarOff } from 'lucide-react'
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { toast } from '@/lib/toast'
@@ -48,8 +48,6 @@ import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 interface Props {
     timesheet: TimesheetWithEntriesAndUser | null
     open: boolean
-    /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
-    canUnlockApproved?: boolean
     /** Phase 33b — admin may enter > 8h/day (overtime override) inline + edit/delete overtime rows. */
     isAdmin?: boolean
     /** Phase 45 — per-user grant: approver (non-admin) may also enter/edit overtime rows. */
@@ -94,7 +92,18 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
 }
 
 
-export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = true, isAdmin = false, canLogOvertime = false, onOpenChange, onRequestReject }: Props) {
+/**
+ * Cofnięcie akceptacji zmienia obraz miesiąca do wypłaty i wysyła mail do finansów,
+ * więc wymaga potwierdzenia — wspólne dla podglądu i wiersza listy.
+ */
+export const REVOKE_APPROVAL_CONFIRM = {
+    title: 'Cofnąć akceptację',
+    description:
+        'Timesheet wróci do statusu „Oczekuje”: poprawisz wpisy i zaakceptujesz ponownie (albo odrzucisz, jeśli ma poprawić pracownik). Finanse dostaną maila o cofnięciu.',
+    confirmLabel: 'Cofnij akceptację',
+} as const
+
+export function TimesheetPreviewDialog({ timesheet, open, isAdmin = false, canLogOvertime = false, onOpenChange, onRequestReject }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     // Phase 45: overtime (>8h) inline is allowed for admins OR approvers granted can_log_overtime.
@@ -208,8 +217,10 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
         })
     }
 
-    function handleUnlock() {
+    async function handleUnlock() {
         if (!timesheet) return
+        const wasApproved = timesheet.status === 'approved'
+        if (wasApproved && !(await confirm(REVOKE_APPROVAL_CONFIRM))) return
         startTransition(async () => {
             try {
                 const res = await unlockTimesheet(timesheet.id)
@@ -217,7 +228,11 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                     toast.error(res?.error ?? 'Nie udało się odblokować timesheetu.')
                     return
                 }
-                toastSuccess('Odblokowano — pracownik może edytować')
+                toastSuccess(
+                    wasApproved
+                        ? 'Cofnięto akceptację — popraw wpisy i zaakceptuj ponownie'
+                        : 'Odblokowano — pracownik może edytować',
+                )
                 onOpenChange(false)
                 router.refresh()
             } catch (e: unknown) {
@@ -564,17 +579,15 @@ export function TimesheetPreviewDialog({ timesheet, open, canUnlockApproved = tr
                     )}
                     {timesheet.status === 'approved' && (
                         <>
-                            {canUnlockApproved && (
-                                <Button
-                                    variant="ghost"
-                                    onClick={handleUnlock}
-                                    disabled={pending}
-                                    title="Cofnij do szkicu — pracownik będzie mógł edytować"
-                                >
-                                    <Unlock className="h-4 w-4 mr-1" />
-                                    Odblokuj
-                                </Button>
-                            )}
+                            <Button
+                                variant="ghost"
+                                onClick={handleUnlock}
+                                disabled={pending}
+                                title="Wraca do „Oczekuje” — możesz poprawić wpisy i zaakceptować ponownie"
+                            >
+                                <Undo2 className="h-4 w-4 mr-1" />
+                                Cofnij akceptację
+                            </Button>
                             <a
                                 href={`/internal/timesheet/${timesheet.year}/${timesheet.month}/pdf?user=${timesheet.user_id}`}
                                 target="_blank"

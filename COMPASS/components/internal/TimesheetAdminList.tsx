@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Check, X, FileDown, Loader2, Unlock, Eye, UserCog, FileSpreadsheet } from 'lucide-react'
+import { Check, X, FileDown, Loader2, Unlock, Undo2, Eye, UserCog, FileSpreadsheet } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { toastSuccess } from '@/lib/toast-success'
 import {
@@ -20,7 +20,8 @@ import {
     type TimesheetWithEntriesAndUser,
 } from '@/lib/actions/internal-timesheet'
 import { isTimesheetPlaceholder } from '@/lib/hr/timesheet-roster'
-import { TimesheetPreviewDialog } from './TimesheetPreviewDialog'
+import { REVOKE_APPROVAL_CONFIRM, TimesheetPreviewDialog } from './TimesheetPreviewDialog'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { EmployeeProfileDialog } from './EmployeeProfileDialog'
 import { TimesheetCSVExportDialog } from './TimesheetCSVExportDialog'
 
@@ -28,8 +29,6 @@ interface Props {
     year: number
     month: number
     timesheets: TimesheetWithEntriesAndUser[]
-    /** Phase 32 — only admin/finanse may unlock an approved timesheet (manager locked out post-approval). */
-    canUnlockApproved: boolean
     /** Phase 33b — admin may enter > 8h/day (overtime override) inline in the preview dialog. */
     isAdmin: boolean
     /** Phase 45 — per-user grant: approver (non-admin) may also enter/edit overtime rows. */
@@ -43,7 +42,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
     rejected: { label: 'Odrzucony', className: 'bg-destructive/15 text-destructive border-destructive/30' },
 }
 
-export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved, isAdmin, canLogOvertime = false }: Props) {
+export function TimesheetAdminList({ year, month, timesheets, isAdmin, canLogOvertime = false }: Props) {
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [busyId, setBusyId] = useState<string | null>(null)
@@ -53,6 +52,7 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
     const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [csvDialogOpen, setCsvDialogOpen] = useState(false)
     const [csvForUser, setCsvForUser] = useState<{ id: string; label: string } | null>(null)
+    const [confirm, ConfirmUI] = useConfirm()
 
     function getInitials(name: string | null, email: string) {
         if (name) return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -106,7 +106,9 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
         })
     }
 
-    function handleUnlock(t: TimesheetWithEntriesAndUser) {
+    async function handleUnlock(t: TimesheetWithEntriesAndUser) {
+        const wasApproved = t.status === 'approved'
+        if (wasApproved && !(await confirm(REVOKE_APPROVAL_CONFIRM))) return
         setBusyId(t.id)
         startTransition(async () => {
             try {
@@ -115,7 +117,11 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
                     toast.error(res?.error ?? 'Nie udało się odblokować timesheetu.')
                     return
                 }
-                toastSuccess('Odblokowano — pracownik może edytować')
+                toastSuccess(
+                    wasApproved
+                        ? 'Cofnięto akceptację — popraw wpisy i zaakceptuj ponownie'
+                        : 'Odblokowano — pracownik może edytować',
+                )
                 router.refresh()
             } catch (e: unknown) {
                 toast.error(e instanceof Error ? e.message : 'Błąd')
@@ -327,18 +333,16 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
                                                             PDF
                                                         </Button>
                                                     </a>
-                                                    {canUnlockApproved && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => handleUnlock(t)}
-                                                            disabled={pending}
-                                                            title="Cofnij do szkicu — pracownik będzie mógł edytować"
-                                                        >
-                                                            <Unlock className="h-3.5 w-3.5 mr-1" />
-                                                            Odblokuj
-                                                        </Button>
-                                                    )}
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleUnlock(t)}
+                                                        disabled={pending}
+                                                        title="Wraca do „Oczekuje” — możesz poprawić wpisy i zaakceptować ponownie"
+                                                    >
+                                                        <Undo2 className="h-3.5 w-3.5 mr-1" />
+                                                        Cofnij akceptację
+                                                    </Button>
                                                 </>
                                             )}
                                             {t.status === 'rejected' && (
@@ -364,7 +368,6 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
             <TimesheetPreviewDialog
                 timesheet={previewTarget}
                 open={!!previewTarget}
-                canUnlockApproved={canUnlockApproved}
                 isAdmin={isAdmin}
                 canLogOvertime={canLogOvertime}
                 onOpenChange={(o) => {
@@ -437,6 +440,8 @@ export function TimesheetAdminList({ year, month, timesheets, canUnlockApproved,
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmUI />
         </>
     )
 }

@@ -12,7 +12,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
-import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
+import { sendTimesheetApprovalRevoked, sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/push/dispatch'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
@@ -24,6 +24,7 @@ import {
     buildTimesheetRosterView,
     type TimesheetRosterMember,
 } from '@/lib/hr/timesheet-roster'
+import { excludeExited } from '@/lib/hr/employment-window'
 import { format } from 'date-fns'
 
 // Phase 27g — roles that keep a timesheet (HR zone). Consultants (IT) do not.
@@ -967,44 +968,81 @@ export async function unlockTimesheet(timesheetId: string): Promise<ActionResult
         // Phase 27f: approver = admin OR manager-of-team (parytet z approve/reject),
         // żeby manager mógł cofnąć zaakceptowany/odrzucony timesheet swojego zespołu
         // do edycji bez angażowania admina.
-        // Phase 32: PO AKCEPCJI manager traci prawo odblokowania — zaakceptowany
-        // timesheet może cofnąć do edycji tylko administrator lub finanse, żeby
-        // finanse miały stabilny obraz do wypłaty ("nic się już nie zmieni").
+        // 2026-10-01: manager znów może cofnąć akceptację w swoim zespole (Phase 32
+        // dawała to tylko adminowi/finansom). Zaakceptowany wraca do 'submitted',
+        // nie do szkicu — approver poprawia wpis i akceptuje ponownie, a gdy
+        // poprawić ma pracownik, odrzuca z komentarzem. Stabilny obraz do wypłaty
+        // zastępuje mail do finansów o każdym takim cofnięciu.
         const ctx = await requireTimesheetApproverAction()
         const admin = createServiceClient()
 
         const { data: header, error: fetchErr } = await admin
             .from('timesheets')
-            .select('id, user_id, status')
+            .select('id, user_id, year, month, status')
             .eq('id', timesheetId)
-            .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'status'>>()
+            .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'year' | 'month' | 'status'>>()
         if (fetchErr || !header) throw new ExpectedError('Timesheet nie istnieje.')
-
-        if (header.status === 'approved' && !ctx.isAdmin && ctx.role !== 'finanse') {
-            throw new ExpectedError(
-                'Po akceptacji timesheet może odblokować tylko administrator lub finanse.',
-            )
-        }
 
         await assertApproverTeamScope(admin, ctx, header.user_id)
 
-        const { error } = await admin
+        const wasApproved = header.status === 'approved'
+        const { data: updated, error } = await admin
             .from('timesheets')
-            .update({
-                status: 'draft',
-                approved_at: null,
-                approved_by: null,
-                pdf_hash: null,
-                submitted_at: null,
-            })
+            .update(
+                wasApproved
+                    ? { status: 'submitted', approved_at: null, approved_by: null, pdf_hash: null }
+                    : {
+                        status: 'draft',
+                        approved_at: null,
+                        approved_by: null,
+                        pdf_hash: null,
+                        submitted_at: null,
+                    },
+            )
             .eq('id', timesheetId)
+            // HF-11 — równoległa decyzja ze starego ekranu nie może zostać nadpisana.
+            .eq('status', header.status)
+            .select('id')
         if (error) throw new Error(`Błąd odblokowania: ${error.message}`)
+        if (!updated || updated.length === 0) {
+            throw new ExpectedError('Timesheet zmienił się w międzyczasie. Odśwież listę.')
+        }
 
-        await logAudit(ctx.userId, 'TIMESHEET_UNLOCKED', {
+        await logAudit(ctx.userId, wasApproved ? 'TIMESHEET_APPROVAL_REVOKED' : 'TIMESHEET_UNLOCKED', {
             timesheet_id: timesheetId,
             target_user_id: header.user_id,
+            year: header.year,
+            month: header.month,
         })
+
+        if (wasApproved) {
+            const [financeEmails, employee, actorName] = await Promise.all([
+                fetchFinanceEmails(ctx.userId),
+                fetchUserContact(header.user_id),
+                fetchUserDisplayName(ctx.userId, ctx.email),
+            ])
+            if (financeEmails.length > 0) {
+                sendTimesheetApprovalRevoked(financeEmails, {
+                    employeeName: employee?.full_name ?? employee?.email ?? 'pracownik',
+                    actorName,
+                    year: header.year,
+                    month: header.month,
+                }).catch((e) => logCompat.error('[unlockTimesheet] finance notify failed:', e))
+            }
+        }
     })
+}
+
+/** Adresy finansów (bez zarchiwizowanych i bez osoby, która właśnie wykonała krok). */
+async function fetchFinanceEmails(excludeUserId: string): Promise<string[]> {
+    const admin = createServiceClient()
+    const { data } = await excludeExited(
+        admin.from('profiles').select('id, email').eq('role', 'finanse'),
+    )
+    return ((data ?? []) as Array<{ id: string; email: string | null }>)
+        .filter((r) => r.id !== excludeUserId)
+        .map((r) => r.email)
+        .filter((e): e is string => !!e)
 }
 
 // ─── Phase 27f — Approver in-place entry editing (admin OR manager-of-team) ──
