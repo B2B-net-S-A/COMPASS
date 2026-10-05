@@ -83,6 +83,7 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, userId, read
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div className="min-w-0"><h3 className="break-words font-medium">{item.filename}</h3><p className="mt-1 text-xs text-muted-foreground">{(Number(item.size_bytes) / 1024 / 1024).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} MB{canManage ? ' · ' + reviewLabels[item.review_status] : ''}</p>{canManage && item.review_note && <p className="mt-2 text-sm text-muted-foreground">{item.review_note}</p>}</div>
                 <Button asChild size="sm" variant="outline"><a href={'/api/akademia/attachment?' + new URLSearchParams({ runId, assetId: item.id })}><Download aria-hidden="true" className="size-4" />{canManage && item.review_status !== 'published' ? 'Podgląd pliku' : 'Otwórz plik'}</a></Button>
             </div>
+            {['audio/mpeg', 'audio/mp4'].includes(item.mime_type) && <AcademyVideo runId={runId} video={asAttachment(item)} audio />}
             {item.mime_type === 'video/mp4' && <AcademyVideo runId={runId} video={asAttachment(item)} captions={item.review_status === 'published' ? linkedCaption(items, item.id) : undefined} />}
             {isAdmin && !readOnly && item.mime_type === 'text/vtt' && item.review_status === 'published' && <div className="flex flex-col gap-1 sm:max-w-sm">
                 <label htmlFor={`caption-target-${item.id}`} className="text-sm font-medium">Nagranie dla napisów</label>

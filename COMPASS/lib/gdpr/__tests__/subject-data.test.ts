@@ -133,3 +133,16 @@ describe('raport dla osoby', () => {
         expect(scrubStepsFor('contractor', USER_ID)[0].table).toBe('contractors')
     })
 })
+
+it('keeps cycle evidence for explicit manual review and does not claim copied webinar identities were scrubbed', () => {
+    for(const kind of ['employee','contractor'] as const) {
+        const followups=manualFollowUpsFor(kind).join(' ')
+        expect(followups).toContain('academy_webinar_roster')
+        expect(followups).toContain('full_name, email, aliases i contractual_email')
+        expect(followups).toContain('academy_private.edition_teaching_interest')
+        expect(followups).toContain('academy_webinar_import_batches')
+        expect(followups).toContain('academy_handovers')
+        expect(scrubStepsFor(kind,USER_ID).some(step=>String(step.table).startsWith('academy_'))).toBe(false)
+    }
+    expect(retainedFor('employee').some(record=>record.label.includes('przekazania praw'))).toBe(true)
+})

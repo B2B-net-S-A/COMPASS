@@ -8,6 +8,7 @@ import { getCourseDetail } from '@/lib/actions/courses'
 import { academyCourseHref } from '@/lib/academy/navigation'
 import { getAcademyPrerequisiteStatus } from '@/lib/actions/academy-discovery'
 import { AcademyPrerequisites } from '@/components/academy/AcademyPrerequisites'
+import { EditionSurvey } from '@/components/academy/EditionSurvey'
 import { CourseFeedback } from '@/components/academy/CourseFeedback'
 
 export const dynamic = 'force-dynamic'
@@ -149,7 +150,8 @@ export default async function CourseDetailPage({ params, searchParams }: PagePro
                 </CardContent>
             </Card>
 
-            {course.enrollment_id && course.completed_at && !course.completion_revoked_at && <CourseFeedback courseId={course.id} enrollmentId={course.enrollment_id} completedAt={course.completed_at} initialRating={course.user_rating?.rating} initialComment={course.user_rating?.comment} />}
+            {course.run_id && <EditionSurvey runId={course.run_id} canManage={false} />}
+            {!course.run_id && course.enrollment_id && course.completed_at && !course.completion_revoked_at && <CourseFeedback courseId={course.id} enrollmentId={course.enrollment_id} completedAt={course.completed_at} initialRating={course.user_rating?.rating} initialComment={course.user_rating?.comment} />}
             {course.user_rating && !course.completed_at && (
                 <Card className="bg-warning/5 border-warning/20">
                     <CardContent className="p-5">

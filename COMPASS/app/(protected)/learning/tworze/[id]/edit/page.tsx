@@ -1,3 +1,4 @@
+import { AcademyHandoverPanel } from '@/components/academy/AcademyHandoverPanel'
 import { AcademyStaffPanel } from '@/components/academy/AcademyStaffPanel'
 import { getAcademyStaff } from '@/lib/actions/academy-staff'
 import Link from 'next/link'
@@ -67,6 +68,7 @@ export default async function EditCoursePage({ params }: PageProps) {
             </div>
 
             {staff.success && staff.data && <AcademyStaffPanel courseId={course.id} state={staff.data} />}
+            {course.version_id && <AcademyHandoverPanel versionId={course.version_id} />}
             <CourseEditWizard course={course} initialLessons={lessons} initialQuiz={quiz} />
         </div>
     )

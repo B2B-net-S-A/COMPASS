@@ -12,9 +12,9 @@ vi.mock('../clamav', () => ({ scanWithClamav: av.scan }))
 vi.mock('../clamav-readiness', () => ({ assertClamavReadiness: av.ready }))
 const realMp4 = () => readFileSync(join(process.cwd(), 'lib/academy/__tests__/fixtures/mp4/test-1s.mp4'))
 const config = { host: 'private-scanner', port: 3310 }
-function fixture(bytes: Buffer) {
+function fixture(bytes: Buffer, mime = 'video/mp4') {
     const rpc = vi.fn(async (name: string) => ({ error: null, data: name === 'academy_claim_material_scan'
-        ? [{ id: 'asset', storage_path: 'reserved/asset/video.mp4', size_bytes: bytes.length, mime_type: 'video/mp4', scan_started_at: 'lease' }]
+        ? [{ id: 'asset', storage_path: 'reserved/asset/video.mp4', size_bytes: bytes.length, mime_type: mime, scan_started_at: 'lease' }]
         : true }))
     const signed = vi.fn(async () => ({ error: null, data: { signedUrl: 'https://storage.test/reserved?signature=test' } }))
     const fetcher = vi.fn(async (_url: string | URL, _options: RequestInit) => new Response(new Uint8Array(bytes)))
@@ -61,4 +61,18 @@ describe('MP4 validation is mandatory before the clean-scan ACK', () => {
         expect(f.fetcher).not.toHaveBeenCalled()
         expect(av.scan).not.toHaveBeenCalled()
     })
+})
+
+it('standalone MP3 still requires AV and structural validation before the ready ACK', async () => {
+    const frame = Buffer.alloc(417); frame.set([255,251,144,0])
+    const bytes = Buffer.concat([frame,frame])
+    const f = fixture(bytes, 'audio/mpeg')
+    expect(await runAcademyMaterialScan(f.client, config)).toMatchObject({ accepted: 1 })
+    expect(av.scan).toHaveBeenCalledTimes(1)
+    const invalid = fixture(Buffer.from('MZ fake.mp3'), 'audio/mpeg')
+    expect(await runAcademyMaterialScan(invalid.client, config)).toMatchObject({ accepted: 0, rejected: 1 })
+    expect(invalid.rpc).toHaveBeenLastCalledWith('academy_accept_material_scan', expect.objectContaining({ p_error: 'invalid_mp3' }))
+    av.scan.mockRejectedValue(new MaterialRejected('malware_or_scan_limit'))
+    const malware = fixture(bytes, 'audio/mpeg')
+    expect(await runAcademyMaterialScan(malware.client, config)).toMatchObject({ accepted: 0, rejected: 1 })
 })

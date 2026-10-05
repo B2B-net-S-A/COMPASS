@@ -1,8 +1,10 @@
+-- v3 includes webinar roster/import/attendance, edition surveys/private declarations,
+-- and contractual handover evidence. v2 snapshots require their archived verifier.
 -- Run only against a supplied, isolated database copy. This script is read-only.
 -- psql -X -q -t -A -v ON_ERROR_STOP=1 -f ops/academy/restore/export.sql > export.json
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SELECT jsonb_build_object(
-  'format', 'compass-academy-restore-v2',
+  'format', 'compass-academy-restore-v3',
   'schemaTables', (SELECT coalesce(jsonb_agg(n.nspname || '.' || c.relname ORDER BY n.nspname, c.relname), '[]'::jsonb)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relkind = 'r' AND ((n.nspname = 'public' AND
@@ -13,6 +15,7 @@ SELECT jsonb_build_object(
     FROM storage.objects
     WHERE bucket_id = 'academy-materials' OR (bucket_id = 'documents' AND name LIKE 'courses/%')),
   'tables', jsonb_build_object(
+    'academy_private.edition_teaching_interest', coalesce((select jsonb_agg(to_jsonb(t)) from academy_private.edition_teaching_interest t), '[]'::jsonb),
     'academy_private.run_contributors', coalesce((select jsonb_agg(to_jsonb(t)) from academy_private.run_contributors t), '[]'::jsonb),
     'academy_private.run_obligations', coalesce((select jsonb_agg(to_jsonb(t)) from academy_private.run_obligations t), '[]'::jsonb),
     'academy_private.version_contributors', coalesce((select jsonb_agg(to_jsonb(t)) from academy_private.version_contributors t), '[]'::jsonb),
@@ -20,6 +23,9 @@ SELECT jsonb_build_object(
     'public.academy_audit_events', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_audit_events t), '[]'::jsonb),
     'public.academy_completion_revocations', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_completion_revocations t), '[]'::jsonb),
     'public.academy_completion_rewards', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_completion_rewards t), '[]'::jsonb),
+    'public.academy_edition_survey_responses', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_edition_survey_responses t), '[]'::jsonb),
+    'public.academy_edition_survey_settings', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_edition_survey_settings t), '[]'::jsonb),
+    'public.academy_handovers', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_handovers t), '[]'::jsonb),
     'public.academy_integration_jobs', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_integration_jobs t), '[]'::jsonb),
     'public.academy_learning_streaks', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_learning_streaks t), '[]'::jsonb),
     'public.academy_legacy_reviews', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_legacy_reviews t), '[]'::jsonb),
@@ -30,6 +36,9 @@ SELECT jsonb_build_object(
     'public.academy_rollout_settings', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_rollout_settings t), '[]'::jsonb),
     'public.academy_session_integrations', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_session_integrations t), '[]'::jsonb),
     'public.academy_user_capabilities', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_user_capabilities t), '[]'::jsonb),
+    'public.academy_webinar_attendance', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_webinar_attendance t), '[]'::jsonb),
+    'public.academy_webinar_import_batches', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_webinar_import_batches t), '[]'::jsonb),
+    'public.academy_webinar_roster', coalesce((select jsonb_agg(to_jsonb(t)) from public.academy_webinar_roster t), '[]'::jsonb),
     'public.course_answers', coalesce((select jsonb_agg(to_jsonb(t)) from public.course_answers t), '[]'::jsonb),
     'public.course_completions', coalesce((select jsonb_agg(to_jsonb(t)) from public.course_completions t), '[]'::jsonb),
     'public.course_enrollments', coalesce((select jsonb_agg(to_jsonb(t)) from public.course_enrollments t), '[]'::jsonb),

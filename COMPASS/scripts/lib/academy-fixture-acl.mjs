@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 
-const schemas = ['public', 'academy_private'];
+// Keep the scoped schema dump and its ACL comparison on the same application
+// dependency set. Material catalog views and Storage predicates use this schema.
+export const fixtureApplicationSchemas = Object.freeze(['public', 'academy_private', 'academy_material_policy']);
+const schemas = fixtureApplicationSchemas;
 const ident = value => '"' + String(value).replaceAll('"', '""') + '"';
 const grantee = value => value === 'PUBLIC' ? 'PUBLIC' : ident(value);
 const objectTypes = { r: 'TABLES', S: 'SEQUENCES', f: 'FUNCTIONS', T: 'TYPES', n: 'SCHEMAS' };
@@ -65,8 +68,7 @@ export async function withFixtureDefaultPrivileges(sql, importSchema) {
 /** Include acldefault when the catalog ACL is NULL, plus the effective rights
  * of the three API roles (which also account for PUBLIC and role membership).
  * The caller compares source objects only: native target extensions stay intact.
- * The bounded baseline now includes vector columns. Their native extension
- * functions are not application dump objects and retain the target's own ACLs;
+ * Native extension functions are not application dump objects and retain the target's own ACLs;
  * every non-extension application function remains in this comparison.
  */
 export async function readFixtureObjectPrivileges(sql) {
@@ -80,7 +82,7 @@ export async function readFixtureObjectPrivileges(sql) {
             from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
             where n.nspname=any($1::text[])
                 and not exists(select 1 from pg_catalog.pg_depend d join pg_catalog.pg_extension e on e.oid=d.refobjid
-                    where d.classid='pg_catalog.pg_proc'::regclass and d.objid=p.oid and d.deptype='e' and e.extname='vector')
+                    where d.classid='pg_catalog.pg_proc'::regclass and d.objid=p.oid and d.deptype='e')
             order by 1`, [schemas])).rows;
         const relations = (await sql.query(`select case when c.relkind='S' then 'sequence:' else 'table:' end||format('%I.%I',n.nspname,c.relname) as object,
             ${aclJson("coalesce(c.relacl,pg_catalog.acldefault(case when c.relkind='S' then 's'::\"char\" else 'r'::\"char\" end,c.relowner))")} as privileges,
@@ -92,8 +94,18 @@ export async function readFixtureObjectPrivileges(sql) {
                 from unnest(array['anon','authenticated','service_role']) role) roles) as effective
             from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
             where n.nspname=any($1::text[]) and c.relkind in ('r','p','v','m','f','S') order by 1`, [schemas])).rows;
+        // Public belongs to the native platform. The two private application
+        // schemas must retain their usage boundary as well as object ACLs.
+        const privateSchemas = (await sql.query(`select 'schema:'||n.nspname as object,
+            ${aclJson("coalesce(n.nspacl,pg_catalog.acldefault('n',n.nspowner))")} as privileges,
+            (select jsonb_object_agg(role,jsonb_build_object(
+                'USAGE',pg_catalog.has_schema_privilege(role,n.oid,'USAGE'),
+                'CREATE',pg_catalog.has_schema_privilege(role,n.oid,'CREATE')))
+                from unnest(array['anon','authenticated','service_role']) role) as effective
+            from pg_catalog.pg_namespace n where n.nspname=any($1::text[]) and n.nspname<>'public'
+            order by 1`, [schemas])).rows;
         // OIDs differ across databases, so sort ACL entries by their role names.
-        return [...functions, ...relations].map(row => ({ ...row, privileges: row.privileges.sort((a,b) =>
+        return [...privateSchemas, ...functions, ...relations].map(row => ({ ...row, privileges: row.privileges.sort((a,b) =>
             JSON.stringify(a).localeCompare(JSON.stringify(b))) })).sort((a,b) => a.object.localeCompare(b.object));
     } finally {
         await sql.query("select set_config('search_path',$1,false)", [previous]);

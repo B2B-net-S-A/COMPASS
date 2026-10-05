@@ -63,3 +63,20 @@ it('does not create a signed URL retry loop on denied access', async () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(600000) })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 })
+
+
+it('plays standalone audio through the same authorized renewal preserving its seek position', async () => {
+    fetchMock.mockResolvedValue(response('https://storage.example.test/audio.m4a?token=private'))
+    const { container } = render(<AcademyVideo runId="run" video={{ ...video, name: 'Audio.m4a' }} audio />)
+    await act(async () => {})
+    expect(container.querySelector('video')).toBeNull()
+    const first = container.querySelector('audio')!
+    expect(first).toHaveAttribute('controls')
+    first.currentTime = 77
+    await act(async () => { await vi.advanceTimersByTimeAsync(240000) })
+    const next = container.querySelector('audio')!
+    Object.defineProperty(next, 'duration', { configurable: true, value: 300 })
+    fireEvent.loadedMetadata(next)
+    expect(next.currentTime).toBe(77)
+    expect(fetchMock.mock.calls[0][0]).toContain('runId=run')
+})

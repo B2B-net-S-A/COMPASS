@@ -125,7 +125,7 @@ function aacConfiguration(data: Buffer) {
     if (asc.length > 2 && (asc.length !== 5 || asc[2] !== 0x56 || asc[3] !== 0xe5 || asc[4] !== 0)) reject('unsupported_mp4_codec')
 }
 
-function validateMovie(moov: Buffer, media: Range[]) {
+function validateMovie(moov: Buffer, media: Range[], audioOnly = false) {
     const movie = boxes(moov)
     if (movie.some(box => box.type === 'mvex')) reject('fragmented_mp4_unsupported')
     const mvhd = one(movie, 'mvhd'); requireBytes(mvhd, mvhd[0] === 1 ? 112 : 100)
@@ -227,7 +227,7 @@ function validateMovie(moov: Buffer, media: Range[]) {
         }
         if (sample !== count) reject()
     }
-    if (!kinds.has('vide')) reject('unsupported_mp4_tracks')
+    if (audioOnly ? kinds.size !== 1 || !kinds.has('soun') : !kinds.has('vide')) reject('unsupported_mp4_tracks')
     chunks.sort((a, b) => a.start - b.start)
     for (let i = 1; i < chunks.length; i++) if (chunks[i].start < chunks[i - 1].end) reject('overlapping_mp4_samples')
 }
@@ -241,7 +241,7 @@ export class Mp4StreamValidator {
     private ftyp = false
     private boxCount = 0
     private readonly media: Range[] = []
-    constructor(private readonly expectedSize: number) {
+    constructor(private readonly expectedSize: number, private readonly audioOnly = false) {
         if (!Number.isSafeInteger(expectedSize) || expectedSize <= 0 || expectedSize > 1024 ** 3) reject()
     }
     push(chunk: Buffer) {
@@ -276,7 +276,7 @@ export class Mp4StreamValidator {
                 if (box.type === 'moov') this.moov = box.bytes
                 if (box.type === 'ftyp') {
                     const data = box.bytes!; requireBytes(data, 8)
-                    if (data.length % 4 !== 0 || !['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'avc1', 'mp41', 'mp42', 'M4V '].includes(data.toString('latin1', 0, 4))) reject()
+                    if (data.length % 4 !== 0 || !['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'avc1', 'mp41', 'mp42', 'M4V ', 'M4A '].includes(data.toString('latin1', 0, 4))) reject()
                     this.ftyp = true
                 }
                 this.current = null
@@ -285,6 +285,6 @@ export class Mp4StreamValidator {
     }
     finish() {
         if (this.offset !== this.expectedSize || this.current || this.header.length || !this.ftyp || !this.moov || !this.media.length) reject('incomplete_mp4')
-        validateMovie(this.moov, this.media)
+        validateMovie(this.moov, this.media, this.audioOnly)
     }
 }

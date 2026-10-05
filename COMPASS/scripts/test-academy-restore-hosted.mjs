@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
 import { assertHostedStorage, localStatus } from './lib/academy-storage-gate.mjs';
+import { assertFixtureObjectPrivileges } from './lib/academy-fixture-acl.mjs';
 import { seal, verify } from '../../ops/academy/restore/verify.mjs';
 
 assertHostedStorage();
@@ -136,7 +137,7 @@ function safeFailure(error) {
     'isolated_storage_loopback_port_required', 'target_storage_not_isolated_from_source_bytes']);
   const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
   const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
-    'supabase_migrations', 'public', 'academy_private', 'cron', 'net', 'graphql']);
+    'supabase_migrations', 'public', 'academy_private', 'academy_material_policy', 'cron', 'net', 'graphql']);
   const deniedSchema = /permission denied for schema ([a-z_][a-z0-9_]*)/i.exec(stderr)?.[1];
   const deniedExtension = /permission denied to create extension "([a-z_][a-z0-9_-]*)"/i.exec(stderr)?.[1];
   const knownExtensions = new Set(['vector', 'pg_graphql', 'pg_net', 'pgcrypto', 'uuid-ossp',
@@ -197,6 +198,50 @@ async function storageBytes(bucket, name) {
   return Buffer.from(await result.data.arrayBuffer());
 }
 
+// Source fixture is guarded above as disposable hosted Supabase. These are
+// synthetic restoration witnesses, never a production import or legal agreement.
+async function seedTrainingCycleRestoreFixture(connection) {
+  const subject = (await connection.query(`select reg.id registration_id,reg.run_id,reg.enrollment_id,reg.user_id,
+      r.course_id,r.version_id,c.author_id,
+      (select id from public.profiles where role='admin' order by id limit 1) operator_id,
+      a.session_id,a.attended_seconds
+    from public.course_run_registrations reg join public.course_runs r on r.id=reg.run_id
+    join public.courses c on c.id=r.course_id
+    join public.session_attendance a on a.enrollment_id=reg.enrollment_id and a.status='present'
+    where reg.status='confirmed' and public.academy_attendance_satisfied(reg.enrollment_id)
+    order by reg.id,a.session_id limit 1`)).rows[0];
+  assert(subject?.operator_id && subject.author_id, 'training_cycle_attended_subject_fixture_missing');
+  await connection.query('BEGIN');
+  try {
+    await connection.query(`insert into public.academy_edition_survey_settings(run_id,introduction,labels)
+      values($1,'Synthetic restoration survey','{}') on conflict(run_id) do nothing`,[subject.run_id]);
+    // Use the actual learner RPC and verified attendance gate for the response.
+    await connection.query("select set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)",[subject.user_id]);
+    await connection.query('SET LOCAL ROLE authenticated');
+    const response = (await connection.query('select public.academy_submit_edition_survey($1,$2) id',[
+      subject.run_id,{overall:5,trainer:5,materials:null,difficulty:'appropriate',futureTopics:'Synthetic next edition',
+        willingToTeach:true,proposedTopic:'Synthetic training topic',contactPreference:'none',nps:8},
+    ])).rows[0];
+    assert(response?.id,'training_cycle_survey_fixture_missing');
+    await connection.query('RESET ROLE');
+    await connection.query("select set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim.role','',true)");
+    const email=`restore-${randomUUID()}@example.invalid`;
+    let roster=(await connection.query('select id from public.academy_webinar_roster where run_id=$1 and user_id=$2',[subject.run_id,subject.user_id])).rows[0];
+    if (!roster) roster=(await connection.query(`insert into public.academy_webinar_roster(run_id,email,full_name,user_id,created_by)
+      values($1,$2,'Synthetic restoration participant',$3,$4) returning id`,[subject.run_id,email,subject.user_id,subject.operator_id])).rows[0];
+    const batch=(await connection.query(`insert into public.academy_webinar_import_batches(run_id,session_id,kind,input_hash,source_hash,rows,preview,created_by)
+      values($1,$2,'attendance',$3,$3,$4,$5,$6) returning id`,[subject.run_id,subject.session_id,
+        digest(Buffer.from('synthetic restoration witness')),JSON.stringify([{email,attendedSeconds:subject.attended_seconds}]),
+        {synthetic:true,rosterId:roster.id},subject.operator_id])).rows[0];
+    await connection.query(`insert into public.academy_webinar_attendance(roster_id,session_id,attended_seconds,status,batch_id,imported_by)
+      values($1,$2,$3,'present',$4,$5)`,[roster.id,subject.session_id,subject.attended_seconds,batch.id,subject.operator_id]);
+    // Draft evidence does not claim that rights were signed or a package accepted.
+    await connection.query(`insert into public.academy_handovers(course_id,version_id,run_id,contributors,status)
+      values($1,$2,$3,$4,'draft') on conflict do nothing`,[subject.course_id,subject.version_id,subject.run_id,[subject.author_id]]);
+    await connection.query('COMMIT');
+  } catch(error) { await connection.query('ROLLBACK');throw error; }
+}
+
 let stage = 'setup';
 let targetClient;
 let sourceConnected = false;
@@ -222,6 +267,8 @@ try {
       values($1,$2,'insufficient',0,'manual',$3,'Synthetic CI restore evidence')`,
       [attendance.session_id, attendance.enrollment_id, attendance.reviewer_id]);
   }
+  stage = 'training_cycle_fixture';
+  await seedTrainingCycleRestoreFixture(client);
   stage = 'fixture_presence';
   const fixture = (await client.query(`select
     (select count(*)::int from public.courses) as courses,
@@ -230,7 +277,14 @@ try {
     (select count(*)::int from public.session_attendance) as attendance,
     (select count(*)::int from public.course_materials where status='ready') as ready_materials,
     (select count(*)::int from public.course_runs) as runs,
-    (select count(*)::int from public.course_sessions) as sessions`)).rows[0];
+    (select count(*)::int from public.course_sessions) as sessions,
+    (select count(*)::int from public.academy_edition_survey_settings) as edition_survey_settings,
+    (select count(*)::int from public.academy_edition_survey_responses) as edition_survey_responses,
+    (select count(*)::int from academy_private.edition_teaching_interest) as teaching_interest,
+    (select count(*)::int from public.academy_webinar_roster) as webinar_roster,
+    (select count(*)::int from public.academy_webinar_import_batches) as webinar_import_batches,
+    (select count(*)::int from public.academy_webinar_attendance) as webinar_attendance,
+    (select count(*)::int from public.academy_handovers) as handovers`)).rows[0];
   for (const [key, count] of Object.entries(fixture)) assert(count > 0, `fixture_${key}_missing`);
   const files = (await client.query(`select bucket_id,name,metadata->>'mimetype' as mime
     from storage.objects where bucket_id='academy-materials'
@@ -283,6 +337,11 @@ try {
   // to start against the target even when the object metadata is present.
   docker('exec', container, 'pg_restore', '-U', 'supabase_admin', '-d', targetName,
     '--exit-on-error', restoredInContainer);
+  stage = 'restore_application_acl';
+  // Check the archive's original application ACLs before adding maintenance
+  // read grants for the metadata export. API roles receive no new grants here.
+  const restoredApplicationAclObjects = await assertFixtureObjectPrivileges(client, targetClient);
+  console.log(JSON.stringify({check:'restored_application_acl',outcome:'passed',objects:restoredApplicationAclObjects}));
   stage = 'restore_read_grants';
   docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
     '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',

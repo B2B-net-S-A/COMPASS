@@ -15,6 +15,7 @@ import { completeAcademyCourse } from '@/lib/actions/course-learning'
 import type { ActionResult } from '@/lib/types/learning'
 import type { AcademyOrganizerDTO, AcademyRunDTO, AcademyRunParticipantDTO, AcademySessionDTO } from '@/lib/types/academy-sessions'
 import { AcademySessionForm, AcademyActualWindowForm } from './AcademySessionForm'
+import { AcademyWebinarImportPanel } from './AcademyWebinarImportPanel'
 import { AcademyAttendancePanel } from './AcademyAttendancePanel'
 import { AcademyLearnerProgress } from './AcademyLearnerProgress'
 import { REGISTRATION_LABEL, RUN_STATUS_LABEL, SESSION_SYNC_LABEL, sessionDate, sessionTime } from './session-format'
@@ -120,6 +121,7 @@ export function AcademyRunDetail({ run, isAdmin = false, canRegister = true, par
             </article>
         })}</section>
         {run.canManage && (participantsError ? <p role="alert" className="rounded-xl border border-destructive/20 p-4 text-sm text-destructive">Nie udało się wczytać listy uczestników. Odśwież stronę przed potwierdzaniem obecności.</p> : <AcademyAttendancePanel participants={participants} sessions={run.sessions} userId={userId} readOnly={run.status === 'cancelled'} />)}
+        {isAdmin && run.canManage && run.sessions.some(s => s.mode === 'external_link') && <AcademyWebinarImportPanel runId={run.id} sessions={run.sessions} readOnly={run.status === 'cancelled'} />}
         <Dialog open={modal !== null} onOpenChange={(open) => { if (!open && !isPending && !childPending) setModal(null) }}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{modal?.type === 'replacement' ? 'Zaplanuj zastępstwo' : modal?.type === 'session' ? modal.session ? 'Edytuj spotkanie' : 'Nowe spotkanie' : modal?.type === 'actual' ? 'Rzeczywisty czas zajęć' : modal?.type === 'cancel' ? modal.session ? 'Odwołaj spotkanie' : 'Odwołaj edycję' : 'Edytuj edycję'}</DialogTitle><DialogDescription>{modal?.type === 'cancel' ? 'Podaj powód odwołania. Historia zapisów i dotychczasowych decyzji pozostanie zachowana. Odwołanie wymaganej sesji nie zalicza obecności — potrzebny jest termin zastępczy.' : run.title}</DialogDescription></DialogHeader>
             {(modal?.type === 'session' || modal?.type === 'replacement') && <AcademySessionForm runId={run.id} runCapacity={run.capacity} runPublished={run.status === 'published'} initial={modal.type === 'session' ? modal.session : undefined} replacementFor={modal.type === 'replacement' ? modal.session : undefined} organizers={organizers} managedTeamsAvailable={managedTeamsAvailable} managedTeamsReason={managedTeamsReason} onSaved={saved} onCancel={() => setModal(null)} onPendingChange={setChildPending} />}
             {modal?.type === 'actual' && <AcademyActualWindowForm session={modal.session} onSaved={saved} onCancel={() => setModal(null)} onPendingChange={setChildPending} />}
