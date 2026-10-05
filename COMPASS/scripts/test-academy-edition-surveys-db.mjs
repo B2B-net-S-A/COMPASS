@@ -59,6 +59,11 @@ try {
     await rpc('academy_save_edition_survey_settings',[one.run,'Changed intro',{overall:'Changed future question'}]);
     await owner(); equal((await sql('select question_snapshot from academy_edition_survey_responses where id=$1',[first])).rows[0].question_snapshot.labels.overall,'How useful was Cybersecurity?');
     await denied('update academy_edition_survey_responses set run_id=$2 where id=$1',[first,one.run],/niezmienna/);
+    await actor('admin');await rpc('academy_set_trainer',[ids.other,true]);
+    await actor('other');await denied('select academy_edition_survey_report($1)',[one.run]);
+    await actor('trainer');await rpc('academy_set_run_staff',[one.run,ids.other,true]);
+    await actor('other');const assignedReport=await rpc('academy_edition_survey_report',[one.run]);equal(assignedReport.responseCount,1);equal('teachingInterests' in assignedReport,false);
+    await denied('select * from academy_private.edition_teaching_interest');
     await actor('admin'); equal((await rpc('academy_edition_survey_report',[one.run])).teachingInterests[0],{userId:ids.student,fullName:'student',proposedTopic:'Threat modelling',contactPreference:'compass'});
     const two=await edition('January edition'); await attend(two);
     const second=await rpc('academy_submit_edition_survey',[two.run,{...answers,willingToTeach:false,proposedTopic:'ignored',contactPreference:'contract_email',materials:3}]);
