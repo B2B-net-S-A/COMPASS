@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { scanWithClamav, type ClamavConfig } from './clamav'
 import { assertClamavReadiness } from './clamav-readiness'
 import { validateMaterialFormat, MaterialRejected } from './material-validation'
+import { Mp3StreamValidator } from './mp3-validation'
 import { Mp4StreamValidator } from './mp4-validation'
 
 interface ScanAsset {
@@ -44,8 +45,9 @@ export async function runAcademyMaterialScan(client: SupabaseClient, config = ac
         let total = 0
         let prefix = Buffer.alloc(0)
         const chunks: Buffer[] = []
-        const isDocument = asset.mime_type !== 'video/mp4'
-        const mp4 = isDocument ? null : new Mp4StreamValidator(size)
+        const isDocument = !['video/mp4', 'audio/mp4', 'audio/mpeg'].includes(asset.mime_type)
+        if (asset.mime_type.startsWith('audio/') && size > 512 * 1024 ** 2) throw new MaterialRejected('invalid_size')
+        const media = asset.mime_type === 'audio/mpeg' ? new Mp3StreamValidator(size) : isDocument ? null : new Mp4StreamValidator(size, asset.mime_type === 'audio/mp4')
         async function* bytes() {
             const reader = response.body!.getReader()
             try {
@@ -58,14 +60,14 @@ export async function runAcademyMaterialScan(client: SupabaseClient, config = ac
                     hash.update(chunk)
                     if (prefix.length < 64) prefix = Buffer.concat([prefix, chunk.subarray(0, 64 - prefix.length)])
                     if (isDocument) chunks.push(chunk)
-                    mp4?.push(chunk)
+                    media?.push(chunk)
                     yield chunk
                 }
             } finally { await reader.cancel().catch(() => undefined); reader.releaseLock() }
         }
         await scanWithClamav(bytes(), config)
         if (total !== size) throw new MaterialRejected('size_mismatch')
-        if (mp4) mp4.finish()
+        if (media) media.finish()
         else await validateMaterialFormat(asset.mime_type, prefix, Buffer.concat(chunks))
         const accepted = await client.rpc('academy_accept_material_scan', { p_asset_id: asset.id, p_scan_started_at: asset.scan_started_at, p_sha256: hash.digest('hex') })
         if (accepted.error) throw new Error('scan_persistence_failed')
@@ -73,7 +75,7 @@ export async function runAcademyMaterialScan(client: SupabaseClient, config = ac
     } catch (cause) {
         const rejected = cause instanceof MaterialRejected
         const outcome = rejected
-            ? await client.rpc('academy_accept_material_scan', { p_asset_id: asset.id, p_scan_started_at: asset.scan_started_at, p_sha256: null, p_error: cause.code })
+            ? await client.rpc('academy_accept_material_scan', { p_asset_id: asset.id, p_scan_started_at: asset.scan_started_at, p_sha256: null, p_error: asset.mime_type === 'audio/mp4' && cause.code.includes('mp4') ? 'invalid_m4a' : cause.code })
             : await client.rpc('academy_retry_material_scan', { p_asset_id: asset.id, p_scan_started_at: asset.scan_started_at })
         if (outcome.error) throw new Error('scan_failure_persistence_failed')
         return { configured: true, scanned: 1, accepted: 0, rejected: rejected && outcome.data ? 1 : 0, retry: !rejected && outcome.data ? 1 : 0 }

@@ -1,3 +1,4 @@
+import { AcademyHandoverPanel } from '@/components/academy/AcademyHandoverPanel'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { AcademyStaffPanel } from '@/components/academy/AcademyStaffPanel'
@@ -39,6 +40,7 @@ export default async function AcademyRunPage({ params }: { params: { id: string 
             userId={access.data.userId} now={new Date().toISOString()} />
         {(run.canManage || enrolled) && <RunMaterials runId={run.id} courseId={run.courseId} canManage={run.canManage} isAdmin={access.data.isAdmin} userId={access.data.userId} readOnly={run.status === 'cancelled'} />}
         {(run.canManage || run.myRegistration) && <EditionSurvey runId={run.id} canManage={run.canManage} />}
+        {run.canManage && <AcademyHandoverPanel versionId={run.versionId} runId={run.id} />}
         {staff?.success && staff.data && <AcademyStaffPanel courseId={run.courseId} runId={run.id} state={staff.data} />}
         {staff && !staff.success && <p role="alert" className="text-sm text-destructive">{staff.error}</p>}
     </AcademyShell>

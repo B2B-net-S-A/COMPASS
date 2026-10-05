@@ -107,6 +107,8 @@ export function LessonPlayer({
 
             {videos.map(video => <AcademyVideo key={video.asset_id} lessonId={lesson.id} video={video} captions={lessonCaptionForVideo(lesson.attachments, video.asset_id!)} />)}
 
+            {lesson.attachments.filter(item => item.asset_id && ['audio/mpeg', 'audio/mp4'].includes(item.mime_type ?? '')).map(audio => <AcademyVideo key={audio.asset_id} lessonId={lesson.id} video={audio} audio />)}
+
             {lesson.video_url && <EmbedVideo url={lesson.video_url} title={lesson.title} />}
 
             {lesson.content_md && (

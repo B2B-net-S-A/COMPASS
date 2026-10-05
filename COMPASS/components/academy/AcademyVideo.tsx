@@ -5,7 +5,7 @@ import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { CourseAttachment } from '@/lib/types/learning'
 
-type Props = ({ lessonId: string; runId?: never } | { runId: string; lessonId?: never }) & { video: CourseAttachment; captions?: CourseAttachment }
+type Props = ({ lessonId: string; runId?: never } | { runId: string; lessonId?: never }) & { video: CourseAttachment; captions?: CourseAttachment; audio?: boolean }
 interface SignedSource { url: string; expiresIn: number }
 interface PlaybackPosition { time: number; paused: boolean; captions: boolean }
 
@@ -25,8 +25,8 @@ async function signedSource(endpoint: string, signal: AbortSignal): Promise<Sign
     return { url: url.href, expiresIn: data.expiresIn }
 }
 
-export function AcademyVideo({ lessonId, runId, video, captions }: Props) {
-    const player = useRef<HTMLVideoElement>(null)
+export function AcademyVideo({ lessonId, runId, video, captions, audio = false }: Props) {
+    const player = useRef<HTMLMediaElement | null>(null)
     const refresh = useRef<(manual?: boolean) => void>(() => {})
     const stopScheduledRefresh = useRef<() => void>(() => {})
     const playback = useRef<PlaybackPosition | null>(null)
@@ -74,7 +74,7 @@ export function AcademyVideo({ lessonId, runId, video, captions }: Props) {
                 const nextCaption = captionResult.status === 'fulfilled' ? captionResult.value : null
                 setCaptionError(captionRequested && !nextCaption)
                 const element = player.current
-                if (hasSource && element && !playback.current) playback.current = { time: element.currentTime, paused: element.paused, captions: Array.from(element.textTracks ?? []).some(track => track.mode === 'showing') }
+                if (hasSource && element && !playback.current) playback.current = { time: element.currentTime, paused: element.paused, captions: Array.from(element instanceof HTMLVideoElement ? element.textTracks : []).some(track => track.mode === 'showing') }
                 setSources({ video: nextVideo.url, captions: nextCaption?.url, revision: ++revision })
                 hasSource = true
                 const ttl = Math.min(nextVideo.expiresIn, nextCaption?.expiresIn ?? nextVideo.expiresIn)
@@ -106,7 +106,7 @@ export function AcademyVideo({ lessonId, runId, video, captions }: Props) {
         if (!element || !previous) return
         playback.current = null
         element.currentTime = Number.isFinite(element.duration) ? Math.min(previous.time, Math.max(0, element.duration)) : previous.time
-        for (const track of Array.from(element.textTracks ?? [])) track.mode = previous.captions ? 'showing' : 'hidden'
+        for (const track of Array.from(element instanceof HTMLVideoElement ? element.textTracks : [])) track.mode = previous.captions ? 'showing' : 'hidden'
         if (!previous.paused) void element.play().catch(() => { if (player.current === element) setResumeMessage(true) })
     }
 
@@ -123,10 +123,10 @@ export function AcademyVideo({ lessonId, runId, video, captions }: Props) {
 
     return <section className="space-y-3" aria-label={`Nagranie: ${video.name}`}>
         <div className="overflow-hidden rounded-xl border border-border bg-muted">
-            {sources ? <video key={sources.revision} ref={player} src={sources.video} controls playsInline preload="metadata" crossOrigin="anonymous" aria-label={video.name} className="aspect-video w-full" onLoadedMetadata={restorePlayback} onError={playbackError} onPlay={() => setResumeMessage(false)}>
+            {sources && audio ? <audio key={sources.revision} ref={element => { player.current = element }} src={sources.video} controls preload="metadata" aria-label={video.name} className="w-full" onLoadedMetadata={restorePlayback} onError={playbackError} onPlay={() => setResumeMessage(false)} /> : sources ? <video key={sources.revision} ref={element => { player.current = element }} src={sources.video} controls playsInline preload="metadata" crossOrigin="anonymous" aria-label={video.name} className="aspect-video w-full" onLoadedMetadata={restorePlayback} onError={playbackError} onPlay={() => setResumeMessage(false)}>
                 {sources.captions && <track key={sources.captions} kind="captions" src={sources.captions} srcLang="und" label="Napisy" onError={() => setCaptionError(true)} />}
                 Twoja przeglądarka nie obsługuje odtwarzania tego nagrania.
-            </video> : <div className="flex aspect-video items-center justify-center p-6 text-sm text-muted-foreground">{loading ? 'Przygotowanie nagrania…' : 'Nagranie nie jest dostępne.'}</div>}
+            </video> : <div className={`flex ${audio ? 'min-h-16' : 'aspect-video'} items-center justify-center p-6 text-sm text-muted-foreground`}>{loading ? 'Przygotowanie nagrania…' : 'Nagranie nie jest dostępne.'}</div>}
         </div>
         {loading && <p role="status" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden="true" />{sources ? 'Odświeżanie dostępu do nagrania…' : 'Wczytywanie nagrania…'}</p>}
         {resumeMessage && <p role="status" className="text-sm text-muted-foreground">Dostęp odświeżony. Naciśnij odtwarzaj, aby kontynuować od zapamiętanego miejsca.</p>}

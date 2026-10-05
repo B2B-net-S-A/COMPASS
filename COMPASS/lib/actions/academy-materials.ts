@@ -6,7 +6,7 @@ import { materialRejectionMessage } from '@/lib/academy/material-errors'
 
 const inputSchema = z.object({
     courseId: z.uuid(), lessonId: z.uuid().optional(), runId: z.uuid().optional(), filename: z.string().trim().min(1).max(180).regex(/^[^/\\\r\n]+$/),
-    mimeType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'video/mp4', 'text/vtt']),
+    mimeType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'video/mp4', 'audio/mpeg', 'audio/mp4', 'text/vtt']),
     sizeBytes: z.number().int().positive().max(1024 ** 3), fileModifiedAt: z.number().int().nonnegative(),
 }).refine(value => Boolean(value.lessonId) !== Boolean(value.runId), 'Wybierz lekcję albo edycję.')
 
