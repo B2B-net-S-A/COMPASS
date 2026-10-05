@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const USER = '11111111-1111-4111-8111-111111111111'
 const OTHER = '22222222-2222-4222-8222-222222222222'
 const state = vi.hoisted(() => ({ tables: {} as Record<string, Array<Record<string, unknown>>>, rosters: {} as Record<string, unknown>, rosterError: null as string | null,
+    teachingInterest: [] as Array<Record<string,unknown>>,
     reads: [] as Array<{ table: string; select: string; filters: string[]; from: number; to: number }> }))
 
 vi.mock('server-only', () => ({}))
@@ -10,7 +11,7 @@ vi.mock('@/lib/auth/internal-guard', () => ({ requireAdminAction: async () => ({
 vi.mock('@/lib/actions/audit', () => ({ logAudit: vi.fn(async () => {}) }))
 vi.mock('@/lib/actions/action-result', () => ({ runAction: async (_name: string, body: () => Promise<unknown>) => ({ success: true, data: await body() }), ExpectedError: class ExpectedError extends Error {} }))
 
-vi.mock('@/lib/supabase/admin', () => ({ createServiceClient: () => ({ rpc: async (_name: string, args: { p_session_ids: string[] }) => ({
+vi.mock('@/lib/supabase/admin', () => ({ createServiceClient: () => ({ rpc: async (_name: string, args: { p_session_ids: string[]; p_user_id?: string }) => _name === 'academy_gdpr_teaching_interest' ? ({data:state.teachingInterest.filter(row=>row.user_id===args.p_user_id),error:null}) : ({
     data: args.p_session_ids.map(session_id => ({ session_id, participants: state.rosters[session_id] ?? [] })),
     error: state.rosterError ? { message: state.rosterError } : null,
 }), from: (table: string) => {
@@ -61,6 +62,7 @@ beforeEach(() => {
     state.tables = { profiles: [{ id: USER, full_name: 'Osoba testowa' }] }
     state.rosters = {}
     state.rosterError = null
+    state.teachingInterest = []
 })
 
 describe('Academy GDPR export', () => {
@@ -204,4 +206,51 @@ describe('Academy GDPR export', () => {
         expect(state.reads.find(read => read.table === 'support_inbox_meta')?.filters).toContain('order:ticket_id')
         expect(state.reads.some(read => read.table === 'academy_attendance_reports')).toBe(false)
     })
+})
+
+it('exports only explicitly linked webinar subject rows, their attendance and private survey declaration', async () => {
+    state.tables.contractors=[{id:'own-contractor',profile_id:USER,full_name:'Own'}]
+    state.tables.academy_edition_survey_responses=[{id:'response-own',user_id:USER,run_id:'run',overall:5,question_snapshot:{email:'other@example.com'}},{id:'response-other',user_id:OTHER,overall:1}]
+    state.teachingInterest=[{response_id:'response-own',user_id:USER,willing_to_teach:true,proposed_topic:'Pega',contact_preference:'compass'}, {response_id:'response-other',user_id:OTHER,willing_to_teach:true,proposed_topic:'Other personal topic'}]
+    state.tables.academy_webinar_roster=[
+        {id:'profile-own',user_id:USER,contractor_id:'own-contractor',email:'own@example.com',full_name:'Own',run_id:'run'},
+        {id:'contract-own',user_id:null,contractor_id:'own-contractor',email:'own-alt@example.com',full_name:'Own',run_id:'other-run'},
+        {id:'foreign',user_id:OTHER,contractor_id:'foreign-contractor',email:'other@example.com',full_name:'Other'},
+        {id:'conflict',user_id:OTHER,contractor_id:'own-contractor',email:'other@example.com',full_name:'Wrong mapping'},
+    ]
+    state.tables.academy_webinar_attendance=[{roster_id:'profile-own',session_id:'session',attended_seconds:200,status:'present',imported_by:OTHER,batch_id:'all-people'}, {roster_id:'foreign',session_id:'session',attended_seconds:300}]
+    state.tables.academy_webinar_import_batches=[{id:'batch',rows:[{email:'other@example.com'}],preview:{candidates:[OTHER]}}]
+    const result=await exportPersonalData({subjectType:'employee',subjectId:USER})
+    expect(result.success).toBe(true);if(!result.success)return
+    const section=(table:string)=>result.data.sections.find(item=>item.table===table)
+    expect(section('academy_webinar_roster')?.rows.map(row=>row.id).sort()).toEqual(['contract-own','profile-own'])
+    expect(section('academy_webinar_attendance')?.rows).toEqual([{roster_id:'profile-own',session_id:'session',attended_seconds:200,status:'present'}])
+    expect(section('academy_edition_survey_responses')?.rows).toEqual([{id:'response-own',user_id:USER,run_id:'run',overall:5}])
+    expect(section('academy_private.edition_teaching_interest')?.rows).toEqual([{response_id:'response-own',willing_to_teach:true,proposed_topic:'Pega',contact_preference:'compass'}])
+    expect(JSON.stringify(result.data)).not.toContain('other@example.com')
+    expect(state.reads.some(read=>read.table==='academy_webinar_import_batches')).toBe(false)
+    expect(result.data.unavailable.some(item=>item.table==='academy_webinar_roster'&&item.reason.includes('Sprzeczne'))).toBe(true)
+    expect(result.data.manualFollowUps.some(item=>item.includes('preview'))).toBe(true)
+})
+
+it('exports contractor-only webinar attendance but rejects a conflicting linked Compass account', async () => {
+    state.tables.contractors=[{id:'contract-subject',profile_id:null,full_name:'Own contractor'}]
+    state.tables.academy_webinar_roster=[{id:'own',contractor_id:'contract-subject',user_id:null,email:'own@example.com',full_name:'Own'}, {id:'other',contractor_id:'contract-subject',user_id:OTHER,email:'other@example.com',full_name:'Other'}]
+    state.tables.academy_webinar_attendance=[{roster_id:'own',session_id:'s',attended_seconds:42}, {roster_id:'other',session_id:'s',attended_seconds:99}]
+    const result=await exportPersonalData({subjectType:'contractor',subjectId:'contract-subject'})
+    expect(result.success).toBe(true);if(!result.success)return
+    expect(result.data.sections.find(s=>s.table==='academy_webinar_roster')?.rows).toEqual([{id:'own',email:'own@example.com',full_name:'Own'}])
+    expect(result.data.sections.find(s=>s.table==='academy_webinar_attendance')?.rows).toEqual([{roster_id:'own',session_id:'s',attended_seconds:42}])
+    expect(JSON.stringify(result.data)).not.toContain('other@example.com')
+})
+
+it('uses the contractor authoritative profile link for edition answers and declarations', async () => {
+    state.tables.contractors=[{id:'contract-subject',profile_id:USER,full_name:'Own contractor'}]
+    state.tables.academy_edition_survey_responses=[{id:'own-response',user_id:USER,overall:4}, {id:'other-response',user_id:OTHER,overall:2}]
+    state.teachingInterest=[{response_id:'own-response',user_id:USER,willing_to_teach:false,contact_preference:'none'}, {response_id:'other-response',user_id:OTHER,willing_to_teach:true,proposed_topic:'Other'}]
+    const result=await exportPersonalData({subjectType:'contractor',subjectId:'contract-subject'})
+    expect(result.success).toBe(true);if(!result.success)return
+    expect(result.data.sections.find(s=>s.table==='academy_edition_survey_responses')?.rows).toEqual([{id:'own-response',user_id:USER,overall:4}])
+    expect(result.data.sections.find(s=>s.table==='academy_private.edition_teaching_interest')?.rows).toEqual([{response_id:'own-response',willing_to_teach:false,contact_preference:'none'}])
+    expect(JSON.stringify(result.data)).not.toContain('other-response')
 })

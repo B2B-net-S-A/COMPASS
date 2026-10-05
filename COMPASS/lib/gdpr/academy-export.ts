@@ -117,3 +117,36 @@ export function subjectTeamsReportRows(report: Row, participants: AttendancePart
     }
     return { rows, needsReview }
 }
+
+/** Explicit identity links, never names/emails or entire import previews, scope a webinar subject. */
+export interface AcademyExportIdentity { userId: string | null; contractorIds: readonly string[] }
+export function subjectWebinarRosterRow(row: Row, identity: AcademyExportIdentity): Row | null {
+    const userLinked = !!identity.userId && row.user_id === identity.userId
+    const contractorLinked = typeof row.contractor_id === 'string' && identity.contractorIds.includes(row.contractor_id)
+    if (!userLinked && !contractorLinked) return null
+    // A contradictory account mapping needs operator review, even if contractor_id matches.
+    if (row.user_id != null && row.user_id !== identity.userId) return null
+    if (row.contractor_id != null && !contractorLinked) return null
+    return Object.fromEntries(['id','run_id','email','aliases','full_name','contractual_email','status','created_at','updated_at']
+        .filter(key => Object.hasOwn(row,key)).map(key => [key,row[key]]))
+}
+export function subjectWebinarAttendanceRow(row: Row, ownRosterIds: ReadonlySet<string>): Row | null {
+    if (typeof row.roster_id !== 'string' || !ownRosterIds.has(row.roster_id)) return null
+    return Object.fromEntries(['roster_id','session_id','attended_seconds','status','imported_at']
+        .filter(key => Object.hasOwn(row,key)).map(key => [key,row[key]]))
+}
+export function subjectEditionSurveyRow(row: Row, userId: string): Row | null {
+    if (row.user_id !== userId) return null
+    return Object.fromEntries(['id','run_id','user_id','enrollment_id','registration_id','overall','trainer','materials','difficulty','future_topics','nps','created_at']
+        .filter(key => Object.hasOwn(row,key)).map(key => [key,row[key]]))
+}
+export function subjectTeachingInterestRow(row: Row, userId: string, ownResponseIds: ReadonlySet<string>): Row | null {
+    if (row.user_id !== userId || typeof row.response_id !== 'string' || !ownResponseIds.has(row.response_id)) return null
+    return Object.fromEntries(['response_id','willing_to_teach','proposed_topic','contact_preference']
+        .filter(key => Object.hasOwn(row,key)).map(key => [key,row[key]]))
+}
+export const ACADEMY_CYCLE_EXPORT_FOLLOW_UPS = [
+    'academy_webinar_import_batches: źródłowe rows, preview, context i result mogą zawierać dane wielu osób i kandydatów dopasowania. Przed wydaniem danych należy ręcznie wyodrębnić wyłącznie wpisy podmiotu, także nierozpoznane adresy i czynności operatora; pełny podgląd importu nie jest dołączany do eksportu.',
+    'academy_handovers: dowody odbioru pakietu i przekazania praw, źródła montażowe, contributors, submitted_by i reviewed_by wymagają przeglądu uprawnionego administratora przed udostępnieniem danych o osobie. Dokumentów kontraktowych nie usuwa się automatycznie ani nie ujawnia całego pakietu uczestnikowi.',
+    'Treści swobodne i snapshot pytań ankiety edycji mogą zawierać dane innych osób; snapshot należy wyodrębnić po ręcznym przeglądzie, bez ujawniania innych uczestników.',
+] as const

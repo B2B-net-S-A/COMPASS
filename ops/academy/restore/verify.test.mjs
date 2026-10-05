@@ -208,3 +208,31 @@ test('CLI returns a nonzero exit status for a failed verification', async t => {
     return true;
   });
 });
+
+test('v3 includes and compares training-cycle tables including private teaching declarations', async t => {
+  const f = await fixture(t);
+  const added = ['academy_private.edition_teaching_interest','public.academy_edition_survey_settings',
+    'public.academy_edition_survey_responses','public.academy_handovers','public.academy_webinar_roster',
+    'public.academy_webinar_import_batches','public.academy_webinar_attendance'];
+  const full = f.data();
+  for (const table of added) {
+    assert(TABLES.includes(table));
+    full.tables[table].push({ id: `fixture-${table}`, evidence: 'reviewed fixture' });
+  }
+  await f.writeExport(f.source, full);await f.writeExport(f.restored, full);
+  const sealed = await seal(f.exportPath(f.source),f.objectsPath(f.source),f.manifest,'training-cycle');
+  assert.equal((await verify(f.manifest,sealed.manifestSha256,f.exportPath(f.restored),f.objectsPath(f.restored))).ok,true);
+  for (const table of added) {
+    const altered = structuredClone(full);altered.tables[table][0].evidence='changed confidential fixture';
+    await f.writeExport(f.restored,altered);
+    const result = await verify(f.manifest,sealed.manifestSha256,f.exportPath(f.restored),f.objectsPath(f.restored));
+    assert.deepEqual(result.tableMismatches,[table]);
+    assert(!JSON.stringify(result).includes('changed confidential fixture'));
+  }
+});
+
+test('rejects v2 format rather than certifying old snapshots against new coverage', async t => {
+  const f = await fixture(t);
+  await f.writeExport(f.source,{...f.data(),format:'compass-academy-restore-v2'});
+  await assert.rejects(seal(f.exportPath(f.source),f.objectsPath(f.source),f.manifest,'old-snapshot'),/invalid_export_tables/);
+});

@@ -13,6 +13,7 @@ try {
     const dir=new URL('../supabase/migrations/',import.meta.url);
     const matches=fs.readdirSync(dir).filter(n=>n.endsWith('_academy_edition_surveys.sql'));
     equal(matches.length,1); await db.exec(fs.readFileSync(new URL(matches[0],dir),'utf8'));
+    await db.exec(fs.readFileSync(new URL('20261005183000_academy_cycle_gdpr_export.sql',dir),'utf8'));
     await actor('admin'); await rpc('academy_set_trainer',[ids.trainer,true]);
     await actor('trainer');
     const c=await rpc('academy_create_course',[{title:'Cybersecurity survey',category:'IT',delivery_mode:'blended',completion_rules:{quiz_required:false,require_all_lessons:true,attendance_percent:80}}]);
@@ -79,6 +80,9 @@ try {
     await owner(); await sql('insert into course_survey_responses(user_id,course_id,enrollment_id,nps_score,best_part) values($1,$2,$3,8,$4)',[ids.student,c.course_id,one.reg.enrollmentId,'Useful examples']);
     await actor('trainer'); const history=await rpc('academy_course_survey_history',[]); equal(history.length,1);equal(history[0].responseCount,1);equal(history[0].averageNps,8);
     await actor('student');await denied('select academy_course_survey_history()');
-    await actor('student','anon'); await denied('select academy_edition_survey_state($1)',[one.run]); await denied('select * from academy_edition_survey_responses');
+    await actor('student');await denied('select * from academy_gdpr_teaching_interest($1)',[ids.student]);
+    await f.service();equal((await rpc('academy_gdpr_teaching_interest',[ids.student])).map(row=>row.response_id).sort(),[first,second].sort());
+    equal(await rpc('academy_gdpr_teaching_interest',[ids.other]),[]);
+    await actor('student','anon');await denied('select * from academy_gdpr_teaching_interest($1)',[ids.student]); await denied('select academy_edition_survey_state($1)',[one.run]); await denied('select * from academy_edition_survey_responses');
     console.log(`PASS ${checks} edition survey database assertions`);
 } finally { await db.close(); }

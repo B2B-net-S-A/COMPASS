@@ -30,7 +30,7 @@ import type { Database } from '@/lib/supabase/database.types'
 type AcademyTableName = 'course_completions' | 'course_run_registrations' | 'course_materials'
     | 'academy_user_capabilities' | 'course_staff' | 'course_run_staff'
     | 'academy_organizers' | 'academy_m365_identities' | 'academy_notification_receipts'
-    | 'session_attendance'
+    | 'session_attendance' | 'academy_edition_survey_responses' | 'academy_webinar_roster'
 export type TableName = keyof Database['public']['Tables'] | AcademyTableName
 
 /** Osoba z kontem w aplikacji (`profiles`) albo kontraktor u klienta (`contractors`). */
@@ -93,6 +93,7 @@ export const EMPLOYEE_SOURCES: readonly SubjectSource[] = [
     { table: 'course_quiz_attempts', column: 'user_id', label: 'Podejścia do quizów' },
     { table: 'course_ratings', column: 'user_id', label: 'Oceny szkoleń' },
     { table: 'course_survey_responses', column: 'user_id', label: 'Ankiety po szkoleniach' },
+    { table: 'academy_edition_survey_responses', column: 'user_id', label: 'Ankiety po edycjach szkoleń', select: 'id,run_id,user_id,enrollment_id,registration_id,overall,trainer,materials,difficulty,future_topics,nps,created_at' },
     { table: 'course_questions', column: 'user_id', label: 'Pytania do szkoleń' },
     { table: 'course_answers', column: 'user_id', label: 'Odpowiedzi w szkoleniach' },
     { table: 'learning_path_enrollments', column: 'user_id', label: 'Ścieżki rozwoju' },
@@ -298,10 +299,12 @@ export const EMPLOYEE_RETAINED: readonly RetainedRecord[] = [
     { label: 'Umowy i dokumenty umowne', reason: 'Dokumentacja kontraktowa — własny okres przechowywania.' },
     { label: 'Wnioski urlopowe i obecność', reason: 'Ewidencja nieobecności — powiązana z ewidencją czasu pracy.' },
     { label: 'Dziennik czynności (audit_logs)', reason: 'Rozliczalność (art. 5 ust. 2 RODO); usuwany osobno po 12 miesiącach.' },
+    { label: 'Dowody odbioru materiałów i przekazania praw (academy_handovers)', reason: 'Dokumentacja kontraktowa — zachowana do oceny przez uprawnionego administratora według istniejących zasad retencji; brak automatycznego kasowania.' },
     { label: 'Anonimowe wywiady wyjściowe', reason: 'Nie mają już powiązania z osobą (user_id = NULL od momentu zgłoszenia).' },
 ] as const
 
 export const CONTRACTOR_RETAINED: readonly RetainedRecord[] = [
+    { label: 'Dowody odbioru materiałów i przekazania praw (academy_handovers)', reason: 'Dokumentacja kontraktowa — zachowana do oceny przez uprawnionego administratora według istniejących zasad retencji; brak automatycznego kasowania.' },
     { label: 'Wejścia, zejścia i umieszczenia', reason: 'Dokumentacja współpracy z klientem — zostają jako pseudonimowe.' },
     { label: 'Log rozmów i wywiady', reason: 'Zapisy działań opiekuna — zostają bez danych identyfikujących.' },
     { label: 'Marże, stawki i numery zamówień', reason: 'Dane handlowe, nie osobowe.' },
@@ -313,6 +316,11 @@ export const CONTRACTOR_RETAINED: readonly RetainedRecord[] = [
  * dlatego jest groźny.
  */
 export const EMPLOYEE_MANUAL_FOLLOW_UPS: readonly string[] = [
+    'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie profiles/contractors nie zaciera tych kopii; wymagają osobnego, udokumentowanego przeglądu i obsługi żądania.',
+    'Akademia: academy_edition_survey_responses (swobodne future_topics i snapshot pytań) oraz academy_private.edition_teaching_interest (proposed_topic i preferencja kontaktu) wymagają przeglądu zakresu żądania. Odpowiedzi są niezmienne; nie są automatycznie zacierane przez tę operację.',
+    'Akademia: źródła i podglądy academy_webinar_import_batches, raporty academy_webinar_attendance oraz czynności operatora wymagają ręcznej obsługi bez zmiany dowodów innych uczestników. Pliki CSV i korespondencja seryjna u organizatora oraz kopie zapasowe pozostają poza zacieraniem bazy.',
+    'Akademia: academy_handovers i dokumenty przekazania praw na wspólnym dysku zachowują dowody kontraktowe oraz osoby składające, recenzujące i contributors; administrator ocenia żądanie według istniejących zasad, bez automatycznego usuwania.',
+
     'Pliki w Storage (CV, faktury, dokumenty onboardingu/exitu) — odnośniki w bazie są zatarte, same obiekty trzeba usunąć w panelu Storage.',
     'Konto w auth.users — usunięcie/zablokowanie przez Admin API; zatarcie profilu odcina logowanie, ale nie kasuje tożsamości w warstwie auth.',
     'Skrzynka M365 i reguły przekierowania poczty — poza COMPASS-em.',
@@ -320,6 +328,11 @@ export const EMPLOYEE_MANUAL_FOLLOW_UPS: readonly string[] = [
 ] as const
 
 export const CONTRACTOR_MANUAL_FOLLOW_UPS: readonly string[] = [
+    'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie profiles/contractors nie zaciera tych kopii; wymagają osobnego, udokumentowanego przeglądu i obsługi żądania.',
+    'Akademia: academy_edition_survey_responses (swobodne future_topics i snapshot pytań) oraz academy_private.edition_teaching_interest (proposed_topic i preferencja kontaktu) wymagają przeglądu zakresu żądania. Odpowiedzi są niezmienne; nie są automatycznie zacierane przez tę operację.',
+    'Akademia: źródła i podglądy academy_webinar_import_batches, raporty academy_webinar_attendance oraz czynności operatora wymagają ręcznej obsługi bez zmiany dowodów innych uczestników. Pliki CSV i korespondencja seryjna u organizatora oraz kopie zapasowe pozostają poza zacieraniem bazy.',
+    'Akademia: academy_handovers i dokumenty przekazania praw na wspólnym dysku zachowują dowody kontraktowe oraz osoby składające, recenzujące i contributors; administrator ocenia żądanie według istniejących zasad, bez automatycznego usuwania.',
+
     'Arkusze źródłowe na SharePoint („Wejścia i zejścia od klientów") — cron tc-sync wgra nazwisko z powrotem przy najbliższym przebiegu, jeśli zostanie w pliku.',
     'Załączniki wywiadów w Storage (lifecycle-docs) — do usunięcia ręcznie.',
 ] as const

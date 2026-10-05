@@ -25,7 +25,7 @@ import {
     type GdprSubjectType,
     type RetainedRecord,
 } from '@/lib/gdpr/subject-data'
-import { ACADEMY_EXPORT_FOLLOW_UPS, SUBJECT_ACADEMY_AUDIT_ACTIONS, parseAttendanceRosterRows, subjectAcademyAuditRow, subjectCompletionRow, subjectTeamsReportRows } from '@/lib/gdpr/academy-export'
+import { ACADEMY_EXPORT_FOLLOW_UPS, SUBJECT_ACADEMY_AUDIT_ACTIONS, ACADEMY_CYCLE_EXPORT_FOLLOW_UPS, subjectEditionSurveyRow, subjectTeachingInterestRow, subjectWebinarRosterRow, subjectWebinarAttendanceRow, parseAttendanceRosterRows, subjectAcademyAuditRow, subjectCompletionRow, subjectTeamsReportRows } from '@/lib/gdpr/academy-export'
 
 /**
  * Górny limit wierszy na jedno źródło. `audit_logs` osoby aktywnej od roku to
@@ -73,6 +73,7 @@ function genericDb(): GenericDb {
 function primaryKeyColumns(table: string): string[] {
     // Confirmed against the deployed public schema; every other source has id PK.
     switch (table) {
+        case 'academy_webinar_attendance': return ['roster_id', 'session_id']
         case 'academy_notification_receipts': return ['dedupe_key']
         case 'academy_user_capabilities':
         case 'work_clock_consents': return ['user_id']
@@ -186,7 +187,75 @@ export async function exportPersonalData(input: {
                     const projected = subjectCompletionRow(row, input.subjectId)
                     return projected ? [projected] : []
                 }),
-            } : result))
+            } : source.table === 'academy_edition_survey_responses' ? { ...result, rows: result.rows.flatMap(row => { const own = subjectEditionSurveyRow(row, input.subjectId); return own ? [own] : [] }) } : result))
+        }
+
+        // Academy cycle data uses reviewed identity links, not email/name guesses.
+        let ownUserId: string | null = input.subjectType === 'employee' ? input.subjectId : null
+        const ownContractorIds: string[] = input.subjectType === 'contractor' ? [input.subjectId] : []
+        if (input.subjectType === 'employee') {
+            const linked = await readBoundedRows('contractors', () => db.from('contractors').select('id,profile_id').eq('profile_id', input.subjectId))
+            if (linked.error || linked.truncated) unavailable.push({ table: 'academy_webinar_roster', reason: 'Niepełne powiązania kontraktorów z profilem; dodatkowe zapisy webinaru wymagają przeglądu.' })
+            else for (const row of linked.rows) if (typeof row.id === 'string' && row.profile_id === input.subjectId) ownContractorIds.push(row.id)
+        } else {
+            const contractor = sections.find(section => section.table === 'contractors')?.rows.find(row => row.id === input.subjectId)
+            if (typeof contractor?.profile_id === 'string') ownUserId = contractor.profile_id
+        }
+        const identity = { userId: ownUserId, contractorIds: ownContractorIds }
+        const rosterRows = new Map<string, RowBag>()
+        let rosterTruncated = false
+        let rosterFailed = false
+        const rosterQueries = [
+            ...(ownUserId ? [{ column: 'user_id', values: [ownUserId] }] : []),
+            ...(ownContractorIds.length ? [{ column: 'contractor_id', values: ownContractorIds }] : []),
+        ]
+        for (const scope of rosterQueries) {
+            for (let offset = 0; offset < scope.values.length; offset += 50) {
+                const result = await readBoundedRows('academy_webinar_roster', () => db.from('academy_webinar_roster')
+                    .select('id,run_id,user_id,contractor_id,email,aliases,full_name,contractual_email,status,created_at,updated_at').in(scope.column, scope.values.slice(offset,offset+50)))
+                if (result.error) { rosterFailed = true; unavailable.push({ table: 'academy_webinar_roster', reason: result.error });continue }
+                rosterTruncated ||= result.truncated
+                for (const row of result.rows) {
+                    const own = subjectWebinarRosterRow(row, identity)
+                    if (!own || typeof own.id !== 'string') { unavailable.push({ table: 'academy_webinar_roster', reason: 'Sprzeczne lub niepoprawne mapowanie osoby w webinarze wymaga przeglądu; rekord nie jest udostępniony automatycznie.' });continue }
+                    if (rosterRows.size >= MAX_ROWS_PER_SOURCE && !rosterRows.has(own.id)) { rosterTruncated = true; continue }
+                    rosterRows.set(own.id,own)
+                }
+            }
+        }
+        const ownRoster = [...rosterRows.values()].slice(0,MAX_ROWS_PER_SOURCE)
+        sections.push(exportSection('academy_webinar_roster','Własne zapisy zewnętrznych webinarów',{ rows: ownRoster, truncated: rosterTruncated }))
+        const ownRosterIds = new Set(ownRoster.map(row => String(row.id)))
+        const webinarAttendance: RowBag[] = []
+        let attendanceTruncated = rosterTruncated
+        for (let offset = 0; offset < ownRoster.length; offset += 50) {
+            const result = await readBoundedRows('academy_webinar_attendance', () => db.from('academy_webinar_attendance')
+                .select('roster_id,session_id,attended_seconds,status,imported_at').in('roster_id', ownRoster.slice(offset,offset+50).map(row => String(row.id))))
+            if (result.error) { unavailable.push({ table: 'academy_webinar_attendance', reason: result.error });continue }
+            attendanceTruncated ||= result.truncated
+            const projected = result.rows.flatMap(row => { const own = subjectWebinarAttendanceRow(row,ownRosterIds);return own ? [own] : [] })
+            if (webinarAttendance.length + projected.length > MAX_ROWS_PER_SOURCE) attendanceTruncated = true
+            webinarAttendance.push(...projected.slice(0,MAX_ROWS_PER_SOURCE-webinarAttendance.length))
+            if (attendanceTruncated) break
+        }
+        if (rosterFailed) unavailable.push({ table: 'academy_webinar_attendance', reason: 'Niepełny zakres powiązanych zapisów webinaru; obecność wymaga dalszego przeglądu.' })
+        sections.push(exportSection('academy_webinar_attendance','Własna frekwencja w zewnętrznych webinarach',{rows:webinarAttendance.slice(0,MAX_ROWS_PER_SOURCE),truncated:attendanceTruncated || webinarAttendance.length>MAX_ROWS_PER_SOURCE}))
+        if (ownUserId) {
+            if (input.subjectType === 'contractor') {
+                const surveys=await readBoundedRows('academy_edition_survey_responses',()=>db.from('academy_edition_survey_responses').select('id,run_id,user_id,enrollment_id,registration_id,overall,trainer,materials,difficulty,future_topics,nps,created_at').eq('user_id',ownUserId!))
+                if(surveys.error) unavailable.push({table:'academy_edition_survey_responses',reason:surveys.error})
+                else sections.push(exportSection('academy_edition_survey_responses','Ankiety powiązanego konta Compass',{...surveys,rows:surveys.rows.flatMap(row=>{const own=subjectEditionSurveyRow(row,ownUserId!);return own?[own]:[]})}))
+            }
+            const responses = sections.find(section=>section.table==='academy_edition_survey_responses')
+            const ownResponses = new Set(responses?.rows.map(row=>String(row.id)) ?? [])
+            const interest = await db.rpc('academy_gdpr_teaching_interest',{p_user_id:ownUserId})
+            if (interest.error) unavailable.push({table:'academy_private.edition_teaching_interest',reason:interest.error.message})
+            else if (!Array.isArray(interest.data)) unavailable.push({table:'academy_private.edition_teaching_interest',reason:'Niepoprawny format deklaracji prowadzenia; wymagany przegląd.'})
+            else {
+                const ownRows = interest.data.flatMap(row=>{const own=subjectTeachingInterestRow(row as RowBag,ownUserId!,ownResponses);return own?[own]:[]})
+                sections.push(exportSection('academy_private.edition_teaching_interest','Własne deklaracje prowadzenia szkoleń',{rows:ownRows.slice(0,MAX_ROWS_PER_SOURCE),truncated:interest.data.length>MAX_ROWS_PER_SOURCE || !!responses?.truncated}))
+                if (ownRows.length !== interest.data.length) unavailable.push({table:'academy_private.edition_teaching_interest',reason:'Nie wszystkie deklaracje mają potwierdzony własny rekord odpowiedzi; pominięte wpisy wymagają przeglądu.'})
+            }
         }
 
         if (input.subjectType === 'employee') {
@@ -293,6 +362,7 @@ export async function exportPersonalData(input: {
             manualFollowUps: [
                 ...manualFollowUpsFor(input.subjectType),
                 ...(input.subjectType === 'employee' ? ACADEMY_EXPORT_FOLLOW_UPS : []),
+                ...ACADEMY_CYCLE_EXPORT_FOLLOW_UPS,
             ],
         }
     })

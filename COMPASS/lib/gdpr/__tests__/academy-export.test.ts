@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseAttendanceRosterRows, subjectAcademyAuditRow, subjectCompletionRow, subjectTeamsReportRows } from '../academy-export'
+import { subjectEditionSurveyRow, subjectTeachingInterestRow, subjectWebinarRosterRow, subjectWebinarAttendanceRow, parseAttendanceRosterRows, subjectAcademyAuditRow, subjectCompletionRow, subjectTeamsReportRows } from '../academy-export'
 
 const USER = '11111111-1111-4111-8111-111111111111'
 
@@ -67,5 +67,26 @@ describe('Academy subject export projections', () => {
         expect(parseAttendanceRosterRows([row, row], ['session'])).toBeNull()
         expect(parseAttendanceRosterRows([{ ...row, participants: [row.participants[0], row.participants[0]] }], ['session'])).toBeNull()
         expect(parseAttendanceRosterRows([{ ...row, participants: Array.from({ length: 501 }, (_, i) => ({ profileId: String(i), identities: [], verifiedEmails: [] })) }], ['session'])).toBeNull()
+    })
+})
+
+describe('Training cycle GDPR subject projections', () => {
+    it('rejects cross-subject webinar mappings and discards source/batch operator data', () => {
+        const row={id:'own',user_id:USER,contractor_id:'contract-own',email:'own@example.com',aliases:['own-alias@example.com'],full_name:'Own',created_by:'other-admin',preview:{email:'other@example.com'}}
+        const own=subjectWebinarRosterRow(row,{userId:USER,contractorIds:['contract-own']})
+        expect(own).toMatchObject({id:'own',email:'own@example.com'})
+        expect(JSON.stringify(own)).not.toContain('other')
+        expect(subjectWebinarRosterRow({...row,user_id:'other'}, {userId:USER,contractorIds:['contract-own']})).toBeNull()
+        expect(subjectWebinarRosterRow({...row,contractor_id:'other-contractor'}, {userId:USER,contractorIds:['contract-own']})).toBeNull()
+        expect(subjectWebinarRosterRow({...row,user_id:null}, {userId:null,contractorIds:['contract-own']})).not.toBeNull()
+        expect(subjectWebinarAttendanceRow({roster_id:'other',session_id:'s'},new Set(['own']))).toBeNull()
+        expect(subjectWebinarAttendanceRow({roster_id:'own',session_id:'s',attended_seconds:10,imported_by:'other',batch_id:'all-users'},new Set(['own']))).toEqual({roster_id:'own',session_id:'s',attended_seconds:10})
+    })
+    it('projects own edition answers and declaration while excluding another respondent and unreviewed snapshot', () => {
+        expect(subjectEditionSurveyRow({id:'r',user_id:USER,overall:5,question_snapshot:{other_email:'other@example.com'}},USER)).toEqual({id:'r',user_id:USER,overall:5})
+        expect(subjectEditionSurveyRow({id:'other',user_id:'other'},USER)).toBeNull()
+        expect(subjectTeachingInterestRow({response_id:'r',user_id:USER,willing_to_teach:true,proposed_topic:'Pega',contact_preference:'compass',other:'private'},USER,new Set(['r']))).toEqual({response_id:'r',willing_to_teach:true,proposed_topic:'Pega',contact_preference:'compass'})
+        expect(subjectTeachingInterestRow({response_id:'other',user_id:USER},USER,new Set(['r']))).toBeNull()
+        expect(subjectTeachingInterestRow({response_id:'r',user_id:'other'},USER,new Set(['r']))).toBeNull()
     })
 })
