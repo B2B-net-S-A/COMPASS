@@ -13,7 +13,9 @@ try {
     const dir=new URL('../supabase/migrations/',import.meta.url);
     const matches=fs.readdirSync(dir).filter(n=>n.endsWith('_academy_edition_surveys.sql'));
     equal(matches.length,1); await db.exec(fs.readFileSync(new URL(matches[0],dir),'utf8'));
-    await db.exec(fs.readFileSync(new URL('20261005183000_academy_cycle_gdpr_export.sql',dir),'utf8'));
+    const gdpr=fs.readdirSync(dir).filter(name=>name.endsWith('_academy_cycle_gdpr_export.sql'));
+    assert.equal(gdpr.length,1,'cycle GDPR migration must be unambiguous');
+    await db.exec(fs.readFileSync(new URL(gdpr[0],dir),'utf8'));
     await actor('admin'); await rpc('academy_set_trainer',[ids.trainer,true]);
     await actor('trainer');
     const c=await rpc('academy_create_course',[{title:'Cybersecurity survey',category:'IT',delivery_mode:'blended',completion_rules:{quiz_required:false,require_all_lessons:true,attendance_percent:80}}]);

@@ -17,7 +17,10 @@ async function makeRun(course, version, capacity = 100, publish = true) {
 }
 try {
  await owner(); await db.exec('CREATE TABLE public.contractors(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),email text,full_name text,profile_id uuid REFERENCES profiles(id));');
- await db.exec(await fs.readFile(new URL('../supabase/migrations/20261005092815_academy_webinar_import.sql', import.meta.url), 'utf8'));
+ const dir=new URL('../supabase/migrations/',import.meta.url);
+ const matches=(await fs.readdir(dir)).filter(name=>name.endsWith('_academy_webinar_import.sql'));
+ assert.equal(matches.length,1,'webinar migration must be unambiguous');
+ await db.exec(await fs.readFile(new URL(matches[0],dir),'utf8'));
  await actor('admin'); await rpc('academy_set_rollout', ['open', []]); await rpc('academy_set_trainer', [ids.trainer, true]);
  await actor('trainer'); const { course_id: course, version_id: version } = await rpc('academy_create_course', [{ title: 'Cybersecurity imported webinar', category: 'IT', delivery_mode: 'live' }]);
  await rpc('academy_update_course', [course, { completion_rules: { quiz_required: false, require_all_lessons: false, attendance_percent: 80 } }]);

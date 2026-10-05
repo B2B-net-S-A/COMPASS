@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
 const f=await createAcademyDatabase({materialProjection:true,materialReviewIndependence:true});
 const {db,ids,sql,actor,owner,rpc}=f;
-await owner(); await db.exec(readFileSync(new URL('../supabase/migrations/20261005092743_academy_audio_handover.sql',import.meta.url),'utf8'));
+const dir=new URL('../supabase/migrations/',import.meta.url);
+const matches=readdirSync(dir).filter(name=>name.endsWith('_academy_audio_handover.sql'));
+assert.equal(matches.length,1,'handover migration must be unambiguous');
+await owner(); await db.exec(readFileSync(new URL(matches[0],dir),'utf8'));
 await actor('admin'); await rpc('academy_set_trainer',[ids.trainer,true]); await actor('trainer');
 const course=await rpc('academy_create_course',[{title:'Contracted delivery',category:'IT',delivery_mode:'self_paced'}]);
 const lesson=(await sql("insert into course_lessons(course_id,version_id,title,order_index,content_md) values($1,$2,'Module',0,'Training') returning id",[course.course_id,course.version_id])).rows[0].id;

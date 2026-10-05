@@ -92,3 +92,25 @@ netto za live, razem 44 400 zł netto. Podsumowania kolumn w mailu
 wymaga wyjaśnienia, ponieważ tabela osobno wykazuje live. To ustalenia
 biznesowe do potwierdzenia, nie zatwierdzenie wydatku ani nowy koszt panelu.
 Aktualny goal nie obejmuje budowy osobnego modułu rozliczeń szkoleniowców.
+
+## Postęp konfiguracji 05.10.2026
+
+W rzeczywistym Chrome administratora zapisano cztery nieopublikowane szkice
+firmowe (`live`, 180 minut orientacyjnie), z potwierdzonym odczytem bazy:
+
+- Cybersecurity: `b13b252b-3bc6-483c-b77e-bbe37e8705b8`.
+- DORA: `2aa452c2-fd64-442f-835f-a7867cbaa564`.
+- PEGA: `997ea9a3-7006-4377-9744-ad6e0efa9c5a`.
+- SAFe: `7958c081-b9ba-4aab-989f-8ecb0d941ba9`.
+
+Nazwy prowadzących i planowane daty zapisano w opisach. Nie przypisano
+niepotwierdzonych kont, nie opublikowano programów ani edycji i nie wysłano
+korespondencji. Domyślny poziom i próg obecności pozostają robocze;
+opisy jawnie wymagają ich zatwierdzenia przed publikacją. To konfiguracja
+szkiców, nie zakończony odbiór tych szkoleń.
+
+Dodatkowa zależność importu od `contractors` została zweryfikowana wyłącznie
+w katalogu produkcji: `id uuid NOT NULL PRIMARY KEY`, nullable `email text`,
+nullable `profile_id uuid REFERENCES profiles(id) ON DELETE SET NULL`.
+Hosted fixture odtwarza tylko te kolumny po bazowym kontrakcie Akademii.
+Nie kopiuje kartotek kontraktorów ani nie deklaruje odtworzenia całego HR.
