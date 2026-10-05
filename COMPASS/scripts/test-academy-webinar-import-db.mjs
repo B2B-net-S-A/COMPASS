@@ -2,10 +2,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
 const fixture = await createAcademyDatabase({ activationBudget: true, materialProjection: true });
-const { db, sql, actor, owner, rpc, ids } = fixture;
+const { db, sql, actor, owner, rpc: fixtureRpc, ids } = fixture;
+// node-postgres encodes JS arrays as PostgreSQL arrays, not JSON arrays.
+// Serialize only declared jsonb arguments; uuid[] parameters must stay arrays.
+function webinarArguments(name, args) {
+ const jsonIndex = name === 'academy_preview_webinar_import' ? 2 : name === 'academy_commit_webinar_import' ? 1 : -1;
+ return args.map((value, index) => index === jsonIndex && typeof value !== 'string' ? JSON.stringify(value) : value);
+}
+async function rpc(name, args = []) { return fixtureRpc(name, webinarArguments(name, args)); }
 let checks = 0;
 function equal(a, b) { assert.deepEqual(a, b); checks++; }
-async function denied(...args) { await fixture.expectDenied(...args); checks++; }
+async function denied(statement, args = [], message) {
+ const name = statement.includes('academy_preview_webinar_import(') ? 'academy_preview_webinar_import' : statement.includes('academy_commit_webinar_import(') ? 'academy_commit_webinar_import' : '';
+ await fixture.expectDenied(statement, webinarArguments(name, args), message); checks++;
+}
 const sourceHash = 'a'.repeat(64);
 const future = h => new Date(Date.now() + h * 3600000).toISOString();
 async function preview(run, rows, kind = 'registrations', session = null) { return rpc('academy_preview_webinar_import', [run, kind, rows, sourceHash, session]); }
@@ -126,13 +136,13 @@ try {
   const raceB = await preview(raceRun, [{ email: 'race@example.test', fullName: 'Race' }]);
   const connectionA = await fixture.connectSession('admin'); const connectionB = await fixture.connectSession('admin');
   try {
-   const results = await Promise.all([connectionA.rpc('academy_commit_webinar_import', [raceA.id, {}]), connectionB.rpc('academy_commit_webinar_import', [raceB.id, {}])]);
+   const results = await Promise.all([connectionA.rpc('academy_commit_webinar_import', webinarArguments('academy_commit_webinar_import', [raceA.id, {}])), connectionB.rpc('academy_commit_webinar_import', webinarArguments('academy_commit_webinar_import', [raceB.id, {}]))]);
    equal(results.filter(result => result.alreadyCommitted).length, 1);
    equal((await sql('select count(*)::int n from academy_webinar_roster where run_id=$1', [raceRun])).rows[0].n, 1);
    const { run: capacityRace } = await makeRun(course, version, 1); await actor('admin');
    const overflowA = await preview(capacityRace, [{ email: 'raceA@example.test', fullName: 'A' }]);
    const overflowB = await preview(capacityRace, [{ email: 'raceB@example.test', fullName: 'B' }]);
-   const overflow = await Promise.allSettled([connectionA.rpc('academy_commit_webinar_import', [overflowA.id, {}]), connectionB.rpc('academy_commit_webinar_import', [overflowB.id, {}])]);
+   const overflow = await Promise.allSettled([connectionA.rpc('academy_commit_webinar_import', webinarArguments('academy_commit_webinar_import', [overflowA.id, {}])), connectionB.rpc('academy_commit_webinar_import', webinarArguments('academy_commit_webinar_import', [overflowB.id, {}]))]);
    equal(overflow.filter(result => result.status === 'fulfilled').length, 1);
    equal((await sql('select count(*)::int n from academy_webinar_roster where run_id=$1', [capacityRace])).rows[0].n, 1);
   } finally { await connectionA.db.close(); await connectionB.db.close(); }
