@@ -7,7 +7,9 @@
 //   1. OPEN   — approved leaves with a substitute whose window is open but which have
 //               no rule yet.
 //   2. CLOSE  — rules belonging to leaves that ended or are no longer approved.
-//   3. SWEEP  — rules found in mailboxes with no live leave behind them.
+//   3. SWEEP  — rules found in mailboxes with no live leave behind them. Rules that
+//               do belong to a live leave get their filters re-applied, so a change
+//               to what is forwarded reaches rules created before it.
 //
 // Pass 3 is not belt-and-braces. Passes 1–2 work off `outlook_forward_rule_id`, so if
 // that id is ever lost (failed write, restored backup, row deleted) the rule becomes
@@ -20,6 +22,7 @@ import { logSystemAudit } from '@/lib/audit/system-log'
 import {
     deleteForwardRule,
     listCompassForwardRules,
+    updateForwardRuleFilters,
 } from '@/lib/mailbox/graph-inbox-rules'
 import { closeForwardRule, openForwardRule } from '@/lib/mailbox/forward-rule-sync'
 import { logger } from '@/lib/logger'
@@ -41,6 +44,8 @@ export interface ForwardReconcileStats {
     closed: number
     /** Rules removed by the sweep — no live leave was behind them. */
     orphansRemoved: number
+    /** Live rules whose filters were re-applied in pass 3. */
+    filtersUpdated: number
     /** Mailboxes actually inspected in pass 3. */
     sweptMailboxes: number
     errors: string[]
@@ -93,6 +98,7 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
         opened: 0,
         closed: 0,
         orphansRemoved: 0,
+        filtersUpdated: 0,
         sweptMailboxes: 0,
         errors: [],
     }
@@ -248,7 +254,17 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
         stats.sweptMailboxes++
 
         for (const rule of rules) {
-            if (legitRuleByLeave.get(rule.leaveId) === rule.id) continue
+            if (legitRuleByLeave.get(rule.leaveId) === rule.id) {
+                // Sent every run rather than diffed: Graph normalises the predicates it
+                // returns, and there are only a handful of live rules at a time.
+                const res = await updateForwardRuleFilters({ userEmail: email, ruleId: rule.id })
+                if (!res.success) {
+                    stats.errors.push(`${email}: nie zaktualizowano filtrów reguły ${rule.id}`)
+                } else if (!res.skipped) {
+                    stats.filtersUpdated++
+                }
+                continue
+            }
 
             const res = await deleteForwardRule({ userEmail: email, ruleId: rule.id })
             if (!res.success) {
@@ -285,6 +301,7 @@ export async function reconcileForwardRules(admin: Admin): Promise<ForwardReconc
         opened: stats.opened,
         closed: stats.closed,
         orphansRemoved: stats.orphansRemoved,
+        filtersUpdated: stats.filtersUpdated,
         sweptMailboxes: stats.sweptMailboxes,
         errorCount: stats.errors.length,
         errors: stats.errors.slice(0, 15),

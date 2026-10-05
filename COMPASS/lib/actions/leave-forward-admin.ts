@@ -342,6 +342,7 @@ export async function runForwardReconcileNow(): Promise<{
     opened: number
     closed: number
     orphansRemoved: number
+    filtersUpdated: number
     errors: string[]
 }> {
     const ctx = await requireAdminAction()
@@ -354,6 +355,7 @@ export async function runForwardReconcileNow(): Promise<{
         opened: stats.opened,
         closed: stats.closed,
         orphansRemoved: stats.orphansRemoved,
+        filtersUpdated: stats.filtersUpdated,
         errorCount: stats.errors.length,
     })
     logger.info({ event: 'forward_rules.manual_run', ...stats })
@@ -362,6 +364,7 @@ export async function runForwardReconcileNow(): Promise<{
         opened: stats.opened,
         closed: stats.closed,
         orphansRemoved: stats.orphansRemoved,
+        filtersUpdated: stats.filtersUpdated,
         errors: stats.errors.slice(0, 15),
     }
 }

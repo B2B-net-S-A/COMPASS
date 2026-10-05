@@ -9,6 +9,9 @@ import { logAudit } from '@/lib/actions/audit'
 import { DB_ROLES, type DbRole, roleLabelPl } from '@/lib/types/role'
 import { sendRoleChangeEmail } from '@/lib/email'
 import { excludeExited } from '@/lib/hr/employment-window'
+import { runAction, ExpectedError, type ActionResult } from '@/lib/actions/action-result'
+import { revokeAccountAccess } from '@/lib/auth/account-access'
+import { warsawDate } from '@/lib/oof/oof-dates'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -47,10 +50,10 @@ export interface ListAllUsersResult {
 async function requireSuperAdmin() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
+    if (!user) throw new ExpectedError('Unauthorized')
 
     if (!isSuperAdmin(user.email)) {
-        throw new Error('Wymagane uprawnienia Super Admina.')
+        throw new ExpectedError('Wymagane uprawnienia Super Admina.')
     }
 
     return { user }
@@ -60,17 +63,17 @@ async function fetchTargetUser(targetUserId: string) {
     const admin = createServiceClient()
     const { data, error } = await admin.auth.admin.getUserById(targetUserId)
     if (error || !data?.user) {
-        throw new Error('Nie znaleziono użytkownika.')
+        throw new ExpectedError('Nie znaleziono użytkownika.')
     }
     return data.user
 }
 
 function ensureCanModify(actorId: string, targetUser: { id: string; email?: string | null }) {
     if (actorId === targetUser.id) {
-        throw new Error('Nie możesz zmieniać własnego konta tą drogą — użyj formularza zmiany hasła.')
+        throw new ExpectedError('Nie możesz zmieniać własnego konta tą drogą — użyj formularza zmiany hasła.')
     }
     if (targetUser.email && isSuperAdmin(targetUser.email)) {
-        throw new Error('Nie można modyfikować konta innego Super Admina.')
+        throw new ExpectedError('Nie można modyfikować konta innego Super Admina.')
     }
 }
 
@@ -839,6 +842,107 @@ export async function archiveEmployee(
         sendManagerEmail: options?.sendManagerEmail === true,
     })
     return { interviewId }
+}
+
+/**
+ * „Dezaktywuj konto" — natychmiastowe odejście BEZ procesu offboardingu.
+ *
+ * Archiwizacja (`archiveEmployee`) tylko uruchamia offboarding: status `offboarding`
+ * przechodzi przez wszystkie warstwy dostępu, więc konto działa aż do „Oznacz jako exited".
+ * Tu od razu: `employment_status='exited'` (drzwi, middleware, withAuth) + blokada konta
+ * w Supabase Auth i unieważnienie sesji (Data API, patrz account-access.ts).
+ * `termination_date` = ostatni dzień pracy — od niego liczy się payroll miesięczny.
+ * Cofnięcie pomyłki: Administracja użytkownikami → Odblokuj + zmiana statusu.
+ */
+export async function deactivateEmployee(targetUserId: string, lastWorkDay?: string): Promise<ActionResult<void>> {
+    return runAction('deactivateEmployee', async () => {
+        const { user: actor } = await requireSuperAdmin()
+        const target = await fetchTargetUser(targetUserId)
+        ensureCanModify(actor.id, target)
+
+        const date = lastWorkDay?.trim() || warsawDate(new Date())
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            throw new ExpectedError('Ostatni dzień pracy musi być w formacie YYYY-MM-DD.')
+        }
+
+        const admin = createServiceClient()
+        const { error: exitErr } = await admin
+            .from('profiles')
+            .update({ employment_status: 'exited', termination_date: date })
+            .eq('id', target.id)
+        if (exitErr) throw new Error(`deactivateEmployee: zapis statusu: ${exitErr.message}`)
+
+        try {
+            await revokeAccountAccess(target.id)
+        } catch (e) {
+            // Status już odcina aplikację; bez blokady w Auth zostaje Data API. Ponowienie jest
+            // bezpieczne (oba kroki idempotentne), więc mówimy wprost, co zrobić.
+            logCompat.error('[deactivateEmployee] revokeAccountAccess failed:', e)
+            throw new ExpectedError(
+                'Status zmieniony na „nieaktywne", ale nie udało się zablokować konta w logowaniu — kliknij „Dezaktywuj" jeszcze raz.',
+            )
+        }
+
+        const { error: eventErr } = await admin.from('lifecycle_events').insert({
+            user_id: target.id,
+            event_type: 'exited',
+            metadata: { source: 'deactivate', termination_date: date },
+            created_by: actor.id,
+        })
+        if (eventErr) logCompat.error('[deactivateEmployee] lifecycle_events insert failed:', eventErr)
+
+        await logAudit(actor.id, 'EMPLOYEE_EXITED', {
+            user_id: target.id,
+            target_email: target.email ?? null,
+            source: 'deactivate',
+            termination_date: date,
+        })
+    })
+}
+
+/**
+ * „Przywróć konto" — odwrotność `deactivateEmployee` (np. pomyłkowa dezaktywacja albo powrót).
+ * Status → `active`, `termination_date` → NULL (inaczej raporty miesięczne dalej traktowałyby
+ * osobę jako odeszłą), zdjęcie blokady w Auth. Poprzednią datę zakończenia zapisujemy w audycie.
+ * Działa tylko dla `exited` — offboarding ma własny przebieg w /internal/lifecycle.
+ */
+export async function reactivateEmployee(targetUserId: string): Promise<ActionResult<void>> {
+    return runAction('reactivateEmployee', async () => {
+        const { user: actor } = await requireSuperAdmin()
+        const target = await fetchTargetUser(targetUserId)
+        ensureCanModify(actor.id, target)
+
+        const admin = createServiceClient()
+        const { data: profile, error: readErr } = await admin
+            .from('profiles')
+            .select('employment_status, termination_date')
+            .eq('id', target.id)
+            .maybeSingle<{ employment_status: string | null; termination_date: string | null }>()
+        if (readErr) throw new Error(`reactivateEmployee: odczyt profilu: ${readErr.message}`)
+        if (profile?.employment_status !== 'exited') {
+            throw new ExpectedError('To konto nie jest nieaktywne — nie ma czego przywracać.')
+        }
+
+        // Najpierw Auth, potem status: dopóki status to `exited`, aplikacja i tak nie wpuszcza,
+        // a ponowne kliknięcie po częściowej awarii wciąż przechodzi przez warunek `exited` wyżej.
+        const { error: unbanErr } = await admin.auth.admin.updateUserById(target.id, { ban_duration: 'none' })
+        if (unbanErr) {
+            logCompat.error('[reactivateEmployee] unban failed:', unbanErr)
+            throw new ExpectedError('Nie udało się odblokować logowania — nic nie zmieniono, spróbuj ponownie.')
+        }
+
+        const { error: statusErr } = await admin
+            .from('profiles')
+            .update({ employment_status: 'active', termination_date: null })
+            .eq('id', target.id)
+        if (statusErr) throw new Error(`reactivateEmployee: zapis statusu: ${statusErr.message}`)
+
+        await logAudit(actor.id, 'EMPLOYEE_REACTIVATED', {
+            user_id: target.id,
+            target_email: target.email ?? null,
+            previous_termination_date: profile.termination_date,
+        })
+    })
 }
 
 // Structured result so the real reason survives Next.js prod error masking

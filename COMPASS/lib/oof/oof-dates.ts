@@ -61,14 +61,29 @@ function warsawWallTime(d: Date): string {
 }
 
 /**
+ * Dzień startu liczy się jako urlop tylko, gdy OOF ruszył przed tą godziną (Warszawa).
+ * Ludzie włączają autoresponder i przekierowanie pod koniec dnia pracy („od 16:30 piszcie
+ * do Marcina”) — to nie jest dzień urlopu, a wcześniej trafiał do wniosku.
+ */
+const LATE_START_CUTOFF = '15:00'
+/**
+ * Dzień końca liczy się jako urlop tylko, gdy OOF trwa dłużej niż do tej godziny.
+ * „Wracam w poniedziałek o 8:00” oznacza, że poniedziałek jest dniem pracy.
+ */
+const EARLY_END_CUTOFF = '09:00'
+
+/**
  * Convert a scheduled OOF window (Graph automaticRepliesSetting.scheduled*DateTime)
  * into an inclusive Warsaw [startDate, endDate].
  *
- * End rule: an end instant landing exactly on Warsaw midnight (00:00) is treated as
- * EXCLUSIVE — Graph/Compass write `scheduledEndDateTime = lastDay + 1 @ 00:00`, so
- * midnight means "up to but not including this day" → endDate = previous day. Any
- * other end time is inclusive (the employee is absent for part of that day, e.g. a
- * user-set "back at 16:00 on the 12th"). Returns null when unparseable.
+ * Start rule: a start at or after LATE_START_CUTOFF skips that day (OOF switched on
+ * after work, not a day off).
+ *
+ * End rule: an end at or before EARLY_END_CUTOFF is EXCLUSIVE. That covers Warsaw
+ * midnight — Graph/Compass write `scheduledEndDateTime = lastDay + 1 @ 00:00` — and a
+ * user-set "back at 08:00". Any later end time is inclusive (the employee is absent for
+ * most of that day, e.g. "back at 16:00 on the 12th"). Returns null when unparseable or
+ * when no whole day remains (e.g. OOF only for one evening).
  */
 export function oofScheduledToDates(
     start: GraphDateTime | null | undefined,
@@ -77,9 +92,12 @@ export function oofScheduledToDates(
     const si = toInstant(start)
     const ei = toInstant(end)
     if (!si || !ei) return null
-    const startDate = warsawDate(si)
+    let startDate = warsawDate(si)
+    if (warsawWallTime(si) >= LATE_START_CUTOFF) {
+        startDate = format(addDays(parseISO(startDate), 1), 'yyyy-MM-dd')
+    }
     let endDate = warsawDate(ei)
-    if (warsawWallTime(ei) === '00:00') {
+    if (warsawWallTime(ei) <= EARLY_END_CUTOFF) {
         endDate = format(addDays(parseISO(endDate), -1), 'yyyy-MM-dd')
     }
     if (endDate < startDate) return null

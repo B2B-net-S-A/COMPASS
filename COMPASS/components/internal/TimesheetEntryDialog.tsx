@@ -26,6 +26,8 @@ interface Props {
     existingEntries?: ReadonlyArray<Pick<TimesheetEntryRow, 'id' | 'work_date' | 'hours' | 'project'>>
     /** Phase 27j (Issue 4): dni (yyyy-MM-dd) z urlopem/L4 — logowanie godzin zablokowane. */
     blockedLeaveDates?: ReadonlyArray<string>
+    /** Dni (yyyy-MM-dd) z połową urlopu — urlop zajmuje 4h, resztę dnia można zalogować. */
+    halfLeaveDates?: ReadonlyArray<string>
     /**
      * Phase 33b — admin-only: allow entering > 8h/day (overtime override, up to 16h).
      * When true the hours cap is raised and a reason field appears for > 8h.
@@ -49,6 +51,7 @@ export function TimesheetEntryDialog({
     saving,
     existingEntries,
     blockedLeaveDates,
+    halfLeaveDates,
     allowOvertime = false,
     onSubmit,
 }: Props) {
@@ -95,13 +98,16 @@ export function TimesheetEntryDialog({
     // that thrown error is masked in production ("Server Components render").
     // Detect it client-side to show a clear message instead.
     const isLeaveDay = (blockedLeaveDates ?? []).includes(workDate)
+    const isHalfLeaveDay = !isLeaveDay && (halfLeaveDates ?? []).includes(workDate)
 
     // Phase 33b — admin-only overtime caps. Standard day = 8h; admin may go to 16h
     // with a reason. Non-admin (employee / manager) stays capped at 8h.
     const STANDARD_MAX = 8
     const OVERTIME_MAX = 16
     const REASON_MIN = 5
-    const maxHours = allowOvertime ? OVERTIME_MAX : STANDARD_MAX
+    // Połowa dnia urlopu zajmuje 4h z limitu dnia (ta sama reguła co na serwerze).
+    const HALF_DAY_LEAVE_HOURS = STANDARD_MAX / 2
+    const maxHours = (allowOvertime ? OVERTIME_MAX : STANDARD_MAX) - (isHalfLeaveDay ? HALF_DAY_LEAVE_HOURS : 0)
     const hoursNum = Number(hours)
     const isOvertime = allowOvertime && Number.isFinite(hoursNum) && hoursNum > STANDARD_MAX
     const overtimeReasonTrimmed = overtimeReason.trim()
@@ -117,7 +123,9 @@ export function TimesheetEntryDialog({
         const h = Number(hours)
         if (!Number.isFinite(h) || h <= 0 || h > maxHours) {
             alert(
-                allowOvertime
+                isHalfLeaveDay
+                    ? `W tym dniu jest pół dnia urlopu — możesz zalogować maks. ${maxHours}h.`
+                    : allowOvertime
                     ? `Godziny muszą być w zakresie 0–${OVERTIME_MAX}h/dzień.`
                     : 'Maksymalnie 8h/dzień. Jeśli realnie pracowałeś więcej, poproś administratora o wpisanie nadgodzin.',
             )
@@ -186,6 +194,11 @@ export function TimesheetEntryDialog({
                             {isLeaveDay && (
                                 <p className="text-[11px] text-warning mt-1">
                                     ⚠ W tym dniu jest urlop / L4 — nie można logować godzin. Anuluj urlop albo wybierz inny dzień.
+                                </p>
+                            )}
+                            {isHalfLeaveDay && (
+                                <p className="text-[11px] text-muted-foreground mt-1">
+                                    W tym dniu jest pół dnia urlopu — możesz zalogować maks. {maxHours}h.
                                 </p>
                             )}
                         </div>

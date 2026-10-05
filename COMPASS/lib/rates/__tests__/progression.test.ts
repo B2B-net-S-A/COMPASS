@@ -6,8 +6,13 @@ import {
     buildChangePoints,
     validateProgressionEntries,
     buildCopyEntries,
+    validateScheduleReplacement,
+    rateInEffectBefore,
+    isSameSchedule,
+    horizonMonthsFor,
     RATE_MAX,
 } from '../progression'
+import { ExpectedError } from '@/lib/actions/expected-error'
 import type { RateProgressionEntry } from '@/lib/types/rates'
 
 describe('firstDayOfNextMonth', () => {
@@ -188,5 +193,143 @@ describe('buildCopyEntries', () => {
         })
         expect(res.applied).toEqual([])
         expect(res.skipped).toEqual([{ effective_from: '2026-07-01', hourly_rate: 200, reason: 'no_change' }])
+    })
+})
+
+describe('validateScheduleReplacement', () => {
+    // „Dziś" = wrzesień 2026: next month 2026-10-01, 12 miesięcy wstecz od bieżącego = 2025-09-01.
+    const base = { nextMonthFirst: '2026-10-01', earliestAllowed: '2025-09-01' }
+
+    it('accepts the current month and a past month (correction backwards)', () => {
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2026-09-01', hourly_rate: 59.52 }], {
+                ...base,
+                replaceFrom: '2026-09-01',
+            }),
+        ).not.toThrow()
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2026-03-01', hourly_rate: 50 }], {
+                ...base,
+                replaceFrom: '2026-03-01',
+            }),
+        ).not.toThrow()
+    })
+
+    it('accepts months inside an already scheduled ramp (no append-only lock)', () => {
+        expect(() =>
+            validateScheduleReplacement(
+                [
+                    { effective_from: '2026-12-01', hourly_rate: 61 },
+                    { effective_from: '2027-06-01', hourly_rate: 65 },
+                ],
+                { ...base, replaceFrom: '2026-10-01' },
+            ),
+        ).not.toThrow()
+    })
+
+    it('accepts an empty batch (clear scheduled changes from the month on)', () => {
+        expect(() => validateScheduleReplacement([], { ...base, replaceFrom: '2026-10-01' })).not.toThrow()
+    })
+
+    it('rejects a start older than the backdate window', () => {
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2025-08-01', hourly_rate: 50 }], {
+                ...base,
+                replaceFrom: '2025-08-01',
+            }),
+        ).toThrow(/najwcześniej 2025-09-01/)
+    })
+
+    it('rejects an entry before the replacement start', () => {
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2026-09-01', hourly_rate: 50 }], {
+                ...base,
+                replaceFrom: '2026-10-01',
+            }),
+        ).toThrow(/wcześniejszy niż 2026-10-01/)
+    })
+
+    it('rejects a mid-month start, a bad rate, beyond-horizon and non-ascending months', () => {
+        expect(() => validateScheduleReplacement([], { ...base, replaceFrom: '2026-10-15' })).toThrow(
+            /1\. dnia miesiąca/,
+        )
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2026-10-01', hourly_rate: -1 }], {
+                ...base,
+                replaceFrom: '2026-10-01',
+            }),
+        ).toThrow(/>= 0/)
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2028-10-01', hourly_rate: 1 }], {
+                ...base,
+                replaceFrom: '2026-10-01',
+            }),
+        ).toThrow(/poza horyzontem/)
+        expect(() =>
+            validateScheduleReplacement(
+                [
+                    { effective_from: '2027-01-01', hourly_rate: 1 },
+                    { effective_from: '2027-01-01', hourly_rate: 2 },
+                ],
+                { ...base, replaceFrom: '2026-10-01' },
+            ),
+        ).toThrow(/rosnące i unikalne/)
+    })
+
+    it('throws ExpectedError so the message reaches the user instead of the prod mask', () => {
+        try {
+            validateScheduleReplacement([], { ...base, replaceFrom: '2020-01-01' })
+            expect.unreachable()
+        } catch (e) {
+            expect(e).toBeInstanceOf(ExpectedError)
+        }
+    })
+})
+
+describe('rateInEffectBefore', () => {
+    const ramp = [
+        { effective_from: '2026-05-01', hourly_rate: 42, currency: 'PLN' as const },
+        { effective_from: '2026-07-01', hourly_rate: 45, currency: 'PLN' as const },
+        { effective_from: '2027-01-01', hourly_rate: 50, currency: 'PLN' as const },
+    ]
+
+    it('returns the row running in the month before the cut, not the ramp tail', () => {
+        expect(rateInEffectBefore(ramp, '2026-10-01')?.hourly_rate).toBe(45)
+        expect(rateInEffectBefore(ramp, '2026-07-01')?.hourly_rate).toBe(42)
+    })
+
+    it('returns null when nothing ran before the cut', () => {
+        expect(rateInEffectBefore(ramp, '2026-05-01')).toBeNull()
+        expect(rateInEffectBefore([], '2026-10-01')).toBeNull()
+    })
+})
+
+describe('isSameSchedule', () => {
+    it('detects an identical replacement as a no-op', () => {
+        const a = [{ effective_from: '2027-01-01', hourly_rate: 50 }]
+        expect(isSameSchedule(a, [{ effective_from: '2027-01-01', hourly_rate: 50 }])).toBe(true)
+    })
+    it('treats removal of scheduled steps as a change', () => {
+        expect(isSameSchedule([{ effective_from: '2027-01-01', hourly_rate: 50 }], [])).toBe(false)
+        expect(isSameSchedule([], [])).toBe(true)
+    })
+})
+
+describe('horizonMonthsFor', () => {
+    it('keeps the default 24 months when nothing is scheduled that far', () => {
+        expect(horizonMonthsFor('2026-10-01', null)).toBe(24)
+        expect(horizonMonthsFor('2026-10-01', '2027-07-01')).toBe(24)
+    })
+    it('stretches to cover the last scheduled step so saving never drops it', () => {
+        // 2026-10 … 2028-12 = 27 miesięcy (7 osób na prodzie ma kroki po 2028-09).
+        expect(horizonMonthsFor('2026-10-01', '2028-12-01')).toBe(27)
+        expect(() =>
+            validateScheduleReplacement([{ effective_from: '2028-12-01', hourly_rate: 48 }], {
+                replaceFrom: '2026-10-01',
+                earliestAllowed: '2025-09-01',
+                nextMonthFirst: '2026-10-01',
+                maxMonths: horizonMonthsFor('2026-10-01', '2028-12-01'),
+            }),
+        ).not.toThrow()
     })
 })

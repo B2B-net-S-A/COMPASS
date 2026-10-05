@@ -12,7 +12,7 @@ import {
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
-import { sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
+import { sendTimesheetApprovalRevoked, sendTimesheetDecision, sendTimesheetSubmitted } from '@/lib/email'
 import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { sendPushToUserId } from '@/lib/push/dispatch'
 import { computeTimesheetHash } from '@/lib/hr/timesheet-hash'
@@ -24,6 +24,7 @@ import {
     buildTimesheetRosterView,
     type TimesheetRosterMember,
 } from '@/lib/hr/timesheet-roster'
+import { excludeExited } from '@/lib/hr/employment-window'
 import { format } from 'date-fns'
 
 // Phase 27g — roles that keep a timesheet (HR zone). Consultants (IT) do not.
@@ -106,22 +107,59 @@ async function fetchEntries(timesheetId: string): Promise<TimesheetEntryRow[]> {
     return (data ?? []) as TimesheetEntryRow[]
 }
 
-async function checkAttendanceAllowsWork(
+/** Połowa dnia urlopu zajmuje tyle godzin z limitu dnia — resztę dnia wolno zalogować. */
+const HALF_DAY_LEAVE_HOURS = STANDARD_DAILY_HOURS_MAX / 2
+
+/**
+ * Ile godzin dnia zajmuje urlop: 0 (brak urlopu) albo {@link HALF_DAY_LEAVE_HOURS}
+ * (połowa dnia). Pełny dzień urlopu/L4 rzuca `blockedMessage`.
+ *
+ * `syncAttendanceFromLeave` zapisuje dzień połówki w attendance tak samo jak pełny dzień,
+ * więc sam wiersz nie mówi, ile dnia zajmuje urlop — przy trafieniu sprawdzamy wnioski
+ * pokrywające ten dzień (połówka jest zawsze jednodniowa, pilnuje tego walidacja wniosku).
+ * Wiersz bez wniosku (status wpisany ręcznie w ewidencji) blokuje cały dzień, jak dotąd.
+ */
+async function leaveHoursOnWorkDate(
     userId: string,
     workDate: string,
-): Promise<void> {
-    const supabase = createClient()
-    const { data } = await supabase
+    blockedMessage: string,
+): Promise<number> {
+    // Service client: wołający już sprawdził własność/zakres timesheetu.
+    const admin = createServiceClient()
+    const { data } = await admin
         .from('attendance_records')
         .select('status')
         .eq('user_id', userId)
         .eq('date', workDate)
         .maybeSingle<{ status: string }>()
-    if (blocksTimesheetHours(data?.status)) {
-        throw new ExpectedError(
-            `Nie możesz logować godzin na ${workDate} — ten dzień ma status urlopowy/L4. Anuluj wniosek lub wybierz inny dzień.`,
-        )
+    if (!blocksTimesheetHours(data?.status)) return 0
+
+    const { data: leaves, error } = await admin
+        .from('leave_requests')
+        .select('half_day')
+        .eq('user_id', userId)
+        .in('status', ['approved', 'pending'])
+        .lte('start_date', workDate)
+        .gte('end_date', workDate)
+    if (error) throw new Error(`Błąd sprawdzania urlopu na ${workDate}: ${error.message}`)
+    const rows = (leaves ?? []) as Array<{ half_day: string | null }>
+    const leaveHours = rows.length * HALF_DAY_LEAVE_HOURS
+    if (rows.length === 0 || rows.some((l) => !l.half_day) || leaveHours >= STANDARD_DAILY_HOURS_MAX) {
+        throw new ExpectedError(blockedMessage)
     }
+    return leaveHours
+}
+
+/** Soft constraint (user flow): pełny dzień urlopu/L4 blokuje, połówka zajmuje 4h. */
+async function checkAttendanceAllowsWork(
+    userId: string,
+    workDate: string,
+): Promise<number> {
+    return leaveHoursOnWorkDate(
+        userId,
+        workDate,
+        `Nie możesz logować godzin na ${workDate} — ten dzień ma status urlopowy/L4. Anuluj wniosek lub wybierz inny dzień.`,
+    )
 }
 
 /**
@@ -160,6 +198,8 @@ async function assertDailyHoursWithinLimit(
         hours: number
         overtimeAllowed: boolean
         excludeEntryId?: string
+        /** Godziny dnia zajęte przez połowę urlopu (z {@link leaveHoursOnWorkDate}). */
+        leaveHours?: number
     },
 ): Promise<void> {
     // Service client: wołający już sprawdził własność/zakres timesheetu, a suma musi
@@ -174,8 +214,14 @@ async function assertDailyHoursWithinLimit(
         .filter((e) => e.id !== args.excludeEntryId)
         .reduce((sum, e) => sum + Number(e.hours), 0)
     const total = otherHours + args.hours
-    const cap = args.overtimeAllowed ? OVERTIME_OVERRIDE_HOURS_MAX : STANDARD_DAILY_HOURS_MAX
+    const leaveHours = args.leaveHours ?? 0
+    const cap = (args.overtimeAllowed ? OVERTIME_OVERRIDE_HOURS_MAX : STANDARD_DAILY_HOURS_MAX) - leaveHours
     if (total > cap + 1e-9) {
+        if (leaveHours > 0) {
+            throw new ExpectedError(
+                `${args.workDate} to pół dnia urlopu — można zalogować maks. ${cap}h (już wpisane: ${otherHours}h).`,
+            )
+        }
         throw new ExpectedError(
             args.overtimeAllowed
                 ? `Suma godzin ${args.workDate} przekroczyłaby ${cap}h (już wpisane: ${otherHours}h).`
@@ -315,13 +361,14 @@ export async function addEntry(input: AddEntryInput): Promise<ActionResult<Times
         }
         assertDateInTimesheetMonth(input.workDate, header)
 
-        // Soft constraint: blokuj jeśli dzień to urlop/L4
-        await checkAttendanceAllowsWork(header.user_id, input.workDate)
+        // Soft constraint: pełny dzień urlopu/L4 blokuje, połowa dnia zajmuje 4h z limitu.
+        const leaveHours = await checkAttendanceAllowsWork(header.user_id, input.workDate)
         await assertDailyHoursWithinLimit({
             timesheetId: header.id,
             workDate: input.workDate,
             hours: input.hours,
             overtimeAllowed: ctx.canLogOvertime,
+            leaveHours,
         })
 
         const { data, error } = await supabase
@@ -636,16 +683,17 @@ export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult
         const finalDate = input.workDate ?? current.workDate
         const finalHours = input.hours ?? current.hours
         const dateChanged = finalDate !== current.workDate
-        // HF-03 — ta sama reguła co w addEntry: nie da się przenieść wpisu na dzień urlopu/L4.
-        if (dateChanged) await checkAttendanceAllowsWork(current.userId, finalDate)
-        // HF-01 — suma dnia docelowego (bez edytowanego wpisu) + nowa wartość.
+        // HF-01 / HF-03 — ta sama reguła co w addEntry: pełny dzień urlopu/L4 blokuje,
+        // połowa dnia zajmuje 4h; suma dnia docelowego (bez edytowanego wpisu) + nowa wartość.
         if (dateChanged || finalHours !== current.hours) {
+            const leaveHours = await checkAttendanceAllowsWork(current.userId, finalDate)
             await assertDailyHoursWithinLimit({
                 timesheetId: current.timesheetId,
                 workDate: finalDate,
                 hours: finalHours,
                 overtimeAllowed: ctx.canLogOvertime,
                 excludeEntryId: input.entryId,
+                leaveHours,
             })
         }
 
@@ -920,44 +968,81 @@ export async function unlockTimesheet(timesheetId: string): Promise<ActionResult
         // Phase 27f: approver = admin OR manager-of-team (parytet z approve/reject),
         // żeby manager mógł cofnąć zaakceptowany/odrzucony timesheet swojego zespołu
         // do edycji bez angażowania admina.
-        // Phase 32: PO AKCEPCJI manager traci prawo odblokowania — zaakceptowany
-        // timesheet może cofnąć do edycji tylko administrator lub finanse, żeby
-        // finanse miały stabilny obraz do wypłaty ("nic się już nie zmieni").
+        // 2026-10-01: manager znów może cofnąć akceptację w swoim zespole (Phase 32
+        // dawała to tylko adminowi/finansom). Zaakceptowany wraca do 'submitted',
+        // nie do szkicu — approver poprawia wpis i akceptuje ponownie, a gdy
+        // poprawić ma pracownik, odrzuca z komentarzem. Stabilny obraz do wypłaty
+        // zastępuje mail do finansów o każdym takim cofnięciu.
         const ctx = await requireTimesheetApproverAction()
         const admin = createServiceClient()
 
         const { data: header, error: fetchErr } = await admin
             .from('timesheets')
-            .select('id, user_id, status')
+            .select('id, user_id, year, month, status')
             .eq('id', timesheetId)
-            .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'status'>>()
+            .single<Pick<TimesheetHeader, 'id' | 'user_id' | 'year' | 'month' | 'status'>>()
         if (fetchErr || !header) throw new ExpectedError('Timesheet nie istnieje.')
-
-        if (header.status === 'approved' && !ctx.isAdmin && ctx.role !== 'finanse') {
-            throw new ExpectedError(
-                'Po akceptacji timesheet może odblokować tylko administrator lub finanse.',
-            )
-        }
 
         await assertApproverTeamScope(admin, ctx, header.user_id)
 
-        const { error } = await admin
+        const wasApproved = header.status === 'approved'
+        const { data: updated, error } = await admin
             .from('timesheets')
-            .update({
-                status: 'draft',
-                approved_at: null,
-                approved_by: null,
-                pdf_hash: null,
-                submitted_at: null,
-            })
+            .update(
+                wasApproved
+                    ? { status: 'submitted', approved_at: null, approved_by: null, pdf_hash: null }
+                    : {
+                        status: 'draft',
+                        approved_at: null,
+                        approved_by: null,
+                        pdf_hash: null,
+                        submitted_at: null,
+                    },
+            )
             .eq('id', timesheetId)
+            // HF-11 — równoległa decyzja ze starego ekranu nie może zostać nadpisana.
+            .eq('status', header.status)
+            .select('id')
         if (error) throw new Error(`Błąd odblokowania: ${error.message}`)
+        if (!updated || updated.length === 0) {
+            throw new ExpectedError('Timesheet zmienił się w międzyczasie. Odśwież listę.')
+        }
 
-        await logAudit(ctx.userId, 'TIMESHEET_UNLOCKED', {
+        await logAudit(ctx.userId, wasApproved ? 'TIMESHEET_APPROVAL_REVOKED' : 'TIMESHEET_UNLOCKED', {
             timesheet_id: timesheetId,
             target_user_id: header.user_id,
+            year: header.year,
+            month: header.month,
         })
+
+        if (wasApproved) {
+            const [financeEmails, employee, actorName] = await Promise.all([
+                fetchFinanceEmails(ctx.userId),
+                fetchUserContact(header.user_id),
+                fetchUserDisplayName(ctx.userId, ctx.email),
+            ])
+            if (financeEmails.length > 0) {
+                sendTimesheetApprovalRevoked(financeEmails, {
+                    employeeName: employee?.full_name ?? employee?.email ?? 'pracownik',
+                    actorName,
+                    year: header.year,
+                    month: header.month,
+                }).catch((e) => logCompat.error('[unlockTimesheet] finance notify failed:', e))
+            }
+        }
     })
+}
+
+/** Adresy finansów (bez zarchiwizowanych i bez osoby, która właśnie wykonała krok). */
+async function fetchFinanceEmails(excludeUserId: string): Promise<string[]> {
+    const admin = createServiceClient()
+    const { data } = await excludeExited(
+        admin.from('profiles').select('id, email').eq('role', 'finanse'),
+    )
+    return ((data ?? []) as Array<{ id: string; email: string | null }>)
+        .filter((r) => r.id !== excludeUserId)
+        .map((r) => r.email)
+        .filter((e): e is string => !!e)
 }
 
 // ─── Phase 27f — Approver in-place entry editing (admin OR manager-of-team) ──
@@ -1018,23 +1103,16 @@ async function loadApproverEditableTimesheet(
     return header
 }
 
-/** Soft constraint (parytet z user flow): blokuj wpis na dzień urlopu/L4. */
+/** Soft constraint (parytet z user flow): pełny dzień urlopu/L4 blokuje, połówka zajmuje 4h. */
 async function assertApproverDateNotBlocked(
-    admin: ServiceClient,
     userId: string,
     workDate: string,
-): Promise<void> {
-    const { data } = await admin
-        .from('attendance_records')
-        .select('status')
-        .eq('user_id', userId)
-        .eq('date', workDate)
-        .maybeSingle<{ status: string }>()
-    if (blocksTimesheetHours(data?.status)) {
-        throw new ExpectedError(
-            `Nie można logować godzin na ${workDate} — ten dzień ma status urlopowy/L4.`,
-        )
-    }
+): Promise<number> {
+    return leaveHoursOnWorkDate(
+        userId,
+        workDate,
+        `Nie można logować godzin na ${workDate} — ten dzień ma status urlopowy/L4.`,
+    )
 }
 
 /** Override column patch returned by {@link resolveOvertimeColumns}. */
@@ -1108,7 +1186,7 @@ export async function approverAddEntry(input: AddEntryInput): Promise<ActionResu
         const admin = createServiceClient()
         const header = await loadApproverEditableTimesheet(admin, ctx, input.timesheetId)
         assertDateInTimesheetMonth(input.workDate, header)
-        await assertApproverDateNotBlocked(admin, header.user_id, input.workDate)
+        const leaveHours = await assertApproverDateNotBlocked(header.user_id, input.workDate)
         // HF-01 — suma dnia; sufit nadgodzin tylko dla tych, którym resolveOvertimeColumns
         // pozwala wpisać >8h (admin / can_log_overtime).
         await assertDailyHoursWithinLimit({
@@ -1116,6 +1194,7 @@ export async function approverAddEntry(input: AddEntryInput): Promise<ActionResu
             workDate: input.workDate,
             hours: input.hours,
             overtimeAllowed: ctx.isAdmin || ctx.canLogOvertime,
+            leaveHours,
         })
 
         const { data, error } = await admin
@@ -1205,18 +1284,17 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Acti
             if (!cur) throw new ExpectedError('Wpis nie istnieje.')
             return cur
         }
-        if (input.workDate !== undefined) {
-            await assertApproverDateNotBlocked(admin, header.user_id, input.workDate)
-        }
         const finalDate = input.workDate ?? entry.work_date
         const finalHours = input.hours ?? Number(entry.hours)
         if (finalDate !== entry.work_date || finalHours !== Number(entry.hours)) {
+            const leaveHours = await assertApproverDateNotBlocked(header.user_id, finalDate)
             await assertDailyHoursWithinLimit({
                 timesheetId: header.id,
                 workDate: finalDate,
                 hours: finalHours,
                 overtimeAllowed: ctx.isAdmin || ctx.canLogOvertime,
                 excludeEntryId: input.entryId,
+                leaveHours,
             })
         }
 

@@ -23,7 +23,7 @@ import {
     type TimesheetWithEntries,
 } from '@/lib/actions/internal-timesheet'
 import { applyDefaultsToTimesheet } from '@/lib/actions/internal-timesheet-role-defaults'
-import { getTimesheetBlockedDates } from '@/lib/actions/internal-leave'
+import { getTimesheetLeaveDays } from '@/lib/actions/internal-leave'
 import { Sparkles } from 'lucide-react'
 import { TimesheetEntryDialog } from './TimesheetEntryDialog'
 
@@ -47,6 +47,7 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
     const [creating, setCreating] = useState(false)
     const [confirm, ConfirmUI] = useConfirm()
     const [blockedLeaveDates, setBlockedLeaveDates] = useState<string[]>([])
+    const [halfLeaveDates, setHalfLeaveDates] = useState<string[]>([])
 
     const editable = timesheet.status === 'draft'
     const status = STATUS_BADGE[timesheet.status]
@@ -60,12 +61,16 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
     // B2B/zlecenie NIE blokuje — ma auto-wpis godzin) żeby dialog ostrzegał czytelnie.
     useEffect(() => {
         let cancelled = false
-        getTimesheetBlockedDates(timesheet.year, timesheet.month)
+        getTimesheetLeaveDays(timesheet.year, timesheet.month)
             .then((res) => {
-                if (!cancelled) setBlockedLeaveDates(res?.success ? res.data : [])
+                if (cancelled) return
+                setBlockedLeaveDates(res?.success ? res.data.blocked : [])
+                setHalfLeaveDates(res?.success ? res.data.halfDay : [])
             })
             .catch(() => {
-                if (!cancelled) setBlockedLeaveDates([])
+                if (cancelled) return
+                setBlockedLeaveDates([])
+                setHalfLeaveDates([])
             })
         return () => {
             cancelled = true
@@ -560,6 +565,7 @@ export function TimesheetEditor({ timesheet, canLogOvertime = false }: Props) {
                     saving={pending}
                     existingEntries={timesheet.entries}
                     blockedLeaveDates={blockedLeaveDates}
+                    halfLeaveDates={halfLeaveDates}
                     allowOvertime={canLogOvertime}
                     onOpenChange={(o) => {
                         if (!o) {

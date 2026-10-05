@@ -10,8 +10,9 @@
 // later than any already-scheduled month and no earlier than next month. The DB trigger
 // `auto_close_previous_rate` is the integrity backstop; these helpers fail fast in the UI/action.
 
-import type { RateProgressionEntry, SkippedCopyEntry } from '@/lib/types/rates'
+import type { RateCurrency, RateProgressionEntry, SkippedCopyEntry } from '@/lib/types/rates'
 import { RATE_PROGRESSION_MAX_MONTHS } from '@/lib/types/rates'
+import { ExpectedError } from '@/lib/actions/expected-error'
 
 /** Mirrors the NUMERIC(12,2) upper bound enforced in internal-rates.ts / the DB column. */
 export const RATE_MAX = 9_999_999.99
@@ -113,6 +114,101 @@ export function validateProgressionEntries(
         }
         prev = e.effective_from
     }
+}
+
+export interface ScheduleReplacementOpts {
+    /** YYYY-MM-01 — od tego miesiąca (włącznie) cały dotychczasowy harmonogram jest zastępowany. */
+    replaceFrom: string
+    /** YYYY-MM-01 — najstarszy miesiąc, który wolno skorygować wstecz. */
+    earliestAllowed: string
+    /** YYYY-MM-01 — 1. dzień przyszłego miesiąca (początek horyzontu). */
+    nextMonthFirst: string
+    /** Horyzont w miesiącach od `nextMonthFirst` (domyślnie 24). */
+    maxMonths?: number
+}
+
+/**
+ * Walidacja zastąpienia harmonogramu od `replaceFrom` (zamiast dawnego „tylko dopisywanie").
+ * Dopuszcza bieżący miesiąc, korektę wstecz do `earliestAllowed` i miesiące wewnątrz
+ * zaplanowanej rampy. Pusta lista = usunięcie zaplanowanych zmian od `replaceFrom`.
+ * Rzuca ExpectedError — treść ma dotrzeć do użytkownika przez runAction.
+ */
+export function validateScheduleReplacement(
+    entries: RateProgressionEntry[],
+    opts: ScheduleReplacementOpts,
+): void {
+    const maxMonths = opts.maxMonths ?? RATE_PROGRESSION_MAX_MONTHS
+    const horizonEnd = addMonths(opts.nextMonthFirst, maxMonths - 1)
+    if (!isFirstOfMonth(opts.replaceFrom)) {
+        throw new ExpectedError(`Miesiąc ${opts.replaceFrom}: stawka może wejść w życie tylko 1. dnia miesiąca.`)
+    }
+    if (opts.replaceFrom < opts.earliestAllowed) {
+        throw new ExpectedError(`Stawkę można zmienić wstecz najwcześniej ${opts.earliestAllowed}.`)
+    }
+    if (opts.replaceFrom > horizonEnd) {
+        throw new ExpectedError(`Miesiąc ${opts.replaceFrom}: poza horyzontem ${maxMonths} miesięcy (max ${horizonEnd}).`)
+    }
+    let prev: string | null = null
+    for (const e of entries) {
+        if (!isFirstOfMonth(e.effective_from)) {
+            throw new ExpectedError(`Miesiąc ${e.effective_from}: stawka może wejść w życie tylko 1. dnia miesiąca.`)
+        }
+        if (!Number.isFinite(e.hourly_rate) || e.hourly_rate < 0) {
+            throw new ExpectedError(`Miesiąc ${e.effective_from}: stawka musi być >= 0.`)
+        }
+        if (e.hourly_rate > RATE_MAX) {
+            throw new ExpectedError(`Miesiąc ${e.effective_from}: stawka za duża (max ${RATE_MAX}).`)
+        }
+        if (e.effective_from < opts.replaceFrom) {
+            throw new ExpectedError(`Miesiąc ${e.effective_from} jest wcześniejszy niż ${opts.replaceFrom}.`)
+        }
+        if (e.effective_from > horizonEnd) {
+            throw new ExpectedError(`Miesiąc ${e.effective_from}: poza horyzontem ${maxMonths} miesięcy (max ${horizonEnd}).`)
+        }
+        if (prev !== null && e.effective_from <= prev) {
+            throw new ExpectedError(`Miesiące muszą być rosnące i unikalne (problem przy ${e.effective_from}).`)
+        }
+        prev = e.effective_from
+    }
+}
+
+export interface RateRowLite {
+    effective_from: string
+    hourly_rate: number
+    currency: RateCurrency
+}
+
+/**
+ * Stawka obowiązująca w miesiącu tuż przed `month` — wiersz z największym effective_from < month.
+ * To NIE jest wiersz otwarty (effective_to IS NULL): przy rampie otwarty jest ostatni krok.
+ */
+export function rateInEffectBefore<T extends RateRowLite>(rows: T[], month: string): T | null {
+    let found: T | null = null
+    for (const r of rows) {
+        if (r.effective_from < month && (found === null || r.effective_from > found.effective_from)) found = r
+    }
+    return found
+}
+
+/**
+ * Horyzont siatki/walidacji w miesiącach od `nextMonthFirst`: domyślne 24, ale nie mniej niż
+ * do ostatniego zaplanowanego kroku. Import XLS zasiał kroki aż do 2028-12 — krótsza siatka
+ * przy zapisie „od X w górę" skasowałaby kroki, których nie widać.
+ */
+export function horizonMonthsFor(nextMonthFirst: string, latestScheduled: string | null): number {
+    if (!latestScheduled || latestScheduled < nextMonthFirst) return RATE_PROGRESSION_MAX_MONTHS
+    const diff =
+        (Number(latestScheduled.slice(0, 4)) - Number(nextMonthFirst.slice(0, 4))) * 12 +
+        (Number(latestScheduled.slice(5, 7)) - Number(nextMonthFirst.slice(5, 7)))
+    return Math.max(RATE_PROGRESSION_MAX_MONTHS, diff + 1)
+}
+
+/** Czy nowy harmonogram od miesiąca X jest identyczny z tym, co już jest w bazie od X. */
+export function isSameSchedule(existing: RateProgressionEntry[], next: RateProgressionEntry[]): boolean {
+    if (existing.length !== next.length) return false
+    return existing.every(
+        (e, i) => e.effective_from === next[i].effective_from && e.hourly_rate === next[i].hourly_rate,
+    )
 }
 
 export interface BuildCopyOpts {

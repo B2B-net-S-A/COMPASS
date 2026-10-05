@@ -32,6 +32,8 @@ export type AuditAction =
     | 'TIMESHEET_APPROVED'
     | 'TIMESHEET_REJECTED'
     | 'TIMESHEET_UNLOCKED'
+    // 2026-10-01 — approver cofa akceptację (approved → submitted), mail do finansów
+    | 'TIMESHEET_APPROVAL_REVOKED'
     // Phase 27f — approver (admin/manager) in-place entry edits
     | 'TIMESHEET_ENTRY_ADDED_BY_APPROVER'
     | 'TIMESHEET_ENTRY_EDITED_BY_APPROVER'
@@ -73,6 +75,7 @@ export type AuditAction =
     | 'EXIT_INTERVIEW_ANONYMIZED'
     | 'OFFBOARDING_TASK_COMPLETED'
     | 'EMPLOYEE_EXITED'
+    | 'EMPLOYEE_REACTIVATED'
     // Phase 22f — Cancellation + notes + external + duplicates
     | 'ONBOARDING_CANCELLED'
     | 'ONBOARDING_RESTARTED'

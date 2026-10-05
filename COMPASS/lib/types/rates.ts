@@ -15,6 +15,8 @@ export const EMPLOYMENT_TYPE_LABELS_PL: Record<EmploymentType, string> = {
 
 /** Phase 27h — max horizon for a forward rate progression (2 years). */
 export const RATE_PROGRESSION_MAX_MONTHS = 24
+/** Ile pełnych miesięcy wstecz (przed bieżącym) finanse mogą skorygować stawkę. */
+export const RATE_BACKDATE_MAX_MONTHS = 12
 
 export interface UserRateRow {
     id: string
@@ -76,11 +78,16 @@ export interface RateProgressionEntry {
     hourly_rate: number
 }
 
-/** Input for setRateProgression — a batch of ascending future change-points. */
+/**
+ * Input for setRateProgression — harmonogram od `replace_from` (włącznie) zastępuje wszystko,
+ * co było zaplanowane od tego miesiąca. Bez `replace_from` = pierwszy miesiąc z `entries`.
+ */
 export interface SetRateProgressionInput {
     user_id: string
     currency?: RateCurrency
-    /** Ascending by effective_from; server dedupes to change-points and inserts atomically. */
+    /** YYYY-MM-01; może być bieżący albo miniony miesiąc (korekta wstecz). */
+    replace_from?: string
+    /** Ascending by effective_from; server dedupes to change-points and writes atomically. */
     entries: RateProgressionEntry[]
     reason?: string | null
 }

@@ -22,6 +22,7 @@ import {
     requireFinanseOrAdminAction,
 } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { runAction, ExpectedError, type ActionResult } from '@/lib/actions/action-result'
 import { sendRateChanged, sendRateChangedToFinance } from '@/lib/email'
 import { sendPushToUserId } from '@/lib/push/dispatch'
 import type {
@@ -36,12 +37,16 @@ import type {
     CopyProgressionInput,
     CopyProgressionResult,
 } from '@/lib/types/rates'
-import { EMPLOYMENT_TYPE_LABELS_PL } from '@/lib/types/rates'
+import { EMPLOYMENT_TYPE_LABELS_PL, RATE_BACKDATE_MAX_MONTHS } from '@/lib/types/rates'
 import {
     firstDayOfNextMonth,
     addMonths,
     buildChangePoints,
     validateProgressionEntries,
+    validateScheduleReplacement,
+    rateInEffectBefore,
+    isSameSchedule,
+    horizonMonthsFor,
     buildCopyEntries,
 } from '@/lib/rates/progression'
 import { activeRoster } from '@/lib/hr/employment-window'
@@ -386,7 +391,7 @@ async function fetchRateTarget(admin: AdminClient, userId: string): Promise<Rate
         .select('id, full_name, email')
         .eq('id', userId)
         .single<RateTarget>()
-    if (error || !data) throw new Error('Pracownik nie istnieje.')
+    if (error || !data) throw new ExpectedError('Pracownik nie istnieje.')
     return data
 }
 
@@ -412,7 +417,7 @@ async function fetchOpenRate(admin: AdminClient, userId: string): Promise<OpenRa
     }
 }
 
-interface InsertProgressionParams {
+interface NotifyRateScheduleParams {
     admin: AdminClient
     ctx: { userId: string; email: string }
     target: RateTarget
@@ -420,17 +425,21 @@ interface InsertProgressionParams {
     changePoints: RateProgressionEntry[] // ascending, deduped
     reason: string | null
     auditAction: 'USER_RATE_PROGRESSION_SET' | 'USER_RATE_PROGRESSION_COPIED'
-    prevRate: OpenRate | null
+    /** Stawka obowiązująca przed pierwszą zmianą (do „stara → nowa" w mailu). */
+    oldRate: number | null
     extraAudit?: Record<string, unknown>
+}
+
+interface InsertProgressionParams extends Omit<NotifyRateScheduleParams, 'oldRate'> {
+    prevRate: OpenRate | null
 }
 
 /**
  * Insert a batch of ascending change-points atomically (RPC + trigger), then notify.
- * Notification reuses the single-rate email/push for the EARLIEST change (most imminent);
- * the push body summarises the count. Later change-points are visible in rate history.
+ * Append-only — used by the copy flow.
  */
 async function insertProgressionAndNotify(params: InsertProgressionParams): Promise<number> {
-    const { admin, ctx, target, currency, changePoints, reason, auditAction, prevRate, extraAudit } = params
+    const { admin, ctx, target, currency, changePoints, reason, prevRate } = params
 
     // Audyt 2026-08 — wcześniej rzutowany był CAŁY klient (`(admin as any).rpc(...)`),
     // co wyłączało sprawdzanie także nazwy funkcji i reszty argumentów. Typy są już
@@ -447,6 +456,28 @@ async function insertProgressionAndNotify(params: InsertProgressionParams): Prom
     })
     if (error) throw new Error(`Błąd zapisu progresji: ${error.message}`)
 
+    await notifyRateSchedule({ ...params, oldRate: prevRate?.hourly_rate ?? null })
+    return Number(insertedCount ?? changePoints.length)
+}
+
+/**
+ * Audit + notify after a schedule write. Notification reuses the single-rate email/push for
+ * the EARLIEST change (most imminent); the push body summarises the count. Later change-points
+ * are visible in rate history. Bez punktów zmiany (samo usunięcie zaplanowanych) — tylko audyt.
+ */
+async function notifyRateSchedule(params: NotifyRateScheduleParams): Promise<void> {
+    const { admin, ctx, target, currency, changePoints, reason, auditAction, oldRate, extraAudit } = params
+    if (changePoints.length === 0) {
+        await logAudit(ctx.userId, auditAction, {
+            target_user_id: target.id,
+            currency,
+            count: 0,
+            previous_hourly_rate: oldRate,
+            ...extraAudit,
+        })
+        return
+    }
+
     const { data: setterRow } = await admin
         .from('profiles')
         .select('full_name')
@@ -456,7 +487,6 @@ async function insertProgressionAndNotify(params: InsertProgressionParams): Prom
 
     const first = changePoints[0]
     const last = changePoints[changePoints.length - 1]
-    const oldRate = prevRate?.hourly_rate ?? null
 
     await logAudit(ctx.userId, auditAction, {
         target_user_id: target.id,
@@ -511,8 +541,6 @@ async function insertProgressionAndNotify(params: InsertProgressionParams): Prom
             setByName,
         }).catch((e) => logCompat.error('[setRateProgression] finance email failed:', e))
     }
-
-    return Number(insertedCount ?? changePoints.length)
 }
 
 // ─── Phase 27h — contract type ─────────────────────────────────────────────
@@ -564,45 +592,108 @@ export async function listScheduledRateChanges(userId: string): Promise<RateProg
     }))
 }
 
+interface ScheduleRow {
+    effective_from: string
+    hourly_rate: number
+    currency: RateCurrency
+}
+
+async function fetchRateSchedule(admin: AdminClient, userId: string): Promise<ScheduleRow[]> {
+    const { data, error } = await admin
+        .from('user_rates')
+        .select('hourly_rate, currency, effective_from')
+        .eq('user_id', userId)
+        .order('effective_from', { ascending: true })
+    if (error) throw new Error(`Błąd pobierania stawek: ${error.message}`)
+    return (((data ?? []) as unknown) as Array<{ hourly_rate: number | string; currency: string; effective_from: string }>).map(
+        (r) => ({ effective_from: r.effective_from, hourly_rate: Number(r.hourly_rate), currency: r.currency as RateCurrency }),
+    )
+}
+
 /**
- * Set a forward rate progression (batch of monthly change-points). Append-only:
- * every entry must be a future month, no earlier than next month, and strictly later
- * than the user's latest scheduled month. Equal-to-running-rate months collapse.
+ * Ustaw stawkę / harmonogram od miesiąca `replace_from` (bieżący, miniony do 12 mies. wstecz
+ * albo przyszły). Wszystko, co było zapisane lub zaplanowane od tego miesiąca, zostaje
+ * zastąpione nowymi punktami zmiany — w jednej transakcji (`replace_user_rate_schedule`).
+ *
+ * Wcześniej: tylko dopisywanie po ostatnim zaplanowanym kroku. Przy rampach z importu XLS
+ * (sięgających 2028) każdy miesiąc był odrzucany, a goły wyjątek produkcja maskowała.
  */
 export async function setRateProgression(
     input: SetRateProgressionInput,
-): Promise<{ inserted_count: number; applied: RateProgressionEntry[] }> {
-    const ctx = await requireFinanseOrAdminAction()
-    if (!input.user_id) throw new Error('Brak user_id.')
-    if (!Array.isArray(input.entries) || input.entries.length === 0) {
-        throw new Error('Brak miesięcy w progresji.')
-    }
-    const admin = createServiceClient()
-    const target = await fetchRateTarget(admin, input.user_id)
-    const openRate = await fetchOpenRate(admin, input.user_id)
+): Promise<ActionResult<{ inserted_count: number; applied: RateProgressionEntry[] }>> {
+    return runAction('setRateProgression', async () => {
+        const ctx = await requireFinanseOrAdminAction()
+        if (!input.user_id) throw new ExpectedError('Brak user_id.')
+        const entries = Array.isArray(input.entries) ? input.entries : []
+        const replaceFrom = input.replace_from ?? entries[0]?.effective_from
+        if (!replaceFrom) throw new ExpectedError('Brak miesięcy w progresji.')
 
-    validateProgressionEntries(input.entries, {
-        nextMonthFirst: firstDayOfNextMonth(),
-        latestExistingEffectiveFrom: openRate?.effective_from ?? null,
+        const admin = createServiceClient()
+        const target = await fetchRateTarget(admin, input.user_id)
+        const schedule = await fetchRateSchedule(admin, input.user_id)
+
+        const nextMonthFirst = firstDayOfNextMonth()
+        const thisMonthFirst = addMonths(nextMonthFirst, -1)
+        validateScheduleReplacement(entries, {
+            replaceFrom,
+            earliestAllowed: addMonths(thisMonthFirst, -RATE_BACKDATE_MAX_MONTHS),
+            nextMonthFirst,
+            // Nigdy krócej niż do ostatniego zaplanowanego kroku — inaczej nie dałoby się go zachować.
+            maxMonths: horizonMonthsFor(nextMonthFirst, schedule[schedule.length - 1]?.effective_from ?? null),
+        })
+
+        const baseline = rateInEffectBefore(schedule, replaceFrom)
+        // Stawka faktycznie obowiązująca W miesiącu zmiany (do „stara → nowa" w powiadomieniu).
+        const runningAtReplaceFrom = rateInEffectBefore(schedule, addMonths(replaceFrom, 1))
+
+        const currency: RateCurrency =
+            input.currency ?? baseline?.currency ?? schedule[schedule.length - 1]?.currency ?? 'PLN'
+        // Zmiana samej waluty też jest zmianą — nie zwijamy pierwszego miesiąca do „bez zmian".
+        const seed = baseline && baseline.currency === currency ? baseline.hourly_rate : null
+        const changePoints = buildChangePoints(seed, entries)
+
+        const replaced = schedule
+            .filter((r) => r.effective_from >= replaceFrom)
+            .map((r) => ({ effective_from: r.effective_from, hourly_rate: r.hourly_rate }))
+        if (isSameSchedule(replaced, changePoints)) {
+            throw new ExpectedError('Brak zmian — od wskazanego miesiąca obowiązują już dokładnie te stawki.')
+        }
+
+        const reason = input.reason?.trim() || null
+        const { data: insertedCount, error } = await admin.rpc('replace_user_rate_schedule', {
+            p_user_id: target.id,
+            p_currency: currency,
+            p_replace_from: replaceFrom,
+            p_entries: changePoints as unknown as Json,
+            p_set_by: ctx.userId,
+            p_reason: reason,
+        })
+        if (error) {
+            // PGRST202 / 42883 = funkcji jeszcze nie ma w bazie (migracja 20260929122811).
+            if (error.code === 'PGRST202' || error.code === '42883') {
+                throw new ExpectedError('Zapis stawek czeka na aktualizację bazy danych. Daj znać administratorowi.')
+            }
+            throw new Error(`Błąd zapisu stawek: ${error.message}`)
+        }
+
+        await notifyRateSchedule({
+            admin,
+            ctx,
+            target,
+            currency,
+            changePoints,
+            reason,
+            auditAction: 'USER_RATE_PROGRESSION_SET',
+            oldRate: runningAtReplaceFrom?.hourly_rate ?? null,
+            // Pełne usunięte wiersze, nie tylko liczba — korekta wstecz musi dać się odtworzyć z audytu.
+            extraAudit: {
+                replace_from: replaceFrom,
+                replaced_count: replaced.length,
+                replaced: schedule.filter((r) => r.effective_from >= replaceFrom),
+            },
+        })
+        return { inserted_count: Number(insertedCount ?? changePoints.length), applied: changePoints }
     })
-
-    const currency: RateCurrency = input.currency ?? openRate?.currency ?? 'PLN'
-    const changePoints = buildChangePoints(openRate?.hourly_rate ?? null, input.entries)
-    if (changePoints.length === 0) {
-        throw new Error('Brak zmian — wszystkie wskazane miesiące mają stawkę identyczną z obecną.')
-    }
-
-    const inserted = await insertProgressionAndNotify({
-        admin,
-        ctx,
-        target,
-        currency,
-        changePoints,
-        reason: input.reason?.trim() || null,
-        auditAction: 'USER_RATE_PROGRESSION_SET',
-        prevRate: openRate,
-    })
-    return { inserted_count: inserted, applied: changePoints }
 }
 
 // ─── Phase 27h — copy progression from another user ────────────────────────
@@ -647,20 +738,38 @@ async function computeCopy(input: CopyProgressionInput, admin: AdminClient): Pro
 }
 
 /** Preview what copying a source user's forward schedule onto a target would apply/skip. */
-export async function previewCopyProgression(input: CopyProgressionInput): Promise<CopyProgressionResult> {
-    await requireFinanseOrAdminAction()
-    if (!input.from_user_id || !input.to_user_id) throw new Error('Wybierz pracownika źródłowego i docelowego.')
-    if (input.from_user_id === input.to_user_id) throw new Error('Pracownik źródłowy i docelowy muszą być różni.')
-    const admin = createServiceClient()
-    const { applied, skipped } = await computeCopy(input, admin)
-    return { applied, skipped, inserted_count: 0 }
+export async function previewCopyProgression(
+    input: CopyProgressionInput,
+): Promise<ActionResult<CopyProgressionResult>> {
+    return runAction('previewCopyProgression', async () => {
+        await requireFinanseOrAdminAction()
+        if (!input.from_user_id || !input.to_user_id) {
+            throw new ExpectedError('Wybierz pracownika źródłowego i docelowego.')
+        }
+        if (input.from_user_id === input.to_user_id) {
+            throw new ExpectedError('Pracownik źródłowy i docelowy muszą być różni.')
+        }
+        const admin = createServiceClient()
+        const { applied, skipped } = await computeCopy(input, admin)
+        return { applied, skipped, inserted_count: 0 }
+    })
 }
 
 /** Apply a copied progression (append-only) and notify. */
-export async function copyRateProgression(input: CopyProgressionInput): Promise<CopyProgressionResult> {
+export async function copyRateProgression(
+    input: CopyProgressionInput,
+): Promise<ActionResult<CopyProgressionResult>> {
+    return runAction('copyRateProgression', () => applyCopyProgression(input))
+}
+
+async function applyCopyProgression(input: CopyProgressionInput): Promise<CopyProgressionResult> {
     const ctx = await requireFinanseOrAdminAction()
-    if (!input.from_user_id || !input.to_user_id) throw new Error('Wybierz pracownika źródłowego i docelowego.')
-    if (input.from_user_id === input.to_user_id) throw new Error('Pracownik źródłowy i docelowy muszą być różni.')
+    if (!input.from_user_id || !input.to_user_id) {
+        throw new ExpectedError('Wybierz pracownika źródłowego i docelowego.')
+    }
+    if (input.from_user_id === input.to_user_id) {
+        throw new ExpectedError('Pracownik źródłowy i docelowy muszą być różni.')
+    }
     const admin = createServiceClient()
     const target = await fetchRateTarget(admin, input.to_user_id)
     const { applied, skipped, targetOpenRate, currency } = await computeCopy(input, admin)
