@@ -4,12 +4,15 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createAcademyDatabase } from './lib/academy-db-fixture.mjs';
 
-const fixture = await createAcademyDatabase({ materials: true });
+const fixture = await createAcademyDatabase({ runMaterials: true });
 const { db, sql, actor, service, rpc, ids } = fixture;
 const migrationsDir = new URL('../supabase/migrations/', import.meta.url);
 const matches = fs.readdirSync(migrationsDir).filter(name => name.endsWith('_academy_lesson_caption_association.sql'));
 assert.equal(matches.length, 1, 'lesson caption migration must be unambiguous');
 const migration = fileURLToPath(new URL(matches[0], migrationsDir));
+const scopeMatches = fs.readdirSync(migrationsDir).filter(name => name.endsWith('_academy_lesson_run_material_scope.sql'));
+assert.equal(scopeMatches.length, 1, 'lesson material scope migration must be unambiguous');
+const scopeMigration = fileURLToPath(new URL(scopeMatches[0], migrationsDir));
 let checks = 0;
 const equal = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
 const denied = async (statement, params, reason) => {
@@ -22,9 +25,10 @@ const denied = async (statement, params, reason) => {
 
 try {
     await db.exec(fs.readFileSync(migration, 'utf8'));
+    await db.exec(fs.readFileSync(scopeMigration, 'utf8'));
     await actor('admin'); await rpc('academy_set_trainer', [ids.trainer, true]);
     await actor('trainer');
-    const course = await rpc('academy_create_course', [{ title: 'Two captioned recordings', category: 'IT', completion_rules: { quiz_required: false, require_all_lessons: true } }]);
+    const course = await rpc('academy_create_course', [{ title: 'Two captioned recordings', category: 'IT', delivery_mode: 'live', completion_rules: { quiz_required: false, require_all_lessons: true } }]);
     const lesson = (await sql("insert into course_lessons(course_id,version_id,title,order_index,content_md) values($1,$2,'Main lesson',0,'Content') returning id", [course.course_id, course.version_id])).rows[0].id;
     const otherLesson = (await sql("insert into course_lessons(course_id,version_id,title,order_index,content_md) values($1,$2,'Other lesson',1,'Content') returning id", [course.course_id, course.version_id])).rows[0].id;
     await service();
@@ -69,6 +73,17 @@ try {
     const nextVersion = await rpc('academy_begin_draft', [course.course_id]);
     const cloneRow = (await sql('select id,attachments from course_lessons where version_id=$1 and order_index=0', [nextVersion])).rows[0];
     equal(cloneRow.attachments, detached);
+    await sql('update course_lessons set attachments=$1 where id=$2', [JSON.stringify(detached), cloneRow.id]);
+    equal((await sql('select attachments from course_lessons where id=$1', [cloneRow.id])).rows[0].attachments, detached);
+    const runId = await rpc('academy_create_run', [{ courseId: course.course_id, versionId: course.version_id, title: 'Live session', capacity: 2 }]);
+    await service();
+    const runAsset = (await sql(`insert into course_materials(course_id,version_id,run_id,uploaded_by,filename,storage_path,mime_type,size_bytes,status,review_status)
+        values($1,$2,$3,$4,'run.pdf','run/run.pdf','application/pdf',100,'ready','pending_review') returning id`,
+        [course.course_id, course.version_id, runId, ids.trainer])).rows[0];
+    await actor('trainer');
+    await denied('update course_lessons set attachments=$1 where id=$2',
+        [JSON.stringify([...detached, { asset_id: runAsset.id, name: 'run.pdf', storage_path: 'run/run.pdf', mime_type: 'application/pdf', size_bytes: 100 }]), cloneRow.id],
+        /Załącznik jest niedostępny/);
     await service();
     const newVideo = await asset(cloneRow.id, 'new-version.mp4', 'video/mp4', nextVersion);
     await actor('trainer');
