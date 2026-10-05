@@ -1,5 +1,6 @@
 import { AcademyShell } from '@/components/academy/AcademyShell'
 import { AcademyEmptyState } from '@/components/academy/AcademyEmptyState'
+import { CourseSurveyHistory } from '@/components/academy/CourseSurveyHistory'
 import { AcademyReport } from '@/components/academy/AcademyReport'
 import { getAuthorAnalytics } from '@/lib/actions/courses-analytics'
 import { getAcademyAccess } from '@/lib/actions/academy-access'
@@ -16,5 +17,6 @@ export default async function AuthorAnalyticsPage() {
             { label: 'Potwierdzone ukończenia', value: data.total_completions },
             { label: 'Średnia ocena / 5', value: data.average_rating ? data.average_rating.toFixed(1) : '—' },
         ]} rows={data.courses.map(course => ({ id: course.course_id, title: course.course_title, enrollments: course.enrollments_count, completions: course.completions_count, rate: course.completion_rate, rating: course.avg_rating }))} />}
+        <CourseSurveyHistory />
     </AcademyShell>
 }

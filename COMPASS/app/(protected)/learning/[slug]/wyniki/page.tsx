@@ -4,6 +4,7 @@ import { Trophy, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RatingWidget } from '@/components/learning/RatingWidget'
+import { EditionSurvey } from '@/components/academy/EditionSurvey'
 import { CourseSurveyForm } from '@/components/learning/CourseSurveyForm'
 import { CourseCompletion } from '@/components/academy/CourseCompletion'
 import { getCourseDetail } from '@/lib/actions/courses'
@@ -40,7 +41,7 @@ export default async function QuizResultsPage({ params, searchParams }: {
         </Card>
         {attempt.completed && <>
             <RatingWidget courseId={course.id} initialRating={course.user_rating?.rating} initialComment={course.user_rating?.comment} />
-            <CourseSurveyForm courseId={course.id} enrollmentId={course.enrollment_id} />
+            {course.run_id ? <EditionSurvey runId={course.run_id} canManage={false} /> : <CourseSurveyForm courseId={course.id} enrollmentId={course.enrollment_id} />}
         </>}
     </div>
 }

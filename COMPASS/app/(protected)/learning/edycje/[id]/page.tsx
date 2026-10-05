@@ -5,7 +5,7 @@ import { AcademyEmptyState } from '@/components/academy/AcademyEmptyState'
 import { AcademyShell } from '@/components/academy/AcademyShell'
 import { AcademyPrerequisites } from '@/components/academy/AcademyPrerequisites'
 import { AcademyRunDetail } from '@/components/academy/sessions/AcademyRunDetail'
-import { CourseFeedback } from '@/components/academy/CourseFeedback'
+import { EditionSurvey } from '@/components/academy/EditionSurvey'
 import { RunMaterials } from '@/components/academy/RunMaterials'
 import { Button } from '@/components/ui/button'
 import { getAcademyStaff } from '@/lib/actions/academy-staff'
@@ -38,7 +38,7 @@ export default async function AcademyRunPage({ params }: { params: { id: string 
             managedTeamsReason={organizers && !organizers.success ? organizers.error : config?.success ? config.data.reason : config && !config.success ? config.error : undefined}
             userId={access.data.userId} now={new Date().toISOString()} />
         {(run.canManage || enrolled) && <RunMaterials runId={run.id} courseId={run.courseId} canManage={run.canManage} isAdmin={access.data.isAdmin} userId={access.data.userId} readOnly={run.status === 'cancelled'} />}
-        {run.myRegistration?.enrollmentId && <CourseFeedback courseId={run.courseId} enrollmentId={run.myRegistration.enrollmentId} completedAt={run.myRegistration.completedAt} />}
+        {(run.canManage || run.myRegistration) && <EditionSurvey runId={run.id} canManage={run.canManage} />}
         {staff?.success && staff.data && <AcademyStaffPanel courseId={run.courseId} runId={run.id} state={staff.data} />}
         {staff && !staff.success && <p role="alert" className="text-sm text-destructive">{staff.error}</p>}
     </AcademyShell>
