@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import pg from 'pg';
 import { createAcademyDatabase } from './academy-db-fixture.mjs';
-import { assertFixtureObjectPrivileges, withFixtureDefaultPrivileges } from './academy-fixture-acl.mjs';
+import { assertFixtureObjectPrivileges, fixtureApplicationSchemas, withFixtureDefaultPrivileges } from './academy-fixture-acl.mjs';
 
 export function assertHostedStorage(env = process.env) {
     assert.equal(env.GITHUB_ACTIONS, 'true', 'hosted_storage_gate_only');
@@ -23,6 +23,17 @@ export function cleanPublicDump(dump) {
     assert(!/\b(?:CREATE|ALTER) (?:SCHEMA (?:auth|storage)(?:\s|;)|(?:TABLE|FUNCTION) (?:auth|storage)\.)/i.test(result), 'native_schema_overwrite_forbidden');
     assert(!/\b(?:GRANT|REVOKE)[^;]*\bON (?:SCHEMA (?:auth|storage)|(?:ALL [^;]+ IN SCHEMA )?(?:auth|storage)\.)/i.test(result), 'native_schema_grant_forbidden');
     return result;
+}
+export function fixtureInstallFailureDetail(stage, error) {
+    const message = typeof error?.message === 'string' ? error.message : '';
+    const schema = /schema "([a-zA-Z0-9_]+)" does not exist/.exec(message)?.[1];
+    const relation = /relation "([a-zA-Z0-9_.]+)" does not exist/.exec(message)?.[1];
+    const code = /^[A-Z0-9]{5}$/.test(error?.code ?? '') ? error.code : 'failed';
+    // Only known schema names are useful diagnostics. Never log raw SQL/error
+    // context, credentials, parameters, or unknown schema identifiers.
+    const schemaDetail = [...fixtureApplicationSchemas, 'auth', 'storage', 'extensions'].includes(schema)
+        ? ':schema:' + schema : '';
+    return `fixture_${stage}:${code}${schemaDetail}${relation ? ':' + relation : ''}`;
 }
 const ident=value=>'"'+String(value).replaceAll('"','""')+'"';
 export function storagePolicySql(row) {
@@ -50,7 +61,7 @@ export async function installAcademyStorageFixture(status) {
         const fixtureName=(await fixture.sql('select current_database() as name')).rows[0].name;
         assert(/^academy_fixture_[a-f0-9]{32}$/.test(fixtureName), 'invalid_fixture_database_name');
         // Same server/client major version. Docker is invoked exclusively after the hosted guard.
-        const dump=execFileSync('docker',['exec','supabase_db_academy-storage-ci','pg_dump','-U','postgres','-d',fixtureName,'--schema-only','--no-owner','--schema=public','--schema=academy_private'],{encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
+        const dump=execFileSync('docker',['exec','supabase_db_academy-storage-ci','pg_dump','-U','postgres','-d',fixtureName,'--schema-only','--no-owner',...fixtureApplicationSchemas.map(schema=>'--schema='+schema)],{encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
         installStage='import_public_schema';
         // The canonical dependency snapshot contains the existing vector columns
         // and HNSW indexes. Extension objects are not included by a scoped dump.
@@ -87,8 +98,7 @@ export async function installAcademyStorageFixture(status) {
         console.log(JSON.stringify({check:'canonical_pre_academy_dependency_parity',outcome:'passed',...fixture.baselineProof,migrationsApplied:fixture.appliedMigrations}));
         return sql;
     } catch(error) {
-        const relation = /relation "([a-zA-Z0-9_.]+)" does not exist/.exec(error.message??'')?.[1];
-        error.message=`fixture_${installStage}:${error.code??'failed'}${relation?':'+relation:''}`;
+        error.message=fixtureInstallFailureDetail(installStage,error);
         await sql.end();throw error;
     } finally {await fixture.db.close();}
 }

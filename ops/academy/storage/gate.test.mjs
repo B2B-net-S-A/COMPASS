@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assertHostedStorage,localStatus,cleanPublicDump,storagePolicySql } from '../../../COMPASS/scripts/lib/academy-storage-gate.mjs';
+import { assertHostedStorage,localStatus,cleanPublicDump,storagePolicySql,fixtureInstallFailureDetail } from '../../../COMPASS/scripts/lib/academy-storage-gate.mjs';
 import { projectStart } from './report-start.mjs';
 // Run the host-native ACL regressions in the existing pre-Storage CI gate.
 import './fixture-acl.test.mjs';
@@ -53,6 +53,11 @@ test('accepts only local disposable API and database endpoints',()=>{
 test('removes only psql markers/public creation and rejects native auth/storage writes',()=>{
  assert.equal(cleanPublicDump('\\restrict abc\nCREATE SCHEMA public;\nCREATE TABLE public.example(id uuid);\n\\unrestrict abc\n'),'CREATE TABLE public.example(id uuid);\n');
  for(const sql of ['CREATE FUNCTION auth.uid() returns uuid AS $$select null$$ language sql;','ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;','GRANT ALL ON SCHEMA auth TO authenticated;'])assert.throws(()=>cleanPublicDump(sql));
+});
+test('fixture failure diagnostics identify only allowlisted schemas and omit raw context',()=>{
+ assert.equal(fixtureInstallFailureDetail('import_public_schema',{code:'3F000',message:'schema "academy_material_policy" does not exist',detail:'private parameter'}),'fixture_import_public_schema:3F000:schema:academy_material_policy');
+ assert.equal(fixtureInstallFailureDetail('import_public_schema',{code:'3F000',message:'schema "secret_schema_identifier" does not exist'}),'fixture_import_public_schema:3F000');
+ assert.equal(fixtureInstallFailureDetail('import_public_schema',{code:'private error',message:'raw SQL with a credential'}),'fixture_import_public_schema:failed');
 });
 test('exports only allowlisted Academy storage policies',()=>{
  const p={schemaname:'storage',tablename:'objects',policyname:'academy_material_upload',cmd:'INSERT',permissive:'PERMISSIVE',roles:['authenticated'],qual:null,with_check:"bucket_id='academy-materials'"};

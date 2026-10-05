@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { assertFixtureObjectPrivileges, readFixtureDefaultPrivileges, withFixtureDefaultPrivileges } from '../../../COMPASS/scripts/lib/academy-fixture-acl.mjs';
+import { assertFixtureObjectPrivileges, fixtureApplicationSchemas, readFixtureDefaultPrivileges, withFixtureDefaultPrivileges } from '../../../COMPASS/scripts/lib/academy-fixture-acl.mjs';
 import { createAcademyDatabase } from '../../../COMPASS/scripts/lib/academy-db-fixture.mjs';
 
 const { PGlite } = await import(process.env.ACADEMY_PGLITE_PATH
@@ -40,6 +40,49 @@ const nativeAcl = async db => (await db.query(`select n.nspname||'.'||c.relname 
     union all select n.nspname||'.'||p.proname,p.proacl::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='auth' or p.proname='native_extension' order by 1`)).rows;
 
+test('scoped application import includes the material policy dependency and preserves its ACLs', async () => {
+    const source = new PGlite(), target = new PGlite(), omitted = new PGlite();
+    const policySchema = `create schema academy_material_policy;
+        grant usage on schema academy_material_policy to authenticated;
+        create function academy_material_policy.staff_metadata() returns bool language sql as $$select true$$;
+        revoke all on function academy_material_policy.staff_metadata() from public;
+        grant execute on function academy_material_policy.staff_metadata() to service_role;`;
+    const catalogView = `create view public.material_catalog as select staff.allowed
+        from lateral (select academy_material_policy.staff_metadata() as allowed) staff;`;
+    try {
+        assert.deepEqual(fixtureApplicationSchemas, ['public', 'academy_private', 'academy_material_policy']);
+        await omitted.exec(roles + dump);
+        await assert.rejects(omitted.exec(catalogView), error => error.code === '3F000');
+        await source.exec(roles + dump + policySchema + catalogView);
+        await target.exec(roles + existingNative + injectedDefaults);
+        const before = await nativeAcl(target), defaultsBefore = await readFixtureDefaultPrivileges(target);
+        await withFixtureDefaultPrivileges(target, async () => {
+            await target.exec(dump + policySchema + catalogView);
+            assert.equal(await assertFixtureObjectPrivileges(source, target), 9);
+        });
+        assert.deepEqual(await nativeAcl(target), before);
+        assert.deepEqual(await readFixtureDefaultPrivileges(target), defaultsBefore);
+        await target.exec('revoke usage on schema academy_material_policy from authenticated');
+        await assert.rejects(assertFixtureObjectPrivileges(source, target), /fixture_acl_mismatch:schema:academy_material_policy/);
+        await target.exec('grant usage on schema academy_material_policy to authenticated');
+        await target.exec('grant execute on function academy_material_policy.staff_metadata() to authenticated');
+        await assert.rejects(assertFixtureObjectPrivileges(source, target), /fixture_acl_mismatch:function:academy_material_policy.staff_metadata/);
+    } finally { await Promise.all([source.close(), target.close(), omitted.close()]); }
+});
+
+test('Patryk cycle catalog and replayed storage predicates resolve application schemas in the dump scope', async () => {
+    const f = await createAcademyDatabase({patrykCycle:true});
+    try {
+        const policyFunctions = (await f.sql("select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='academy_material_policy'")).rows;
+        assert(policyFunctions.some(row => row.proname === 'staff_metadata'));
+        const catalog = (await f.sql("select pg_get_viewdef('public.academy_material_catalog'::regclass) as definition")).rows[0].definition;
+        assert.match(catalog, /academy_material_policy\.staff_metadata/);
+        const policies = (await f.sql("select qual,with_check from pg_policies where schemaname='storage' and policyname like 'academy_%'")).rows;
+        assert(policies.some(row => /academy_material_policy\./.test(row.qual ?? row.with_check ?? '')));
+        assert(fixtureApplicationSchemas.includes('academy_material_policy'));
+    } finally { await f.db.close(); }
+});
+
 test('native vector extension ACLs stay native while application function ACL drift still fails',async()=>{
     const {vector}=await import(new URL('../../../COMPASS/node_modules/@electric-sql/pglite/dist/vector/index.js',import.meta.url).href);
     const source=new PGlite({extensions:{vector}}),target=new PGlite({extensions:{vector}});
@@ -47,7 +90,7 @@ test('native vector extension ACLs stay native while application function ACL dr
         for(const db of [source,target])await db.exec(roles+'CREATE EXTENSION vector;'+dump);
         const signature=(await target.query("select p.oid::regprocedure::text as signature from pg_proc p join pg_depend d on d.objid=p.oid and d.classid='pg_proc'::regclass join pg_extension e on e.oid=d.refobjid where d.deptype='e' and e.extname='vector' order by p.oid limit 1")).rows[0].signature;
         await target.exec(`GRANT EXECUTE ON FUNCTION ${signature} TO authenticated;`);
-        assert.equal(await assertFixtureObjectPrivileges(source,target),5);
+        assert.equal(await assertFixtureObjectPrivileges(source,target),6);
         await target.exec('GRANT EXECUTE ON FUNCTION public.worker(uuid) TO authenticated;');
         await assert.rejects(assertFixtureObjectPrivileges(source,target),/fixture_acl_mismatch:function:public.worker/);
     }finally{await Promise.all([source.close(),target.close()]);}
@@ -64,7 +107,7 @@ test('dump restore removes injected global/schema defaults temporarily and match
         const defaultsBefore = await readFixtureDefaultPrivileges(target), nativeBefore = await nativeAcl(target);
         await withFixtureDefaultPrivileges(target, async () => {
             await target.exec(dump);
-            assert.equal(await assertFixtureObjectPrivileges(source, target), 5);
+            assert.equal(await assertFixtureObjectPrivileges(source, target), 6);
         });
         assert.deepEqual(await readFixtureDefaultPrivileges(target), defaultsBefore);
         assert.deepEqual(await nativeAcl(target), nativeBefore);
@@ -106,7 +149,7 @@ test('parity rejects table, sequence and effective inherited privileges, includi
     const source = new PGlite(), target = new PGlite();
     try {
         await source.exec(roles + dump); await target.exec(roles + dump);
-        assert.equal(await assertFixtureObjectPrivileges(source,target),5);
+        assert.equal(await assertFixtureObjectPrivileges(source,target),6);
         for (const [grant,revoke] of [
             ['grant insert on public.records to anon','revoke insert on public.records from anon'],
             ['grant usage on public.record_sequence to anon','revoke usage on public.record_sequence from anon'],
@@ -116,7 +159,7 @@ test('parity rejects table, sequence and effective inherited privileges, includi
             await target.exec(grant);
             await assert.rejects(assertFixtureObjectPrivileges(source,target),/fixture_acl_mismatch/);
             await target.exec(revoke);
-            assert.equal(await assertFixtureObjectPrivileges(source,target),5);
+            assert.equal(await assertFixtureObjectPrivileges(source,target),6);
         }
     } finally { await Promise.all([source.close(),target.close()]); }
 });

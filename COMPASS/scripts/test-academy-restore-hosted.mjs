@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
 import { assertHostedStorage, localStatus } from './lib/academy-storage-gate.mjs';
+import { assertFixtureObjectPrivileges } from './lib/academy-fixture-acl.mjs';
 import { seal, verify } from '../../ops/academy/restore/verify.mjs';
 
 assertHostedStorage();
@@ -136,7 +137,7 @@ function safeFailure(error) {
     'isolated_storage_loopback_port_required', 'target_storage_not_isolated_from_source_bytes']);
   const missingSchema = /schema "([a-z_][a-z0-9_]*)" does not exist/i.exec(stderr)?.[1];
   const knownSchemas = new Set(['auth', 'storage', 'extensions', 'vault', 'graphql_public', 'realtime',
-    'supabase_migrations', 'public', 'academy_private', 'cron', 'net', 'graphql']);
+    'supabase_migrations', 'public', 'academy_private', 'academy_material_policy', 'cron', 'net', 'graphql']);
   const deniedSchema = /permission denied for schema ([a-z_][a-z0-9_]*)/i.exec(stderr)?.[1];
   const deniedExtension = /permission denied to create extension "([a-z_][a-z0-9_-]*)"/i.exec(stderr)?.[1];
   const knownExtensions = new Set(['vector', 'pg_graphql', 'pg_net', 'pgcrypto', 'uuid-ossp',
@@ -336,6 +337,11 @@ try {
   // to start against the target even when the object metadata is present.
   docker('exec', container, 'pg_restore', '-U', 'supabase_admin', '-d', targetName,
     '--exit-on-error', restoredInContainer);
+  stage = 'restore_application_acl';
+  // Check the archive's original application ACLs before adding maintenance
+  // read grants for the metadata export. API roles receive no new grants here.
+  const restoredApplicationAclObjects = await assertFixtureObjectPrivileges(client, targetClient);
+  console.log(JSON.stringify({check:'restored_application_acl',outcome:'passed',objects:restoredApplicationAclObjects}));
   stage = 'restore_read_grants';
   docker('exec', container, 'psql', '-U', 'supabase_admin', '-d', targetName,
     '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-c',
