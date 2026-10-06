@@ -50,6 +50,12 @@ describe('course creation and trainer access', () => {
         expect((await createCourse({ ...input, course_type: 'company', is_official: true })).success).toBe(true)
         expect(client.rpc).toHaveBeenCalledWith('academy_create_course', { p_input: { ...input, course_type: 'company', is_official: true } })
     })
+    it('allows TCM without a grant to prepare a company course without publishing it', async () => {
+        setup({ tables: { profiles: [{ id: USER, role: 'talent_community', is_external: false, employment_status: 'active' }], academy_user_capabilities: [] }, rpcs: { academy_create_course: () => ({ course_id: COURSE, slug: 'kurs' }), academy_rollout_access: () => ({ mode: 'closed', allowed: true, isPilot: false }) } })
+        expect((await createCourse({ ...input, course_type: 'company', is_official: true })).success).toBe(true)
+        expect(client.rpc).toHaveBeenCalledWith('academy_create_course', { p_input: { ...input, course_type: 'company', is_official: true } })
+        expect(client.rpc.mock.calls.map(([name]) => name)).toEqual(['academy_rollout_access', 'academy_create_course'])
+    })
     it('leaves omitted defaults to the database', async () => {
         setup({ rpcs: { academy_create_course: () => ({ course_id: COURSE, slug: 'kurs' }) } })
         await createCourse(input)
@@ -70,7 +76,7 @@ describe('draft changes and moderation', () => {
         expect((await updateCourse(courseId, input)).success).toBe(false)
         expect(client._tables.courses[0].title).toBe('Opublikowany program')
     })
-    it.each(['consultant', 'admin'])('updates through the draft RPC for %s', async role => {
+    it.each(['consultant', 'admin', 'talent_community'])('updates through the draft RPC for %s', async role => {
         setup({ tables: { profiles: [{ id: USER, role }] }, rpcs: { academy_update_course: () => null } })
         expect(await updateCourse(COURSE, { title: 'Nowy tytuł' })).toEqual({ success: true, data: { slug: 'warsztat' } })
         expect(client.rpc).toHaveBeenCalledWith('academy_update_course', { p_course_id: COURSE, p_patch: { title: 'Nowy tytuł' } })

@@ -13,7 +13,7 @@ vi.mock('@/components/academy/AcademyShell', () => ({ AcademyShell: () => null }
 vi.mock('@/components/academy/AcademyMyLearning', () => ({ AcademyMyLearning: () => null }))
 
 beforeEach(() => {
-    vi.mocked(getAcademyAccess).mockResolvedValue({ success: true, data: { userId: 'user', isAdmin: false, canTeach: false, rolloutMode: 'open', isPilot: false } })
+    vi.mocked(getAcademyAccess).mockResolvedValue({ success: true, data: { userId: 'user', isAdmin: false, canManageAcademy: false, canTeach: false, rolloutMode: 'open', isPilot: false } })
     vi.mocked(getMyEnrollmentsPage).mockResolvedValue({ success: true, data: {
         items: [], totals: { active: 0, completed: 0, revoked: 0 },
         activePage: 2, completedPage: 1, revokedPage: 1, pageSize: 24,

@@ -149,6 +149,7 @@ export function Sidebar({
         {
             heading: t('group_growth'),
             links: [
+                ...(isTalentCommunity ? [{ name: 'Edytor Akademii', href: '/learning/tworze', icon: GraduationCap, feature: 'learning' as const }] : []),
                 { name: t('nav_incubator'), href: '/incubator', icon: Lightbulb, feature: 'incubator' },
             ],
         },
@@ -373,7 +374,7 @@ export function Sidebar({
     // Apply per-feature permission filter (admins always pass).
     // Globalny gate dla coming-soon idzie pierwszy — ukrywa nawet adminom.
     const filterByPermission = (link: NavLink): boolean => {
-        if (link.feature === 'learning') return academyEnabled && (role === 'admin' || (role === 'consultant' && permissions?.learning !== 'false'))
+        if (link.feature === 'learning') return role === 'talent_community' || (academyEnabled && (role === 'admin' || (role === 'consultant' && permissions?.learning !== 'false')))
         if (isFeatureComingSoon(link.feature)) return false
         if (isAdmin) return true
         if (!link.feature) return true

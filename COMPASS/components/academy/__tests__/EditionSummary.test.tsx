@@ -41,3 +41,14 @@ it('exports survey coverage and absent ratings honestly without teaching-interes
     expect(text).not.toContain('private-user')
     expect(text).not.toContain('contract_email')
 })
+
+
+it('marks personal teaching-interest data unavailable in the TCM export instead of claiming zero', async () => {
+    const aggregates = { ...survey }
+    delete aggregates.teachingInterests
+    vi.mocked(getEditionSurveyReport).mockResolvedValue({ success: true, data: aggregates })
+    render(await EditionSummary({ run, participants: [] }))
+    const text = screen.getByTestId('download').textContent ?? ''
+    expect(text).toContain('Deklaracje chęci prowadzenia: dostępne tylko administratorowi')
+    expect(text).not.toContain('Deklaracje chęci prowadzenia: 0')
+})

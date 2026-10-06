@@ -22,3 +22,17 @@ it('explains an out-of-range page and lets the admin return', () => {
     expect(screen.getByRole('link', { name: 'Poprzednia strona' })).toHaveAttribute('href', '/admin/learning/trainers?page=3')
     expect(screen.getByRole('button', { name: 'Następna strona' })).toBeDisabled()
 })
+
+
+it.each(['admin', 'talent_community'])('does not offer a capability toggle for role-based %s access', role => {
+    render(<AcademyTrainersPanel trainers={[{ ...trainer, role, canTeach: true }]} search="" page={1} pageSize={25} total={1} />)
+    expect(screen.queryByRole('button', { name: 'Odbierz uprawnienie' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nadaj uprawnienie trenera' })).not.toBeInTheDocument()
+    if (role === 'talent_community') expect(screen.getByText('Talent Community Manager · edycja wszystkich szkoleń wynikająca z roli')).toBeInTheDocument()
+    else expect(screen.getByText('Administrator · uprawnienia wynikają z roli')).toBeInTheDocument()
+})
+
+it('retains the ordinary consultant trainer capability control', () => {
+    render(<AcademyTrainersPanel trainers={[trainer]} search="" page={1} pageSize={25} total={1} />)
+    expect(screen.getByRole('button', { name: 'Odbierz uprawnienie' })).toBeEnabled()
+})

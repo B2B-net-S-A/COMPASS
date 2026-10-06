@@ -46,7 +46,7 @@ export default async function EditCoursePage({ params }: PageProps) {
         <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
             <div>
                 <Link href="/learning/tworze" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-2">
-                    ← Moje szkolenia
+                    ← Edytor szkoleń
                 </Link>
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>

@@ -98,7 +98,7 @@ export async function reviewAcademyRunMaterial(input: { assetId: string; decisio
 export async function assignAcademyRunCaption(input: { captionId: string; videoId: string | null }) {
     return academyAction('material.assign_caption', async () => {
         const parsed = z.object({ captionId: z.uuid(), videoId: z.uuid().nullable() }).parse(input)
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ editor: true })
         const { error } = await client.rpc('academy_set_run_caption', {
             p_caption_id: parsed.captionId, p_video_id: parsed.videoId,
         })
@@ -134,10 +134,10 @@ export async function getAcademyMaterialQueue(input: { page?: number; filter?: '
     return academyAction('material.queue', async () => {
         const { page, filter } = z.object({ page: z.number().int().min(1).max(100000).default(1), filter: z.enum(['pending', 'failed', 'rejected', 'all']).default('pending') }).parse(input)
         const pageSize = 25
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ editor: true })
         let query = client.from('academy_material_catalog')
             .select('id,filename,status,scan_attempts,scan_started_at,scan_next_attempt_at,created_at,course_id,run_id', { count: 'exact' })
-            .neq('status', 'ready').is('purged_at', null).is('cleanup_token', null).or('scan_error.is.null,scan_error.neq.discarded_by_author')
+            .neq('status', 'ready').is('purged_at', null).eq('cleanup_pending', false).or('scan_error.is.null,scan_error.neq.discarded_by_author')
         if (filter === 'pending') query = query.in('status', ['uploading', 'quarantined', 'scanning'])
         if (filter === 'failed') query = query.in('status', ['quarantined', 'scanning']).gte('scan_attempts', 5)
         if (filter === 'rejected') query = query.eq('status', 'rejected')
@@ -158,7 +158,7 @@ export async function getAcademyMaterialQueue(input: { page?: number; filter?: '
 
 export async function retryAcademyMaterialScan(assetId: string) {
     return academyAction('material.admin_retry', async () => {
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ editor: true })
         const { error } = await client.rpc('academy_admin_retry_material', { p_asset_id: z.uuid().parse(assetId) })
         assertDatabaseResult(error)
     })

@@ -129,11 +129,11 @@ export async function middleware(request: NextRequest) {
             }
         }
 
-        // Phase 20: pracownicy biurowi NIE widzą /home, /learning, /league (consultant IT + admin only).
+        // HR landing pozostaje /internal. TCM dodatkowo ma globalny edytor /learning; inne role HR nie mają dostępu do Akademii.
         // Aktualności (/news), Inkubator (/incubator), Support (/support) są WSPÓLNE dla wszystkich
         // HR-zone ról — nie redirectujemy z nich.
         if (isInternalLanding) {
-            const platformOnlyPaths = ['/home', '/learning', '/league']
+            const platformOnlyPaths = role === 'talent_community' ? ['/home', '/league'] : ['/home', '/learning', '/league']
             if (platformOnlyPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
                 return NextResponse.redirect(new URL('/internal', request.url))
             }

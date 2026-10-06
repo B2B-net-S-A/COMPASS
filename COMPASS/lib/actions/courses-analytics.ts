@@ -109,7 +109,7 @@ export async function getAuthorAnalytics(): Promise<ActionResult<AuthorAnalytics
 
 export async function getAdminLmsAnalytics(): Promise<ActionResult<AdminLmsAnalytics>> {
     return academyAction('analytics.admin', async () => {
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ editor: true })
         const courses = await readRows<ReportCourse>(client, 'courses', 'id,title,status,published_version_id,legacy_review_required')
         const report = await readReport(client, courses)
         const summary = summarize(report.rows)

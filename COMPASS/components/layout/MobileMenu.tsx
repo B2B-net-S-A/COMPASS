@@ -63,9 +63,9 @@ export function MobileMenu({ role, academyEnabled = false }: MobileMenuProps) {
     ]
 
     // Items shown inside the "More" drawer (Incubator + Support przeniesione na bottom).
-    const canOpenAcademy = academyEnabled && (role === 'admin' || role === 'consultant')
+    const canOpenAcademy = role === 'talent_community' || (academyEnabled && (role === 'admin' || role === 'consultant'))
     const moreItems: NavItem[] = [
-        ...(canOpenAcademy ? [{ name: 'Akademia', href: '/learning', icon: GraduationCap }] : []),
+        ...(canOpenAcademy ? [{ name: role === 'talent_community' ? 'Edytor Akademii' : 'Akademia', href: role === 'talent_community' ? '/learning/tworze' : '/learning', icon: GraduationCap }] : []),
         { name: t('nav_notifications'), href: '/notifications', icon: Bell },
         { name: t('nav_profile'), href: '/profile', icon: User },
         { name: t('nav_settings'), href: '/settings', icon: Settings },

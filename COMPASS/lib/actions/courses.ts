@@ -36,7 +36,7 @@ export async function createCourse(input: CreateCourseInput): Promise<ActionResu
     return academyAction('course.create', async () => {
         const { client, access } = await requireAcademyContext({ trainer: true })
         const parsed = courseMetadataSchema.extend({ course_type: z.enum(['company', 'consultant']).optional(), is_official: z.boolean().optional() }).parse(input)
-        const { data, error } = await client.rpc('academy_create_course', { p_input: { ...parsed, course_type: access.isAdmin ? parsed.course_type ?? 'consultant' : 'consultant', is_official: access.isAdmin && parsed.course_type === 'company' && parsed.is_official === true } })
+        const { data, error } = await client.rpc('academy_create_course', { p_input: { ...parsed, course_type: access.canManageAcademy ? parsed.course_type ?? 'consultant' : 'consultant', is_official: access.canManageAcademy && parsed.course_type === 'company' && parsed.is_official === true } })
         assertDatabaseResult(error)
         revalidatePath('/learning/tworze')
         return { courseId: data.course_id as string, slug: data.slug as string }
