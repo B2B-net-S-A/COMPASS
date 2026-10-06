@@ -18,7 +18,7 @@ async function loadAcademyTrainerPage(input: z.input<typeof trainerPageSchema>) 
     const { search, page, pageSize } = trainerPageSchema.parse(input)
     const { client } = await requireAcademyContext({ admin: true })
     let query = client.from('profiles').select('id, full_name, email, role', { count: 'exact' })
-        .in('role', ['consultant', 'admin']).eq('is_external', false)
+        .in('role', ['consultant', 'admin', 'talent_community']).eq('is_external', false)
         .or('employment_status.is.null,employment_status.neq.exited')
     const term = search.trim().replace(/[,%_()]/g, '')
     if (term) query = query.or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
@@ -44,7 +44,7 @@ async function loadAcademyTrainerPage(input: z.input<typeof trainerPageSchema>) 
         page, pageSize, total: count,
         items: (people ?? []).map((person: { id: string; full_name: string | null; email: string; role: string }) => {
             const grant = byUserId.get(person.id)
-            return { ...person, canTeach: person.role === 'admin' || (grant?.can_train === true && !grant.revoked_at), grantedAt: (grant?.granted_at as string | null | undefined) ?? null }
+            return { ...person, canTeach: ['admin', 'talent_community'].includes(person.role) || (grant?.can_train === true && !grant.revoked_at), grantedAt: (grant?.granted_at as string | null | undefined) ?? null }
         }),
     }
 }

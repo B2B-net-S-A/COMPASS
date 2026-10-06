@@ -22,8 +22,8 @@ const linkedCaption = (items: AcademyRunMaterial[], videoId: string): CourseAtta
     return caption ? asAttachment(caption) : undefined
 }
 
-export function RunMaterials({ runId, courseId, canManage, isAdmin, userId, readOnly = false }: {
-    runId: string; courseId: string; canManage: boolean; isAdmin: boolean; userId: string; readOnly?: boolean
+export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAcademy = false, userId, readOnly = false }: {
+    runId: string; courseId: string; canManage: boolean; isAdmin: boolean; canManageAcademy?: boolean; userId: string; readOnly?: boolean
 }) {
     const [items, setItems] = useState<AcademyRunMaterial[]>([])
     const [loading, setLoading] = useState(true)
@@ -85,7 +85,7 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, userId, read
             </div>
             {['audio/mpeg', 'audio/mp4'].includes(item.mime_type) && <AcademyVideo runId={runId} video={asAttachment(item)} audio />}
             {item.mime_type === 'video/mp4' && <AcademyVideo runId={runId} video={asAttachment(item)} captions={item.review_status === 'published' ? linkedCaption(items, item.id) : undefined} />}
-            {isAdmin && !readOnly && item.mime_type === 'text/vtt' && item.review_status === 'published' && <div className="flex flex-col gap-1 sm:max-w-sm">
+            {(isAdmin || canManageAcademy) && !readOnly && item.mime_type === 'text/vtt' && item.review_status === 'published' && <div className="flex flex-col gap-1 sm:max-w-sm">
                 <label htmlFor={`caption-target-${item.id}`} className="text-sm font-medium">Nagranie dla napisów</label>
                 <select id={`caption-target-${item.id}`} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" disabled={pending}
                     value={item.caption_for_asset_id ?? ''} onChange={event => assignCaption(item.id, event.target.value || null)}>

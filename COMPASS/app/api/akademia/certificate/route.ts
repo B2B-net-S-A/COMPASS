@@ -52,4 +52,4 @@ export const GET = withAuth(async (request, { user }) => {
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
     } })
-}, { role: ['consultant', 'admin'] })
+}, { role: ['consultant', 'admin', 'talent_community'] })

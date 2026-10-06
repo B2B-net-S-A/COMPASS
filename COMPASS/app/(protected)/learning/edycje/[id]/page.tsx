@@ -34,13 +34,13 @@ export default async function AcademyRunPage({ params }: { params: { id: string 
     return <AcademyShell activeTab={run.canManage ? 'teaching' : 'calendar'} showCalendar access={access.data} title={run.title} description={run.courseTitle}
         action={<Button asChild variant="outline"><Link href={run.canManage ? '/learning/tworze/' + run.courseId + '/edycje' : '/learning/kalendarz'}><ArrowLeft aria-hidden="true" />{run.canManage ? 'Wszystkie edycje' : 'Kalendarz'}</Link></Button>}>
         <AcademyPrerequisites status={prerequisites.success ? prerequisites.data : undefined} error={prerequisites.success ? undefined : prerequisites.error} enrolled={enrolled} />
-        <AcademyRunDetail run={run} isAdmin={access.data.isAdmin} canRegister={prerequisites.success && prerequisites.data.allCompleted}
+        <AcademyRunDetail run={run} isAdmin={access.data.isAdmin} canManageAcademy={access.data.canManageAcademy} canRegister={prerequisites.success && prerequisites.data.allCompleted}
             participants={participants?.success ? participants.data : []} participantsError={participants && !participants.success ? participants.error : undefined}
             organizers={organizers?.success ? organizers.data : []} managedTeamsAvailable={config?.success ? config.data.managedTeamsAvailable : false}
             managedTeamsReason={organizers && !organizers.success ? organizers.error : config?.success ? config.data.reason : config && !config.success ? config.error : undefined}
             userId={access.data.userId} now={new Date().toISOString()} />
-        {(run.canManage || enrolled) && <RunMaterials runId={run.id} courseId={run.courseId} canManage={run.canManage} isAdmin={access.data.isAdmin} userId={access.data.userId} readOnly={run.status === 'cancelled'} />}
-        {access.data.isAdmin && (participants?.success ? <EditionSummary run={run} participants={participants.data} /> : <p role="alert" className="text-sm text-destructive">Nie udało się pobrać pełnej listy zapisów do podsumowania edycji.</p>)}
+        {(run.canManage || enrolled) && <RunMaterials runId={run.id} courseId={run.courseId} canManage={run.canManage} isAdmin={access.data.isAdmin} canManageAcademy={access.data.canManageAcademy} userId={access.data.userId} readOnly={run.status === 'cancelled'} />}
+        {access.data.canManageAcademy && (participants?.success ? <EditionSummary run={run} participants={participants.data} /> : <p role="alert" className="text-sm text-destructive">Nie udało się pobrać pełnej listy zapisów do podsumowania edycji.</p>)}
         {(run.canManage || run.myRegistration) && <EditionSurvey runId={run.id} canManage={run.canManage} />}
         {run.canManage && <AcademyHandoverPanel versionId={run.versionId} runId={run.id} />}
         {staff?.success && staff.data && <AcademyStaffPanel courseId={run.courseId} runId={run.id} state={staff.data} />}

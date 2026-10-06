@@ -25,7 +25,7 @@ export function editionSummaryText(courseTitle: string, runTitle: string, summar
         `Ocena materiałów: ${rating(survey.materials)}; liczba ocen: ${survey.materialsResponseCount}`,
         `Trudność: zbyt łatwe ${survey.difficulty.too_easy}, odpowiednie ${survey.difficulty.appropriate}, zbyt trudne ${survey.difficulty.too_hard}`,
         'Propozycje tematów:', ...(survey.futureTopics.length ? survey.futureTopics : ['brak propozycji']),
-        `Deklaracje chęci prowadzenia: ${survey.teachingInterests?.length ?? 0}`,
+        survey.teachingInterests ? `Deklaracje chęci prowadzenia: ${survey.teachingInterests.length}` : 'Deklaracje chęci prowadzenia: dostępne tylko administratorowi',
         `Średnia rekomendacja (0–10): ${survey.nps ?? 'brak odpowiedzi'}`, '',
         'Osoby bez konta Compass nie odpowiadają na tę ankietę. Nie przedstawiaj jej jako opinii wszystkich zapisanych na webinar.',
     ].join('\r\n')

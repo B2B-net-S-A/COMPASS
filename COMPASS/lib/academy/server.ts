@@ -9,6 +9,7 @@ import { academyActionError, academyDatabaseError } from './errors'
 export interface AcademyAccess {
     userId: string
     isAdmin: boolean
+    canManageAcademy: boolean
     canTeach: boolean
     rolloutMode?: 'closed' | 'pilot' | 'open'
     isPilot?: boolean
@@ -20,30 +21,32 @@ export function academyClient(): SupabaseClient {
     return createClient() as unknown as SupabaseClient
 }
 
-export async function requireAcademyContext(options: { trainer?: boolean; admin?: boolean } = {}) {
+export async function requireAcademyContext(options: { trainer?: boolean; admin?: boolean; editor?: boolean } = {}) {
     const client = academyClient()
     const { data: { user }, error: authError } = await client.auth.getUser()
     if (authError || !user) throw new Error('Zaloguj się, aby korzystać z Akademii.')
     const { data: profile, error } = await client.from('profiles')
         .select('role, is_external, employment_status').eq('id', user.id).single()
     if (error || !profile || profile.is_external || profile.employment_status === 'exited'
-        || !['consultant', 'admin'].includes(profile.role)) {
+        || !['consultant', 'admin', 'talent_community'].includes(profile.role)) {
         throw new Error('Nie masz dostępu do Akademii.')
     }
     const { data: rollout, error: rolloutError } = await client.rpc('academy_rollout_access')
     if (rolloutError) throw new Error('Nie udało się sprawdzić dostępności Akademii. Spróbuj ponownie.')
     if (rollout?.allowed !== true) throw new Error('Akademia nie jest jeszcze dostępna dla Twojego konta. Dostęp do pilota nadaje administrator.')
     const isAdmin = profile.role === 'admin'
-    let canTeach = isAdmin
-    if (!isAdmin) {
+    const canManageAcademy = isAdmin || profile.role === 'talent_community'
+    let canTeach = canManageAcademy
+    if (!canManageAcademy) {
         const { data: grant, error: grantError } = await client.from('academy_user_capabilities')
             .select('can_train, revoked_at').eq('user_id', user.id).maybeSingle()
         if (grantError) throw new Error('Nie udało się sprawdzić uprawnień Akademii. Spróbuj ponownie.')
         canTeach = grant?.can_train === true && !grant.revoked_at
     }
     if (options.admin && !isAdmin) throw new Error('Ta operacja wymaga uprawnień administratora.')
+    if (options.editor && !canManageAcademy) throw new Error('Ta operacja wymaga uprawnień obsługi Akademii.')
     if (options.trainer && !canTeach) throw new Error('Tworzenie szkoleń jest dostępne dla uprawnionych trenerów.')
-    return { client, access: { userId: user.id, isAdmin, canTeach, rolloutMode: rollout.mode, isPilot: rollout.isPilot === true } satisfies AcademyAccess }
+    return { client, access: { userId: user.id, isAdmin, canManageAcademy, canTeach, rolloutMode: rollout.mode, isPilot: rollout.isPilot === true } satisfies AcademyAccess }
 }
 
 export async function academyAction<T>(event: string, action: () => Promise<T>): Promise<ActionResult<T>> {

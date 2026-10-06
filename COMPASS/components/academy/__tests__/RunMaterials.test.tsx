@@ -38,6 +38,17 @@ describe('run recording captions', () => {
         expect(screen.queryByLabelText('Nagranie dla napisów')).not.toBeInTheDocument()
     })
 
+    it('allows TCM caption metadata without exposing material publication or withdrawal', async () => {
+        mocks.list.mockResolvedValue({ success: true, data: [first, secondCaption, { ...second, review_status: 'pending_review' }] })
+        render(<RunMaterials runId={runId} courseId={courseId} canManage canManageAcademy isAdmin={false} userId="tcm" />)
+        await screen.findByTestId('video-video-1')
+        fireEvent.change(screen.getByLabelText('Nagranie dla napisów'), { target: { value: 'video-1' } })
+        await waitFor(() => expect(mocks.assign).toHaveBeenCalledWith({ captionId: 'caption-2', videoId: 'video-1' }))
+        expect(screen.queryByRole('button', { name: 'Zatwierdź dla uczestników' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Wycofaj materiał' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Odrzuć z komentarzem' })).not.toBeInTheDocument()
+    })
+
     it('lets an administrator assign a published VTT and refreshes playback mapping', async () => {
         const rows = [first, second, firstCaption, secondCaption]
         mocks.list.mockImplementation(async () => ({ success: true, data: rows }))

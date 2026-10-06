@@ -15,7 +15,7 @@ interface CourseAuthorFormProps {
     initial?: Course
     onSuccess?: (courseId: string, slug: string) => void
     submitLabel?: string
-    /** Only administrators may create company/official courses; the action enforces this. */
+    /** Administrators and Academy managers may create company/official courses; the action enforces this. */
     allowCompanyType?: boolean
     defaultCourseType?: CourseType
 }

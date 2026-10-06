@@ -8,6 +8,7 @@ vi.mock('@/lib/actions/academy-sessions', () => ({ reconcileAcademyAttendance: m
 vi.mock('@/lib/actions/course-learning', () => ({ completeAcademyCourse: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }))
 vi.mock('@/components/shared/ConfirmDialog', () => ({ useConfirm: () => [vi.fn(), () => null] }))
+vi.mock('../sessions/AcademyWebinarImportPanel', () => ({ AcademyWebinarImportPanel: () => <p>Import istniejącego webinaru</p> }))
 vi.mock('../sessions/AcademyAttendancePanel', () => ({ AcademyAttendancePanel: () => null }))
 vi.mock('../sessions/AcademySessionForm', () => ({ AcademySessionForm: () => null, AcademyActualWindowForm: () => null }))
 const session: AcademySessionDTO = { id: 'session', runId: 'run', title: 'Warsztat', startsAt: '2030-01-01T12:00:00Z', endsAt: '2030-01-01T14:00:00Z', timeZone: 'UTC', mode: 'managed_teams', required: true, status: 'scheduled', joinUrl: 'https://teams.microsoft.com/meet/123', syncStatus: 'ready', organizerId: 'organizer', actualStartsAt: '2030-01-01T12:00:00Z', actualEndsAt: '2030-01-01T13:00:00Z', attendanceWindowConfirmed: true }
@@ -23,6 +24,24 @@ describe('Attendance recovery controls', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Ponów import obecności' }))
         await waitFor(() => expect(mocks.recover).toHaveBeenCalledWith(session.id))
         expect(await screen.findByRole('status')).toHaveTextContent('Zlecono ponowny import obecności')
+    })
+    it('exposes attendance recovery to global TCM management without allowing publication', async () => {
+        render(<AcademyRunDetail {...props} isAdmin={false} canManageAcademy run={{ ...run, canPublish: true }} />)
+        fireEvent.click(screen.getByRole('button', { name: 'Ponów import obecności' }))
+        await waitFor(() => expect(mocks.recover).toHaveBeenCalledWith(session.id))
+        expect(screen.queryByRole('button', { name: 'Zatwierdź i opublikuj terminy' })).not.toBeInTheDocument()
+    })
+    it('exposes existing webinar imports to TCM but not an ordinary trainer', () => {
+        const propsExternal = { ...props, isAdmin: false, run: { ...run, sessions: [{ ...session, mode: 'external_link' as const }] } }
+        const view = render(<AcademyRunDetail {...propsExternal} canManageAcademy />)
+        expect(screen.getByText('Import istniejącego webinaru')).toBeInTheDocument()
+        view.rerender(<AcademyRunDetail {...propsExternal} />)
+        expect(screen.queryByText('Import istniejącego webinaru')).not.toBeInTheDocument()
+    })
+    it('does not offer publication to TCM on a draft even if the DTO falsely advertises canPublish', () => {
+        render(<AcademyRunDetail {...props} isAdmin={false} canManageAcademy run={{ ...run, status: 'draft', canPublish: true }} />)
+        expect(screen.getByRole('button', { name: 'Edytuj edycję' })).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Zatwierdź i opublikuj terminy' })).not.toBeInTheDocument()
     })
     it('does not expose administrator recovery to a trainer even if canPublish is true', () => {
         render(<AcademyRunDetail {...props} isAdmin={false} run={{ ...run, canPublish: true }} />)

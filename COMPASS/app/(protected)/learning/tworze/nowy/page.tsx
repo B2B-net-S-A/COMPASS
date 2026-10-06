@@ -11,7 +11,7 @@ interface PageProps {
 
 // Phase 1.4 (2026-05-04): wizard accepts ?type=company to default the form to a company course.
 // Server-side role check determines whether company-type selector is enabled in the form
-// (admin/trainer only — consultants get a silent downgrade in createCourse if they bypass UI).
+// (admin/TCM only — the server action independently enforces this).
 export default async function NewCoursePage({ searchParams }: PageProps) {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -21,14 +21,14 @@ export default async function NewCoursePage({ searchParams }: PageProps) {
         role = profile?.role || 'consultant'
     }
 
-    const isAdminOrTrainer = ['admin'].includes(role)
-    const defaultType = searchParams.type === 'company' && isAdminOrTrainer ? 'company' : 'consultant'
+    const canCreateCompanyCourse = ['admin', 'talent_community'].includes(role)
+    const defaultType = searchParams.type === 'company' && canCreateCompanyCourse ? 'company' : 'consultant'
 
     return (
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
             <div>
                 <Link href="/learning/tworze" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-2">
-                    ← Moje szkolenia
+                    ← Edytor szkoleń
                 </Link>
                 <div className="flex items-center gap-3">
                     <GraduationCap className="w-7 h-7 text-primary" />
@@ -38,7 +38,7 @@ export default async function NewCoursePage({ searchParams }: PageProps) {
             </div>
 
             <NewCourseClient
-                allowCompanyType={isAdminOrTrainer}
+                allowCompanyType={canCreateCompanyCourse}
                 defaultCourseType={defaultType}
             />
         </div>

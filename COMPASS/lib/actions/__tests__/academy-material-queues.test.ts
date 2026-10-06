@@ -13,7 +13,7 @@ vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }))
 function asset(n: number, patch: Row = {}): Row {
     return { id: id(n), filename: `material-${n}.pdf`, course_id: COURSE, run_id: null, status: 'quarantined',
         scan_attempts: 1, scan_started_at: null, scan_next_attempt_at: null, scan_error: null,
-        purged_at: null, cleanup_token: null, cleanup_attempts: 0, cleanup_claimed_at: null, cleanup_error: null,
+        purged_at: null, cleanup_token: null, cleanup_pending: patch.cleanup_token != null, cleanup_attempts: 0, cleanup_claimed_at: null, cleanup_error: null,
         created_at: new Date(now - (10000 - n) * 60_000).toISOString(), ...patch }
 }
 function setup(rows: Row[] = [], config: MockSupabaseConfig = {}, admin = true) {
@@ -43,6 +43,13 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
 describe('administrator scan queue', () => {
+    it('excludes cleanup-owned files for TCM even when the cleanup token is masked', async () => {
+        setup([asset(101), asset(102, { status: 'rejected', cleanup_token: null, cleanup_pending: true })], { tables: { profiles: [{ id: USER, role: 'talent_community', is_external: false, employment_status: 'active' }], academy_user_capabilities: [] } })
+        const result = await getAcademyMaterialQueue({ filter: 'all' })
+        expect(result).toMatchObject({ success: true, data: { total: 1, items: [{ id: id(101) }] } })
+        expect((await getAcademyMaterialCleanupQueue()).success).toBe(false)
+    })
+
     it('returns safe MP4 guidance for author status and both upload lists without raw diagnostics', async () => {
         const lesson = id(901)
         setup([asset(301, { status: 'rejected', lesson_id: lesson, scan_error: 'fragmented_mp4_unsupported' }),

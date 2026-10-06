@@ -7,7 +7,7 @@ export type AcademyTab = 'catalog' | 'my' | 'calendar' | 'paths' | 'teaching' | 
 
 export interface AcademyShellProps {
     activeTab: AcademyTab
-    access: { isAdmin: boolean; canTeach: boolean; rolloutMode?: 'closed' | 'pilot' | 'open'; isPilot?: boolean }
+    access: { isAdmin: boolean; canTeach: boolean; canManageAcademy?: boolean; rolloutMode?: 'closed' | 'pilot' | 'open'; isPilot?: boolean }
     title: string
     description?: string
     action?: ReactNode
@@ -21,7 +21,7 @@ export function AcademyShell({ activeTab, access, title, description, action, ch
         { id: 'my', label: 'Moje szkolenia', href: '/learning/moje', icon: BookOpen, visible: true },
         { id: 'calendar', label: 'Kalendarz', href: '/learning/kalendarz', icon: CalendarDays, visible: showCalendar },
         { id: 'paths', label: 'Ścieżki nauki', href: '/learning/paths', icon: Map, visible: true },
-        { id: 'teaching', label: 'Prowadzę', href: '/learning/tworze', icon: Presentation, visible: access.canTeach || access.isAdmin },
+        { id: 'teaching', label: access.canManageAcademy ? 'Edytor Akademii' : 'Prowadzę', href: '/learning/tworze', icon: Presentation, visible: access.canTeach || access.isAdmin },
         { id: 'admin', label: 'Administracja', href: '/admin/learning', icon: ShieldCheck, visible: access.isAdmin },
     ]
 
@@ -54,7 +54,7 @@ export function AcademyShell({ activeTab, access, title, description, action, ch
                     </Link>
                 ))}
             </nav>
-            {access.rolloutMode && access.rolloutMode !== 'open' && <p role="status" className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-foreground">{access.rolloutMode === 'closed' ? 'Akademia jest w przygotowaniu. Dostęp mają administratorzy; zapisy pozostałych osób są zamknięte.' : 'Akademia działa w pilocie dla wskazanych kont. Zgłaszaj problemy administratorowi.'}</p>}
+            {access.rolloutMode && access.rolloutMode !== 'open' && <p role="status" className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-foreground">{access.rolloutMode === 'closed' ? 'Akademia jest w przygotowaniu. Dostęp do przygotowania mają administratorzy i Talent Community Managerowie; zapisy uczestników są zamknięte.' : 'Akademia działa w pilocie dla wskazanych kont. Zgłaszaj problemy administratorowi.'}</p>}
             {children}
         </div>
     )
