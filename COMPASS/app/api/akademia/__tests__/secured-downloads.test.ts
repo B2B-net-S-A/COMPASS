@@ -86,9 +86,9 @@ beforeEach(() => {
 afterEach(() => { expect(mutation).not.toHaveBeenCalled() })
 
 describe('Academy authenticated download boundary', () => {
-    it('keeps both routes behind the consultant/admin authentication policy', () => {
+    it('allows TCM through both authenticated download routes while retaining object checks', () => {
         expect(mocks.policies).toHaveLength(2)
-        for (const policy of mocks.policies) expect(policy).toEqual({ role: ['consultant', 'admin'] })
+        for (const policy of mocks.policies) expect(policy).toEqual({ role: ['consultant', 'admin', 'talent_community'] })
     })
 
     it.each([

@@ -24,7 +24,7 @@ describe('Academy rollout actions', () => {
         setup({ rpcs: { academy_rollout_access: () => ({ mode: 'pilot', allowed: true, isPilot: true }) } }, false)
         expect(await getAcademyAccess()).toMatchObject({ success: true, data: { userId: USER, rolloutMode: 'pilot', isPilot: true } })
     })
-    it.each(['manager', 'internal', 'finanse', 'talent_community'])('does not extend Academy to %s', async role => {
+    it.each(['manager', 'internal', 'finanse'])('does not extend Academy to %s', async role => {
         setup({ tables: { profiles: [{ id: USER, role, is_external: false, employment_status: 'active' }] } })
         expect((await getAcademyAccess()).success).toBe(false)
         expect(client.rpc).not.toHaveBeenCalled()
@@ -46,8 +46,9 @@ describe('Academy rollout actions', () => {
 })
 
 describe('version-aware Academy reporting', () => {
-    it('counts published pointers and pending versions independently, retaining archived completions', async () => {
+    it.each(['admin', 'talent_community'])('counts all courses for %s, retaining archived completions', async role => {
         setup({ tables: {
+            profiles: [{ id: USER, role, is_external: false, employment_status: 'active' }], academy_user_capabilities: [],
             courses: [courseRow({ status: 'pending_review' }), courseRow({ id: id(11), status: 'archived', published_version_id: id(23) })],
             course_versions: [versionRow(), versionRow({ id: DRAFT, status: 'pending_review' }), versionRow({ id: id(23), course_id: id(11) })],
             course_enrollments: [enrollmentRow(), enrollmentRow({ id: id(32), course_id: id(11) })],
