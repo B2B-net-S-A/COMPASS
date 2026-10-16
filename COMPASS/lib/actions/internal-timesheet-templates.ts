@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 export interface TimesheetUserTemplate {
     id: string
@@ -64,6 +65,7 @@ export async function listMyTemplates(): Promise<TimesheetUserTemplate[]> {
 
 export async function createTemplate(input: CreateTemplateInput): Promise<TimesheetUserTemplate> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('time')
     validateTemplateFields(input.name, input.description)
     const supabase = createClient()
     const { data, error } = await supabase
@@ -92,6 +94,7 @@ export async function createTemplate(input: CreateTemplateInput): Promise<Timesh
 
 export async function updateTemplate(input: UpdateTemplateInput): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('time')
     validateTemplateFields(input.name, input.description)
     const supabase = createClient()
     const updates: Record<string, unknown> = {}
@@ -117,6 +120,7 @@ export async function updateTemplate(input: UpdateTemplateInput): Promise<void> 
 
 export async function deleteTemplate(id: string): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('time')
     const supabase = createClient()
     const { error } = await supabase
         .from('timesheet_user_templates')
@@ -133,6 +137,7 @@ export async function deleteTemplate(id: string): Promise<void> {
  */
 export async function applyTemplateToEntry(entryId: string, templateId: string): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('time')
     const supabase = createClient()
 
     const { data: tpl, error: tplErr } = await supabase

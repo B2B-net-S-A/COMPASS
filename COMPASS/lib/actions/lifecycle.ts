@@ -39,6 +39,7 @@ import type {
 } from '@/lib/types/lifecycle'
 import { ONBOARDING_CATEGORIES, RESPONSIBLE_ROLES } from '@/lib/types/lifecycle'
 import { excludeExited, isActiveNow } from '@/lib/hr/employment-window'
+import { assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -182,6 +183,7 @@ export interface CreateTemplatePayload {
 
 export async function createTemplate(payload: CreateTemplatePayload): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
 
     if (payload.isDefault) {
@@ -238,6 +240,7 @@ export async function updateTemplate(
     updates: Partial<{ name: string; description: string | null; isDefault: boolean; isArchived: boolean }>,
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
 
     if (updates.isDefault === true) {
@@ -272,6 +275,7 @@ export async function updateTemplate(
 
 export async function deleteTemplate(templateId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
 
     const { count } = await supabase
@@ -434,6 +438,7 @@ export async function startOnboardingWithOptions(input: {
     sendWelcomeEmail?: boolean
 }): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     if (input.hiredAt) {
@@ -525,6 +530,7 @@ export interface TemplateItemInput {
 
 export async function addTemplateItem(templateId: string, input: TemplateItemInput): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
 
     const { data: maxPos } = await supabase
@@ -570,6 +576,7 @@ export async function addTemplateItem(templateId: string, input: TemplateItemInp
 
 export async function updateTemplateItem(itemId: string, updates: Partial<TemplateItemInput>): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
 
     const patch: Record<string, unknown> = {}
@@ -593,6 +600,7 @@ export async function updateTemplateItem(itemId: string, updates: Partial<Templa
 
 export async function deleteTemplateItem(itemId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
     const { error } = await supabase.from('onboarding_template_items').delete().eq('id', itemId)
     if (error) throw new Error('Nie udało się usunąć items.')
@@ -601,6 +609,7 @@ export async function deleteTemplateItem(itemId: string): Promise<void> {
 
 export async function reorderTemplateItems(templateId: string, orderedItemIds: string[]): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
 
     // Update positions in batch — each item gets a new position based on array order.
@@ -622,6 +631,7 @@ export async function startOnboarding(userId: string, templateId?: string | null
     // `startOnboardingWithOptions({ sendWelcomeEmail: true })` or call
     // `sendOnboardingWelcomeEmailNow(progressId)` after start.
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient() // bypass RLS — function is SECURITY DEFINER but we want admin context anyway
 
     const { data, error } = await supabase.rpc('start_onboarding_for_user', {
@@ -641,6 +651,7 @@ export async function startOnboarding(userId: string, templateId?: string | null
 
 export async function assignBuddy(userId: string, buddyId: string | null): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     if (userId === buddyId) {
         throw new Error('Pracownik nie może być swoim własnym buddy.')
     }
@@ -799,6 +810,7 @@ export async function getOnboardingDetail(progressId: string): Promise<Onboardin
 
 export async function completeOnboardingTask(formData: FormData): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('lifecycle')
     const taskId = formData.get('taskId')?.toString()
     const notes = formData.get('notes')?.toString() ?? null
     const file = formData.get('file') as File | null
@@ -868,6 +880,7 @@ export async function completeOnboardingTask(formData: FormData): Promise<void> 
 
 export async function addAdhocOnboardingTask(formData: FormData): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const progressId = formData.get('progressId')?.toString()
     if (!progressId) throw new Error('progressId jest wymagany.')
     const title = validateTaskTitle(formData.get('title')?.toString())
@@ -912,6 +925,7 @@ export async function submitOnboardingCheckin(
     note: string | null,
 ): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('lifecycle')
     if (score < 1 || score > 5) throw new Error('Score musi być 1-5.')
 
     const supabase = createClient()
@@ -933,6 +947,7 @@ export async function submitOnboardingCheckin(
 
 export async function completeOnboarding(progressId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     // Check all required tasks completed
@@ -1015,6 +1030,7 @@ export async function completeOnboarding(progressId: string): Promise<void> {
  */
 export async function sendOnboardingWelcomeEmailNow(progressId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data: progress, error: progErr } = await supabase
@@ -1066,6 +1082,7 @@ export async function scheduleExitInterview(
     options?: ScheduleExitInterviewOptions,
 ): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data, error } = await supabase.rpc('start_offboarding_for_user', {
@@ -1091,69 +1108,73 @@ export async function scheduleExitInterview(
         // into the Inbox (Moduł Obsługi Zgłoszeń) auto-assigned to the actor.
         // Best-effort — the offboarding RPC already committed, so a ticket
         // failure must not roll back the offboarding.
-        try {
-            const { data: category } = await supabase
-                .from('support_categories')
-                .select('id')
-                .eq('slug', 'inbox_offboarding')
-                .single()
-            if (!category) {
-                logCompat.error('scheduleExitInterview: inbox_offboarding category missing')
-            } else {
-                const employeeName = employee.full_name ?? employee.email
-                const subject = `${employeeName} Offboarding`
-                const bodyLines = [
-                    `**Offboarding pracownika: ${employeeName}**`,
-                    '',
-                    `- **Rola:** ${roleLabelPl(employee.role)}`,
-                    `- **Data zakończenia współpracy:** ${terminationDate}`,
-                ]
-                if (scheduledFor) bodyLines.push(`- **Sugerowana data realizacji:** ${scheduledFor}`)
-                bodyLines.push(
-                    '',
-                    'Zadania offboardingu (cofnięcie dostępów, zwrot sprzętu, knowledge transfer, finalne rozliczenie, archiwizacja) są w karcie pracownika:',
-                    `[Otwórz checklist offboardingu](/internal/lifecycle/offboarding/${userId})`,
-                    '',
-                    '_Ticket utworzony automatycznie przy rozpoczęciu offboardingu._',
-                )
-                const { data: ticket, error: ticketErr } = await supabase
-                    .from('support_tickets')
-                    .insert({
-                        user_id: ctx.userId,
-                        assignee_id: ctx.userId,
-                        category_id: category.id,
-                        subject,
-                        body_md: bodyLines.join('\n'),
-                        priority: 'normal',
-                        status: 'in_progress',
-                    })
+        // „Ludzie w NEXUSIE”: po przeniesieniu skrzynki sprawy nie zakładamy w archiwum,
+        // którego nikt już nie przegląda.
+        if (!isMovedToNexus('cases')) {
+            try {
+                const { data: category } = await supabase
+                    .from('support_categories')
                     .select('id')
+                    .eq('slug', 'inbox_offboarding')
                     .single()
-                if (ticketErr || !ticket) {
-                    logCompat.error('scheduleExitInterview: offboarding ticket insert failed:', ticketErr)
+                if (!category) {
+                    logCompat.error('scheduleExitInterview: inbox_offboarding category missing')
                 } else {
-                    const { error: metaErr } = await supabase.from('support_inbox_meta').insert({
-                        ticket_id: ticket.id,
-                        source: 'manual_paste',
-                        consultant_id: userId,
-                        priority_level: 'P3',
-                        due_date: computeDueDate('P3', new Date()).toISOString(),
-                        email_subject: subject,
-                    })
-                    if (metaErr) {
-                        await supabase.from('support_tickets').delete().eq('id', ticket.id)
-                        logCompat.error('scheduleExitInterview: offboarding meta insert failed:', metaErr)
-                    } else {
-                        await logAudit(ctx.userId, 'OFFBOARDING_TICKET_CREATED', {
-                            ticket_id: ticket.id,
-                            user_id: userId,
-                            interview_id: interviewId,
+                    const employeeName = employee.full_name ?? employee.email
+                    const subject = `${employeeName} Offboarding`
+                    const bodyLines = [
+                        `**Offboarding pracownika: ${employeeName}**`,
+                        '',
+                        `- **Rola:** ${roleLabelPl(employee.role)}`,
+                        `- **Data zakończenia współpracy:** ${terminationDate}`,
+                    ]
+                    if (scheduledFor) bodyLines.push(`- **Sugerowana data realizacji:** ${scheduledFor}`)
+                    bodyLines.push(
+                        '',
+                        'Zadania offboardingu (cofnięcie dostępów, zwrot sprzętu, knowledge transfer, finalne rozliczenie, archiwizacja) są w karcie pracownika:',
+                        `[Otwórz checklist offboardingu](/internal/lifecycle/offboarding/${userId})`,
+                        '',
+                        '_Ticket utworzony automatycznie przy rozpoczęciu offboardingu._',
+                    )
+                    const { data: ticket, error: ticketErr } = await supabase
+                        .from('support_tickets')
+                        .insert({
+                            user_id: ctx.userId,
+                            assignee_id: ctx.userId,
+                            category_id: category.id,
+                            subject,
+                            body_md: bodyLines.join('\n'),
+                            priority: 'normal',
+                            status: 'in_progress',
                         })
+                        .select('id')
+                        .single()
+                    if (ticketErr || !ticket) {
+                        logCompat.error('scheduleExitInterview: offboarding ticket insert failed:', ticketErr)
+                    } else {
+                        const { error: metaErr } = await supabase.from('support_inbox_meta').insert({
+                            ticket_id: ticket.id,
+                            source: 'manual_paste',
+                            consultant_id: userId,
+                            priority_level: 'P3',
+                            due_date: computeDueDate('P3', new Date()).toISOString(),
+                            email_subject: subject,
+                        })
+                        if (metaErr) {
+                            await supabase.from('support_tickets').delete().eq('id', ticket.id)
+                            logCompat.error('scheduleExitInterview: offboarding meta insert failed:', metaErr)
+                        } else {
+                            await logAudit(ctx.userId, 'OFFBOARDING_TICKET_CREATED', {
+                                ticket_id: ticket.id,
+                                user_id: userId,
+                                interview_id: interviewId,
+                            })
+                        }
                     }
                 }
+            } catch (e) {
+                logCompat.error('scheduleExitInterview: offboarding ticket creation threw:', e)
             }
-        } catch (e) {
-            logCompat.error('scheduleExitInterview: offboarding ticket creation threw:', e)
         }
 
         if (sendEmployeeEmail) {
@@ -1280,6 +1301,7 @@ export async function listExitInterviews(filters?: {
 
 export async function markExitInterviewReviewed(interviewId: string, note: string | null): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
     const { error } = await supabase
         .from('exit_interviews')
@@ -1296,6 +1318,7 @@ export async function markExitInterviewReviewed(interviewId: string, note: strin
 
 export async function completeOffboardingTask(taskId: string, notes?: string | null): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
     const { data: task } = await supabase
         .from('offboarding_tasks')
@@ -1321,6 +1344,7 @@ export async function completeOffboardingTask(taskId: string, notes?: string | n
 
 export async function markEmployeeExited(userId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     // Ensure offboarding tasks complete (or warn) — informational only, do not block
@@ -1362,6 +1386,7 @@ export async function markEmployeeExited(userId: string): Promise<void> {
  */
 export async function sendExitInvitationNow(interviewId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data: interview, error: ivErr } = await supabase
@@ -1409,6 +1434,7 @@ export async function sendExitInvitationNow(interviewId: string): Promise<void> 
  */
 export async function sendOffboardingChecklistNow(interviewId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data: interview, error: ivErr } = await supabase
@@ -1667,6 +1693,7 @@ export async function getLifecycleAnalytics(): Promise<LifecycleAnalytics> {
 
 export async function cancelOnboarding(progressId: string, reason: string | null): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data: progress } = await supabase
@@ -1756,6 +1783,7 @@ async function resolveActiveOnboardingTemplate(
 
 export async function restartOnboarding(progressId: string, newTemplateId?: string | null): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data: progress } = await supabase
@@ -1820,6 +1848,7 @@ export async function restartOnboarding(progressId: string, newTemplateId?: stri
 
 export async function cancelExitInterview(interviewId: string, reason: string | null): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data: interview } = await supabase
@@ -1870,6 +1899,7 @@ export interface UpdateLifecycleProfileInput {
 
 export async function updateLifecycleProfile(input: UpdateLifecycleProfileInput): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const patch: Record<string, unknown> = {}
@@ -1935,6 +1965,7 @@ export interface CreateExternalEmployeeInput {
 
 export async function createExternalEmployee(input: CreateExternalEmployeeInput): Promise<{ userId: string; progressId: string | null }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     // Schema fact (verified 2026-05-19 in prod):
@@ -2113,6 +2144,7 @@ export async function addLifecycleNote(input: {
     isPrivate?: boolean
 }): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     if (!input.content.trim()) throw new Error('Notatka nie może być pusta.')
 
     const supabase = createClient()
@@ -2138,6 +2170,7 @@ export async function addLifecycleNote(input: {
 
 export async function deleteLifecycleNote(noteId: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createClient()
     const { error } = await supabase.from('lifecycle_notes').delete().eq('id', noteId)
     if (error) throw new Error('Nie udało się usunąć notatki.')
@@ -2148,6 +2181,7 @@ export async function deleteLifecycleNote(noteId: string): Promise<void> {
 
 export async function duplicateTemplate(templateId: string): Promise<string> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('lifecycle')
     const supabase = createServiceClient()
 
     const { data: source } = await supabase

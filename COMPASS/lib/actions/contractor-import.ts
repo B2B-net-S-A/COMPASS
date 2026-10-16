@@ -25,6 +25,7 @@ import {
     parseWejsciaWorkbook,
     parseZejsciaWorkbook,
 } from '@/lib/contractors/parse'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 // Audyt 2026-08 — patrz komentarz w lib/actions/contractors.ts: stara trasa to redirect.
 const HUB = '/internal/people'
@@ -86,6 +87,7 @@ export async function previewRozmowyImport(formData: FormData): Promise<ImportPr
 
 export async function commitRozmowyImport(formData: FormData): Promise<ImportResult> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const res = await importRozmowyFromBuffer(admin, await fileFromForm(formData), ctx.userId)
     revalidatePath(HUB)
@@ -120,6 +122,7 @@ export async function previewWejsciaImport(formData: FormData): Promise<ImportPr
 
 export async function commitWejsciaImport(formData: FormData): Promise<ImportResult> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const res = await importWejsciaFromBuffer(admin, await fileFromForm(formData), ctx.userId)
     revalidatePath(HUB)
@@ -151,6 +154,7 @@ export async function previewZejsciaImport(formData: FormData): Promise<ImportPr
 
 export async function commitZejsciaImport(formData: FormData): Promise<ImportResult> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const res = await importZejsciaFromBuffer(admin, await fileFromForm(formData), ctx.userId)
     // Bench seeduje się po imporcie Zejść (jawna komenda), nie przy renderze

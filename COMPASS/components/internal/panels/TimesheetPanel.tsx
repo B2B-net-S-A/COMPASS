@@ -1,5 +1,6 @@
 import { getOrCreateMyTimesheet, getMyOvertimeAllowed } from '@/lib/actions/internal-timesheet'
 import { TimesheetEditor } from '@/components/internal/TimesheetEditor'
+import { TimesheetArchiveEmpty } from '@/components/internal/TimesheetArchiveEmpty'
 
 interface Props {
     year?: number
@@ -22,7 +23,9 @@ export async function TimesheetPanel({ year, month }: Props) {
                     timesheet i generowany jest PDF do podpisania.
                 </p>
             </div>
-            <TimesheetEditor timesheet={timesheet} canLogOvertime={canLogOvertime} />
+            {timesheet
+                ? <TimesheetEditor timesheet={timesheet} canLogOvertime={canLogOvertime} />
+                : <TimesheetArchiveEmpty year={y} month={m} />}
         </section>
     )
 }

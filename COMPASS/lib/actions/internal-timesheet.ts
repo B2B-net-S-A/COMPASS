@@ -26,6 +26,7 @@ import {
 } from '@/lib/hr/timesheet-roster'
 import { excludeExited } from '@/lib/hr/employment-window'
 import { format } from 'date-fns'
+import { assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
 
 // Phase 27g — roles that keep a timesheet (HR zone). Consultants (IT) do not.
 const TIMESHEET_HR_ROLES = ['admin', 'internal', 'manager', 'finanse', 'talent_community'] as const
@@ -233,10 +234,14 @@ async function assertDailyHoursWithinLimit(
 
 // ─── User-side ──────────────────────────────────────────────────────────────
 
+/**
+ * Zwraca `null` tylko po przeniesieniu modułu `time` do NEXUSA: archiwum nie
+ * dostaje nowych szkiców, więc miesiąc bez timesheetu zostaje pusty.
+ */
 export async function getOrCreateMyTimesheet(
     year: number,
     month: number,
-): Promise<TimesheetWithEntries> {
+): Promise<TimesheetWithEntries | null> {
     const ctx = await requireInternalOrAdminAction()
     validateYear(year)
     validateMonth(month)
@@ -255,6 +260,7 @@ export async function getOrCreateMyTimesheet(
     header = fetchRes.data
 
     if (!header) {
+        if (isMovedToNexus('time')) return null
         const insertRes = await supabase
             .from('timesheets')
             .insert({ user_id: ctx.userId, year, month })
@@ -327,6 +333,7 @@ export async function getMyOvertimeAllowed(): Promise<boolean> {
 export async function addEntry(input: AddEntryInput): Promise<ActionResult<TimesheetEntryRow>> {
     return runAction('addEntry', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('time')
         if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
             throw new ExpectedError('work_date musi być w formacie YYYY-MM-DD.')
         }
@@ -423,6 +430,7 @@ export interface QuickFillMonthResult {
 export async function quickFillMonth(input: QuickFillMonthInput): Promise<ActionResult<QuickFillMonthResult>> {
     return runAction('quickFillMonth', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('time')
         const supabase = createClient()
 
         const hours = input.hoursPerDay ?? 8
@@ -641,6 +649,7 @@ async function loadOwnEditableEntry(
 export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult<void>> {
     return runAction('updateEntry', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('time')
         const supabase = createClient()
         const current = await loadOwnEditableEntry(supabase, ctx, input.entryId)
         // Audyt 2026-09-22 (HF-03) — auto-wpis płatnego urlopu (Faza 30b) należy do
@@ -709,6 +718,7 @@ export async function updateEntry(input: UpdateEntryInput): Promise<ActionResult
 export async function deleteEntry(entryId: string): Promise<ActionResult<void>> {
     return runAction('deleteEntry', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('time')
         const supabase = createClient()
         await loadOwnEditableEntry(supabase, ctx, entryId)
         const { error } = await supabase.from('timesheet_entries').delete().eq('id', entryId)
@@ -721,6 +731,7 @@ export async function deleteEntry(entryId: string): Promise<ActionResult<void>> 
 export async function submitTimesheet(timesheetId: string): Promise<ActionResult<void>> {
     return runAction('submitTimesheet', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('time')
         const supabase = createClient()
         const { data: header, error: fetchErr } = await supabase
             .from('timesheets')
@@ -785,6 +796,7 @@ export async function approveTimesheet(timesheetId: string): Promise<ActionResul
     return runAction('approveTimesheet', async () => {
         // Phase 20: timesheet approver = admin OR manager (manager scoped to own team).
         const ctx = await requireTimesheetApproverAction()
+        assertHrModuleWritable('time')
         const admin = createServiceClient()
 
         const { data: header, error: fetchErr } = await admin
@@ -875,6 +887,7 @@ export async function rejectTimesheet(timesheetId: string, reason: string): Prom
     return runAction('rejectTimesheet', async () => {
         // Phase 20: timesheet approver = admin OR manager (manager scoped to own team).
         const ctx = await requireTimesheetApproverAction()
+        assertHrModuleWritable('time')
         if (!reason?.trim()) throw new ExpectedError('Powód odrzucenia jest wymagany.')
         const admin = createServiceClient()
 
@@ -974,6 +987,7 @@ export async function unlockTimesheet(timesheetId: string): Promise<ActionResult
         // poprawić ma pracownik, odrzuca z komentarzem. Stabilny obraz do wypłaty
         // zastępuje mail do finansów o każdym takim cofnięciu.
         const ctx = await requireTimesheetApproverAction()
+        assertHrModuleWritable('time')
         const admin = createServiceClient()
 
         const { data: header, error: fetchErr } = await admin
@@ -1173,6 +1187,7 @@ function resolveOvertimeColumns(
 export async function approverAddEntry(input: AddEntryInput): Promise<ActionResult<TimesheetEntryRow>> {
     return runAction('approverAddEntry', async () => {
         const ctx = await requireTimesheetApproverAction()
+        assertHrModuleWritable('time')
         if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
             throw new ExpectedError('work_date musi być w formacie YYYY-MM-DD.')
         }
@@ -1227,6 +1242,7 @@ export async function approverAddEntry(input: AddEntryInput): Promise<ActionResu
 export async function approverUpdateEntry(input: UpdateEntryInput): Promise<ActionResult<TimesheetEntryRow>> {
     return runAction('approverUpdateEntry', async () => {
         const ctx = await requireTimesheetApproverAction()
+        assertHrModuleWritable('time')
         const admin = createServiceClient()
 
         const { data: entry, error: eErr } = await admin
@@ -1319,6 +1335,7 @@ export async function approverUpdateEntry(input: UpdateEntryInput): Promise<Acti
 export async function approverDeleteEntry(entryId: string): Promise<ActionResult<void>> {
     return runAction('approverDeleteEntry', async () => {
         const ctx = await requireTimesheetApproverAction()
+        assertHrModuleWritable('time')
         const admin = createServiceClient()
 
         const { data: entry, error: eErr } = await admin
@@ -1379,6 +1396,7 @@ export async function copyPreviousMonthEntries(
 ): Promise<ActionResult<CopyPreviousMonthResult>> {
     return runAction('copyPreviousMonthEntries', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('time')
         const supabase = createClient()
 
         const { data: header, error: hErr } = await supabase
@@ -1760,6 +1778,7 @@ export async function ensureTeamTimesheet(
 ): Promise<ActionResult<TimesheetWithEntriesAndUser>> {
     return runAction('ensureTeamTimesheet', async () => {
         const ctx = await requireTimesheetApproverAction()
+        assertHrModuleWritable('time')
         validateYear(year)
         validateMonth(month)
         const admin = createServiceClient()
@@ -1915,6 +1934,7 @@ export async function adminOverrideTimesheetEntry(
 ): Promise<ActionResult<void>> {
     return runAction('adminOverrideTimesheetEntry', async () => {
         const ctx = await requireAdminAction()
+        assertHrModuleWritable('time')
         if (!Number.isFinite(input.hours) || input.hours <= 0 || input.hours > OVERTIME_OVERRIDE_HOURS_MAX) {
             throw new ExpectedError(`Godziny muszą być w zakresie (0, ${OVERTIME_OVERRIDE_HOURS_MAX}].`)
         }
@@ -1989,6 +2009,7 @@ export async function adminOverrideTimesheetEntry(
 export async function clearOvertimeOverride(entryId: string): Promise<ActionResult<void>> {
     return runAction('clearOvertimeOverride', async () => {
         const ctx = await requireAdminAction()
+        assertHrModuleWritable('time')
         const admin = createServiceClient()
 
         const { data: entry, error: fetchErr } = await admin

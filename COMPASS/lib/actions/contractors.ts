@@ -61,6 +61,7 @@ import { excludeExited } from '@/lib/hr/employment-window'
 import { ExpectedError } from '@/lib/actions/expected-error'
 import { runAction, type ActionResult } from '@/lib/actions/action-result'
 import { DEFAULT_IN_CHUNK_SIZE, requireRows, selectInChunks, type SelectInChunksOptions } from '@/lib/supabase/select-in-chunks'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 // Audyt 2026-08 — `/internal/kontraktorzy` to od Fazy 38/45 sama przekierowująca
@@ -248,6 +249,7 @@ export async function createContractor(input: {
     notes?: string | null
 }): Promise<{ id: string }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const fullName = input.fullName.trim()
     if (fullName.length < 2) throw new Error('Imię i nazwisko jest wymagane.')
@@ -290,6 +292,7 @@ export async function updateContractor(
     }>,
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.fullName !== undefined) patch.full_name = input.fullName.trim()
@@ -369,6 +372,7 @@ export async function addConversation(input: {
     followUpDate?: string | null
 }): Promise<{ id: string }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const { data, error } = await admin
         .from('contractor_conversations')
@@ -412,6 +416,7 @@ export async function updateConversation(
     }>,
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.conversationDate !== undefined) patch.conversation_date = input.conversationDate
@@ -437,6 +442,7 @@ export async function createOnboardingInterview(input: {
     scheduledFor?: string | null
 }): Promise<{ id: string }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const { data: c } = await admin
         .from('contractors')
@@ -473,6 +479,7 @@ export async function saveOnboardingInterview(
     submit = false,
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const allowed: Array<keyof ContractorOnboardingInterviewRow> = [
         'position_snapshot', 'client_snapshot', 'start_date', 'tcm_role_note', 'first_day_note',
@@ -493,6 +500,7 @@ export async function saveOnboardingInterview(
 
 export async function reviewOnboardingInterview(id: string, note: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const { error } = await admin
         .from('contractor_onboarding_interviews')
@@ -510,6 +518,7 @@ export async function createExitInterview(input: {
     scheduledFor?: string | null
 }): Promise<{ id: string }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const { data: c } = await admin
         .from('contractors')
@@ -545,6 +554,7 @@ export async function saveExitInterview(
     submit = false,
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const allowed: Array<keyof ContractorExitInterviewRow> = [
         'position_snapshot', 'client_snapshot', 'start_date', 'end_date', 'formal_reason', 'causes',
@@ -563,6 +573,7 @@ export async function saveExitInterview(
 
 export async function reviewExitInterview(id: string, note: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const { error } = await admin
         .from('contractor_exit_interviews')
@@ -752,6 +763,7 @@ export async function createTask(input: {
     sourceTicketId?: string | null
 }): Promise<{ id: string }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const title = input.title.trim()
     if (title.length < 2) throw new Error('Tytuł zadania jest wymagany.')
@@ -794,6 +806,7 @@ export async function updateTask(
     }>,
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.title !== undefined) patch.title = input.title.trim()
@@ -1073,6 +1086,7 @@ async function resolveOrCreateContractor(
  */
 export async function uploadContractorInterviewFile(formData: FormData): Promise<{ contractorId: string; attachment: InterviewAttachment }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
 
     const kind = (formData.get('kind')?.toString() ?? '') as InterviewKind
@@ -1159,6 +1173,7 @@ export async function uploadContractorInterviewFile(formData: FormData): Promise
 /** Remove one attachment from a contractor's latest interview of the given kind (best-effort storage delete). */
 export async function removeContractorInterviewFile(kind: InterviewKind, contractorId: string, path: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const table = kind === 'onboarding' ? 'contractor_onboarding_interviews' : 'contractor_exit_interviews'
     // Bez sprawdzenia błędu awaria zapytania meldowała „Wywiad nie znaleziony" — nieprawdę.
@@ -1226,6 +1241,7 @@ export async function addBenchEntry(input: {
     contractorId?: string | null
 }): Promise<{ id: string }> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const name = input.consultantName.trim()
     if (name.length < 2) throw new Error('Imię i nazwisko jest wymagane.')
@@ -1257,6 +1273,7 @@ export async function updateBenchEntry(
     input: Partial<{ status: BenchStatus; benefits: BenchBenefits }>,
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.status !== undefined) patch.status = input.status
@@ -1270,6 +1287,7 @@ export async function updateBenchEntry(
 /** Soft-remove a bench entry (keeps the row so an auto-seeded departure isn't re-added). */
 export async function dismissBenchEntry(id: string): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const patch: Record<string, unknown> = { dismissed_at: new Date().toISOString() }
     const { error } = await admin.from('contractor_bench').update(patch).eq('id', id)
@@ -1377,6 +1395,7 @@ export async function assignCareOwner(input: {
 }): Promise<ActionResult<{ updated: number }>> {
     return runAction('assignCareOwner', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         const admin = createServiceClient()
 
         const ids = Array.from(new Set(input.contractorIds.filter(Boolean)))

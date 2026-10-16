@@ -48,6 +48,7 @@ import { ensureContractors } from '@/lib/contractors/import-core'
 import { excludeExited } from '@/lib/hr/employment-window'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import { selectInChunks } from '@/lib/supabase/select-in-chunks'
+import { assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -211,6 +212,7 @@ async function createTcmOnboardingTicket(
  */
 export async function commitPlacementImport(formData: FormData): Promise<CommitImportResult> {
     const ctx = await requireBonusProposerAction()
+    assertHrModuleWritable('payroll')
     const admin = createServiceClient()
 
     const buf = await fileFromForm(formData)
@@ -251,7 +253,8 @@ export async function commitPlacementImport(formData: FormData): Promise<CommitI
     for (const e of existing) existingByKey.set(placementNaturalKey(e.consultant_name, e.client_name, e.start_date), e)
 
     const { data: cat } = await admin.from('support_categories').select('id').eq('slug', 'inbox_onboarding').single()
-    const categoryId = (cat as { id: string } | null)?.id ?? null
+    // „Ludzie w NEXUSIE”: po przeniesieniu skrzynki nie zakładamy spraw w archiwum.
+    const categoryId = isMovedToNexus('cases') ? null : (cat as { id: string } | null)?.id ?? null
 
     const batchId = crypto.randomUUID()
 
@@ -616,6 +619,7 @@ async function confirmPlacementHoursBody(
     overrides?: ConfirmPlacementHoursOverrides,
 ): Promise<void> {
     const ctx = await requireBonusProposerAction()
+    assertHrModuleWritable('payroll')
     const admin = createServiceClient()
 
     if (overrides?.dl) validateBonusOverride(overrides.dl, 'DL')
@@ -1013,6 +1017,7 @@ export async function deletePlacementBonus(input: {
     deletionReason: string
 }): Promise<void> {
     const ctx = await requireBonusProposerAction()
+    assertHrModuleWritable('payroll')
     const admin = createServiceClient()
 
     const reason = (input.deletionReason ?? '').trim()
@@ -1181,6 +1186,7 @@ export async function deletePlacementBonus(input: {
 /** Cancel a placement (only before bonuses are generated). */
 export async function cancelPlacement(placementId: string, reason: string): Promise<void> {
     const ctx = await requireBonusProposerAction()
+    assertHrModuleWritable('payroll')
     const trimmedReason = (reason ?? '').trim()
     if (!trimmedReason) throw new ExpectedError('Podaj powód anulowania placementu.')
     const admin = createServiceClient()

@@ -53,6 +53,7 @@ import { selectInChunks } from '@/lib/supabase/select-in-chunks'
 // Audyt 2026-08 — lista wspólna z blokadą godzin w timesheecie (jedno źródło prawdy).
 import { LEAVE_ATTENDANCE_STATUSES } from '@/lib/hr/leave-attendance-statuses'
 import { addDays, endOfMonth, format, parseISO } from 'date-fns'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 export type LeaveType =
     | 'vacation' // Urlop wypoczynkowy
@@ -520,6 +521,7 @@ const MAX_DOC_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
 export async function uploadLeaveProof(formData: FormData): Promise<ActionResult<{ path: string }>> {
     return runAction('uploadLeaveProof', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('leave')
         const file = formData.get('file')
         if (!(file instanceof File)) {
             throw new ExpectedError('Brak pliku.')
@@ -644,6 +646,7 @@ async function findOverlappingLeave(
 export async function createLeaveRequest(input: CreateLeaveInput): Promise<ActionResult<{ id: string; autoApproved: boolean }>> {
     return runAction('createLeaveRequest', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('leave')
         validateDateString(input.startDate, 'start_date')
         validateDateString(input.endDate, 'end_date')
         validateLeaveType(input.leaveType)
@@ -1049,6 +1052,7 @@ async function notifyLeaveCancelled(params: {
 export async function cancelMyLeaveRequest(id: string): Promise<ActionResult<void>> {
     return runAction('cancelMyLeaveRequest', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('leave')
         const supabase = createClient()
 
         const { data: row, error: fetchErr } = await supabase
@@ -1262,6 +1266,7 @@ export interface CreateLeaveOnBehalfInput {
 export async function createLeaveOnBehalf(input: CreateLeaveOnBehalfInput): Promise<ActionResult<{ id: string }>> {
     return runAction('createLeaveOnBehalf', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('leave')
         if (!ctx.isAdmin && !ctx.isManager) {
             throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
         }
@@ -2063,6 +2068,7 @@ export async function getTimesheetLeaveDays(
 export async function cancelTeamLeave(id: string): Promise<ActionResult<void>> {
     return runAction('cancelTeamLeave', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('leave')
         if (!ctx.isAdmin && !ctx.isManager) {
             throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
         }
@@ -2291,6 +2297,7 @@ export interface UpdateTeamLeaveInput {
 export async function updateTeamLeave(input: UpdateTeamLeaveInput): Promise<ActionResult<void>> {
     return runAction('updateTeamLeave', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('leave')
         if (!ctx.isAdmin && !ctx.isManager) {
             throw new ExpectedError('Wymagane uprawnienia: administrator lub manager.')
         }
@@ -2967,6 +2974,7 @@ export async function listPendingLeaveRequests(): Promise<PendingLeaveRow[]> {
 export async function approveLeaveRequest(id: string, decisionNote?: string): Promise<ActionResult<void>> {
     return runAction('approveLeaveRequest', async () => {
         const ctx = await requireLeaveApproverAction()
+        assertHrModuleWritable('leave')
         const admin = createServiceClient()
 
         const { data: row, error: fetchErr } = await admin
@@ -3193,6 +3201,7 @@ export async function approveLeaveRequest(id: string, decisionNote?: string): Pr
 export async function rejectLeaveRequest(id: string, decisionNote: string): Promise<ActionResult<void>> {
     return runAction('rejectLeaveRequest', async () => {
         const ctx = await requireLeaveApproverAction()
+        assertHrModuleWritable('leave')
         if (!decisionNote?.trim()) {
             throw new ExpectedError('Powód odrzucenia jest wymagany.')
         }
@@ -3865,6 +3874,7 @@ export async function retryLeaveGraphSync(
 ): Promise<ActionResult<{ oof: boolean; calendar: boolean; forward: boolean; error?: string }>> {
     return runAction('retryLeaveGraphSync', async () => {
         const ctx = await requireAdminAction()
+        assertHrModuleWritable('leave')
         const admin = createServiceClient()
 
         const { data: row, error: fetchErr } = await admin
@@ -4132,6 +4142,7 @@ export async function setLeaveMailForward(
 ): Promise<ActionResult<SetLeaveMailForwardResult>> {
     return runAction('setLeaveMailForward', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('leave')
         const admin = createServiceClient()
 
         const { data: row, error: fetchErr } = await admin

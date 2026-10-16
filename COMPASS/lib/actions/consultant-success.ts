@@ -52,6 +52,7 @@ import { excludeExited } from '@/lib/hr/employment-window'
 // pułapka, która 2026-08-25 wygasiła kanban skrzynki: URL rośnie liniowo z liczbą id
 // i przy kilkuset check-inach zaczyna być zrywany po drodze. Paczkujemy.
 import { selectInChunks } from '@/lib/supabase/select-in-chunks'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 const SUCCESS_ROOT = '/internal/people/success'
 const DAY_MS = 86_400_000
@@ -766,6 +767,7 @@ function revalidateSuccess(contractorId?: string): void {
 
 export async function activateSuccessMonitoring(input: ActivateSuccessMonitoringInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const parsed = activateSchema.parse(input)
     const db = successDb()
 
@@ -816,6 +818,7 @@ export async function activateSuccessMonitoring(input: ActivateSuccessMonitoring
 
 export async function pauseSuccessMonitoring(input: PauseSuccessMonitoringInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const contractorId = uuid.parse(input.contractorId)
     const now = new Date().toISOString()
     const db = successDb()
@@ -833,6 +836,7 @@ export async function pauseSuccessMonitoring(input: PauseSuccessMonitoringInput)
 
 export async function scheduleSuccessCheckIn(input: ScheduleSuccessCheckInInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const parsed = scheduleSchema.parse(input)
     const db = successDb()
     const { data: contractor, error: contractorError } = await db
@@ -874,6 +878,7 @@ export async function scheduleSuccessCheckIn(input: ScheduleSuccessCheckInInput)
 
 export async function rescheduleSuccessCheckIn(input: RescheduleSuccessCheckInInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const parsed = rescheduleSchema.parse(input)
     const scheduledAt = asScheduledIso(parsed.scheduledAt)
     const db = successDb()
@@ -921,6 +926,7 @@ export async function rescheduleSuccessCheckIn(input: RescheduleSuccessCheckInIn
 
 export async function completeSuccessCheckIn(input: CompleteSuccessCheckInInput): Promise<void> {
     await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const parsed = completeSchema.parse(input)
     // This RPC is deliberately SECURITY INVOKER. It must run with the request
     // user's JWT so auth.uid() and the lifecycle RLS policies remain effective.
@@ -969,6 +975,7 @@ export async function completeSuccessCheckIn(input: CompleteSuccessCheckInInput)
 
 export async function addSuccessClientFeedback(input: AddSuccessClientFeedbackInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const parsed = feedbackSchema.parse(input)
     const average = (parsed.technicalScore + parsed.communicationScore + parsed.reliabilityScore + parsed.engagementScore) / 4
     const db = successDb()
@@ -1004,6 +1011,7 @@ export async function addSuccessClientFeedback(input: AddSuccessClientFeedbackIn
 
 export async function setSuccessHealthStatus(input: SetSuccessHealthStatusInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const schema = z.discriminatedUnion('status', [
         z.object({
             contractorId: uuid,
@@ -1037,6 +1045,7 @@ export async function setSuccessHealthStatus(input: SetSuccessHealthStatusInput)
 
 export async function createSuccessTask(input: CreateSuccessTaskInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const parsed = z.object({
         contractorId: uuid,
         checkInId: uuid.nullish(),
@@ -1076,6 +1085,7 @@ export async function createSuccessTask(input: CreateSuccessTaskInput): Promise<
 
 export async function updateSuccessTask(input: UpdateSuccessTaskInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const parsed = z.object({ taskId: uuid, status: z.enum(['todo', 'in_progress', 'done', 'cancelled']) }).parse(input)
     const db = successDb()
     const { data: task, error: lookupError } = await db.from('contractor_tasks').select('id, contractor_id').eq('id', parsed.taskId).maybeSingle()
@@ -1090,6 +1100,7 @@ export async function updateSuccessTask(input: UpdateSuccessTaskInput): Promise<
 
 export async function retrySuccessDelivery(input: RetrySuccessDeliveryInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     const deliveryId = uuid.parse(input.deliveryId)
     const db = successDb()
     const { data: delivery, error: lookupError } = await db
@@ -1130,6 +1141,7 @@ export async function retrySuccessDelivery(input: RetrySuccessDeliveryInput): Pr
 
 export async function sendSuccessPulseSurvey(input: SendSuccessPulseSurveyInput): Promise<void> {
     const ctx = await requireSuccessManagerAction()
+    assertHrModuleWritable('care')
     if (!areConsultantSuccessSurveysEnabled()) {
         throw new Error('Ankiety Consultant Success są obecnie wyłączone.')
     }

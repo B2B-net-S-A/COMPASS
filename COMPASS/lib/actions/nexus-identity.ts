@@ -15,6 +15,7 @@ import {
     type NexusContractor,
     type NexusSuggestion,
 } from '@/lib/contractors/nexus-match'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 /**
  * Kolejka ręcznego dopasowania kontraktorów do NEXUSA.
@@ -293,6 +294,7 @@ export async function linkContractorToNexus(input: {
 }): Promise<ActionResult<LinkContractorResult>> {
     return runAction('linkContractorToNexus', async (): Promise<LinkContractorResult> => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         if (!input.contractorId) throw new ExpectedError('Brak kontraktora.')
         if (!Number.isInteger(input.nexusContractId) || input.nexusContractId <= 0) {
             throw new ExpectedError('Podaj poprawne id kontraktu z NEXUSA.')
@@ -410,6 +412,7 @@ export async function unlinkContractorFromNexus(input: {
 }): Promise<ActionResult<void>> {
     return runAction('unlinkContractorFromNexus', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         if (!input.contractorId) throw new ExpectedError('Brak kontraktora.')
         const reason = (input.reason ?? '').trim().slice(0, REASON_MAX) || null
 
@@ -473,6 +476,7 @@ export async function dismissNexusMatch(input: {
 }): Promise<ActionResult<void>> {
     return runAction('dismissNexusMatch', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         if (!input.contractorId) throw new ExpectedError('Brak kontraktora.')
         const reason = (input.reason ?? '').trim()
         if (reason.length < REASON_MIN) {
@@ -528,6 +532,7 @@ export async function reopenNexusMatch(input: {
 }): Promise<ActionResult<void>> {
     return runAction('reopenNexusMatch', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         if (!input.contractorId) throw new ExpectedError('Brak kontraktora.')
 
         const admin = createServiceClient()

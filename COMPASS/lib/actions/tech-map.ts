@@ -56,6 +56,7 @@ import {
     type TechnologyRow,
     type VendorRow,
 } from '@/lib/types/tech-map'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -114,6 +115,7 @@ export async function listTechnologies(): Promise<TechnologyRow[]> {
 export async function createTechnologyUnverified(name: string): Promise<ActionResult<TechnologyRow>> {
     return runAction('createTechnologyUnverified', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         const trimmed = validateDictName(name)
         const slug = generateTechSlug(trimmed)
         if (!slug) {
@@ -165,6 +167,7 @@ export async function updateTechnology(input: {
 }): Promise<ActionResult<void>> {
     return runAction('updateTechnology', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         requireAdmin(ctx)
         if (!input.id) throw new ExpectedError('Brak id technologii.')
 
@@ -193,6 +196,7 @@ export async function updateTechnology(input: {
 export async function deleteTechnology(id: string): Promise<ActionResult<void>> {
     return runAction('deleteTechnology', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         requireAdmin(ctx)
         if (!id) throw new ExpectedError('Brak id technologii.')
         const admin = createServiceClient()
@@ -223,6 +227,7 @@ export async function listVendors(): Promise<VendorRow[]> {
 export async function createVendorUnverified(name: string): Promise<ActionResult<VendorRow>> {
     return runAction('createVendorUnverified', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         const trimmed = validateDictName(name)
         const admin = createServiceClient()
         const { data, error } = await admin
@@ -257,6 +262,7 @@ export async function updateVendor(input: {
 }): Promise<ActionResult<void>> {
     return runAction('updateVendor', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         requireAdmin(ctx)
         if (!input.id) throw new ExpectedError('Brak id dostawcy.')
 
@@ -281,6 +287,7 @@ export async function updateVendor(input: {
 export async function deleteVendor(id: string): Promise<ActionResult<void>> {
     return runAction('deleteVendor', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         requireAdmin(ctx)
         if (!id) throw new ExpectedError('Brak id dostawcy.')
         const admin = createServiceClient()
@@ -316,6 +323,7 @@ export async function createClientArea(
 ): Promise<ActionResult<ClientAreaRow>> {
     return runAction('createClientArea', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         if (!clientId) throw new ExpectedError('Brak id klienta.')
         const trimmed = validateDictName(name)
         const admin = createServiceClient()
@@ -360,6 +368,7 @@ export async function createClientForTechMap(
 ): Promise<ActionResult<{ id: string; name: string }>> {
     return runAction('createClientForTechMap', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         const normalized = normalizeClientName(name)
         if (!normalized || normalized.length < 2) {
             throw new ExpectedError('Nazwa klienta jest za krótka.')
@@ -483,6 +492,7 @@ async function loadCardOrThrow(admin: ServiceClient, cardId: string): Promise<Te
 export async function createCardDraft(input: CardInput): Promise<ActionResult<{ id: string }>> {
     return runAction('createCardDraft', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         const baseErrors = validateCardBase(input)
         if (baseErrors.length > 0) throw new ExpectedError(baseErrors.join(' '))
 
@@ -536,6 +546,7 @@ async function saveCardInternal(
     opts: { finalize: boolean },
 ): Promise<void> {
     const ctx = await requireLifecycleManagerAction()
+    assertHrModuleWritable('care')
     const admin = createServiceClient()
     const card = await loadCardOrThrow(admin, cardId)
     if (!canEditCard(ctx, card)) throw new ExpectedError('Możesz edytować tylko własne karty.')
@@ -1161,6 +1172,7 @@ export async function setAlertRecipients(
 ): Promise<ActionResult<void>> {
     return runAction('setAlertRecipients', async () => {
         const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('care')
         requireAdmin(ctx)
         const key = kind === 'demand' ? DEMAND_RECIPIENTS_KEY : PROJECT_END_RECIPIENTS_KEY
         const csv = parseRecipientCsv(userIds.join(','))

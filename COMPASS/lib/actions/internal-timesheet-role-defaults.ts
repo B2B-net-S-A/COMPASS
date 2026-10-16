@@ -16,6 +16,7 @@ import { format } from 'date-fns'
 import { workingDaysInMonth, type PublicHolidayDate } from '@/lib/hr/working-days'
 import { blocksTimesheetHours } from '@/lib/hr/leave-attendance-statuses'
 import type { AppRole } from '@/lib/types/role'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 
 export interface TimesheetRoleDefault {
@@ -81,6 +82,7 @@ export async function createRoleDefault(
     input: CreateRoleDefaultInput,
 ): Promise<TimesheetRoleDefault> {
     const ctx = await requireAdminAction()
+    assertHrModuleWritable('time')
     validateRoleDefaultFields(input.label, input.defaultDescription)
     const supabase = createClient()
     const { data, error } = await supabase
@@ -110,6 +112,7 @@ export async function createRoleDefault(
 
 export async function updateRoleDefault(input: UpdateRoleDefaultInput): Promise<void> {
     const ctx = await requireAdminAction()
+    assertHrModuleWritable('time')
     validateRoleDefaultFields(input.label, input.defaultDescription)
     const supabase = createClient()
     const updates: Record<string, unknown> = {}
@@ -134,6 +137,7 @@ export async function updateRoleDefault(input: UpdateRoleDefaultInput): Promise<
 
 export async function deleteRoleDefault(id: string): Promise<void> {
     const ctx = await requireAdminAction()
+    assertHrModuleWritable('time')
     const supabase = createClient()
     const { error } = await supabase.from('timesheet_role_defaults').delete().eq('id', id)
     if (error) throw new Error(`Błąd usuwania: ${error.message}`)
@@ -166,6 +170,7 @@ export async function applyDefaultsToTimesheet(
     project: string | null = null,
 ): Promise<ApplyDefaultsResult> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('time')
     const supabase = createClient()
     const admin = createServiceClient()
 

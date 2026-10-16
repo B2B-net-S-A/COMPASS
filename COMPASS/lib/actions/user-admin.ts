@@ -12,6 +12,7 @@ import { excludeExited } from '@/lib/hr/employment-window'
 import { runAction, ExpectedError, type ActionResult } from '@/lib/actions/action-result'
 import { revokeAccountAccess } from '@/lib/auth/account-access'
 import { warsawDate } from '@/lib/oof/oof-dates'
+import { assertEmploymentStatusWritable, assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,23 @@ async function fetchTargetUser(targetUserId: string) {
         throw new ExpectedError('Nie znaleziono użytkownika.')
     }
     return data.user
+}
+
+/**
+ * „Ludzie w NEXUSIE”: po przeniesieniu `lifecycle` status zatrudnienia pracownika
+ * prowadzi NEXUS, a Compass przyjmuje go z rostera. Ręczna zmiana tutaj rozjechałaby
+ * się z następnym przebiegiem `nexus-roster-sync`. Konta Akademii (`consultant`)
+ * NEXUS nie zna — tych dotyczy dalej ten ekran.
+ */
+async function assertTargetEmploymentWritable(targetId: string): Promise<void> {
+    if (!isMovedToNexus('lifecycle')) return
+    const { data, error } = await createServiceClient()
+        .from('profiles')
+        .select('role')
+        .eq('id', targetId)
+        .maybeSingle<{ role: string | null }>()
+    if (error) throw new Error(`Odczyt roli konta: ${error.message}`)
+    assertEmploymentStatusWritable(data?.role)
 }
 
 function ensureCanModify(actorId: string, targetUser: { id: string; email?: string | null }) {
@@ -495,6 +513,18 @@ export interface EmployeeProfileFields {
 
 export async function setEmployeeProfile(targetUserId: string, fields: EmployeeProfileInput): Promise<void> {
     const { user: actor } = await requireSuperAdmin()
+    // Kartoteka (miejsce pracy, forma zatrudnienia, start) i pula urlopowa mają
+    // osobne przełączniki — każde pole odmawia według modułu, który je prowadzi.
+    if (fields.default_location !== undefined || fields.employment_type !== undefined || fields.work_start_date !== undefined) {
+        assertHrModuleWritable('people')
+    }
+    if (
+        fields.leave_entitlement_days !== undefined
+        || fields.leave_carried_over_days !== undefined
+        || fields.leave_used_initial_days !== undefined
+    ) {
+        assertHrModuleWritable('leave')
+    }
     const target = await fetchTargetUser(targetUserId)
     ensureCanModify(actor.id, target)
 
@@ -678,8 +708,11 @@ export async function inviteUser(input: InviteUserInput): Promise<{ userId: stri
     }
 
     // Phase 22 — auto-start onboarding (best-effort, never blocks invite).
+    // „Ludzie w NEXUSIE”: po przeniesieniu `lifecycle` wejście prowadzi NEXUS —
+    // zaproszenie do Compassa (np. do Akademii) nie zakłada już onboardingu tutaj.
     const shouldAutoStart =
         input.autoStartOnboarding !== false
+        && !isMovedToNexus('lifecycle')
         && (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant')
 
     let onboardingProgressId: string | null = null
@@ -760,6 +793,7 @@ export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
  */
 export async function setUserManager(targetUserId: string, managerId: string | null): Promise<void> {
     const { user: actor } = await requireSuperAdmin()
+    assertHrModuleWritable('people')
     const target = await fetchTargetUser(targetUserId)
     ensureCanModify(actor.id, target)
 
@@ -821,6 +855,7 @@ export async function archiveEmployee(
     options?: { sendEmployeeEmail?: boolean; sendManagerEmail?: boolean },
 ): Promise<{ interviewId: string }> {
     const { user: actor } = await requireSuperAdmin()
+    assertHrModuleWritable('lifecycle')
     const target = await fetchTargetUser(targetUserId)
     ensureCanModify(actor.id, target)
 
@@ -859,6 +894,7 @@ export async function deactivateEmployee(targetUserId: string, lastWorkDay?: str
         const { user: actor } = await requireSuperAdmin()
         const target = await fetchTargetUser(targetUserId)
         ensureCanModify(actor.id, target)
+        await assertTargetEmploymentWritable(target.id)
 
         const date = lastWorkDay?.trim() || warsawDate(new Date())
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -911,6 +947,7 @@ export async function reactivateEmployee(targetUserId: string): Promise<ActionRe
         const { user: actor } = await requireSuperAdmin()
         const target = await fetchTargetUser(targetUserId)
         ensureCanModify(actor.id, target)
+        await assertTargetEmploymentWritable(target.id)
 
         const admin = createServiceClient()
         const { data: profile, error: readErr } = await admin
