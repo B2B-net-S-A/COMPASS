@@ -431,6 +431,37 @@ Compass wymienia z NEXUSEM (ATS) dwie rzeczy poza dniami roboczymi z D5.
 - Oba sekrety porównywane w stałym czasie (`lib/api/bearer-secret.ts`). Nie łącz ich w jeden.
   Migracja: `20260915100100_atlas_sales_signals_version_and_status.sql`.
 
+## Moduły przeniesione do NEXUSA („Ludzie w NEXUSIE”, 16.10.2026)
+
+Kartoteka, urlopy (z OOF i przekierowaniami), obecność i timesheety, stawki/premie/płace,
+wejście i odejście, opieka nad konsultantami z mapą technologii i skrzynka administracja@
+działają w NEXUSIE. **Compass zostaje z Akademią.** Danych nie kasujemy — przeniesiony moduł
+to archiwum tylko do odczytu. Przełącznik to env **runtime** (vault + restart, bez builda),
+moduły jak w NEXUSIE: `people, leave, time, payroll, lifecycle, care, cases`. Pusta = bez zmian.
+
+| Zmienna | Skutek |
+|---|---|
+| `HR_MOVED_TO_NEXUS` | baner na ekranach, odmowa zapisu w akcjach, „archiwum” w menu (nie chowamy — to jedyny odczyt archiwum), crony modułu pomijają pracę (heartbeat z powodem), TCM ląduje w `/learning`, gdy przeniesione są wszystkie |
+| `HR_EXPORTS_OFF` | eksporty `/api/internal/*` modułu → 410 `moved_to_nexus`. Osobno i **później**: dopóki NEXUS/ATLAS nie przełączą źródła, eksport oddaje zamrożone dane. Nigdy pusta lista (NEXUS wyłączałby konta, ATLAS wycofałby sygnały) |
+| `NEXUS_APP_URL` | link „Otwórz w NEXUSIE” w banerze i menu |
+| `NEXUS_ROSTER_URL` + `NEXUS_ROSTER_API_KEY` | cron `nexus-roster-sync` (`X-API-Key`, zakres `people_roster:read`) |
+
+- **Jedno miejsce odmowy:** `lib/hr/moved-to-nexus.ts` — `assertHrModuleWritable(moduł)` zaraz
+  po guardzie (w `runAction` wewnątrz callbacku), `hrModuleRefusal` w akcjach zwracających wynik.
+  Nowa akcja zapisu modułu HR = wywołanie + pozycja w `lib/actions/__tests__/moved-to-nexus-actions.test.ts`
+  (test czyta źródło). Akcje bez `runAction` rzucają `ExpectedError`, którego treść Next w produkcji
+  maskuje — powód mówi baner.
+- **Komponent kliencki nie czyta przełącznika** (env runtime nie dociera do przeglądarki) — listę
+  dostaje propsem z `app/(protected)/layout.tsx`; baner (`MovedToNexusBanner`) jest serwerowy.
+- **Status zatrudnienia po przeniesieniu `lifecycle` prowadzi NEXUS** (`nexus-roster-sync`,
+  reguły w `lib/hr/nexus-roster.ts`): dopasowanie po e-mailu, rola zostaje lokalna, `exited` tylko
+  jawnie, więcej niż 5 odejść w przebiegu = nikt nie zmieniony, pusta lista/5xx = nic. Odejście
+  odcina konto w Auth, powrót zdejmuje blokadę. Dezaktywacja z panelu zostaje tylko dla `consultant`.
+- **Zostaje żywe:** dokumenty umów pracowników (`user_contract_documents`, NEXUS ich nie ma),
+  słownik klientów, monitoring prawny, helpdesk, `m365-profile-resync`.
+- **Paczka dla importu w NEXUSIE:** `scripts/export-nexus-bundle.mjs` + `docs/nexus-bundle-v1.md`
+  (kopia `BUNDLE.md`; test pilnuje zgodności kolumn). Plik tylko poza repo, eksport po trybie tylko do odczytu.
+
 ## Zadania cykliczne (crony)
 
 Trasy w `COMPASS/app/api/cron/` (`ls app/api/cron` = aktualna lista — nie utrzymuję jej kopii tutaj,
