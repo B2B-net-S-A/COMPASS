@@ -2,6 +2,7 @@ import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { filterEmployedInMonth } from '@/lib/hr/employment-window'
+import { movedExportResponse } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,9 @@ export const dynamic = 'force-dynamic'
  *   }
  */
 export const GET = withCronAuth(async (request, { admin }) => {
+    // „Ludzie w NEXUSIE”: eksport wyłączony przełącznikiem `HR_EXPORTS_OFF` → 410.
+    const movedToNexus = movedExportResponse('payroll')
+    if (movedToNexus) return movedToNexus
     const url = new URL(request.url)
     const yearParam = url.searchParams.get('year')
     const monthParam = url.searchParams.get('month')

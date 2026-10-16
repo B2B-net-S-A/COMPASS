@@ -11,6 +11,7 @@ import * as Sentry from '@sentry/nextjs'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { logger } from '@/lib/logger'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 // UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
@@ -20,7 +21,7 @@ export const dynamic = 'force-dynamic'
 // timeout per żądanie na proxy (Traefik/Cloudflare) i limity samych wywołań.
 export const maxDuration = 60
 
-export const GET = withCronAuth(withCronHeartbeat('PLACEMENT_STATUS_TICK_RUN', async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('PLACEMENT_STATUS_TICK_RUN', skipWhenMovedToNexus('payroll', async (_request, { admin }) => {
     const today = new Date().toISOString().slice(0, 10)
     try {
         const { data, error } = await admin
@@ -39,4 +40,4 @@ export const GET = withCronAuth(withCronHeartbeat('PLACEMENT_STATUS_TICK_RUN', a
         Sentry.captureException(err, { tags: { kind: 'placement_status_tick' } })
         return NextResponse.json({ ok: false, error: message }, { status: 500 })
     }
-}))
+})))

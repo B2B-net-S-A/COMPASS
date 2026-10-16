@@ -9,6 +9,7 @@ import {
     shiftIsoDate,
     warsawToday,
 } from '@/lib/notifications/reminder-cadence'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,7 +43,7 @@ const OVERDUE_TASK_GRACE_DAYS = 30
 const EXIT_REMINDER_WINDOW = { daysBefore: 3, daysAfter: 14 }
 // Phase 22 tables not yet in generated types — cast admin to any for now.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_REMINDERS_RUN', async (_request, { admin: adminTyped }) => {
+export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_REMINDERS_RUN', skipWhenMovedToNexus('lifecycle', async (_request, { admin: adminTyped }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const admin = adminTyped as any
     const now = new Date()
@@ -209,4 +210,4 @@ export const GET = withCronAuth(withCronHeartbeat('LIFECYCLE_REMINDERS_RUN', asy
         },
         { status: !ok && sent === 0 ? 500 : 200 },
     )
-}))
+})))

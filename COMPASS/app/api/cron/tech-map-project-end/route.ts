@@ -14,6 +14,7 @@ import {
     selectProjectEndAlerts,
     type ProjectEndCard,
 } from '@/lib/tech-map/alerts'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 // UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
@@ -36,7 +37,7 @@ export const maxDuration = 120
  * Ślad w bazie: audit_logs `TECH_MAP_PROJECT_END_RUN` (statystyki) — czytelny bez
  * CRON_SECRET dowód, że zadanie się wykonało.
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(skipWhenMovedToNexus('care', async (_request, { admin }) => {
     try {
         const todayISO = warsawDate(new Date())
 
@@ -160,4 +161,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
         logger.error({ event: 'tech_map_project_end.failed', error: message })
         return NextResponse.json({ ok: false, stage: 'scan', error: message })
     }
-})
+}, { heartbeat: 'TECH_MAP_PROJECT_END_RUN' }))

@@ -203,4 +203,21 @@ describe("GET /api/internal/sales-signals", () => {
     expect(raw).not.toContain("sales_signals");
     expect(raw).not.toContain("relation");
   });
+
+  // „Ludzie w NEXUSIE”: ATLAS uzgadnia PEŁNY zbiór — pusta lista wycofałaby wszystkie
+  // sygnały. Wyłączony eksport odpowiada 410, który ATLAS traktuje jako awarię pobrania.
+  it("po wyłączeniu eksportu odpowiada 410, nie pustą listą", async () => {
+    process.env.HR_EXPORTS_OFF = "care";
+    try {
+      const res = await call(URL_BASE, auth);
+      expect(res.status).toBe(410);
+      const body = await res.json();
+      expect(body).toMatchObject({ error: "moved_to_nexus", module: "care" });
+      expect(body).not.toHaveProperty("signals");
+      expect(body).not.toHaveProperty("count");
+      expect(rpcMock).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.HR_EXPORTS_OFF;
+    }
+  });
 });

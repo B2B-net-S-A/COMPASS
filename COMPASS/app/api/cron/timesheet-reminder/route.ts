@@ -15,6 +15,7 @@ import {
     type TimesheetPeriod,
 } from '@/lib/hr/timesheet-reminder-window'
 import { excludeExited } from '@/lib/hr/employment-window'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,7 @@ export const dynamic = 'force-dynamic'
  * Ślad w bazie: audit_logs `TIMESHEET_REMINDER_RUN` — czytelny bez CRON_SECRET dowód,
  * że jedyny w miesiącu przebieg faktycznie się wykonał.
  */
-export const GET = withCronAuth(async (request, { admin }) => {
+export const GET = withCronAuth(skipWhenMovedToNexus('time', async (request, { admin }) => {
     const url = new URL(request.url)
     const todayIso = warsawDate(new Date())
     const force = url.searchParams.get('force') === '1'
@@ -210,7 +211,7 @@ export const GET = withCronAuth(async (request, { admin }) => {
         reminders_sent: sent,
         reminders_failed: failed,
     })
-})
+}, { heartbeat: 'TIMESHEET_REMINDER_RUN' }))
 
 /** `?year=&month=` do ręcznego wskazania okresu; bez nich — miesiąc zamknięty. */
 function readPeriodOverride(

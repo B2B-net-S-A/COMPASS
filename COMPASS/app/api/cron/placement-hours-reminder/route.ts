@@ -28,6 +28,7 @@ import {
     pickDueRecipients,
 } from '@/lib/notifications/reminder-cadence'
 import { logger } from '@/lib/logger'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 // UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
@@ -45,7 +46,7 @@ interface DuePlacement {
     bonus_eligible_date: string
 }
 
-export const GET = withCronAuth(withCronHeartbeat('PLACEMENT_HOURS_REMINDER_RUN', async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('PLACEMENT_HOURS_REMINDER_RUN', skipWhenMovedToNexus('payroll', async (_request, { admin }) => {
     const today = new Date()
     const todayIso = today.toISOString().slice(0, 10)
 
@@ -141,4 +142,4 @@ export const GET = withCronAuth(withCronHeartbeat('PLACEMENT_HOURS_REMINDER_RUN'
         Sentry.captureException(err, { tags: { kind: 'placement_hours_reminder' } })
         return NextResponse.json({ ok: false, error: message }, { status: 500 })
     }
-}))
+})))

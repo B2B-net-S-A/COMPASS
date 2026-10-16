@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger'
 import { reconcileForwardRules } from '@/lib/oof/forward-rules'
 import { retryCancelledLeaveCleanup } from '@/lib/oof/leave-cleanup'
 import { reconcileOutlookOof } from '@/lib/oof/reconcile'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 // Phase 41 raised this from 120: the forwarding half adds a per-mailbox rule listing
@@ -40,7 +41,7 @@ export const maxDuration = 240
  *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
  *        "https://compass.dynaminds.pl/api/cron/oof-reconcile"
  */
-export const GET = withCronAuth(async (_request, { admin }) => {
+export const GET = withCronAuth(skipWhenMovedToNexus('leave', async (_request, { admin }) => {
     // Each half runs in its own try/catch: a forwarding bug must not take down the OOF
     // reconcile, or vice versa. Before Phase 41 this route had no try/catch at all, so
     // any throw surfaced as a bare 500 with nothing in Sentry.
@@ -127,4 +128,4 @@ export const GET = withCronAuth(async (_request, { admin }) => {
             ? { ...cleanupStats, errors: cleanupStats.errors.slice(0, 15) }
             : { error: cleanupError ?? 'unknown' },
     })
-})
+}, { heartbeat: 'FORWARD_RECONCILE_RUN' }))

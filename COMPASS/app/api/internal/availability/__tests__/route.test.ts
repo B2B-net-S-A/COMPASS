@@ -106,4 +106,18 @@ describe("availability export", () => {
     rpc.mockRejectedValue(new Error("private connection string"));
     expect((await call()).status).toBe(503);
   });
+
+  it("keeps serving frozen data while leave is only read-only in Compass", async () => {
+    vi.stubEnv("HR_MOVED_TO_NEXUS", "leave");
+    expect((await call()).status).toBe(200);
+  });
+
+  it("answers 410 after authentication once the export is switched off", async () => {
+    vi.stubEnv("HR_EXPORTS_OFF", "leave");
+    expect((await call("Bearer wrong")).status).toBe(401);
+    const response = await call();
+    expect(response.status).toBe(410);
+    expect(await response.json()).toMatchObject({ error: "moved_to_nexus", module: "leave" });
+    expect(rpc).not.toHaveBeenCalled();
+  });
 });
