@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import { listMyTimesheetHistory } from '@/lib/actions/internal-timesheet'
 import { MyTimesheetCSVButton } from '@/components/internal/MyTimesheetCSVButton'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +51,8 @@ export default async function TimesheetArchivePage() {
                     <MyTimesheetCSVButton defaultYear={history[0]?.year} defaultMonth={history[0]?.month} />
                 </div>
             </div>
+
+            <MovedToNexusBanner module="time" />
 
             <Card>
                 <CardHeader>

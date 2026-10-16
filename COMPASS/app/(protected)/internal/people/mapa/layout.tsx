@@ -1,4 +1,5 @@
 import { requireTalentCommunityOrAdminLayout } from '@/lib/auth/internal-guard'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,5 +8,10 @@ export const dynamic = 'force-dynamic'
 // talent_community | grant has_tcm_access. Konsultanci nie mają tu wstępu.
 export default async function MapaLayout({ children }: { children: React.ReactNode }) {
     await requireTalentCommunityOrAdminLayout()
-    return <>{children}</>
+    return (
+        <>
+            <MovedToNexusBanner module="care" className="mb-6" />
+            {children}
+        </>
+    )
 }

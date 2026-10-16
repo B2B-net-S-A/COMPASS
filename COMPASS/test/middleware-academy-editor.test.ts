@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { middleware } from '../middleware'
 const state = vi.hoisted(() => ({ role: 'talent_community', flags: false }))
@@ -23,6 +23,31 @@ describe('Academy editor edge access preserves HR boundaries', () => {
     })
     it.each(['/home', '/league'])('preserves TCM internal landing on %s', async pathname => {
         const response = await middleware(new NextRequest(`https://compass.test${pathname}`))
+        expect(response.headers.get('location')).toBe('https://compass.test/internal')
+    })
+})
+
+// „Ludzie w NEXUSIE”: landing ról HR zależy od przełącznika HR_MOVED_TO_NEXUS (env runtime).
+describe('HR landing after modules move to NEXUS', () => {
+    const ALL = 'people,leave,time,payroll,lifecycle,care,cases'
+    afterEach(() => { vi.unstubAllEnvs() })
+
+    it('sends TCM to the Academy once every HR module is in NEXUS', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', ALL)
+        const response = await middleware(new NextRequest('https://compass.test/home'))
+        expect(response.headers.get('location')).toBe('https://compass.test/learning')
+    })
+
+    it('keeps TCM on /internal while any HR module still lives in Compass', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people,leave,time,payroll,lifecycle,care')
+        const response = await middleware(new NextRequest('https://compass.test/home'))
+        expect(response.headers.get('location')).toBe('https://compass.test/internal')
+    })
+
+    it.each(['internal', 'finanse', 'manager'])('keeps %s on the HR archive — the Academy does not admit them', async role => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', ALL)
+        state.role = role
+        const response = await middleware(new NextRequest('https://compass.test/learning'))
         expect(response.headers.get('location')).toBe('https://compass.test/internal')
     })
 })

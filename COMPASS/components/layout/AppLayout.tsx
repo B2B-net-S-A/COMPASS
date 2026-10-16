@@ -8,6 +8,7 @@ import { LanguageProvider } from '@/lib/i18n/context'
 import { Logo } from '@/components/common/Logo'
 import { PermissionsProvider } from '@/lib/hooks/usePermissions'
 import type { PermissionFeature, PermissionValue } from '@/lib/types/permissions'
+import type { HrModule } from '@/lib/hr/moved-to-nexus'
 
 interface AppLayoutProps {
     children: React.ReactNode
@@ -20,6 +21,10 @@ interface AppLayoutProps {
     consultantSuccessEnabled?: boolean
     academyEnabled?: boolean
     hasTcmAccess?: boolean
+    // „Ludzie w NEXUSIE”: przełącznik czyta serwer (env runtime) — tu przychodzi gotowa lista.
+    hrMovedModules?: HrModule[]
+    nexusUrl?: string | null
+    landingHref?: string
 }
 
 export function AppLayout({
@@ -32,6 +37,9 @@ export function AppLayout({
     consultantSuccessEnabled,
     hasTcmAccess,
     academyEnabled = false,
+    hrMovedModules = [],
+    nexusUrl = null,
+    landingHref,
 }: AppLayoutProps) {
     return (
         <LanguageProvider>
@@ -47,6 +55,8 @@ export function AppLayout({
                         consultantSuccessEnabled={consultantSuccessEnabled}
                         hasTcmAccess={hasTcmAccess}
                         academyEnabled={academyEnabled}
+                        hrMovedModules={hrMovedModules}
+                        nexusUrl={nexusUrl}
                     />
 
                     <div className="flex flex-1 flex-col min-w-0">
@@ -72,7 +82,14 @@ export function AppLayout({
                     </div>
 
                     {/* Mobile bottom-nav — fixed, mobile only */}
-                    <MobileMenu role={role} user={user} academyEnabled={academyEnabled} />
+                    <MobileMenu
+                        role={role}
+                        user={user}
+                        academyEnabled={academyEnabled}
+                        landingHref={landingHref}
+                        hrMovedModules={hrMovedModules}
+                        nexusUrl={nexusUrl}
+                    />
                 </div>
             </PermissionsProvider>
         </LanguageProvider>

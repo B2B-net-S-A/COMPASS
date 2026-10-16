@@ -28,12 +28,14 @@ import {
     HeartHandshake,
     Radar,
     FileSpreadsheet,
+    ArrowUpRight,
     type LucideIcon,
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
 import { useTheme } from '@/lib/contexts/ThemeContext'
 import { isFeatureComingSoon, type PermissionFeature, type PermissionValue } from '@/lib/types/permissions'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
+import type { HrModule } from '@/lib/hr/moved-to-nexus'
 
 // Phase 7 (2026-05-04): Sidebar badge counts fetched server-side in
 // app/(protected)/layout.tsx and passed through. Display badge if count > 0.
@@ -68,6 +70,9 @@ interface SidebarProps {
     // Phase 45: per-user grant — additive Talent Community access without the role.
     academyEnabled?: boolean
     hasTcmAccess?: boolean
+    // „Ludzie w NEXUSIE”: moduły w archiwum (lista od serwera, env runtime) i adres NEXUSA.
+    hrMovedModules?: HrModule[]
+    nexusUrl?: string | null
 }
 
 interface NavLink {
@@ -78,6 +83,8 @@ interface NavLink {
     badgeCount?: number
     /** When true, link is "active" only when pathname matches exactly. */
     exactMatch?: boolean
+    /** Moduł przeniesiony do NEXUSA — link zostaje (archiwum do odczytu), z dopiskiem i bez licznika. */
+    archived?: boolean
 }
 
 interface NavGroup {
@@ -94,6 +101,8 @@ export function Sidebar({
     consultantSuccessEnabled = false,
     hasTcmAccess = false,
     academyEnabled = false,
+    hrMovedModules = [],
+    nexusUrl = null,
 }: SidebarProps) {
     const pathname = usePathname()
     const searchParams = useSearchParams()
@@ -110,6 +119,12 @@ export function Sidebar({
     const isConsultant = role === 'consultant'
     // HR-zone = wszyscy oprócz konsultanta IT.
     const isHrZone = isAdmin || isInternal || isFinance || isManager || isTalentCommunity
+
+    // „Ludzie w NEXUSIE”: pozycje przeniesionych modułów są OZNACZANE, nie chowane —
+    // dane zostały w Compassie jako archiwum i to jedyne miejsce, gdzie da się je przeczytać
+    // (ekran ma baner z linkiem do NEXUSA). Link oznaczony, gdy wszystkie jego moduły są przeniesione.
+    const moved = new Set(hrMovedModules)
+    const archivedWhen = (...modules: HrModule[]): boolean => modules.every((m) => moved.has(m))
 
     // Phase 20: Konsultant IT + admin widzą platform panels (home/learning/league).
     // Pozostali widzą tylko wspólne (incubator/news/support) + HR Hub.
@@ -193,6 +208,9 @@ export function Sidebar({
     const internalGroup: NavGroup = {
         heading: t('group_internal'),
         links: [
+            ...(nexusUrl && moved.size > 0
+                ? [{ name: 'NEXUS', href: nexusUrl, icon: ArrowUpRight, feature: null }]
+                : []),
             {
                 name: badges?.selfOnLeave
                     ? `${t('nav_internal_hub')} (jesteś na urlopie)`
@@ -202,6 +220,7 @@ export function Sidebar({
                 feature: null,
                 exactMatch: true,
                 badgeCount: badges?.activeLeaves,
+                archived: archivedWhen('leave', 'time', 'payroll'),
             },
             // Phase 27c — Payroll widoczne dla HR-zone (każdy widzi własne; manager/finanse/admin widzą więcej).
             {
@@ -209,6 +228,7 @@ export function Sidebar({
                 href: '/internal/payroll',
                 icon: Wallet,
                 feature: null,
+                archived: archivedWhen('payroll'),
             },
             // Phase 28 — Moje placementy (DL/Rekruter widzą własne umowy + prognozę premii).
             {
@@ -216,6 +236,7 @@ export function Sidebar({
                 href: '/internal/placements',
                 icon: Briefcase,
                 feature: null,
+                archived: archivedWhen('payroll'),
             },
         ],
     }
@@ -230,7 +251,7 @@ export function Sidebar({
             // w edytorze timesheetu czyta właśnie te wpisy. Na produkcji tabela
             // timesheet_role_defaults miała 0 wierszy, bo nie było gdzie ich dodać.
             ...(isAdmin
-                ? [{ name: 'Domyślne opisy timesheet', href: '/internal/admin/role-defaults', icon: FileSpreadsheet, feature: null }]
+                ? [{ name: 'Domyślne opisy timesheet', href: '/internal/admin/role-defaults', icon: FileSpreadsheet, feature: null, archived: archivedWhen('time') }]
                 : []),
         ],
     }
@@ -245,10 +266,10 @@ export function Sidebar({
     const managerGroup: NavGroup = {
         heading: 'Mój zespół',
         links: [
-            { name: 'Wnioski urlopowe zespołu', href: '/internal/admin?tab=leave-requests', icon: Plane, feature: null },
+            { name: 'Wnioski urlopowe zespołu', href: '/internal/admin?tab=leave-requests', icon: Plane, feature: null, archived: archivedWhen('leave') },
             // Audyt 2026-08 (UI): usunięty `&scope=team` — strona czyta `scope` wyłącznie
             // dla panelu faktur, a zakres zespołu i tak wymusza serwer (listAllTimesheetsForMonth).
-            { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets', icon: Users, feature: null },
+            { name: 'Timesheety zespołu', href: '/internal/admin?tab=timesheets', icon: Users, feature: null, archived: archivedWhen('time') },
             ...(invoicesUiOn
                 ? [{ name: 'Faktury zespołu (etap 1)', href: '/internal/admin?tab=invoices&scope=team', icon: Mailbox, feature: null }]
                 : []),
@@ -282,6 +303,7 @@ export function Sidebar({
                 feature: null,
                 exactMatch: true,
                 badgeCount: ticketsBadge > 0 ? ticketsBadge : undefined,
+                archived: archivedWhen('lifecycle', 'care', 'cases'),
             },
             // Phase 46 — deep-link do zakładki mapy technologicznej (TCM intel).
             {
@@ -290,12 +312,14 @@ export function Sidebar({
                 icon: Radar,
                 feature: null,
                 exactMatch: true,
+                archived: archivedWhen('care'),
             },
             ...(consultantSuccessEnabled ? [{
                 name: 'Consultant Success',
                 href: '/internal/people/success',
                 icon: HeartHandshake,
                 feature: null,
+                archived: archivedWhen('care'),
             }] : []),
         ],
     }
@@ -324,6 +348,7 @@ export function Sidebar({
                 icon: Mailbox,
                 feature: null,
                 badgeCount: badges?.adminInbox,
+                archived: archivedWhen('cases'),
             },
         ],
     }
@@ -342,6 +367,7 @@ export function Sidebar({
                 icon: ClipboardCheck,
                 feature: null,
                 badgeCount: badges?.lifecyclePendingTasks,
+                archived: archivedWhen('lifecycle'),
             },
         ],
     }
@@ -429,7 +455,12 @@ export function Sidebar({
                                     >
                                         <Icon className="h-4 w-4" />
                                         <span className="flex-1">{link.name}</span>
-                                        {link.badgeCount !== undefined && link.badgeCount > 0 && (
+                                        {link.archived && (
+                                            <span className="ml-auto rounded border border-sidebar-border px-1.5 text-[10px] font-medium text-sidebar-muted">
+                                                archiwum
+                                            </span>
+                                        )}
+                                        {!link.archived && link.badgeCount !== undefined && link.badgeCount > 0 && (
                                             <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold tabular-nums">
                                                 {link.badgeCount > 99 ? '99+' : link.badgeCount}
                                             </span>

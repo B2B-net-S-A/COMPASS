@@ -8,6 +8,8 @@ import { TimesheetPanel } from '@/components/internal/panels/TimesheetPanel'
 import { InvoicesPanel } from '@/components/internal/panels/InvoicesPanel'
 import { MyBonusesPanel } from '@/components/internal/panels/MyBonusesPanel'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
+import { isMovedToNexus, type HrModule } from '@/lib/hr/moved-to-nexus'
 import { DB_ROLES } from '@/lib/types/role'
 import type { CalendarStatusFilter } from '@/components/internal/VacationCalendar'
 
@@ -28,6 +30,15 @@ const TABS: ReadonlyArray<HubTab> = ALL_TABS.filter(
 )
 
 const VALID_TAB_IDS = TABS.map((t) => t.id)
+
+// „Ludzie w NEXUSIE”: który moduł prowadzi zakładkę (baner archiwum).
+const TAB_MODULE: Readonly<Record<string, HrModule>> = {
+    attendance: 'time',
+    calendar: 'leave',
+    leave: 'leave',
+    timesheet: 'time',
+    bonuses: 'payroll',
+}
 
 interface PageProps {
     searchParams?: {
@@ -78,10 +89,13 @@ export default async function InternalHubPage({ searchParams }: PageProps) {
                 </p>
             </header>
 
-            {/* Phase 25d — show active leaves with substitutes (company-wide, all HR-zone roles) */}
-            <ActiveLeavesBanner />
+            {/* Phase 25d — show active leaves with substitutes (company-wide, all HR-zone roles).
+                Po przeniesieniu urlopów lista z archiwum nie mówi już, kto jest dziś nieobecny. */}
+            {!isMovedToNexus('leave') && <ActiveLeavesBanner />}
 
             <HubTabs basePath="/internal" tabs={TABS} active={tab} />
+
+            {TAB_MODULE[tab] && <MovedToNexusBanner module={TAB_MODULE[tab]} />}
 
             {tab === 'attendance' && <AttendancePanel year={year} month={month} />}
             {tab === 'calendar' && (

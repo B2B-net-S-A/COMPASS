@@ -1,6 +1,7 @@
 import { requireAdminLayout } from '@/lib/auth/internal-guard'
 import { listRoleDefaults } from '@/lib/actions/internal-timesheet-role-defaults'
 import { RoleDefaultsManager } from '@/components/internal/RoleDefaultsManager'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,7 @@ export default async function RoleDefaultsPage() {
                     aktywny default (rola+projekt &gt; rola &gt; projekt &gt; globalny).
                 </p>
             </div>
+            <MovedToNexusBanner module="time" />
             <RoleDefaultsManager initialDefaults={defaults} />
         </div>
     )

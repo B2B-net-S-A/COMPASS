@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
 import { ARCHIVED_ACCOUNT_ERROR_CODE, isArchivedAccount } from '@/lib/auth/employment-access'
+import { hrLandingPath, movedModules } from '@/lib/hr/moved-to-nexus'
 
 export async function middleware(request: NextRequest) {
     const response = NextResponse.next({
@@ -129,13 +130,15 @@ export async function middleware(request: NextRequest) {
             }
         }
 
-        // HR landing pozostaje /internal. TCM dodatkowo ma globalny edytor /learning; inne role HR nie mają dostępu do Akademii.
+        // HR landing to /internal. TCM dodatkowo ma globalny edytor /learning; inne role HR nie mają dostępu do Akademii.
+        // „Ludzie w NEXUSIE”: gdy wszystkie moduły HR są w NEXUSIE (`HR_MOVED_TO_NEXUS`, env runtime),
+        // landingiem TCM jest Akademia — `hrLandingPath` w lib/hr/moved-to-nexus.ts.
         // Aktualności (/news), Inkubator (/incubator), Support (/support) są WSPÓLNE dla wszystkich
         // HR-zone ról — nie redirectujemy z nich.
         if (isInternalLanding) {
             const platformOnlyPaths = role === 'talent_community' ? ['/home', '/league'] : ['/home', '/learning', '/league']
             if (platformOnlyPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
-                return NextResponse.redirect(new URL('/internal', request.url))
+                return NextResponse.redirect(new URL(hrLandingPath(role, movedModules()), request.url))
             }
         }
 

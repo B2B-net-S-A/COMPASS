@@ -12,6 +12,7 @@ import { INBOX_CATEGORY_SLUGS } from '@/lib/types/support'
 import { getInboxTicketDetail, listInboxHandlers } from '@/lib/actions/support-inbox'
 import { TicketToTaskButton } from '@/components/inbox/TicketToTaskButton'
 import { excludeExited } from '@/lib/hr/employment-window'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,6 +65,7 @@ export default async function InboxTicketDetailPage({ params }: PageProps) {
 
     return (
         <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
+            <MovedToNexusBanner module="cases" />
             <div>
                 <Link
                     href="/admin/inbox"

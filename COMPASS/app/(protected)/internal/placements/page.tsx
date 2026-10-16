@@ -5,6 +5,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { listMyPlacements } from '@/lib/actions/placements'
 import { Badge } from '@/components/ui/badge'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 import {
     placementRecipientBonusSummary,
     placementStatusLabelPl,
@@ -61,6 +62,8 @@ export default async function MyPlacementsPage() {
                     przepracowaniu 168h przez konsultanta (data poniżej to prognoza).
                 </p>
             </header>
+
+            <MovedToNexusBanner module="payroll" />
 
             {pending.length > 0 && (
                 <div className="rounded-lg border bg-muted/30 p-4">

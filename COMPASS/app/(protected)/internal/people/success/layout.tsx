@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireTalentCommunityOrAdminLayout } from '@/lib/auth/internal-guard'
 import { SuccessNav } from '@/components/internal/success/SuccessNav'
 import { isConsultantSuccessEnabled } from '@/lib/consultant-success/flags'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,7 @@ export default async function ConsultantSuccessLayout({ children }: { children: 
                     <p className="text-muted-foreground">Profile, notatki, statusy relacji i action steps są dostępne wyłącznie dla Talent Community Managerów i administratorów.</p>
                 </div>
             </div>
+            <MovedToNexusBanner module="care" />
             <SuccessNav />
             {children}
         </div>

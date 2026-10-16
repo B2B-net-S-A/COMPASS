@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n/context'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 import { isHrZoneRole } from '@/lib/types/role'
+import type { HrModule } from '@/lib/hr/moved-to-nexus'
 import {
     LayoutDashboard,
     GraduationCap,
@@ -19,6 +20,7 @@ import {
     MoreHorizontal,
     CalendarCheck,
     Users,
+    ArrowUpRight,
     type LucideIcon,
 } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -32,6 +34,10 @@ interface MobileMenuProps {
         avatar_url?: string | null
         bio?: string | null
     } | null
+    // „Ludzie w NEXUSIE”: landing i lista przeniesionych modułów liczone na serwerze (env runtime).
+    landingHref?: string
+    hrMovedModules?: HrModule[]
+    nexusUrl?: string | null
 }
 
 interface NavItem {
@@ -40,7 +46,13 @@ interface NavItem {
     icon: LucideIcon
 }
 
-export function MobileMenu({ role, academyEnabled = false }: MobileMenuProps) {
+export function MobileMenu({
+    role,
+    academyEnabled = false,
+    landingHref: serverLandingHref,
+    hrMovedModules = [],
+    nexusUrl = null,
+}: MobileMenuProps) {
     const pathname = usePathname()
     const { t } = useTranslation()
     const [moreOpen, setMoreOpen] = useState(false)
@@ -50,7 +62,9 @@ export function MobileMenu({ role, academyEnabled = false }: MobileMenuProps) {
     // strefy HR (internal, finanse, manager, talent_community). Efekt: gwarantowane
     // przekierowanie przy każdym kliknięciu i kafelek, który nigdy nie podświetlał
     // się jako aktywny. Kierujemy je od razu tam, gdzie i tak lądują.
-    const landingHref = role === 'admin' || role === 'consultant' ? '/home' : '/internal'
+    // Landing przychodzi z serwera (`hrLandingPath`) — po przeniesieniu wszystkich modułów HR
+    // TCM ląduje w Akademii. Bez propsa zostaje dotychczasowa reguła.
+    const landingHref = serverLandingHref ?? (role === 'admin' || role === 'consultant' ? '/home' : '/internal')
 
     // 4 fixed bottom-nav slots + More drawer (5th slot).
     // Learning + League są coming-soon, więc bottom nav promuje pozostałe
@@ -148,6 +162,15 @@ export function MobileMenu({ role, academyEnabled = false }: MobileMenuProps) {
                             <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                                 {t('group_internal')}
                             </p>
+                            {nexusUrl && hrMovedModules.length > 0 && (
+                                <a
+                                    href={nexusUrl}
+                                    className="mt-2 flex items-center gap-3 rounded-lg p-3 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted"
+                                >
+                                    <ArrowUpRight className="h-5 w-5" />
+                                    NEXUS
+                                </a>
+                            )}
                             <Link
                                 href="/internal"
                                 onClick={() => setMoreOpen(false)}

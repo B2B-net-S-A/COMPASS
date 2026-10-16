@@ -6,6 +6,7 @@
 
 import { requireInternalOrAdminLayout } from '@/lib/auth/internal-guard'
 import { PayrollClient } from '@/components/internal/PayrollClient'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,7 @@ export default async function PayrollPage({
                     </p>
                 </div>
             </header>
+            <MovedToNexusBanner module="payroll" />
             <PayrollClient
                 initialTab={tab}
                 initialYear={year}
