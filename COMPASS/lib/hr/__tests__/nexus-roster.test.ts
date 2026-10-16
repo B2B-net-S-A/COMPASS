@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
     MAX_EXITS_PER_RUN,
+    MAX_RETURNS_PER_RUN,
     RosterContractError,
     parseNexusRoster,
     planRosterSync,
@@ -14,6 +15,7 @@ function profile(id: string, overrides: Partial<CompassProfileRow> = {}): Compas
     return {
         id,
         email: `${id}@example.test`,
+        role: 'internal',
         employment_status: 'active',
         manager_id: null,
         work_start_date: '2026-01-05',
@@ -87,7 +89,7 @@ describe('planRosterSync', () => {
             [person('p1', { employment_status: 'exited', last_working_day: '2026-10-31' })],
             [profile('p1', { employment_status: 'offboarding' })],
         )
-        expect(plan.refusal).toBeNull()
+        expect(plan.refusals).toEqual([])
         expect(plan.changes[0]).toMatchObject({
             exit: true,
             returning: false,
@@ -101,14 +103,14 @@ describe('planRosterSync', () => {
             [...ids.map((id) => person(id, { employment_status: 'exited' })), person('stay', { work_start_date: '2026-02-02' })],
             [...ids.map((id) => profile(id)), profile('stay')],
         )
-        expect(plan.refusal).toBe('mass_exit')
+        expect(plan.refusals).toEqual(['mass_exit'])
         expect(plan.stats.exits).toBe(MAX_EXITS_PER_RUN + 1)
     })
 
     it('allows exactly the limit', () => {
         const ids = Array.from({ length: MAX_EXITS_PER_RUN }, (_, i) => `p${i}`)
         const plan = planRosterSync(ids.map((id) => person(id, { employment_status: 'exited' })), ids.map((id) => profile(id)))
-        expect(plan.refusal).toBeNull()
+        expect(plan.refusals).toEqual([])
     })
 
     it('handles a return from exited: lifts the ban and clears the last working day', () => {
@@ -172,5 +174,37 @@ describe('planRosterSync', () => {
     it('never touches the role', () => {
         const plan = planRosterSync([person('p1', { employment_status: 'onboarding' })], [profile('p1', { employment_status: 'pending' })])
         expect(Object.keys(plan.changes[0].patch)).toEqual(['employment_status'])
+    })
+
+    it(`refuses a run that would bring back more than ${MAX_RETURNS_PER_RUN} exited people at once`, () => {
+        const ids = Array.from({ length: MAX_RETURNS_PER_RUN + 1 }, (_, i) => `r${i}`)
+        const plan = planRosterSync(
+            ids.map((id) => person(id, { employment_status: 'active' })),
+            ids.map((id) => profile(id, { employment_status: 'exited', termination_date: '2026-06-30' })),
+        )
+        expect(plan.refusals).toEqual(['mass_return'])
+        expect(plan.stats.returns).toBe(MAX_RETURNS_PER_RUN + 1)
+    })
+
+    it('never exits an admin automatically, but still syncs their other fields', () => {
+        const plan = planRosterSync(
+            [person('boss', { employment_status: 'exited', work_start_date: '2026-04-01' })],
+            [profile('boss', { role: 'admin' })],
+        )
+        expect(plan.stats.skipped_admin).toBe(1)
+        expect(plan.stats.exits).toBe(0)
+        expect(plan.changes).toEqual([
+            expect.objectContaining({ id: 'boss', exit: false, patch: { work_start_date: '2026-04-01' } }),
+        ])
+    })
+
+    it('honours a custom protection rule (e.g. SUPER_ADMIN_EMAILS)', () => {
+        const plan = planRosterSync(
+            [person('owner', { employment_status: 'exited' })],
+            [profile('owner')],
+            { isProtected: (row) => row.email === 'owner@example.test' },
+        )
+        expect(plan.changes).toEqual([])
+        expect(plan.stats.skipped_admin).toBe(1)
     })
 })

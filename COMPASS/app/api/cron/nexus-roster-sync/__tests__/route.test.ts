@@ -68,7 +68,7 @@ vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: 
 import { GET } from '../route'
 
 const fetchMock = vi.fn()
-const request = () => new NextRequest('https://compass.test/api/cron/nexus-roster-sync', {
+const request = (query = '') => new NextRequest(`https://compass.test/api/cron/nexus-roster-sync${query}`, {
     headers: { authorization: 'Bearer test-cron-secret' },
 })
 const nexusPerson = (id: string, status = 'active', extra: Record<string, unknown> = {}) => ({
@@ -77,11 +77,12 @@ const nexusPerson = (id: string, status = 'active', extra: Record<string, unknow
     last_working_day: null, exited_at: null, ...extra,
 })
 const compassProfile = (id: string, status = 'active', extra: Record<string, unknown> = {}) => ({
-    id, email: `${id}@example.test`, employment_status: status, manager_id: null,
+    id, email: `${id}@example.test`, role: 'internal', employment_status: status, manager_id: null,
     work_start_date: '2026-01-05', termination_date: null, ...extra,
 })
 function respond(people: unknown[], init: { status?: number; count?: number } = {}) {
-    fetchMock.mockResolvedValue(new Response(
+    // Nowa odpowiedź przy każdym wywołaniu — treść Response da się odczytać tylko raz.
+    fetchMock.mockImplementation(async () => new Response(
         JSON.stringify({ count: init.count ?? people.length, generated_at: '2026-11-13T18:00:00+01:00', people }),
         { status: init.status ?? 200 },
     ))
@@ -178,8 +179,43 @@ describe('GET /api/cron/nexus-roster-sync', () => {
         respond([...ids.map((id) => nexusPerson(id, 'exited')), nexusPerson('p1', 'active', { work_start_date: '2026-03-01' })])
         const response = await GET(request())
         expect(response.status).toBe(500)
-        expect(await response.json()).toMatchObject({ ok: false, stage: 'safety', refusal: 'mass_exit', exits: 6, written: 0 })
+        expect(await response.json()).toMatchObject({ ok: false, stage: 'safety', refusals: ['mass_exit'], exits: 6, written: 0 })
         expect(state.updates).toEqual([])
+        expect(revokeAccountAccess).not.toHaveBeenCalled()
+    })
+
+    it('lets a human confirm the exact number of exits with one manual run', async () => {
+        const ids = ['a', 'b', 'c', 'd', 'e', 'f']
+        state.profiles = ids.map((id) => compassProfile(id))
+        respond(ids.map((id) => nexusPerson(id, 'exited')))
+        expect((await GET(request('?confirm_exits=5'))).status).toBe(500)
+        expect(state.updates).toEqual([])
+        const response = await GET(request('?confirm_exits=6'))
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({ ok: true, exits: 6, written: 6 })
+        expect(revokeAccountAccess).toHaveBeenCalledTimes(6)
+    })
+
+    it('refuses a mass return — it would lift Auth bans for former employees', async () => {
+        const ids = ['a', 'b', 'c', 'd', 'e', 'f']
+        state.profiles = ids.map((id) => compassProfile(id, 'exited', { termination_date: '2026-06-30' }))
+        respond(ids.map((id) => nexusPerson(id, 'active')))
+        const response = await GET(request())
+        expect(response.status).toBe(500)
+        expect(await response.json()).toMatchObject({ ok: false, stage: 'safety', refusals: ['mass_return'], returns: 6 })
+        expect(state.unban).toEqual([])
+        expect(state.updates).toEqual([])
+    })
+
+    it('never cuts off an admin or a super admin automatically', async () => {
+        state.profiles = [
+            compassProfile('adm', 'active', { role: 'admin' }),
+            { ...compassProfile('owner'), email: 'super@compass.test' },
+        ]
+        respond([nexusPerson('adm', 'exited'), { ...nexusPerson('owner', 'exited'), email: 'super@compass.test' }])
+        const response = await GET(request())
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({ ok: true, skipped_admin: 2, exits: 0, written: 0 })
         expect(revokeAccountAccess).not.toHaveBeenCalled()
     })
 

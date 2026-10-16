@@ -17,6 +17,10 @@
 //   • Przebieg, który dałby `exited` więcej niż MAX_EXITS_PER_RUN osobom naraz, nie
 //     zmienia NIKOGO — lustro `MAX_DEACTIVATIONS_PER_RUN` w NEXUSIE. Masowe odejście
 //     wygląda dokładnie jak awaria po drugiej stronie; niech zdecyduje człowiek.
+//     Tak samo masowy powrót z `exited` (MAX_RETURNS_PER_RUN): zdejmuje blokady kont,
+//     więc zbyt hojna lista oddałaby dostęp byłym pracownikom jednym przebiegiem.
+//   • Admina automat nie wyłącza (lustro `skipped_admin` w NEXUSIE): to on cofa błędne
+//     odejście. Konto `admin` albo z SUPER_ADMIN_EMAILS nie dostaje `exited` z listy.
 //   • Pusta lista, niezgodny `count` albo złamany kształt = awaria; nic nie zapisujemy.
 //   • Przełożony: ustawiamy tylko, gdy NEXUS go podaje i da się go jednoznacznie znaleźć
 //     w Compassie. Brak przełożonego w NEXUSIE nie czyści `manager_id` — od niego zależy,
@@ -29,6 +33,10 @@ export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number]
 
 /** Bezpiecznik masowego odejścia (NEXUS: `MAX_DEACTIVATIONS_PER_RUN = 5`). */
 export const MAX_EXITS_PER_RUN = 5
+/** Bezpiecznik masowego powrotu — powrót zdejmuje blokadę konta w Auth. */
+export const MAX_RETURNS_PER_RUN = 5
+
+export type RosterRefusal = 'mass_exit' | 'mass_return'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
@@ -81,6 +89,7 @@ export function parseNexusRoster(raw: unknown): NexusRosterPerson[] {
 export interface CompassProfileRow {
     id: string
     email: string | null
+    role: string | null
     employment_status: string | null
     manager_id: string | null
     work_start_date: string | null
@@ -116,13 +125,22 @@ export interface RosterPlanStats {
     manager_unknown: number
     exits: number
     returns: number
+    /** Admin z `exited` na liście — status zostaje, decyduje człowiek. */
+    skipped_admin: number
 }
 
 export interface RosterPlan {
     changes: ProfileChange[]
     stats: RosterPlanStats
-    /** `mass_exit` = bezpiecznik zadziałał; `changes` NIE wolno zapisać. */
-    refusal: 'mass_exit' | null
+    /** Bezpieczniki, które zadziałały. Niepusta lista = `changes` NIE wolno zapisać. */
+    refusals: RosterRefusal[]
+}
+
+export interface RosterPlanOptions {
+    maxExits?: number
+    maxReturns?: number
+    /** Konta, których automat nie wyłącza (admin, SUPER_ADMIN_EMAILS). */
+    isProtected?: (row: CompassProfileRow) => boolean
 }
 
 const normEmail = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase()
@@ -133,7 +151,11 @@ const LEAVING: ReadonlySet<string> = new Set(['offboarding', 'exited'])
 export function planRosterSync(
     nexus: readonly NexusRosterPerson[],
     compass: readonly CompassProfileRow[],
-    maxExits: number = MAX_EXITS_PER_RUN,
+    {
+        maxExits = MAX_EXITS_PER_RUN,
+        maxReturns = MAX_RETURNS_PER_RUN,
+        isProtected = (row) => row.role === 'admin',
+    }: RosterPlanOptions = {},
 ): RosterPlan {
     const compassByEmail = new Map<string, CompassProfileRow[]>()
     for (const row of compass) {
@@ -159,6 +181,7 @@ export function planRosterSync(
         manager_unknown: 0,
         exits: 0,
         returns: 0,
+        skipped_admin: 0,
     }
     const changes: ProfileChange[] = []
 
@@ -182,7 +205,11 @@ export function planRosterSync(
         const patch: ProfilePatch = {}
 
         if (person.employment_status !== row.employment_status) {
-            patch.employment_status = person.employment_status
+            if (person.employment_status === 'exited' && isProtected(row)) {
+                stats.skipped_admin += 1
+            } else {
+                patch.employment_status = person.employment_status
+            }
         }
 
         const managerEmail = normEmail(person.manager_email)
@@ -199,7 +226,7 @@ export function planRosterSync(
             patch.work_start_date = person.work_start_date
         }
 
-        const comingBack = LEAVING.has(row.employment_status ?? '') && STILL_EMPLOYED.has(person.employment_status)
+        const comingBack = LEAVING.has(row.employment_status ?? '') && STILL_EMPLOYED.has(patch.employment_status ?? '')
         if (person.last_working_day) {
             if (person.last_working_day !== row.termination_date) patch.termination_date = person.last_working_day
         } else if (comingBack && row.termination_date !== null) {
@@ -222,5 +249,8 @@ export function planRosterSync(
     }
 
     stats.to_update = changes.length
-    return { changes, stats, refusal: stats.exits > maxExits ? 'mass_exit' : null }
+    const refusals: RosterRefusal[] = []
+    if (stats.exits > maxExits) refusals.push('mass_exit')
+    if (stats.returns > maxReturns) refusals.push('mass_return')
+    return { changes, stats, refusals }
 }

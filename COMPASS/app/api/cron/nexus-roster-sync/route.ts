@@ -4,6 +4,7 @@ import { withCronAuth } from '@/lib/api/with-auth'
 import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 import { logSystemAudit } from '@/lib/audit/system-log'
 import { revokeAccountAccess } from '@/lib/auth/account-access'
+import { isSuperAdmin } from '@/lib/auth/super-admins'
 import { isMovedToNexus } from '@/lib/hr/moved-to-nexus'
 import {
     RosterContractError,
@@ -11,6 +12,7 @@ import {
     planRosterSync,
     type CompassProfileRow,
     type ProfileChange,
+    type RosterPlan,
 } from '@/lib/hr/nexus-roster'
 import { logger } from '@/lib/logger'
 import type { createServiceClient } from '@/lib/supabase/admin'
@@ -34,6 +36,11 @@ import type { createServiceClient } from '@/lib/supabase/admin'
  * Zielony tylko przy pełnym zapisie: każdy nieudany zapis = HTTP 500 `ok:false`
  * (lekcja z `nexus-contractors-sync`, INT-07). Odpowiedź niesie same liczby.
  *
+ * Bezpiecznik (>5 odejść albo >5 powrotów naraz) zatrzymuje cały przebieg. Gdy człowiek
+ * sprawdził, że to prawda, zatwierdza DOKŁADNĄ liczbę jednym ręcznym wywołaniem:
+ * `?confirm_exits=<n>` / `?confirm_returns=<n>` (ten sam Bearer `CRON_SECRET`). Inna liczba
+ * niż zaplanowana = nadal odmowa, więc zatwierdzenie nie przechodzi na kolejny, inny stan.
+ *
  * Coolify: zadanie z nazwą kontenera (bez niej pada mimo schedulera), np. `7 * * * *`.
  */
 
@@ -49,6 +56,18 @@ interface WriteStats {
     failed: number
     blocked_by_trigger: number
     skipped_concurrent: number
+}
+
+/** Zatwierdzenie bezpiecznika: `?confirm_exits=7` przepuszcza wyłącznie plan z 7 odejściami. */
+function unconfirmedRefusals(plan: RosterPlan, url: URL): RosterPlan['refusals'] {
+    const confirmed = (param: string, planned: number) => {
+        const raw = url.searchParams.get(param)
+        return raw !== null && /^\d+$/.test(raw) && Number(raw) === planned
+    }
+    return plan.refusals.filter((refusal) =>
+        refusal === 'mass_exit'
+            ? !confirmed('confirm_exits', plan.stats.exits)
+            : !confirmed('confirm_returns', plan.stats.returns))
 }
 
 async function applyChange(admin: Admin, change: ProfileChange, stats: WriteStats): Promise<void> {
@@ -90,7 +109,7 @@ async function applyChange(admin: Admin, change: ProfileChange, stats: WriteStat
 }
 
 export const GET = withCronAuth(
-    withCronHeartbeat('NEXUS_ROSTER_SYNC_RUN', async (_request, { admin }) => {
+    withCronHeartbeat('NEXUS_ROSTER_SYNC_RUN', async (request, { admin }) => {
         if (!isMovedToNexus('lifecycle')) {
             return NextResponse.json({
                 ok: true,
@@ -139,18 +158,22 @@ export const GET = withCronAuth(
 
         const { data: rows, error: readError } = await admin
             .from('profiles')
-            .select('id, email, employment_status, manager_id, work_start_date, termination_date')
+            .select('id, email, role, employment_status, manager_id, work_start_date, termination_date')
         if (readError || !rows) {
             // `null` bez błędu to też awaria — pusta kartoteka Compassa nie jest stanem do zapisu.
             throw new Error(`Odczyt profiles nie powiódł się: ${readError?.message ?? 'brak danych'}`)
         }
 
-        const plan = planRosterSync(people, rows as CompassProfileRow[])
-        if (plan.refusal === 'mass_exit') {
-            logger.error({ event: 'cron.nexus_roster.mass_exit_refused', ...plan.stats })
-            Sentry.captureMessage('nexus_roster_mass_exit_refused', { level: 'error', extra: { ...plan.stats } })
+        // Admina automat nie wyłącza (lustro `skipped_admin` w NEXUSIE) — to on cofa błędne odejście.
+        const plan = planRosterSync(people, rows as CompassProfileRow[], {
+            isProtected: (row) => row.role === 'admin' || isSuperAdmin(row.email),
+        })
+        const refusals = unconfirmedRefusals(plan, new URL(request.url))
+        if (refusals.length > 0) {
+            logger.error({ event: 'cron.nexus_roster.safety_refused', refusals, ...plan.stats })
+            Sentry.captureMessage('nexus_roster_safety_refused', { level: 'error', extra: { refusals, ...plan.stats } })
             return NextResponse.json(
-                { ok: false, stage: 'safety', refusal: 'mass_exit', ...plan.stats, written: 0 },
+                { ok: false, stage: 'safety', refusals, ...plan.stats, written: 0 },
                 { status: 500 },
             )
         }

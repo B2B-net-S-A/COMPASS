@@ -455,8 +455,10 @@ moduły jak w NEXUSIE: `people, leave, time, payroll, lifecycle, care, cases`. P
   dostaje propsem z `app/(protected)/layout.tsx`; baner (`MovedToNexusBanner`) jest serwerowy.
 - **Status zatrudnienia po przeniesieniu `lifecycle` prowadzi NEXUS** (`nexus-roster-sync`,
   reguły w `lib/hr/nexus-roster.ts`): dopasowanie po e-mailu, rola zostaje lokalna, `exited` tylko
-  jawnie, więcej niż 5 odejść w przebiegu = nikt nie zmieniony, pusta lista/5xx = nic. Odejście
-  odcina konto w Auth, powrót zdejmuje blokadę. Dezaktywacja z panelu zostaje tylko dla `consultant`.
+  jawnie, admina automat nie wyłącza, więcej niż 5 odejść albo 5 powrotów w przebiegu = nikt nie
+  zmieniony (człowiek zatwierdza dokładną liczbę ręcznym wywołaniem `?confirm_exits=<n>` /
+  `?confirm_returns=<n>`), pusta lista/5xx = nic. Odejście odcina konto w Auth, powrót zdejmuje
+  blokadę. Dezaktywacja z panelu zostaje tylko dla `consultant`.
 - **Zostaje żywe:** dokumenty umów pracowników (`user_contract_documents`, NEXUS ich nie ma),
   słownik klientów, monitoring prawny, helpdesk, `m365-profile-resync`.
 - **Paczka dla importu w NEXUSIE:** `scripts/export-nexus-bundle.mjs` + `docs/nexus-bundle-v1.md`
