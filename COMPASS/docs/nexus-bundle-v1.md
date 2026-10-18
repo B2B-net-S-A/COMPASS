@@ -135,8 +135,10 @@ Kolejka „Tożsamość NEXUS” nie ma ani jednej kotwicy, więc karta bez kotw
 łączy się z kontraktem po kliencie, imieniu i nazwisku konsultanta i dniu
 rozmowy (decyzja Artura „Import + automatyczne parowanie”, reguły
 w `app/services/care/card_linking.py`); niepewna czeka przy kliencie na
-połączenie przez Delivery Leada, z nazwiskiem na karcie. Rozmowa przechodzi na
-kontrakt tylko z kotwicą — bez niej zostaje w Compassie.
+połączenie przez Delivery Leada, z nazwiskiem na karcie. Rozmowa bez kotwicy
+łączy się tak samo (NEXUS #2337): najpierw kontrakt karty tej osoby u klienta,
+potem dokładnie jeden kontrakt po nazwisku w okresie umowy; niepewna czeka
+w raporcie importu i wchodzi po połączeniu karty.
 
 Rytm kontaktu i opiekun (etap 3, 17.10.2026): `contractor_success_settings`
 daje poziom rytmu (wstrzymany; aktywny w programie wejścia → co 2 tygodnie do
