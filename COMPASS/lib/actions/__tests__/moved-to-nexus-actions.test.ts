@@ -207,6 +207,21 @@ describe('odmowa zapisu na żywo', () => {
         expect(db.touched).toEqual([])
     })
 
+    it('fala 1 (people,leave) odmawia urlopu, ale zapis timesheetu idzie do bazy', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people,leave')
+        const { createLeaveRequest } = await import('@/lib/actions/internal-leave')
+        const leave = await createLeaveRequest({ leaveType: 'vacation', startDate: '2026-11-02', endDate: '2026-11-03' } as never)
+        expect(leave).toEqual({ success: false, error: expect.stringMatching(MOVED) })
+        expect(db.touched).toEqual([])
+
+        const { addEntry } = await import('@/lib/actions/internal-timesheet')
+        // Pułapkowa baza rzuca przy pierwszym zapytaniu — akcja doszła za odmowę.
+        const entry = await addEntry({ timesheetId: 'ts-1', workDate: '2026-10-20', hours: 8, description: 'Praca' })
+        expect(entry.success).toBe(false)
+        expect(JSON.stringify(entry)).not.toMatch(MOVED)
+        expect(db.touched.length).toBeGreaterThan(0)
+    })
+
     it('nic nie zmienia, gdy przełącznik jest pusty', async () => {
         vi.stubEnv('HR_MOVED_TO_NEXUS', '')
         const { upsertAttendanceDay } = await import('@/lib/actions/internal-attendance')

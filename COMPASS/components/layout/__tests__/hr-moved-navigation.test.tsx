@@ -78,6 +78,30 @@ describe('MovedToNexusBanner', () => {
         expect(screen.queryByRole('link')).not.toBeInTheDocument()
     })
 
+    it('fala 1 (people,leave): baner na urlopach i kartotece, timesheety i premie bez banera', () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people,leave')
+        vi.stubEnv('NEXUS_APP_URL', NEXUS)
+        for (const hrModule of ['people', 'leave'] as const) {
+            render(<MovedToNexusBanner module={hrModule} />)
+            expect(screen.getByTestId(`moved-to-nexus-${hrModule}`)).toHaveTextContent('Ten moduł działa teraz w NEXUSIE')
+            cleanup()
+        }
+        for (const hrModule of ['time', 'payroll', 'lifecycle', 'care', 'cases'] as const) {
+            const { container } = render(<MovedToNexusBanner module={hrModule} />)
+            expect(container).toBeEmptyDOMElement()
+            cleanup()
+        }
+    })
+
+    it('bez przełącznika nie ma banera na żadnym module', () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', '')
+        for (const hrModule of ['people', 'leave', 'time', 'payroll', 'lifecycle', 'care', 'cases'] as const) {
+            const { container } = render(<MovedToNexusBanner module={hrModule} />)
+            expect(container).toBeEmptyDOMElement()
+            cleanup()
+        }
+    })
+
     it('nie renderuje niczego dla modułu, który został w Compassie', () => {
         vi.stubEnv('HR_MOVED_TO_NEXUS', 'leave')
         const { container } = render(<MovedToNexusBanner module="time" />)
