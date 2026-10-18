@@ -451,6 +451,10 @@ moduły jak w NEXUSIE: `people, leave, time, payroll, lifecycle, care, cases`. P
   Nowa akcja zapisu modułu HR = wywołanie + pozycja w `lib/actions/__tests__/moved-to-nexus-actions.test.ts`
   (test czyta źródło). Akcje bez `runAction` rzucają `ExpectedError`, którego treść Next w produkcji
   maskuje — powód mówi baner.
+- **Fala 1 (24.10, `people,leave`), decyzja 18.10:** kartoteka zostaje tylko do odczytu, także
+  przełożony i forma umowy, choć czytają je timesheety i płace (dwa źródła prawdy by się rozjechały).
+  Po 24.10 zmiany przełożonego/formy robi się w NEXUSIE; październikowe timesheety w Compassie
+  zatwierdza dotychczasowy przełożony z Compassa albo admin.
 - **Komponent kliencki nie czyta przełącznika** (env runtime nie dociera do przeglądarki) — listę
   dostaje propsem z `app/(protected)/layout.tsx`; baner (`MovedToNexusBanner`) jest serwerowy.
 - **Status zatrudnienia po przeniesieniu `lifecycle` prowadzi NEXUS** (`nexus-roster-sync`,
