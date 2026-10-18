@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation'
 import { getOrCreateMyTimesheet, getMyOvertimeAllowed } from '@/lib/actions/internal-timesheet'
 import { TimesheetEditor } from '@/components/internal/TimesheetEditor'
+import { TimesheetArchiveEmpty } from '@/components/internal/TimesheetArchiveEmpty'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +31,10 @@ export default async function TimesheetMonthPage({ params }: PageProps) {
                     timesheet i generowany jest PDF do podpisania.
                 </p>
             </div>
-            <TimesheetEditor timesheet={timesheet} canLogOvertime={canLogOvertime} />
+            <MovedToNexusBanner module="time" />
+            {timesheet
+                ? <TimesheetEditor timesheet={timesheet} canLogOvertime={canLogOvertime} />
+                : <TimesheetArchiveEmpty year={year} month={month} />}
         </div>
     )
 }

@@ -4,6 +4,7 @@ import { bearerSecretMatches } from "@/lib/api/bearer-secret";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { selectInChunks } from "@/lib/supabase/select-in-chunks";
 import { logger } from "@/lib/logger";
+import { movedExportResponse } from "@/lib/hr/moved-to-nexus-server";
 
 /**
  * POST /api/internal/sales-signals/status
@@ -77,6 +78,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (!bearerSecretMatches(request.headers.get("authorization"), secret)) {
     return reply({ error: "Unauthorized" }, 401);
   }
+
+  // „Ludzie w NEXUSIE”: eksport wyłączony przełącznikiem `HR_EXPORTS_OFF` → 410.
+  const movedToNexus = movedExportResponse("care");
+  if (movedToNexus) return movedToNexus;
 
   let raw: unknown;
   try {

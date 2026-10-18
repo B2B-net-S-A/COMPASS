@@ -12,6 +12,8 @@ import { SzablonyTabPanel } from '@/components/internal/people/SzablonyTabPanel'
 import { MapaTabPanel } from '@/components/internal/people/MapaTabPanel'
 import { NexusIdentityTabPanel } from '@/components/internal/people/NexusIdentityTabPanel'
 import { DEPARTURE_PERIODS, type DeparturePeriod } from '@/lib/contractors/departure-analytics'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
+import type { HrModule } from '@/lib/hr/moved-to-nexus'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +31,18 @@ const TABS: ReadonlyArray<HubTab> = [
 ]
 
 const VALID_TAB_IDS = TABS.map((t) => t.id)
+
+// „Ludzie w NEXUSIE”: który moduł prowadzi zakładkę (baner archiwum).
+const TAB_MODULE: Readonly<Record<string, HrModule>> = {
+    onboarding: 'lifecycle',
+    exit: 'lifecycle',
+    szablony: 'lifecycle',
+    kontraktorzy: 'care',
+    opieka: 'care',
+    mapa: 'care',
+    nexus: 'care',
+    sprawy: 'cases',
+}
 
 interface PageProps {
     searchParams?: {
@@ -67,6 +81,8 @@ export default async function PeopleOpsPage({ searchParams }: PageProps) {
             </header>
 
             <HubTabs basePath="/internal/people" tabs={TABS} active={tab} />
+
+            {TAB_MODULE[tab] && <MovedToNexusBanner module={TAB_MODULE[tab]} />}
 
             {tab === 'pulpit' && <PulpitPanel year={year} month={month} />}
             {tab === 'onboarding' && <OnboardingTabPanel />}

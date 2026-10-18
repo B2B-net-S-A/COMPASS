@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { movedExportResponse } from "@/lib/hr/moved-to-nexus-server";
 
 /**
  * GET /api/internal/workdays?from=2026-01&to=2026-08&bucket=month
@@ -65,6 +66,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!provided || provided !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // „Ludzie w NEXUSIE”: eksport wyłączony przełącznikiem `HR_EXPORTS_OFF` → 410.
+  const movedToNexus = movedExportResponse("leave");
+  if (movedToNexus) return movedToNexus;
 
   const url = new URL(request.url);
   const from = parseDay(url.searchParams.get("from"));

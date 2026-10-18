@@ -23,6 +23,7 @@ import {
 } from '@/lib/types/support'
 import { excludeExited } from '@/lib/hr/employment-window'
 import { requireRows, selectInChunks } from '@/lib/supabase/select-in-chunks'
+import { hrModuleRefusal } from '@/lib/hr/moved-to-nexus'
 
 interface ProfileLite {
     id: string
@@ -441,6 +442,8 @@ export async function createInboxTicket(
         if (!(await isCallerHandler(supabase, user.id))) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
+        const movedToNexus = hrModuleRefusal('cases')
+        if (movedToNexus) return { success: false, error: movedToNexus }
 
         if (!input.subject || input.subject.trim().length < 3) {
             return { success: false, error: 'Tytuł musi mieć co najmniej 3 znaki' }
@@ -574,6 +577,8 @@ export async function moveInboxTicket(
         if (!(await isCallerHandler(supabase, user.id))) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
+        const movedToNexus = hrModuleRefusal('cases')
+        if (movedToNexus) return { success: false, error: movedToNexus }
 
         if (!['open', 'in_progress', 'waiting_user', 'resolved', 'closed'].includes(newStatus)) return { success: false, error: 'Nieprawidłowy status' }
 
@@ -632,6 +637,8 @@ export async function addInboxComment(
         if (!(await isCallerHandler(supabase, user.id))) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
+        const movedToNexus = hrModuleRefusal('cases')
+        if (movedToNexus) return { success: false, error: movedToNexus }
 
         const trimmed = (body ?? '').trim()
         if (trimmed.length < 1) {
@@ -693,6 +700,8 @@ export async function renameInboxTicket(
         if (!(await isCallerHandler(supabase, user.id))) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
+        const movedToNexus = hrModuleRefusal('cases')
+        if (movedToNexus) return { success: false, error: movedToNexus }
 
         const trimmed = (subject ?? '').trim().replace(/\s+/g, ' ')
         if (trimmed.length < TICKET_SUBJECT_MIN) {
@@ -758,6 +767,8 @@ export async function assignInboxTicket(
         if (!(await isCallerHandler(supabase, user.id))) {
             return { success: false, error: 'Niewystarczające uprawnienia' }
         }
+        const movedToNexus = hrModuleRefusal('cases')
+        if (movedToNexus) return { success: false, error: movedToNexus }
 
         const { data: meta } = await supabase
             .from('support_inbox_meta')
@@ -889,6 +900,8 @@ export async function updateInboxWorkspace(ticketId: string, expectedUpdatedAt: 
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { success: false, error: 'Brak autoryzacji' }
         if (!(await isCallerHandler(supabase, user.id))) return { success: false, error: 'Niewystarczające uprawnienia' }
+        const movedToNexus = hrModuleRefusal('cases')
+        if (movedToNexus) return { success: false, error: movedToNexus }
         const parsed = inboxEditSchema.safeParse(input)
         if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Nieprawidłowe dane' }
         if (!expectedUpdatedAt || isNaN(Date.parse(expectedUpdatedAt))) return { success: false, error: 'Odśwież szczegóły przed zapisem' }

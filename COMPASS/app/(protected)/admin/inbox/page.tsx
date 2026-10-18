@@ -8,6 +8,7 @@ import {
     listInboxHandlers,
 } from '@/lib/actions/support-inbox'
 import { INBOX_CATEGORY_SLUGS } from '@/lib/types/support'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,8 @@ export default async function AdminInboxPage() {
                     </p>
                 </div>
             </div>
+
+            <MovedToNexusBanner module="cases" />
 
             {!ticketsRes.success && (
                 <Card className="bg-destructive/5 border-destructive/20">

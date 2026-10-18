@@ -53,6 +53,7 @@ import {
     isQuarterInAllowedRange,
     recruiterTierForMargin,
 } from '@/lib/types/bonus'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 
@@ -592,6 +593,7 @@ export async function linkBonusToInvoice(input: LinkBonusInput): Promise<ActionR
     return runAction('linkBonusToInvoice', async () => {
         requireInvoicesEnabledExpected()
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('payroll')
         if (!input.id || !input.invoice_id) {
             throw new ExpectedError('Brak id premii lub id faktury.')
         }
@@ -665,6 +667,7 @@ export async function unlinkBonus(id: string): Promise<ActionResult<BonusRow>> {
     return runAction('unlinkBonus', async () => {
         requireInvoicesEnabledExpected()
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('payroll')
         const supabase = createClient()
 
         const { data: bonus, error: fetchErr } = await supabase
@@ -709,6 +712,7 @@ export async function proposeBonus(input: ProposeBonusInput): Promise<ActionResu
     return runAction('proposeBonus', async () => {
         requireInvoicesEnabledExpected()
         const ctx = await requireBonusProposerAction()
+        assertHrModuleWritable('payroll')
         validateProposeInput(input)
         if (input.recipient_user_id === ctx.userId) {
             throw new ExpectedError('Nie można proponować premii dla siebie.')
@@ -772,6 +776,7 @@ export async function cancelBonus(input: CancelBonusInput): Promise<ActionResult
         // Admin/finanse: anulują dowolną premię.
         // Manager: anuluje tylko premie które sam przypisał (proposed_by = ctx.userId).
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('payroll')
         if (!ctx.isAdmin && ctx.role !== 'finanse' && !ctx.isManager) {
             throw new ExpectedError('Wymagane uprawnienia: administrator, finanse lub manager.')
         }
@@ -890,6 +895,7 @@ export async function cancelBonus(input: CancelBonusInput): Promise<ActionResult
 export async function assignBonus(input: AssignBonusInput): Promise<ActionResult<BonusRow>> {
     return runAction('assignBonus', async () => {
         const ctx = await requireBonusProposerAction()
+        assertHrModuleWritable('payroll')
         validateAssignInput(input)
         if (input.recipient_user_id === ctx.userId) {
             throw new ExpectedError('Nie możesz przypisać premii samemu sobie.')
@@ -1055,6 +1061,7 @@ export async function updateBonus(input: UpdateBonusInput): Promise<ActionResult
         // parytet z cancelBonus. Pozwala poprawić miesiąc/kwotę/uzasadnienie własnej premii
         // bez anuluj+dodaj-od-nowa (zgłoszenie Dominika: edycja miesiąca premii).
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('payroll')
         if (!ctx.isAdmin && ctx.role !== 'finanse' && !ctx.isManager) {
             throw new ExpectedError('Wymagane uprawnienia: administrator, finanse lub manager.')
         }
@@ -1417,6 +1424,7 @@ export async function uploadBonusAttachment(
 ): Promise<ActionResult<{ path: string; filename: string; size: number; mime: string }>> {
     return runAction('uploadBonusAttachment', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('payroll')
         if (!bonusId) throw new ExpectedError('Brak id premii.')
         if (!file || !(file instanceof File)) throw new ExpectedError('Brak pliku.')
 
@@ -1558,6 +1566,7 @@ export async function getBonusAttachmentSignedUrl(bonusId: string): Promise<Acti
 export async function removeBonusAttachment(bonusId: string): Promise<ActionResult<void>> {
     return runAction('removeBonusAttachment', async () => {
         const ctx = await requireInternalOrAdminAction()
+        assertHrModuleWritable('payroll')
         if (!ctx.isAdmin) throw new ExpectedError('Tylko administrator może usunąć załącznik.')
         if (!bonusId) throw new ExpectedError('Brak id premii.')
 

@@ -8,6 +8,7 @@ import { loadWorkbook } from '@/lib/contractors/parse'
 import { importWejsciaFromWorkbook, importZejsciaFromWorkbook } from '@/lib/contractors/import-core'
 import { seedBenchFromRecentDepartures } from '@/lib/contractors/bench-seed'
 import { logger } from '@/lib/logger'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 // UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
@@ -40,7 +41,7 @@ const HUB = '/internal/people'
  * Teraz każda z tych ścieżek kończy się 500 + wpisem w Sentry, a ślad w bazie zostawia
  * heartbeat `TC_SYNC_RUN` (statystyki = ciało odpowiedzi).
  */
-export const GET = withCronAuth(withCronHeartbeat('TC_SYNC_RUN', async (_request, { admin }) => {
+export const GET = withCronAuth(withCronHeartbeat('TC_SYNC_RUN', skipWhenMovedToNexus('care', async (_request, { admin }) => {
     // KILL-SWITCH (domyślnie WYŁĄCZONY). tc-sync pobiera i parsuje ~9,5 MB skoroszyt SharePoint,
     // co OOM-owało kontener prawie codziennie o 05:00Z (audyt 2026-09; 503 „no available server").
     // Dodatkowo sync i tak NIC nie importuje — exceljs rzuca `Unexpected xml node: dateGroupItem`
@@ -142,4 +143,4 @@ export const GET = withCronAuth(withCronHeartbeat('TC_SYNC_RUN', async (_request
     // Padnięty arkusz to nadal padnięty sync — kod odpowiedzi musi to powiedzieć,
     // inaczej `ok:false` w ciele przeczyta wyłącznie ten, kto zna CRON_SECRET.
     return NextResponse.json(out, { status: out.ok === false ? 500 : 200 })
-}))
+})))

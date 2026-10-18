@@ -6,6 +6,7 @@ import { requireInternalOrAdminAction } from '@/lib/auth/internal-guard'
 import { logAudit } from '@/lib/actions/audit'
 import { filterEmployedInMonth } from '@/lib/hr/employment-window'
 import { endOfMonth, format, startOfMonth } from 'date-fns'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 export type AttendanceStatus =
     | 'active'
@@ -120,6 +121,7 @@ export interface UpsertAttendanceInput {
 
 export async function upsertAttendanceDay(input: UpsertAttendanceInput): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('time')
     const targetUserId = input.targetUserId ?? ctx.userId
 
     if (targetUserId !== ctx.userId && !ctx.isAdmin) {
@@ -157,6 +159,7 @@ export async function upsertAttendanceDay(input: UpsertAttendanceInput): Promise
 
 export async function deleteAttendanceDay(date: string, targetUserId?: string): Promise<void> {
     const ctx = await requireInternalOrAdminAction()
+    assertHrModuleWritable('time')
     const userId = targetUserId ?? ctx.userId
     if (userId !== ctx.userId && !ctx.isAdmin) {
         throw new Error('Tylko admin może usuwać obecność innego pracownika.')

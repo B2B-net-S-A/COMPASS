@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { movedExportResponse } from "@/lib/hr/moved-to-nexus-server";
 
 /**
  * GET /api/internal/roster
@@ -44,6 +45,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!provided || provided !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // „Ludzie w NEXUSIE”: eksport wyłączony przełącznikiem `HR_EXPORTS_OFF` → 410.
+  const movedToNexus = movedExportResponse("lifecycle");
+  if (movedToNexus) return movedToNexus;
 
   const admin = createServiceClient();
   const { data, error } = await admin.rpc("nexus_roster_export");

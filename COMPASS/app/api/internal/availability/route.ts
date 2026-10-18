@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { movedExportResponse } from "@/lib/hr/moved-to-nexus-server";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     || !timingSafeEqual(Buffer.from(provided), Buffer.from(secret))) {
     return reply({ error: "Unauthorized" }, 401);
   }
+
+  // „Ludzie w NEXUSIE”: eksport wyłączony przełącznikiem `HR_EXPORTS_OFF` → 410.
+  const movedToNexus = movedExportResponse("leave");
+  if (movedToNexus) return movedToNexus;
 
   try {
     const { data, error } = await createServiceClient().rpc("nexus_availability_export");

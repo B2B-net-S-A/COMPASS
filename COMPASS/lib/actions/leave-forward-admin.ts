@@ -22,6 +22,7 @@ import { HR_ROLES } from '@/lib/oof/reconcile'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { activeRoster } from '@/lib/hr/employment-window'
 import { warsawDate } from '@/lib/oof/oof-dates'
+import { hrModuleRefusal } from '@/lib/hr/moved-to-nexus'
 
 /** Ten sam limit co w uzgodnieniu — skan nie może rosnąć w nieskończoność. */
 const MAX_MAILBOXES = 100
@@ -307,6 +308,10 @@ export async function removeForwardRule(input: {
     leaveId?: string | null
 }): Promise<{ removed: boolean; error?: string }> {
     const ctx = await requireAdminAction()
+    // Po przeniesieniu urlopów reguły `COMPASS · zastępstwo · …` przejmuje NEXUS —
+    // ręczne kasowanie stąd weszłoby mu w drogę.
+    const moved = hrModuleRefusal('leave')
+    if (moved) return { removed: false, error: moved }
     const admin = createServiceClient()
 
     const res = await deleteForwardRule({ userEmail: input.mailbox, ruleId: input.ruleId })
@@ -346,6 +351,8 @@ export async function runForwardReconcileNow(): Promise<{
     errors: string[]
 }> {
     const ctx = await requireAdminAction()
+    const moved = hrModuleRefusal('leave')
+    if (moved) return { opened: 0, closed: 0, orphansRemoved: 0, filtersUpdated: 0, errors: [moved] }
     const admin = createServiceClient()
 
     const stats = await reconcileForwardRules(admin as never)

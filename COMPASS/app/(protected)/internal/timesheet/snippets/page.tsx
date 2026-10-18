@@ -1,5 +1,6 @@
 import { listMyTemplates } from '@/lib/actions/internal-timesheet-templates'
 import { TimesheetTemplatesManager } from '@/components/internal/TimesheetTemplatesManager'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +16,7 @@ export default async function TimesheetSnippetsPage() {
                     dropdown „Wstaw snippet” w oknie wpisu.
                 </p>
             </div>
+            <MovedToNexusBanner module="time" />
             <TimesheetTemplatesManager initialTemplates={templates} />
         </div>
     )

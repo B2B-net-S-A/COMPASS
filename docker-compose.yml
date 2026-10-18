@@ -51,6 +51,13 @@ services:
       ACADEMY_UPLOAD_RETENTION_HOURS: ${ACADEMY_UPLOAD_RETENTION_HOURS:-48}
       ACADEMY_REJECTED_RETENTION_DAYS: ${ACADEMY_REJECTED_RETENTION_DAYS:-30}
       AVAILABILITY_EXPORT_SECRET: ${AVAILABILITY_EXPORT_SECRET:-}
+      # „Ludzie w NEXUSIE” — przełącznik modułów przeniesionych do NEXUSA (runtime,
+      # pusta wartość = nic się nie zmienia). Opis: CLAUDE.md, lib/hr/moved-to-nexus.ts.
+      HR_MOVED_TO_NEXUS: ${HR_MOVED_TO_NEXUS:-}
+      HR_EXPORTS_OFF: ${HR_EXPORTS_OFF:-}
+      NEXUS_APP_URL: ${NEXUS_APP_URL:-}
+      NEXUS_ROSTER_URL: ${NEXUS_ROSTER_URL:-}
+      NEXUS_ROSTER_API_KEY: ${NEXUS_ROSTER_API_KEY:-}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       # Consultant Success rollout flags. The private surface is enabled while
       # automations stay non-delivering in shadow mode and surveys stay disabled.

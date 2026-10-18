@@ -14,6 +14,8 @@ import { requireInternalAdminAreaLayout } from '@/lib/auth/internal-guard'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
 import { countNewLegalMonitorItems } from '@/lib/actions/legal-monitor'
 import { logCompat } from '@/lib/logger'
+import { MovedToNexusBanner } from '@/components/internal/MovedToNexusBanner'
+import type { HrModule } from '@/lib/hr/moved-to-nexus'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +36,18 @@ const ALL_TABS_RAW: ReadonlyArray<HubTab> = [
 const ALL_TABS: ReadonlyArray<HubTab> = ALL_TABS_RAW.filter(
     (t) => t.id !== 'invoices' || isInvoicesEnabled(),
 )
+
+// „Ludzie w NEXUSIE”: który moduł prowadzi zakładkę (baner archiwum). Klienci
+// (słownik współdzielony) i monitoring prawny zostają w Compassie bez zmian.
+const TAB_MODULE: Readonly<Record<string, HrModule>> = {
+    'leave-requests': 'leave',
+    'leave-on-behalf': 'leave',
+    timesheets: 'time',
+    bonuses: 'payroll',
+    placements: 'payroll',
+    rates: 'payroll',
+    employees: 'people',
+}
 
 interface PageProps {
     searchParams?: {
@@ -146,6 +160,8 @@ export default async function InternalAdminHubPage({ searchParams }: PageProps) 
             </header>
 
             <HubTabs basePath="/internal/admin" tabs={tabsWithBadges} active={tab} />
+
+            {TAB_MODULE[tab] && <MovedToNexusBanner module={TAB_MODULE[tab]} />}
 
             {tab === 'leave-requests' && <AdminLeaveRequestsPanel isAdmin={ctx.isAdmin} />}
             {tab === 'leave-on-behalf' && <LeaveOnBehalfPanel />}

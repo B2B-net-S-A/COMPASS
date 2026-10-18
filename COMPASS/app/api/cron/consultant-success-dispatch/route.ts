@@ -11,6 +11,7 @@ import {
 } from '@/lib/consultant-success/job-state'
 import { parseBooleanEnv } from '@/lib/consultant-success/scheduling'
 import type { SuccessAdminClient } from '@/lib/consultant-success/types'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 export const dynamic = 'force-dynamic'
 // UWAGA: `maxDuration` jest tu MARTWE. Next 14.2 czyta ten eksport przy buildzie i
@@ -22,7 +23,7 @@ export const maxDuration = 240
 
 const JOB_NAME = 'consultant_success_dispatch'
 
-export const GET = withCronAuth(async (request, { admin: typedAdmin }) => {
+export const GET = withCronAuth(skipWhenMovedToNexus('care', async (request, { admin: typedAdmin }) => {
     const enabled = parseBooleanEnv(process.env.CONSULTANT_SUCCESS_ENABLED)
     const automationsEnabled = parseBooleanEnv(process.env.CONSULTANT_SUCCESS_AUTOMATIONS_ENABLED)
     const shadowMode = parseBooleanEnv(process.env.CONSULTANT_SUCCESS_SHADOW_MODE)
@@ -64,4 +65,4 @@ export const GET = withCronAuth(async (request, { admin: typedAdmin }) => {
         Sentry.captureException(error, { tags: { kind: JOB_NAME } })
         return NextResponse.json({ ok: false, error: message }, { status: 500 })
     }
-})
+}))

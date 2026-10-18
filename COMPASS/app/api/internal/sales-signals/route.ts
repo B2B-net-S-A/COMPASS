@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { bearerSecretMatches } from "@/lib/api/bearer-secret";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { movedExportResponse } from "@/lib/hr/moved-to-nexus-server";
 
 /**
  * GET /api/internal/sales-signals
@@ -69,6 +70,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!bearerSecretMatches(request.headers.get("authorization"), secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // „Ludzie w NEXUSIE”: eksport wyłączony przełącznikiem `HR_EXPORTS_OFF` → 410.
+  const movedToNexus = movedExportResponse("care");
+  if (movedToNexus) return movedToNexus;
 
   const url = new URL(request.url);
   const since = parseSince(url.searchParams.get("since"));

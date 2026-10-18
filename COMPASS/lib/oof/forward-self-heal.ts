@@ -16,6 +16,7 @@
 
 import { logger } from '@/lib/logger'
 import { reconcileForwardRules, type ForwardReconcileStats } from './forward-rules'
+import { isMovedToNexus } from '@/lib/hr/moved-to-nexus'
 
 /**
  * Jak świeże musi być ostatnie uzgodnienie, żeby pominąć kolejne. Godzina to
@@ -26,7 +27,7 @@ const MIN_INTERVAL_MS = 60 * 60 * 1000
 
 export type SelfHealOutcome =
     | { ran: true; stats: ForwardReconcileStats }
-    | { ran: false; reason: 'recent' | 'error' }
+    | { ran: false; reason: 'recent' | 'error' | 'moved_to_nexus' }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Admin = any
@@ -45,6 +46,9 @@ type Admin = any
  * sukces), a cena to jeden zbędny skan.
  */
 export async function maybeSelfHealForwardRules(admin: Admin): Promise<SelfHealOutcome> {
+    // „Ludzie w NEXUSIE”: po przeniesieniu urlopów skrzynkami zarządza NEXUS (przejmuje
+    // reguły po nazwie). Dwa systemy domykające te same reguły to wyścig o cudzą pocztę.
+    if (isMovedToNexus('leave')) return { ran: false, reason: 'moved_to_nexus' }
     try {
         const since = new Date(Date.now() - MIN_INTERVAL_MS).toISOString()
         const { data: recent } = await admin

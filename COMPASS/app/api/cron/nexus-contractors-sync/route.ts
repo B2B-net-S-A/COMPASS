@@ -12,6 +12,7 @@ import {
     type MatchDecision,
     type NexusContractor,
 } from '@/lib/contractors/nexus-match'
+import { skipWhenMovedToNexus } from '@/lib/hr/moved-to-nexus-server'
 
 /**
  * GET /api/cron/nexus-contractors-sync
@@ -311,7 +312,7 @@ async function fetchAllContractors(
 }
 
 export const GET = withCronAuth(
-    withCronHeartbeat('NEXUS_CONTRACTORS_SYNC_RUN', async (_request, { admin }) => {
+    withCronHeartbeat('NEXUS_CONTRACTORS_SYNC_RUN', skipWhenMovedToNexus('care', async (_request, { admin }) => {
         const baseUrl = process.env.NEXUS_CONTRACTORS_URL
         const apiKey = process.env.NEXUS_CONTRACTORS_API_KEY
         if (!baseUrl || !apiKey) {
@@ -399,5 +400,5 @@ export const GET = withCronAuth(
         }
         logger.info({ event: 'cron.nexus_contractors.done', ...out })
         return NextResponse.json(out)
-    }),
+    })),
 )

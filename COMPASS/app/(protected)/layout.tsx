@@ -17,6 +17,7 @@ import type { SidebarBadgeCounts } from '@/components/layout/Sidebar'
 import nextDynamic from 'next/dynamic'
 import { logger } from '@/lib/logger'
 import { isConsultantSuccessEnabled } from '@/lib/consultant-success/flags'
+import { hrLandingPath, movedModules, nexusAppUrl } from '@/lib/hr/moved-to-nexus'
 
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 
@@ -100,6 +101,9 @@ export default async function ProtectedLayout({
         const hasTcmAccess = profile?.has_tcm_access === true
         // Phase 22: lifecycle count for HR-zone roles only (consultant IT has no lifecycle module).
         const isHrZoneUser = isAdminLike || ['internal', 'finanse', 'manager', 'talent_community'].includes(role)
+        // „Ludzie w NEXUSIE”: liczniki przeniesionych modułów znikają — archiwum nie ma
+        // „spraw do zrobienia”, a licznik sugerowałby, że trzeba tu coś kliknąć.
+        const moved = movedModules()
         const [
             newsRes,
             adminTicketsRes,
@@ -116,12 +120,12 @@ export default async function ProtectedLayout({
             // zera wierszy i żadnego wejścia z nawigacji. Badge zostaje na 0,
             // bo `consultantSupport` jest częścią kontraktu SidebarBadgeCounts.
             Promise.resolve(0),
-            isInboxHandler ? countOpenInboxTickets(supabase) : Promise.resolve(0),
-            isHrZoneUser
+            isInboxHandler && !moved.has('cases') ? countOpenInboxTickets(supabase) : Promise.resolve(0),
+            isHrZoneUser && !moved.has('lifecycle')
                 ? getLifecycleSidebarCount().catch(() => ({ total: 0 } as { total: number }))
                 : Promise.resolve({ total: 0 } as { total: number }),
             // Phase 25e — active leaves badge dla sidebar (HR-zone only).
-            isHrZoneUser
+            isHrZoneUser && !moved.has('leave')
                 ? getActiveLeavesCount().catch(() => ({ count: 0, selfOnLeave: false }))
                 : Promise.resolve({ count: 0, selfOnLeave: false }),
         ])
@@ -147,6 +151,9 @@ export default async function ProtectedLayout({
                     consultantSuccessEnabled={isConsultantSuccessEnabled()}
                     hasTcmAccess={hasTcmAccess}
                     academyEnabled={academyAccess?.success === true}
+                    hrMovedModules={Array.from(moved)}
+                    nexusUrl={nexusAppUrl()}
+                    landingHref={hrLandingPath(role, moved)}
                 >
                     <LayoutPreferencesProvider>
                         {children}

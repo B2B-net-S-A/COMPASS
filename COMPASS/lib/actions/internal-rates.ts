@@ -51,6 +51,7 @@ import {
 } from '@/lib/rates/progression'
 import { activeRoster } from '@/lib/hr/employment-window'
 import type { Json } from '@/lib/supabase/database.types'
+import { assertHrModuleWritable } from '@/lib/hr/moved-to-nexus'
 
 // ─── Validation ──────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ function validateRateInput(input: SetUserRateInput): void {
  */
 export async function setUserRate(input: SetUserRateInput): Promise<UserRateRow> {
     const ctx = await requireFinanseOrAdminAction()
+    assertHrModuleWritable('payroll')
     validateRateInput(input)
 
     const admin = createServiceClient()
@@ -548,6 +550,7 @@ async function notifyRateSchedule(params: NotifyRateScheduleParams): Promise<voi
 /** Set a user's contract type (UoP / Zlecenie / B2B). Finanse + admin. */
 export async function setUserContractType(userId: string, employmentType: EmploymentType): Promise<void> {
     const ctx = await requireFinanseOrAdminAction()
+    assertHrModuleWritable('people')
     if (!userId) throw new Error('Brak user_id.')
     if (!['uop', 'b2b', 'zlecenie'].includes(employmentType)) {
         throw new Error('Niedozwolony typ umowy. Wybierz: UoP, Zlecenie lub B2B.')
@@ -623,6 +626,7 @@ export async function setRateProgression(
 ): Promise<ActionResult<{ inserted_count: number; applied: RateProgressionEntry[] }>> {
     return runAction('setRateProgression', async () => {
         const ctx = await requireFinanseOrAdminAction()
+        assertHrModuleWritable('payroll')
         if (!input.user_id) throw new ExpectedError('Brak user_id.')
         const entries = Array.isArray(input.entries) ? input.entries : []
         const replaceFrom = input.replace_from ?? entries[0]?.effective_from
@@ -764,6 +768,7 @@ export async function copyRateProgression(
 
 async function applyCopyProgression(input: CopyProgressionInput): Promise<CopyProgressionResult> {
     const ctx = await requireFinanseOrAdminAction()
+    assertHrModuleWritable('payroll')
     if (!input.from_user_id || !input.to_user_id) {
         throw new ExpectedError('Wybierz pracownika źródłowego i docelowego.')
     }
@@ -845,6 +850,7 @@ export async function setUserVacationPool(
     input: UpdateUserVacationPoolInput,
 ): Promise<void> {
     const ctx = await requireFinanseOrAdminAction()
+    assertHrModuleWritable('leave')
 
     const updates: Record<string, unknown> = {}
     if (input.leave_entitlement_days !== undefined) {
