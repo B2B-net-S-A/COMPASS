@@ -1,4 +1,4 @@
--- Smoke test migracji 20261019020000_hr_moved_to_nexus_db_readonly.sql.
+-- Smoke test migracji 20261019003057_hr_moved_to_nexus_db_readonly.sql.
 -- Uruchamiać WYŁĄCZNIE w całości i dopiero PO migracji — wszystko dzieje się w transakcji
 -- zakończonej ROLLBACK, żaden wiersz (także wartość przełącznika) nie zostaje w bazie.
 -- Działa przez rolę `authenticated` z JWT pracownika, czyli tak jak bezpośredni
