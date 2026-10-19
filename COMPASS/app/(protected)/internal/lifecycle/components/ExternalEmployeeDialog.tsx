@@ -84,7 +84,7 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
         if (!hiredAt) { toast.error('Data zatrudnienia jest wymagana.'); return }
         startTransition(async () => {
             try {
-                const result = await createExternalEmployee({
+                const res = await createExternalEmployee({
                     fullName: fullName.trim(),
                     email: email.trim().toLowerCase(),
                     role,
@@ -96,6 +96,11 @@ export function ExternalEmployeeDialog({ open, onOpenChange }: Props) {
                     autoStartOnboarding: autoStart,
                     sendWelcomeEmail: autoStart && sendWelcomeEmail,
                 })
+                if (!res.success) {
+                    toast.error(res.error)
+                    return
+                }
+                const result = res.data
                 toastSuccess(
                     autoStart && sendWelcomeEmail
                         ? `External pracownik utworzony: ${fullName}. Email powitalny wysłany.`

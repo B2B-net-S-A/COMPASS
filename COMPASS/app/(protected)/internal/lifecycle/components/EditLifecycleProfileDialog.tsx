@@ -48,13 +48,22 @@ export function EditLifecycleProfileDialog({ open, onOpenChange, employee }: Pro
         e.preventDefault()
         startTransition(async () => {
             try {
-                await updateLifecycleProfile({
+                // Przełożony i data zatrudnienia idą tylko po zmianie: to pola kartoteki,
+                // które po przeniesieniu `people` do NEXUSA są tylko do odczytu, a zmiana
+                // samej roli albo notatki ma dalej przechodzić.
+                const nextHiredAt = hiredAt || null
+                const nextManagerId = managerId || null
+                const res = await updateLifecycleProfile({
                     userId: employee.id,
-                    hiredAt: hiredAt || null,
+                    hiredAt: nextHiredAt !== (employee.hired_at ?? null) ? nextHiredAt : undefined,
                     role,
-                    managerId: managerId || null,
+                    managerId: nextManagerId !== (employee.manager_id ?? null) ? nextManagerId : undefined,
                     externalNotes: isExternal ? (externalNotes || null) : undefined,
                 })
+                if (!res.success) {
+                    toast.error(res.error)
+                    return
+                }
                 toastSuccess('Profil zaktualizowany.')
                 onOpenChange(false)
                 router.refresh()

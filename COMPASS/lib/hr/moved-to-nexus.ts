@@ -56,12 +56,17 @@ export interface ParsedModuleList {
     unknown: string[]
 }
 
-/** `"leave, time;payroll"` → `['leave','time','payroll']`. Wielkość liter i spacje bez znaczenia. */
+/**
+ * `"leave, time;payroll"` → `['leave','time','payroll']`. Wielkość liter i spacje bez znaczenia.
+ * Cudzysłowy i apostrofy wokół wartości albo wpisu są zdejmowane: wartość wklejona do vaultu
+ * w cudzysłowie (`"people,leave"`) dawała wpisy `"people` i `leave"` i po cichu gubiła oba.
+ * Tę samą regułę ma `public.hr_module_moved()` w bazie.
+ */
 export function parseHrModuleList(raw: string | null | undefined): ParsedModuleList {
     const modules: HrModule[] = []
     const unknown: string[] = []
     for (const token of (raw ?? '').split(/[\s,;]+/)) {
-        const value = token.trim().toLowerCase()
+        const value = token.trim().replace(/^["']+|["']+$/g, '').toLowerCase()
         if (!value) continue
         if ((HR_MODULES as readonly string[]).includes(value)) {
             if (!modules.includes(value as HrModule)) modules.push(value as HrModule)

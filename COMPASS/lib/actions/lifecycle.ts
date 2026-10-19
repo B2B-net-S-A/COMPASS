@@ -13,6 +13,7 @@ import {
 import { logAudit } from '@/lib/actions/audit'
 import { revokeAccountAccess } from '@/lib/auth/account-access'
 import { ExpectedError } from '@/lib/actions/expected-error'
+import { runAction, type ActionResult } from '@/lib/actions/action-result'
 import {
     sendExitInterviewInvitation,
     sendOffboardingChecklistToManager,
@@ -1897,50 +1898,56 @@ export interface UpdateLifecycleProfileInput {
     externalNotes?: string | null
 }
 
-export async function updateLifecycleProfile(input: UpdateLifecycleProfileInput): Promise<void> {
-    const ctx = await requireLifecycleManagerAction()
-    assertHrModuleWritable('lifecycle')
-    const supabase = createServiceClient()
+export async function updateLifecycleProfile(input: UpdateLifecycleProfileInput): Promise<ActionResult<void>> {
+    return runAction('updateLifecycleProfile', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('lifecycle')
+        const supabase = createServiceClient()
 
-    const patch: Record<string, unknown> = {}
-    if (input.hiredAt !== undefined) {
-        patch.hired_at = input.hiredAt
-        patch.work_start_date = input.hiredAt
-    }
-    if (input.managerId !== undefined) patch.manager_id = input.managerId
-    if (input.role !== undefined) patch.role = input.role
-    if (input.externalNotes !== undefined) patch.external_notes = input.externalNotes
+        const patch: Record<string, unknown> = {}
+        if (input.hiredAt !== undefined) {
+            patch.hired_at = input.hiredAt
+            patch.work_start_date = input.hiredAt
+        }
+        if (input.managerId !== undefined) patch.manager_id = input.managerId
+        if (input.role !== undefined) patch.role = input.role
+        if (input.externalNotes !== undefined) patch.external_notes = input.externalNotes
 
-    if (Object.keys(patch).length === 0) return
+        // Przełożony i data zatrudnienia to pola kartoteki: po przeniesieniu `people`
+        // prowadzi je NEXUS, choć wejście i odejście (`lifecycle`) zostają w Compassie.
+        if (input.hiredAt !== undefined || input.managerId !== undefined) assertHrModuleWritable('people')
 
-    const { error } = await supabase.from('profiles').update(patch).eq('id', input.userId)
-    if (error) {
-        logCompat.error('updateLifecycleProfile error:', error)
-        throw new Error(error.message || 'Nie udało się zaktualizować profilu.')
-    }
+        if (Object.keys(patch).length === 0) return
 
-    await logAudit(ctx.userId, 'LIFECYCLE_PROFILE_UPDATED', {
-        target_user_id: input.userId,
-        fields: Object.keys(patch),
+        const { error } = await supabase.from('profiles').update(patch).eq('id', input.userId)
+        if (error) {
+            logCompat.error('updateLifecycleProfile error:', error)
+            throw new Error(error.message || 'Nie udało się zaktualizować profilu.')
+        }
+
+        await logAudit(ctx.userId, 'LIFECYCLE_PROFILE_UPDATED', {
+            target_user_id: input.userId,
+            fields: Object.keys(patch),
+        })
+
+        // Special-case: manager_id change should be logged as MANAGER_ASSIGNED event in timeline
+        if (input.managerId !== undefined) {
+            await supabase.from('lifecycle_events').insert({
+                user_id: input.userId,
+                event_type: 'manager_changed',
+                metadata: { new_manager_id: input.managerId },
+                created_by: ctx.userId,
+            })
+        }
+        if (input.role !== undefined) {
+            await supabase.from('lifecycle_events').insert({
+                user_id: input.userId,
+                event_type: 'role_changed',
+                metadata: { new_role: input.role },
+                created_by: ctx.userId,
+            })
+        }
     })
-
-    // Special-case: manager_id change should be logged as MANAGER_ASSIGNED event in timeline
-    if (input.managerId !== undefined) {
-        await supabase.from('lifecycle_events').insert({
-            user_id: input.userId,
-            event_type: 'manager_changed',
-            metadata: { new_manager_id: input.managerId },
-            created_by: ctx.userId,
-        })
-    }
-    if (input.role !== undefined) {
-        await supabase.from('lifecycle_events').insert({
-            user_id: input.userId,
-            event_type: 'role_changed',
-            metadata: { new_role: input.role },
-            created_by: ctx.userId,
-        })
-    }
 }
 
 export interface CreateExternalEmployeeInput {
@@ -1963,138 +1970,145 @@ export interface CreateExternalEmployeeInput {
     sendWelcomeEmail?: boolean
 }
 
-export async function createExternalEmployee(input: CreateExternalEmployeeInput): Promise<{ userId: string; progressId: string | null }> {
-    const ctx = await requireLifecycleManagerAction()
-    assertHrModuleWritable('lifecycle')
-    const supabase = createServiceClient()
+export async function createExternalEmployee(
+    input: CreateExternalEmployeeInput,
+): Promise<ActionResult<{ userId: string; progressId: string | null }>> {
+    return runAction('createExternalEmployee', async () => {
+        const ctx = await requireLifecycleManagerAction()
+        assertHrModuleWritable('lifecycle')
+        // Nowy profil to wpis w kartotece (przełożony, data zatrudnienia, status) —
+        // po przeniesieniu `people` osoby zakłada się w NEXUSIE.
+        assertHrModuleWritable('people')
+        const supabase = createServiceClient()
 
-    // Schema fact (verified 2026-05-19 in prod):
-    //   profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
-    // So a profile cannot exist without a matching auth.users row. To create an
-    // external employee (someone who never logs in — vendor, contractor, "procedure
-    // account"), we still need an auth.users row. We use admin.createUser with a
-    // random password and email_confirm=true (no confirmation email sent). The
-    // handle_new_user trigger then inserts a minimal profile row, which we update
-    // below with HR fields (role, is_external, manager_id, etc.).
-    //
-    // External users can't actually log in because:
-    //   1. The app is gated to @b2bnetwork.pl SSO (single tenant), so a third-party
-    //      email cannot complete Azure OAuth even if they tried.
-    //   2. The random password is never shared (only known to whoever has prod DB
-    //      logs at the moment of creation).
-    const email = input.email.trim().toLowerCase()
-    const fullName = input.fullName.trim()
-    // bcrypt (used by gotrue) caps the password at 72 bytes — keep the random
-    // password well below that. One UUID (36 chars) is far more entropy than
-    // anyone will ever brute-force.
-    const randomPassword = crypto.randomUUID()
+        // Schema fact (verified 2026-05-19 in prod):
+        //   profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
+        // So a profile cannot exist without a matching auth.users row. To create an
+        // external employee (someone who never logs in — vendor, contractor, "procedure
+        // account"), we still need an auth.users row. We use admin.createUser with a
+        // random password and email_confirm=true (no confirmation email sent). The
+        // handle_new_user trigger then inserts a minimal profile row, which we update
+        // below with HR fields (role, is_external, manager_id, etc.).
+        //
+        // External users can't actually log in because:
+        //   1. The app is gated to @b2bnetwork.pl SSO (single tenant), so a third-party
+        //      email cannot complete Azure OAuth even if they tried.
+        //   2. The random password is never shared (only known to whoever has prod DB
+        //      logs at the moment of creation).
+        const email = input.email.trim().toLowerCase()
+        const fullName = input.fullName.trim()
+        // bcrypt (used by gotrue) caps the password at 72 bytes — keep the random
+        // password well below that. One UUID (36 chars) is far more entropy than
+        // anyone will ever brute-force.
+        const randomPassword = crypto.randomUUID()
 
-    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-        email,
-        password: randomPassword,
-        email_confirm: true,
-        user_metadata: { full_name: fullName, is_external: true },
-    })
-    if (createErr) {
-        const msg = createErr.message?.toLowerCase() ?? ''
-        if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
-            throw new Error('Konto z tym adresem email już istnieje (możliwe że ten pracownik już jest w systemie).')
-        }
-        logCompat.error('createExternalEmployee auth.createUser error:', createErr)
-        throw new Error(`Nie udało się utworzyć konta external: ${createErr.message}`)
-    }
-    const userId = created?.user?.id
-    if (!userId) {
-        throw new Error('Supabase nie zwróciło ID użytkownika po createUser.')
-    }
-
-    // handle_new_user trigger has already inserted a minimal profile row
-    // (id, email, full_name from user_metadata, avatar_url). Update with HR fields.
-    const { error: profErr } = await supabase
-        .from('profiles')
-        .update({
-            full_name: fullName,
-            role: input.role,
-            is_external: true,
-            external_notes: input.externalNotes ?? null,
-            hired_at: input.hiredAt,
-            work_start_date: input.hiredAt,
-            manager_id: input.managerId ?? null,
-            buddy_id: input.buddyId ?? null,
-            employment_status: 'pending',
-            onboarding_completed: true, // skip /onboarding redirect since they can't login anyway
+        const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+            email,
+            password: randomPassword,
+            email_confirm: true,
+            user_metadata: { full_name: fullName, is_external: true },
         })
-        .eq('id', userId)
-    if (profErr) {
-        logCompat.error('createExternalEmployee profile update error:', profErr)
-        // Roll back: delete the auth user we just created so the dialog can be retried cleanly.
-        await supabase.auth.admin.deleteUser(userId).catch((e: unknown) =>
-            logCompat.error('createExternalEmployee rollback deleteUser failed:', e),
-        )
-        throw new Error(profErr.message || 'Nie udało się ustawić danych external employee.')
-    }
-
-    // Log hired event in timeline
-    await supabase.from('lifecycle_events').insert({
-        user_id: userId,
-        event_type: 'hired',
-        metadata: { is_external: true, role: input.role, hired_at: input.hiredAt },
-        created_by: ctx.userId,
-    })
-
-    await logAudit(ctx.userId, 'EXTERNAL_EMPLOYEE_CREATED', {
-        user_id: userId,
-        email: input.email,
-        full_name: input.fullName,
-        role: input.role,
-    })
-
-    // Optionally auto-start onboarding
-    let progressId: string | null = null
-    if (input.autoStartOnboarding !== false) {
-        try {
-            const { data, error } = await supabase.rpc('start_onboarding_for_user', {
-                p_user_id: userId,
-                p_template_id: input.templateId ?? undefined,
-                p_actor_id: ctx.userId,
-            })
-            if (!error && data) {
-                progressId = data as string
-                await logAudit(ctx.userId, 'ONBOARDING_STARTED', {
-                    user_id: userId,
-                    progress_id: progressId,
-                    triggered_by: 'external_create',
-                    welcome_email_opt_in: input.sendWelcomeEmail === true,
-                })
-
-                // Phase 25c: welcome email only when TCM explicitly opted in.
-                if (input.sendWelcomeEmail === true) {
-                    await sendOnboardingWelcome(
-                        input.email.trim().toLowerCase(),
-                        input.fullName.trim(),
-                        progressId,
-                        roleLabelPl(input.role),
-                    )
-                        .then(async () => {
-                            await supabase
-                                .from('onboarding_progress')
-                                .update({ welcome_email_sent_at: new Date().toISOString(), welcome_email_sent_by: ctx.userId })
-                                .eq('id', progressId!)
-                            await logAudit(ctx.userId, 'ONBOARDING_WELCOME_EMAIL_SENT', {
-                                progress_id: progressId,
-                                user_id: userId,
-                                trigger: 'external_create_dialog',
-                            })
-                        })
-                        .catch((e) => logCompat.error('sendOnboardingWelcome (external) failed:', e))
-                }
+        if (createErr) {
+            const msg = createErr.message?.toLowerCase() ?? ''
+            if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
+                throw new ExpectedError('Konto z tym adresem email już istnieje (możliwe że ten pracownik już jest w systemie).')
             }
-        } catch (e: unknown) {
-            logCompat.error('Auto-start external onboarding failed:', e)
+            logCompat.error('createExternalEmployee auth.createUser error:', createErr)
+            throw new Error(`Nie udało się utworzyć konta external: ${createErr.message}`)
         }
-    }
+        const userId = created?.user?.id
+        if (!userId) {
+            throw new Error('Supabase nie zwróciło ID użytkownika po createUser.')
+        }
 
-    return { userId, progressId }
+        // handle_new_user trigger has already inserted a minimal profile row
+        // (id, email, full_name from user_metadata, avatar_url). Update with HR fields.
+        const { error: profErr } = await supabase
+            .from('profiles')
+            .update({
+                full_name: fullName,
+                role: input.role,
+                is_external: true,
+                external_notes: input.externalNotes ?? null,
+                hired_at: input.hiredAt,
+                work_start_date: input.hiredAt,
+                manager_id: input.managerId ?? null,
+                buddy_id: input.buddyId ?? null,
+                employment_status: 'pending',
+                onboarding_completed: true, // skip /onboarding redirect since they can't login anyway
+            })
+            .eq('id', userId)
+        if (profErr) {
+            logCompat.error('createExternalEmployee profile update error:', profErr)
+            // Roll back: delete the auth user we just created so the dialog can be retried cleanly.
+            await supabase.auth.admin.deleteUser(userId).catch((e: unknown) =>
+                logCompat.error('createExternalEmployee rollback deleteUser failed:', e),
+            )
+            throw new Error(profErr.message || 'Nie udało się ustawić danych external employee.')
+        }
+
+        // Log hired event in timeline
+        await supabase.from('lifecycle_events').insert({
+            user_id: userId,
+            event_type: 'hired',
+            metadata: { is_external: true, role: input.role, hired_at: input.hiredAt },
+            created_by: ctx.userId,
+        })
+
+        await logAudit(ctx.userId, 'EXTERNAL_EMPLOYEE_CREATED', {
+            user_id: userId,
+            email: input.email,
+            full_name: input.fullName,
+            role: input.role,
+        })
+
+        // Optionally auto-start onboarding
+        let progressId: string | null = null
+        if (input.autoStartOnboarding !== false) {
+            try {
+                const { data, error } = await supabase.rpc('start_onboarding_for_user', {
+                    p_user_id: userId,
+                    p_template_id: input.templateId ?? undefined,
+                    p_actor_id: ctx.userId,
+                })
+                if (!error && data) {
+                    progressId = data as string
+                    await logAudit(ctx.userId, 'ONBOARDING_STARTED', {
+                        user_id: userId,
+                        progress_id: progressId,
+                        triggered_by: 'external_create',
+                        welcome_email_opt_in: input.sendWelcomeEmail === true,
+                    })
+
+                    // Phase 25c: welcome email only when TCM explicitly opted in.
+                    if (input.sendWelcomeEmail === true) {
+                        await sendOnboardingWelcome(
+                            input.email.trim().toLowerCase(),
+                            input.fullName.trim(),
+                            progressId,
+                            roleLabelPl(input.role),
+                        )
+                            .then(async () => {
+                                await supabase
+                                    .from('onboarding_progress')
+                                    .update({ welcome_email_sent_at: new Date().toISOString(), welcome_email_sent_by: ctx.userId })
+                                    .eq('id', progressId!)
+                                await logAudit(ctx.userId, 'ONBOARDING_WELCOME_EMAIL_SENT', {
+                                    progress_id: progressId,
+                                    user_id: userId,
+                                    trigger: 'external_create_dialog',
+                                })
+                            })
+                            .catch((e) => logCompat.error('sendOnboardingWelcome (external) failed:', e))
+                    }
+                }
+            } catch (e: unknown) {
+                logCompat.error('Auto-start external onboarding failed:', e)
+            }
+        }
+
+        return { userId, progressId }
+    })
 }
 
 // ─── Lifecycle notes ────────────────────────────────────────────────────────
