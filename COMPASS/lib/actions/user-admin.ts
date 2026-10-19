@@ -636,124 +636,136 @@ const INVITABLE_ROLES: InviteUserInput['role'][] = [
     'talent_community',
 ]
 
-export async function inviteUser(input: InviteUserInput): Promise<{ userId: string }> {
-    const { user: actor } = await requireSuperAdmin()
+export async function inviteUser(input: InviteUserInput): Promise<ActionResult<{ userId: string }>> {
+    return runAction('inviteUser', async () => {
+        const { user: actor } = await requireSuperAdmin()
 
-    const email = input.email.trim().toLowerCase()
-    if (!email.endsWith('@b2bnetwork.pl')) {
-        throw new Error('Email musi być w domenie @b2bnetwork.pl')
-    }
-    if (!INVITABLE_ROLES.includes(input.role)) {
-        throw new Error('Niedozwolona rola. Wybierz Konsultant IT, Konsultant wewnętrzny, Manager, Finanse lub Talent Community Manager. Super Admina dodaje się przez Administratorzy.')
-    }
-
-    const admin = createServiceClient()
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || ''
-    const redirectTo = appUrl ? `${appUrl}/auth/callback` : undefined
-
-    // 1. Invite via Supabase Auth — wysyła email z linkiem aktywacyjnym.
-    //    handle_new_user trigger w DB stworzy automatycznie row w `profiles`
-    //    z domyślnym role='consultant'. Overrideujemy w kroku 2.
-    const { data, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-        data: {
-            full_name: input.fullName?.trim() || undefined,
-        },
-        redirectTo,
-    })
-    if (inviteErr) {
-        const msg = inviteErr.message?.toLowerCase() ?? ''
-        if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
-            throw new Error('Konto z tym adresem email już istnieje.')
+        const email = input.email.trim().toLowerCase()
+        if (!email.endsWith('@b2bnetwork.pl')) {
+            throw new ExpectedError('Email musi być w domenie @b2bnetwork.pl')
         }
-        throw new Error(`Błąd zaproszenia: ${inviteErr.message}`)
-    }
-    const userId = data?.user?.id
-    if (!userId) {
-        throw new Error('Supabase nie zwróciło ID użytkownika.')
-    }
+        if (!INVITABLE_ROLES.includes(input.role)) {
+            throw new ExpectedError('Niedozwolona rola. Wybierz Konsultant IT, Konsultant wewnętrzny, Manager, Finanse lub Talent Community Manager. Super Admina dodaje się przez Administratorzy.')
+        }
+        // „Ludzie w NEXUSIE”: zaproszenie pracownika zakłada wpis w kartotece (status
+        // `pending`, forma umowy, data startu, przełożony). Po przeniesieniu `people`
+        // konta pracowników zakłada NEXUS. Odmowa PRZED Supabase Auth — inaczej zostałoby
+        // konto z mailem aktywacyjnym i bez profilu. Konsultant Akademii zostaje bez zmian.
+        if (input.role !== 'consultant' && isMovedToNexus('people')) {
+            throw new ExpectedError(
+                'Kartoteka pracowników działa teraz w NEXUSIE — konto pracownika załóż w NEXUSIE. '
+                + 'W Compassie zapraszasz tylko konsultantów Akademii (rola „Konsultant IT”).',
+            )
+        }
 
-    // 2. Override profile fields z wybranymi opcjami HR.
-    //    Phase 20: onboarding_completed=true dla wszystkich HR-zone (internal/finanse/manager/TCM).
-    const HR_ZONE_FOR_INVITE: InviteUserInput['role'][] = ['internal', 'finanse', 'manager', 'talent_community']
-    const updates: Record<string, unknown> = {
-        role: input.role,
-        full_name: input.fullName?.trim() || null,
-    }
-    if (HR_ZONE_FOR_INVITE.includes(input.role)) {
-        updates.onboarding_completed = true
-    }
-    if (input.employmentType) {
-        updates.employment_type = input.employmentType
-    }
-    if (input.workStartDate !== undefined) {
-        updates.work_start_date = input.workStartDate
-        // Phase 22: mirror to hired_at (used by lifecycle module for due_date calc).
-        updates.hired_at = input.workStartDate
-    }
-    // Phase 20: manager_id — only for HR-zone roles (admin's choice).
-    if (input.managerId !== undefined && HR_ZONE_FOR_INVITE.includes(input.role)) {
-        updates.manager_id = input.managerId
-    }
-    // Phase 22: mark new HR-zone employees as 'pending' until they actually start onboarding.
-    if (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant') {
-        updates.employment_status = 'pending'
-    }
+        const admin = createServiceClient()
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || ''
+        const redirectTo = appUrl ? `${appUrl}/auth/callback` : undefined
 
-    const { error: profileErr } = await admin
-        .from('profiles')
-        .update(updates)
-        .eq('id', userId)
-    if (profileErr) {
-        throw new Error(`Profile update fail: ${profileErr.message}`)
-    }
-
-    // Phase 22 — auto-start onboarding (best-effort, never blocks invite).
-    // „Ludzie w NEXUSIE”: po przeniesieniu `lifecycle` wejście prowadzi NEXUS —
-    // zaproszenie do Compassa (np. do Akademii) nie zakłada już onboardingu tutaj.
-    const shouldAutoStart =
-        input.autoStartOnboarding !== false
-        && !isMovedToNexus('lifecycle')
-        && (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant')
-
-    let onboardingProgressId: string | null = null
-    if (shouldAutoStart) {
-        try {
-            // Phase 22 RPC not yet in generated types — cast admin to any.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const adminAny = admin as any
-            const { data: progressId, error: rpcErr } = await adminAny.rpc('start_onboarding_for_user', {
-                p_user_id: userId,
-                p_template_id: input.onboardingTemplateId ?? null,
-                p_actor_id: actor.id,
-            })
-            if (rpcErr) {
-                logCompat.error('Auto-start onboarding RPC error:', rpcErr)
-            } else if (progressId) {
-                onboardingProgressId = progressId as string
-                await logAudit(actor.id, 'ONBOARDING_STARTED', {
-                    user_id: userId,
-                    progress_id: onboardingProgressId,
-                    triggered_by: 'invite_user',
-                })
+        // 1. Invite via Supabase Auth — wysyła email z linkiem aktywacyjnym.
+        //    handle_new_user trigger w DB stworzy automatycznie row w `profiles`
+        //    z domyślnym role='consultant'. Overrideujemy w kroku 2.
+        const { data, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+            data: {
+                full_name: input.fullName?.trim() || undefined,
+            },
+            redirectTo,
+        })
+        if (inviteErr) {
+            const msg = inviteErr.message?.toLowerCase() ?? ''
+            if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
+                throw new ExpectedError('Konto z tym adresem email już istnieje.')
             }
-        } catch (e: unknown) {
-            // Most likely: no default template found for role — log + continue.
-            logCompat.error('Auto-start onboarding threw:', e)
+            throw new Error(`Błąd zaproszenia: ${inviteErr.message}`)
         }
-    }
+        const userId = data?.user?.id
+        if (!userId) {
+            throw new Error('Supabase nie zwróciło ID użytkownika.')
+        }
 
-    await logAudit(actor.id, 'INVITE_USER', {
-        target_user_id: userId,
-        target_email: email,
-        role: input.role,
-        employment_type: input.employmentType ?? null,
-        work_start_date: input.workStartDate ?? null,
-        manager_id: input.managerId ?? null,
-        onboarding_started: onboardingProgressId !== null,
-        onboarding_progress_id: onboardingProgressId,
+        // 2. Override profile fields z wybranymi opcjami HR.
+        //    Phase 20: onboarding_completed=true dla wszystkich HR-zone (internal/finanse/manager/TCM).
+        const HR_ZONE_FOR_INVITE: InviteUserInput['role'][] = ['internal', 'finanse', 'manager', 'talent_community']
+        const updates: Record<string, unknown> = {
+            role: input.role,
+            full_name: input.fullName?.trim() || null,
+        }
+        if (HR_ZONE_FOR_INVITE.includes(input.role)) {
+            updates.onboarding_completed = true
+        }
+        if (input.employmentType) {
+            updates.employment_type = input.employmentType
+        }
+        if (input.workStartDate !== undefined) {
+            updates.work_start_date = input.workStartDate
+            // Phase 22: mirror to hired_at (used by lifecycle module for due_date calc).
+            updates.hired_at = input.workStartDate
+        }
+        // Phase 20: manager_id — only for HR-zone roles (admin's choice).
+        if (input.managerId !== undefined && HR_ZONE_FOR_INVITE.includes(input.role)) {
+            updates.manager_id = input.managerId
+        }
+        // Phase 22: mark new HR-zone employees as 'pending' until they actually start onboarding.
+        if (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant') {
+            updates.employment_status = 'pending'
+        }
+
+        const { error: profileErr } = await admin
+            .from('profiles')
+            .update(updates)
+            .eq('id', userId)
+        if (profileErr) {
+            throw new Error(`Profile update fail: ${profileErr.message}`)
+        }
+
+        // Phase 22 — auto-start onboarding (best-effort, never blocks invite).
+        // „Ludzie w NEXUSIE”: po przeniesieniu `lifecycle` wejście prowadzi NEXUS —
+        // zaproszenie do Compassa (np. do Akademii) nie zakłada już onboardingu tutaj.
+        const shouldAutoStart =
+            input.autoStartOnboarding !== false
+            && !isMovedToNexus('lifecycle')
+            && (HR_ZONE_FOR_INVITE.includes(input.role) || input.role === 'consultant')
+
+        let onboardingProgressId: string | null = null
+        if (shouldAutoStart) {
+            try {
+                // Phase 22 RPC not yet in generated types — cast admin to any.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const adminAny = admin as any
+                const { data: progressId, error: rpcErr } = await adminAny.rpc('start_onboarding_for_user', {
+                    p_user_id: userId,
+                    p_template_id: input.onboardingTemplateId ?? null,
+                    p_actor_id: actor.id,
+                })
+                if (rpcErr) {
+                    logCompat.error('Auto-start onboarding RPC error:', rpcErr)
+                } else if (progressId) {
+                    onboardingProgressId = progressId as string
+                    await logAudit(actor.id, 'ONBOARDING_STARTED', {
+                        user_id: userId,
+                        progress_id: onboardingProgressId,
+                        triggered_by: 'invite_user',
+                    })
+                }
+            } catch (e: unknown) {
+                // Most likely: no default template found for role — log + continue.
+                logCompat.error('Auto-start onboarding threw:', e)
+            }
+        }
+
+        await logAudit(actor.id, 'INVITE_USER', {
+            target_user_id: userId,
+            target_email: email,
+            role: input.role,
+            employment_type: input.employmentType ?? null,
+            work_start_date: input.workStartDate ?? null,
+            manager_id: input.managerId ?? null,
+            onboarding_started: onboardingProgressId !== null,
+            onboarding_progress_id: onboardingProgressId,
+        })
+
+        return { userId }
     })
-
-    return { userId }
 }
 
 // ─── Phase 20: Manager assignment ────────────────────────────────────────────

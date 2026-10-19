@@ -455,6 +455,11 @@ moduły jak w NEXUSIE: `people, leave, time, payroll, lifecycle, care, cases`. P
   przełożony i forma umowy, choć czytają je timesheety i płace (dwa źródła prawdy by się rozjechały).
   Po 24.10 zmiany przełożonego/formy robi się w NEXUSIE; październikowe timesheety w Compassie
   zatwierdza dotychczasowy przełożony z Compassa albo admin.
+- **Lustro w bazie (migracja `20261019020000_hr_moved_to_nexus_db_readonly.sql`, aplikuje właściciel):**
+  `system_settings['hr_moved_to_nexus']` + `hr_module_moved()` i polityki RESTRICTIVE na zapis
+  `authenticated` w tabelach leave/time/payroll/cases (skrzynka tylko `inbox_%`). Wartość w bazie
+  ma być **podzbiorem** env — moduł w bazie bez modułu w env daje akcjom 42501 zamiast komunikatu.
+  Data API tego klucza nie zapisze (także admin); zmiana tylko SQL-em razem z env.
 - **Komponent kliencki nie czyta przełącznika** (env runtime nie dociera do przeglądarki) — listę
   dostaje propsem z `app/(protected)/layout.tsx`; baner (`MovedToNexusBanner`) jest serwerowy.
 - **Status zatrudnienia po przeniesieniu `lifecycle` prowadzi NEXUS** (`nexus-roster-sync`,

@@ -30,6 +30,12 @@ describe('parseHrModuleList', () => {
         expect(parseHrModuleList(' , ').modules).toEqual([])
     })
 
+    it('strips quotes around the value or a token, so a quoted vault value keeps every module', () => {
+        expect(parseHrModuleList('"people,leave"')).toEqual({ modules: ['people', 'leave'], unknown: [] })
+        expect(parseHrModuleList("'time' , \"payroll\"")).toEqual({ modules: ['time', 'payroll'], unknown: [] })
+        expect(parseHrModuleList('" people , cases "')).toEqual({ modules: ['people', 'cases'], unknown: [] })
+    })
+
     it('reports unknown entries instead of silently accepting a typo', () => {
         const parsed = parseHrModuleList('leaves,time,leave,time')
         expect(parsed.modules).toEqual(['time', 'leave'])

@@ -72,7 +72,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
         setSubmitting(true)
         try {
-            await inviteUser({
+            const res = await inviteUser({
                 email: emailTrimmed,
                 fullName: fullName.trim() || undefined,
                 role,
@@ -83,6 +83,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
                 // Phase 22: opt-out checkbox controls auto-start. Only honored if role has a default template.
                 autoStartOnboarding: hasDefaultTemplate ? autoStartOnboarding : false,
             })
+            if (!res.success) {
+                toast.error(res.error)
+                return
+            }
             toastSuccess(`Wysłano zaproszenie na ${emailTrimmed}. User dostanie email z linkiem aktywacyjnym.`)
             reset()
             onOpenChange(false)

@@ -124,6 +124,8 @@ function trapClient() {
             admin: {
                 getUserById: async (id: string) => ({ data: { user: { id, email: 'target@example.test' } }, error: null }),
                 updateUserById: trap('auth.updateUserById'),
+                createUser: trap('auth.createUser'),
+                inviteUserByEmail: trap('auth.inviteUserByEmail'),
             },
         },
     }
@@ -142,7 +144,11 @@ vi.mock('@/lib/auth/internal-guard', () => {
         requireLifecycleManagerAction: allow, requireTalentCommunityOrAdminAction: allow,
     }
 })
-vi.mock('@/lib/auth/super-admins', () => ({ getSuperAdmins: () => ['admin@example.test'], isSuperAdmin: () => false }))
+const superAdmin = vi.hoisted(() => ({ value: false }))
+vi.mock('@/lib/auth/super-admins', () => ({
+    getSuperAdmins: () => ['admin@example.test'],
+    isSuperAdmin: () => superAdmin.value,
+}))
 vi.mock('@/lib/actions/audit', () => ({ logAudit: vi.fn(async () => {}) }))
 vi.mock('@/lib/email', () => ({}))
 vi.mock('@/lib/push/dispatch', () => ({ sendPushToUserId: vi.fn() }))
@@ -153,6 +159,7 @@ vi.mock('@/lib/mailbox/graph-inbox-rules', () => ({ deleteForwardRule: vi.fn() }
 
 beforeEach(() => {
     db.touched = []
+    superAdmin.value = false
 })
 afterEach(() => {
     vi.unstubAllEnvs()
@@ -228,5 +235,68 @@ describe('odmowa zapisu na żywo', () => {
         // Bez przełącznika akcja idzie dalej i trafia w (pułapkową) bazę.
         await expect(upsertAttendanceDay({ date: '2026-11-02', status: 'active', location: 'remote' } as never)).rejects.toThrow()
         expect(db.touched.length).toBeGreaterThan(0)
+    })
+})
+
+// ─── Furtki kartoteki poza akcjami `people` (audyt 19.10.2026) ──────────────
+// Kartoteka (`people`) jest w NEXUSIE, a wejście i odejście (`lifecycle`) i Akademia
+// zostają w Compassie. Akcje tych modułów nie mogą pisać pól kartoteki.
+
+describe('kartoteka w NEXUSIE — lifecycle i zaproszenia', () => {
+    it('edycja profilu w lifecycle odmawia zmiany przełożonego i daty zatrudnienia', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people')
+        const { updateLifecycleProfile } = await import('@/lib/actions/lifecycle')
+        for (const patch of [{ managerId: 'manager-1' }, { hiredAt: '2026-11-02' }, { managerId: null }]) {
+            const res = await updateLifecycleProfile({ userId: 'target-1', ...patch })
+            expect(res).toEqual({ success: false, error: expect.stringMatching(MOVED) })
+        }
+        expect(db.touched).toEqual([])
+    })
+
+    it('edycja profilu w lifecycle nadal zmienia rolę i notatkę', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people')
+        const { updateLifecycleProfile } = await import('@/lib/actions/lifecycle')
+        const res = await updateLifecycleProfile({ userId: 'target-1', role: 'internal', externalNotes: 'notatka' })
+        // Pułapkowa baza rzuca przy pierwszym zapytaniu — akcja doszła za odmowę.
+        expect(JSON.stringify(res)).not.toMatch(MOVED)
+        expect(db.touched).toEqual(['from:profiles'])
+    })
+
+    it('external pracownik nie powstaje, gdy kartoteka jest w NEXUSIE', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people')
+        const { createExternalEmployee } = await import('@/lib/actions/lifecycle')
+        const res = await createExternalEmployee({
+            fullName: 'Osoba Testowa', email: 'osoba@example.test', role: 'consultant', hiredAt: '2026-11-02',
+        })
+        expect(res).toEqual({ success: false, error: expect.stringMatching(MOVED) })
+        expect(db.touched).toEqual([])
+    })
+
+    it('zaproszenie pracownika odmawia, zanim cokolwiek trafi do Supabase Auth', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people')
+        superAdmin.value = true
+        const { inviteUser } = await import('@/lib/actions/user-admin')
+        for (const role of ['internal', 'manager', 'finanse', 'talent_community'] as const) {
+            const res = await inviteUser({ email: 'nowy@b2bnetwork.pl', role, workStartDate: null, managerId: null })
+            expect(res).toEqual({ success: false, error: expect.stringMatching(/w NEXUSIE/) })
+        }
+        expect(db.touched).toEqual([])
+    })
+
+    it('zaproszenie konsultanta Akademii idzie dalej do Supabase Auth', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'people,leave,time,payroll,cases')
+        superAdmin.value = true
+        const { inviteUser } = await import('@/lib/actions/user-admin')
+        const res = await inviteUser({ email: 'konsultant@b2bnetwork.pl', role: 'consultant' })
+        expect(JSON.stringify(res)).not.toMatch(/w NEXUSIE/)
+        expect(db.touched).toEqual(['auth.inviteUserByEmail'])
+    })
+
+    it('zaproszenie pracownika działa jak dotąd, gdy kartoteka zostaje w Compassie', async () => {
+        vi.stubEnv('HR_MOVED_TO_NEXUS', 'leave')
+        superAdmin.value = true
+        const { inviteUser } = await import('@/lib/actions/user-admin')
+        await inviteUser({ email: 'nowy@b2bnetwork.pl', role: 'internal' })
+        expect(db.touched).toEqual(['auth.inviteUserByEmail'])
     })
 })
