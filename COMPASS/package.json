@@ -95,7 +95,7 @@
     "tailwindcss": "^3.4.1",
     "tsx": "^4.21.0",
     "typescript": "^5",
-    "vitest": "^4.1.5",
+    "vitest": "^4.1.11",
     "@electric-sql/pglite": "0.3.14"
   }
 }
