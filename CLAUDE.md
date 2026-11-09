@@ -158,6 +158,17 @@ archiwizacji, **nie** `termination_date < dziś` (offboarding trwa po ostatnim d
 `offboarding` przechodzi wszędzie. Brak profilu / brak statusu **nie** blokuje — inaczej awaria
 odczytu wylogowałaby całą firmę.
 
+### Kto widzi kogo w `profiles` i kto może założyć konto
+
+Migracja `20261109120000_auth_signup_gate_profiles_rls.sql`.
+
+- **Konto `consultant` widzi w `profiles` tylko swój wiersz.** Odczyt cudzych wierszy klientem z ciasteczka
+  nie rzuca błędem, tylko zwraca mniej wierszy, więc lookup „wszyscy admini" po cichu robi się pusty.
+  Etykiety (autorzy, prowadzący, opiekunowie) czytaj przez `fetchDisplayNames` (`lib/people/display-names.ts`,
+  RPC `people_display_names`). Adresatów powiadomień czytaj klientem serwisowym.
+- **Nowe konto powstaje tylko dla `@b2bnetwork.pl` albo adresu z `academy_learner_accounts`** (wyzwalacz na
+  `auth.users`, obejmuje też Admin API). Nie opieraj warunku na `raw_user_meta_data`: te pola ustawia klient przy signup.
+
 ### Guardy
 
 Guardy są w `lib/auth/internal-guard.ts` (`require*Action` dla server actions, `require*Layout`

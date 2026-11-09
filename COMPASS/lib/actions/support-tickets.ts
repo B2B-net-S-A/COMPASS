@@ -6,6 +6,7 @@ import { postToTeamsAlert } from '@/lib/teams/webhook'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
+import { fetchDisplayNames } from '@/lib/people/display-names'
 import type { TablesInsert } from '@/lib/supabase/database.types'
 import type {
     CreateTicketInput,
@@ -174,7 +175,8 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportAct
                 await notifyUsers([input.assignee_id], 'support_ticket_assigned', 'Nowe zgłoszenie z czatu', input.subject.trim())
             }
         } else {
-            const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+            // Klient serwisowy: zgłaszający `consultant` nie widzi wierszy adminów w `profiles`.
+            const { data: admins } = await createServiceClient().from('profiles').select('id').eq('role', 'admin')
             const adminIds = (admins ?? []).map((p: { id: string }) => p.id)
             await notifyUsers(adminIds, 'support_ticket_assigned', 'Nowe zgłoszenie w Support', input.subject.trim())
         }
@@ -249,8 +251,8 @@ export async function listTickets(options: ListTicketsOptions): Promise<SupportA
         ]))
         const categoryIds = Array.from(new Set(tickets.map((t) => t.category_id)))
 
-        const [{ data: profiles }, { data: categories }, { data: counts }] = await Promise.all([
-            supabase.from('profiles').select('id, full_name').in('id', userIds),
+        const [people, { data: categories }, { data: counts }] = await Promise.all([
+            fetchDisplayNames(supabase, userIds),
             supabase.from('support_categories').select('id, slug, name_pl').in('id', categoryIds),
             supabase
                 .from('support_ticket_comments')
@@ -258,7 +260,7 @@ export async function listTickets(options: ListTicketsOptions): Promise<SupportA
                 .in('ticket_id', tickets.map((t) => t.id)),
         ])
 
-        const profileMap = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+        const profileMap = new Map(Array.from(people, ([id, person]) => [id, person.full_name]))
         const categoryMap = new Map((categories ?? []).map((c: { id: string; slug: string; name_pl: string }) => [c.id, c]))
         const countMap = new Map<string, number>()
         for (const c of (counts ?? []) as Array<{ ticket_id: string }>) {
@@ -326,11 +328,8 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
             .single()
 
         const userIds = Array.from(new Set([ticket.user_id, ticket.assignee_id].filter((x): x is string => !!x)))
-        const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .in('id', userIds)
-        const profileMap = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+        const people = await fetchDisplayNames(supabase, userIds)
+        const profileMap = new Map(Array.from(people, ([id, person]) => [id, person.full_name]))
 
         const { data: rawComments } = await supabase
             .from('support_ticket_comments')
@@ -339,10 +338,8 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
             .order('created_at', { ascending: true })
 
         const commentAuthorIds = Array.from(new Set(((rawComments ?? []) as Array<{ author_id: string }>).map((c) => c.author_id)))
-        const { data: commentProfiles } = commentAuthorIds.length > 0
-            ? await supabase.from('profiles').select('id, full_name').in('id', commentAuthorIds)
-            : { data: [] }
-        const commentProfileMap = new Map((commentProfiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+        const commentPeople = await fetchDisplayNames(supabase, commentAuthorIds)
+        const commentProfileMap = new Map(Array.from(commentPeople, ([id, person]) => [id, person.full_name]))
 
         const comments: SupportComment[] = ((rawComments ?? []) as Array<{
             id: string
