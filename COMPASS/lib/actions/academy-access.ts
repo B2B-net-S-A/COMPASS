@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { ACADEMY_PILOT_LIMIT, ACADEMY_ROLLOUT_MODES, type AcademyRolloutMode } from '@/lib/academy/rollout-lock'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { z } from 'zod'
 import { ACADEMY_ROLES } from '@/lib/types/role'
@@ -77,7 +78,8 @@ export async function getAcademyRollout() {
         const { client } = await requireAcademyContext({ admin: true })
         const { data, error } = await client.from('academy_rollout_settings').select('mode,pilot_user_ids').single()
         assertDatabaseResult(error)
-        const settings = z.object({ mode: z.enum(['closed', 'pilot', 'open']), pilot_user_ids: z.array(z.uuid()) }).parse(data)
+        // Odczyt znosi 'open', bo kod idzie przed migracją blokady. Admin ma móc taki stan zamknąć.
+        const settings = z.object({ mode: z.enum([...ACADEMY_ROLLOUT_MODES, 'open']), pilot_user_ids: z.array(z.uuid()) }).parse(data)
         const people = settings.pilot_user_ids.length ? await client.from('profiles').select('id,full_name,email').in('id', settings.pilot_user_ids) : { data: [], error: null }
         assertDatabaseResult(people.error)
         return { mode: settings.mode, participants: settings.pilot_user_ids.map(id => {
@@ -87,11 +89,13 @@ export async function getAcademyRollout() {
     })
 }
 
-export async function setAcademyRollout(input: { mode: 'closed' | 'pilot' | 'open'; userIds: string[] }) {
+export async function setAcademyRollout(input: { mode: AcademyRolloutMode; userIds: string[] }) {
     return academyAction('rollout.set', async () => {
-        const parsed = z.object({ mode: z.enum(['closed', 'pilot', 'open']), userIds: z.array(z.uuid()).max(1000) }).parse(input)
+        const parsed = z.object({ mode: z.enum(ACADEMY_ROLLOUT_MODES), userIds: z.array(z.uuid()) }).parse(input)
         const { client } = await requireAcademyContext({ admin: true })
-        const { error } = await client.rpc('academy_set_rollout', { p_mode: parsed.mode, p_user_ids: [...new Set(parsed.userIds)] })
+        const userIds = [...new Set(parsed.userIds)]
+        if (userIds.length > ACADEMY_PILOT_LIMIT) throw new Error('pilot_limit_exceeded')
+        const { error } = await client.rpc('academy_set_rollout', { p_mode: parsed.mode, p_user_ids: userIds })
         assertDatabaseResult(error)
         revalidatePath('/', 'layout')
     })
