@@ -1,9 +1,26 @@
-# Podsumowanie edycji szkolenia
+# Raport edycji szkolenia
 
-Administrator widzi „Podsumowanie tej edycji” na istniejącej stronie
-`/learning/edycje/[id]` i może pobrać plik TXT. Raport korzysta z obecnych
-RPC listy edycji, uczestników Compass, prywatnego rosteru webinaru i ankiety.
+Obsługa Akademii (admin i TCM) widzi „Raport edycji” na istniejącej stronie
+`/learning/edycje/[id]` i może pobrać plik TXT albo CSV. Raport korzysta z obecnych
+RPC listy edycji, uczestników Compass, prywatnego rosteru webinaru i ankiety oraz
+z tabel testu czytanych sesją użytkownika, więc o zakresie nadal decyduje RLS.
 Nie wymaga nowej usługi, migracji ani uprawnienia.
+
+Eksport CSV zawiera wyłącznie sumy i treść pytań, bez nazwisk i adresów. Powstaje
+na serwerze i bez zapisanego wpisu `ACADEMY_EDITION_REPORT_EXPORTED` w dzienniku
+audytu nie zostaje wydany.
+
+Części zależne od późniejszych migracji mówią „czeka na migrację”, a nie „0”:
+pre-test (`course_quiz_attempts.kind`), zaświadczenia udziału
+(`academy_participation_documents`), unieważnianie pytań
+(`course_quiz_questions.voided_at`; przycisk dochodzi z RPC zadania B2.3).
+Dane bez daty startu raportów (`academy_rollout_settings.reports_start_at`, B0.6),
+sprzed niej albo z kursu `is_rehearsal` mają etykietę „Próba”.
+
+Wynik pierwszego podejścia to najwcześniejsza próba `final` danej osoby. Analiza
+pytań liczy tylko te próby. Certyfikaty to nieunieważnione ukończenia potwierdzonych
+zapisów. Obecna jest osoba z progiem spełnionym na każdym aktywnym wymaganym
+spotkaniu; dopóki któregoś okna nie potwierdzono, liczba obecnych jest nieustalona.
 
 Potwierdzony zapis Compass i powiązany wpis webinaru są jedną osobą.
 Powiązanie wynika z identyfikatora konta, a nie podobieństwa nazwiska lub
