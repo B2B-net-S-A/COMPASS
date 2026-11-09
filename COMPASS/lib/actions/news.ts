@@ -14,6 +14,7 @@ import type {
     UpdateNewsPostPatch,
 } from '@/lib/types/news'
 import { excludeExited } from '@/lib/hr/employment-window'
+import { fetchDisplayNames } from '@/lib/people/display-names'
 import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
@@ -46,13 +47,13 @@ async function enrichPosts(
     const postIds = posts.map((p) => p.id)
     const authorIds = Array.from(new Set(posts.map((p) => p.author_id)))
 
-    const [{ data: profiles }, { data: reactions }, { data: reads }] = await Promise.all([
-        supabase.from('profiles').select('id, full_name').in('id', authorIds),
+    const [authorNames, { data: reactions }, { data: reads }] = await Promise.all([
+        fetchDisplayNames(supabase, authorIds),
         supabase.from('news_reactions').select('post_id, user_id, kind').in('post_id', postIds),
         supabase.from('news_post_reads').select('post_id').in('post_id', postIds).eq('user_id', currentUserId),
     ])
 
-    const profileMap = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+    const profileMap = new Map(Array.from(authorNames, ([id, person]) => [id, person.full_name]))
     const readSet = new Set(((reads ?? []) as Array<{ post_id: string }>).map((r) => r.post_id))
 
     const reactionCounts = new Map<string, Record<ReactionKind, number>>()

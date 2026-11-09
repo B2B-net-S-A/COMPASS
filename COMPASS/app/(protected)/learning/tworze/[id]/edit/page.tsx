@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import { GraduationCap } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { CourseEditWizard } from '@/components/learning/CourseEditWizard'
+import { getQuizBank } from '@/lib/actions/academy-quiz-bank'
 import {
     getCourseDetail,
     getCourseLessons,
@@ -35,6 +36,7 @@ export default async function EditCoursePage({ params }: PageProps) {
     const course = detailResult.data
     const lessonsResult = await getCourseLessons(course.id, { author: true })
     const quizResult = await getCourseQuizForAuthor(course.id)
+    const bank = await getQuizBank(course.id)
 
     const lessons = lessonsResult.success ? lessonsResult.data : []
     const quiz = quizResult.success ? quizResult.data : []
@@ -69,7 +71,7 @@ export default async function EditCoursePage({ params }: PageProps) {
 
             {staff.success && staff.data && <AcademyStaffPanel courseId={course.id} state={staff.data} />}
             {course.version_id && <AcademyHandoverPanel versionId={course.version_id} />}
-            <CourseEditWizard course={course} initialLessons={lessons} initialQuiz={quiz} />
+            <CourseEditWizard course={course} initialLessons={lessons} initialQuiz={quiz} poolEnabled={bank.success && !bank.data.awaitingMigration} />
         </div>
     )
 }

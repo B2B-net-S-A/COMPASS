@@ -1,4 +1,4 @@
-export type AcademyReviewHistoryAction = 'COURSE_REVIEW_SUBMITTED' | 'COURSE_SUBMITTED' | 'COURSE_PUBLISHED' | 'COURSE_REJECTED' | 'LEGACY_COURSE_REVIEWED' | 'COURSE_ARCHIVED'
+export type AcademyReviewHistoryAction = 'COURSE_REVIEW_SUBMITTED' | 'COURSE_SUBMITTED' | 'COURSE_PUBLISHED' | 'COURSE_REJECTED' | 'LEGACY_COURSE_REVIEWED' | 'COURSE_ARCHIVED' | 'COURSE_REVIEW_WITHDRAWN'
 export interface AcademyReviewHistoryCursor { createdAt: string; id: string }
 export interface AcademyReviewHistoryItem {
     id: string
