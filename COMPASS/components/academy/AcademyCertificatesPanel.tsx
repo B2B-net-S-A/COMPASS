@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useAcademyAction } from './useAcademyAction'
 import { revokeAcademyCertificate, type AcademyCertificateRecord } from '@/lib/actions/academy-certificates'
+import { certificateValidity, certificateValidityLabel } from '@/lib/academy/certificate-validity'
 
 function CertificateDecision({ item, viewerId }: { item: AcademyCertificateRecord; viewerId: string }) {
     const router = useRouter()
@@ -16,7 +17,7 @@ function CertificateDecision({ item, viewerId }: { item: AcademyCertificateRecor
     const [pending, run] = useAcademyAction()
     const snapshot = item.certificate_snapshot
     return <article className="space-y-3 rounded-xl border border-border bg-card p-5">
-        <div><h2 className="font-semibold">{snapshot.course_title} · v{snapshot.version_number}</h2><p>{snapshot.participant_name}</p><p className="text-sm text-muted-foreground">Ukończenie: {new Date(item.completed_at).toLocaleString('pl-PL')} · {item.id}</p></div>
+        <div><h2 className="font-semibold">{snapshot.course_title} · v{snapshot.version_number}</h2><p>{snapshot.participant_name}</p><p className="text-sm text-muted-foreground">Ukończenie: {new Date(item.completed_at).toLocaleString('pl-PL')} · {item.id} · {certificateValidityLabel(certificateValidity(snapshot, item.revoked_at))}</p></div>
         {item.revoked_at ? <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
             <p className="font-semibold">Unieważniono {new Date(item.revoked_at).toLocaleString('pl-PL')}</p><p>{item.revoked_reason}</p>
             {item.decision?.rewards_state === 'retained_valid_completion' && <p>Punkty zachowano: uczestnik ma inne ważne ukończenie tego szkolenia.</p>}

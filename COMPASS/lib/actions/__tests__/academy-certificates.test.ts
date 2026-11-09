@@ -36,7 +36,15 @@ describe('Academy certificate decisions', () => {
     it('returns a current revoked state while preserving the exact historical snapshot', async () => {
         const row = { ...completion, revoked_at: '2026-09-22T11:00:00Z', revoked_reason: 'Błędny zapis obecności.' }
         setup({ tables: { course_completions: [row] } })
-        expect(await getMyAcademyCertificate(COMPLETION)).toEqual({ success: true, data: row })
+        expect(await getMyAcademyCertificate(COMPLETION)).toEqual({ success: true, data: { ...row, renewalSlug: null } })
+    })
+    it('offers renewal only for a self-paced enrollment', async () => {
+        setup({ tables: { course_completions: [completion], course_enrollments: [{ id: ENROLLMENT, run_id: null }], courses: [{ id: COURSE, slug: 'dora' }] } })
+        const selfPaced = await getMyAcademyCertificate(COMPLETION)
+        expect(selfPaced.success && selfPaced.data.renewalSlug).toBe('dora')
+        setup({ tables: { course_completions: [completion], course_enrollments: [{ id: ENROLLMENT, run_id: id(5) }], courses: [{ id: COURSE, slug: 'dora' }] } })
+        const live = await getMyAcademyCertificate(COMPLETION)
+        expect(live.success && live.data.renewalSlug).toBeNull()
     })
     it('restricts the moderation catalogue to administrators', async () => {
         expect((await listAcademyCertificates()).success).toBe(false)

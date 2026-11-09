@@ -910,6 +910,28 @@ export function buildCourseInactivityEmail(
     return { subject, html: wrapHrEmail({ tag: 'Akademia', heading: 'Wróć do kursu', bodyHtml, accent: '#3b82f6' }) }
 }
 
+export function buildCertificateExpiryEmail(
+    recipientName: string,
+    args: { courseTitle: string; courseSlug: string; completionId: string; validUntil: string; appUrl: string },
+): { subject: string; html: string } {
+    const statusUrl = `${args.appUrl.replace(/\/$/, '')}/learning/certyfikaty/${encodeURIComponent(args.completionId)}`
+    const subject = `[COMPASS Akademia] Certyfikat „${args.courseTitle}” wkrótce traci ważność`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${escapeHtml(recipientName)}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Twój certyfikat ze szkolenia <strong>${escapeHtml(args.courseTitle)}</strong> jest ważny do <strong>${escapeHtml(args.validUntil)}</strong>.
+            Żeby zachować ważność, ukończ szkolenie ponownie.
+        </p>
+        <p style="margin-top: 20px;">
+            <a href="${escapeHtml(statusUrl)}"
+               style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                Sprawdź certyfikat
+            </a>
+        </p>
+    `
+    return { subject, html: wrapHrEmail({ tag: 'Akademia', heading: 'Certyfikat wkrótce traci ważność', bodyHtml, accent: '#3b82f6' }) }
+}
+
 /**
  * Phase 52 — JEDNO przypomnienie o timesheecie na miesiąc, za miesiąc zamknięty.
  *
