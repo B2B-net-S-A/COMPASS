@@ -67,6 +67,8 @@ export function academyDatabaseError(error: { message: string; code?: string }):
     // Only explicit, bounded domain exceptions may reach the interface verbatim.
     // PostgreSQL details, constraints, table names and transport errors stay server-side.
     if (['P0001', '42501'].includes(error.code ?? '') && error.message.length <= 500 && /[ąćęłńóśźż]/iu.test(error.message)) return error.message
+    // Kod jedzie na produkcję przed SQL-em: brak funkcji, tabeli albo kolumny to stan przejściowy, nie awaria.
+    if (['PGRST202', '42883', '42P01', '42703'].includes(error.code ?? '')) return 'Ta funkcja czeka na migrację bazy. Spróbuj ponownie później.'
     if (error.code === '42501') return 'Nie masz uprawnień do tej operacji.'
     if (error.code === '23505') return 'Taki wpis już istnieje. Odśwież listę.'
     if (error.code === '23503') return 'Powiązane dane zmieniły się. Odśwież stronę.'

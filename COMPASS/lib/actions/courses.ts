@@ -529,6 +529,20 @@ export async function submitForReview(courseId: string): Promise<ActionResult<vo
     })
 }
 
+/** Autor wycofuje zgłoszenie, gdy recenzent jeszcze nie zdecydował; token chroni przed wyścigiem z decyzją. */
+export async function withdrawSubmission(courseId: string, submissionId: string | null | undefined): Promise<ActionResult<void>> {
+    return academyAction('course.withdraw', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        if (!submissionId) throw new Error('Odśwież stronę przed wycofaniem zgłoszenia.')
+        const parsed = z.object({ courseId: z.uuid(), submissionId: z.uuid() }).parse({ courseId, submissionId })
+        const { error } = await client.rpc('academy_withdraw_submission', { p_course_id: parsed.courseId, p_submission_id: parsed.submissionId })
+        assertDatabaseResult(error)
+        revalidatePath('/learning/tworze')
+        revalidatePath(`/learning/tworze/${parsed.courseId}/edit`)
+        revalidatePath('/admin/learning', 'layout')
+    })
+}
+
 /** Compatibility response for a stale authoring page. All new uploads must be scanned. */
 export async function uploadCourseAttachment(_formData: FormData): Promise<ActionResult<CourseAttachment>> {
     return { success: false, error: 'Odśwież edytor i prześlij materiał przez bezpieczny formularz uploadu.' }

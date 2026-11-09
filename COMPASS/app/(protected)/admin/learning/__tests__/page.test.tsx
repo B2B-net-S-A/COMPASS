@@ -5,6 +5,7 @@ import AdminAkademiaPage from '../page'
 const actions = vi.hoisted(() => ({ reviewQueue: vi.fn(), legacyQueue: vi.fn(), materialQueue: vi.fn() }))
 
 vi.mock('@/lib/actions/courses-admin', () => ({ getReviewQueue: actions.reviewQueue, getLegacyReviewQueue: actions.legacyQueue }))
+vi.mock('@/components/academy/AcademyAdminNav', () => ({ AcademyAdminNav: () => null }))
 vi.mock('@/components/academy/RunMaterialReviewQueue', () => ({ RunMaterialReviewQueue: actions.materialQueue }))
 
 beforeEach(() => {

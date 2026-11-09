@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { revalidatePath } from 'next/cache'
 import type { MockSupabase, MockSupabaseConfig } from '@/test/mocks/supabase'
 import { academyFixture, courseRow, enrollmentRow, id, COURSE, DRAFT, ENROLLMENT, LESSON, OLD_VERSION, OTHER, USER, VERSION } from './academy-fixtures'
-import { addLesson, beginCourseDraft, createCourse, deleteLesson, getCourseDetail, getCourseQuizForAuthor, getMyCourses, listPublishedCourses, reorderLessons, setQuizQuestions, submitForReview, updateCourse, updateLesson, uploadCourseAttachment } from '../courses'
+import { addLesson, beginCourseDraft, createCourse, deleteLesson, getCourseDetail, getCourseQuizForAuthor, getMyCourses, listPublishedCourses, reorderLessons, setQuizQuestions, submitForReview, withdrawSubmission, updateCourse, updateLesson, uploadCourseAttachment } from '../courses'
 import type { QuizQuestionInput } from '@/lib/types/learning'
 
 let client: MockSupabase
@@ -235,5 +235,29 @@ describe('course lifecycle is independent of the selected version', () => {
         const result = await getMyCourses()
         expect(result.success && result.data[0]).toMatchObject({ status: 'published', version_status: 'draft' })
         expect((await addLesson(COURSE, { title: 'Nowa lekcja', content_md: 'Treść' })).success).toBe(true)
+    })
+})
+
+describe('withdrawing a review submission', () => {
+    const SUBMISSION = id(101)
+    it('refuses a stale page without a token before any RPC', async () => {
+        const result = await withdrawSubmission(COURSE, null)
+        expect(result).toEqual({ success: false, error: 'Odśwież stronę przed wycofaniem zgłoszenia.' })
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_withdraw_submission', expect.anything())
+    })
+    it('rejects a consultant without a trainer grant', async () => {
+        setup({ tables: { academy_user_capabilities: [] } })
+        expect((await withdrawSubmission(COURSE, SUBMISSION)).success).toBe(false)
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_withdraw_submission', expect.anything())
+    })
+    it('passes the submission token to the database', async () => {
+        setup({ rpcs: { academy_withdraw_submission: () => DRAFT } })
+        expect(await withdrawSubmission(COURSE, SUBMISSION)).toEqual({ success: true, data: undefined })
+        expect(client.rpc).toHaveBeenCalledWith('academy_withdraw_submission', { p_course_id: COURSE, p_submission_id: SUBMISSION })
+        expect(revalidatePath).toHaveBeenCalledWith('/admin/learning', 'layout')
+    })
+    it('explains a decision that won the race', async () => {
+        setup({ rpcs: { academy_withdraw_submission: fail('review_submission_changed') } })
+        expect(await withdrawSubmission(COURSE, SUBMISSION)).toEqual({ success: false, error: expect.stringContaining('Zgłoszenie zostało zmienione') })
     })
 })
