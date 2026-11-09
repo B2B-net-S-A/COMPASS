@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchDisplayNames } from '@/lib/people/display-names'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { withCourseVersion, type CourseVersion } from '@/lib/academy/course-data'
 import { z } from 'zod'
@@ -288,15 +289,7 @@ export async function getRecommendedCourses(): Promise<ActionResult<{ items: Rec
         if (courses.length === 0) return { success: true, data: { items: [], basedOnGaps: missingSkills.size > 0 } }
 
         // Pobierz autorów (do CourseListItem)
-        const authorIds = Array.from(new Set(courses.map((c) => c.author_id)))
-        const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url')
-            .in('id', authorIds)
-        const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
-        for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>) {
-            authorMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url })
-        }
+        const authorMap = await fetchDisplayNames(supabase, courses.map((c) => c.author_id))
 
         // Wyklucz kursy w które user już jest zapisany (nie polecaj tego, co już ma)
         const { data: enrolls } = await supabase
