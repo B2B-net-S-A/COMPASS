@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { ActionResult } from '@/lib/types/learning'
 import { logger } from '@/lib/logger'
 import { isAcademyRole } from '@/lib/types/role'
+import { isAcademyOnlyUser } from '@/lib/auth/academy-only'
 import { academyActionError, academyDatabaseError } from './errors'
 
 export interface AcademyAccess {
@@ -35,10 +36,12 @@ export async function requireAcademyContext(options: { trainer?: boolean; admin?
     const { data: rollout, error: rolloutError } = await client.rpc('academy_rollout_access')
     if (rolloutError) throw new Error('Nie udało się sprawdzić dostępności Akademii. Spróbuj ponownie.')
     if (rollout?.allowed !== true) throw new Error('Akademia nie jest jeszcze dostępna dla Twojego konta. Dostęp do pilota nadaje administrator.')
-    const isAdmin = profile.role === 'admin'
-    const canManageAcademy = isAdmin || profile.role === 'talent_community'
+    // Konto nauki jest tylko uczestnikiem, nawet gdyby jego wiersz profilu mówił co innego.
+    const learnerOnly = isAcademyOnlyUser(user)
+    const isAdmin = !learnerOnly && profile.role === 'admin'
+    const canManageAcademy = isAdmin || (!learnerOnly && profile.role === 'talent_community')
     let canTeach = canManageAcademy
-    if (!canManageAcademy) {
+    if (!canManageAcademy && !learnerOnly) {
         const { data: grant, error: grantError } = await client.from('academy_user_capabilities')
             .select('can_train, revoked_at').eq('user_id', user.id).maybeSingle()
         if (grantError) throw new Error('Nie udało się sprawdzić uprawnień Akademii. Spróbuj ponownie.')

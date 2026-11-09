@@ -12,6 +12,7 @@ import {
     profileUpdateInputSchema,
     updateUserBioInputSchema,
 } from '@/lib/validators/profile'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // Phase 1.0 (2026-05-04): extracted from legacy lib/actions/matching.ts.
 // Drops candidate-syncing logic (candidates table is archived to compass_legacy).
@@ -43,6 +44,7 @@ export interface ProfileUpdateData {
 }
 
 export async function updateUserBio(bio: string) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
@@ -64,6 +66,7 @@ export async function updateUserBio(bio: string) {
 export async function updateProfileFull(
     data: ProfileUpdateData,
 ): Promise<{ success: true; warning?: string } | { success: false; error: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -123,6 +126,7 @@ export async function updateProfileFull(
 }
 
 export async function deleteMyProfile() {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
@@ -137,6 +141,7 @@ export async function deleteMyProfile() {
 }
 
 export async function getMyProfile() {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
@@ -150,6 +155,7 @@ export async function getMyProfile() {
 }
 
 export async function getConsultantProfile360(consultantId: string) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false as const, error: 'Nie jesteś zalogowany' }
@@ -183,6 +189,7 @@ export async function getConsultantProfile360(consultantId: string) {
 }
 
 export async function completeOnboarding() {
+    await assertNotAcademyOnly()
     const { cookies } = await import('next/headers')
     cookies().set('onboarding_done', 'true', {
         httpOnly: true,

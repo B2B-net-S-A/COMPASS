@@ -27,6 +27,7 @@ import {
 import { excludeExited } from '@/lib/hr/employment-window'
 import { format } from 'date-fns'
 import { assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // Phase 27g — roles that keep a timesheet (HR zone). Consultants (IT) do not.
 const TIMESHEET_HR_ROLES = ['admin', 'internal', 'manager', 'finanse', 'talent_community'] as const
@@ -1580,6 +1581,7 @@ export async function loadTimesheetHistoryFor(
     userId: string,
     monthsBack: number,
 ): Promise<TimesheetHistoryRow[]> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const now = new Date()
     const startYear = now.getFullYear()

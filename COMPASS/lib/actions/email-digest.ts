@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 interface DigestItem {
     type: string
@@ -20,6 +21,7 @@ export async function generateDailyDigest(): Promise<{
     digest?: DigestItem[]
     error?: string
 }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -54,6 +56,7 @@ export async function generateDailyDigest(): Promise<{
 // Security: userId parameter REMOVED — same IDOR concern as generateDailyDigest.
 // The HTML now reflects strictly the calling user's notifications.
 export async function getDigestHtml(): Promise<string> {
+    await assertNotAcademyOnly()
     const result = await generateDailyDigest()
     if (!result.success || !result.digest?.length) {
         return ''

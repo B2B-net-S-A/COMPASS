@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger'
 // ── Tier config — imported from shared module (NOT re-exported) ──
 // Phase 1.2 (2026-05-04): renamed loyalty-config → league-config (7 tiers).
 import { TIER_CONFIG, DEFAULT_TIER, getTier, computeTierProgress, TIER_DISTRIBUTION_KEYS, type TierName } from '@/lib/league-config'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // ─── Phase 1.2 (2026-05-04): Pending points + League overview ────────────────
 
@@ -29,6 +30,7 @@ export interface LoyaltyOverview {
  * (status='pending' in loyalty_transactions, added by migration 4).
  */
 export async function getLoyaltyOverview(targetUserId?: string): Promise<{ success: true; data: LoyaltyOverview } | { success: false; error: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -109,6 +111,7 @@ export interface LeaderboardEntryRow {
  * Phase 2 MVP: jedyne wymiary to "all-time"; tygodniowe/miesięczne w Phase 6+ jeśli potrzeba.
  */
 export async function getLeaderboard(limit = 50): Promise<{ success: true; data: LeaderboardEntryRow[] } | { success: false; error: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -164,6 +167,7 @@ export interface LoyaltyHistoryEntry {
 export async function getLoyaltyHistoryV2(
     options: { status?: LoyaltyTxStatus; offset?: number; limit?: number } = {},
 ): Promise<{ success: true; data: { items: LoyaltyHistoryEntry[]; total: number } } | { success: false; error: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -208,6 +212,7 @@ export async function getLoyaltyHistoryV2(
  * Toggle leaderboard visibility for current user.
  */
 export async function setLeaderboardOptOut(optOut: boolean): Promise<{ success: boolean; error?: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()

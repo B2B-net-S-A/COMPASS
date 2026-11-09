@@ -8,6 +8,7 @@ import { loadAcademyCourse } from '@/lib/academy/course-data'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import type { ActionResult } from '@/lib/types/learning'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // ============================================================
 // A2.5 — Post-Course Survey server actions
@@ -60,6 +61,7 @@ export async function submitCourseSurvey(
 export async function getCourseSurveyAggregate(
     courseId: string,
 ): Promise<ActionResult<CourseSurveyAggregate>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: responses, error } = await supabase
