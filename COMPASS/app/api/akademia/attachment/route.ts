@@ -45,4 +45,4 @@ export const GET = withAuth(async request => {
     const headers = { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' }
     if (request.nextUrl.searchParams.get('format') === 'json') return NextResponse.json({ url: signed.signedUrl, expiresIn: 300 }, { headers })
     return new Response(null, { status: 303, headers: { ...headers, Location: signed.signedUrl } })
-}, { role: [...ACADEMY_ROLES] })
+}, { role: [...ACADEMY_ROLES], allowAcademyOnly: true })

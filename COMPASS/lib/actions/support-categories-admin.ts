@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireSuperAdmin } from '@/lib/auth/require-super-admin'
 import { logCompat } from '@/lib/logger'
 import type { CategoryInput, SupportActionResult, SupportCategory } from '@/lib/types/support'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 function sanitizeSlug(raw: string): string {
     return raw
@@ -23,6 +24,7 @@ function validateInput(input: CategoryInput): string | null {
 }
 
 export async function createCategory(input: CategoryInput): Promise<SupportActionResult<SupportCategory>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase } = await requireSuperAdmin()
         const err = validateInput(input)
@@ -60,6 +62,7 @@ export async function createCategory(input: CategoryInput): Promise<SupportActio
 }
 
 export async function updateCategory(id: string, patch: Partial<CategoryInput>): Promise<SupportActionResult<SupportCategory>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase } = await requireSuperAdmin()
 
@@ -96,6 +99,7 @@ export async function updateCategory(id: string, patch: Partial<CategoryInput>):
 }
 
 export async function deleteCategory(id: string): Promise<SupportActionResult<{ softDeleted: boolean }>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase } = await requireSuperAdmin()
 
@@ -131,6 +135,7 @@ export async function deleteCategory(id: string): Promise<SupportActionResult<{ 
 }
 
 export async function reorderCategories(orderedIds: string[]): Promise<SupportActionResult<true>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase } = await requireSuperAdmin()
         if (!Array.isArray(orderedIds) || orderedIds.length === 0) return { success: false, error: 'Pusta lista' }
@@ -156,6 +161,7 @@ export async function reorderCategories(orderedIds: string[]): Promise<SupportAc
 }
 
 export async function listCategoriesForAdmin(): Promise<SupportActionResult<SupportCategory[]>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase } = await requireSuperAdmin()
         const { data, error } = await supabase

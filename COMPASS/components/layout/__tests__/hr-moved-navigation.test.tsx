@@ -90,6 +90,26 @@ describe('Akademia w menu ról biurowych', () => {
     })
 })
 
+describe('menu konta nauki', () => {
+    it('Sidebar pokazuje wyłącznie Akademię', () => {
+        render(<Sidebar role="consultant" user={null} academyOnly />)
+        const links = screen.getAllByRole('link').filter(link => link.getAttribute('href') !== '/')
+        expect(links.map(link => link.getAttribute('href'))).toEqual(['/learning'])
+    })
+
+    it('MobileMenu nie prowadzi poza Akademię i powiadomienia', () => {
+        render(<MobileMenu role="consultant" user={null} academyOnly landingHref="/learning" />)
+        fireEvent.click(screen.getByTestId('mobile-nav-more'))
+        const hrefs = screen.getAllByRole('link', { hidden: true }).map(link => link.getAttribute('href'))
+        expect(new Set(hrefs)).toEqual(new Set(['/learning', '/notifications']))
+    })
+
+    it('zwykły konsultant ma pełne menu', () => {
+        render(<Sidebar role="consultant" user={null} academyEnabled />)
+        expect(screen.getByRole('link', { name: /nav_home/ })).toBeInTheDocument()
+    })
+})
+
 describe('MovedToNexusBanner', () => {
     it('mówi, gdzie moduł działa teraz, i linkuje do jego ekranu w NEXUSIE', () => {
         vi.stubEnv('HR_MOVED_TO_NEXUS', 'leave')

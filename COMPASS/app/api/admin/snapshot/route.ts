@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { isSuperAdmin } from '@/lib/auth/super-admins'
+import { isAcademyOnlyUser } from '@/lib/auth/academy-only'
 import { computeKpiSnapshot } from '@/lib/admin/snapshot-metrics'
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
@@ -44,7 +45,7 @@ export async function GET(req: Request): Promise<Response> {
     } else {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
-        if (user && isSuperAdmin(user.email)) {
+        if (user && isSuperAdmin(user.email) && !isAcademyOnlyUser(user)) {
             authMode = 'jwt'
         }
     }

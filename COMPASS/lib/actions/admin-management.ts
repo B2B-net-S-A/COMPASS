@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getSuperAdmins, isSuperAdmin } from '@/lib/auth/super-admins'
 import { parseOrThrow } from '@/lib/validators/common'
 import { addAdminMemberInputSchema, removeAdminMemberInputSchema } from '@/lib/validators/admin'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ async function requireSuperAdmin() {
 // ─── CRUD Operations ─────────────────────────────────────────────────────────
 
 export async function getAdminMembers(): Promise<AdminMember[]> {
+    await assertNotAcademyOnly()
     const { supabase } = await requireSuperAdmin()
 
     const { data: adminList, error } = await supabase
@@ -79,6 +81,7 @@ export async function getAdminMembers(): Promise<AdminMember[]> {
 }
 
 export async function addAdminMember(email: string) {
+    await assertNotAcademyOnly()
     const { supabase, user } = await requireSuperAdmin()
 
     // Zod walidacja: format email + domain @b2bnetwork.pl (Phase 18.4).
@@ -119,6 +122,7 @@ export async function addAdminMember(email: string) {
 }
 
 export async function removeAdminMember(id: string) {
+    await assertNotAcademyOnly()
     const { supabase } = await requireSuperAdmin()
 
     // Zod walidacja: id musi być UUID (Phase 18.4).
@@ -160,6 +164,7 @@ export async function removeAdminMember(id: string) {
 // ─── Check if current user is Super Admin ────────────────────────────────────
 
 export async function checkIsSuperAdmin(): Promise<boolean> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return false
@@ -169,6 +174,7 @@ export async function checkIsSuperAdmin(): Promise<boolean> {
 // ─── List super admin emails (server-only; caller must already be super admin) ───
 
 export async function listSuperAdmins(): Promise<readonly string[]> {
+    await assertNotAcademyOnly()
     await requireSuperAdmin()
     return getSuperAdmins()
 }
