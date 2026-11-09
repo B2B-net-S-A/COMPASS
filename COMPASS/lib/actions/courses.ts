@@ -5,6 +5,7 @@ import { courseMetadataSchema, loadAcademyCourse, withCourseVersion, type Course
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logger } from '@/lib/logger'
+import { fetchDisplayNames } from '@/lib/people/display-names'
 import {
     QUIZ_MIN_QUESTIONS,
     QUIZ_MAX_QUESTIONS,
@@ -150,18 +151,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
 
         const courses = (data ?? []) as Course[]
 
-        // Pull author profiles in a separate query (no Supabase embed → mockable)
-        const authorIds = Array.from(new Set(courses.map((c) => c.author_id)))
-        const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
-        if (authorIds.length > 0) {
-            const { data: profiles } = await supabase
-                .from('profiles')
-                .select('id, full_name, avatar_url')
-                .in('id', authorIds)
-            for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>) {
-                authorMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url })
-            }
-        }
+        const authorMap = await fetchDisplayNames(supabase, courses.map((c) => c.author_id))
 
         const items: CourseListItem[] = courses.map((c) => ({
             ...c,
@@ -186,11 +176,11 @@ export async function getCourseDetail(slugOrId: string, options: { author?: bool
     return academyAction('course.detail', async () => {
         const { client, access } = await requireAcademyContext()
         const { course, enrollment } = await loadAcademyCourse(client, access.userId, slugOrId, options)
-        const [{ data: author, error: authorError }, { data: rating, error: ratingError }] = await Promise.all([
-            client.from('profiles').select('full_name,avatar_url').eq('id', course.author_id).maybeSingle(),
+        const [authorNames, { data: rating, error: ratingError }] = await Promise.all([
+            fetchDisplayNames(client, [course.author_id]),
             client.from('course_ratings').select('rating,comment').eq('course_id', course.id).eq('user_id', access.userId).maybeSingle(),
         ])
-        assertDatabaseResult(authorError)
+        const author = authorNames.get(course.author_id) ?? null
         assertDatabaseResult(ratingError)
         const { data: canManage, error: accessError } = await client.rpc('academy_can_preview_version', { p_version_id: course.version_id })
         assertDatabaseResult(accessError)

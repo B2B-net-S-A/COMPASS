@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { sendEmail } from '@/lib/email/sender'
 import { logger } from '@/lib/logger'
 import { isMissingDatabaseObject } from './migration-contract'
+import { isAcademySwitchOn } from './switches'
 
 // Bramka wyjścia Akademii (B0.2): jedyna droga poczty. Wiadomość powstaje jako wiersz
 // `held` w academy_outbox i nie dotyka Graph. Przełącznik ACADEMY_MAIL_ENABLED jest
@@ -53,7 +54,7 @@ const inputSchema = z.object({
 })
 
 function isMailEnabled(env: NodeJS.ProcessEnv): boolean {
-    return env.ACADEMY_MAIL_ENABLED === 'true'
+    return isAcademySwitchOn('ACADEMY_MAIL_ENABLED', env)
 }
 
 function testRecipients(env: NodeJS.ProcessEnv): ReadonlySet<string> {
