@@ -1,8 +1,7 @@
 # Akademia: czeka na właściciela
 
-Rzeczy, których nie da się domknąć bez człowieka. Automat dopisuje, właściciel odhacza.
+Rzeczy, których sesje budujące nie domkną bez człowieka: próby na produkcji, scenariusze przez SSO, zastosowanie migracji. Każdy tor dopisuje swoje pozycje pod własnym zadaniem.
 
-## B2: testy wiedzy
+## B0.12 Kontrakt migracji
 
-- [ ] **B2.12 Próba generalna 2 (test na prawdziwej treści).** TCM buduje pulę około 30 pytań do Cybersecurity lub DORA, właściciel recenzuje, konta próbne i osoby z redakcji spoza autorów zdają losowane zestawy na telefonie, jedno pytanie zostaje unieważnione. Tester spoza budowy opisuje, co było niejasne. Wymaga ludzi i prawdziwej treści; pozostaje do wykonania po zastosowaniu migracji B2 z `docs/academy/migracje-do-zastosowania.md`.
-- [ ] **Zastosowanie migracji B2** z `docs/academy/migracje-do-zastosowania.md`, po kolei, w oknie dziennym.
+- Ustalić stałą porę okna dziennego na stosowanie migracji i wpisać ją w `docs/academy/migracje-do-zastosowania.md`, punkt 1 rytmu.

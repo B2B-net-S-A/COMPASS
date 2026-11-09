@@ -223,6 +223,8 @@ GRANT EXECUTE ON FUNCTION public.academy_set_quiz_attempt_policy(uuid,integer,in
 DROP FUNCTION public.get_quiz_for_attempt(uuid);
 DROP FUNCTION public.submit_quiz_attempt(uuid,jsonb);
 
+NOTIFY pgrst,'reload schema';
+
 DO $$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='course_quiz_questions' AND column_name='topic_tag')
@@ -240,5 +242,4 @@ BEGIN
     END IF;
 END $$;
 
-NOTIFY pgrst,'reload schema';
 COMMIT;
