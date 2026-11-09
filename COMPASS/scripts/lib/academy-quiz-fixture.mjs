@@ -2,7 +2,7 @@
 import { createAcademyDatabase } from './academy-db-fixture.mjs';
 
 const chain = ['academy_quiz_attempt_window', 'academy_tcm_full_editor', 'academy_quiz_pool', 'academy_quiz_attempt_session', 'academy_question_void', 'academy_assessment_mode',
-    'academy_pre_test_summary', 'academy_participation_documents', 'academy_question_analysis', 'academy_question_drafts'];
+    'academy_pre_test_summary', 'academy_participation_documents', 'academy_question_analysis', 'academy_question_drafts', 'academy_question_drafts_key'];
 
 /** `through` to ostatnia migracja B2 w łańcuchu (sufiks pliku). */
 export async function createQuizDatabase({ through = 'academy_quiz_pool', ...options } = {}) {
