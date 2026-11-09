@@ -14,6 +14,7 @@ const certificateSnapshotSchema = z.object({
     completed_at: z.string().refine(value => Number.isFinite(Date.parse(value))),
     certificate_hash: z.string().min(16),
     version_number: z.number().int().positive(),
+    valid_until: z.string().nullable().optional(),
 })
 
 /** Only persisted completion evidence may issue a certificate; this GET never writes. */
@@ -25,7 +26,8 @@ export const GET = withAuth(async (request, { user }) => {
     }
     const client = academyClient()
     let query = client.from('course_enrollments').select('id').eq('user_id', user.id).eq('course_id', courseId!)
-    query = requestedEnrollment ? query.eq('id', requestedEnrollment) : query.is('run_id', null)
+    // Zapis samodzielny może mieć kilka cykli recertyfikacji: bez wskazania bierzemy najnowszy.
+    query = requestedEnrollment ? query.eq('id', requestedEnrollment) : query.is('run_id', null).order('enrolled_at', { ascending: false }).limit(1)
     const { data: enrollment, error: enrollmentError } = await query.maybeSingle()
     if (enrollmentError || !enrollment) return new Response('Zapis jest niedostępny.', { status: 404 })
     const { data: completion, error } = await client.from('course_completions')
@@ -45,6 +47,7 @@ export const GET = withAuth(async (request, { user }) => {
         completedAt: snapshot.completed_at,
         certificateHash: snapshot.certificate_hash,
         versionNumber: snapshot.version_number,
+        validUntil: snapshot.valid_until,
         verificationUrl: completion.id ? `${request.nextUrl.origin}/learning/certyfikaty/${completion.id}` : undefined,
     })
     return new Response(Buffer.from(pdfBytes), { headers: {

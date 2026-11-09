@@ -69,6 +69,8 @@ beforeEach(() => {
             select: (columns: string) => { read.columns = columns; return query },
             eq: (column: string, value: unknown) => { read.filters.push(['eq', column, value]); return query },
             is: (column: string, value: unknown) => { read.filters.push(['is', column, value]); return query },
+            order: () => query,
+            limit: () => query,
             maybeSingle: async () => {
                 const next = queued[table]?.shift()
                 if (!next) throw new Error(`Unexpected database read: ${table}`)
