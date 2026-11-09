@@ -2,6 +2,15 @@ import type { AcademyRunDTO } from '@/lib/types/academy-sessions'
 
 export interface CatalogNextRun { runId: string; title: string; startsAt: string; timeZone: string; full: boolean }
 
+/** The earliest upcoming edition among the visible courses, for the block above the list. */
+export function nearestCatalogRun(nextRuns: Record<string, CatalogNextRun>): { courseId: string; run: CatalogNextRun } | null {
+    let nearest: { courseId: string; run: CatalogNextRun } | null = null
+    for (const [courseId, run] of Object.entries(nextRuns)) {
+        if (!nearest || Date.parse(run.startsAt) < Date.parse(nearest.run.startsAt)) nearest = { courseId, run }
+    }
+    return nearest
+}
+
 export function getCatalogNextRuns(runs: AcademyRunDTO[], now: string): Record<string, CatalogNextRun> {
     const result: Record<string, CatalogNextRun> = {}
     for (const run of runs) {

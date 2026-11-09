@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from '@/components/ui/textarea'
 import { MaterialUploader } from './MaterialUploader'
 import { AcademyVideo } from './AcademyVideo'
+import { VideoChaptersEditor } from './VideoChaptersEditor'
 import { useAcademyAction } from './useAcademyAction'
 import { assignAcademyRunCaption, listAcademyRunMaterials, reviewAcademyRunMaterial } from '@/lib/actions/academy-materials'
 import type { AcademyRunMaterial } from '@/lib/types/academy-materials'
@@ -71,7 +72,7 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAca
 
     const publishedVideos = items.filter(file => file.status === 'ready' && file.review_status === 'published' && file.mime_type === 'video/mp4')
 
-    return <section aria-labelledby={'run-materials-' + runId} className="space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
+    return <section id="materialy" aria-labelledby={'run-materials-' + runId} className="scroll-mt-6 space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
             <div><h2 id={'run-materials-' + runId} className="text-lg font-semibold">Materiały po szkoleniu</h2><p className="mt-1 text-sm text-muted-foreground">Nagrania i pliki dla tej edycji. Nie zmieniają programu ani warunków zaliczenia.</p></div>
             <Button variant="ghost" size="sm" disabled={pending} onClick={() => void refresh()}><RefreshCw className="size-4" aria-hidden="true" />Odśwież</Button>
@@ -85,6 +86,7 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAca
             </div>
             {['audio/mpeg', 'audio/mp4'].includes(item.mime_type) && <AcademyVideo runId={runId} video={asAttachment(item)} audio />}
             {item.mime_type === 'video/mp4' && <AcademyVideo runId={runId} video={asAttachment(item)} captions={item.review_status === 'published' ? linkedCaption(items, item.id) : undefined} />}
+            {canManage && !readOnly && item.mime_type === 'video/mp4' && <VideoChaptersEditor assetId={item.id} />}
             {(isAdmin || canManageAcademy) && !readOnly && item.mime_type === 'text/vtt' && item.review_status === 'published' && <div className="flex flex-col gap-1 sm:max-w-sm">
                 <label htmlFor={`caption-target-${item.id}`} className="text-sm font-medium">Nagranie dla napisów</label>
                 <select id={`caption-target-${item.id}`} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" disabled={pending}

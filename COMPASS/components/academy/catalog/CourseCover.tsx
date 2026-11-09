@@ -3,15 +3,16 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { BookOpen, Layers, Video } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import type { CatalogDeliveryMode } from './catalog-filters'
 
-export function CourseCover({ url, mode }: { url: string | null; mode: CatalogDeliveryMode }) {
+export function CourseCover({ url, mode, className }: { url: string | null; mode: CatalogDeliveryMode; className?: string }) {
     const [failedUrl, setFailedUrl] = useState<string | null>(null)
     const safeUrl = url && (/^https:\/\//i.test(url) || (url.startsWith('/') && !url.startsWith('//'))) ? url : null
     const Icon = mode === 'live' ? Video : mode === 'blended' ? Layers : BookOpen
 
     return (
-        <div className="relative h-40 overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-muted to-background">
+        <div className={cn('relative h-40 overflow-hidden border-b border-border bg-gradient-to-br from-primary/10 via-muted to-background', className)}>
             <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
                 <span className="absolute -right-4 -top-12 size-48 rounded-full border border-primary/10" />
                 <span className="absolute -bottom-20 -left-8 size-56 rounded-full border border-primary/10" />

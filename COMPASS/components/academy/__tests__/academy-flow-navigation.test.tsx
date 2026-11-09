@@ -94,6 +94,27 @@ it.each([
     else expect(screen.queryByRole('link', { name: 'Akademia' })).not.toBeInTheDocument()
 })
 
+it('offers only closed and pilot modes', () => {
+    render(<AcademyRolloutPanel initial={{ mode: 'closed', participants: [] }} />)
+    expect(screen.getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['closed', 'pilot'])
+})
+
+it('shows a stored open mode as an alert and defaults the form to closed', () => {
+    render(<AcademyRolloutPanel initial={{ mode: 'open', participants: [] }} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Baza zgłasza tryb otwarty')
+    expect(screen.getByLabelText('Tryb dostępu')).toHaveValue('closed')
+})
+
+it('blocks adding a pilot account beyond the limit of 20', async () => {
+    const participants = Array.from({ length: 20 }, (_, index) => ({ id: `user-${index}`, fullName: `Osoba ${index}`, email: `osoba${index}@example.test` }))
+    vi.mocked(listAcademyTrainers).mockResolvedValue({ success: true, data: [{ id: 'nowa', full_name: 'Nowa Osoba', email: 'nowa@example.test', role: 'consultant', canTeach: false, grantedAt: null }] })
+    render(<AcademyRolloutPanel initial={{ mode: 'pilot', participants }} />)
+    expect(screen.getByText('Konta pilota (20/20)')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Znajdź konto do pilota'), { target: { value: 'Nowa' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Szukaj do pilota' }))
+    expect(await screen.findByRole('button', { name: 'Dodaj do pilota' })).toBeDisabled()
+})
+
 it('requires a participant before saving pilot mode', () => {
     render(<AcademyRolloutPanel initial={{ mode: 'closed', participants: [] }} />)
     fireEvent.change(screen.getByLabelText('Tryb dostępu'), { target: { value: 'pilot' } })
