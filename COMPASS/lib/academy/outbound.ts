@@ -57,7 +57,7 @@ function isMailEnabled(env: NodeJS.ProcessEnv): boolean {
     return isAcademySwitchOn('ACADEMY_MAIL_ENABLED', env)
 }
 
-function testRecipients(env: NodeJS.ProcessEnv): ReadonlySet<string> {
+export function testRecipients(env: NodeJS.ProcessEnv): ReadonlySet<string> {
     return new Set((env.ACADEMY_MAIL_TEST_RECIPIENTS ?? '').split(/[\s,;]+/)
         .map(entry => entry.replace(/^["']+|["']+$/g, '').toLowerCase()).filter(Boolean))
 }

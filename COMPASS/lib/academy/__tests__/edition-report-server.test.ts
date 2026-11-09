@@ -13,9 +13,10 @@ const missing = (code = '42703'): Response => ({ data: null, error: { code, mess
 const denied: Response = { data: null, error: { code: '42501', message: 'permission denied' } }
 
 /** Fake PostgREST: answers by table and selected columns, thenable at any chain step. */
-function fakeClient(answer: (table: string, columns: string) => Response) {
+function fakeClient(answer: (table: string, columns: string) => Response, rpc: (name: string) => Response = () => missing('PGRST202')) {
     const seen: Array<{ table: string; columns: string }> = []
     const client = {
+        rpc: (name: string) => Promise.resolve(rpc(name)),
         from(table: string) {
             let columns = ''
             const chain: Record<string, unknown> = {
@@ -33,7 +34,7 @@ const run = { id: 'run', courseId: 'course', versionId: 'version' } as AcademyRu
 const participants = [{ status: 'confirmed', enrollmentId: 'e1' }, { status: 'waitlisted', enrollmentId: 'e2' }] as AcademyRunParticipantDTO[]
 
 function preMigrationAnswers(table: string, columns: string): Response {
-    if (columns === 'kind' || columns === 'voided_at' || columns.includes('reports_start_at') || columns.includes('is_rehearsal')) return missing()
+    if (columns === 'kind' || columns === 'voided_at' || columns.includes('is_rehearsal')) return missing()
     if (table === 'academy_participation_documents') return missing('42P01')
     if (table === 'course_versions') return ok({ completion_rules: { quiz_required: true, quiz_pass_percent: '70' } })
     if (table === 'course_quiz_questions') return ok([{ id: 'q1', order_index: 0, question_text: 'Pytanie' }])
@@ -46,26 +47,29 @@ describe('loadEditionReportEvidence', () => {
     it('works on a database without the later migrations and does not ask for their columns', async () => {
         const { client, seen } = fakeClient(preMigrationAnswers)
         const evidence = await loadEditionReportEvidence(client, run, participants)
-        expect(evidence).toMatchObject({ quizRequired: true, passPercent: 70, preTestTracked: false, voidingTracked: false, participationDocuments: null, reportsStartAt: null, rehearsalCourse: false })
+        expect(evidence).toMatchObject({ quizRequired: true, passPercent: 70, gain: null, keyHolderEnrollments: [], voidingTracked: false, participationDocuments: null, reportsStartAt: null, rehearsalCourse: false })
         expect(seen.find(q => q.table === 'course_quiz_attempts' && q.columns.includes('score_percent'))?.columns).not.toContain('kind')
         expect(seen.find(q => q.table === 'course_quiz_questions' && q.columns.includes('order_index'))?.columns).not.toContain('voided_at')
     })
 
     it('treats the PostgREST schema-cache codes as not migrated', async () => {
         const { client } = fakeClient((table, columns) => columns === 'kind' ? missing('PGRST204') : table === 'academy_participation_documents' ? missing('PGRST205') : preMigrationAnswers(table, columns))
-        await expect(loadEditionReportEvidence(client, run, participants)).resolves.toMatchObject({ preTestTracked: false, participationDocuments: null })
+        await expect(loadEditionReportEvidence(client, run, participants)).resolves.toMatchObject({ gain: null, participationDocuments: null })
     })
 
     it('reads the new columns once they exist', async () => {
         const { client, seen } = fakeClient((table, columns) => {
             if (columns === 'kind' || columns === 'voided_at') return ok([])
-            if (columns.includes('reports_start_at')) return ok({ reports_start_at: '2027-03-16T00:00:00Z' })
             if (columns.includes('is_rehearsal')) return ok({ is_rehearsal: true })
             if (table === 'academy_participation_documents') return ok([{ id: 'd1' }, { id: 'd2' }])
             return preMigrationAnswers(table, columns)
-        })
-        await expect(loadEditionReportEvidence(client, run, participants)).resolves.toMatchObject({ preTestTracked: true, voidingTracked: true, participationDocuments: 2, reportsStartAt: '2027-03-16T00:00:00Z', rehearsalCourse: true })
-        expect(seen.find(q => q.table === 'course_quiz_attempts' && q.columns.includes('score_percent'))?.columns).toContain('kind')
+        }, name => name === 'academy_reports_start_at' ? ok('2027-03-16T00:00:00Z')
+            : name === 'academy_run_quiz_gain' ? ok({ participants: 1, average_pre: 40, average_final: 80, average_gain: 40 })
+            : ok(['e1']))
+        await expect(loadEditionReportEvidence(client, run, participants)).resolves.toMatchObject({ gain: { participants: 1, average_gain: 40 }, keyHolderEnrollments: ['e1'], voidingTracked: true, participationDocuments: 2, reportsStartAt: '2027-03-16T00:00:00Z', rehearsalCourse: true })
+        const attemptColumns = seen.find(q => q.table === 'course_quiz_attempts' && q.columns.includes('score_percent'))?.columns
+        expect(attemptColumns).toContain('kind')
+        expect(attemptColumns).toContain('status')
         expect(seen.find(q => q.table === 'course_quiz_questions' && q.columns.includes('order_index'))?.columns).toContain('voided_at')
     })
 
@@ -84,8 +88,13 @@ describe('loadEditionReportEvidence', () => {
         await expect(loadEditionReportEvidence(client, run, participants)).rejects.toThrow('pytań testu')
     })
 
-    it('degrades the rehearsal date when RLS hides the settings from TCM', async () => {
-        const { client } = fakeClient((table, columns) => columns.includes('reports_start_at') ? denied : preMigrationAnswers(table, columns))
+    it('degrades the rehearsal date when the read fails', async () => {
+        const { client } = fakeClient(preMigrationAnswers, name => name === 'academy_reports_start_at' ? denied : missing('PGRST202'))
         await expect(loadEditionReportEvidence(client, run, participants)).resolves.toMatchObject({ reportsStartAt: null })
+    })
+
+    it.each(['academy_run_quiz_gain', 'academy_run_key_holder_enrollments'])('does not report results when %s is denied, because the population would be wrong', async name => {
+        const { client } = fakeClient(preMigrationAnswers, called => called === name ? denied : missing('PGRST202'))
+        await expect(loadEditionReportEvidence(client, run, participants)).rejects.toThrow()
     })
 })
