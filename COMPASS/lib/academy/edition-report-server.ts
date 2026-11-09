@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger'
 import { requireRows, selectInChunks } from '@/lib/supabase/select-in-chunks'
 import { isMissingDatabaseObject } from './migration-contract'
 import type { AcademyRunDTO, AcademyRunParticipantDTO } from '@/lib/types/academy-sessions'
-import type { EditionAttemptEvidence, EditionOptionEvidence, EditionQuestionEvidence, EditionReportEvidence } from './edition-report'
+import type { EditionAttemptEvidence, EditionOptionEvidence, EditionQuestionEvidence, EditionQuizGain, EditionReportEvidence } from './edition-report'
 
 type QueryError = { code?: string; message: string } | null
 type QueryResult<T> = { data: T | null; error: QueryError }
@@ -20,14 +20,29 @@ async function isMigrated(query: PromiseLike<QueryResult<unknown>>): Promise<boo
 }
 
 /** DEKORACJA: the "rehearsal" label must degrade to rehearsal instead of hiding
- * the report. Absent date, absent column and denied RLS all mean the same here. */
+ * the report. Absent date, absent function and a denied read all mean the same here. */
 async function readReportsStart(client: SupabaseClient): Promise<string | null> {
-    const { data, error } = await client.from('academy_rollout_settings').select('reports_start_at').maybeSingle()
+    const { data, error } = await client.rpc('academy_reports_start_at')
     if (error) {
         if (!isMissingDatabaseObject(error)) logger.warn({ event: 'academy.edition_report.reports_start_unavailable', code: error.code })
         return null
     }
-    return (data as { reports_start_at?: string | null } | null)?.reports_start_at ?? null
+    return (data as string | null) ?? null
+}
+
+async function readGain(client: SupabaseClient, runId: string): Promise<EditionQuizGain | null> {
+    const { data, error } = await client.rpc('academy_run_quiz_gain', { p_run_id: runId })
+    if (isMissingDatabaseObject(error)) return null
+    if (error) throw new Error(`Nie udało się pobrać przyrostu z pre-testu: ${error.message}`)
+    return data as EditionQuizGain
+}
+
+/** Missing RPC means the key rule is not migrated yet, so nobody can be excluded. */
+async function readKeyHolderEnrollments(client: SupabaseClient, runId: string): Promise<string[]> {
+    const { data, error } = await client.rpc('academy_run_key_holder_enrollments', { p_run_id: runId })
+    if (isMissingDatabaseObject(error)) return []
+    if (error) throw new Error(`Nie udało się ustalić osób z dostępem do klucza: ${error.message}`)
+    return (data as string[] | null) ?? []
 }
 
 async function readRehearsalCourse(client: SupabaseClient, courseId: string): Promise<boolean> {
@@ -54,7 +69,7 @@ export async function loadEditionReportEvidence(
 ): Promise<EditionReportEvidence> {
     const enrollmentIds = participants.filter(person => person.status === 'confirmed' && person.enrollmentId).map(person => person.enrollmentId as string)
 
-    const [preTestTracked, voidingTracked, version] = await Promise.all([
+    const [attemptSessions, voidingTracked, version] = await Promise.all([
         isMigrated(client.from('course_quiz_attempts').select('kind').limit(1)),
         isMigrated(client.from('course_quiz_questions').select('voided_at').limit(1)),
         client.from('course_versions').select('completion_rules').eq('id', run.versionId).single(),
@@ -63,9 +78,9 @@ export async function loadEditionReportEvidence(
     const rules = version0.completion_rules ?? {}
     const passPercent = Number(rules.quiz_pass_percent)
 
-    const attemptColumns = `enrollment_id,answers,score_percent,passed,attempted_at${preTestTracked ? ',kind' : ''}`
-    const questionColumns = `id,order_index,question_text${voidingTracked ? ',voided_at' : ''}`
-    const [attempts, questionRows, participationDocuments, reportsStartAt, rehearsalCourse] = await Promise.all([
+    const attemptColumns = `enrollment_id,answers,score_percent,passed,attempted_at${attemptSessions ? ',kind,status' : ''}`
+    const questionColumns = `id,order_index,question_text${voidingTracked ? ',voided_at,void_reason' : ''}`
+    const [attempts, questionRows, participationDocuments, reportsStartAt, rehearsalCourse, gain, keyHolderEnrollments] = await Promise.all([
         selectInChunks<EditionAttemptEvidence>({
             source: 'podejść do testu', column: 'enrollment_id', ids: enrollmentIds,
             query: () => client.from('course_quiz_attempts').select(attemptColumns),
@@ -74,6 +89,8 @@ export async function loadEditionReportEvidence(
         readParticipationDocuments(client, run.id),
         readReportsStart(client),
         readRehearsalCourse(client, run.courseId),
+        readGain(client, run.id),
+        readKeyHolderEnrollments(client, run.id),
     ])
     const questions = requireRows('pytań testu', questionRows as unknown as { data: EditionQuestionEvidence[] | null; error: { message: string } | null })
     const options = await selectInChunks<EditionOptionEvidence>({
@@ -84,6 +101,6 @@ export async function loadEditionReportEvidence(
     return {
         quizRequired: rules.quiz_required === true || rules.quiz_required === 'true',
         passPercent: Number.isFinite(passPercent) ? passPercent : null,
-        attempts, questions, options, preTestTracked, voidingTracked, participationDocuments, reportsStartAt, rehearsalCourse,
+        attempts, questions, options, gain, voidingTracked, keyHolderEnrollments, participationDocuments, reportsStartAt, rehearsalCourse,
     }
 }

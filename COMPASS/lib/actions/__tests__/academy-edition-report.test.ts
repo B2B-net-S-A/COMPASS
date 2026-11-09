@@ -20,7 +20,7 @@ import { exportEditionReportCsv } from '../academy-edition-report'
 const runId = '11111111-1111-4111-8111-111111111111'
 const run = { id: runId, courseId: 'course', versionId: 'version', courseTitle: 'PEGA', title: 'Edycja', confirmedCount: 0, waitlistCount: 0, sessions: [] }
 const survey = { responseCount: 0, overall: null, trainer: null, materials: null, materialsResponseCount: 0, nps: null, difficulty: { too_easy: 0, appropriate: 0, too_hard: 0 }, futureTopics: [] }
-const evidence = { quizRequired: false, passPercent: null, attempts: [], questions: [], options: [], preTestTracked: false, voidingTracked: false, participationDocuments: null, reportsStartAt: null, rehearsalCourse: false }
+const evidence = { quizRequired: false, passPercent: null, attempts: [], questions: [], options: [], gain: null, voidingTracked: false, keyHolderEnrollments: [], participationDocuments: null, reportsStartAt: null, rehearsalCourse: false }
 
 beforeEach(() => {
     vi.clearAllMocks()
