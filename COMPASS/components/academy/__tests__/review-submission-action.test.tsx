@@ -4,7 +4,7 @@ import { AdminReviewActions } from '@/components/learning/AdminReviewActions'
 import { approveCourse, rejectCourse } from '@/lib/actions/courses-admin'
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('@/components/shared/ConfirmDialog', () => ({ useConfirm: () => [async () => true, () => null] }))
-vi.mock('@/lib/actions/courses-admin', () => ({ approveCourse: vi.fn(), rejectCourse: vi.fn(), reviewLegacyCourse: vi.fn() }))
+vi.mock('@/lib/actions/courses-admin', () => ({ approveCourse: vi.fn(), rejectCourse: vi.fn() }))
 beforeEach(() => {
     vi.mocked(approveCourse).mockResolvedValue({ success: false, error: 'Zgłoszenie zmieniło się.' })
     vi.mocked(rejectCourse).mockResolvedValue({ success: false, error: 'Zgłoszenie zmieniło się.' })

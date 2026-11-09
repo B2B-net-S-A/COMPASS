@@ -94,34 +94,12 @@ export async function archiveCourse(courseId: string): Promise<ActionResult<void
     })
 }
 
-/** Historical publication is blocked for new enrollments until independently reviewed. */
-export async function getLegacyReviewQueue(): Promise<ActionResult<Course[]>> {
-    return academyAction('review.legacy_queue', async () => {
-        const { client } = await requireAcademyContext({ admin: true })
-        const { data, error } = await client.from('courses').select('*').eq('legacy_review_required', true).eq('status', 'published').order('published_at')
-        assertDatabaseResult(error)
-        return (data ?? []) as Course[]
-    })
-}
-
 export async function canReviewCourseVersion(versionId: string): Promise<ActionResult<boolean>> {
     return academyAction('review.permission', async () => {
         const { client } = await requireAcademyContext({ admin: true })
         const { data, error } = await client.rpc('academy_can_review_version', { p_version_id: z.uuid().parse(versionId) })
         assertDatabaseResult(error)
         return data === true
-    })
-}
-
-export async function reviewLegacyCourse(courseId: string, versionId: string, approve: boolean, reason?: string): Promise<ActionResult<{ firstPublishBonus: boolean }>> {
-    return academyAction('review.legacy', async () => {
-        const { client } = await requireAcademyContext({ admin: true })
-        const parsed = z.object({ courseId: z.uuid(), versionId: z.uuid(), approve: z.boolean(), reason: z.string().trim().max(3000).optional() }).parse({ courseId, versionId, approve, reason })
-        if (!approve) z.string().min(5).parse(parsed.reason)
-        const { error } = await client.rpc('academy_review_legacy_course', { p_course_id: parsed.courseId, p_version_id: parsed.versionId, p_approve: parsed.approve, p_reason: parsed.reason ?? null })
-        assertDatabaseResult(error)
-        revalidatePath('/learning', 'layout'); revalidatePath('/admin/learning', 'layout')
-        return { firstPublishBonus: false }
     })
 }
 
