@@ -1,11 +1,15 @@
+import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logCompat } from '@/lib/logger'
 import { NextResponse } from 'next/server'
-import { sendCourseInactivityReminder } from '@/lib/email'
+import { holdAcademyMail } from '@/lib/academy/outbound'
+import { buildCourseInactivityEmail } from '@/lib/email'
 import { withCronAuth } from '@/lib/api/with-auth'
 import { withCronHeartbeat } from '@/lib/audit/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
+
+const REMINDER_PERIOD_MS = 7 * 86_400_000
 
 interface InactiveEnrollment {
     id: string; user_id: string; course_id: string; version_id: string; run_id: string | null
@@ -30,7 +34,7 @@ export const GET = withCronAuth(withCronHeartbeat('COURSE_INACTIVITY_RUN', async
         return NextResponse.json({ ok: false, error: 'Nie udało się odczytać zapisów.' }, { status: 500 })
     }
     const enrollments = (data ?? []) as InactiveEnrollment[]
-    if (!enrollments.length) return NextResponse.json({ ok: true, sent: 0, failed: 0, skipped: 0, total_eligible: 0 })
+    if (!enrollments.length) return NextResponse.json({ ok: true, sent: 0, held: 0, duplicate: 0, failed: 0, skipped: 0, total_eligible: 0 })
     const versionIds = [...new Set(enrollments.map(enrollment => enrollment.version_id))]
     const runIds = [...new Set(enrollments.flatMap(enrollment => enrollment.run_id ? [enrollment.run_id] : []))]
     const [courses, versions, lessons, profiles, runs, registrations] = await Promise.all([
@@ -46,7 +50,12 @@ export const GET = withCronAuth(withCronHeartbeat('COURSE_INACTIVITY_RUN', async
         logCompat.error('[course-inactivity] eligibility read failed:', readError)
         return NextResponse.json({ ok: false, error: 'Nie udało się potwierdzić aktywnych zapisów.' }, { status: 500 })
     }
-    let sent = 0, failed = 0, skipped = 0, totalEligible = 0
+    // Przypomnienie powstaje jako wiersz wstrzymany. last_inactivity_email_at zostaje
+    // nietknięte, bo nic nie wyszło; powtórkę tego samego tygodnia zatrzymuje dedupe_key.
+    const batchId = randomUUID()
+    const weekBucket = Math.floor(Date.now() / REMINDER_PERIOD_MS)
+    const expiresAt = new Date(Date.now() + REMINDER_PERIOD_MS).toISOString()
+    let held = 0, duplicate = 0, failed = 0, skipped = 0, totalEligible = 0, queueUnavailable = false
     for (const enrollment of enrollments) {
         const course = courses.data?.find(row => row.id === enrollment.course_id)
         const version = versions.data?.find(row => row.id === enrollment.version_id)
@@ -57,7 +66,7 @@ export const GET = withCronAuth(withCronHeartbeat('COURSE_INACTIVITY_RUN', async
         const completedLessons = [...new Set(enrollment.completed_lessons ?? [])].filter(id => lessonIds.has(id)).length
         if (!completedLessons || !lessonIds.size) { skipped++; continue }
         totalEligible++
-        const result = await sendCourseInactivityReminder(profile.email, profile.full_name ?? profile.email, {
+        const email = buildCourseInactivityEmail(profile.full_name ?? profile.email, {
             courseTitle: version.metadata.title,
             courseSlug: course.slug,
             enrollmentId: enrollment.id,
@@ -67,13 +76,18 @@ export const GET = withCronAuth(withCronHeartbeat('COURSE_INACTIVITY_RUN', async
             lastAccessDaysAgo: Math.floor((Date.now() - Date.parse(enrollment.last_accessed_at)) / 86400000),
             appUrl,
         })
-        if (!result.success) { failed++; continue }
-        sent++
-        const { error: timestampError } = await client.from('course_enrollments').update({ last_inactivity_email_at: new Date().toISOString() }).eq('id', enrollment.id)
-        if (timestampError) {
+        const outcome = await holdAcademyMail(client, {
+            kind: 'course_inactivity', recipient: profile.email, ...email, expiresAt, batchId,
+            dedupeKey: `course_inactivity:${enrollment.id}:${weekBucket}`, runId: enrollment.run_id ?? undefined,
+        })
+        if (outcome.status === 'held') held++
+        else if (outcome.status === 'duplicate') duplicate++
+        else {
             failed++
-            logCompat.error('[course-inactivity] delivery timestamp failed:', timestampError)
+            // Kolejka niedostępna: kolejne próby tylko mnożyłyby zdarzenia w Sentry.
+            if (outcome.reason === 'migration_pending' || outcome.reason === 'write_failed') { queueUnavailable = true; break }
         }
     }
-    return NextResponse.json({ ok: failed === 0, total_eligible: totalEligible, sent, failed, skipped }, { status: failed ? 500 : 200 })
+    const ok = failed === 0 && !queueUnavailable
+    return NextResponse.json({ ok, total_eligible: totalEligible, sent: 0, held, duplicate, failed, skipped }, { status: ok ? 200 : 500 })
 }))
