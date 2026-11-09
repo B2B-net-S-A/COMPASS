@@ -90,6 +90,27 @@ try {
     eq([report.courses, report.completed_users], [2, 1]);
     await actor('student'); await denied('select * from academy_programme_completions()', [], /admin_required/);
 
+    // The report screen shows this next to the competence rows, so it must use the same exclusions:
+    // a trial account and a rehearsal course count in neither.
+    // The learner-account list comes from the sign-up gate migration, which also touches tables outside
+    // this fixture, so only the columns report_excludes reads are created here.
+    await owner();
+    await db.exec('create table if not exists public.academy_learner_accounts(id uuid primary key default gen_random_uuid(), email text not null unique, source text, user_id uuid unique)');
+    for (const file of ['20261109130200_academy_rehearsal_reports_drafts.sql', '20261110133000_academy_b5_4_reports.sql', '20261110164500_academy_programme_completions_report.sql']) await db.exec(migration(file));
+    const programme = async () => { await actor('admin'); const row = (await sql('select courses,completed_users from academy_programme_completions() where programme_id=$1', [twin.programme_id])).rows[0]; await owner(); return row && [row.courses, row.completed_users]; };
+    eq(await programme(), [2, 1]);
+    await db.exec('SET session_replication_role = replica');
+    await sql(completion, [ids.student, ids.student, first.course_id, version.id]);
+    await db.exec('SET session_replication_role = DEFAULT');
+    eq(await programme(), [2, 2]);
+    await sql("insert into academy_learner_accounts(email,source,user_id)values('proba@example.test','proba',$1)", [ids.student]);
+    eq(await programme(), [2, 1]);
+    await sql('update courses set is_rehearsal=true where id=$1', [first.course_id]);
+    eq(await programme(), [1, 1]);
+    await sql('update courses set is_rehearsal=true where id=$1', [c.course_id]);
+    eq(await programme(), undefined);
+    await actor('', 'anon'); await denied('select * from academy_programme_completions()');
+
     console.log(`Academy twin course DB checks passed: ${checks}`);
 } finally {
     await db.close();

@@ -7,9 +7,11 @@ import { isMissingDatabaseObject } from '@/lib/academy/migration-contract'
 import { requireAcademyContext } from '@/lib/academy/server'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import { logAudit } from '@/lib/actions/audit'
+import { requireRows } from '@/lib/supabase/select-in-chunks'
 
 type Report = { client: Awaited<ReturnType<typeof requireAcademyContext>>['client']; userId: string }
 export interface CompetenceReportData { migrated: boolean; rows: CompetenceRow[]; active: number; lastExport: string | null }
+export interface ProgrammeCompletion { programme_id: string; title: string; courses: number; completed_users: number }
 export interface ManagerTeamMember {
     user_id: string; full_name: string; in_progress: number
     certificates: Array<{ programme_title: string; route: CompetenceRoute; completed_at: string; valid_until: string | null }>
@@ -55,6 +57,16 @@ export async function exportCompetenceReportCsv(filters: CompetenceFilters): Pro
         const audited = await logAudit(userId, 'ACADEMY_COMPETENCE_REPORT_EXPORTED', { rows: rows.length, ...parsed.data })
         if (!audited) throw new ExpectedError('Nie udało się zapisać wpisu w dzienniku audytu, więc eksport został wstrzymany. Spróbuj ponownie.')
         return { filename: 'raport-kompetencji.csv', csv: competenceCsv(rows), count: rows.length }
+    })
+}
+
+/** Program liczy osobę raz, także gdy ukończyła szkolenie na żywo i jego kurs z modułów (B4.8). */
+export async function getProgrammeCompletions(): Promise<ActionResult<{ migrated: boolean; programmes: ProgrammeCompletion[] }>> {
+    return runAction('getProgrammeCompletions', async () => {
+        const { client } = await requireGuard({ admin: true })
+        const response = await client.rpc('academy_programme_completions')
+        if (isMissingDatabaseObject(response.error)) return { migrated: false, programmes: [] }
+        return { migrated: true, programmes: requireRows<ProgrammeCompletion>('raportu programów', response) }
     })
 }
 
