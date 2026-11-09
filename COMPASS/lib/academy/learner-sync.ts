@@ -3,7 +3,7 @@
 //
 // Adres w migawce to adres kandydata z ATS, o niepotwierdzonej aktualności, a nie adres
 // z umowy. Dlatego przełącznik zostaje wyłączony do czasu dopisania adresu z umowy po
-// stronie NEXUSA (opis w docs/academy/czeka/B1.6.md).
+// stronie NEXUSA (opis w docs/academy/czeka-na-wlasciciela.md, sekcja B1.6).
 
 export const MAX_EXPIRIES_PER_RUN = 5
 
