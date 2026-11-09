@@ -7,7 +7,7 @@ import type { QuizQuestionInput } from '@/lib/types/learning'
 
 let client: MockSupabase
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => client }))
-vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }))
+vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn() } }))
 function setup(config: MockSupabaseConfig = {}) { client = academyFixture(config); return client }
 beforeEach(() => setup())
 const input = { title: 'Warsztat TypeScript', category: 'Backend' }
@@ -152,6 +152,32 @@ describe('catalog and pinned detail', () => {
         setup({ rpcs: { academy_can_manage_course: () => false, academy_get_syllabus: () => [{ id: LESSON, content_md: 'must be redacted', attachments: [{ name: 'private.pdf' }] }], academy_quiz_question_count: () => 4 } })
         const result = await getCourseDetail(COURSE)
         expect(result.success && result.data.lessons).toEqual([expect.objectContaining({ content_available: false, content_md: null, video_url: null, attachments: [] })])
+    })
+    it('gives a course for absentees the start times of its live edition, without cancelled meetings', async () => {
+        const RUN = id(61)
+        setup({ tables: { courses: [courseRow({ source_run_id: RUN })], course_sessions: [
+            { id: id(62), run_id: RUN, starts_at: '2026-11-25T09:00:00Z', status: 'scheduled' },
+            { id: id(63), run_id: RUN, starts_at: '2026-11-26T09:00:00Z', status: 'cancelled' },
+            { id: id(64), run_id: id(65), starts_at: '2026-10-01T09:00:00Z', status: 'scheduled' },
+        ] }, rpcs: { academy_get_syllabus: () => [], academy_quiz_question_count: () => 0 } })
+        const result = await getCourseDetail(COURSE)
+        expect(result.success && result.data.live_session_starts).toEqual(['2026-11-25T09:00:00Z'])
+    })
+    it('does not read sessions for an ordinary course', async () => {
+        setup({ rpcs: { academy_get_syllabus: () => [], academy_quiz_question_count: () => 0 } })
+        const result = await getCourseDetail(COURSE)
+        expect(result.success && result.data.live_session_starts).toEqual([])
+        expect(client.from.mock.calls.map(([table]) => table)).not.toContain('course_sessions')
+    })
+    it('keeps the course page when the live dates cannot be read', async () => {
+        setup({ tables: { courses: [courseRow({ source_run_id: id(61) })] }, rpcs: { academy_get_syllabus: () => [], academy_quiz_question_count: () => 0 } })
+        const from = client.from.getMockImplementation()!
+        client.from.mockImplementation(((table: string) => table === 'course_sessions'
+            ? { select: () => ({ eq: () => ({ neq: async () => ({ data: null, error: { code: '42501', message: 'denied' } }) }) }) }
+            : from(table)) as never)
+        const result = await getCourseDetail(COURSE)
+        expect(client.from).toHaveBeenCalledWith('course_sessions')
+        expect(result.success && result.data.live_session_starts).toEqual([])
     })
     it('uses the draft in author mode and rejects unauthorized draft access', async () => {
         setup({ rpcs: { academy_get_syllabus: () => [], academy_quiz_question_count: () => 0 } })

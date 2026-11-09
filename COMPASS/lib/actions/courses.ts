@@ -170,6 +170,20 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
 }
 
 /**
+ * DEKORACJA: termin szkolenia na żywo w banerze kursu z modułów (M09). Sesje edycji widzi RLS
+ * tylko zapisanym na nią i jej obsłudze, więc pozostali dostają baner bez daty, a awaria odczytu
+ * nie zamyka strony kursu.
+ */
+async function readLiveSessionStarts(client: ReturnType<typeof academyClient>, runId: string): Promise<string[]> {
+    const { data, error } = await client.from('course_sessions').select('starts_at').eq('run_id', runId).neq('status', 'cancelled')
+    if (error) {
+        logger.warn({ event: 'courses.detail.live_sessions_unavailable', code: error.code })
+        return []
+    }
+    return (data ?? []).map((row: { starts_at: string }) => row.starts_at)
+}
+
+/**
  * Szczegóły kursu po slug (lub UUID). Zwraca pełną listę lekcji + liczbę pytań quizu
  * (bez treści pytań i opcji — te ładujemy oddzielnie przez RPC `get_quiz_for_attempt`
  * w fazie 4). Ujawnia metadane visible-to-user wg RLS (published OR own OR admin).
@@ -186,11 +200,12 @@ export async function getCourseDetail(slugOrId: string, options: { author?: bool
         assertDatabaseResult(ratingError)
         const { data: canManage, error: accessError } = await client.rpc('academy_can_preview_version', { p_version_id: course.version_id })
         assertDatabaseResult(accessError)
-        const [lessonsResult, syllabusResult] = await Promise.all([
+        const [lessonsResult, syllabusResult, liveSessionStarts] = await Promise.all([
             enrollment || canManage
                 ? client.from('course_lessons').select('*').eq('version_id', course.version_id).order('order_index')
                 : Promise.resolve({ data: [], error: null }),
             client.rpc('academy_get_syllabus', { p_version_id: course.version_id }),
+            course.source_run_id ? readLiveSessionStarts(client, course.source_run_id) : Promise.resolve([]),
         ])
         assertDatabaseResult(lessonsResult.error)
         assertDatabaseResult(syllabusResult.error)
@@ -206,6 +221,7 @@ export async function getCourseDetail(slugOrId: string, options: { author?: bool
                 return { ...summary, ...lesson, content_available: !!lesson, content_md: lesson?.content_md ?? null, video_url: lesson?.video_url ?? null, attachments: Array.isArray(lesson?.attachments) ? lesson.attachments : [] }
             }),
             quiz_questions_count: count ?? 0,
+            live_session_starts: liveSessionStarts,
             is_enrolled: !!enrollment,
             enrollment_id: enrollment?.id ?? null,
             run_id: enrollment?.run_id ?? null,

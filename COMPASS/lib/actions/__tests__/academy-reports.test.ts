@@ -8,7 +8,7 @@ vi.mock('@/lib/actions/audit', () => ({ logAudit: vi.fn() }))
 
 import { requireAcademyContext } from '@/lib/academy/server'
 import { logAudit } from '@/lib/actions/audit'
-import { exportCompetenceReportCsv, getCompetenceReport, getManagerTeamReport } from '../academy-reports'
+import { exportCompetenceReportCsv, getCompetenceReport, getManagerTeamReport, getProgrammeCompletions } from '../academy-reports'
 
 const rpc = vi.fn()
 const maybeSingle = vi.fn()
@@ -87,5 +87,44 @@ describe('getManagerTeamReport', () => {
         rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'x' } })
         const result = await getManagerTeamReport()
         expect(result.success && result.data.migrated).toBe(false)
+    })
+})
+
+describe('getProgrammeCompletions', () => {
+    const programmes = [{ programme_id: 'p1', title: 'PEGA podstawy', courses: 2, completed_users: 1 }]
+
+    it('refuses a non-admin, including a learner-only account, before reading anything', async () => {
+        vi.mocked(requireAcademyContext).mockRejectedValue(new Error('Ta operacja wymaga uprawnień administratora.'))
+        await expect(getProgrammeCompletions()).resolves.toEqual({ success: false, error: 'Ta operacja wymaga uprawnień administratora.' })
+        expect(requireAcademyContext).toHaveBeenCalledWith({ admin: true })
+        expect(rpc).not.toHaveBeenCalled()
+    })
+
+    it('returns one row per programme from the database', async () => {
+        rpc.mockResolvedValue({ data: programmes, error: null })
+        await expect(getProgrammeCompletions()).resolves.toEqual({ success: true, data: { migrated: true, programmes } })
+        expect(rpc).toHaveBeenCalledWith('academy_programme_completions')
+    })
+
+    it('keeps an empty programme list as a real answer', async () => {
+        rpc.mockResolvedValue({ data: [], error: null })
+        await expect(getProgrammeCompletions()).resolves.toEqual({ success: true, data: { migrated: true, programmes: [] } })
+    })
+
+    it.each(['42883', '42P01', '42703', 'PGRST202'])('says the migration is pending for %s instead of failing', async code => {
+        rpc.mockResolvedValue({ data: null, error: { code, message: 'x' } })
+        await expect(getProgrammeCompletions()).resolves.toEqual({ success: true, data: { migrated: false, programmes: [] } })
+    })
+
+    it('does not turn a failed read into an empty list', async () => {
+        rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'admin_required' } })
+        const result = await getProgrammeCompletions()
+        expect(result.success).toBe(false)
+        expect(!result.success && result.error).not.toContain('admin_required')
+    })
+
+    it('treats a missing response without an error as a failure', async () => {
+        rpc.mockResolvedValue({ data: null, error: null })
+        expect((await getProgrammeCompletions()).success).toBe(false)
     })
 })
