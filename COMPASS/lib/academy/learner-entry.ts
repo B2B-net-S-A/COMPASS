@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { findLearnerAccountById, learnerEntryDenial, type LearnerAccount } from '@/lib/academy/learner-accounts'
+import { isMissingDatabaseObject } from '@/lib/academy/migration-contract'
 import { learnerPassSecret, verifyLearnerPassToken, type LearnerPassClaims } from '@/lib/academy/learner-pass'
 import { logger } from '@/lib/logger'
 
@@ -88,6 +89,24 @@ export async function ensureLearnerUser(client: SupabaseClient, account: Learner
         throw new Error(`learner account link failed: ${linkError.code ?? 'unknown'}`)
     }
     return data.user.id
+}
+
+/**
+ * Łączy konto z prywatną listą edycji i przenosi zaimportowaną obecność. Nigdy nie blokuje wejścia:
+ * brak migracji albo awaria oznacza tylko, że powiązanie powstanie przy następnym wejściu.
+ */
+export async function bindLearnerToRuns(client: SupabaseClient, accountId: string, userId: string): Promise<void> {
+    try {
+        const { data, error } = await client.rpc('academy_bind_learner_on_entry', { p_account_id: accountId, p_user_id: userId })
+        if (error) {
+            if (!isMissingDatabaseObject(error)) logger.error({ event: 'academy.learner_entry.bind_failed', code: error.code })
+            return
+        }
+        const failed = (data as { failed?: number } | null)?.failed ?? 0
+        if (failed > 0) logger.error({ event: 'academy.learner_entry.bind_partial', failed })
+    } catch {
+        logger.error({ event: 'academy.learner_entry.bind_failed', code: undefined })
+    }
 }
 
 /** Jednorazowy `token_hash` dla `verifyOtp` w przeglądarce. `generateLink` niczego nie wysyła. */
