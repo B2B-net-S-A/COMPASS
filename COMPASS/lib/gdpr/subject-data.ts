@@ -324,6 +324,7 @@ export const CONTRACTOR_RETAINED: readonly RetainedRecord[] = [
 export const EMPLOYEE_MANUAL_FOLLOW_UPS: readonly string[] = [
     'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie profiles/contractors nie zaciera tych kopii; wymagają osobnego, udokumentowanego przeglądu i obsługi żądania.',
     'Akademia: academy_edition_survey_responses (swobodne future_topics i snapshot pytań) oraz academy_private.edition_teaching_interest (proposed_topic i preferencja kontaktu) wymagają przeglądu zakresu żądania. Odpowiedzi są niezmienne; nie są automatycznie zacierane przez tę operację.',
+    'Akademia: academy_webinar_exceptions i academy_webinar_excluded_emails przechowują adresy i nazwy z wyjątków importu; po wyszukaniu po adresie wymagają ręcznej obsługi.',
     'Akademia: źródła i podglądy academy_webinar_import_batches, raporty academy_webinar_attendance oraz czynności operatora wymagają ręcznej obsługi bez zmiany dowodów innych uczestników. Pliki CSV i korespondencja seryjna u organizatora oraz kopie zapasowe pozostają poza zacieraniem bazy.',
     'Akademia: academy_handovers i dokumenty przekazania praw na wspólnym dysku zachowują dowody kontraktowe oraz osoby składające, recenzujące i contributors; administrator ocenia żądanie według istniejących zasad, bez automatycznego usuwania.',
 
@@ -336,6 +337,7 @@ export const EMPLOYEE_MANUAL_FOLLOW_UPS: readonly string[] = [
 export const CONTRACTOR_MANUAL_FOLLOW_UPS: readonly string[] = [
     'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie profiles/contractors nie zaciera tych kopii; wymagają osobnego, udokumentowanego przeglądu i obsługi żądania.',
     'Akademia: academy_edition_survey_responses (swobodne future_topics i snapshot pytań) oraz academy_private.edition_teaching_interest (proposed_topic i preferencja kontaktu) wymagają przeglądu zakresu żądania. Odpowiedzi są niezmienne; nie są automatycznie zacierane przez tę operację.',
+    'Akademia: academy_webinar_exceptions i academy_webinar_excluded_emails przechowują adresy i nazwy z wyjątków importu; po wyszukaniu po adresie wymagają ręcznej obsługi.',
     'Akademia: źródła i podglądy academy_webinar_import_batches, raporty academy_webinar_attendance oraz czynności operatora wymagają ręcznej obsługi bez zmiany dowodów innych uczestników. Pliki CSV i korespondencja seryjna u organizatora oraz kopie zapasowe pozostają poza zacieraniem bazy.',
     'Akademia: academy_handovers i dokumenty przekazania praw na wspólnym dysku zachowują dowody kontraktowe oraz osoby składające, recenzujące i contributors; administrator ocenia żądanie według istniejących zasad, bez automatycznego usuwania.',
 
