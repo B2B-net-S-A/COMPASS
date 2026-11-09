@@ -21,7 +21,7 @@ function ProgrammeRow({ programme }: { programme: ProgrammeValidity }) {
     return <li className="flex flex-col gap-2 border-t border-border p-3 first:border-t-0 sm:flex-row sm:items-center sm:justify-between">
         <span className="font-medium">{programme.title}</span>
         <span className="flex items-center gap-2">
-            <Input aria-label={`Ważność programu ${programme.title} w miesiącach`} type="number" min={1} max={120} className="w-28" placeholder="bez terminu" value={value} onChange={event => setValue(event.target.value)} />
+            <Input aria-label={`Ważność programu ${programme.title} w miesiącach`} type="number" min={1} max={120} className="w-32" placeholder="bez terminu" value={value} onChange={event => setValue(event.target.value)} />
             <span className="text-sm text-muted-foreground">mies.</span>
             <Button type="button" variant="outline" size="sm" disabled={pending || months === programme.validity_months} onClick={save}>Zapisz</Button>
         </span>
