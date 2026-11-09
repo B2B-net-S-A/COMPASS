@@ -24,6 +24,7 @@ BEGIN
         'obcy@b2bnetwork.pl.example.com',
         'obcy@xb2bnetwork.pl',
         'obcy@example.com@b2bnetwork.pl',
+        E'obcy@b2bnetworK.pl',
         E'obcy@b2bnetwork.pl\n',
         ' obcy@b2bnetwork.pl'
     ] LOOP
@@ -154,6 +155,9 @@ DECLARE v_count integer;
 BEGIN
     SELECT count(*) INTO v_count FROM public.profiles;
     IF v_count <> 6 THEN RAISE EXCEPTION 'SMOKE: admin czyta % wierszy zamiast 6', v_count; END IF;
+    -- adminUploadCV zapisuje zdjęcie pod identyfikatorem kandydata.
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES ('avatars', 'profiles/00000000-0000-0000-0000-00000000000d-extracted-1.png');
 END $$;
 RESET ROLE;
 

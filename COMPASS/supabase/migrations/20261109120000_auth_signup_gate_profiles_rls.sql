@@ -55,11 +55,16 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+    -- Tylko ASCII: lower() składa np. znak Kelvina (U+212A) do „k”, więc adres z domeną
+    -- wyglądającą jak firmowa przeszedłby porównanie.
     SELECT COALESCE(
-        lower(p_email) ~ '^[^@[:space:]]+@b2bnetwork\.pl$'
-        OR EXISTS (
-            SELECT 1 FROM public.academy_learner_accounts a
-            WHERE a.email = lower(p_email) AND a.ended_at IS NULL
+        p_email ~ '^[\x21-\x7E]+$'
+        AND (
+            lower(p_email) ~ '^[^@[:space:]]+@b2bnetwork\.pl$'
+            OR EXISTS (
+                SELECT 1 FROM public.academy_learner_accounts a
+                WHERE a.email = lower(p_email) AND a.ended_at IS NULL
+            )
         ),
         false
     );
@@ -150,10 +155,17 @@ CREATE POLICY news_reactions_select_via_post_access ON public.news_reactions
     USING (EXISTS (SELECT 1 FROM public.news_posts n WHERE n.id = news_reactions.post_id));
 
 -- Awatar: ścieżka zapisu wiązana z właścicielem, tak jak już robi polityka UPDATE.
+-- Admin zostaje wyjątkiem, bo `adminUploadCV` zapisuje zdjęcie pod identyfikatorem kandydata.
 DROP POLICY IF EXISTS "Anyone can upload an avatar" ON storage.objects;
 CREATE POLICY "Users can upload own avatar" ON storage.objects
     FOR INSERT TO authenticated
-    WITH CHECK (bucket_id = 'avatars' AND name LIKE 'profiles/' || (SELECT auth.uid())::text || '-%');
+    WITH CHECK (
+        bucket_id = 'avatars'
+        AND (
+            name LIKE 'profiles/' || (SELECT auth.uid())::text || '-%'
+            OR ((storage.foldername(name))[1] = 'profiles' AND (SELECT public.is_admin()))
+        )
+    );
 
 -- Kubeł po usuniętym komunikatorze (audyt C4): publiczny, zapis dla każdego konta,
 -- 0 obiektów, brak odwołań w kodzie.
@@ -184,6 +196,7 @@ BEGIN
     END IF;
     IF public.account_email_allowed('ktos@b2bnetwork.pl.example.com')
        OR public.account_email_allowed('ktos@xb2bnetwork.pl')
+       OR public.account_email_allowed(E'ktos@b2bnetworK.pl')
        OR public.account_email_allowed('ktos@example.com')
        OR public.account_email_allowed(NULL) THEN
         RAISE EXCEPTION 'auth gate: przepuszczony adres spoza listy';
