@@ -1,0 +1,39 @@
+name: Academy certificate expiry (daily cron)
+
+# B5.1. Tworzy przypomnienia o końcu ważności certyfikatu jako wiersze held w
+# academy_outbox. Niczego nie wysyła. Wielokrotne wołanie jest bezpieczne, bo
+# dedupe_key daje jedno przypomnienie na dokument.
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academy-certificate-expiry
+  cancel-in-progress: false
+
+jobs:
+  hold-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Curl /api/cron/academy-certificate-expiry
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -o pipefail
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Brak APP_URL albo CRON_SECRET w ustawieniach repo."
+            exit 1
+          fi
+          curl -fsSL --retry 3 --retry-delay 10 \
+            -A "dynaminds-smoke-test/1.0" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/academy-certificate-expiry" | tee /tmp/result.json
+          echo
+          jq -e '.ok == true' /tmp/result.json > /dev/null

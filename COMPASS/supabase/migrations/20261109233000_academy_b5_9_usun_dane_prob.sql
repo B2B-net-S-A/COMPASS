@@ -21,8 +21,9 @@
 -- obejścia guard_version_snapshot. Kursy is_rehearsal=false zostają bez zmian, tak
 -- samo dane wszystkich kont spoza listy, także ich zapisy na kursie-atrapie.
 --
--- Obejście niezmienności dotyczy tylko historii ukończeń (guard_completion_history)
--- i kończy się włączeniem tych samych triggerów w tej samej transakcji.
+-- Obejście niezmienności dotyczy tylko historii ukończeń i zaświadczeń udziału
+-- (guard_completion_history, guard_participation_history) i kończy się włączeniem tych
+-- samych triggerów w tej samej transakcji.
 -- Wszystko jest jednym blokiem DO, więc błąd cofa całość.
 
 DO $$
@@ -84,7 +85,7 @@ BEGIN
        AND confrelid IN ('public.course_enrollments'::regclass,'public.course_completions'::regclass,'public.course_quiz_attempts'::regclass)
        AND conrelid::regclass::text <> ALL(ARRAY['course_completions','course_quiz_attempts','course_run_registrations','session_attendance',
             'course_questions','course_survey_responses','academy_edition_survey_responses','academy_completion_rewards','academy_completion_revocations',
-            'academy_participation_documents','course_quiz_attempt_items','academy_video_progress','academy_retrieval_schedule']);
+            'academy_participation_documents','course_quiz_attempt_items','academy_video_progress','academy_retrieval_schedule','academy_document_shares']);
     IF v_blockers IS NOT NULL THEN
         RAISE EXCEPTION 'academy_b5_9: nieznana tabela zależna, dopisz ją do skryptu: %', v_blockers;
     END IF;
@@ -103,11 +104,17 @@ BEGIN
     SELECT COALESCE(array_agg(id), '{}') INTO v_attempts FROM public.course_quiz_attempts WHERE enrollment_id=ANY(v_enrollments);
     SELECT COALESCE(array_agg(id), '{}') INTO v_roster FROM public.academy_webinar_roster WHERE user_id=ANY(v_users);
 
-    -- Tylko te trzy triggery, tylko do końca tej transakcji.
+    -- Tylko te triggery, tylko do końca tej transakcji.
     ALTER TABLE public.course_completions DISABLE TRIGGER academy_completion_history;
     ALTER TABLE public.academy_completion_revocations DISABLE TRIGGER academy_revocation_history;
     ALTER TABLE public.academy_completion_rewards DISABLE TRIGGER academy_reward_link_history;
+    IF to_regclass('public.academy_participation_documents') IS NOT NULL THEN
+        ALTER TABLE public.academy_participation_documents DISABLE TRIGGER academy_participation_history;
+    END IF;
 
+    IF to_regclass('public.academy_document_shares') IS NOT NULL THEN
+        DELETE FROM public.academy_document_shares WHERE user_id=ANY(v_users);
+    END IF;
     DELETE FROM public.academy_completion_rewards WHERE completion_id=ANY(v_completions);
     DELETE FROM public.academy_completion_revocations WHERE completion_id=ANY(v_completions);
     IF to_regclass('public.academy_participation_documents') IS NOT NULL THEN
@@ -152,6 +159,9 @@ BEGIN
     ALTER TABLE public.course_completions ENABLE TRIGGER academy_completion_history;
     ALTER TABLE public.academy_completion_revocations ENABLE TRIGGER academy_revocation_history;
     ALTER TABLE public.academy_completion_rewards ENABLE TRIGGER academy_reward_link_history;
+    IF to_regclass('public.academy_participation_documents') IS NOT NULL THEN
+        ALTER TABLE public.academy_participation_documents ENABLE TRIGGER academy_participation_history;
+    END IF;
 
     UPDATE public.academy_outbox SET status='expired' WHERE status IN ('held','approved');
     GET DIAGNOSTICS v_outbox_expired = ROW_COUNT;
@@ -174,8 +184,8 @@ BEGIN
        OR (SELECT count(*) FROM public.course_quiz_attempts)<>v_others_attempts OR (SELECT count(*) FROM public.profiles)<>v_others_profiles THEN
         RAISE EXCEPTION 'academy_b5_9: zmieniły się dane kont spoza listy';
     END IF;
-    IF EXISTS(SELECT 1 FROM pg_trigger WHERE tgname IN ('academy_completion_history','academy_revocation_history','academy_reward_link_history') AND tgenabled<>'O') THEN
-        RAISE EXCEPTION 'academy_b5_9: trigger historii ukończeń nie został włączony z powrotem';
+    IF EXISTS(SELECT 1 FROM pg_trigger WHERE tgname IN ('academy_completion_history','academy_revocation_history','academy_reward_link_history','academy_participation_history') AND tgenabled<>'O') THEN
+        RAISE EXCEPTION 'academy_b5_9: trigger historii nie został włączony z powrotem';
     END IF;
 
     RAISE NOTICE 'academy_b5_9: usunięto konta proba: %, wygaszono wiadomości: %', v_accounts, v_outbox_expired;

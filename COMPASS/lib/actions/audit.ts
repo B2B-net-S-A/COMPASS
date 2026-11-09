@@ -9,9 +9,13 @@ import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 export type AuditAction =
     | 'ACADEMY_SYNC_RUN'
+    | 'ACADEMY_LEARNERS_SYNC_RUN'
+    | 'ACADEMY_RETRIEVAL_RUN'
     | 'ACADEMY_MATERIAL_SCAN_RUN'
     | 'ACADEMY_MATERIAL_CLEANUP_RUN'
     | 'ACADEMY_EDITION_REPORT_EXPORTED'
+    | 'ACADEMY_CERTIFICATE_EXPIRY_RUN'
+    | 'ACADEMY_COMPETENCE_REPORT_EXPORTED'
     | 'LOGIN'
     | 'LOGIN_FAILED'
     | 'LOGOUT'

@@ -116,7 +116,8 @@ export async function submitPitch(input: CreatePitchInput): Promise<IncubatorAct
         if (error) throw error
 
         // Notify all admins
-        const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+        // Klient serwisowy: `consultant` nie widzi wierszy adminów w `profiles`.
+        const { data: admins } = await createServiceClient().from('profiles').select('id').eq('role', 'admin')
         await notify(
             ((admins ?? []) as Array<{ id: string }>).map((p) => p.id),
             'incubator_pitch_status_changed',
@@ -398,7 +399,8 @@ export async function applyToProject(projectId: string, motivation: string): Pro
         if (error) throw error
 
         const { data: project } = await supabase.from('incubator_projects').select('title').eq('id', projectId).single()
-        const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin')
+        // Klient serwisowy: `consultant` nie widzi wierszy adminów w `profiles`.
+        const { data: admins } = await createServiceClient().from('profiles').select('id').eq('role', 'admin')
         await notify(
             ((admins ?? []) as Array<{ id: string }>).map((p) => p.id),
             'incubator_application_received',
