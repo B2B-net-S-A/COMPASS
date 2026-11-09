@@ -19,7 +19,7 @@ const survey: EditionSurveyReport = { responseCount: 0, overall: null, trainer: 
 beforeEach(() => {
     vi.mocked(listAcademyWebinarRoster).mockResolvedValue({ success: true, data: [] })
     vi.mocked(getEditionSurveyReport).mockResolvedValue({ success: true, data: survey })
-    vi.mocked(loadEditionReportEvidence).mockResolvedValue({ quizRequired: false, passPercent: null, attempts: [], questions: [], options: [], preTestTracked: false, voidingTracked: false, participationDocuments: null, reportsStartAt: null, rehearsalCourse: false })
+    vi.mocked(loadEditionReportEvidence).mockResolvedValue({ quizRequired: false, passPercent: null, attempts: [], questions: [], options: [], gain: null, voidingTracked: false, keyHolderEnrollments: [], participationDocuments: null, reportsStartAt: null, rehearsalCourse: false })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

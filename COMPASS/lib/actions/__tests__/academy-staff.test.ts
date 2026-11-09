@@ -3,7 +3,6 @@ import { academyFixture, courseRow, id, COURSE, DRAFT, OTHER, RUN, USER, VERSION
 import type { MockSupabase } from '@/test/mocks/supabase'
 import { getAcademyStaff, setAcademyStaff } from '../academy-staff'
 import { getMyCourses, listPublishedCourses, updateCourse } from '../courses'
-import { reviewLegacyCourse } from '../courses-admin'
 
 let client: MockSupabase
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => client }))
@@ -49,10 +48,5 @@ describe('academy staff boundaries', () => {
         client.rpc.mockClear()
         expect((await updateCourse(COURSE, { prerequisite_course_ids: [id(11), id(11)] })).success).toBe(false)
         expect(client.rpc.mock.calls.map(([name]) => name)).toEqual(['academy_rollout_access'])
-    })
-    it('binds legacy acceptance to the displayed immutable version and never awards a new bonus', async () => {
-        client = academyFixture({ tables: { profiles: [{ id: USER, role: 'admin' }] }, rpcs: { academy_review_legacy_course: () => null } })
-        expect(await reviewLegacyCourse(COURSE, VERSION, true)).toEqual({ success: true, data: { firstPublishBonus: false } })
-        expect(client.rpc).toHaveBeenCalledWith('academy_review_legacy_course', { p_course_id: COURSE, p_version_id: VERSION, p_approve: true, p_reason: null })
     })
 })

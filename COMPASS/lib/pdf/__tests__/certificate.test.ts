@@ -87,3 +87,19 @@ describe('Academy certificate PDF', () => {
         expect(filename).not.toMatch(/[\r\n"/]/)
     })
 })
+
+describe('certificate validity line', () => {
+    it('prints the end of validity from the snapshot', async () => {
+        const { text } = await parse(await generateCertificatePdf({ ...input, validUntil: '2027-09-21T23:30:00.000Z' }))
+        expect(text.replace(/\s+/g, ' ')).toContain('ważny do: 22 września 2027')
+    })
+
+    it('omits the line for an unlimited certificate', async () => {
+        const { text } = await parse(await generateCertificatePdf({ ...input, validUntil: null }))
+        expect(text).not.toContain('ważny do')
+    })
+
+    it('refuses a malformed date instead of printing it', async () => {
+        await expect(generateCertificatePdf({ ...input, validUntil: 'jutro' })).rejects.toThrow('Nieprawidłowa data ważności')
+    })
+})
