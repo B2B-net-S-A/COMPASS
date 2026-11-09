@@ -103,6 +103,16 @@ export async function canReviewCourseVersion(versionId: string): Promise<ActionR
     })
 }
 
+export async function restoreCourse(courseId: string): Promise<ActionResult<void>> {
+    return academyAction('course.restore', async () => {
+        const { client } = await requireAcademyContext({ admin: true })
+        const { error } = await client.rpc('academy_restore_course', { p_course_id: z.uuid().parse(courseId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        revalidatePath('/admin/learning', 'layout')
+    })
+}
+
 /** Bounded administrator inventory. Course lifecycle and draft review state remain distinct. */
 export async function listAcademyAdminCourses(input: { search?: string; status?: AcademyAdminCourseStatus; page?: number } = {}): Promise<ActionResult<AcademyAdminCoursePage>> {
     return academyAction('course.admin_list', async () => {
