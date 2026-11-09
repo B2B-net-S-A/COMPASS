@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { ACADEMY_ROLES } from '@/lib/types/role'
 
 export async function getAcademyAccess() {
-    return academyAction('access', async () => (await requireAcademyContext()).access)
+    return academyAction('access', async () => (await requireAcademyContext({ reviewState: true })).access)
 }
 
 const trainerPageSchema = z.object({

@@ -141,6 +141,10 @@ jobs:
         env:
           ACADEMY_TEST_DATABASE_URL: postgresql://postgres:isolated-academy-ci@localhost:5432/academy_test
         run: node scripts/test-academy-tcm-editor-db.mjs
+      - name: Real PostgreSQL TCM independent review and decision race (B3.10)
+        env:
+          ACADEMY_TEST_DATABASE_URL: postgresql://postgres:isolated-academy-ci@localhost:5432/academy_test
+        run: node scripts/test-academy-tcm-review-db.mjs
       - name: Real PostgreSQL learner history pagination
         env:
           ACADEMY_TEST_DATABASE_URL: postgresql://postgres:isolated-academy-ci@localhost:5432/academy_test

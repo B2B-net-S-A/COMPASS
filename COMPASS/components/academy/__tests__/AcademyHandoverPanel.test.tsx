@@ -22,7 +22,7 @@ it('requires an independent reviewer for submitted metadata and locks editing', 
  actions.get.mockResolvedValue({success:true,data:{handover:{id:'receipt',status:'submitted',material_ids:{},contributors:['self']},canReview:false,files}})
  render(<AcademyHandoverPanel versionId="version" />)
  await screen.findByText('Oczekuje na odbiór')
- expect(screen.getByText(/Pakiet musi odebrać niezależny administrator/)).toBeInTheDocument()
+ expect(screen.getByText(/Pakiet musi odebrać niezależna osoba/)).toBeInTheDocument()
  expect(screen.queryByRole('button',{name:'Potwierdź odbiór pakietu'})).toBeNull()
  expect(screen.getAllByRole('checkbox')[0]).toBeDisabled()
 })

@@ -2,14 +2,17 @@ import { render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminAkademiaPage from '../page'
 
-const actions = vi.hoisted(() => ({ reviewQueue: vi.fn(), materialQueue: vi.fn() }))
+const actions = vi.hoisted(() => ({ reviewQueue: vi.fn(), materialQueue: vi.fn(), access: vi.fn(), nav: vi.fn() }))
 
 vi.mock('@/lib/actions/courses-admin', () => ({ getReviewQueue: actions.reviewQueue }))
-vi.mock('@/components/academy/AcademyAdminNav', () => ({ AcademyAdminNav: () => null }))
+vi.mock('@/lib/actions/academy-access', () => ({ getAcademyAccess: actions.access }))
+vi.mock('@/components/academy/AcademyAdminNav', () => ({ AcademyAdminNav: actions.nav }))
 vi.mock('@/components/academy/RunMaterialReviewQueue', () => ({ RunMaterialReviewQueue: actions.materialQueue }))
 
 beforeEach(() => {
     actions.reviewQueue.mockResolvedValue({ success: true, data: { items: [], total: 1001, page: 21, pageSize: 50 } })
+    actions.access.mockResolvedValue({ success: true, data: { isAdmin: true, canTeach: true, canReview: true } })
+    actions.nav.mockReturnValue(null)
 })
 
 describe('administrator review queue navigation', () => {
@@ -31,6 +34,22 @@ describe('administrator review queue navigation', () => {
 
         const navigation = within(screen.getByRole('navigation', { name: 'Strony kolejki akceptacji' }))
         expect(navigation.getByRole('link', { name: 'Następna strona →' })).toHaveAttribute('href', '/admin/learning?page=21')
+    })
+
+    it('shows a TCM reviewer only the queue, without the administrator screens', async () => {
+        actions.access.mockResolvedValue({ success: true, data: { isAdmin: false, canManageAcademy: true, canTeach: true, canReview: true } })
+        render(await AdminAkademiaPage({ searchParams: { page: '21' } }))
+
+        expect(actions.nav).toHaveBeenCalledWith({ active: 'review', reviewOnly: true }, {})
+        expect(screen.getByRole('link', { name: 'Akceptacja szkoleń' })).toHaveAttribute('href', '/admin/learning')
+        expect(screen.queryByRole('link', { name: 'Administracja' })).not.toBeInTheDocument()
+    })
+
+    it('keeps the full administrator navigation for an admin', async () => {
+        render(await AdminAkademiaPage({ searchParams: { page: '21' } }))
+
+        expect(actions.nav).toHaveBeenCalledWith({ active: 'review', reviewOnly: false }, {})
+        expect(screen.getByRole('link', { name: 'Administracja' })).toBeInTheDocument()
     })
 
     it('keeps the material review page when navigating the course queue', async () => {

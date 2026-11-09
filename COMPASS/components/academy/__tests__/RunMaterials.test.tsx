@@ -30,6 +30,30 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
+describe('akceptacja materiału edycji', () => {
+    const waiting = { ...asset('doc-1', 'Prezentacja.pdf', 'application/pdf'), review_status: 'pending_review' }
+    const approve = () => screen.findByRole('button', { name: 'Zatwierdź dla uczestników' })
+    beforeEach(() => { mocks.list.mockResolvedValue({ success: true, data: [waiting] }) })
+
+    it('daje przycisk niezależnemu recenzentowi TCM', async () => {
+        render(<RunMaterials runId={runId} courseId={courseId} canManage canManageAcademy isAdmin={false} canReview canApprove userId="tcm" />)
+        expect(await approve()).toBeEnabled()
+    })
+    it('blokuje zatwierdzenie autorowi lub współtwórcy edycji, gdy jest TCM', async () => {
+        render(<RunMaterials runId={runId} courseId={courseId} canManage canManageAcademy isAdmin={false} canReview canApprove={false} userId="tcm" />)
+        expect(await approve()).toBeDisabled()
+    })
+    it('nie pokazuje decyzji osobie bez prawa recenzji', async () => {
+        render(<RunMaterials runId={runId} courseId={courseId} canManage canManageAcademy isAdmin={false} userId="tcm" />)
+        await screen.findByText('Prezentacja.pdf')
+        expect(screen.queryByRole('button', { name: 'Zatwierdź dla uczestników' })).not.toBeInTheDocument()
+    })
+    it('zachowuje dotychczasowe zachowanie dla admina', async () => {
+        render(<RunMaterials runId={runId} courseId={courseId} canManage isAdmin userId="admin" />)
+        expect(await approve()).toBeEnabled()
+    })
+})
+
 describe('run recording captions', () => {
     it('attaches only the explicitly linked VTT and never guesses by order', async () => {
         render(<RunMaterials runId={runId} courseId={courseId} canManage={false} isAdmin={false} userId="learner" />)

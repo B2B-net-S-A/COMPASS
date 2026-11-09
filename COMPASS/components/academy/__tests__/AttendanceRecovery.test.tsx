@@ -56,9 +56,11 @@ describe('Attendance recovery controls', () => {
         view.rerender(<AcademyRunDetail {...propsExternal} />)
         expect(screen.queryByText('Import istniejącego webinaru')).not.toBeInTheDocument()
     })
-    it('does not offer publication to TCM on a draft even if the DTO falsely advertises canPublish', () => {
-        render(<AcademyRunDetail {...props} isAdmin={false} canManageAcademy run={{ ...run, status: 'draft', canPublish: true }} />)
-        expect(screen.getByRole('button', { name: 'Edytuj edycję' })).toBeInTheDocument()
+    // B3.10: canPublish liczy baza (academy_can_review_run), więc to ona rozstrzyga o niezależności.
+    it('offers publication to a TCM only when the database confirms an independent reviewer', () => {
+        const view = render(<AcademyRunDetail {...props} isAdmin={false} canManageAcademy run={{ ...run, status: 'draft', canPublish: true }} />)
+        expect(screen.getByRole('button', { name: 'Zatwierdź i opublikuj terminy' })).toBeInTheDocument()
+        view.rerender(<AcademyRunDetail {...props} isAdmin={false} canManageAcademy run={{ ...run, status: 'draft', canPublish: false }} />)
         expect(screen.queryByRole('button', { name: 'Zatwierdź i opublikuj terminy' })).not.toBeInTheDocument()
     })
     it('does not expose administrator recovery to a trainer even if canPublish is true', () => {

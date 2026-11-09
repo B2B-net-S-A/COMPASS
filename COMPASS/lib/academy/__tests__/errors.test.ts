@@ -9,6 +9,10 @@ describe('academy public error boundary', () => {
         expect(academyDatabaseError({ message: 'archive_prerequisite_in_use', code: 'P0001' })).toContain('inne opublikowane szkolenie')
         expect(academyDatabaseError({ message: 'published_visible_prerequisites_required', code: 'P0001' })).toContain('szkolenia wstępne')
     })
+    it('names the reviewer rules a TCM can hit (B3.10)', () => {
+        expect(academyDatabaseError({ message: 'reviewer_required', code: 'P0001' })).toBe('Ta operacja wymaga uprawnień recenzenta Akademii.')
+        expect(academyDatabaseError({ message: 'independent_admin_review_required', code: '42501' })).toContain('autorem ani współtwórcą')
+    })
     it('does not expose constraints, record contents or transport errors', () => {
         for (const code of ['23505', '23503', 'XX000', undefined]) {
             const result = academyDatabaseError({ code, message: 'private_table Łukasz token=private-value' })
