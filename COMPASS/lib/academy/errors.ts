@@ -5,6 +5,8 @@ import { quizAttemptWindowMessage } from './quiz-attempt-policy'
 const fallback = 'Nie udało się wykonać operacji. Odśwież stronę i spróbuj ponownie.'
 const messages: Record<string, string> = {
     academy_access_required: 'Nie masz dostępu do Akademii.',
+    run_material_required: 'Termin dostępności dotyczy tylko materiałów edycji.',
+    run_manager_required: 'Termin dostępności ustawia organizator tej edycji.',
     admin_required: 'Ta operacja wymaga uprawnień administratora.',
     trainer_required: 'Ta operacja wymaga aktywnego uprawnienia trenera.',
     trainer_course_required: 'Nie masz uprawnień do edycji tego szkolenia.',
