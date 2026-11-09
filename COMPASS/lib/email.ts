@@ -910,6 +910,28 @@ export function buildCourseInactivityEmail(
     return { subject, html: wrapHrEmail({ tag: 'Akademia', heading: 'Wróć do kursu', bodyHtml, accent: '#3b82f6' }) }
 }
 
+export function buildRetrievalDueEmail(
+    recipientName: string,
+    args: { courseTitle: string; offsetDays: number; scheduleId: string; appUrl: string },
+): { subject: string; html: string } {
+    const url = `${args.appUrl.replace(/\/$/, '')}/learning/powtorki/${encodeURIComponent(args.scheduleId)}`
+    const subject = `[COMPASS Akademia] Krótka powtórka: ${args.courseTitle}`
+    const bodyHtml = `
+        <p style="color: #d1d5db; font-size: 14px;">Cześć <strong>${escapeHtml(recipientName)}</strong>,</p>
+        <p style="color: #d1d5db; font-size: 14px;">
+            Minęło ${args.offsetDays} dni od szkolenia <strong>${escapeHtml(args.courseTitle)}</strong>. Czekają na Ciebie 3 pytania, około 2 minut.
+            Bez oceny, wynik widzisz tylko Ty.
+        </p>
+        <p style="margin-top: 20px;">
+            <a href="${escapeHtml(url)}"
+               style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                Otwórz powtórkę
+            </a>
+        </p>
+    `
+    return { subject, html: wrapHrEmail({ tag: 'Akademia', heading: 'Krótka powtórka', bodyHtml, accent: '#3b82f6' }) }
+}
+
 export function buildCertificateExpiryEmail(
     recipientName: string,
     args: { courseTitle: string; courseSlug: string; completionId: string; validUntil: string; appUrl: string },

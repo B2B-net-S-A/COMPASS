@@ -3,6 +3,7 @@ import fontkit from '@pdf-lib/fontkit'
 import { createHash } from 'crypto'
 import { readFile } from 'fs/promises'
 import path from 'path'
+import { VENDOR_DISCLAIMER } from '@/lib/academy/document-text'
 
 export interface GenerateCertificatePdfArgs {
     fullName: string
@@ -26,8 +27,7 @@ export interface GenerateParticipationPdfArgs {
     versionNumber?: number
 }
 
-/** Szkolenia firmowe nie są certyfikacją producenta technologii. */
-export const VENDOR_DISCLAIMER = 'Dokument wewnętrzny B2B.net SA. Nie jest certyfikatem producenta ani nie potwierdza certyfikacji producenta technologii.'
+export { VENDOR_DISCLAIMER }
 
 const WIDTH = 595.28
 const HEIGHT = 841.89
