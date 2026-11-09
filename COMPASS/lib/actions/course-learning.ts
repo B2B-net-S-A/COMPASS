@@ -47,13 +47,12 @@ async function enrollmentContext(courseId: string, enrollmentId?: string) {
     return { ...context, enrollment: data }
 }
 
-export async function markLessonComplete(courseId: string, lessonId: string, enrollmentId?: string): Promise<ActionResult<{ streak: { current: number; milestone_reached: boolean } | null }>> {
+export async function markLessonComplete(courseId: string, lessonId: string, enrollmentId?: string): Promise<ActionResult<void>> {
     return academyAction('lesson.complete', async () => {
         const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
-        const { data, error } = await client.rpc('academy_mark_lesson_complete', { p_enrollment_id: enrollment.id, p_lesson_id: z.uuid().parse(lessonId) })
+        const { error } = await client.rpc('academy_mark_lesson_complete', { p_enrollment_id: enrollment.id, p_lesson_id: z.uuid().parse(lessonId) })
         assertDatabaseResult(error)
         revalidatePath('/learning', 'layout')
-        return { streak: data?.streak ?? null }
     })
 }
 

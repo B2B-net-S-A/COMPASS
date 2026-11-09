@@ -24,7 +24,10 @@ const REPORT_ONLY_CSP = [
     "img-src 'self' data: blob: https://*.supabase.co https://*.microsoft.com",
     "font-src 'self' data:",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://login.microsoftonline.com",
-    "frame-src 'self' https://login.microsoftonline.com",
+    // Nagrania Akademii: podpisane adresy Supabase Storage oraz blob: z odtwarzacza.
+    "media-src 'self' blob: https://*.supabase.co",
+    // Osadzone wideo: te same hosty co whitelist w components/learning/EmbedVideo.tsx.
+    "frame-src 'self' https://login.microsoftonline.com https://www.youtube.com https://player.vimeo.com https://www.loom.com https://fast.wistia.com",
     "form-action 'self' https://login.microsoftonline.com",
     "base-uri 'self'",
     "object-src 'none'",
