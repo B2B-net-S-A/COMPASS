@@ -144,6 +144,22 @@ describe('hrLandingPath', () => {
     it('keeps roles without Academy access on the HR archive', () => {
         for (const role of ['internal', 'manager', 'finanse']) {
             expect(hrLandingPath(role, all)).toBe('/internal')
+            expect(hrLandingPath(role, all, false)).toBe('/internal')
         }
+    })
+
+    it('lands office roles in the Academy only when the rollout admits them and HR is an archive', () => {
+        const almost = new Set(HR_MODULES.filter((m) => m !== 'cases'))
+        for (const role of ['internal', 'manager', 'finanse']) {
+            expect(hrLandingPath(role, all, true)).toBe('/learning')
+            expect(hrLandingPath(role, almost, true)).toBe('/internal')
+        }
+    })
+
+    it('ignores the Academy flag for roles with their own landing', () => {
+        const none = new Set<never>()
+        expect(hrLandingPath('admin', all, true)).toBe('/home')
+        expect(hrLandingPath('consultant', all, true)).toBe('/home')
+        expect(hrLandingPath('talent_community', none, true)).toBe('/internal')
     })
 })

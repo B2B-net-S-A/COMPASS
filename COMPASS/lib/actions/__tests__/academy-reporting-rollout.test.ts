@@ -24,10 +24,10 @@ describe('Academy rollout actions', () => {
         setup({ rpcs: { academy_rollout_access: () => ({ mode: 'pilot', allowed: true, isPilot: true }) } }, false)
         expect(await getAcademyAccess()).toMatchObject({ success: true, data: { userId: USER, rolloutMode: 'pilot', isPilot: true } })
     })
-    it.each(['manager', 'internal', 'finanse'])('does not extend Academy to %s', async role => {
-        setup({ tables: { profiles: [{ id: USER, role, is_external: false, employment_status: 'active' }] } })
+    it.each(['manager', 'internal', 'finanse'])('lets the rollout decide about %s', async role => {
+        setup({ tables: { profiles: [{ id: USER, role, is_external: false, employment_status: 'active' }] }, rpcs: { academy_rollout_access: () => ({ mode: 'closed', allowed: false }) } })
         expect((await getAcademyAccess()).success).toBe(false)
-        expect(client.rpc).not.toHaveBeenCalled()
+        expect(client.rpc.mock.calls.map(([name]) => name)).toEqual(['academy_rollout_access'])
     })
     it('requires an administrator to inspect or change rollout settings', async () => {
         setup({}, false)

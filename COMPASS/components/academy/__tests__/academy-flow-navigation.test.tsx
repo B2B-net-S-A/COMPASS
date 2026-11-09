@@ -86,7 +86,7 @@ it('shows a distinct empty report instead of an empty data table', () => {
 
 
 it.each([
-    ['consultant', true, true], ['consultant', false, false], ['admin', true, true], ['manager', true, false], ['internal', true, false],
+    ['consultant', true, true], ['consultant', false, false], ['admin', true, true], ['manager', true, true], ['internal', true, true], ['manager', false, false], ['internal', false, false],
 ] as const)('mobile navigation for %s with rollout %s keeps Academy visibility %s', (role, academyEnabled, visible) => {
     render(<MobileMenu role={role} user={null} academyEnabled={academyEnabled} />)
     fireEvent.click(screen.getByTestId('mobile-nav-more'))

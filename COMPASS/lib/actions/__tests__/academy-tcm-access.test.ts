@@ -31,10 +31,20 @@ describe('TCM Academy editor authorization', () => {
         client = academyFixture()
         await expect(requireAcademyContext({ editor: true })).rejects.toThrow('uprawnień obsługi Akademii')
     })
-    it.each([{ is_external: true }, { employment_status: 'exited' }, { role: 'internal' }, { role: 'manager' }, { role: 'finanse' }])('denies ineligible profiles %j', async patch => {
+    it.each([{ is_external: true }, { employment_status: 'exited' }, { role: 'nieznana' }])('denies ineligible profiles %j', async patch => {
         client = academyFixture({ tables: { profiles: [{ ...profile, ...patch }] } })
         await expect(requireAcademyContext({ editor: true })).rejects.toThrow('Nie masz dostępu do Akademii')
         expect(client.rpc).not.toHaveBeenCalled()
+    })
+    it.each(['internal', 'manager', 'finanse'])('leaves the %s decision to the rollout', async role => {
+        client = academyFixture({ tables: { profiles: [{ ...profile, role }] }, rpcs: { academy_rollout_access: () => ({ allowed: false, mode: 'closed' }) } })
+        await expect(requireAcademyContext()).rejects.toThrow('nie jest jeszcze dostępna')
+    })
+    it.each(['internal', 'manager', 'finanse'])('admits a %s from the pilot as a learner, never as an editor', async role => {
+        client = academyFixture({ tables: { profiles: [{ ...profile, role }], academy_user_capabilities: [] }, rpcs: { academy_rollout_access: () => ({ allowed: true, mode: 'pilot', isPilot: true }) } })
+        const { access } = await requireAcademyContext()
+        expect(access).toMatchObject({ isAdmin: false, canManageAcademy: false, canTeach: false, isPilot: true })
+        await expect(requireAcademyContext({ editor: true })).rejects.toThrow('uprawnień obsługi Akademii')
     })
     it('fails closed when the rollout authority denies access', async () => {
         client = academyFixture({ tables: { profiles: [profile] }, rpcs: { academy_rollout_access: () => ({ allowed: false, mode: 'closed' }) } })

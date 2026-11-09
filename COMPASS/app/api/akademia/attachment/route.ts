@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { withAuth } from '@/lib/api/with-auth'
 import { academyClient } from '@/lib/academy/server'
+import { ACADEMY_ROLES } from '@/lib/types/role'
 import type { CourseAttachment } from '@/lib/types/learning'
 
 export const dynamic = 'force-dynamic'
@@ -44,4 +45,4 @@ export const GET = withAuth(async request => {
     const headers = { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' }
     if (request.nextUrl.searchParams.get('format') === 'json') return NextResponse.json({ url: signed.signedUrl, expiresIn: 300 }, { headers })
     return new Response(null, { status: 303, headers: { ...headers, Location: signed.signedUrl } })
-}, { role: ['consultant', 'admin', 'talent_community'] })
+}, { role: [...ACADEMY_ROLES] })

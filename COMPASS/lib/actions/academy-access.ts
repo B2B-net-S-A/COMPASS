@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { ACADEMY_PILOT_LIMIT, ACADEMY_ROLLOUT_MODES, type AcademyRolloutMode } from '@/lib/academy/rollout-lock'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { z } from 'zod'
+import { ACADEMY_ROLES } from '@/lib/types/role'
 
 export async function getAcademyAccess() {
     return academyAction('access', async () => (await requireAcademyContext()).access)
@@ -19,7 +20,7 @@ async function loadAcademyTrainerPage(input: z.input<typeof trainerPageSchema>) 
     const { search, page, pageSize } = trainerPageSchema.parse(input)
     const { client } = await requireAcademyContext({ admin: true })
     let query = client.from('profiles').select('id, full_name, email, role', { count: 'exact' })
-        .in('role', ['consultant', 'admin', 'talent_community']).eq('is_external', false)
+        .in('role', [...ACADEMY_ROLES]).eq('is_external', false)
         .or('employment_status.is.null,employment_status.neq.exited')
     const term = search.trim().replace(/[,%_()]/g, '')
     if (term) query = query.or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
@@ -30,11 +31,12 @@ async function loadAcademyTrainerPage(input: z.input<typeof trainerPageSchema>) 
     const expectedRows = Math.min(pageSize, Math.max(0, count - (page - 1) * pageSize))
     if ((people ?? []).length !== expectedRows) throw new Error('Lista kont Akademii jest niepełna.')
 
-    // PostgREST caps unpaged reads. Only fetch grants for visible consultants so
-    // a large global grant table cannot silently turn a trainer into a learner.
-    const consultantIds = (people ?? []).filter(person => person.role === 'consultant').map(person => person.id as string)
-    const { data: grants, error: grantsError, count: grantCount } = consultantIds.length
-        ? await client.from('academy_user_capabilities').select('user_id,can_train,revoked_at,granted_at', { count: 'exact' }).in('user_id', consultantIds)
+    // PostgREST caps unpaged reads. Only fetch grants for visible accounts without a
+    // role-based editor right so a large global grant table cannot silently turn a
+    // trainer into a learner.
+    const grantableIds = (people ?? []).filter(person => !['admin', 'talent_community'].includes(person.role)).map(person => person.id as string)
+    const { data: grants, error: grantsError, count: grantCount } = grantableIds.length
+        ? await client.from('academy_user_capabilities').select('user_id,can_train,revoked_at,granted_at', { count: 'exact' }).in('user_id', grantableIds)
         : { data: [], error: null, count: 0 }
     assertDatabaseResult(grantsError)
     if (grantCount === null || !Number.isSafeInteger(grantCount) || grantCount !== (grants ?? []).length) {
