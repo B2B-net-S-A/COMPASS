@@ -6,6 +6,7 @@ import { AcademyEmptyState } from '@/components/academy/AcademyEmptyState'
 import { AcademyShell } from '@/components/academy/AcademyShell'
 import { AcademyPrerequisites } from '@/components/academy/AcademyPrerequisites'
 import { AcademyRunDetail } from '@/components/academy/sessions/AcademyRunDetail'
+import { AcademyRunOutboxPanel } from '@/components/academy/sessions/AcademyRunOutboxPanel'
 import { AcademyRunPeoplePanel } from '@/components/academy/sessions/AcademyRunPeoplePanel'
 import { AcademyRunAudiencePanel } from '@/components/academy/sessions/AcademyRunAudiencePanel'
 import { EditionSurvey } from '@/components/academy/EditionSurvey'
@@ -13,6 +14,7 @@ import { EditionSummary } from '@/components/academy/EditionSummary'
 import { RunMaterials } from '@/components/academy/RunMaterials'
 import { Button } from '@/components/ui/button'
 import { getAcademyStaff } from '@/lib/actions/academy-staff'
+import { getAcademyRunOutbox } from '@/lib/actions/academy-run-outbox'
 import { getAcademyRunPeople } from '@/lib/actions/academy-run-people'
 import { getAcademyRunAudienceState } from '@/lib/actions/academy-run-audience'
 import { getAcademyPrerequisiteStatus } from '@/lib/actions/academy-discovery'
@@ -27,12 +29,13 @@ export default async function AcademyRunPage({ params }: { params: { id: string 
         <AcademyEmptyState variant="error" title="Nie udało się otworzyć edycji" description={!result.success ? result.error : !access.success ? access.error : 'Spróbuj ponownie.'} action={<Button asChild variant="outline"><Link href="/learning/kalendarz">Wróć do kalendarza</Link></Button>} />
     </AcademyShell>
     const run = result.data
-    const [participants, organizers, config, staff, prerequisites, people, audience] = await Promise.all([
+    const [participants, organizers, config, staff, prerequisites, outbox, people, audience] = await Promise.all([
         run.canManage ? listAcademyRunParticipants(run.id) : null,
         run.canManage ? listAcademyOrganizers() : null,
         run.canManage ? getAcademyIntegrationConfig() : null,
         run.canManage ? getAcademyStaff(run.courseId, run.id) : null,
         getAcademyPrerequisiteStatus({ courseId: run.courseId, versionId: run.versionId }),
+        run.canManage && access.data.canManageAcademy ? getAcademyRunOutbox(run.id) : null,
         run.canManage && access.data.canManageAcademy ? getAcademyRunPeople(run.id) : null,
         run.canManage && access.data.canManageAcademy ? getAcademyRunAudienceState(run.id) : null,
     ])
@@ -48,6 +51,7 @@ export default async function AcademyRunPage({ params }: { params: { id: string 
             userId={access.data.userId} now={new Date().toISOString()} />
         {people && <AcademyRunPeoplePanel data={people.success ? people.data : undefined} error={people.success ? undefined : people.error} />}
         {audience && <AcademyRunAudiencePanel runId={run.id} state={audience.success ? audience.data : undefined} error={audience.success ? undefined : audience.error} open={invitationsOpen} />}
+        {outbox && <AcademyRunOutboxPanel runId={run.id} state={outbox.success ? outbox.data : undefined} error={outbox.success ? undefined : outbox.error} />}
         {(run.canManage || enrolled) && <RunMaterials runId={run.id} courseId={run.courseId} canManage={run.canManage} isAdmin={access.data.isAdmin} canManageAcademy={access.data.canManageAcademy} userId={access.data.userId} readOnly={run.status === 'cancelled'} />}
         {access.data.canManageAcademy && (participants?.success ? <EditionSummary run={run} participants={participants.data} /> : <p role="alert" className="text-sm text-destructive">Nie udało się pobrać pełnej listy zapisów do podsumowania edycji.</p>)}
         {(run.canManage || run.myRegistration) && <EditionSurvey runId={run.id} canManage={run.canManage} />}
