@@ -122,6 +122,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
             query = query.in('id', courses)
         }
         if (filters.category) query = query.eq('category', filters.category)
+        if (filters.topic) query = query.eq('topic', filters.topic)
         if (filters.level) query = query.eq('level', filters.level)
         if (filters.delivery_mode) query = query.eq('delivery_mode', filters.delivery_mode)
         if (filters.course_type) query = query.eq('course_type', filters.course_type)

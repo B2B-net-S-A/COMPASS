@@ -43,6 +43,7 @@ export default async function LessonPage({ params, searchParams }: {
 
     await recordLessonAccess(course.id, lesson.id, enrollmentId)
     return <div className="mx-auto max-w-4xl space-y-6 p-6 md:p-8">
+        {course.source_run_id && <section className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm"><p className="font-semibold">Nie było Cię na żywo? Ten sam program, w Twoim tempie</p><p className="mt-1 text-muted-foreground">Przechodzisz ten sam zakres, podzielony na krótkie moduły. Ukończone moduły zostają zapisane, więc możesz wrócić, kiedy chcesz.</p></section>}
         <LessonPlayer key={`${enrollmentId}:${lesson.id}`} courseId={course.id} courseSlug={course.slug}
             enrollmentId={enrollmentId} completedAt={course.completed_at} revokedAt={course.completion_revoked_at} revokedReason={course.completion_revoked_reason} lesson={lesson} allLessons={lessons}
             completedLessonIds={completedIds} quizAvailable={course.quiz_questions_count > 0} />
