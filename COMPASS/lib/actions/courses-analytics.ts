@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
+import { isCountedAfterStart, readReportsStartAt } from '@/lib/academy/rehearsal'
 import type { ActionResult } from '@/lib/types/learning'
 
 export interface AuthorCourseStat {
@@ -21,6 +22,7 @@ export interface AuthorAnalyticsSummary {
     total_completions: number
     average_rating: number
     courses: AuthorCourseStat[]
+    reports_start_at: string | null
 }
 export interface AdminLmsAnalytics {
     total_published_courses: number
@@ -31,8 +33,9 @@ export interface AdminLmsAnalytics {
     average_rating_all: number
     top_courses: Array<{ course_id: string; title: string; enrollments: number; completions: number; completion_rate: number; avg_rating: number }>
     monthly_enrollments: Array<{ month: string; count: number }>
+    reports_start_at: string | null
 }
-interface ReportCourse { id: string; title: string; status: string; published_version_id: string | null; legacy_review_required: boolean }
+interface ReportCourse { id: string; title: string; status: string; published_version_id: string | null; legacy_review_required: boolean; is_rehearsal?: boolean }
 interface ReportEnrollment { id: string; course_id: string; run_id: string | null; enrolled_at: string }
 interface ReportCompletion { id: string; course_id: string; enrollment_id: string }
 interface ReportVersion { id: string; course_id: string; status: string }
@@ -52,27 +55,27 @@ async function readRows<T>(client: SupabaseClient, table: string, columns: strin
     }
 }
 
-async function readReport(client: SupabaseClient, courses: ReportCourse[]) {
+async function readReport(client: SupabaseClient, courses: ReportCourse[], startAt: string | null) {
     if (!courses.length) return { rows: [] as AuthorCourseStat[], versions: [] as ReportVersion[], enrollments: [] as ReportEnrollment[] }
     const [allEnrollments, completions, registrations, runs, ratings, versions] = await Promise.all([
         readRows<ReportEnrollment>(client, 'course_enrollments', 'id,course_id,run_id,enrolled_at'),
         readRows<ReportCompletion>(client, 'course_completions', 'id,course_id,enrollment_id'),
         readRows<{ id: string; enrollment_id: string | null; status: string }>(client, 'course_run_registrations', 'id,enrollment_id,status'),
         readRows<{ id: string; status: string }>(client, 'course_runs', 'id,status'),
-        readRows<{ id: string; course_id: string; rating: number }>(client, 'course_ratings', 'id,course_id,rating'),
+        readRows<{ id: string; course_id: string; rating: number; created_at: string }>(client, 'course_ratings', 'id,course_id,rating,created_at'),
         readRows<ReportVersion>(client, 'course_versions', 'id,course_id,status'),
     ])
     const courseIds = new Set(courses.map(course => course.id))
     const completedIds = new Set(completions.map(completion => completion.enrollment_id))
     const confirmedIds = new Set(registrations.filter(registration => registration.status === 'confirmed').map(registration => registration.enrollment_id))
     const activeRunIds = new Set(runs.filter(run => run.status === 'published').map(run => run.id))
-    const enrollments = allEnrollments.filter(enrollment => courseIds.has(enrollment.course_id) && (
+    const enrollments = allEnrollments.filter(enrollment => courseIds.has(enrollment.course_id) && isCountedAfterStart(enrollment.enrolled_at, startAt) && (
         completedIds.has(enrollment.id) || !enrollment.run_id || (confirmedIds.has(enrollment.id) && activeRunIds.has(enrollment.run_id))
     ))
     const rows = courses.map(course => {
         const enrolled = enrollments.filter(enrollment => enrollment.course_id === course.id)
         const completed = enrolled.filter(enrollment => completedIds.has(enrollment.id)).length
-        const courseRatings = ratings.filter(rating => rating.course_id === course.id)
+        const courseRatings = ratings.filter(rating => rating.course_id === course.id && isCountedAfterStart(rating.created_at, startAt))
         return {
             course_id: course.id, course_title: course.title, course_status: course.status,
             enrollments_count: enrolled.length, completions_count: completed,
@@ -85,7 +88,7 @@ async function readReport(client: SupabaseClient, courses: ReportCourse[]) {
     return { rows, versions, enrollments }
 }
 
-function summarize(rows: AuthorCourseStat[]): AuthorAnalyticsSummary {
+function summarize(rows: AuthorCourseStat[], startAt: string | null): AuthorAnalyticsSummary {
     const ratings = rows.reduce((sum, course) => sum + course.ratings_count, 0)
     return {
         total_courses: rows.length,
@@ -93,6 +96,7 @@ function summarize(rows: AuthorCourseStat[]): AuthorAnalyticsSummary {
         total_completions: rows.reduce((sum, course) => sum + course.completions_count, 0),
         average_rating: ratings ? Math.round(rows.reduce((sum, course) => sum + course.avg_rating * course.ratings_count, 0) / ratings * 10) / 10 : 0,
         courses: rows,
+        reports_start_at: startAt,
     }
 }
 
@@ -102,17 +106,21 @@ export async function getAuthorAnalytics(): Promise<ActionResult<AuthorAnalytics
         const { data, error } = await client.rpc('academy_teaching_courses')
         assertDatabaseResult(error)
         const courses = (data ?? []) as Array<ReportCourse & { can_lead?: boolean; can_manage_assigned_runs?: boolean }>
-        const monitored = courses.filter(course => course.can_lead || course.can_manage_assigned_runs)
-        return summarize((await readReport(client, monitored)).rows)
+        const rehearsal = new Set((await readRows<ReportCourse>(client, 'courses', '*')).filter(course => course.is_rehearsal).map(course => course.id))
+        const monitored = courses.filter(course => (course.can_lead || course.can_manage_assigned_runs) && !rehearsal.has(course.id))
+        const startAt = await readReportsStartAt(client)
+        return summarize((await readReport(client, monitored, startAt)).rows, startAt)
     })
 }
 
 export async function getAdminLmsAnalytics(): Promise<ActionResult<AdminLmsAnalytics>> {
     return academyAction('analytics.admin', async () => {
         const { client } = await requireAcademyContext({ editor: true })
-        const courses = await readRows<ReportCourse>(client, 'courses', 'id,title,status,published_version_id,legacy_review_required')
-        const report = await readReport(client, courses)
-        const summary = summarize(report.rows)
+        // '*' zamiast listy kolumn: is_rehearsal dokłada migracja, a raport ma działać także przed nią.
+        const courses = (await readRows<ReportCourse>(client, 'courses', '*')).filter(course => !course.is_rehearsal)
+        const startAt = await readReportsStartAt(client)
+        const report = await readReport(client, courses, startAt)
+        const summary = summarize(report.rows, startAt)
         const publishedVersions = new Set(report.versions.filter(version => version.status === 'published').map(version => version.id))
         const months = Array.from({ length: 12 }, (_, index) => {
             const now = new Date()
@@ -128,6 +136,7 @@ export async function getAdminLmsAnalytics(): Promise<ActionResult<AdminLmsAnaly
             average_rating_all: summary.average_rating,
             top_courses: report.rows.slice(0, 10).map(course => ({ course_id: course.course_id, title: course.course_title, enrollments: course.enrollments_count, completions: course.completions_count, completion_rate: course.completion_rate, avg_rating: course.avg_rating })),
             monthly_enrollments: months,
+            reports_start_at: startAt,
         }
     })
 }

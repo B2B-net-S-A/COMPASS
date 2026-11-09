@@ -3,11 +3,12 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Archive, BookOpen, Search } from 'lucide-react'
+import { Archive, ArchiveRestore, BookOpen, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { archiveCourse } from '@/lib/actions/courses-admin'
+import { archiveCourse, restoreCourse } from '@/lib/actions/courses-admin'
+import { DeleteDraftButton } from './DeleteDraftButton'
 import { ACADEMY_COURSE_STATUS_LABELS, type AcademyAdminCourse, type AcademyAdminCoursePage, type AcademyAdminCourseStatus } from '@/lib/types/academy-admin'
 import { useAcademyAction } from './useAcademyAction'
 
@@ -37,6 +38,21 @@ function AdminCourseCard({ course }: { course: AcademyAdminCourse }) {
         })
     }
 
+    async function restore() {
+        if (!archived || pending) return
+        const accepted = await confirm({ title: `Przywrócić szkolenie „${course.title}” z archiwum?`, description: 'Szkolenie wróci do stanu sprzed archiwizacji. Opublikowana wersja znów będzie widoczna w katalogu w ramach bieżącego dostępu do Akademii.', confirmLabel: 'Przywróć szkolenie', cancelLabel: 'Zostaw w archiwum' })
+        if (!accepted) return
+        setError(null)
+        run(async () => {
+            try {
+                const result = await restoreCourse(course.id)
+                if (!result.success) { setError(result.error); return }
+                setArchived(false)
+                router.refresh()
+            } catch { setError('Nie udało się przywrócić szkolenia. Spróbuj ponownie.') }
+        })
+    }
+
     return <article className="space-y-4 rounded-xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 space-y-2">
@@ -49,6 +65,8 @@ function AdminCourseCard({ course }: { course: AcademyAdminCourse }) {
             <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline" size="sm"><Link href={`/learning/tworze/${course.id}/edit`}><BookOpen aria-hidden="true" />Program i historia</Link></Button>
                 {!archived && <Button variant="outline" size="sm" onClick={archive} disabled={pending}><Archive aria-hidden="true" />{pending ? 'Archiwizowanie…' : 'Zarchiwizuj'}</Button>}
+                {archived && <Button variant="outline" size="sm" onClick={restore} disabled={pending}><ArchiveRestore aria-hidden="true" />Przywróć z archiwum</Button>}
+                {!archived && course.publishedVersionNumber === null && ['draft', 'rejected'].includes(course.status) && <DeleteDraftButton courseId={course.id} title={course.title} />}
             </div>
         </div>
         {archived && <p role="status" className="text-sm text-muted-foreground">Szkolenie jest w archiwum. Dotychczasowi uczestnicy zachowują swoją naukę.</p>}

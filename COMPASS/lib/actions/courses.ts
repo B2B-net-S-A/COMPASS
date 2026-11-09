@@ -1,6 +1,7 @@
 'use server'
 
 import { academyClient, requireAcademyContext, academyAction, assertDatabaseResult } from '@/lib/academy/server'
+import { canFilterRehearsal } from '@/lib/academy/rehearsal'
 import { courseMetadataSchema, loadAcademyCourse, withCourseVersion, type CourseVersion } from '@/lib/academy/course-data'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
@@ -110,6 +111,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
             .eq('status', 'published')
             .eq('legacy_review_required', false)
             .not('published_version_id', 'is', null)
+        if (await canFilterRehearsal(supabase)) query = query.eq('is_rehearsal', false)
 
         if (filters.author_id) query = query.eq('author_id', z.uuid().parse(filters.author_id))
         if (filters.instructor_id) {
@@ -519,6 +521,17 @@ export async function setQuizQuestions(courseId: string, questions: QuizQuestion
         logger.error({ event: 'courses.set_quiz_questions.failed', error })
         return { success: false, error: msg }
     }
+}
+
+/** Niepublikowany szkic bez zapisów, edycji i materiałów; warunki sprawdza baza w jednej transakcji. */
+export async function deleteDraftCourse(courseId: string): Promise<ActionResult<void>> {
+    return academyAction('course.delete_draft', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        const { error } = await client.rpc('academy_delete_draft_course', { p_course_id: z.uuid().parse(courseId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning/tworze')
+        revalidatePath('/admin/learning', 'layout')
+    })
 }
 
 /**

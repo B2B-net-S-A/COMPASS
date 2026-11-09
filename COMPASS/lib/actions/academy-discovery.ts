@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { loadAcademyCourse } from '@/lib/academy/course-data'
+import { canFilterRehearsal } from '@/lib/academy/rehearsal'
 import type { ActionResult } from '@/lib/types/learning'
 
 export interface AcademyCatalogOptions {
@@ -20,10 +21,12 @@ export async function getAcademyCatalogOptions(): Promise<ActionResult<AcademyCa
     return academyAction('catalog_options', async () => {
         const { client } = await requireAcademyContext()
         const categories = new Set<string>()
+        const hideRehearsal = await canFilterRehearsal(client)
         for (let offset = 0; ; offset += 1000) {
-            const { data, error } = await client.from('courses').select('id,category')
+            let query = client.from('courses').select('id,category')
                 .eq('status', 'published').eq('legacy_review_required', false).not('published_version_id', 'is', null)
-                .order('id').range(offset, offset + 999)
+            if (hideRehearsal) query = query.eq('is_rehearsal', false)
+            const { data, error } = await query.order('id').range(offset, offset + 999)
             assertDatabaseResult(error)
             for (const row of data ?? []) {
                 if (row.category) categories.add(row.category)
@@ -43,6 +46,7 @@ export async function listAcademyPrerequisiteChoices(input: { search?: string; s
         const parsed = z.object({ search: z.string().trim().max(200).optional(), selectedIds: z.array(z.uuid()).max(50).optional(), excludeCourseId: z.uuid().optional() }).parse(input)
         let query = client.from('courses').select('id,title,slug').eq('status', 'published')
             .eq('legacy_review_required', false).not('published_version_id', 'is', null)
+        if (await canFilterRehearsal(client)) query = query.eq('is_rehearsal', false)
         if (parsed.excludeCourseId) query = query.neq('id', parsed.excludeCourseId)
         if (parsed.selectedIds) {
             if (parsed.selectedIds.length === 0) return []
