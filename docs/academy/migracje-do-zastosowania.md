@@ -65,6 +65,10 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 | 32 | `20261110130000_academy_twin_course.sql` | #502 | nieodwracalne, cofamy PITR | czeka |
 | 33 | `20261110133000_academy_b5_4_reports.sql` | #506 | `supabase/rollbacks/20261110133000_academy_b5_4_reports.sql` | czeka |
 | 34 | `20261110143000_academy_b5_6_retrieval.sql` | #507 | `supabase/rollbacks/20261110143000_academy_b5_6_retrieval.sql` | czeka |
+| 35 | `20261110160000_academy_question_drafts_key.sql` | #514 | `supabase/rollbacks/20261110160000_academy_question_drafts_key.sql` | czeka |
+| 36 | `20261110160100_academy_certificates_expiring_rollout.sql` | #514 | `supabase/rollbacks/20261110160100_academy_certificates_expiring_rollout.sql` | czeka |
+| 37 | `20261110160200_academy_adopt_learner_user.sql` | #515 | `supabase/rollbacks/20261110160200_academy_adopt_learner_user.sql` | czeka |
+| 38 | `20261110160300_academy_b1_10_launch_condition.sql` | #516 | `supabase/rollbacks/20261110160300_academy_b1_10_launch_condition.sql` | czeka |
 
 ## Warunki stosowania
 
@@ -271,6 +275,28 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
 - `COMPASS/supabase/migrations/20261110143000_academy_b5_6_retrieval.sql`
   - Warunek: po `20261109200100_academy_quiz_pool.sql` i `20261109200300_academy_question_void.sql`.
   - Cofnięcie: `supabase/rollbacks/20261110143000_academy_b5_6_retrieval.sql`.
+
+### Przegląd bezpieczeństwa: klucz w szkicach i przypomnienia o certyfikatach
+
+- `COMPASS/supabase/migrations/20261110160000_academy_question_drafts_key.sql`
+  - Warunek: po `20261109200800_academy_question_drafts.sql`.
+  - Cofnięcie: `supabase/rollbacks/20261110160000_academy_question_drafts_key.sql`.
+- `COMPASS/supabase/migrations/20261110160100_academy_certificates_expiring_rollout.sql`
+  - Warunek: po `20261110090000_academy_b1_2_learner_accounts.sql` i `20261110113000_academy_b5_1_certificate_validity.sql`.
+  - Cofnięcie: `supabase/rollbacks/20261110160100_academy_certificates_expiring_rollout.sql`.
+
+### Przegląd bezpieczeństwa: przejęcie konta z listy kont nauki
+
+- `COMPASS/supabase/migrations/20261110160200_academy_adopt_learner_user.sql`
+  - Warunek: po `20261110090000_academy_b1_2_learner_accounts.sql`.
+  - Cofnięcie: `supabase/rollbacks/20261110160200_academy_adopt_learner_user.sql`.
+  - Bez tego pliku adres zajęty przez rejestrację kończy wejście komunikatem o kontakcie z organizatorem, jak dotąd.
+
+### B1.10 Izolacja konta nauki w warstwie danych
+
+- `COMPASS/supabase/migrations/20261110160300_academy_b1_10_launch_condition.sql`
+  - Warunek: po `20261109130300_academy_readiness.sql`.
+  - Cofnięcie: `supabase/rollbacks/20261110160300_academy_b1_10_launch_condition.sql`.
 
 ### B5.9 Skrypt usuwania danych prób
 
