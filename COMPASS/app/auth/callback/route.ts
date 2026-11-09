@@ -25,6 +25,13 @@ export async function GET(request: Request) {
     const nextParam = requestUrl.searchParams.get("next");
     let syncedRole: string | null = null;
 
+    // Gdy baza odmówi założenia konta (bramka adresów na auth.users), GoTrue wraca tu
+    // z ?error= zamiast kodu. Bez tej gałęzi użytkownik trafiłby na /home i po cichu na login.
+    if (!code && requestUrl.searchParams.get("error")) {
+        logger.warn({ event: 'auth.callback.provider_error', errorCode: requestUrl.searchParams.get("error_code") });
+        return NextResponse.redirect(`${origin}/login?error=auth_failed`);
+    }
+
     if (code) {
         const supabase = createClient();
         const { error } = await supabase.auth.exchangeCodeForSession(code);

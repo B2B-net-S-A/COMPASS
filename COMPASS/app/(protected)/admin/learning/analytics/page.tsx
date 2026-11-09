@@ -11,7 +11,7 @@ export default async function AdminLmsAnalyticsPage() {
     const data = result.success ? result.data : null
     return <AcademyShell activeTab="admin" access={{ isAdmin: true, canTeach: true }} title="Raport Akademii" description="Zapisy, ukończenia i oceny szkoleń w całym zakresie Akademii.">
         <AcademyAdminNav active="reports" />
-        {!data ? <AcademyEmptyState variant="error" title="Nie udało się pobrać raportu" description="Odśwież stronę i spróbuj ponownie. Niepełnych danych nie przedstawiamy jako zerowych wyników." /> : <AcademyReport admin metrics={[
+        {!data ? <AcademyEmptyState variant="error" title="Nie udało się pobrać raportu" description="Odśwież stronę i spróbuj ponownie. Niepełnych danych nie przedstawiamy jako zerowych wyników." /> : <AcademyReport admin reportsStartAt={data.reports_start_at} metrics={[
             { label: 'Dostępne publikacje', value: data.total_published_courses },
             { label: 'Wersje do akceptacji', value: data.total_pending_review, href: '/admin/learning' },
             { label: 'Zapisy', value: data.total_enrollments },

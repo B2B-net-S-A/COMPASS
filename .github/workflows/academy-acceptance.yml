@@ -1,0 +1,44 @@
+name: Academy acceptance
+
+# Uruchamiany wyłącznie ręcznie. Bez service role w sekretach i bez artefaktów: zrzuty wgrywa człowiek
+# do prywatnego bucketu w panelu Gotowość. Sekret ACADEMY_READINESS_SECRET otwiera tylko trasę wyników.
+on:
+  workflow_dispatch:
+    inputs:
+      include_document:
+        description: Uruchomić scenariusze kończące się dokumentem (zostawiają nieusuwalne ukończenia)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academy-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ACADEMY_E2E_BASE_URL: https://compass.dynaminds.pl
+      ACADEMY_READINESS_SECRET: ${{ secrets.ACADEMY_READINESS_SECRET }}
+      ACADEMY_E2E_INCLUDE_DOCUMENT: ${{ inputs.include_document && 'true' || 'false' }}
+    defaults:
+      run:
+        working-directory: COMPASS
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: COMPASS/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test -c playwright.academy.config.ts
+      - name: Oznacz nieaktualne wyniki
+        run: npx tsx scripts/academy-readiness-stale.ts

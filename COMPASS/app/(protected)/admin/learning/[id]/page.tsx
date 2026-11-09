@@ -17,22 +17,20 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
     params: { id: string }
-    searchParams: { legacy?: string }
 }
 
-export default async function AdminCourseReviewPage({ params, searchParams }: PageProps) {
-    const legacy = searchParams.legacy === '1'
-    const options = legacy ? { publishedOnly: true } : { author: true }
+export default async function AdminCourseReviewPage({ params }: PageProps) {
+    const options = { author: true }
     const detailResult = await getCourseDetail(params.id, options)
     if (!detailResult.success) notFound()
     const course = detailResult.data
     const lessonsResult = await getCourseLessons(course.id, options)
-    const quizResult = await getCourseQuizForAuthor(course.id, { publishedOnly: legacy })
+    const quizResult = await getCourseQuizForAuthor(course.id, { publishedOnly: false })
 
     const permission = await canReviewCourseVersion(course.version_id!)
     const lessons = lessonsResult.success ? lessonsResult.data : []
     const quiz = quizResult.success ? quizResult.data : []
-    const previewLoaded = lessonsResult.success && quizResult.success && permission.success && (legacy || !!course.submission_id)
+    const previewLoaded = lessonsResult.success && quizResult.success && permission.success && !!course.submission_id
 
     return (
         <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
@@ -46,7 +44,7 @@ export default async function AdminCourseReviewPage({ params, searchParams }: Pa
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                     <Badge variant="outline" className="border-warning/30 text-warning bg-warning/10 text-[10px]">
-                        {legacy ? 'Historyczna publikacja' : 'W moderacji'}
+                        W moderacji
                     </Badge>
                     <Badge variant="outline" className="text-[10px]">{course.category}</Badge>
                     <Badge variant="outline" className="text-[10px] border-border">{course.level}</Badge>
@@ -63,12 +61,12 @@ export default async function AdminCourseReviewPage({ params, searchParams }: Pa
             </div>
 
             {previewLoaded ? <>
-                <AdminReviewActions legacyReview={legacy} canReview={course.status !== 'archived' && permission.success && permission.data} versionId={course.version_id!} submissionId={course.submission_id} courseId={course.id} title={course.title} />
+                <AdminReviewActions canReview={course.status !== 'archived' && permission.success && permission.data} versionId={course.version_id!} submissionId={course.submission_id} courseId={course.id} title={course.title} />
                 <CourseLearnerPreview mode="review" course={course} lessons={lessons} quiz={[]} />
             </> : <Card className="border-destructive/30 bg-destructive/5"><CardContent className="space-y-2 p-5" role="alert">
                 <p className="font-semibold">Nie udało się wczytać kompletnego podglądu.</p>
                 <p className="text-sm">Decyzja jest zablokowana, dopóki nie odczytamy programu, materiałów, quizu i uprawnień moderatora.</p>
-                <Link href={`/admin/learning/${course.id}${legacy ? '?legacy=1' : ''}`} className="inline-flex text-sm font-medium text-primary underline">Odśwież podgląd</Link>
+                <Link href={`/admin/learning/${course.id}`} className="inline-flex text-sm font-medium text-primary underline">Odśwież podgląd</Link>
             </CardContent></Card>}
 
             {/* Answer key is scoped to an authorized reviewer. */}
