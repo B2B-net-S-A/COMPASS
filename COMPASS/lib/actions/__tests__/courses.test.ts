@@ -20,7 +20,7 @@ describe('course creation and trainer access', () => {
         expect(await createCourse(input)).toEqual({ success: false, error: 'Zaloguj się, aby korzystać z Akademii.' })
         expect(client.rpc).not.toHaveBeenCalled()
     })
-    it.each([{ is_external: true }, { employment_status: 'exited' }, { role: 'internal' }])('rejects an ineligible profile %j', async patch => {
+    it.each([{ is_external: true }, { employment_status: 'exited' }, { role: 'nieznana' }])('rejects an ineligible profile %j', async patch => {
         setup({ tables: { profiles: [{ id: USER, role: 'consultant', ...patch }] } })
         expect((await createCourse(input)).success).toBe(false)
         expect(client.rpc).not.toHaveBeenCalled()

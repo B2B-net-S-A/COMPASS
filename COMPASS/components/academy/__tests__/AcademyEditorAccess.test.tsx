@@ -27,10 +27,14 @@ describe('Global Academy editor navigation', () => {
         expect(screen.queryByRole('link', { name: 'nav_admin_learning' })).not.toBeInTheDocument()
         expect(screen.queryByRole('link', { name: 'nav_home' })).not.toBeInTheDocument()
     })
-    it.each(['internal', 'finanse', 'manager'] as const)('does not extend Academy to %s', role => {
+    it.each(['internal', 'finanse', 'manager'] as const)('gives %s a learner link only after the rollout admits them', role => {
+        const { unmount } = render(<MobileMenu role={role} user={null} academyEnabled={false} />)
+        fireEvent.click(screen.getByTestId('mobile-nav-more'))
+        expect(screen.queryByRole('link', { name: 'Akademia' })).not.toBeInTheDocument()
+        unmount()
         render(<MobileMenu role={role} user={null} academyEnabled />)
         fireEvent.click(screen.getByTestId('mobile-nav-more'))
+        expect(screen.getByRole('link', { name: 'Akademia' })).toHaveAttribute('href', '/learning')
         expect(screen.queryByRole('link', { name: 'Edytor Akademii' })).not.toBeInTheDocument()
-        expect(screen.queryByRole('link', { name: 'Akademia' })).not.toBeInTheDocument()
     })
 })
