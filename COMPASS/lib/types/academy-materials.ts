@@ -9,4 +9,6 @@ export interface AcademyRunMaterial {
     review_note: string | null
     uploaded_by: string | null
     caption_for_asset_id: string | null
+    /** Absent until the availability migration is applied. */
+    available_until?: string | null
 }

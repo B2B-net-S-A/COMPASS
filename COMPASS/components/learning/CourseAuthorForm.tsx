@@ -46,6 +46,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
     const [requireLessons, setRequireLessons] = useState(initial?.completion_rules?.require_all_lessons ?? true)
     const [quizPercent, setQuizPercent] = useState(String(initial?.completion_rules?.quiz_pass_percent ?? (initial ? 70 : 80)))
     const [attendancePercent, setAttendancePercent] = useState(String(initial?.completion_rules?.attendance_percent ?? 80))
+    const [videoWatchPercent, setVideoWatchPercent] = useState(String(initial?.completion_rules?.video_watch_percent ?? 90))
     const [error, setError] = useState<string | null>(null)
     const [saved, setSaved] = useState(false)
     const [isPending, startTransition] = useAcademyAction()
@@ -79,6 +80,11 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
             quiz_pass_percent: quizRequired ? Number(quizPercent) : (initial?.completion_rules?.quiz_pass_percent ?? 80),
             require_all_lessons: requireLessons,
             attendance_percent: needsAttendance ? Number(attendancePercent) : (initial?.completion_rules?.attendance_percent ?? 80),
+            ...(requireLessons ? { video_watch_percent: Number(videoWatchPercent) } : {}),
+        }
+        if (requireLessons && (!Number.isInteger(rules.video_watch_percent) || rules.video_watch_percent! < 50 || rules.video_watch_percent! > 100)) {
+            setError('Część nagrania do zaliczenia modułu musi wynosić od 50 do 100%.')
+            return
         }
         if (durationMinutes !== undefined && (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 60000)) {
             setError('Czas szkolenia musi wynosić od 1 do 60 000 minut. Możesz też pozostawić pole puste.')
@@ -188,6 +194,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
                     <label className="flex items-start gap-3"><input type="checkbox" checked={quizRequired} onChange={(event) => setQuizRequired(event.target.checked)} className="mt-0.5 size-4 shrink-0 accent-primary" /><span className="space-y-1"><span className="block text-sm font-medium">Wymagaj zaliczenia quizu</span><span className="block text-xs leading-relaxed text-muted-foreground">Pytania i odpowiedzi przygotujesz w zakładce „Quiz”.</span></span></label>
                     {quizRequired && <div className="max-w-xs space-y-2 pl-7"><label htmlFor={`${formId}-quiz`} className="block text-sm font-medium">Próg zaliczenia quizu (%)</label><Input id={`${formId}-quiz`} type="number" required min={1} max={100} step={1} value={quizPercent} onChange={(event) => setQuizPercent(event.target.value)} className="h-10 rounded-lg" /></div>}
                 </div>
+                {requireLessons && <div className="max-w-xs space-y-2 border-t border-border pt-5"><label htmlFor={`${formId}-video-watch`} className="block text-sm font-medium">Część nagrania zaliczająca moduł (%)</label><Input id={`${formId}-video-watch`} type="number" required min={50} max={100} step={1} value={videoWatchPercent} onChange={(event) => setVideoWatchPercent(event.target.value)} className="h-10 rounded-lg" /></div>}
                 {needsAttendance && <div className="space-y-2 border-t border-border pt-5"><label htmlFor={`${formId}-attendance`} className="block text-sm font-medium">Wymagana obecność na każdej obowiązkowej sesji (%)</label><Input id={`${formId}-attendance`} type="number" required min={1} max={100} step={1} value={attendancePercent} onChange={(event) => setAttendancePercent(event.target.value)} className="h-10 max-w-xs rounded-lg" /><p className="text-xs leading-relaxed text-muted-foreground">Obecność potwierdza raport Teams lub prowadzący. Samo kliknięcie linku nie zalicza spotkania.</p></div>}
             </fieldset>
             <CoursePrerequisitesEditor value={prerequisites} onChange={(ids) => { setPrerequisites(ids); setSaved(false) }} courseId={initial?.id} disabled={isPending} />
