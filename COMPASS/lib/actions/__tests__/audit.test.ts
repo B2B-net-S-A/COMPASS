@@ -74,7 +74,7 @@ describe('logAudit', () => {
         // łapie w testowym (happy-dom) env.
         const errorSpy = vi.spyOn(logCompat, 'error').mockImplementation(() => {})
         const { logAudit } = await import('../audit')
-        await expect(logAudit('u1', 'LOGIN')).resolves.toBeUndefined()
+        await expect(logAudit('u1', 'LOGIN')).resolves.toBe(false)
         expect(errorSpy).toHaveBeenCalled()
         errorSpy.mockRestore()
     })

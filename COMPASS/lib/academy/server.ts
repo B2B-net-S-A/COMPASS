@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import type { ActionResult } from '@/lib/types/learning'
 import { logger } from '@/lib/logger'
+import { isAcademyRole } from '@/lib/types/role'
 import { academyActionError, academyDatabaseError } from './errors'
 
 export interface AcademyAccess {
@@ -28,7 +29,7 @@ export async function requireAcademyContext(options: { trainer?: boolean; admin?
     const { data: profile, error } = await client.from('profiles')
         .select('role, is_external, employment_status').eq('id', user.id).single()
     if (error || !profile || profile.is_external || profile.employment_status === 'exited'
-        || !['consultant', 'admin', 'talent_community'].includes(profile.role)) {
+        || !isAcademyRole(profile.role)) {
         throw new Error('Nie masz dostępu do Akademii.')
     }
     const { data: rollout, error: rolloutError } = await client.rpc('academy_rollout_access')
