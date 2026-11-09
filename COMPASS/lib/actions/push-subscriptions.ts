@@ -4,6 +4,7 @@ import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
 import { sendPushToUserId } from '@/lib/push/dispatch'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // ============================================================
 // H3.3 — Push Subscription server actions
@@ -23,6 +24,7 @@ interface SubscribePushInput {
 export async function subscribePush(
     input: SubscribePushInput,
 ): Promise<{ success: boolean; error?: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const {
@@ -57,6 +59,7 @@ export async function subscribePush(
  * Odsubskrybuj — delete by endpoint.
  */
 export async function unsubscribePush(endpoint: string): Promise<{ success: boolean; error?: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const {
@@ -86,6 +89,7 @@ export async function sendTestPush(): Promise<{
     sent?: number
     error?: string
 }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const {

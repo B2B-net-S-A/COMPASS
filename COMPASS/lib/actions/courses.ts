@@ -24,6 +24,7 @@ import {
     type UpdateLessonPatch,
     type ActionResult,
 } from '@/lib/types/learning'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // ============================================================
 // Helpers
@@ -242,6 +243,7 @@ export async function getCourseLessons(courseId: string, options: { author?: boo
  * Tworzy nową lekcję na końcu listy (next order_index). Author/admin only.
  */
 export async function addLesson(courseId: string, input: CreateLessonInput): Promise<ActionResult<{ lessonId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -296,6 +298,7 @@ export async function addLesson(courseId: string, input: CreateLessonInput): Pro
  * Aktualizuje pola lekcji.
  */
 export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): Promise<ActionResult<{ courseId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -345,6 +348,7 @@ export async function updateLesson(lessonId: string, patch: UpdateLessonPatch): 
  * potem ustawiamy docelowe indeksy.
  */
 export async function reorderLessons(courseId: string, orderedIds: string[]): Promise<ActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -371,6 +375,7 @@ export async function reorderLessons(courseId: string, orderedIds: string[]): Pr
  * Usuwa lekcję. Pozostałe lekcje zachowują swoje order_index (luki są OK — UI je ignoruje).
  */
 export async function deleteLesson(lessonId: string): Promise<ActionResult<{ courseId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -405,6 +410,7 @@ export async function deleteLesson(lessonId: string): Promise<ActionResult<{ cou
  * RLS na course_quiz_options pozwala na SELECT tylko autorowi/adminowi.
  */
 export async function getCourseQuizForAuthor(courseId: string, view: { publishedOnly?: boolean } = {}): Promise<ActionResult<CourseQuizQuestionAuthor[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -460,6 +466,7 @@ export async function getCourseQuizForAuthor(courseId: string, view: { published
  * Walidacja: 4-10 pytań, każde z dokładnie 4 opcjami i 1 oznaczoną is_correct=true.
  */
 export async function setQuizQuestions(courseId: string, questions: QuizQuestionInput[]): Promise<ActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = academyClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -521,5 +528,6 @@ export async function submitForReview(courseId: string): Promise<ActionResult<vo
 
 /** Compatibility response for a stale authoring page. All new uploads must be scanned. */
 export async function uploadCourseAttachment(_formData: FormData): Promise<ActionResult<CourseAttachment>> {
+    await assertNotAcademyOnly()
     return { success: false, error: 'Odśwież edytor i prześlij materiał przez bezpieczny formularz uploadu.' }
 }

@@ -18,6 +18,7 @@ import type {
     TicketStatus,
     TicketPriority,
 } from '@/lib/types/support'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
@@ -104,6 +105,7 @@ async function isStaffRecipient(userId: string): Promise<boolean> {
 }
 
 export async function listSupportCategories(opts: { includeInactive?: boolean } = {}): Promise<SupportActionResult<SupportCategory[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         let query = supabase
@@ -127,6 +129,7 @@ export async function listSupportCategories(opts: { includeInactive?: boolean } 
 }
 
 export async function createTicket(input: CreateTicketInput): Promise<SupportActionResult<{ ticketId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -199,6 +202,7 @@ interface ListTicketsOptions {
 }
 
 export async function listTickets(options: ListTicketsOptions): Promise<SupportActionResult<{ items: SupportTicketWithMeta[]; total: number }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -298,6 +302,7 @@ export async function listTickets(options: ListTicketsOptions): Promise<SupportA
 }
 
 export async function getTicketDetail(ticketId: string): Promise<SupportActionResult<SupportTicketDetail>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -390,6 +395,7 @@ export async function getTicketDetail(ticketId: string): Promise<SupportActionRe
 }
 
 export async function addComment(ticketId: string, body: string, isInternal = false): Promise<SupportActionResult<{ commentId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -445,6 +451,7 @@ export async function addComment(ticketId: string, body: string, isInternal = fa
 }
 
 export async function changeTicketStatus(ticketId: string, status: TicketStatus): Promise<SupportActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -496,6 +503,7 @@ export async function changeTicketStatus(ticketId: string, status: TicketStatus)
 }
 
 export async function assignTicket(ticketId: string, assigneeId: string | null): Promise<SupportActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()

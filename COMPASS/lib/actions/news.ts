@@ -15,6 +15,7 @@ import type {
 } from '@/lib/types/news'
 import { excludeExited } from '@/lib/hr/employment-window'
 import { fetchDisplayNames } from '@/lib/people/display-names'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
@@ -77,6 +78,7 @@ async function enrichPosts(
 }
 
 export async function listNewsForUser(): Promise<NewsActionResult<NewsPostListItem[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -101,6 +103,7 @@ export async function listNewsForUser(): Promise<NewsActionResult<NewsPostListIt
 }
 
 export async function listAllNewsAdmin(): Promise<NewsActionResult<NewsPostListItem[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -125,6 +128,7 @@ export async function listAllNewsAdmin(): Promise<NewsActionResult<NewsPostListI
 }
 
 export async function getNewsPostBySlug(slug: string): Promise<NewsActionResult<NewsPostDetail>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -149,6 +153,7 @@ export async function getNewsPostBySlug(slug: string): Promise<NewsActionResult<
 }
 
 export async function createNewsPost(input: CreateNewsPostInput): Promise<NewsActionResult<{ id: string; slug: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -217,6 +222,7 @@ export async function createNewsPost(input: CreateNewsPostInput): Promise<NewsAc
 }
 
 export async function updateNewsPost(postId: string, patch: UpdateNewsPostPatch): Promise<NewsActionResult<{ slug: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -258,6 +264,7 @@ export async function updateNewsPost(postId: string, patch: UpdateNewsPostPatch)
 }
 
 export async function deleteNewsPost(postId: string): Promise<NewsActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -278,6 +285,7 @@ export async function deleteNewsPost(postId: string): Promise<NewsActionResult<v
 }
 
 export async function toggleReaction(postId: string, kind: ReactionKind): Promise<NewsActionResult<{ active: boolean }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -317,6 +325,7 @@ export async function toggleReaction(postId: string, kind: ReactionKind): Promis
 }
 
 export async function markPostRead(postId: string): Promise<NewsActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -337,6 +346,7 @@ export async function markPostRead(postId: string): Promise<NewsActionResult<voi
 }
 
 export async function getUnreadNewsCount(): Promise<NewsActionResult<number>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()

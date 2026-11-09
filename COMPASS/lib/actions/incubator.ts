@@ -19,6 +19,7 @@ import type {
     PitchStatus,
     ProjectStatus,
 } from '@/lib/types/incubator'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 async function isCallerAdmin(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
@@ -82,6 +83,7 @@ async function notify(
 // ─── Pitches (Flow A) ────────────────────────────────────────────────
 
 export async function submitPitch(input: CreatePitchInput): Promise<IncubatorActionResult<{ pitchId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -146,6 +148,7 @@ async function enrichPitches(supabase: ReturnType<typeof createClient>, pitches:
 }
 
 export async function listMyPitches(): Promise<IncubatorActionResult<IncubatorPitchListItem[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -166,6 +169,7 @@ export async function listMyPitches(): Promise<IncubatorActionResult<IncubatorPi
 }
 
 export async function listAllPitchesAdmin(status?: PitchStatus): Promise<IncubatorActionResult<IncubatorPitchListItem[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -186,6 +190,7 @@ export async function listAllPitchesAdmin(status?: PitchStatus): Promise<Incubat
 }
 
 export async function getPitchById(pitchId: string): Promise<IncubatorActionResult<IncubatorPitchListItem>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data, error } = await supabase.from('incubator_pitches').select('*').eq('id', pitchId).single()
@@ -199,6 +204,7 @@ export async function getPitchById(pitchId: string): Promise<IncubatorActionResu
 }
 
 export async function changePitchStatus(pitchId: string, newStatus: PitchStatus, reviewNotes?: string): Promise<IncubatorActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -237,6 +243,7 @@ export async function changePitchStatus(pitchId: string, newStatus: PitchStatus,
 // ─── Internal Projects (Flow B) ───────────────────────────────────────
 
 export async function listProjects(): Promise<IncubatorActionResult<IncubatorProjectListItem[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -282,6 +289,7 @@ export async function listProjects(): Promise<IncubatorActionResult<IncubatorPro
 }
 
 export async function getProjectBySlug(slug: string): Promise<IncubatorActionResult<IncubatorProjectListItem>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -309,6 +317,7 @@ export async function getProjectBySlug(slug: string): Promise<IncubatorActionRes
 }
 
 export async function createProject(input: CreateProjectInput): Promise<IncubatorActionResult<{ id: string; slug: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -346,6 +355,7 @@ export async function createProject(input: CreateProjectInput): Promise<Incubato
 }
 
 export async function updateProjectStatus(projectId: string, status: ProjectStatus): Promise<IncubatorActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -367,6 +377,7 @@ export async function updateProjectStatus(projectId: string, status: ProjectStat
 // ─── Applications ────────────────────────────────────────────────────
 
 export async function applyToProject(projectId: string, motivation: string): Promise<IncubatorActionResult<{ applicationId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -407,6 +418,7 @@ export async function applyToProject(projectId: string, motivation: string): Pro
 }
 
 export async function listApplicationsForProject(projectId: string): Promise<IncubatorActionResult<IncubatorApplicationWithMeta[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -441,6 +453,7 @@ export async function listApplicationsForProject(projectId: string): Promise<Inc
 }
 
 export async function changeApplicationStatus(applicationId: string, status: ApplicationStatus): Promise<IncubatorActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
