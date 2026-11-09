@@ -16,8 +16,8 @@ function sources(relative: string): string[] {
 }
 
 describe('rejestr przełączników Akademii', () => {
-    it('zawiera dziewięć przełączników z planu', () => {
-        expect(ACADEMY_SWITCHES).toHaveLength(9)
+    it('zawiera dziewięć przełączników z planu i nadawcę z B3.4', () => {
+        expect(ACADEMY_SWITCHES).toHaveLength(10)
     })
 
     it('domyślnie wszystkie są wyłączone', () => {

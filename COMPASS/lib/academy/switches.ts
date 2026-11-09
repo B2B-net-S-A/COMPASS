@@ -11,6 +11,7 @@
 
 export const ACADEMY_SWITCHES = [
     'ACADEMY_MAIL_ENABLED',
+    'ACADEMY_MAIL_SENDER_ENABLED',
     'ACADEMY_PASS_ENABLED',
     'ACADEMY_LEARNER_SYNC_ENABLED',
     'ACADEMY_TEAMS_ENABLED',
@@ -24,6 +25,7 @@ export type AcademySwitch = (typeof ACADEMY_SWITCHES)[number]
 
 export const ACADEMY_SWITCH_LABELS: Readonly<Record<AcademySwitch, string>> = {
     ACADEMY_MAIL_ENABLED: 'Poczta Akademii',
+    ACADEMY_MAIL_SENDER_ENABLED: 'Osobna skrzynka nadawcza Akademii',
     ACADEMY_PASS_ENABLED: 'Przepustka konta nauki',
     ACADEMY_LEARNER_SYNC_ENABLED: 'Automat tożsamości kont nauki',
     ACADEMY_TEAMS_ENABLED: 'Spotkania Teams z uczestnikami',
