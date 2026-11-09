@@ -870,11 +870,11 @@ export async function sendInvoiceDecision(
 }
 
 /**
- * A1.5: Email reminderowy dla studenta który zaczął kurs ale ≥3 dni nie zrobił postępu.
- * Wysyłany przez cron `/api/cron/course-inactivity` (max 1×/tydz per enrollment).
+ * A1.5: Treść przypomnienia dla studenta, który zaczął kurs, ale od ≥3 dni nie zrobił postępu.
+ * Sam szablon: cron `/api/cron/course-inactivity` wstrzymuje wiadomość w bramce Akademii
+ * (`lib/academy/outbound.ts`), która jest jedyną drogą poczty tego obszaru.
  */
-export async function sendCourseInactivityReminder(
-    recipientEmail: string,
+export function buildCourseInactivityEmail(
     recipientName: string,
     args: {
         courseTitle: string
@@ -886,7 +886,7 @@ export async function sendCourseInactivityReminder(
         lastAccessDaysAgo: number
         appUrl: string
     },
-): Promise<{ success: boolean }> {
+): { subject: string; html: string } {
     const remaining = Math.max(0, args.totalLessons - args.completedLessons)
     const continueUrl = `${args.appUrl.replace(/\/$/, '')}${academyCourseHref(args.courseSlug, args.enrollmentId, '/lekcja/first')}`
     const subject = `[COMPASS Akademia] Wróć do kursu "${args.courseTitle}"`
@@ -907,27 +907,7 @@ export async function sendCourseInactivityReminder(
             </a>
         </p>
     `
-    try {
-        const { error } = await getResend().emails.send({
-            from: 'COMPASS Akademia <noreply@compass.b2bnetwork.pl>',
-            to: recipientEmail,
-            subject,
-            html: wrapHrEmail({
-                tag: 'Akademia',
-                heading: 'Wróć do kursu',
-                bodyHtml,
-                accent: '#3b82f6',
-            }),
-        })
-        if (error) {
-            logCompat.error('Resend course-inactivity error:', error)
-            return { success: false }
-        }
-        return { success: true }
-    } catch (err) {
-        logCompat.error('Course-inactivity email failed:', err)
-        return { success: false }
-    }
+    return { subject, html: wrapHrEmail({ tag: 'Akademia', heading: 'Wróć do kursu', bodyHtml, accent: '#3b82f6' }) }
 }
 
 /**
