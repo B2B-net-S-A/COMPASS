@@ -1,6 +1,6 @@
 # Akademia COMPASS: przekazanie pracy
 
-Stan na 2026-11-09, około 15:00 (Warszawa). Kolejna sesja Claude'a zaczyna od tego pliku.
+Stan na 2026-11-09, wieczór (Warszawa), po domknięciu braków z pierwszego przekazania. Kolejna sesja Claude'a zaczyna od tego pliku.
 
 ## Cel i decyzje właściciela
 
@@ -36,24 +36,26 @@ Artefakt z roadmapą (`claude.ai/artifact/MBMpkD62zST4ge7rUmqszt`) jest prywatny
 
 Zadania B0–B5 są na `main`, z wyjątkiem pracy w toku poniżej. Scalone PR-y to m.in. #454–#516 (zakres Akademii). Szczegóły zadań: plan oraz `git log`.
 
-### W toku w chwili przekazania
+### Domknięte po pierwszym przekazaniu (2026-11-09 wieczorem)
 
-1. **#516** (B1.10 jako warunek bramki startu, zamknięcie `loyalty_rules`): auto-merge włączony, CI w toku. Gałąź `fix/akademia-b1-10-izolacja-danych`. Czerwone Gitleaks lub `Supabase academy-fixture` to zwykle błąd 504 przy pobieraniu narzędzia, patrz niżej.
-2. **Tabela migracji jest niepełna.** `migracje-do-zastosowania.md` ma 34 wiersze, a plików z prefiksem `20261109` i `20261110` jest więcej (m.in. z #511–#516 i `20261110150000_academy_b3_10_tcm_review.sql`). Po scaleniu #516 trzeba dopisać brakujące wiersze w kolejności prefiksów, a `migration-contract.test.ts` to sprawdzi. Pozostałe `docs/academy/czeka/*.md` przenieść do `czeka-na-wlasciciela.md`.
+| Część | PR | Uwaga |
+|---|---|---|
+| B1.7 link ponownego wejścia wychodzi regułą automatyczną bramki (decyzja właściciela) | #519 | Tylko `academy.reentry`, tylko przy `ACADEMY_MAIL_ENABLED` i `ACADEMY_PASS_ENABLED`; wysyłka po odpowiedzi, żeby czas nie zdradzał konta |
+| B0.3 `course-inactivity` stronicuje po kluczu | #520 | Najwyżej 500 nowych `held` na przebieg, kolejne w następnym |
+| B4.3 ręczne zaliczenie nagrania przez RPC zablokowane, postęp w eksporcie RODO | #521 | Migracja `20261110170000` |
+| B4.7 temat i program w edytorze kursu | #522 | Bez migracji; zakładanie programów ręcznie nie istnieje |
+| B4.8 raport programu na ekranie kompetencji, data szkolenia w banerze M09 | #523 | Migracja `20261110164500` |
+| Rejestr migracji (B3.10, B4.3, B4.8) i lista właściciela scalone, `docs/academy/czeka/` pusty | ten PR | |
+| 4 testy bazy poza `test:academy-db` | — | Celowo: biegną jako osobne kroki w `build-check.yml` (job `academy-postgres`) |
 
 ## Co zostało do zrobienia
 
-### Kod, niewielkie braki zgłoszone przez tory
+### Kod
 
-- B4.8: `academy_programme_completions()` nie jest podpięta do ekranu raportów; baner M09 nie podaje daty szkolenia na żywo.
-- B4.7: temat i program kursu da się ustawić tylko przez RPC, bez interfejsu.
-- B4.3: ręczne `academy_mark_lesson_complete` nadal można wywołać RPC; przycisk znika tylko w UI.
-- B4.3: `academy_video_progress` dopisać do eksportu RODO po zastosowaniu migracji.
-- B4.9: import nagrań nie jest podpięty do workera, czeka na decyzję o uprawnieniu Graph.
-- B0.3: cron `course-inactivity` przy ponad 500 kwalifikujących się zapisach kręci się po tych samych 500; poprawić przed wysyłką na większą skalę.
-- B1.7: mail ponownego wejścia zostaje w `held` bez `batch_id`, a `sendApprovedAcademyBatch` nie jest nigdzie wołana. Rozstrzygnąć przed włączeniem przepustki.
-- 4 starsze testy bazy są poza `test:academy-db`: `enrollments-pagination`, `m365-identities-pagination`, `my-run-overview`, `tcm-editor`. Sprawdzić, czy to celowe.
-- Na zdalnym repo zostały zbędne gałęzie, m.in. `wip/b2-next`, `feat/academy-b2-2-attempt-session`, `feat/academy-b2-3-question-void`, `feat/academy-b2-4-mobile-form`, `feat/academy-b4-3-postep`, `feat/academy-b4-4-rozdzialy`, `feat/academy-b4-5-dlugie-pliki`, `feat/academy-b5-5-kokpit`.
+- B4.9: import nagrań nie jest podpięty do workera, czeka na decyzję o uprawnieniu Graph (decyzja otwarta z 15.01.2027).
+- Drobne: `academy_save_video_progress` (`20261109213000`) rzutuje `video_watch_percent` na `integer`, więc ułamkowy próg wpisany wprost w bazę (np. 89.5) wywróciłby zapis postępu. Formularz i schemat przyjmują tylko liczby całkowite, więc z aplikacji to nie wystąpi.
+- `sendApprovedAcademyBatch` nadal nie ma wywołującego w interfejsie: zatwierdzanie i wysyłka paczek czeka na decyzję o `ACADEMY_MAIL_ENABLED` na bramce startu.
+- Zbędne gałęzie usunięte z origin 2026-11-09 (decyzja właściciela). Odtworzenie: `git push origin <sha>:refs/heads/<nazwa>`. `wip/b2-next` 9a71985e, `feat/academy-b2-2-attempt-session` 641d8e62, `feat/academy-b2-3-question-void` 859cb5bc, `feat/academy-b2-4-mobile-form` 0461f2d0, `feat/academy-b4-3-postep` b05d8b8c, `feat/academy-b4-4-rozdzialy` 8408326a, `feat/academy-b4-5-dlugie-pliki` d49e07aa, `feat/academy-b5-5-kokpit` 527d3c50.
 
 ### Właściciel
 

@@ -176,9 +176,8 @@ Wymóg dla B1.3: przepustka zapisuje znacznik jako wartość logiczną `true`. N
 ## B1.7 Ponowne wejście
 
 - `NEXT_PUBLIC_APP_URL` musi wskazywać adres produkcji, bo z niego powstaje link w wiadomości.
-- Decyzja przed bramką startu: po włączeniu `ACADEMY_PASS_ENABLED` wiadomość do zwykłego konta zostaje w kolejce `held` i wygasa po 15 minutach, bo bramka B0.2 wymaga zatwierdzenia paczki przez człowieka. Do działania dla uczestników link ponownego wejścia potrzebuje osobnej reguły zatwierdzania dla tego rodzaju wiadomości.
+- Rozstrzygnięte 2026-11-09 (decyzja właściciela): link ponownego wejścia wychodzi regułą automatyczną bramki (`sendAcademyAutoMail` w `lib/academy/outbound.ts`), tylko gdy `ACADEMY_MAIL_ENABLED` i `ACADEMY_PASS_ENABLED` są oba `true`. Wiersz ma własną paczkę, `approved_by` puste oznacza zatwierdzenie regułą. Każdy inny rodzaj wiadomości dalej wymaga paczki zatwierdzonej przez człowieka.
 - Limity są w pamięci procesu i zerują się przy restarcie. Przy więcej niż jednym kontenerze trzeba je przenieść do bazy.
-- Decyzja przed włączeniem przepustki (przegląd bezpieczeństwa 2026-11-09): wiadomość `academy.reentry` powstaje w kolejce bez `batch_id`, a zatwierdzić i wysłać można tylko paczkę (`approveAcademyOutboxBatch`, ograniczenie `academy_outbox_approval_recorded`). Kod zostaje bez zmian, więc poza wysyłką testową na skrzynki właściciela taka wiadomość nie ma drogi wyjścia. Trzeba wybrać: osobna reguła dla tego rodzaju wiadomości albo ręczne zatwierdzanie paczek, które przy linku ważnym 15 minut praktycznie nie zadziała.
 - Adres z listy zajęty przez zwykłą rejestrację: migracja `20261110160200_academy_adopt_learner_user.sql` przejmuje konto bez logowania i kasuje jego hasło. Konto, na które ktoś się już logował, jest odrzucane: wejście kończy się komunikatem o kontakcie z organizatorem, a w logu jest `academy.learner_entry.adoption_refused`. Taką sprawę trzeba rozstrzygnąć ręcznie, bo to może być przejęty adres.
 
 ## B1.8 Ekran klauzuli i regulaminu jako miejsce na treść
@@ -282,6 +281,11 @@ Odczyt obejmuje tylko polityki zawsze prawdziwe. Polityki zależne od roli `cons
 - Krok „Wiadomości po szkoleniu”: podgląd i zatwierdzenie paczki są nieaktywne do czasu B3.3 i decyzji o przełączniku wysyłki.
 - G34: pomiar liczby operacji organizatora na pliku około 100 wierszy (B3.14).
 
+## B3.10 Recenzja także przez TCM
+
+- Zastosowanie migracji `20261110150000_academy_b3_10_tcm_review.sql` po B0.8. Do tego czasu akceptuje wyłącznie admin, a TCM nie ma kolejki ani zakładki, bo `academy_is_reviewer` nie istnieje.
+- Sprawdzenie przez SSO po migracji: konto TCM otwiera `/admin/learning`, zatwierdza cudzy kurs i dostaje odmowę przy własnym.
+
 ## B3.11 Tor Teams z konta organizatora
 
 - Decyzja o włączeniu toru: `ACADEMY_TEAMS_ENABLED` zostaje wyłączone, a żadne uprawnienie Graph nie zostało nadane. Spis ról: `/admin/learning/integrations`.
@@ -307,7 +311,9 @@ Odczyt obejmuje tylko polityki zawsze prawdziwe. Polityki zależne od roli `cons
 
 ## B4.3 Postęp co do sekundy i wznawianie
 
-- Po zastosowaniu migracji dopisać `academy_video_progress` do źródeł eksportu RODO w `COMPASS/lib/gdpr/subject-data.ts`. Tabela zawiera dane o oglądaniu per osoba, a dopisanie przed migracją wywróciłoby eksport.
+- `academy_video_progress` jest już w eksporcie RODO (`COMPASS/lib/gdpr/subject-data.ts`, lista `PENDING_MIGRATION_TABLES`), więc brak tabeli przed migracją nie wywraca eksportu.
+- Zastosowanie `20261110170000_academy_b4_3_mark_complete_guard.sql` po `20261109213000_academy_video_progress.sql`. Do tego czasu ręczne `academy_mark_lesson_complete` przez RPC nadal zalicza moduł z nagraniem; po migracji kończy się odmową `video_watch_required` poniżej progu.
+- Sprawdzenie przez SSO po migracji: moduł z nagraniem zalicza się sam po obejrzeniu progu, a wywołanie RPC przed progiem zwraca komunikat „Moduł z nagraniem zalicza się sam po obejrzeniu ustawionej części nagrania.”.
 - Scenariusz G41 (wznowienie na innym urządzeniu, 90% zalicza moduł, zerwanie sieci): ręcznie, przez SSO, ze zrzutem.
 
 ## B4.4 Rozdziały i napisy
@@ -329,11 +335,14 @@ Odczyt obejmuje tylko polityki zawsze prawdziwe. Polityki zależne od roli `cons
 
 - Treść biblioteki i tematy kursów (B4.10): wsad próbny dwóch kursów z prawdziwej treści, na przykład Cybersecurity i DORA, moduły 5-30 minut plus materiały. To treść organizatora.
 - Scenariusz G47 (wyszukiwarka, temat, format, konto biura i konto nauki widzą to samo): ręcznie, przez SSO, ze zrzutem, po B4.10.
+- Temat i program ustawia się w edytorze kursu (`/learning/tworze/<id>/edit`, panel „Biblioteka: temat i program”). Sprawdzenie przez SSO po migracji: autor albo redaktor ustawia temat i program, konto bez prawa edycji widzi pola tylko do odczytu.
+- Do wiadomości: temat i program leżą na `courses`, poza wersją kursu, więc zmiana działa w katalogu od razu, bez ponownej akceptacji. W edytorze można wybrać tylko istniejący program albo „Bez programu”; program powstaje przy tworzeniu kursu dla nieobecnych (B4.8). Ręczne zakładanie programów to osobne zadanie z nową migracją.
 
 ## B4.8 Kurs dla nieobecnych jednym działaniem (M09)
 
 - Scenariusz G46: ręcznie, przez SSO, ze zrzutem, po dodaniu modułów od prowadzącego.
-- Raport programu: `academy_programme_completions()` liczy osobę raz, ale nie jest jeszcze podpięta do ekranu raportów.
+- Raport programu jest na ekranie `/admin/learning/kompetencje` (sekcja „Programy”). Zastosowanie `20261110164500_academy_programme_completions_report.sql` po `20261110130000` i `20261110133000`: bez niej funkcja z B4.8 liczyłaby konta próbne i kurs-atrapę, a tabela kompetencji nad nią ich nie liczy.
+- Sprawdzenie przez SSO po migracjach: osoba z ukończonym szkoleniem na żywo i kursem z modułów liczy się w „Programach” raz. Nieobecny zapisany na edycję widzi w lekcji zdanie „Szkolenie na żywo odbyło się …” z datą edycji; osoba spoza zapisanych widzi baner bez daty, bo sesje edycji czyta przez RLS.
 
 ## B4.9 Import nagrania z Teams za przełącznikiem
 
