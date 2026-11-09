@@ -17,6 +17,9 @@ const ENFORCED_CSP = [
 //  • connect-src musi obejmować Supabase (REST + realtime po WSS) i Sentry,
 //    inaczej zniknie zapis danych i raportowanie błędów.
 //  • Microsoft w form-action/frame-src — logowanie SSO przechodzi przez login.microsoftonline.com.
+//  • media-src: podpisane URL-e Supabase (nagrania, napisy), a https: dlatego, że lekcja
+//    może wskazywać bezpośredni plik wideo z dowolnego hosta (EmbedVideo, native_file).
+//  • frame-src: wszystkie hosty, które zwraca parseEmbedUrl. Pilnuje tego test video-playback.
 const REPORT_ONLY_CSP = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
@@ -24,9 +27,7 @@ const REPORT_ONLY_CSP = [
     "img-src 'self' data: blob: https://*.supabase.co https://*.microsoft.com",
     "font-src 'self' data:",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://login.microsoftonline.com",
-    // Nagrania Akademii: podpisane adresy Supabase Storage oraz blob: z odtwarzacza.
-    "media-src 'self' blob: https://*.supabase.co",
-    // Osadzone wideo: te same hosty co whitelist w components/learning/EmbedVideo.tsx.
+    "media-src 'self' blob: https:",
     "frame-src 'self' https://login.microsoftonline.com https://www.youtube.com https://player.vimeo.com https://www.loom.com https://fast.wistia.com",
     "form-action 'self' https://login.microsoftonline.com",
     "base-uri 'self'",
