@@ -8,6 +8,14 @@
 -- Cofnięcie: supabase/rollbacks/20261110164500_academy_programme_completions_report.sql
 BEGIN;
 
+-- Warunek wstępny: bez B5.4 plpgsql przyjąłby ciało, a RPC padłoby dopiero w działaniu.
+DO $$
+BEGIN
+    IF to_regprocedure('academy_private.report_excludes(uuid,public.courses)') IS NULL THEN
+        RAISE EXCEPTION 'b4_8_raport_wymaga_B5_4';
+    END IF;
+END $$;
+
 CREATE OR REPLACE FUNCTION public.academy_programme_completions()
 RETURNS TABLE (programme_id uuid, title text, courses integer, completed_users integer)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
