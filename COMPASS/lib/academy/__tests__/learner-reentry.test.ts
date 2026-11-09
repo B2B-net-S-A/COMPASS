@@ -174,6 +174,33 @@ describe('limity', () => {
         expect(allowReentryRequest('3.3.3.3', 'cel@example.test', now)).toBe(false)
     })
 
+    it('pełna tabela nie odmawia nowemu użytkownikowi, nawet przy podrobionych nagłówkach', () => {
+        const now = 4_000_000
+        for (let index = 0; index < 11_000; index += 1) allowReentryRequest(`podrobiony-${index}`, `zalew-${index}@example.test`, now)
+        expect(allowReentryRequest('5.5.5.5', 'prawdziwy@example.test', now)).toBe(true)
+    })
+
+    it('zalew nie usuwa adresu, który wyczerpał limit', () => {
+        const now = 5_000_000
+        for (let attempt = 0; attempt < 4; attempt += 1) allowReentryRequest(`6.6.7.${attempt}`, 'wyczerpany@example.test', now)
+        for (let index = 0; index < 11_000; index += 1) allowReentryRequest(`7.0.0.${index}`, `zalew-${index}@example.test`, now)
+        expect(allowReentryRequest('6.6.8.1', 'wyczerpany@example.test', now)).toBe(false)
+    })
+
+    it('adresy nie wypychają limitów IP', () => {
+        const now = 6_000_000
+        for (let attempt = 0; attempt < 11; attempt += 1) allowReentryRequest('8.8.8.8', `limit-${attempt}@example.test`, now)
+        for (let index = 0; index < 11_000; index += 1) allowReentryRequest(`9.0.0.${index}`, `zalew-${index}@example.test`, now)
+        expect(allowReentryRequest('8.8.8.8', 'nowy@example.test', now)).toBe(false)
+    })
+
+    it('zablokowane IP nie zużywa limitu cudzego adresu', () => {
+        const now = 7_000_000
+        for (let attempt = 0; attempt < 10; attempt += 1) allowReentryRequest('1.2.3.4', `inny-${attempt}@example.test`, now)
+        for (let attempt = 0; attempt < 5; attempt += 1) expect(allowReentryRequest('1.2.3.4', 'ofiara@example.test', now)).toBe(false)
+        expect(allowReentryRequest('4.3.2.1', 'ofiara@example.test', now)).toBe(true)
+    })
+
     it('czyta IP z nagłówka Cloudflare, potem z pierwszego wpisu listy', () => {
         expect(clientIp(new Headers({ 'cf-connecting-ip': '9.9.9.9', 'x-forwarded-for': '1.1.1.1' }))).toBe('9.9.9.9')
         expect(clientIp(new Headers({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2' }))).toBe('1.1.1.1')
