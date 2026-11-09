@@ -138,6 +138,21 @@ describe('po włączeniu przepustki', () => {
         expect(verifyLearnerPassToken(link.split('/wejdz/')[1], SECRET)).toMatchObject({ ok: true })
     })
 
+    it('odpowiedź nie czeka na wysyłkę, więc czas nie zdradza konta', async () => {
+        state.account = { ...trial(), email: 'uczestnik@example.test', source: 'umowa' }
+        state.auto.mockReturnValue(new Promise(() => undefined))
+        const response = await post('uczestnik@example.test')
+        expect(response.status).toBe(200)
+        expect(state.auto).toHaveBeenCalledTimes(1)
+    })
+
+    it('odrzucona wysyłka nie wywraca odpowiedzi', async () => {
+        state.account = { ...trial(), email: 'uczestnik@example.test', source: 'umowa' }
+        state.auto.mockRejectedValue(new Error('graph'))
+        expect((await post('uczestnik@example.test')).status).toBe(200)
+        await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
     it('skrzynka właściciela dalej dostaje wysyłkę testową, nie regułę', async () => {
         await post(OWNER)
         expect(state.send).toHaveBeenCalledTimes(1)

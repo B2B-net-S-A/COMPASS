@@ -71,8 +71,14 @@ export async function POST(request: NextRequest) {
         if (held.status !== 'held') return sameAnswer()
 
         const personalLink = async () => `${baseUrl}/wejdz/${createLearnerPassToken({ accountId: account.id, purpose: 'r', ttlSeconds: LEARNER_REENTRY_TTL_SECONDS }, secret)}`
-        if (ownerMailbox) await sendAcademyMailTest(client, { id: held.id, personalLink })
-        else await sendAcademyAutoMail(client, { id: held.id, personalLink })
+        if (ownerMailbox) {
+            await sendAcademyMailTest(client, { id: held.id, personalLink })
+            return sameAnswer()
+        }
+        // Bez await: odpowiedź nie może trwać dłużej dla adresu z konta niż dla nieznanego,
+        // bo czas wysyłki przez Graph zdradzałby, kto ma konto. Bramka sama zapisuje wynik.
+        void sendAcademyAutoMail(client, { id: held.id, personalLink })
+            .catch(error => logger.error({ event: 'academy.learner_reentry.auto_send_failed', error }))
         return sameAnswer()
     } catch (error) {
         logger.error({ event: 'academy.learner_reentry.failed', error })
