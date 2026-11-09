@@ -18,8 +18,10 @@ export interface CourseCardProps {
     course: CourseDetail
     prerequisites?: AcademyPrerequisiteStatus
     prerequisitesError?: string
+    /** The learner's own edition when enrolled in one, otherwise the nearest open edition. */
     nearestRun: AcademyRunDTO | null
     nearestRunFailed?: boolean
+    now: string
 }
 
 function Fact({ icon: Icon, label, value }: { icon: typeof Clock; label: string; value: string }) {
@@ -31,7 +33,7 @@ function SectionTitle({ children, aside }: { children: React.ReactNode; aside?: 
 }
 
 /** One card for a self-paced course, a live edition and a test: the mode decides what the aside offers. */
-export function CourseCard({ course, prerequisites, prerequisitesError, nearestRun, nearestRunFailed }: CourseCardProps) {
+export function CourseCard({ course, prerequisites, prerequisitesError, nearestRun, nearestRunFailed, now }: CourseCardProps) {
     const mode: CourseDeliveryMode = course.delivery_mode ?? 'self_paced'
     const live = mode !== 'self_paced'
     const duration = formatMinutes(course.duration_minutes)
@@ -62,7 +64,7 @@ export function CourseCard({ course, prerequisites, prerequisitesError, nearestR
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
             <aside className="order-first space-y-4 lg:sticky lg:top-5 lg:order-last">
-                {live && !course.run_id && <CourseEditionCard run={nearestRun} failed={nearestRunFailed} courseId={course.id} />}
+                {live && <CourseEditionCard run={nearestRun} failed={nearestRunFailed} courseId={course.id} prerequisitesMet={prerequisites?.allCompleted === true} now={now} />}
                 <AcademyPrerequisites status={prerequisites} error={prerequisitesError} enrolled={course.is_enrolled} />
                 {mayEnroll && <CourseDetailActions courseId={course.id} courseSlug={course.slug} isEnrolled={course.is_enrolled} enrollmentId={course.enrollment_id} runId={course.run_id} completedAt={course.completed_at} revokedAt={course.completion_revoked_at} revokedReason={course.completion_revoked_reason} deliveryMode={mode} hasLessons={course.lessons.length > 0} hasQuiz={course.quiz_questions_count > 0} />}
                 <div className="flex items-start gap-2 rounded-xl border border-border bg-card p-4"><Award aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" /><div className="space-y-1"><p className="text-sm font-medium">Certyfikat</p><p className="text-xs leading-relaxed text-muted-foreground">Dostaniesz go po spełnieniu wszystkich warunków. Dokument wewnętrzny B2B Network, bez związku z certyfikacją producenta.</p></div></div>

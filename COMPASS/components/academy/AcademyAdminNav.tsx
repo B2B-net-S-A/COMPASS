@@ -3,12 +3,13 @@ import { BarChart3, BookOpen, CalendarCheck2, ClipboardCheck, Settings2, ShieldC
 import { cn } from '@/lib/utils'
 import { getReviewQueueCount } from '@/lib/actions/courses-admin'
 
-export async function AcademyAdminNav({ active }: { active: 'review' | 'trainers' | 'integrations' | 'sessions' | 'reports' | 'certificates' | 'courses' | 'readiness' }) {
+export async function AcademyAdminNav({ active }: { active: 'competence' | 'review' | 'trainers' | 'integrations' | 'sessions' | 'reports' | 'certificates' | 'courses' | 'readiness' }) {
     const queue = await getReviewQueueCount()
     const links = [
         { id: 'courses', href: '/admin/learning/szkolenia', label: 'Wszystkie szkolenia', icon: BookOpen },
         { id: 'certificates', href: '/admin/learning/certificates', label: 'Certyfikaty', icon: ShieldCheck },
         { id: 'reports', href: '/admin/learning/analytics', label: 'Raport', icon: BarChart3 },
+        { id: 'competence', href: '/admin/learning/kompetencje', label: 'Raport kompetencji', icon: BarChart3 },
         { id: 'review', href: '/admin/learning', label: 'Akceptacja szkoleń', icon: ShieldCheck },
         { id: 'trainers', href: '/admin/learning/trainers', label: 'Uprawnienia trenerów', icon: UsersRound },
         { id: 'integrations', href: '/admin/learning/integrations', label: 'Teams i synchronizacja', icon: Settings2 },
