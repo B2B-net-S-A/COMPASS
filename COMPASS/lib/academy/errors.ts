@@ -78,6 +78,8 @@ const messages: Record<string, string> = {
     quiz_attempt_window_exhausted: quizAttemptWindowMessage,
     not_enrolled: 'Najpierw zapisz się na szkolenie.',
     enrollment_not_found: 'Nie znaleziono Twojego zapisu na szkolenie.',
+    video_not_in_lesson: 'To nagranie nie należy już do tej lekcji. Odśwież stronę.',
+    invalid_video_progress: 'Nie udało się zapisać postępu nagrania. Odśwież stronę.',
     own_enrollment_required: 'Nie masz dostępu do tego zapisu.',
     own_path_enrollment_required: 'Najpierw zapisz się na tę ścieżkę nauki.',
     own_trusted_completion_required: 'Ta czynność będzie dostępna po ukończeniu szkolenia.',
