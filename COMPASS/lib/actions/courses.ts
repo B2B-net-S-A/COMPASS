@@ -1,10 +1,12 @@
 'use server'
 
 import { academyClient, requireAcademyContext, academyAction, assertDatabaseResult } from '@/lib/academy/server'
+import { canFilterRehearsal } from '@/lib/academy/rehearsal'
 import { courseMetadataSchema, loadAcademyCourse, withCourseVersion, type CourseVersion } from '@/lib/academy/course-data'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { logger } from '@/lib/logger'
+import { fetchDisplayNames } from '@/lib/people/display-names'
 import {
     QUIZ_MIN_QUESTIONS,
     QUIZ_MAX_QUESTIONS,
@@ -110,6 +112,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
             .eq('status', 'published')
             .eq('legacy_review_required', false)
             .not('published_version_id', 'is', null)
+        if (await canFilterRehearsal(supabase)) query = query.eq('is_rehearsal', false)
 
         if (filters.author_id) query = query.eq('author_id', z.uuid().parse(filters.author_id))
         if (filters.instructor_id) {
@@ -121,6 +124,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
             query = query.in('id', courses)
         }
         if (filters.category) query = query.eq('category', filters.category)
+        if (filters.topic) query = query.eq('topic', filters.topic)
         if (filters.level) query = query.eq('level', filters.level)
         if (filters.delivery_mode) query = query.eq('delivery_mode', filters.delivery_mode)
         if (filters.course_type) query = query.eq('course_type', filters.course_type)
@@ -149,18 +153,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
 
         const courses = (data ?? []) as Course[]
 
-        // Pull author profiles in a separate query (no Supabase embed → mockable)
-        const authorIds = Array.from(new Set(courses.map((c) => c.author_id)))
-        const authorMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
-        if (authorIds.length > 0) {
-            const { data: profiles } = await supabase
-                .from('profiles')
-                .select('id, full_name, avatar_url')
-                .in('id', authorIds)
-            for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>) {
-                authorMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url })
-            }
-        }
+        const authorMap = await fetchDisplayNames(supabase, courses.map((c) => c.author_id))
 
         const items: CourseListItem[] = courses.map((c) => ({
             ...c,
@@ -185,11 +178,11 @@ export async function getCourseDetail(slugOrId: string, options: { author?: bool
     return academyAction('course.detail', async () => {
         const { client, access } = await requireAcademyContext()
         const { course, enrollment } = await loadAcademyCourse(client, access.userId, slugOrId, options)
-        const [{ data: author, error: authorError }, { data: rating, error: ratingError }] = await Promise.all([
-            client.from('profiles').select('full_name,avatar_url').eq('id', course.author_id).maybeSingle(),
+        const [authorNames, { data: rating, error: ratingError }] = await Promise.all([
+            fetchDisplayNames(client, [course.author_id]),
             client.from('course_ratings').select('rating,comment').eq('course_id', course.id).eq('user_id', access.userId).maybeSingle(),
         ])
-        assertDatabaseResult(authorError)
+        const author = authorNames.get(course.author_id) ?? null
         assertDatabaseResult(ratingError)
         const { data: canManage, error: accessError } = await client.rpc('academy_can_preview_version', { p_version_id: course.version_id })
         assertDatabaseResult(accessError)
@@ -521,6 +514,17 @@ export async function setQuizQuestions(courseId: string, questions: QuizQuestion
     }
 }
 
+/** Niepublikowany szkic bez zapisów, edycji i materiałów; warunki sprawdza baza w jednej transakcji. */
+export async function deleteDraftCourse(courseId: string): Promise<ActionResult<void>> {
+    return academyAction('course.delete_draft', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        const { error } = await client.rpc('academy_delete_draft_course', { p_course_id: z.uuid().parse(courseId) })
+        assertDatabaseResult(error)
+        revalidatePath('/learning/tworze')
+        revalidatePath('/admin/learning', 'layout')
+    })
+}
+
 /**
  * Wysyła kurs do moderacji: status `draft` lub `rejected` → `pending_review`.
  * Walidacja: ≥1 lekcja + 4-10 pytań quizu (każde z 4 opcjami i 1 correct).
@@ -533,6 +537,20 @@ export async function submitForReview(courseId: string): Promise<ActionResult<vo
         revalidatePath('/learning/tworze')
         revalidatePath(`/learning/tworze/${courseId}/edit`)
         revalidatePath('/admin/learning')
+    })
+}
+
+/** Autor wycofuje zgłoszenie, gdy recenzent jeszcze nie zdecydował; token chroni przed wyścigiem z decyzją. */
+export async function withdrawSubmission(courseId: string, submissionId: string | null | undefined): Promise<ActionResult<void>> {
+    return academyAction('course.withdraw', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        if (!submissionId) throw new Error('Odśwież stronę przed wycofaniem zgłoszenia.')
+        const parsed = z.object({ courseId: z.uuid(), submissionId: z.uuid() }).parse({ courseId, submissionId })
+        const { error } = await client.rpc('academy_withdraw_submission', { p_course_id: parsed.courseId, p_submission_id: parsed.submissionId })
+        assertDatabaseResult(error)
+        revalidatePath('/learning/tworze')
+        revalidatePath(`/learning/tworze/${parsed.courseId}/edit`)
+        revalidatePath('/admin/learning', 'layout')
     })
 }
 

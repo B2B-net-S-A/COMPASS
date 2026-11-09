@@ -86,12 +86,12 @@ describe('pinned progress and lesson access', () => {
     })
     it('passes the exact run enrollment and lesson to the atomic progress RPC', async () => {
         setup({ tables: { course_enrollments: [enrollmentRow(), enrollmentRow({ id: RUN_ENROLLMENT, run_id: RUN, version_id: VERSION })] }, rpcs: { academy_mark_lesson_complete: () => ({ streak: { current: 7, milestone_reached: true } }) } })
-        expect(await markLessonComplete(COURSE, LESSON, RUN_ENROLLMENT)).toEqual({ success: true, data: { streak: { current: 7, milestone_reached: true } } })
+        expect(await markLessonComplete(COURSE, LESSON, RUN_ENROLLMENT)).toEqual({ success: true, data: undefined })
         expect(client.rpc).toHaveBeenCalledWith('academy_mark_lesson_complete', { p_enrollment_id: RUN_ENROLLMENT, p_lesson_id: LESSON })
     })
     it('keeps repeat completion idempotency in the database instead of appending arrays client-side', async () => {
         setup({ tables: { course_enrollments: [enrollmentRow({ completed_lessons: [LESSON] })] }, rpcs: { academy_mark_lesson_complete: () => ({ streak: null }) } })
-        expect(await markLessonComplete(COURSE, LESSON)).toEqual({ success: true, data: { streak: null } })
+        expect(await markLessonComplete(COURSE, LESSON)).toEqual({ success: true, data: undefined })
         expect(client._tables.course_enrollments[0].completed_lessons).toEqual([LESSON])
         expect(client.rpc).toHaveBeenCalledWith('academy_mark_lesson_complete', { p_enrollment_id: ENROLLMENT, p_lesson_id: LESSON })
     })

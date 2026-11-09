@@ -13,6 +13,7 @@ function label(item: AcademyReviewHistoryItem) {
         case 'COURSE_PUBLISHED': return 'Zatwierdzono i opublikowano'
         case 'COURSE_REJECTED': return 'Odrzucono — wymagane poprawki'
         case 'COURSE_ARCHIVED': return 'Zarchiwizowano szkolenie'
+        case 'COURSE_REVIEW_WITHDRAWN': return 'Wycofano zgłoszenie'
         case 'LEGACY_COURSE_REVIEWED': return item.approved === true ? 'Zatwierdzono historyczną publikację' : item.approved === false ? 'Odrzucono historyczną publikację' : 'Sprawdzono historyczną publikację'
     }
 }
