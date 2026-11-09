@@ -11,6 +11,7 @@ export type AuditAction =
     | 'ACADEMY_SYNC_RUN'
     | 'ACADEMY_MATERIAL_SCAN_RUN'
     | 'ACADEMY_MATERIAL_CLEANUP_RUN'
+    | 'ACADEMY_EDITION_REPORT_EXPORTED'
     | 'LOGIN'
     | 'LOGIN_FAILED'
     | 'LOGOUT'
@@ -345,8 +346,11 @@ export async function logAudit(
 
         if (error) {
             logCompat.error('Failed to write audit log:', error)
+            return false
         }
+        return true
     } catch (e) {
         logCompat.error('Error logging audit:', e)
+        return false
     }
 }
