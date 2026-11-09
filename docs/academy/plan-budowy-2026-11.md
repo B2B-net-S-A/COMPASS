@@ -216,7 +216,7 @@ Kotwice: `app/wejdz/[token]/page.tsx; app/privacy-policy; app/terms/page.tsx; ac
 
 ### B1.9 Sprawdzenie etapu na skrzynkach właściciela [S, proces]
 
-Konta na Gmail i Onet: pełne wejście, telefon, ponowne wejście, próba akcji spoza Akademii, konto biurowe z pilota. Tester z redakcji przechodzi bez pomocy. Od tego epiku automat E2E używa kont próbnych.
+Punkt startu: wynik testu izolacji B1.10. Konta na Gmail i Onet: pełne wejście, telefon, ponowne wejście, próba akcji spoza Akademii, konto biurowe z pilota. Tester z redakcji przechodzi bez pomocy. Od tego epiku automat E2E używa kont próbnych.
 
 Kotwice: `e2e/academy-acceptance; academy_set_rollout; supabase/tests`
 
