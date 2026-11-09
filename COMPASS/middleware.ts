@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { isSupabaseConfigured } from '@/lib/supabase/mock-client'
 import { ARCHIVED_ACCOUNT_ERROR_CODE, isArchivedAccount } from '@/lib/auth/employment-access'
 import { hrLandingPath, movedModules } from '@/lib/hr/moved-to-nexus'
+import { academyRolloutAllows } from '@/lib/academy/rollout-probe'
+import { isAcademyOfficeRole } from '@/lib/types/role'
 
 export async function middleware(request: NextRequest) {
     const response = NextResponse.next({
@@ -130,7 +132,9 @@ export async function middleware(request: NextRequest) {
             }
         }
 
-        // HR landing to /internal. TCM dodatkowo ma globalny edytor /learning; inne role HR nie mają dostępu do Akademii.
+        // HR landing to /internal. TCM dodatkowo ma globalny edytor /learning. Role biurowe
+        // wchodzą do Akademii tylko wtedy, gdy rollout wpuszcza daną osobę (B1.1); przy
+        // zamkniętym rollout zachowanie jest takie jak wcześniej.
         // „Ludzie w NEXUSIE”: gdy wszystkie moduły HR są w NEXUSIE (`HR_MOVED_TO_NEXUS`, env runtime),
         // landingiem TCM jest Akademia — `hrLandingPath` w lib/hr/moved-to-nexus.ts.
         // Aktualności (/news), Inkubator (/incubator), Support (/support) są WSPÓLNE dla wszystkich
@@ -138,7 +142,12 @@ export async function middleware(request: NextRequest) {
         if (isInternalLanding) {
             const platformOnlyPaths = role === 'talent_community' ? ['/home', '/league'] : ['/home', '/learning', '/league']
             if (platformOnlyPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
-                return NextResponse.redirect(new URL(hrLandingPath(role, movedModules()), request.url))
+                // Rollout czytamy tylko tu: zwykłe wejścia biura nie płacą dodatkowym zapytaniem.
+                const academyAllowed = isAcademyOfficeRole(role) && await academyRolloutAllows(supabase)
+                const isAcademyPath = pathname === '/learning' || pathname.startsWith('/learning/')
+                if (!(academyAllowed && isAcademyPath)) {
+                    return NextResponse.redirect(new URL(hrLandingPath(role, movedModules(), academyAllowed), request.url))
+                }
             }
         }
 

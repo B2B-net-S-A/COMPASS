@@ -18,6 +18,8 @@ import nextDynamic from 'next/dynamic'
 import { logger } from '@/lib/logger'
 import { isConsultantSuccessEnabled } from '@/lib/consultant-success/flags'
 import { hrLandingPath, movedModules, nexusAppUrl } from '@/lib/hr/moved-to-nexus'
+import { academyRolloutAllows } from '@/lib/academy/rollout-probe'
+import { isAcademyOfficeRole } from '@/lib/types/role'
 
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
 
@@ -82,6 +84,9 @@ export default async function ProtectedLayout({
             role === 'talent_community' ? 'talent_community' :
             'consultant'
         const academyAccess = role === 'admin' || role === 'consultant' ? await getAcademyAccess() : null
+        // Role biurowe: cichy odczyt rolloutu, bo `getAcademyAccess` loguje każdą odmowę,
+        // a przy zamkniętym rollout odmową byłoby każde wejście na każdą stronę.
+        const officeAcademyAllowed = isAcademyOfficeRole(role) && await academyRolloutAllows(supabase)
         const userPermissions = permissionsMap[permissionRole]
         const userData = {
             ...user,
@@ -150,10 +155,10 @@ export default async function ProtectedLayout({
                     isInboxHandler={isInboxHandler}
                     consultantSuccessEnabled={isConsultantSuccessEnabled()}
                     hasTcmAccess={hasTcmAccess}
-                    academyEnabled={academyAccess?.success === true}
+                    academyEnabled={academyAccess?.success === true || officeAcademyAllowed}
                     hrMovedModules={Array.from(moved)}
                     nexusUrl={nexusAppUrl()}
-                    landingHref={hrLandingPath(role, moved)}
+                    landingHref={hrLandingPath(role, moved, officeAcademyAllowed)}
                 >
                     <LayoutPreferencesProvider>
                         {children}

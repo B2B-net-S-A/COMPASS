@@ -39,6 +39,24 @@ export const DB_ROLES = [
 export type AppRole = DbRole
 
 /**
+ * Role biurowe, które Akademia wpuszcza wyłącznie przez rollout (B1.1): bez pilota
+ * albo trybu open nic się im nie zmienia. Lista jest powtórzona w SQL
+ * (`academy_private.rollout_allows_user`, migracja B1.1) i tam zapada decyzja.
+ */
+export const ACADEMY_OFFICE_ROLES = ['internal', 'manager', 'finanse'] as const satisfies readonly DbRole[]
+
+/** Role, którym Akademia w ogóle sprawdza dostęp. O wejściu decyduje dalej rollout. */
+export const ACADEMY_ROLES = ['consultant', 'admin', 'talent_community', ...ACADEMY_OFFICE_ROLES] as const satisfies readonly DbRole[]
+
+export function isAcademyOfficeRole(role: string | null | undefined): boolean {
+    return (ACADEMY_OFFICE_ROLES as readonly string[]).includes(role ?? '')
+}
+
+export function isAcademyRole(role: string | null | undefined): boolean {
+    return (ACADEMY_ROLES as readonly string[]).includes(role ?? '')
+}
+
+/**
  * Role strefy HR — mają dostęp do /internal i wspólnych sekcji.
  * Konsultant IT jest poza: widzi platformę, nie widzi HR.
  *
