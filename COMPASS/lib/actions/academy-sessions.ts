@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { validateTeamsJoinUrl } from '@/lib/academy/teams'
 import { academyManagedTeamsConfiguration, academyAttendanceRetentionConfiguration } from '@/lib/academy/db-worker'
+import { logger } from '@/lib/logger'
 import type { ActionResult } from '@/lib/types/learning'
 import type {
     AcademyIntegrationIssuesPageDTO, AcademyOrganizerDTO, AcademyRunDTO, AcademyM365IdentityDTO, AcademyM365IdentitiesPageDTO, AcademyIntegrationConfigDTO,
@@ -107,14 +108,37 @@ export async function getAcademyRun(runId: string): Promise<ActionResult<Academy
         return run
     })
 }
-export async function createAcademyRun(input: { courseId: string; versionId: string; title: string; capacity: number }): Promise<ActionResult<string>> {
+const firstSessionSchema = z.object({
+    startsAt: timestamp, endsAt: timestamp, timeZone: z.string().min(1).max(100),
+    mode: z.enum(['managed_teams', 'external_link']), organizerId: uuid.nullish(), externalJoinUrl: z.string().max(8192).nullish(),
+}).refine(input => Date.parse(input.endsAt) > Date.parse(input.startsAt), 'Koniec musi być późniejszy od początku.')
+const newRunSchema = z.object({ courseId: uuid, versionId: uuid, ...runFields, session: firstSessionSchema, trainerId: uuid.optional() })
+
+/** A next edition in one form: everything checkable is checked first, so a bad link leaves no draft behind. */
+export async function createAcademyRunWithFirstSession(input: z.input<typeof newRunSchema>): Promise<ActionResult<{ runId: string; incomplete: string | null }>> {
     return academyAction('sessions.run_create', async () => {
-        const parsed = z.object({ courseId: uuid, versionId: uuid, ...runFields }).parse(input)
+        const parsed = newRunSchema.parse(input)
         const { client } = await requireAcademyContext({ trainer: true })
-        const { data, error } = await client.rpc('academy_create_run', { p_input: parsed })
+        const meeting = await resolveMeeting(client, parsed.session)
+        const { courseId, versionId, title, capacity } = parsed
+        const { data, error } = await client.rpc('academy_create_run', { p_input: { courseId, versionId, title, capacity } })
         assertDatabaseResult(error)
-        refresh()
-        return data as string
+        const runId = data as string
+        refresh(runId)
+        // The edition exists from here on: a later failure is reported, not hidden behind a generic error.
+        const saved = await client.rpc('academy_save_session', { p_input: { runId, title, startsAt: parsed.session.startsAt, endsAt: parsed.session.endsAt, timeZone: parsed.session.timeZone, ...meeting, required: true } })
+        if (saved.error) {
+            logger.error({ event: 'academy.sessions.run_create.session_failed', error: saved.error })
+            return { runId, incomplete: 'Edycja powstała, ale nie udało się zapisać terminu. Dodaj spotkanie na ekranie edycji.' }
+        }
+        if (parsed.trainerId) {
+            const staff = await client.rpc('academy_set_run_staff', { p_run_id: runId, p_user_id: parsed.trainerId, p_enabled: true })
+            if (staff.error) {
+                logger.error({ event: 'academy.sessions.run_create.staff_failed', error: staff.error })
+                return { runId, incomplete: 'Edycja i termin zostały zapisane, ale nie udało się przypisać prowadzącego. Dodaj go na ekranie edycji.' }
+            }
+        }
+        return { runId, incomplete: null }
     })
 }
 export async function updateAcademyRun(input: { runId: string; title: string; capacity: number }): Promise<ActionResult<void>> {
@@ -150,24 +174,27 @@ export async function cancelAcademyRun(input: { runId: string; reason: string })
         refresh(parsed.runId)
     })
 }
+type AcademyClient = Awaited<ReturnType<typeof requireAcademyContext>>['client']
+
+async function resolveMeeting(client: AcademyClient, input: { timeZone: string; mode: 'managed_teams' | 'external_link'; organizerId?: string | null; externalJoinUrl?: string | null }) {
+    try { new Intl.DateTimeFormat('pl', { timeZone: input.timeZone }).format() } catch { throw new Error('Wybierz prawidłową strefę czasową.') }
+    if (input.mode === 'external_link') {
+        try { return { mode: input.mode, externalJoinUrl: validateTeamsJoinUrl(input.externalJoinUrl ?? ''), organizerId: null } } catch { throw new Error('Podaj prawidłowy link spotkania Teams zaczynający się od https://.') }
+    }
+    const config = academyManagedTeamsConfiguration()
+    if (!config.managedTeamsAvailable) throw new Error(config.reason)
+    if (!input.organizerId) throw new Error('Wybierz organizatora Teams.')
+    const { data: organizer, error } = await client.from('academy_organizers').select('tenant_id,enabled').eq('id', input.organizerId).single()
+    assertDatabaseResult(error)
+    if (!organizer?.enabled || organizer.tenant_id.toLowerCase() !== process.env.AZURE_TENANT_ID?.toLowerCase()) {
+        throw new Error('Organizator nie jest aktywny w skonfigurowanej organizacji Microsoft 365.')
+    }
+    return { mode: input.mode, externalJoinUrl: null, organizerId: input.organizerId }
+}
 async function prepareSession(input: SaveAcademySessionInput) {
     const parsed = sessionSchema.parse(input)
-    try { new Intl.DateTimeFormat('pl', { timeZone: parsed.timeZone }).format() } catch { throw new Error('Wybierz prawidłową strefę czasową.') }
     const { client } = await requireAcademyContext({ trainer: true })
-    if (parsed.mode === 'external_link') {
-        try { parsed.externalJoinUrl = validateTeamsJoinUrl(parsed.externalJoinUrl ?? '') } catch { throw new Error('Podaj prawidłowy link spotkania Teams zaczynający się od https://.') }
-        parsed.organizerId = null
-    } else {
-        const config = academyManagedTeamsConfiguration()
-        if (!config.managedTeamsAvailable) throw new Error(config.reason)
-        if (!parsed.organizerId) throw new Error('Wybierz organizatora Teams.')
-        const { data: organizer, error } = await client.from('academy_organizers').select('tenant_id,enabled').eq('id', parsed.organizerId).single()
-        assertDatabaseResult(error)
-        if (!organizer?.enabled || organizer.tenant_id.toLowerCase() !== process.env.AZURE_TENANT_ID?.toLowerCase()) {
-            throw new Error('Organizator nie jest aktywny w skonfigurowanej organizacji Microsoft 365.')
-        }
-        parsed.externalJoinUrl = null
-    }
+    Object.assign(parsed, await resolveMeeting(client, parsed))
     return { parsed, client }
 }
 export async function saveAcademySession(input: SaveAcademySessionInput): Promise<ActionResult<string>> {
