@@ -5,15 +5,16 @@ import { AcademyAdminNav } from '../AcademyAdminNav'
 import { archiveCourse } from '@/lib/actions/courses-admin'
 import type { AcademyAdminCoursePage } from '@/lib/types/academy-admin'
 
-vi.mock('@/lib/actions/courses-admin', () => ({ archiveCourse: vi.fn() }))
+vi.mock('@/lib/actions/courses-admin', () => ({ archiveCourse: vi.fn(), getReviewQueueCount: vi.fn(async () => 3) }))
 afterEach(cleanup)
 beforeEach(() => vi.mocked(archiveCourse).mockResolvedValue({ success: true, data: undefined }))
 const page: AcademyAdminCoursePage = { page: 1, pageSize: 25, total: 1, items: [{ id: 'course', title: 'Warsztat SQL', status: 'published', authorName: 'Autorka', publishedVersionNumber: 2, draftVersion: { title: 'Nowy SQL', number: 3, status: 'rejected' }, legacyReviewRequired: false }] }
 function mount(data = page) { return render(<AcademyAdminCourses result={data} search="SQL" status="all" />) }
 
 describe('administrator course inventory', () => {
-    it('links to inventory and distinguishes course lifecycle from draft review state', () => {
-        render(<AcademyAdminNav active="courses" />)
+    it('links to inventory and distinguishes course lifecycle from draft review state', async () => {
+        render(await AcademyAdminNav({ active: 'courses' }))
+        expect(screen.getByLabelText('Oczekuje: 3')).toHaveTextContent('3')
         expect(screen.getByRole('link', { name: 'Wszystkie szkolenia' })).toHaveAttribute('href', '/admin/learning/szkolenia')
         mount()
         expect(within(screen.getByRole('heading', { name: 'Warsztat SQL' }).closest('article')!).getByText('Opublikowany')).toBeInTheDocument()

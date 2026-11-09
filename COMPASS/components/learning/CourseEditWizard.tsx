@@ -6,14 +6,14 @@ import { CourseLearnerPreview } from '@/components/academy/CourseLearnerPreview'
 import { AcademyReviewHistory } from '@/components/academy/AcademyReviewHistory'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, BookOpen, CalendarDays, CheckCircle2, CopyPlus, Eye, FileText, ListChecks, Loader2, LockKeyhole, Send } from 'lucide-react'
+import { AlertCircle, BookOpen, CalendarDays, CheckCircle2, CopyPlus, Eye, FileText, ListChecks, Loader2, LockKeyhole, Send, Undo2 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { CourseAuthorForm } from './CourseAuthorForm'
 import { LessonsEditor } from './LessonsEditor'
 import { QuizEditor } from './QuizEditor'
-import { beginCourseDraft, submitForReview } from '@/lib/actions/courses'
+import { beginCourseDraft, submitForReview, withdrawSubmission } from '@/lib/actions/courses'
 import { QUIZ_MIN_QUESTIONS, QUIZ_MAX_QUESTIONS, QUIZ_OPTIONS_PER_QUESTION, type CourseDetail, type CourseLesson, type CourseQuizQuestionAuthor } from '@/lib/types/learning'
 
 interface CourseEditWizardProps {
@@ -61,6 +61,22 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
         })
     }
 
+    async function handleWithdraw() {
+        if (versionStatus !== 'pending_review' || archived || isPending) return
+        const accepted = await confirm({ description: 'Wycofać zgłoszenie? Wersja wróci do edycji, a administrator przestanie widzieć ją w kolejce. Możesz zgłosić ją ponownie.' })
+        if (!accepted) return
+        setError(null)
+        setSuccess(null)
+        startTransition(async () => {
+            try {
+                const result = await withdrawSubmission(course.id, course.submission_id)
+                if (!result.success) { setError(result.error); return }
+                setSuccess('Zgłoszenie zostało wycofane. Możesz dalej edytować tę wersję.')
+                router.refresh()
+            } catch { setError('Nie udało się wycofać zgłoszenia. Spróbuj ponownie.') }
+        })
+    }
+
     function handleNewVersion() {
         if (archived || versionStatus !== 'published' || isPending) return
         setError(null)
@@ -81,7 +97,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
         : versionStatus === 'published'
         ? 'Ta wersja jest opublikowana. Aby zmienić treści lub zasady ukończenia, utwórz nową wersję roboczą.'
         : versionStatus === 'pending_review'
-            ? 'Ta wersja czeka na decyzję administratora. Edycja będzie możliwa, jeśli otrzymasz prośbę o poprawki.'
+            ? 'Ta wersja czeka na decyzję administratora. Aby ją zmienić, wycofaj zgłoszenie w zakładce Akceptacja.'
             : 'To szkolenie zostało zarchiwizowane. Materiały i historia uczestników pozostają zachowane.'
 
     return (
@@ -128,7 +144,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                             <ChecklistItem done={quizReady} label={quizRequired ? `Quiz: ${QUIZ_MIN_QUESTIONS}–${QUIZ_MAX_QUESTIONS} kompletnych pytań · dodano ${initialQuiz.length}` : 'Zaliczenie bez obowiązkowego quizu'} />
                         </ul>
                         <div className="space-y-2 rounded-xl bg-muted/50 p-4 text-sm"><p className="font-medium">Warunki ukończenia tej wersji</p><ul className="list-inside list-disc space-y-1 text-muted-foreground">{course.completion_rules?.require_all_lessons !== false && <li>Ukończenie wszystkich lekcji</li>}{mode !== 'self_paced' && <li>Obecność przez co najmniej {course.completion_rules?.attendance_percent ?? 80}% każdej wymaganej sesji</li>}{quizRequired && <li>Co najmniej {course.completion_rules?.quiz_pass_percent ?? 70}% poprawnych odpowiedzi w quizie</li>}</ul></div>
-                        {editable ? <div className="space-y-2 border-t border-border pt-5"><Button onClick={handleSubmit} disabled={!canSubmit || isPending} className="h-11 w-full rounded-lg sm:w-auto">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}Prześlij do akceptacji</Button>{!canSubmit && <p className="text-sm text-muted-foreground">Uzupełnij elementy oznaczone jako brakujące.</p>}</div> : <LockedPanel message={lockedMessage} />}
+                        {editable ? <div className="space-y-2 border-t border-border pt-5"><Button onClick={handleSubmit} disabled={!canSubmit || isPending} className="h-11 w-full rounded-lg sm:w-auto">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}Prześlij do akceptacji</Button>{!canSubmit && <p className="text-sm text-muted-foreground">Uzupełnij elementy oznaczone jako brakujące.</p>}</div> : <div className="space-y-3 border-t border-border pt-5"><LockedPanel message={lockedMessage} />{versionStatus === 'pending_review' && !archived && <Button type="button" variant="outline" onClick={handleWithdraw} disabled={isPending} className="h-11 w-full rounded-lg sm:w-auto">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Undo2 aria-hidden="true" />}Wycofaj zgłoszenie</Button>}</div>}
                     </section>
                     <aside className="space-y-2 rounded-xl border border-primary/15 bg-primary/5 p-5 text-sm"><p className="font-semibold">Co nastąpi po akceptacji?</p><p className="leading-relaxed text-muted-foreground">Szkolenie będzie dostępne w katalogu. Kolejne zmiany przygotujesz jako nową wersję, bez zmiany materiałów osób już zapisanych.{mode !== 'self_paced' && ' Terminy spotkań przygotujesz osobno w edycjach szkolenia. Administrator zatwierdzi je przed otwarciem zapisów.'}</p></aside>
                 </TabsContent>

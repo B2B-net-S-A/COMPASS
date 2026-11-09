@@ -16,6 +16,10 @@ describe('academy public error boundary', () => {
             expect(result).not.toContain('Łukasz')
         }
     })
+    it('explains the rollout lock raised by the database', () => {
+        expect(academyDatabaseError({ message: 'academy_open_locked', code: 'P0001' })).toContain('zablokowany')
+        expect(academyDatabaseError({ message: 'pilot_limit_exceeded', code: 'P0001' })).toContain('20')
+    })
     it('keeps the intentional Polish domain exception', () => {
         expect(academyDatabaseError({ message: 'Edycja jest odwołana.', code: 'P0001' })).toBe('Edycja jest odwołana.')
     })
