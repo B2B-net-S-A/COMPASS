@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { isMissingDatabaseObject } from '@/lib/academy/migration-contract'
 import { approveAcademyOutboxBatch, sendAcademyMailTest } from '@/lib/academy/outbound'
+import { isAcademySwitchOn } from '@/lib/academy/switches'
 import { createServiceClient } from '@/lib/supabase/admin'
 
 const MAX_ROWS = 2000
@@ -25,7 +26,7 @@ export async function getAcademyRunOutbox(runId: string) {
         const id = z.uuid().parse(runId)
         const { client } = await requireAcademyContext({ editor: true })
         const { data, error } = await client.from('academy_outbox').select('id,batch_id,kind,status,expires_at,subject').eq('run_id', id).order('expires_at').limit(MAX_ROWS)
-        const mailEnabled = process.env.ACADEMY_MAIL_ENABLED === 'true'
+        const mailEnabled = isAcademySwitchOn('ACADEMY_MAIL_ENABLED')
         if (isMissingDatabaseObject(error)) return { available: false, mailEnabled, batches: [] }
         assertDatabaseResult(error)
         const groups = new Map<string, OutboxBatch>()
