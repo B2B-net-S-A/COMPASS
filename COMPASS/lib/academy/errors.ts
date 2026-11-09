@@ -5,6 +5,8 @@ import { quizAttemptWindowMessage } from './quiz-attempt-policy'
 const fallback = 'Nie udało się wykonać operacji. Odśwież stronę i spróbuj ponownie.'
 const messages: Record<string, string> = {
     academy_access_required: 'Nie masz dostępu do Akademii.',
+    academy_open_locked: 'Tryb otwarty jest zablokowany do bramki startu. Wybierz tryb zamknięty albo pilot.',
+    pilot_limit_exceeded: 'Pilot może objąć najwyżej 20 kont.',
     admin_required: 'Ta operacja wymaga uprawnień administratora.',
     trainer_required: 'Ta operacja wymaga aktywnego uprawnienia trenera.',
     trainer_course_required: 'Nie masz uprawnień do edycji tego szkolenia.',
