@@ -3,6 +3,8 @@
 import { z } from 'zod'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { loadAcademyCourse } from '@/lib/academy/course-data'
+import { isMissingDatabaseObject } from '@/lib/academy/migration-contract'
+import type { LibrarySummary } from '@/components/academy/catalog/catalog-filters'
 import type { ActionResult } from '@/lib/types/learning'
 
 export interface AcademyCatalogOptions {
@@ -16,6 +18,35 @@ export interface AcademyPrerequisiteStatus {
 }
 
 /** Only fields already visible in the published catalogue; never an employee directory. */
+export interface AcademyLibrarySummaries {
+    /** False until the migration is applied; the catalog then skips the content filters. */
+    available: boolean
+    items: Record<string, LibrarySummary>
+}
+
+export async function getAcademyLibrarySummary(courseIds: string[]): Promise<ActionResult<AcademyLibrarySummaries>> {
+    return academyAction('library_summary', async () => {
+        const { client } = await requireAcademyContext()
+        const ids = z.array(z.uuid()).max(500).parse(courseIds)
+        if (!ids.length) return { available: true, items: {} }
+        const { data, error } = await client.rpc('academy_library_summary', { p_course_ids: ids })
+        if (error && isMissingDatabaseObject(error)) return { available: false, items: {} }
+        assertDatabaseResult(error)
+        const rows = (data ?? []) as ({ course_id: string } & LibrarySummary)[]
+        return { available: true, items: Object.fromEntries(rows.map(({ course_id, ...summary }) => [course_id, summary])) }
+    })
+}
+
+export async function getAcademyCatalogTopics(): Promise<ActionResult<string[]>> {
+    return academyAction('catalog_topics', async () => {
+        const { client } = await requireAcademyContext()
+        const { data, error } = await client.from('courses').select('topic').eq('status', 'published').not('topic', 'is', null).limit(1000)
+        if (error && isMissingDatabaseObject(error)) return []
+        assertDatabaseResult(error)
+        return Array.from(new Set((data ?? []).map(row => row.topic as string))).sort((a, b) => a.localeCompare(b, 'pl'))
+    })
+}
+
 export async function getAcademyCatalogOptions(): Promise<ActionResult<AcademyCatalogOptions>> {
     return academyAction('catalog_options', async () => {
         const { client } = await requireAcademyContext()

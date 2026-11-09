@@ -161,6 +161,7 @@ export interface ListCoursesFilters {
     limit?: number
     orderBy?: 'newest' | 'popular' | 'top_rated'
     delivery_mode?: CourseDeliveryMode
+    topic?: string
 }
 
 export interface CreateLessonInput {
