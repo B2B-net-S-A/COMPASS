@@ -61,6 +61,35 @@ describe('MobileMenu po przeniesieniu modułów', () => {
     })
 })
 
+describe('Akademia w menu ról biurowych', () => {
+    it.each(['internal', 'manager', 'finanse'] as const)('%s nie widzi Akademii, gdy rollout go nie wpuszcza', role => {
+        render(<Sidebar role={role} user={null} />)
+        expect(screen.queryByRole('link', { name: /nav_learning/ })).not.toBeInTheDocument()
+    })
+
+    it.each(['internal', 'manager', 'finanse'] as const)('%s z pilota widzi Akademię w menu bocznym', role => {
+        render(<Sidebar role={role} user={null} academyEnabled />)
+        expect(screen.getByRole('link', { name: /nav_learning/ })).toHaveAttribute('href', '/learning')
+    })
+
+    it('konsultant z wyłączonym modułem nadal nie widzi Akademii', () => {
+        render(<Sidebar role="consultant" user={null} academyEnabled permissions={{ learning: 'false' } as never} />)
+        expect(screen.queryByRole('link', { name: /nav_learning/ })).not.toBeInTheDocument()
+    })
+
+    it('rola biurowa z pilota widzi Akademię na telefonie', () => {
+        render(<MobileMenu role="manager" user={null} academyEnabled />)
+        fireEvent.click(screen.getByTestId('mobile-nav-more'))
+        expect(screen.getByRole('link', { name: 'Akademia' })).toHaveAttribute('href', '/learning')
+    })
+
+    it('rola biurowa poza pilotem nie widzi Akademii na telefonie', () => {
+        render(<MobileMenu role="manager" user={null} />)
+        fireEvent.click(screen.getByTestId('mobile-nav-more'))
+        expect(screen.queryByRole('link', { name: 'Akademia' })).not.toBeInTheDocument()
+    })
+})
+
 describe('MovedToNexusBanner', () => {
     it('mówi, gdzie moduł działa teraz, i linkuje do jego ekranu w NEXUSIE', () => {
         vi.stubEnv('HR_MOVED_TO_NEXUS', 'leave')

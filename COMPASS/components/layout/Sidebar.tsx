@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { isAcademyOfficeRole } from '@/lib/types/role'
 import { useTranslation } from '@/lib/i18n/context'
 import {
     LayoutDashboard,
@@ -165,6 +166,7 @@ export function Sidebar({
             heading: t('group_growth'),
             links: [
                 ...(isTalentCommunity ? [{ name: 'Edytor Akademii', href: '/learning/tworze', icon: GraduationCap, feature: 'learning' as const }] : []),
+                ...(isAcademyOfficeRole(role) ? [{ name: t('nav_learning'), href: '/learning', icon: GraduationCap, feature: 'learning' as const }] : []),
                 { name: t('nav_incubator'), href: '/incubator', icon: Lightbulb, feature: 'incubator' },
             ],
         },
@@ -400,7 +402,7 @@ export function Sidebar({
     // Apply per-feature permission filter (admins always pass).
     // Globalny gate dla coming-soon idzie pierwszy — ukrywa nawet adminom.
     const filterByPermission = (link: NavLink): boolean => {
-        if (link.feature === 'learning') return role === 'talent_community' || (academyEnabled && (role === 'admin' || (role === 'consultant' && permissions?.learning !== 'false')))
+        if (link.feature === 'learning') return role === 'talent_community' || (academyEnabled && (role === 'admin' || isAcademyOfficeRole(role) || (role === 'consultant' && permissions?.learning !== 'false')))
         if (isFeatureComingSoon(link.feature)) return false
         if (isAdmin) return true
         if (!link.feature) return true
