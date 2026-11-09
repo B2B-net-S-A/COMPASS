@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 import { logger } from '@/lib/logger'
 import type { Notification, NotificationType, NotificationPriority } from '@/lib/types'
 
@@ -186,6 +187,7 @@ export async function createNotification(params: {
     actionUrl?: string
     priority?: NotificationPriority
 }): Promise<{ success: boolean; notificationId?: string; error?: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()

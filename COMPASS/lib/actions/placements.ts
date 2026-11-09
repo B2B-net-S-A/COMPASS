@@ -49,6 +49,7 @@ import { excludeExited } from '@/lib/hr/employment-window'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import { selectInChunks } from '@/lib/supabase/select-in-chunks'
 import { assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -455,6 +456,7 @@ export async function listPlacements(): Promise<PlacementWithBonusStatus[]> {
 
 /** DL/Recruiter self-view: own placements (RLS scopes to delivery_lead_id/recruiter_id = me). */
 export async function listMyPlacements(): Promise<PlacementWithBonusStatus[]> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Brak sesji.')

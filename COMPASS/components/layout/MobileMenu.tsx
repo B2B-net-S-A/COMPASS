@@ -27,6 +27,7 @@ import { Sheet, SheetContent, SheetHeader, SheetDescription, SheetTitle, SheetTr
 
 interface MobileMenuProps {
     academyEnabled?: boolean
+    academyOnly?: boolean
     role: 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community'
     user: {
         email?: string | null
@@ -49,6 +50,7 @@ interface NavItem {
 export function MobileMenu({
     role,
     academyEnabled = false,
+    academyOnly = false,
     landingHref: serverLandingHref,
     hrMovedModules = [],
     nexusUrl = null,
@@ -69,7 +71,9 @@ export function MobileMenu({
     // 4 fixed bottom-nav slots + More drawer (5th slot).
     // Learning + League są coming-soon, więc bottom nav promuje pozostałe
     // platform modules: Incubator + Support (przeniesione z drawer'a).
-    const bottomNav: NavItem[] = [
+    const bottomNav: NavItem[] = academyOnly ? [
+        { name: 'Akademia', href: '/learning', icon: GraduationCap },
+    ] : [
         { name: t('mobile_home'), href: landingHref, icon: LayoutDashboard },
         { name: t('mobile_news'), href: '/news', icon: Newspaper },
         { name: t('mobile_incubator'), href: '/incubator', icon: Lightbulb },
@@ -78,7 +82,9 @@ export function MobileMenu({
 
     // Items shown inside the "More" drawer (Incubator + Support przeniesione na bottom).
     const canOpenAcademy = role === 'talent_community' || (academyEnabled && (role === 'admin' || role === 'consultant' || isAcademyOfficeRole(role)))
-    const moreItems: NavItem[] = [
+    const moreItems: NavItem[] = academyOnly ? [
+        { name: t('nav_notifications'), href: '/notifications', icon: Bell },
+    ] : [
         ...(canOpenAcademy ? [{ name: role === 'talent_community' ? 'Edytor Akademii' : 'Akademia', href: role === 'talent_community' ? '/learning/tworze' : '/learning', icon: GraduationCap }] : []),
         { name: t('nav_notifications'), href: '/notifications', icon: Bell },
         { name: t('nav_profile'), href: '/profile', icon: User },
