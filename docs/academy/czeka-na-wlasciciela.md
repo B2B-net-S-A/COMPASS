@@ -187,6 +187,8 @@ Wymóg dla B1.3: przepustka zapisuje znacznik jako wartość logiczną `true`. N
 
 ## B1.9 Sprawdzenie etapu na skrzynkach właściciela
 
+Punkt startu: B1.2, B1.3, B1.5 i B1.7 na produkcji, ich migracje zastosowane oraz wynik testu izolacji B1.10. Bez B1.10 konto próbne widziałoby w PostgREST to, co RLS daje roli `consultant`.
+
 1. Konto na prywatnym Gmailu i konto na Onecie, oba z listy `ACADEMY_MAIL_TEST_RECIPIENTS`, z `source='proba'` w `academy_learner_accounts` (nadanie wyłącznie SQL-em).
 2. Pełne wejście przez przepustkę: klauzula, założenie konta, Akademia. Na telefonie, nie w emulatorze.
 3. Ponowne wejście przez formularz adresu i jednorazowy link 15 minut.
@@ -209,7 +211,29 @@ Test JWT konta `academy_only` po pełnym katalogu, technika: `BEGIN`, `SET LOCAL
 4. Sprawdzić funkcje liczące uprawnienia po stronie bazy, np. `academy_can_manage_course` i `academy_can_preview_version`. Dziś konto z grantem `academy_user_capabilities.can_train` albo rolą w `profiles` jest tam trenerem, niezależnie od `academy_only`.
 5. Zewnętrzny test penetracyjny ma to potwierdzać, a nie znaleźć jako pierwszy.
 
-Kolejność: po B1.2 i po B1.4, przed pierwszym kontem próbnym z B1.9.
+Kolejność: po B1.2 i po B1.4, przed pierwszym kontem próbnym z B1.9. Migracja `20261110160300_academy_b1_10_launch_condition.sql` dopisuje to jako warunek bramki startu.
+
+### Odczyt katalogu produkcji 2026-11-09
+
+Polityki, które przepuszczają każde zalogowane konto, więc także konto nauki. Tylko `SELECT` i agregaty, stan przed migracjami Akademii.
+
+| Obiekt | Co przepuszcza | Stan |
+|---|---|---|
+| `profiles`, `news_reactions` | `USING(true)` | zamyka `20261109120000_auth_signup_gate_profiles_rls.sql`, czeka na zastosowanie |
+| `storage.objects`, kubeł `chat-attachments` | odczyt i zapis | zamyka ta sama migracja |
+| `loyalty_rules` | `auth.role()='authenticated'` | zamyka `20261110160300`, bo klient jej nie czyta, a wszystkie funkcje czytające są `SECURITY DEFINER` |
+| `projects` | `USING(true)`, 0 wierszy | zostaje, czyta `lib/actions/projects.ts` |
+| `public_holidays` | `USING(true)`, 60 wierszy | zostaje, dane publiczne |
+| `support_categories` | `USING(true)`, 10 wierszy | zostaje, czyta helpdesk |
+| `support_category_materials`, kubeł `support-materials` | `USING(true)`, 0 wierszy, 0 plików | zostaje, czyta helpdesk |
+| `timesheet_role_defaults` | `USING(true)`, 0 wierszy | zostaje, czyta `lib/actions/internal-timesheet-role-defaults.ts` |
+| kubeł `avatars` | publiczny odczyt | zostaje, zdjęcia profilowe |
+
+Bez RLS z prawem odczytu dla `authenticated` nie ma żadnej tabeli. Widoki `academy_material_catalog` i `work_clock_daily` mają `security_invoker`.
+
+Na produkcji nie ma `tasks_all`, `task_comments_all` ani reszty polityk `USING(true)` z `20260310_task_engine.sql`: zastąpiono je politykami właściciela tablicy i `is_shared`. Tabele `task_*` mają 0 wierszy i brak odwołań w kodzie, ale każde konto może założyć własną tablicę i pisać w udostępnionych. Test z punktu 1 ma to objąć: `task_*` nie powinny trafić na listę dozwolonych.
+
+Odczyt obejmuje tylko polityki zawsze prawdziwe. Polityki zależne od roli `consultant` i funkcje wykonywalne przez `authenticated` sprawdza dopiero test z punktu 1.
 
 ## B2.1 Pula pytań w modelu kursu
 
