@@ -3,7 +3,7 @@
 import { useId, useState } from 'react'
 import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { CoursePrerequisitesEditor } from '@/components/academy/CoursePrerequisitesEditor'
-import { BookOpen, CheckCircle2, Layers, Loader2, Video, X } from 'lucide-react'
+import { BookOpen, CheckCircle2, Layers, Loader2, Video, X, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -25,6 +25,7 @@ const FORMATS: { value: CourseDeliveryMode; label: string; description: string; 
     { value: 'self_paced', label: 'Samodzielna nauka', description: 'Lekcje i materiały dostępne we własnym tempie.', icon: BookOpen },
     { value: 'live', label: 'Na żywo w Teams', description: 'Spotkania z prowadzącym w ustalonych terminach.', icon: Video },
     { value: 'blended', label: 'Kurs mieszany', description: 'Materiały do nauki połączone ze spotkaniami.', icon: Layers },
+    { value: 'assessment', label: 'Test poza kursem', description: 'Sam test wiedzy, bez lekcji, z tą samą recenzją i dokumentem.', icon: ListChecks },
 ]
 const SELECT_CLASS = 'h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
 
@@ -48,7 +49,7 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
     const [error, setError] = useState<string | null>(null)
     const [saved, setSaved] = useState(false)
     const [isPending, startTransition] = useAcademyAction()
-    const needsAttendance = mode !== 'self_paced'
+    const needsAttendance = mode === 'live' || mode === 'blended'
 
     function addTag() {
         const tag = tagInput.trim().toLowerCase()
@@ -62,8 +63,9 @@ export function CourseAuthorForm({ initial, onSuccess, submitLabel, allowCompany
 
     function changeMode(value: CourseDeliveryMode) {
         setMode(value)
-        setRequireLessons(value !== 'live')
-        if (value === 'live') setQuizRequired(false)
+        setRequireLessons(value !== 'live' && value !== 'assessment')
+        // Certyfikat to obecność i zdany test, więc nowy kurs live ma domyślnie wymagany test.
+        if (value === 'live' || value === 'assessment') setQuizRequired(true)
         setSaved(false)
     }
 

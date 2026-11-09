@@ -107,7 +107,7 @@ export function AcademyWebinarImportPanel({ runId, sessions, readOnly, participa
             router.refresh()
         })
     }
-    return <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
+    return <section id="import-webinaru" className="scroll-mt-6 space-y-4 rounded-2xl border border-border bg-card p-5">
         <h2 className="text-lg font-semibold">Lista istniejącego webinaru Teams</h2>
         <p className="text-sm text-muted-foreground">Wczytaj raport zapisów lub frekwencji organizatora. Podgląd wymaga zatwierdzenia administratora. Dopasowujemy wyłącznie zweryfikowane adresy i powiązania z ewidencją umów. Nie dopasowujemy po nazwisku i nie tworzymy kont. Lista webinaru zajmuje miejsca w tej edycji; uczestnicy nie muszą zapisywać się ponownie.</p>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{message && <p role="status" className="text-sm">{message}</p>}
