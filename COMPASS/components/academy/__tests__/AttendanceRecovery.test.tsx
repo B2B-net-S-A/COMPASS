@@ -17,6 +17,24 @@ const props = { run, isAdmin: true, participants: [], organizers: [], managedTea
 beforeEach(() => { vi.clearAllMocks(); mocks.recover.mockResolvedValue({ success: true, data: undefined }) })
 afterEach(cleanup)
 
+describe('Edition sign-up button follows the database rule', () => {
+    const learner = { ...run, canManage: false }
+    const future = { ...session, startsAt: '2030-02-01T12:00:00Z', endsAt: '2030-02-01T14:00:00Z' }
+    it('hides the button once a session has started although the edition has not ended', () => {
+        render(<AcademyRunDetail {...props} run={{ ...learner, sessions: [{ ...session, startsAt: '2030-01-01T13:00:00Z', endsAt: '2030-01-01T15:00:00Z' }] }} />)
+        expect(screen.queryByRole('button', { name: 'Zapisz się na edycję' })).not.toBeInTheDocument()
+        expect(screen.getByText('Zapisy na rozpoczętą edycję są zamknięte.')).toBeInTheDocument()
+    })
+    it('hides the button when prerequisites are not met', () => {
+        render(<AcademyRunDetail {...props} canRegister={false} run={{ ...learner, sessions: [future] }} />)
+        expect(screen.queryByRole('button', { name: 'Zapisz się na edycję' })).not.toBeInTheDocument()
+    })
+    it('offers the waitlist at capacity and keeps it open for a future edition', () => {
+        render(<AcademyRunDetail {...props} run={{ ...learner, confirmedCount: 3, sessions: [future] }} />)
+        expect(screen.getByRole('button', { name: 'Dołącz do listy rezerwowej' })).toBeEnabled()
+    })
+})
+
 describe('Attendance recovery controls', () => {
     it('uses the actual end and administrator role even when the administrator cannot approve their own run', async () => {
         render(<AcademyRunDetail {...props} />)
