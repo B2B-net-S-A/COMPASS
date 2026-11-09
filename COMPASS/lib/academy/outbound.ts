@@ -6,13 +6,14 @@ import { z } from 'zod'
 import { sendEmail } from '@/lib/email/sender'
 import { logger } from '@/lib/logger'
 import { isMissingDatabaseObject } from './migration-contract'
-import { isAcademySwitchOn } from './switches'
+import { isAcademySwitchOn, type AcademySwitch } from './switches'
 
 // Bramka wyjścia Akademii (B0.2): jedyna droga poczty. Wiadomość powstaje jako wiersz
 // `held` w academy_outbox i nie dotyka Graph. Przełącznik ACADEMY_MAIL_ENABLED jest
 // warunkiem koniecznym, ale nie wystarcza: wysyłka idzie wyłącznie z paczki zatwierdzonej
 // przez człowieka, więc jego zmiana nigdy nie opróżnia kolejki. Żadna funkcja nie wysyła
-// wierszy `held` poza jawnym testem na skrzynki właściciela.
+// wierszy `held` poza jawnym testem na skrzynki właściciela i jednym wyjątkiem z reguły
+// automatycznej (`sendAcademyAutoMail`, link ponownego wejścia za własnym przełącznikiem).
 //
 // Błąd zapisu albo brak tabeli oznacza brak wysyłki i zdarzenie w Sentry. Klucz i treść
 // nie trafiają do logów, a o adresacie mówimy tylko domeną.
@@ -24,7 +25,7 @@ const RETENTION_DAYS = 30
 const BATCH_LIMIT = 500
 const FINISHED_STATUSES = ['sent_test', 'sent', 'expired', 'failed']
 
-export type AcademyOutboxRefusal = 'migration_pending' | 'write_failed' | 'invalid' | 'past_due' | 'token_in_body' | 'mail_disabled' | 'not_test_recipient' | 'not_held'
+export type AcademyOutboxRefusal = 'migration_pending' | 'write_failed' | 'invalid' | 'past_due' | 'token_in_body' | 'mail_disabled' | 'not_test_recipient' | 'not_held' | 'not_auto_kind' | 'auto_disabled'
 
 export interface AcademyMailInput {
     kind: string
@@ -198,6 +199,48 @@ export async function sendAcademyMailTest(client: SupabaseClient, input: { id: s
         if (claimed === 'taken') return { status: 'refused', reason: 'not_held' }
         if (claimed !== 'claimed') return claimed
         return await deliver(client, row, 'sent_test', input.env ?? process.env, input.personalLink) === 'sent' ? { status: 'sent_test' } : { status: 'failed' }
+    } catch {
+        return refuse('write_failed')
+    }
+}
+
+// Wyjątek od zatwierdzania paczek (decyzja właściciela 2026-11-09, B1.7): link ponownego
+// wejścia działa 15 minut, więc paczka czekająca na człowieka zawsze by wygasła. Taki
+// rodzaj wychodzi sam, ale tylko przy włączonej poczcie ORAZ własnym przełączniku, tylko
+// z krótkim terminem i dalej przez kolejkę, która zostaje dowodem wysyłki.
+// `approved_by` = NULL oznacza zatwierdzenie regułą, nie człowiekiem.
+const AUTO_SEND_RULES: Readonly<Record<string, { switchName: AcademySwitch; maxLifetimeMs: number }>> = {
+    'academy.reentry': { switchName: 'ACADEMY_PASS_ENABLED', maxLifetimeMs: 15 * 60_000 },
+}
+const LIFETIME_TOLERANCE_MS = 60_000
+
+/** Wysyła jeden wstrzymany wiersz rodzaju objętego regułą automatyczną. Każdy inny rodzaj odrzuca. */
+export async function sendAcademyAutoMail(client: SupabaseClient, input: { id: string; env?: NodeJS.ProcessEnv; personalLink?: PersonalLink }): Promise<{ status: 'sent' } | { status: 'failed' } | Refused> {
+    const env = input.env ?? process.env
+    if (!isMailEnabled(env)) return { status: 'refused', reason: 'mail_disabled' }
+    const now = new Date().toISOString()
+    try {
+        const { data, error } = await client.from('academy_outbox').select('id,kind,recipient,subject,html,status,expires_at,batch_id,created_at').eq('id', input.id).maybeSingle()
+        if (error) return refusalFor(error)
+        const row = data as (OutboxRow & { batch_id: string | null; created_at: string }) | null
+        if (!row || row.status !== 'held') return { status: 'refused', reason: 'not_held' }
+        const rule = AUTO_SEND_RULES[row.kind]
+        if (!rule) return refuse('not_auto_kind', row)
+        if (!isAcademySwitchOn(rule.switchName, env)) return { status: 'refused', reason: 'auto_disabled' }
+        if (!row.batch_id || Date.parse(row.expires_at) - Date.parse(row.created_at) > rule.maxLifetimeMs + LIFETIME_TOLERANCE_MS) return refuse('invalid', row)
+        if (row.expires_at <= now) return { status: 'refused', reason: 'past_due' }
+
+        const { data: approved, error: approveError } = await client.from('academy_outbox')
+            .update({ status: 'approved', approved_at: now, approved_by: null })
+            .eq('id', row.id).eq('status', 'held').gt('expires_at', now).select('id')
+        if (approveError) return refusalFor(approveError, row)
+        if ((approved ?? []).length !== 1) return { status: 'refused', reason: 'not_held' }
+
+        const approvedRow = { ...row, status: 'approved' }
+        const claimed = await claim(client, approvedRow, now)
+        if (claimed === 'taken') return { status: 'refused', reason: 'not_held' }
+        if (claimed !== 'claimed') return claimed
+        return await deliver(client, approvedRow, 'sent', env, input.personalLink) === 'sent' ? { status: 'sent' } : { status: 'failed' }
     } catch {
         return refuse('write_failed')
     }
