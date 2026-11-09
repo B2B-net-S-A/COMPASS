@@ -5,6 +5,8 @@ import { Upload, Pause, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { prepareAcademyUpload, finishAcademyUpload, listAcademyLessonUploads, listAcademyRunMaterials, discardAcademyUpload } from '@/lib/actions/academy-materials'
 import { uploadAcademyFile } from '@/lib/academy/resumable-upload'
+import { materialRejectionMessage } from '@/lib/academy/material-errors'
+import { preflightMp4 } from '@/lib/academy/mp4-preflight'
 
 const mimeTypes = {
     pdf: 'application/pdf',
@@ -64,6 +66,11 @@ export function MaterialUploader({ courseId, lessonId, runId, disabled, onReady 
         if (!mimeType) { setError('Dozwolone pliki: PDF, PPTX, DOCX, MP4, MP3, M4A oraz napisy VTT.'); return }
         const limit = mimeType === 'video/mp4' ? 1024 ** 3 : mimeType.startsWith('audio/') ? 512 * 1024 ** 2 : 50 * 1024 ** 2
         if (!file.size || file.size > limit) { setError('Dokument może mieć do 50 MB, audio do 512 MB, a nagranie MP4 do 1 GB.'); return }
+        if (mimeType === 'video/mp4') {
+            // A rejected structure should cost a few reads here, not a gigabyte upload.
+            const rejection = await preflightMp4(file).catch(() => null)
+            if (rejection) { setError(`${materialRejectionMessage(rejection)} Przygotuj plik normalizatorem nagrań.`); return }
+        }
         const abort = new AbortController()
         controller.current = abort
         setBusy(true)
