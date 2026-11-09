@@ -6,12 +6,14 @@ import type { WebinarRosterRow } from './webinar-import'
 export interface EditionAttemptEvidence {
     enrollment_id: string
     answers: unknown
-    score_percent: number
+    score_percent: number | null
     passed: boolean
     attempted_at: string
     kind?: string | null
+    status?: string | null
 }
-export interface EditionQuestionEvidence { id: string; order_index: number; question_text: string; voided_at?: string | null }
+export interface EditionQuestionEvidence { id: string; order_index: number; question_text: string; voided_at?: string | null; void_reason?: string | null }
+export interface EditionQuizGain { participants: number; average_pre: number | null; average_final: number | null; average_gain: number | null }
 export interface EditionOptionEvidence { id: string; question_id: string; option_text: string; is_correct: boolean }
 
 /** Everything the report reads beyond the edition summary. The tracked flags and
@@ -22,8 +24,11 @@ export interface EditionReportEvidence {
     attempts: EditionAttemptEvidence[]
     questions: EditionQuestionEvidence[]
     options: EditionOptionEvidence[]
-    preTestTracked: boolean
+    /** academy_run_quiz_gain; null means the pre-test migration is not applied yet. */
+    gain: EditionQuizGain | null
     voidingTracked: boolean
+    /** Enrollments of people who can see the answer key; their results never count (B2.10). */
+    keyHolderEnrollments: string[]
     participationDocuments: number | null
     reportsStartAt: string | null
     rehearsalCourse: boolean
@@ -34,6 +39,7 @@ export interface EditionQuestionRow {
     number: number
     text: string
     voided: boolean
+    voidReason: string | null
     correct: number
     answered: number
     correctPercent: number | null
@@ -42,6 +48,7 @@ export interface EditionQuestionRow {
 }
 export interface EditionReport {
     rehearsal: boolean
+    excludedKeyHolders: number
     registered: number
     present: number | null
     presentPercent: number | null
@@ -63,6 +70,7 @@ const percent = (part: number, whole: number) => whole > 0 ? Math.round(part / w
 const average = (values: number[]) => values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null
 const byTime = (a: EditionAttemptEvidence, b: EditionAttemptEvidence) => Date.parse(a.attempted_at) - Date.parse(b.attempted_at)
 const isPreTest = (attempt: EditionAttemptEvidence) => attempt.kind === 'pre'
+const isClosed = (attempt: EditionAttemptEvidence) => attempt.status !== 'in_progress' && attempt.score_percent !== null
 
 function presentCount(run: AcademyRunDTO, participants: AcademyRunParticipantDTO[], roster: WebinarRosterRow[], summary: EditionSummary) {
     const windows = new Map(summary.sessions.map(session => [session.id, session.windowConfirmed]))
@@ -102,7 +110,7 @@ function analyseQuestions(evidence: EditionReportEvidence, firstAttempts: Editio
         const [topWrong] = counts.filter(([id]) => !options.get(id)?.is_correct).sort((a, b) => b[1] - a[1])
         return {
             id: question.id, number: index + 1, text: question.question_text, voided: Boolean(question.voided_at),
-            correct, answered, correctPercent: percent(correct, answered),
+            voidReason: question.void_reason ?? null, correct, answered, correctPercent: percent(correct, answered),
             topWrongAnswer: topWrong ? options.get(topWrong[0])?.option_text ?? null : null, topWrongCount: topWrong?.[1] ?? 0,
         }
     }).sort((a, b) => (a.correctPercent ?? 101) - (b.correctPercent ?? 101) || a.number - b.number)
@@ -119,10 +127,12 @@ export function buildEditionReport(
     survey: EditionSurveyReport,
     evidence: EditionReportEvidence,
 ): EditionReport {
-    const confirmedEnrollments = new Set(participants.filter(person => person.status === 'confirmed' && person.enrollmentId).map(person => person.enrollmentId as string))
+    const confirmedEnrollments = participants.filter(person => person.status === 'confirmed' && person.enrollmentId).map(person => person.enrollmentId as string)
+    const keyHolders = new Set(evidence.keyHolderEnrollments)
+    const countedEnrollments = new Set(confirmedEnrollments.filter(id => !keyHolders.has(id)))
     const attemptsByEnrollment = new Map<string, EditionAttemptEvidence[]>()
     for (const attempt of evidence.attempts) {
-        if (!confirmedEnrollments.has(attempt.enrollment_id)) continue
+        if (!countedEnrollments.has(attempt.enrollment_id) || !isClosed(attempt)) continue
         attemptsByEnrollment.set(attempt.enrollment_id, [...(attemptsByEnrollment.get(attempt.enrollment_id) ?? []), attempt])
     }
 
@@ -138,16 +148,13 @@ export function buildEditionReport(
     const passedLater = scoredPeople.filter(person => !person.first.passed && person.passedLater).length
     const quiz: EditionReport['quiz'] = hasQuiz ? {
         passPercent: evidence.passPercent, attempted: scoredPeople.length,
-        averageFirstScore: average(scoredPeople.map(person => person.first.score_percent)),
+        averageFirstScore: average(scoredPeople.map(person => person.first.score_percent as number)),
         passedFirst, passedLater, notPassed: scoredPeople.length - passedFirst - passedLater, passedTotal: passedFirst + passedLater,
     } : null
 
-    const paired = people.filter(person => person.firstPre && person.first)
-    const before = average(paired.map(person => (person.firstPre as EditionAttemptEvidence).score_percent))
-    const after = average(paired.map(person => (person.first as EditionAttemptEvidence).score_percent))
-    const preTest: EditionReport['preTest'] = evidence.preTestTracked ? {
-        tracked: true, solved: people.filter(person => person.firstPre).length, both: paired.length,
-        before, after, gain: before !== null && after !== null ? after - before : null,
+    const preTest: EditionReport['preTest'] = evidence.gain ? {
+        tracked: true, solved: people.filter(person => person.firstPre).length, both: evidence.gain.participants,
+        before: evidence.gain.average_pre, after: evidence.gain.average_final, gain: evidence.gain.average_gain,
     } : { tracked: false }
 
     const present = presentCount(run, participants, roster, summary)
@@ -158,7 +165,7 @@ export function buildEditionReport(
     const rehearsal = evidence.rehearsalCourse || !Number.isFinite(reportsStart) || firstStart === undefined || firstStart < reportsStart
 
     return {
-        rehearsal, registered: summary.registrations, present,
+        rehearsal, excludedKeyHolders: confirmedEnrollments.length - countedEnrollments.size, registered: summary.registrations, present,
         presentPercent: present === null ? null : percent(present, summary.registrations),
         passedTotal: quiz?.passedTotal ?? null,
         passedOfPresentPercent: quiz && present !== null ? percent(quiz.passedTotal, present) : null,
@@ -194,6 +201,7 @@ export function editionReportCsv({ courseTitle, runTitle, generatedAt, report, s
         ['Sekcja', 'Miara', 'Wartość'],
         ['Edycja', 'Szkolenie', courseTitle], ['Edycja', 'Edycja', runTitle], ['Edycja', 'Stan danych', generatedAt],
         ['Edycja', 'Status danych', report.rehearsal ? 'próba (dane sprzed daty startu raportów)' : 'dane właściwe'],
+        ['Edycja', 'Pominięte wyniki osób z dostępem do klucza', report.excludedKeyHolders],
         ['Uczestnicy', 'Zapisani', report.registered],
         ['Uczestnicy', 'Obecni', withPercent(report.present, report.presentPercent)],
         ['Uczestnicy', 'Wypełnili ankietę', withPercent(report.surveyResponses, report.surveyOfPresentPercent)],
@@ -224,7 +232,7 @@ export function editionReportCsv({ courseTitle, runTitle, generatedAt, report, s
         ['Pytanie', 'Treść', 'Odsetek poprawnych', 'Poprawne', 'Odpowiedzi', 'Najczęstsza zła odpowiedź', 'Liczba wskazań', 'Status'],
         ...questions.rows.map(row => [
             row.number, row.text, orNoData(row.correctPercent, '%'), row.correct, row.answered,
-            row.topWrongAnswer, row.topWrongCount, row.voided ? 'unieważnione' : 'w punktacji',
+            row.topWrongAnswer, row.topWrongCount, row.voided ? ['unieważnione', row.voidReason].filter(Boolean).join(': ') : 'w punktacji',
         ]),
     )
     return '﻿' + rows.map(row => row.map(csvCell).join(';')).join('\r\n') + '\r\n'

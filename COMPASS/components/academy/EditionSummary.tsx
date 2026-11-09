@@ -47,7 +47,7 @@ export async function EditionSummary({ run, participants }: { run: AcademyRunDTO
             <div><h2 id="edition-summary-title" className="text-lg font-semibold">Raport edycji</h2><p className="text-sm text-muted-foreground">Stan danych: {dataTime(generatedAt)}</p></div>
             {report && <EditionReportCsvButton runId={run.id} />}
         </div>
-        {report ? <EditionReportView report={report} survey={survey.data} attendance={attendance} /> : <>
+        {report ? <EditionReportView report={report} survey={survey.data} attendance={attendance} courseId={run.courseId} /> : <>
             <p role="alert" className="text-sm text-destructive">Nie udało się pobrać wyników testu i dokumentów tej edycji. Odśwież stronę; brak danych nie jest zerowym wynikiem.</p>
             {attendance}
         </>}
