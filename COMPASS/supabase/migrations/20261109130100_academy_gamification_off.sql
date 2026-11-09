@@ -3,8 +3,7 @@
 -- (odczyt katalogu 2026-11-09: finalize_enrollment, academy_review_course, academy_ask_question, academy_answer_question).
 -- academy_mark_lesson_complete przestaje wołać bump_learning_streak; kolumny streaka w profiles zostają.
 --
--- Cofnięcie: UPDATE public.loyalty_rules SET is_active=true WHERE code IN (te same 6 kodów);
---   oraz przywrócenie ciała academy_mark_lesson_complete z bieżącej definicji sprzed migracji (wywołanie bump_learning_streak).
+-- Cofnięcie: supabase/rollbacks/20261109130100_academy_gamification_off.sql.
 BEGIN;
 UPDATE public.loyalty_rules SET is_active=false WHERE code IN (
     'course_completed_student','course_completed_company_student','course_completed_author_reward',
@@ -27,6 +26,8 @@ BEGIN
     RETURN jsonb_build_object('completed',true,'already_completed',v_already,'completion',v_completion,'streak',NULL);
 END $$;
 
+NOTIFY pgrst,'reload schema';
+
 DO $$
 DECLARE v_active integer;
 BEGIN
@@ -38,5 +39,4 @@ BEGIN
         RAISE EXCEPTION 'B0.10: academy_mark_lesson_complete nadal woła passę';
     END IF;
 END $$;
-NOTIFY pgrst,'reload schema';
 COMMIT;
