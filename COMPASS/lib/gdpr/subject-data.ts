@@ -31,10 +31,11 @@ type AcademyTableName = 'course_completions' | 'course_run_registrations' | 'cou
     | 'academy_user_capabilities' | 'course_staff' | 'course_run_staff'
     | 'academy_organizers' | 'academy_m365_identities' | 'academy_notification_receipts'
     | 'session_attendance' | 'academy_edition_survey_responses' | 'academy_webinar_roster' | 'academy_retrieval_schedule'
+    | 'academy_learner_accounts'
     | 'course_quiz_attempt_items' | 'academy_participation_documents'
 
-/** Tabele z migracji B2 stosowanych po wdrożeniu kodu: ich brak nie oznacza niepełnego eksportu. */
-export const PENDING_MIGRATION_TABLES: ReadonlySet<string> = new Set(['course_quiz_attempt_items', 'academy_participation_documents'])
+/** Tabele z migracji B1 i B2 stosowanych po wdrożeniu kodu: ich brak nie oznacza niepełnego eksportu. */
+export const PENDING_MIGRATION_TABLES: ReadonlySet<string> = new Set(['academy_learner_accounts', 'course_quiz_attempt_items', 'academy_participation_documents'])
 export type TableName = keyof Database['public']['Tables'] | AcademyTableName
 
 /** Osoba z kontem w aplikacji (`profiles`) albo kontraktor u klienta (`contractors`). */
@@ -84,6 +85,7 @@ export const EMPLOYEE_SOURCES: readonly SubjectSource[] = [
     { table: 'exit_interviews', column: 'user_id', label: 'Wywiad wyjściowy' },
     { table: 'lifecycle_notes', column: 'user_id', label: 'Notatki HR' },
     { table: 'lifecycle_events', column: 'user_id', label: 'Zdarzenia cyklu życia' },
+    { table: 'academy_learner_accounts', column: 'user_id', label: 'Konto nauki w Akademii' },
     { table: 'course_enrollments', column: 'user_id', label: 'Zapisy na szkolenia' },
     { table: 'course_run_registrations', column: 'user_id', label: 'Rejestracje na edycje szkoleń' },
     { table: 'course_completions', column: 'user_id', label: 'Ukończenia i dane certyfikatów', select: 'id,enrollment_id,user_id,course_id,version_id,completed_at,revoked_at,legacy,certificate_snapshot' },
@@ -149,6 +151,8 @@ export interface ScrubStep {
     /** Wypełnione dla `update`; puste dla `delete`. */
     patch: Record<string, string | null>
     label: string
+    /** Obiekt z migracji, której może jeszcze nie być: jego brak nie jest błędem zacierania. */
+    optional?: boolean
 }
 
 /**
@@ -168,6 +172,17 @@ export function anonymizedEmail(subjectId: string): string {
     return `usuniety.${subjectId}@rodo.invalid`
 }
 
+/** Kopie danych osoby na prywatnej liście edycji, powiązane potwierdzonym identyfikatorem. */
+function rosterScrubStep(column: 'user_id' | 'contractor_id', subjectId: string): ScrubStep {
+    return {
+        table: 'academy_webinar_roster',
+        column,
+        operation: 'update',
+        label: 'Kopie danych na liście uczestników edycji szkoleń',
+        patch: { email: anonymizedEmail(subjectId), full_name: anonymizedLabel(subjectId), aliases: '{}', contractual_email: null },
+    }
+}
+
 /**
  * Zacieranie profilu pracownika.
  *
@@ -177,6 +192,15 @@ export function anonymizedEmail(subjectId: string): string {
  */
 export function employeeScrubSteps(userId: string): ScrubStep[] {
     return [
+        {
+            table: 'academy_learner_accounts',
+            column: 'user_id',
+            operation: 'update',
+            label: 'Konto nauki w Akademii',
+            optional: true,
+            patch: { email: anonymizedEmail(userId), full_name: anonymizedLabel(userId), source_ref: null, ended_at: new Date().toISOString() },
+        },
+        rosterScrubStep('user_id', userId),
         {
             table: 'profiles',
             column: 'id',
@@ -244,6 +268,7 @@ export function employeeScrubSteps(userId: string): ScrubStep[] {
 export function contractorScrubSteps(contractorId: string): ScrubStep[] {
     const label = anonymizedLabel(contractorId)
     return [
+        rosterScrubStep('contractor_id', contractorId),
         {
             table: 'contractors',
             column: 'id',
@@ -323,7 +348,7 @@ export const CONTRACTOR_RETAINED: readonly RetainedRecord[] = [
  * dlatego jest groźny.
  */
 export const EMPLOYEE_MANUAL_FOLLOW_UPS: readonly string[] = [
-    'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie profiles/contractors nie zaciera tych kopii; wymagają osobnego, udokumentowanego przeglądu i obsługi żądania.',
+    'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie obejmuje wiersze powiązane z osobą; wiersz bez powiązania trzeba znaleźć ręcznie po adresie.',
     'Akademia: academy_edition_survey_responses (swobodne future_topics i snapshot pytań) oraz academy_private.edition_teaching_interest (proposed_topic i preferencja kontaktu) wymagają przeglądu zakresu żądania. Odpowiedzi są niezmienne; nie są automatycznie zacierane przez tę operację.',
     'Akademia: academy_webinar_exceptions i academy_webinar_excluded_emails przechowują adresy i nazwy z wyjątków importu; po wyszukaniu po adresie wymagają ręcznej obsługi.',
     'Akademia: źródła i podglądy academy_webinar_import_batches, raporty academy_webinar_attendance oraz czynności operatora wymagają ręcznej obsługi bez zmiany dowodów innych uczestników. Pliki CSV i korespondencja seryjna u organizatora oraz kopie zapasowe pozostają poza zacieraniem bazy.',
@@ -336,7 +361,7 @@ export const EMPLOYEE_MANUAL_FOLLOW_UPS: readonly string[] = [
 ] as const
 
 export const CONTRACTOR_MANUAL_FOLLOW_UPS: readonly string[] = [
-    'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie profiles/contractors nie zaciera tych kopii; wymagają osobnego, udokumentowanego przeglądu i obsługi żądania.',
+    'Akademia: academy_webinar_roster przechowuje kopie full_name, email, aliases i contractual_email oraz mapowania user_id/contractor_id. Zatarcie obejmuje wiersze powiązane z osobą; wiersz bez powiązania trzeba znaleźć ręcznie po adresie.',
     'Akademia: academy_edition_survey_responses (swobodne future_topics i snapshot pytań) oraz academy_private.edition_teaching_interest (proposed_topic i preferencja kontaktu) wymagają przeglądu zakresu żądania. Odpowiedzi są niezmienne; nie są automatycznie zacierane przez tę operację.',
     'Akademia: academy_webinar_exceptions i academy_webinar_excluded_emails przechowują adresy i nazwy z wyjątków importu; po wyszukaniu po adresie wymagają ręcznej obsługi.',
     'Akademia: źródła i podglądy academy_webinar_import_batches, raporty academy_webinar_attendance oraz czynności operatora wymagają ręcznej obsługi bez zmiany dowodów innych uczestników. Pliki CSV i korespondencja seryjna u organizatora oraz kopie zapasowe pozostają poza zacieraniem bazy.',

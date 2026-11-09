@@ -18,6 +18,12 @@
 // assignment dropdowns, notification blasts). Those use the simpler
 // `employment_status <> 'exited'`, because they are not scoped to any month.
 
+/**
+ * Konto nauki Akademii (`profiles.employment_status`, B1.5). To nie jest pracownik, więc
+ * wypada z każdej listy ludzi i każdego raportu miesięcznego.
+ */
+export const ACADEMY_LEARNER_STATUS = 'learning'
+
 export interface EmploymentWindowFields {
     employment_status?: string | null
     termination_date?: string | null
@@ -33,6 +39,8 @@ export function isEmployedInMonth(
     member: EmploymentWindowFields,
     monthStart: string,
 ): boolean {
+    if (member.employment_status === ACADEMY_LEARNER_STATUS) return false
+
     // Last working day known → included through that month, excluded afterwards.
     if (member.termination_date) return member.termination_date >= monthStart
 
@@ -100,7 +108,7 @@ export function isActiveNow(
     member: EmploymentWindowFields,
     options: ActiveRosterOptions = {},
 ): boolean {
-    if (member.employment_status === EXITED) return false
+    if (member.employment_status === EXITED || member.employment_status === ACADEMY_LEARNER_STATUS) return false
     if (options.excludeOffboarding && member.employment_status === OFFBOARDING) return false
     return true
 }
@@ -134,12 +142,14 @@ export function excludeExited<Q extends { neq: unknown }>(query: Q): Q {
     //
     // Sam kształt nadal odrzuca oczywiste pomyłki (null, string, obiekt bez `neq`),
     // a wywołanie idzie przez wąskie rzutowanie poniżej.
-    return (query as unknown as ExitFilterableQuery).neq('employment_status', EXITED) as Q
+    return (query as unknown as ExitFilterableQuery)
+        .neq('employment_status', EXITED)
+        .neq('employment_status', ACADEMY_LEARNER_STATUS) as unknown as Q
 }
 
 /** Wąski kontrakt wywołania — tylko to, czego `excludeExited` faktycznie używa. */
 interface ExitFilterableQuery {
-    neq(column: 'employment_status', value: string): unknown
+    neq(column: 'employment_status', value: string): ExitFilterableQuery
 }
 
 /**

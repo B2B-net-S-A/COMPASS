@@ -129,12 +129,12 @@ describe('raport dla osoby', () => {
     })
 
     it('scrubStepsFor wybiera zestaw po typie podmiotu', () => {
-        expect(scrubStepsFor('employee', USER_ID)[0].table).toBe('profiles')
-        expect(scrubStepsFor('contractor', USER_ID)[0].table).toBe('contractors')
+        expect(scrubStepsFor('employee', USER_ID).map(step => step.table)).toContain('profiles')
+        expect(scrubStepsFor('contractor', USER_ID).map(step => step.table)).toContain('contractors')
     })
 })
 
-it('keeps cycle evidence for explicit manual review and does not claim copied webinar identities were scrubbed', () => {
+it('keeps cycle evidence for explicit manual review and scrubs only linked Academy copies', () => {
     for(const kind of ['employee','contractor'] as const) {
         const followups=manualFollowUpsFor(kind).join(' ')
         expect(followups).toContain('academy_webinar_roster')
@@ -142,7 +142,34 @@ it('keeps cycle evidence for explicit manual review and does not claim copied we
         expect(followups).toContain('academy_private.edition_teaching_interest')
         expect(followups).toContain('academy_webinar_import_batches')
         expect(followups).toContain('academy_handovers')
-        expect(scrubStepsFor(kind,USER_ID).some(step=>String(step.table).startsWith('academy_'))).toBe(false)
+        expect(followups).toContain('wiersz bez powiązania')
+        const academyTables=scrubStepsFor(kind,USER_ID).map(step=>String(step.table)).filter(table=>table.startsWith('academy_'))
+        expect(academyTables.every(table=>table==='academy_webinar_roster'||table==='academy_learner_accounts')).toBe(true)
     }
     expect(retainedFor('employee').some(record=>record.label.includes('przekazania praw'))).toBe(true)
+})
+
+describe('konto nauki i lista edycji w RODO', () => {
+    it('eksport pracownika obejmuje konto nauki', () => {
+        expect(sourcesFor('employee').map(source => source.table)).toContain('academy_learner_accounts')
+    })
+
+    it('zatarcie obejmuje konto nauki, opcjonalnie do czasu migracji', () => {
+        const step = employeeScrubSteps(USER_ID).find(item => item.table === 'academy_learner_accounts')
+        expect(step).toMatchObject({ column: 'user_id', operation: 'update', optional: true })
+        expect(step?.patch.email).toMatch(/@rodo\.invalid$/)
+        expect(step?.patch.source_ref).toBeNull()
+        expect(step?.patch.ended_at).toBeTruthy()
+    })
+
+    it.each([
+        ['employee', () => employeeScrubSteps(USER_ID), 'user_id'],
+        ['contractor', () => contractorScrubSteps(USER_ID), 'contractor_id'],
+    ] as const)('zatarcie %s czyści kopie na liście edycji', (_kind, steps, column) => {
+        const step = steps().find(item => item.table === 'academy_webinar_roster')
+        expect(step).toMatchObject({ column, operation: 'update' })
+        expect(step?.patch).toMatchObject({ aliases: '{}', contractual_email: null })
+        expect(step?.patch.email).toMatch(/@rodo\.invalid$/)
+        expect(step?.optional).toBeUndefined()
+    })
 })
