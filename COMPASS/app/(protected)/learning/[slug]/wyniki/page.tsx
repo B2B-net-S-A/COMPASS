@@ -8,7 +8,8 @@ import { EditionSurvey } from '@/components/academy/EditionSurvey'
 import { CourseSurveyForm } from '@/components/learning/CourseSurveyForm'
 import { CourseCompletion } from '@/components/academy/CourseCompletion'
 import { getCourseDetail } from '@/lib/actions/courses'
-import { getMyQuizResult } from '@/lib/actions/course-learning'
+import { QuizResultDetails } from '@/components/learning/QuizResultDetails'
+import { getMyQuizResult, getQuizAttemptResult, hasParticipationDocument } from '@/lib/actions/course-learning'
 import { academyCourseHref } from '@/lib/academy/navigation'
 
 export const dynamic = 'force-dynamic'
@@ -25,20 +26,26 @@ export default async function QuizResultsPage({ params, searchParams }: {
     const result = await getMyQuizResult(course.id, searchParams.attempt, course.enrollment_id)
     if (!result.success) notFound()
     const attempt = result.data
+    const details = await getQuizAttemptResult(searchParams.attempt)
+    // Próba jeszcze otwarta nie ma wyniku; `null` to brak migracji i sama karta wyniku.
+    if (!details.success) redirect(backHref)
+    const participation = await hasParticipationDocument(course.enrollment_id)
     return <div className="mx-auto max-w-3xl space-y-6 p-6 md:p-8">
         <Link href={backHref} className="text-sm text-primary">← {course.title}</Link>
         <Card className={attempt.passed ? 'border-success/30 bg-success/5' : 'border-warning/30 bg-warning/5'}>
             <CardContent className="space-y-4 p-8 text-center">
                 <Trophy aria-hidden className={`mx-auto h-16 w-16 ${attempt.passed ? 'text-success' : 'text-muted-foreground'}`} />
-                <h1 className="text-3xl font-bold">{attempt.passed ? 'Quiz zaliczony' : 'Spróbuj ponownie'}</h1>
+                <h1 className="text-3xl font-bold">{attempt.passed ? 'Test zaliczony' : 'Test niezaliczony'}</h1>
                 <p className="text-5xl font-bold">{attempt.score}%</p>
                 <p className="text-sm text-muted-foreground">Próg zaliczenia: {course.completion_rules?.quiz_pass_percent ?? 70}%</p>
                 {attempt.passed && !attempt.completed && !course.completion_revoked_at && <p className="text-sm text-muted-foreground">Quiz jest zaliczony. Do ukończenia szkolenia pozostały inne wymagania, np. lekcje lub potwierdzenie obecności.</p>}
-                {!attempt.passed && <Button asChild className="gap-2"><Link href={academyCourseHref(course.slug, course.enrollment_id, '/quiz')}><RefreshCw className="h-4 w-4" />Powtórz quiz</Link></Button>}
+                {!attempt.passed && <Button asChild className="gap-2"><Link href={academyCourseHref(course.slug, course.enrollment_id, '/quiz')}><RefreshCw className="h-4 w-4" />Wróć do testu</Link></Button>}
                 <CourseCompletion courseId={course.id} enrollmentId={course.enrollment_id} completedAt={course.completed_at} revokedAt={course.completion_revoked_at} revokedReason={course.completion_revoked_reason} />
+                {participation.success && participation.data && <Button asChild variant="outline"><a href={`/api/akademia/participation?enrollmentId=${course.enrollment_id}`}>Pobierz zaświadczenie udziału</a></Button>}
                 <Button asChild variant="outline"><Link href={backHref}>Wróć do szkolenia</Link></Button>
             </CardContent>
         </Card>
+        {details.data && <QuizResultDetails result={details.data} />}
         {attempt.completed && <>
             <RatingWidget courseId={course.id} initialRating={course.user_rating?.rating} initialComment={course.user_rating?.comment} />
             {course.run_id ? <EditionSurvey runId={course.run_id} canManage={false} /> : <CourseSurveyForm courseId={course.id} enrollmentId={course.enrollment_id} />}
