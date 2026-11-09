@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n/context'
 import { isInvoicesEnabled } from '@/lib/feature-flags'
-import { isHrZoneRole } from '@/lib/types/role'
+import { isAcademyOfficeRole, isHrZoneRole } from '@/lib/types/role'
 import type { HrModule } from '@/lib/hr/moved-to-nexus'
 import {
     LayoutDashboard,
@@ -77,7 +77,7 @@ export function MobileMenu({
     ]
 
     // Items shown inside the "More" drawer (Incubator + Support przeniesione na bottom).
-    const canOpenAcademy = role === 'talent_community' || (academyEnabled && (role === 'admin' || role === 'consultant'))
+    const canOpenAcademy = role === 'talent_community' || (academyEnabled && (role === 'admin' || role === 'consultant' || isAcademyOfficeRole(role)))
     const moreItems: NavItem[] = [
         ...(canOpenAcademy ? [{ name: role === 'talent_community' ? 'Edytor Akademii' : 'Akademia', href: role === 'talent_community' ? '/learning/tworze' : '/learning', icon: GraduationCap }] : []),
         { name: t('nav_notifications'), href: '/notifications', icon: Bell },

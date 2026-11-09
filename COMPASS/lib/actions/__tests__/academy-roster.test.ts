@@ -30,7 +30,7 @@ describe('Academy scoped roster action', () => {
     it.each([
         { role: 'consultant', is_external: false, employment_status: 'exited' },
         { role: 'consultant', is_external: true, employment_status: 'active' },
-        { role: 'internal', is_external: false, employment_status: 'active' },
+        { role: 'nieznana', is_external: false, employment_status: 'active' },
     ])('does not read a roster for an ineligible profile %j', async profile => {
         client = academyFixture({ tables: { profiles: [{ id: USER, ...profile }] } })
         expect((await listAcademyRunParticipants(RUN)).success).toBe(false)
