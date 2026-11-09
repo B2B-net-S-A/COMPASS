@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from '@/components/ui/textarea'
 import { MaterialUploader } from './MaterialUploader'
 import { AcademyVideo } from './AcademyVideo'
+import { VideoChaptersEditor } from './VideoChaptersEditor'
 import { useAcademyAction } from './useAcademyAction'
 import { assignAcademyRunCaption, listAcademyRunMaterials, reviewAcademyRunMaterial, setRunMaterialAvailability } from '@/lib/actions/academy-materials'
 import type { AcademyRunMaterial } from '@/lib/types/academy-materials'
@@ -114,6 +115,7 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAca
             {item.mime_type === 'video/mp4' && <AcademyVideo runId={runId} video={asAttachment(item)} captions={item.review_status === 'published' ? linkedCaption(items, item.id) : undefined} />}
             {item.mime_type === 'video/mp4' && item.available_until && <p className="text-sm text-muted-foreground">Nagranie dostępne do {formatTerm(item.available_until)}.</p>}
             {canManage && !readOnly && item.mime_type === 'video/mp4' && <RecordingTerm assetId={item.id} value={item.available_until ?? null} onSaved={() => { void refresh() }} />}
+            {canManage && !readOnly && item.mime_type === 'video/mp4' && <VideoChaptersEditor assetId={item.id} />}
             {(isAdmin || canManageAcademy) && !readOnly && item.mime_type === 'text/vtt' && item.review_status === 'published' && <div className="flex flex-col gap-1 sm:max-w-sm">
                 <label htmlFor={`caption-target-${item.id}`} className="text-sm font-medium">Nagranie dla napisów</label>
                 <select id={`caption-target-${item.id}`} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" disabled={pending}
