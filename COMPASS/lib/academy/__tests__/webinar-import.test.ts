@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attendancePreviewSeconds, parseWebinarCsv, teamsTimestamp, webinarMailMergeCsv } from '../webinar-import'
+import { attendancePreviewSeconds, parseWebinarCsv, parseWebinarReport, teamsTimestamp, webinarMailMergeCsv } from '../webinar-import'
 describe('external webinar CSV', () => {
  it('imports 96 registrants and deduplicates normalized email', () => {
   const input = 'First name;Last name;Email\r\n' + Array.from({ length: 96 }, (_, i) => `Jan;Test ${i};User${i}@example.test`).join('\r\n') + '\r\nJan;Test 0; USER0@example.test'
@@ -45,5 +45,52 @@ describe('external webinar CSV', () => {
  it('exports BOM and prevents spreadsheet formulas', () => {
   const csv = webinarMailMergeCsv([{ email: 'jan@example.test', fullName: '=HYPERLINK("evil")', courseTitle: 'Bezpieczeństwo', runTitle: 'Październik' }])
   expect(csv.startsWith('\uFEFF')).toBe(true); expect(csv).toContain('"\'=HYPERLINK(""evil"")"'); expect(csv).toContain('Bezpieczeństwo')
+ })
+})
+describe('import odporny na wyjątki', () => {
+ const header = 'Name,Join Time,Leave Time,Email\n'
+ it('keeps the good rows and reports a row without an address instead of stopping the file', () => {
+  const { rows, exceptions } = parseWebinarReport(header + 'Jan,7/10/2026 18:00:00,7/10/2026 19:00:00,jan@example.test\nGość,7/10/2026 18:00:00,7/10/2026 18:30:00,\nAnna,7/10/2026 18:00:00,7/10/2026 19:00:00,anna@example.test', 'attendance')
+  expect(rows.map(r => r.email)).toEqual(['jan@example.test', 'anna@example.test'])
+  expect(exceptions).toHaveLength(1)
+  expect(exceptions[0]).toMatchObject({ kind: 'missing_email', rowNumber: 3, email: null, fullName: 'Gość' })
+  expect(exceptions[0].intervals).toHaveLength(1)
+ })
+ it('groups reconnects of one addressless guest but never matches them to anyone', () => {
+  const { exceptions } = parseWebinarReport(header + 'Gość,7/10/2026 18:00:00,7/10/2026 18:30:00,\nGość,7/10/2026 18:40:00,7/10/2026 19:00:00,\nInny,7/10/2026 18:00:00,7/10/2026 19:00:00,', 'attendance')
+  expect(exceptions.map(e => [e.fullName, e.intervals?.length])).toEqual([['Gość', 2], ['Inny', 1]])
+ })
+ it('reports a row with neither name nor address', () => {
+  expect(parseWebinarReport('Name,Email\n,\nJan,jan@example.test\n"",niepoprawny', 'registrations').exceptions.map(e => e.fullName)).toEqual([null])
+ })
+ it('holds back a person whose one connection is unreadable, not just that row', () => {
+  const { rows, exceptions } = parseWebinarReport(header + 'Jan,7/10/2026 18:00:00,7/10/2026 19:00:00,jan@example.test\nJan,nie-data,7/10/2026 20:00:00,jan@example.test\nJan,7/10/2026 20:00:00,7/10/2026 21:00:00,jan@example.test', 'attendance')
+  expect(rows).toEqual([])
+  expect(exceptions).toHaveLength(1)
+  expect(exceptions[0]).toMatchObject({ kind: 'invalid_row', email: 'jan@example.test', rowNumber: 3 })
+ })
+ it('holds back a person with leave before join and with conflicting summaries', () => {
+  const backwards = parseWebinarReport(header + 'Jan,7/10/2026 19:00:00,7/10/2026 18:00:00,jan@example.test', 'attendance')
+  expect(backwards.exceptions[0].kind).toBe('invalid_row')
+  const summary = 'Name,First Join,Last Leave,In-Meeting Duration,Email\nJan,7/10/2026 18:00:00,7/10/2026 21:00:00,10m,jan@example.test\nJan,7/10/2026 18:00:00,7/10/2026 21:00:00,20m,jan@example.test'
+  const conflicted = parseWebinarReport(summary, 'attendance')
+  expect(conflicted.rows).toEqual([]); expect(conflicted.exceptions[0].kind).toBe('ambiguous_summary')
+ })
+ it('keeps Teams waitlist rows and shared addresses out of the import as exceptions', () => {
+  const waitlist = parseWebinarReport('Name,Email,Registration status\nJan,jan@example.test,Waitlisted\nAnna,anna@example.test,Approved', 'registrations')
+  expect(waitlist.rows.map(r => r.email)).toEqual(['anna@example.test']); expect(waitlist.exceptions[0].kind).toBe('waitlisted_in_teams')
+  const shared = parseWebinarReport('Name,Email\nJan,shared@example.test\nAnna,shared@example.test\nEwa,ewa@example.test', 'registrations')
+  expect(shared.rows.map(r => r.email)).toEqual(['ewa@example.test']); expect(shared.exceptions[0].kind).toBe('conflicting_names')
+ })
+ it('still refuses a whole file that is not a Teams report', () => {
+  expect(() => parseWebinarReport('Name,Duration\nJan,3h', 'attendance')).toThrow('nagłówków')
+  expect(() => parseWebinarReport('Name,Email\n', 'registrations')).toThrow('nie zawiera uczestników')
+ })
+ it('returns only exceptions when no row has an address, so the caller can explain the report', () => {
+  const { rows, exceptions } = parseWebinarReport('Name,Join Time,Leave Time,Email\nA,7/10/2026 18:00:00,7/10/2026 19:00:00,\nB,7/10/2026 18:00:00,7/10/2026 19:00:00,', 'attendance')
+  expect(rows).toEqual([]); expect(exceptions).toHaveLength(2)
+ })
+ it('keeps the strict parser all-or-nothing with the first problem in file order', () => {
+  expect(() => parseWebinarCsv('Name,Email\nJan,\nAnna,zly', 'registrations')).toThrow('Wiersz 2')
  })
 })

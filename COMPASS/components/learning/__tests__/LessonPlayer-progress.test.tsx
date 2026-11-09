@@ -55,10 +55,10 @@ it('keeps the manual button for a lesson without a recording', () => {
 
 it('marks the lesson done when the server completes it and shows progress before that', () => {
     show(base, { videoProgress: { available: true, items: {} } })
-    act(() => reportResult!({ available: true, accepted: true, completed: false, watchedPercent: 42, streak: null }))
+    act(() => reportResult!({ available: true, accepted: true, completed: false, watchedPercent: 42 }))
     expect(screen.getByText(/obejrzano 42%/)).toBeInTheDocument()
     expect(refresh).not.toHaveBeenCalled()
-    act(() => reportResult!({ available: true, accepted: true, completed: true, watchedPercent: 91, streak: null }))
+    act(() => reportResult!({ available: true, accepted: true, completed: true, watchedPercent: 91 }))
     expect(screen.getByRole('button', { name: 'Lekcja ukończona' })).toBeDisabled()
     expect(refresh).toHaveBeenCalledTimes(1)
 })

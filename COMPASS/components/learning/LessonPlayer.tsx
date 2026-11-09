@@ -35,14 +35,6 @@ interface LessonPlayerProps {
     videoWatchPercent?: number
 }
 
-function celebrateStreak(days: number) {
-    if (typeof window === 'undefined') return
-    // Lazy-import toast żeby nie obciążać bundle gdy nie potrzebne
-    import('@/lib/toast-success').then(({ toastSuccess }) => {
-        toastSuccess(`🔥 ${days} dni z rzędu! +25 pkt loyalty za passę nauki.`)
-    })
-}
-
 export function LessonPlayer({
     videoProgress,
     videoWatchPercent = DEFAULT_VIDEO_WATCH_PERCENT,
@@ -82,7 +74,6 @@ export function LessonPlayer({
         setWatchedPercent(result.watchedPercent)
         if (!result.completed) return
         setIsCompleted(true)
-        if (result.streak?.milestone_reached) celebrateStreak(result.streak.current)
         router.refresh()
     }
 
@@ -106,8 +97,6 @@ export function LessonPlayer({
                     return
                 }
                 setIsCompleted(true)
-                // A1.4: pokazujemy toast gdy user osiągnął milestone passy 7/14/21+
-                if (res.data?.streak?.milestone_reached) celebrateStreak(res.data.streak.current)
                 router.refresh()
             } catch {
                 setError('Połączenie zostało przerwane. Spróbuj ponownie.')

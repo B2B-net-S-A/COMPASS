@@ -17,10 +17,9 @@ export interface VideoProgressResult {
     accepted: boolean
     completed: boolean
     watchedPercent: number
-    streak: { current: number; milestone_reached: boolean } | null
 }
 
-const unavailable: VideoProgressResult = { available: false, accepted: false, completed: false, watchedPercent: 0, streak: null }
+const unavailable: VideoProgressResult = { available: false, accepted: false, completed: false, watchedPercent: 0 }
 
 export async function getLessonVideoProgress(assetIds: string[]): Promise<ActionResult<LessonVideoProgress>> {
     return academyAction('video_progress.get', async () => {
@@ -59,7 +58,6 @@ export async function saveVideoProgress(input: z.input<typeof saveSchema>): Prom
             accepted: data?.accepted === true,
             completed: data?.completed === true && data?.already_completed !== true,
             watchedPercent: Number(data?.watched_percent ?? 0),
-            streak: data?.streak ?? null,
         }
     })
 }

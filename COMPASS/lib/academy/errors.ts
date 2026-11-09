@@ -18,6 +18,7 @@ const messages: Record<string, string> = {
     archive_prerequisite_in_use: 'Nie można zarchiwizować tego szkolenia: wymaga go inne opublikowane szkolenie. Najpierw zatwierdź nową wersję zależnego kursu bez tego wymagania.',
     course_not_found: 'Szkolenie nie istnieje lub nie masz do niego dostępu.',
     prerequisites_not_completed: 'Najpierw ukończ wymagane szkolenia wstępne.',
+    run_not_finished: 'Kurs dla nieobecnych można utworzyć po zakończeniu wszystkich spotkań edycji.',
     invalid_prerequisite: 'Wybierz dostępne szkolenia wstępne; kurs nie może wymagać samego siebie.',
     published_visible_prerequisites_required: 'Przed publikacją zatwierdź i udostępnij wszystkie szkolenia wstępne.',
     prerequisite_cycle: 'Wymagania wstępne tworzą zamknięty cykl. Usuń wzajemną zależność kursów.',
