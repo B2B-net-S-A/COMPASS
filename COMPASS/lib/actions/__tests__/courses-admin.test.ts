@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { revalidatePath } from 'next/cache'
 import type { MockSupabase, MockSupabaseConfig } from '@/test/mocks/supabase'
 import { academyFixture, courseRow, versionRow, id, COURSE, DRAFT, OTHER, USER, VERSION } from './academy-fixtures'
-import { approveCourse, archiveCourse, getReviewQueue, listAcademyAdminCourses, rejectCourse } from '../courses-admin'
+import { approveCourse, archiveCourse, getReviewQueue, listAcademyAdminCourses, rejectCourse, restoreCourse } from '../courses-admin'
 
 const SUBMISSION = id(100)
 let client: MockSupabase
@@ -173,5 +173,17 @@ describe('administrator course inventory', () => {
         setup({ tables: { course_versions: [versionRow({ course_id: OTHER }), versionRow({ id: DRAFT, course_id: OTHER })] } })
         const result = await listAcademyAdminCourses()
         expect(result.success && result.data.items[0]).toMatchObject({ draftVersion: null, publishedVersionNumber: null })
+    })
+})
+
+describe('restoring from the archive', () => {
+    it('requires an administrator before any RPC', async () => {
+        setup({ tables: { profiles: [{ id: USER, role: 'talent_community' }] } })
+        expect((await restoreCourse(COURSE)).success).toBe(false)
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_restore_course', expect.anything())
+    })
+    it('explains that the course is no longer archived', async () => {
+        setup({ tables: { profiles: [{ id: USER, role: 'admin' }] }, rpcs: { academy_restore_course: () => { throw new Error('course_not_archived') } } })
+        expect(await restoreCourse(COURSE)).toEqual({ success: false, error: 'To szkolenie nie jest w archiwum. Odśwież listę.' })
     })
 })

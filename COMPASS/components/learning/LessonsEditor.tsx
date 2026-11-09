@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import { MaterialUploader } from '@/components/academy/MaterialUploader'
+import { VideoChaptersEditor } from '@/components/academy/VideoChaptersEditor'
 import { Plus, Trash2, ArrowUp, ArrowDown, ChevronDown, ChevronRight, Eye, Edit3, FileText, Loader2, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -381,6 +382,7 @@ function LessonRow({
                                                 <X className="h-3 w-3" />
                                             </Button>
                                         </div>
+                                        {att.mime_type === 'video/mp4' && att.asset_id && <VideoChaptersEditor assetId={att.asset_id} disabled={disabled} />}
                                         {att.mime_type === 'text/vtt' && att.asset_id && <label className="block text-xs">
                                             Nagranie dla napisów {att.name}
                                             <select className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={att.caption_for_asset_id ?? ''}
