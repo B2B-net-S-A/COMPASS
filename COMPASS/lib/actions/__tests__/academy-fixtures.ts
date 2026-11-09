@@ -19,6 +19,6 @@ export function academyFixture(config: MockSupabaseConfig = {}) {
             course_enrollments: [], course_lessons: [], course_ratings: [], course_quiz_questions: [], course_quiz_options: [], ...config.tables,
             course_completions: (config.tables?.course_completions ?? []).map(row => ({ revoked_at: null, ...row })),
         },
-        rpcs: { academy_rollout_access: () => ({ mode: 'open', allowed: true, isPilot: false }), academy_can_manage_course: () => true, academy_can_preview_version: () => true, academy_teaching_courses: () => (config.tables?.courses ?? [courseRow()]).filter(course => course.author_id === USER).map(course => ({ ...course, can_edit: true, can_lead: true })), ...config.rpcs },
+        rpcs: { people_display_names: (args) => (config.tables?.profiles ?? [{ id: USER, full_name: 'Trener', avatar_url: null }]).filter(person => (args?.p_user_ids as string[]).includes(person.id as string)), academy_rollout_access: () => ({ mode: 'open', allowed: true, isPilot: false }), academy_can_manage_course: () => true, academy_can_preview_version: () => true, academy_teaching_courses: () => (config.tables?.courses ?? [courseRow()]).filter(course => course.author_id === USER).map(course => ({ ...course, can_edit: true, can_lead: true })), ...config.rpcs },
     })
 }

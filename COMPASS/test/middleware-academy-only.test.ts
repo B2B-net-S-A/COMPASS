@@ -45,6 +45,16 @@ describe('konto nauki na brzegu aplikacji', () => {
         expect(response.headers.get('location')).toBeNull()
     })
 
+    it.each(['/wejdz', '/wejdz/token'])('przepustka %s jest publiczna także dla konta nauki', async pathname => {
+        const response = await middleware(new NextRequest(`https://compass.test${pathname}`))
+        expect(response.headers.get('location')).toBeNull()
+    })
+
+    it('podobna ścieżka nie jest publiczna', async () => {
+        const response = await middleware(new NextRequest('https://compass.test/wejdzie'))
+        expect(response.headers.get('location')).toBe('https://compass.test/learning')
+    })
+
     it('zarchiwizowane konto nauki traci sesję także na dozwolonej ścieżce', async () => {
         state.employmentStatus = 'exited'
         const response = await middleware(new NextRequest('https://compass.test/learning'))

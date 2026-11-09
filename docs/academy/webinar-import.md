@@ -24,6 +24,14 @@ Podsumowanie „Participants” jest także obsługiwane: Email, First join, Las
 
 Podgląd pokazuje sekundy/minuty oraz rodzaj dowodu. Zatwierdzenie zachowuje ręczne decyzje, własną obecność administratora i istniejące ukończenia/certyfikaty. Dla kont Compass obowiązują dotychczasowe quizy, materiały, progi frekwencji i przypięta wersja programu. Prywatna lista osoby bez konta rejestruje frekwencję organizacyjną, bez nadawania certyfikatu. Brak wiersza w raporcie nie oznacza automatycznej nieobecności. Ponowne potwierdzenie czasu zajęć unieważnia wcześniejsze decyzje maszynowe; nowy podgląd i zatwierdzenie tego samego raportu odtwarza je dla aktualnego okna.
 
+## Wyjątki
+
+Po zastosowaniu migracji `20261109103000_academy_webinar_import_exceptions.sql` jeden zły wiersz nie zatrzymuje pliku. Do sekcji wyjątków trafiają: wiersze bez adresu, nieczytelne wiersze, osoby spoza listy edycji, połączenia poza czasem zajęć, zapisy oczekujące w Teams, współdzielony adres z różnymi nazwami oraz osoby anulowane lub na rezerwie. Pozostałe wiersze przechodzą przez ten sam podgląd i tę samą jedną transakcję co dotąd. Osoba z wieloma połączeniami, której jedno połączenie jest nieczytelne, wstrzymywana jest w całości, żeby nie zaniżyć jej obecności.
+
+Prowadzący i organizatorzy są pomijani listą adresów przypisaną do edycji. Wyjątek rozstrzyga człowiek z uzasadnieniem: przypisuje obecność konkretnej osobie z listy tej edycji albo pomija wiersz. Automat niczego nie dopasowuje po nazwisku, a kolejne połączenia gościa bez adresu są jedynie pokazywane razem. Decyzja trafia do audytu, a obecność przypisana człowiekiem nie zostanie nadpisana importem. Jeśli żaden wiersz nie ma adresu, podgląd niczego nie zapisuje i prosi o raport spotkania z rejestracją.
+
+Przed zastosowaniem migracji import działa jak dotąd: pierwszy zły wiersz odrzuca cały plik.
+
 ## Korespondencja seryjna
 
 Eksport CSV z BOM, separatorem średnik i zabezpieczeniem formuł jest przeznaczony do Worda. Kolumny: Email, ImieNazwisko, Szkolenie, Edycja. Eksport obejmuje aktywnych uczestników listy webinaru i dodatkowe potwierdzone zapisy Compass, bez dublowania osób. Adres pochodzi z aktualnej powiązanej ewidencji umów albo jawnej weryfikacji administratora z uzasadnieniem. Nie używa jako zastępstwa adresu z Teams. Brakujący/stary adres jest pomijany z liczbą pominięć, a współdzielony adres blokuje eksport. Eksport i zmiany mają ślad audytowy; nie następuje wysyłka.

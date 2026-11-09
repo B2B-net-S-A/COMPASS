@@ -9,10 +9,16 @@ export type CourseLevel = 'beginner' | 'intermediate' | 'advanced'
 // Phase 1.1 (2026-05-04): course_type ENUM in DB; consultant=peer-authored (admin moderation),
 // company=B2Bnetwork-authored (admin/trainer creates, no peer-author bonus).
 export type CourseType = 'consultant' | 'company'
-export type CourseDeliveryMode = 'self_paced' | 'live' | 'blended'
+export type CourseDeliveryMode = 'self_paced' | 'live' | 'blended' | 'assessment'
 export interface CourseCompletionRules {
     quiz_required: boolean
     quiz_pass_percent: number
+    draw_count?: number | null
+    time_limit_minutes?: number | null
+    show_explanations?: boolean
+    draw_random?: boolean
+    shuffle_options?: boolean
+    pre_test_count?: number | null
     require_all_lessons: boolean
     attendance_percent: number
 }
@@ -155,6 +161,7 @@ export interface ListCoursesFilters {
     limit?: number
     orderBy?: 'newest' | 'popular' | 'top_rated'
     delivery_mode?: CourseDeliveryMode
+    topic?: string
 }
 
 export interface CreateLessonInput {
@@ -190,6 +197,56 @@ export interface QuizQuestionForAttempt {
     question_order: number
     question_text: string
     options: { id: string; order_index: number; option_text: string }[]
+}
+
+export interface QuizAttemptSession {
+    attempt_id: string
+    kind: 'final' | 'pre'
+    status: 'in_progress' | 'submitted' | 'expired'
+    has_time_limit: boolean
+    remaining_seconds: number
+    pass_percent: number
+    questions: {
+        question_id: string
+        position: number
+        question_text: string
+        selected_option_id: string | null
+        options: { id: string; option_text: string }[]
+    }[]
+}
+
+export interface QuizStatus {
+    open_final: boolean
+    open_pre: boolean
+    blocker: string | null
+    pre_blocker: string | null
+    question_count: number
+    pre_test_count: number | null
+    time_limit_minutes: number | null
+    pass_percent: number
+    attempts_used: number
+    attempt_limit: number | null
+    attempt_window_hours: number | null
+    next_attempt_at: string | null
+}
+
+export interface QuizAttemptResult {
+    attempt_id: string
+    kind: 'final' | 'pre'
+    status: 'submitted' | 'expired'
+    score_percent: number
+    passed: boolean
+    pass_percent: number
+    submitted_at: string
+    topics: { topic: string; total: number; correct: number }[]
+    review: {
+        position: number
+        question_text: string
+        topic: string | null
+        voided: boolean
+        selected_option_id: string | null
+        options: { id: string; option_text: string; is_correct: boolean; explanation: string | null }[]
+    }[] | null
 }
 
 export interface QuizSubmissionResult {

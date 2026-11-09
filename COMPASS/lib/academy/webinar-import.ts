@@ -15,12 +15,34 @@ export interface WebinarImportPreviewRow extends WebinarRow {
     existing: boolean
     attendedSeconds?: number
 }
+export type WebinarExceptionKind = 'missing_email' | 'invalid_row' | 'waitlisted_in_teams' | 'conflicting_names' | 'ambiguous_summary'
+    | 'not_on_list' | 'outside_window' | 'cancelled_on_list' | 'resigned' | 'on_waitlist'
+export interface WebinarRowException {
+    kind: WebinarExceptionKind
+    rowNumber: number
+    email: string | null
+    fullName: string | null
+    message: string
+    intervals?: Array<{ start: string; end: string }>
+    reportedSeconds?: number
+}
+export interface WebinarImportReport { rows: WebinarRow[]; exceptions: WebinarRowException[] }
 export interface WebinarImportPreview {
-    id: string
+    /** Null when every row went to exceptions, so there is nothing to approve. */
+    id: string | null
     kind: WebinarImportKind
     rows: WebinarImportPreviewRow[]
-    expiresAt: string
+    expiresAt: string | null
+    exceptions?: WebinarRowException[]
+    excludedCount?: number
+    exceptionsAvailable?: boolean
 }
+export interface WebinarStoredException {
+    id: string; sessionId: string | null; kind: WebinarExceptionKind; rowNumber: number
+    email: string | null; fullName: string | null; detail: string; connections: number
+    status: 'open' | 'ignored' | 'assigned'; note: string | null; resolvedAt: string | null
+}
+export interface WebinarExcludedEmail { email: string; note: string | null }
 export interface WebinarRosterRow {
     id: string; email: string; fullName: string; userId: string | null
     contractualEmail: string | null; status: 'confirmed' | 'cancelled'; match: string
@@ -102,7 +124,8 @@ export function teamsDurationSeconds(value: string): number {
     if (seconds > 86400) throw new Error('Czas obecności przekracza 24 godziny.')
     return seconds
 }
-export function parseWebinarCsv(text: string, kind: WebinarImportKind, dateOrder: 'dmy' | 'mdy' = 'dmy'): WebinarRow[] {
+/** One bad row never stops the file. File-level problems (no headers, wrong report, too big) still throw. */
+export function parseWebinarReport(text: string, kind: WebinarImportKind, dateOrder: 'dmy' | 'mdy' = 'dmy'): WebinarImportReport {
     const cells = parseWebinarCells(text)
     const detailJoinHeaders = ['jointime', 'join', 'joinat', 'czasdolaczenia', 'godzinadolaczenia']
     const summaryJoinHeaders = ['firstjoin', 'pierwszedolaczenie', 'godzinapierwszegodolaczenia']
@@ -120,34 +143,84 @@ export function parseWebinarCsv(text: string, kind: WebinarImportKind, dateOrder
     const statusIndex = headerColumn(headers, ['registrationstatus', 'status', 'statusrejestracji'])
     if (kind === 'attendance' && leave < 0) throw new Error('Raport musi zawierać czas dołączenia i opuszczenia. Sam czas trwania nie dowodzi obecności w oknie szkolenia.')
     const rows = new Map<string, WebinarRow>()
+    const exceptions: WebinarRowException[] = []
+    // A person with one bad row is held back whole: partial intervals would under-report them.
+    const heldBack = new Set<string>()
+    // Reconnects of one guest without an address are shown together; a person decides what they mean.
+    const withoutEmail = new Map<string, WebinarRowException>()
+    function hold(email: string, exception: WebinarRowException) {
+        rows.delete(email); heldBack.add(email); exceptions.push(exception)
+        if (exceptions.length > 1000) throw new Error('Plik ma ponad 1000 wierszy do wyjaśnienia. Sprawdź, czy to właściwy raport.')
+    }
+    function interval(row: string[]) {
+        const start = teamsTimestamp(row[join] ?? '', dateOrder); const end = teamsTimestamp(row[leave] ?? '', dateOrder)
+        if (Date.parse(end) <= Date.parse(start)) throw new Error('czas opuszczenia musi następować po dołączeniu.')
+        return { start, end }
+    }
     for (let i = index + 1; i < cells.length; i++) {
         const row = cells[i]
+        const rowNumber = i + 1
         // Teams includes an optional third section with participant activities.
         if (row.length === 1 && /^[0-9]+\./.test(row[0])) break
         if (headerColumn(row, emailHeaders) >= 0) continue
         if (statusIndex >= 0 && /^(cancelled|canceled|anulowan[ay]|odrzucon[ay])$/i.test(row[statusIndex] ?? '')) continue
-        if (kind === 'registrations' && statusIndex >= 0 && /waitlist|pending|oczekuj|rezerw/i.test(row[statusIndex] ?? '')) throw new Error(`Wiersz ${i + 1}: zapis jest oczekujący lub na rezerwie w Teams. Importuj potwierdzone rejestracje; nie zamienimy rezerwy w potwierdzone miejsce.`)
         const email = normalizeWebinarEmail(row[emailIndex] ?? '')
-        if (!emailPattern.test(email) || email.length > 254) throw new Error(`Wiersz ${i + 1}: brak poprawnego emaila. Nazwa uczestnika nie wystarcza do dopasowania.`)
-        const fullName = (nameIndex >= 0 ? row[nameIndex] : [row[firstName], row[lastName]].filter(Boolean).join(' '))?.trim().slice(0, 200) || email
+        const rawName = (nameIndex >= 0 ? row[nameIndex] : [row[firstName], row[lastName]].filter(Boolean).join(' '))?.trim().slice(0, 200) || ''
+        const validEmail = emailPattern.test(email) && email.length <= 254
+        if (kind === 'registrations' && statusIndex >= 0 && /waitlist|pending|oczekuj|rezerw/i.test(row[statusIndex] ?? '')) {
+            exceptions.push({ kind: 'waitlisted_in_teams', rowNumber, email: validEmail ? email : null, fullName: rawName || null, message: `Wiersz ${rowNumber}: zapis jest oczekujący lub na rezerwie w Teams. Importuj potwierdzone rejestracje; nie zamienimy rezerwy w potwierdzone miejsce.` })
+            continue
+        }
+        if (!validEmail) {
+            const message = `Wiersz ${rowNumber}: brak poprawnego emaila. Nazwa uczestnika nie wystarcza do dopasowania.`
+            const reported: { interval?: { start: string; end: string }; seconds?: number } = {}
+            if (kind === 'attendance') {
+                try { reported.interval = interval(row); if (summary) reported.seconds = teamsDurationSeconds(row[duration] ?? '') } catch { reported.interval = undefined }
+            }
+            const previous = rawName ? withoutEmail.get(key(rawName)) : undefined
+            if (previous && reported.interval && !summary) { previous.intervals = [...(previous.intervals ?? []), reported.interval]; continue }
+            const exception: WebinarRowException = { kind: 'missing_email', rowNumber, email: null, fullName: rawName || null, message, ...(reported.interval ? { intervals: [reported.interval] } : {}), ...(reported.seconds !== undefined ? { reportedSeconds: reported.seconds } : {}) }
+            if (rawName) withoutEmail.set(key(rawName), exception)
+            exceptions.push(exception)
+            continue
+        }
+        if (heldBack.has(email)) continue
+        const fullName = rawName || email
         const previous = rows.get(email)
-        if (kind === 'registrations' && previous && previous.fullName !== fullName) throw new Error(`Wiersz ${i + 1}: ten sam email ma różne nazwy uczestników. Wyjaśnij współdzielony adres przed importem.`)
-        const current = previous ?? { email, fullName, ...(kind === 'attendance' ? { intervals: [], evidence: summary ? 'summary' as const : 'intervals' as const } : {}) }
+        if (kind === 'registrations' && previous && previous.fullName !== fullName) {
+            hold(email, { kind: 'conflicting_names', rowNumber, email, fullName, message: `Wiersz ${rowNumber}: ten sam email ma różne nazwy uczestników. Wyjaśnij współdzielony adres przed importem.` })
+            continue
+        }
+        const current: WebinarRow = previous ?? { email, fullName, ...(kind === 'attendance' ? { intervals: [], evidence: summary ? 'summary' as const : 'intervals' as const } : {}) }
         if (kind === 'attendance') {
-            const start = teamsTimestamp(row[join] ?? '', dateOrder); const end = teamsTimestamp(row[leave] ?? '', dateOrder)
-            if (Date.parse(end) <= Date.parse(start)) throw new Error(`Wiersz ${i + 1}: czas opuszczenia musi następować po dołączeniu.`)
-            if (summary) {
-                const reportedSeconds = teamsDurationSeconds(row[duration] ?? '')
-                if (reportedSeconds > Math.floor((Date.parse(end) - Date.parse(start)) / 1000)) throw new Error(`Wiersz ${i + 1}: czas obecności przekracza przedział połączeń.`)
-                if (current.intervals!.length && (current.intervals![0].start !== start || current.intervals![0].end !== end || current.reportedSeconds !== reportedSeconds)) throw new Error('Wiele różnych podsumowań dla tej samej osoby. Użyj szczegółowej sekcji In-meeting activities, aby bezpiecznie zsumować połączenia.')
-                current.intervals = [{ start, end }]; current.reportedSeconds = reportedSeconds
-            } else current.intervals!.push({ start, end })
+            try {
+                const { start, end } = interval(row)
+                if (summary) {
+                    const reportedSeconds = teamsDurationSeconds(row[duration] ?? '')
+                    if (reportedSeconds > Math.floor((Date.parse(end) - Date.parse(start)) / 1000)) throw new Error('czas obecności przekracza przedział połączeń.')
+                    if (current.intervals!.length && (current.intervals![0].start !== start || current.intervals![0].end !== end || current.reportedSeconds !== reportedSeconds)) {
+                        hold(email, { kind: 'ambiguous_summary', rowNumber, email, fullName, message: 'Wiele różnych podsumowań dla tej samej osoby. Użyj szczegółowej sekcji In-meeting activities, aby bezpiecznie zsumować połączenia.' })
+                        continue
+                    }
+                    current.intervals = [{ start, end }]; current.reportedSeconds = reportedSeconds
+                } else current.intervals!.push({ start, end })
+            } catch (cause) {
+                const detail = cause instanceof Error ? cause.message : 'nieprawidłowy wiersz.'
+                hold(email, { kind: 'invalid_row', rowNumber, email, fullName, message: `Wiersz ${rowNumber}: ${detail}` })
+                continue
+            }
         }
         rows.set(email, current)
         if (rows.size > 500 || (current.intervals?.length ?? 0) > 100) throw new Error('Import obsługuje do 500 osób i 100 przedziałów na osobę.')
     }
-    if (!rows.size) throw new Error('Plik nie zawiera uczestników.')
-    return [...rows.values()]
+    if (!rows.size && !exceptions.length) throw new Error('Plik nie zawiera uczestników.')
+    return { rows: [...rows.values()], exceptions }
+}
+/** All-or-nothing variant: used until the exceptions migration is applied. */
+export function parseWebinarCsv(text: string, kind: WebinarImportKind, dateOrder: 'dmy' | 'mdy' = 'dmy'): WebinarRow[] {
+    const { rows, exceptions } = parseWebinarReport(text, kind, dateOrder)
+    if (exceptions.length) throw new Error(exceptions[0].message)
+    return rows
 }
 export function attendancePreviewSeconds(row: WebinarRow, window: { start: string; end: string }) {
     if (!row.intervals?.length || !row.intervals.some(i => Date.parse(i.end) > Date.parse(window.start) && Date.parse(i.start) < Date.parse(window.end))) throw new Error('Raport obecności nie pokrywa okna tego spotkania.')
