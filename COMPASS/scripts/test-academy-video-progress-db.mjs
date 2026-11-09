@@ -1,4 +1,5 @@
-// B4.3: autoryzacja, scalanie zakresów, wznawianie i automatyczne zaliczenie.
+// B4.3: autoryzacja, scalanie zakresów, wznawianie, automatyczne zaliczenie
+// oraz odmowa ręcznego zaliczenia lekcji z nagraniem przez RPC (domknięcie B4.3).
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -40,8 +41,13 @@ async function publishedCourse(title, extraRules = {}, videos = 1) {
 }
 const backdate = async (user, asset, seconds) => { await owner(); await sql(`update academy_video_progress set updated_at=now()-make_interval(secs=>$3) where user_id=$1 and asset_id=$2`, [user, asset, seconds]); };
 
+const migration = name => fs.readFileSync(fileURLToPath(new URL(`../supabase/${name}`, import.meta.url)), 'utf8');
+const mark = 'select public.academy_mark_lesson_complete($1,$2) r';
+
 try {
-    await db.exec(fs.readFileSync(fileURLToPath(new URL('../supabase/migrations/20261109213000_academy_video_progress.sql', import.meta.url)), 'utf8'));
+    // The guard goes on first, so every automatic completion below also proves it does not block that path.
+    await db.exec(migration('migrations/20261109213000_academy_video_progress.sql'));
+    await db.exec(migration('migrations/20261110170000_academy_b4_3_mark_complete_guard.sql'));
 
     const { course, lesson, assets: [asset] } = await publishedCourse('Video progress');
     await actor('student');
@@ -83,6 +89,9 @@ try {
     eq([result.accepted, result.completed, result.already_completed, result.watched_percent], [true, true, false, 95]);
     eq((await sql('select completed_lessons from course_enrollments where id=$1', [enrollment])).rows[0].completed_lessons, [lesson]);
 
+    // Calling the RPC on a completed video lesson stays idempotent.
+    eq((await sql(mark, [enrollment, lesson])).rows[0].r.already_completed, true);
+
     // A later save does not re-award and a shorter reported duration cannot shrink the total.
     await backdate(ids.student, asset, 60);
     await actor('student');
@@ -99,6 +108,8 @@ try {
     await actor('student');
     result = (await sql(save, [customEnrollment, custom.lesson, custom.assets[0], 59, 100, '[[0,59]]'])).rows[0].r;
     eq([result.completed, result.threshold_percent], [false, 60]);
+    // Manual completion through the RPC is refused below the threshold.
+    await denied(mark, [customEnrollment, custom.lesson], /video_watch_required/);
     await backdate(ids.student, custom.assets[0], 120);
     await actor('student');
     result = (await sql(save, [customEnrollment, custom.lesson, custom.assets[0], 60, 100, '[[59,60]]'])).rows[0].r;
@@ -118,6 +129,54 @@ try {
     await actor('student');
     result = (await sql(save, [partsEnrollment, parts.lesson, parts.assets[1], 80, 100, '[[25,80]]'])).rows[0].r;
     eq([result.completed, result.watched_percent], [true, 90]);
+
+    // Without any saved progress the RPC is refused, and nothing is recorded.
+    const direct = await publishedCourse('Direct RPC');
+    await actor('student');
+    const directEnrollment = await rpc('academy_enroll', [direct.course.course_id, null]);
+    await denied(mark, [directEnrollment, direct.lesson], /video_watch_required/);
+    eq((await sql('select completed_lessons from course_enrollments where id=$1', [directEnrollment])).rows[0].completed_lessons, []);
+    // One of two parts unwatched still blocks, even if the watched part alone is past the threshold.
+    const partsFresh = await publishedCourse('Two parts direct', {}, 2);
+    await actor('student');
+    const partsFreshEnrollment = await rpc('academy_enroll', [partsFresh.course.course_id, null]);
+    await sql(save, [partsFreshEnrollment, partsFresh.lesson, partsFresh.assets[0], 25, 100, '[[0,25]]']);
+    await backdate(ids.student, partsFresh.assets[0], 120);
+    await actor('student');
+    await sql(save, [partsFreshEnrollment, partsFresh.lesson, partsFresh.assets[0], 100, 100, '[[25,100]]']);
+    await denied(mark, [partsFreshEnrollment, partsFresh.lesson], /video_watch_required/);
+
+    // Same rounding as the automatic path: 89.94% stays below 90, 89.96% rounds to 90.0 and the RPC completes.
+    const watched = await publishedCourse('Watched elsewhere');
+    await actor('student');
+    const watchedEnrollment = await rpc('academy_enroll', [watched.course.course_id, null]);
+    const setWatched = async end => { await owner(); await sql("insert into academy_video_progress(user_id,asset_id,position_seconds,duration_seconds,watched_ranges)values($1,$2,$3,100,jsonb_build_array(jsonb_build_array(0,$3::numeric))) on conflict(user_id,asset_id) do update set watched_ranges=excluded.watched_ranges", [ids.student, watched.assets[0], end]); await actor('student'); };
+    await setWatched(89.94);
+    await denied(mark, [watchedEnrollment, watched.lesson], /video_watch_required/);
+    await setWatched(89.96);
+    result = (await sql(mark, [watchedEnrollment, watched.lesson])).rows[0].r;
+    eq([result.completed, result.already_completed], [true, false]);
+
+    // A lesson without a recording is still completed manually.
+    const text = await publishedCourse('Text only', {}, 0);
+    await actor('student');
+    const textEnrollment = await rpc('academy_enroll', [text.course.course_id, null]);
+    result = (await sql(mark, [textEnrollment, text.lesson])).rows[0].r;
+    eq([result.completed, result.already_completed], [true, false]);
+
+    // The helper is not callable by learners.
+    await denied('select academy_private.lesson_video_requirement_met($1,$2,$3)', [ids.student, direct.course.version_id, direct.lesson]);
+
+    // Rollback restores the previous behaviour, then the guard re-applies cleanly.
+    await owner();
+    await db.exec(migration('rollbacks/20261110170000_academy_b4_3_mark_complete_guard.sql'));
+    await actor('student');
+    result = (await sql(mark, [directEnrollment, direct.lesson])).rows[0].r;
+    eq(result.completed, true);
+    await owner();
+    await db.exec(migration('migrations/20261110170000_academy_b4_3_mark_complete_guard.sql'));
+    await actor('student');
+    await denied(mark, [partsFreshEnrollment, partsFresh.lesson], /video_watch_required/);
 
     console.log(`Academy video progress DB checks passed: ${checks}`);
 } finally {
