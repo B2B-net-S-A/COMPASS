@@ -50,8 +50,8 @@ function RecordingTerm({ assetId, value, onSaved }: { assetId: string; value: st
     </div>
 }
 
-export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAcademy = false, userId, readOnly = false }: {
-    runId: string; courseId: string; canManage: boolean; isAdmin: boolean; canManageAcademy?: boolean; userId: string; readOnly?: boolean
+export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAcademy = false, canReview = isAdmin, canApprove = canReview, userId, readOnly = false }: {
+    runId: string; courseId: string; canManage: boolean; isAdmin: boolean; canManageAcademy?: boolean; canReview?: boolean; canApprove?: boolean; userId: string; readOnly?: boolean
 }) {
     const [items, setItems] = useState<AcademyRunMaterial[]>([])
     const [loading, setLoading] = useState(true)
@@ -128,8 +128,8 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAca
                 </select>
                 <p className="text-xs text-muted-foreground">Jedne napisy można przypisać do jednego opublikowanego nagrania.</p>
             </div>}
-            {isAdmin && !readOnly && <div className="flex flex-wrap gap-2">
-                {item.review_status === 'pending_review' && <><Button size="sm" disabled={pending || item.uploaded_by === userId} onClick={() => { setError(null); setDecision({ item, value: 'approve' }) }}><FileCheck2 className="size-4" aria-hidden="true" />Zatwierdź dla uczestników</Button><Button size="sm" variant="outline" disabled={pending} onClick={() => { setError(null); setDecision({ item, value: 'reject' }) }}>Odrzuć z komentarzem</Button>{item.uploaded_by === userId && <span className="w-full text-xs text-muted-foreground">Własny materiał musi zatwierdzić inny administrator.</span>}</>}
+            {canReview && !readOnly && <div className="flex flex-wrap gap-2">
+                {item.review_status === 'pending_review' && <><Button size="sm" disabled={pending || !canApprove || item.uploaded_by === userId} onClick={() => { setError(null); setDecision({ item, value: 'approve' }) }}><FileCheck2 className="size-4" aria-hidden="true" />Zatwierdź dla uczestników</Button><Button size="sm" variant="outline" disabled={pending} onClick={() => { setError(null); setDecision({ item, value: 'reject' }) }}>Odrzuć z komentarzem</Button>{item.uploaded_by === userId && <span className="w-full text-xs text-muted-foreground">Własny materiał musi zatwierdzić inny administrator.</span>}</>}
                 {item.review_status === 'published' && <Button size="sm" variant="outline" disabled={pending} onClick={() => { setError(null); setDecision({ item, value: 'withdraw' }) }}>Wycofaj materiał</Button>}
             </div>}
         </article>)}

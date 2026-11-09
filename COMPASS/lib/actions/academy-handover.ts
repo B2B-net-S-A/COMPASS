@@ -12,7 +12,7 @@ const input = scope.extend({ id: z.uuid().nullable(), items: z.object({ presenta
 export async function getAcademyHandover(value: z.infer<typeof scope>) {
     return academyAction('handover.get', async (): Promise<AcademyHandoverState> => {
         const { versionId, runId } = scope.parse(value)
-        const { client, access } = await requireAcademyContext({ trainer: true })
+        const { client, access } = await requireAcademyContext({ trainer: true, reviewState: true })
         let query = client.from('academy_handovers').select('*').eq('version_id', versionId)
         query = runId ? query.eq('run_id', runId) : query.is('run_id', null)
         const result = await query.order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -27,7 +27,7 @@ export async function getAcademyHandover(value: z.infer<typeof scope>) {
             if (!ids.length) {
                 const review = await client.rpc('academy_can_review_version', { p_version_id: versionId })
                 assertDatabaseResult(review.error)
-                return { handover, files: [], canReview: access.isAdmin && review.data === true && !handover?.contributors.includes(access.userId) }
+                return { handover, files: [], canReview: access.canReview === true && review.data === true && !handover?.contributors.includes(access.userId) }
             }
             files = files.in('id', ids).is('run_id', null)
         }
@@ -36,7 +36,7 @@ export async function getAcademyHandover(value: z.infer<typeof scope>) {
         const review = await client.rpc('academy_can_review_version', { p_version_id: versionId })
         assertDatabaseResult(review.error)
         const selected = new Set(Object.values(handover?.material_ids ?? {}).flat())
-        return { handover, files: (assets.data ?? []).map(({ uploaded_by: _uploader, ...file }) => file), canReview: access.isAdmin && review.data === true && !handover?.contributors.includes(access.userId) && !(assets.data ?? []).some(file => selected.has(file.id) && file.uploaded_by === access.userId) }
+        return { handover, files: (assets.data ?? []).map(({ uploaded_by: _uploader, ...file }) => file), canReview: access.canReview === true && review.data === true && !handover?.contributors.includes(access.userId) && !(assets.data ?? []).some(file => selected.has(file.id) && file.uploaded_by === access.userId) }
     })
 }
 export async function saveAcademyHandover(value: z.infer<typeof input>) {
@@ -51,7 +51,7 @@ export async function saveAcademyHandover(value: z.infer<typeof input>) {
 export async function reviewAcademyHandover(value: { id: string; accept: boolean; note?: string }) {
     return academyAction('handover.review', async () => {
         const parsed = z.object({ id: z.uuid(), accept: z.boolean(), note: z.string().trim().max(2000).optional() }).parse(value)
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ reviewer: true })
         const { error } = await client.rpc('academy_review_handover', { p_id: parsed.id, p_accept: parsed.accept, p_note: parsed.note ?? null })
         assertDatabaseResult(error)
     })

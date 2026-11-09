@@ -13,7 +13,7 @@ type ReviewQueuePage = { items: CourseListItem[]; total: number; page: number; p
 
 export async function getReviewQueue(page = 1): Promise<ActionResult<ReviewQueuePage>> {
     return academyAction('review.queue', async () => {
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ reviewer: true })
         if (!Number.isSafeInteger(page) || page < 1 || page > Math.floor(Number.MAX_SAFE_INTEGER / REVIEW_QUEUE_PAGE_SIZE)) {
             throw new Error('Nieprawidłowy numer strony kolejki.')
         }
@@ -46,7 +46,7 @@ export async function getReviewQueue(page = 1): Promise<ActionResult<ReviewQueue
 /** Licznik w nawigacji to dekoracja: błąd zwraca null i chowa plakietkę, nie psuje ekranu. */
 export async function getReviewQueueCount(): Promise<number | null> {
     try {
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ reviewer: true })
         const { error, count } = await client.from('course_versions')
             .select('id,courses!course_versions_course_id_fkey!inner(status)', { count: 'exact', head: true })
             .eq('status', 'pending_review').neq('courses.status', 'archived')
@@ -57,7 +57,7 @@ export async function getReviewQueueCount(): Promise<number | null> {
 }
 
 async function review(courseId: string, versionId: string | undefined, submissionId: string | null | undefined, approve: boolean, reason?: string) {
-    const { client } = await requireAcademyContext({ admin: true })
+    const { client } = await requireAcademyContext({ reviewer: true })
     if (!versionId || !submissionId) throw new Error('Odśwież podgląd wersji przed podjęciem decyzji.')
     const parsed = z.object({ courseId: z.uuid(), versionId: z.uuid(), submissionId: z.uuid() }).parse({ courseId, versionId, submissionId })
     const { data: version, error: versionError } = await client.from('course_versions').select('id').eq('id', parsed.versionId).eq('course_id', parsed.courseId).single()
@@ -96,7 +96,7 @@ export async function archiveCourse(courseId: string): Promise<ActionResult<void
 
 export async function canReviewCourseVersion(versionId: string): Promise<ActionResult<boolean>> {
     return academyAction('review.permission', async () => {
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ reviewer: true })
         const { data, error } = await client.rpc('academy_can_review_version', { p_version_id: z.uuid().parse(versionId) })
         assertDatabaseResult(error)
         return data === true

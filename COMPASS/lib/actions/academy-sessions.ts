@@ -153,7 +153,7 @@ export async function updateAcademyRun(input: { runId: string; title: string; ca
 export async function publishAcademyRun(runId: string): Promise<ActionResult<void>> {
     return academyAction('sessions.run_publish', async () => {
         const id = uuid.parse(runId)
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ reviewer: true })
         const { data: sessions, error: sessionError } = await client.from('course_sessions').select('meeting_mode').eq('run_id', id).eq('status', 'scheduled')
         assertDatabaseResult(sessionError)
         if (sessions?.some(s => s.meeting_mode === 'managed_teams')) {

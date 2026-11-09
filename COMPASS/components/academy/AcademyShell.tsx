@@ -7,7 +7,7 @@ export type AcademyTab = 'catalog' | 'my' | 'calendar' | 'paths' | 'teaching' | 
 
 export interface AcademyShellProps {
     activeTab: AcademyTab
-    access: { isAdmin: boolean; canTeach: boolean; canManageAcademy?: boolean; isManager?: boolean; rolloutMode?: 'closed' | 'pilot' | 'open'; isPilot?: boolean }
+    access: { isAdmin: boolean; canTeach: boolean; canManageAcademy?: boolean; canReview?: boolean; isManager?: boolean; rolloutMode?: 'closed' | 'pilot' | 'open'; isPilot?: boolean }
     title: string
     description?: string
     action?: ReactNode
@@ -24,7 +24,7 @@ export function AcademyShell({ activeTab, access, title, description, action, ch
         { id: 'calendar', label: 'Kalendarz', href: '/learning/kalendarz', icon: CalendarDays, visible: showCalendar },
         { id: 'teaching', label: access.canManageAcademy ? 'Edytor Akademii' : 'Prowadzę', href: '/learning/tworze', icon: Presentation, visible: access.canTeach || access.isAdmin },
         { id: 'team', label: 'Mój zespół', href: '/learning/zespol', icon: UsersRound, visible: access.isManager === true },
-        { id: 'admin', label: 'Administracja', href: '/admin/learning', icon: ShieldCheck, visible: access.isAdmin },
+        { id: 'admin', label: access.isAdmin ? 'Administracja' : 'Akceptacja szkoleń', href: '/admin/learning', icon: ShieldCheck, visible: access.isAdmin || access.canReview === true },
     ]
 
     return (
