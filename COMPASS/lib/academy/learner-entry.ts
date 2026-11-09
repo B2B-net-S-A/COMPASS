@@ -96,13 +96,17 @@ export async function ensureLearnerUser(client: SupabaseClient, account: Learner
  * brak migracji albo awaria oznacza tylko, że powiązanie powstanie przy następnym wejściu.
  */
 export async function bindLearnerToRuns(client: SupabaseClient, accountId: string, userId: string): Promise<void> {
-    const { data, error } = await client.rpc('academy_bind_learner_on_entry', { p_account_id: accountId, p_user_id: userId })
-    if (error) {
-        if (!isMissingDatabaseObject(error)) logger.error({ event: 'academy.learner_entry.bind_failed', code: error.code })
-        return
+    try {
+        const { data, error } = await client.rpc('academy_bind_learner_on_entry', { p_account_id: accountId, p_user_id: userId })
+        if (error) {
+            if (!isMissingDatabaseObject(error)) logger.error({ event: 'academy.learner_entry.bind_failed', code: error.code })
+            return
+        }
+        const failed = (data as { failed?: number } | null)?.failed ?? 0
+        if (failed > 0) logger.error({ event: 'academy.learner_entry.bind_partial', failed })
+    } catch {
+        logger.error({ event: 'academy.learner_entry.bind_failed', code: undefined })
     }
-    const failed = (data as { failed?: number } | null)?.failed ?? 0
-    if (failed > 0) logger.error({ event: 'academy.learner_entry.bind_partial', failed })
 }
 
 /** Jednorazowy `token_hash` dla `verifyOtp` w przeglądarce. `generateLink` niczego nie wysyła. */
