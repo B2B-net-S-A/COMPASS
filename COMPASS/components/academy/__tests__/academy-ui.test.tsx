@@ -8,12 +8,12 @@ import { CourseAuthorForm } from '@/components/learning/CourseAuthorForm'
 import { CourseEditWizard } from '@/components/learning/CourseEditWizard'
 vi.mock('@/components/academy/AcademyReviewHistory', () => ({ AcademyReviewHistory: () => null }))
 import { saveAcademySession, recordAcademyAttendance } from '@/lib/actions/academy-sessions'
-import { beginCourseDraft, createCourse, submitForReview } from '@/lib/actions/courses'
+import { beginCourseDraft, createCourse, submitForReview, withdrawSubmission } from '@/lib/actions/courses'
 import type { CourseDetail } from '@/lib/types/learning'
 import type { AcademySessionDTO, AcademyRunParticipantDTO } from '@/lib/types/academy-sessions'
 
 vi.mock('@/lib/actions/academy-sessions', () => ({ saveAcademySession: vi.fn(), confirmAcademySessionWindow: vi.fn(), recordAcademyAttendance: vi.fn() }))
-vi.mock('@/lib/actions/courses', () => ({ beginCourseDraft: vi.fn(), createCourse: vi.fn(), updateCourse: vi.fn(), submitForReview: vi.fn() }))
+vi.mock('@/lib/actions/courses', () => ({ beginCourseDraft: vi.fn(), createCourse: vi.fn(), updateCourse: vi.fn(), submitForReview: vi.fn(), withdrawSubmission: vi.fn() }))
 vi.mock('@/components/learning/LessonsEditor', () => ({ LessonsEditor: () => <div>Edytor lekcji</div> }))
 vi.mock('@/components/learning/QuizEditor', () => ({ QuizEditor: () => <div>Edytor pytań</div> }))
 vi.mock('@/components/shared/ConfirmDialog', () => ({ useConfirm: () => [() => Promise.resolve(true), () => null] }))
@@ -83,6 +83,21 @@ it('submits a live program without lessons or quiz for administrator approval', 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Akceptacja' }), { button: 0, ctrlKey: false })
     fireEvent.click(await screen.findByRole('button', { name: 'Prześlij do akceptacji' }))
     await waitFor(() => expect(submitForReview).toHaveBeenCalledWith('course'))
+})
+
+it('lets the author withdraw a pending submission after confirming and passes its token', async () => {
+    vi.mocked(withdrawSubmission).mockResolvedValue({ success: true, data: undefined })
+    render(<CourseEditWizard course={{ ...course, status: 'pending_review', version_status: 'pending_review', submission_id: 'token' }} initialLessons={[]} initialQuiz={[]} />)
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Akceptacja' }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole('button', { name: 'Wycofaj zgłoszenie' }))
+    await waitFor(() => expect(withdrawSubmission).toHaveBeenCalledWith('course', 'token'))
+})
+
+it('offers no withdrawal once the version is no longer waiting for review', async () => {
+    render(<CourseEditWizard course={course} initialLessons={[]} initialQuiz={[]} />)
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Akceptacja' }), { button: 0, ctrlKey: false })
+    await screen.findByRole('button', { name: 'Prześlij do akceptacji' })
+    expect(screen.queryByRole('button', { name: 'Wycofaj zgłoszenie' })).not.toBeInTheDocument()
 })
 
 it('locks published content and requires creating a new draft', async () => {
