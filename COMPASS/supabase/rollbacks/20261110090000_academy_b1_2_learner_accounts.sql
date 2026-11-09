@@ -32,6 +32,8 @@ BEGIN
     EXECUTE v_new;
 END $migration$;
 
+DROP TRIGGER academy_learner_mark_account ON auth.users;
+DROP FUNCTION academy_private.mark_learner_account();
 ALTER TABLE public.profiles DROP COLUMN academy_only;
 DROP TRIGGER academy_learner_trial_source_guard ON public.academy_learner_accounts;
 DROP FUNCTION academy_private.guard_learner_trial_source();

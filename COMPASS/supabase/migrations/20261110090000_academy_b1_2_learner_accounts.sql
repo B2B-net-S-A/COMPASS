@@ -40,6 +40,24 @@ CREATE TRIGGER academy_learner_trial_source_guard
 
 ALTER TABLE public.profiles ADD COLUMN academy_only boolean NOT NULL DEFAULT false;
 
+-- Znacznik wynika z listy kont nauki, a nie z drogi założenia konta. Publiczny signup na adres
+-- z listy przechodzi bramkę z 20261109120000, więc bez tego powstałoby zwykłe konto bez izolacji.
+-- Admin API dopisuje app_metadata dopiero po INSERT, dlatego znacznik ustawia baza, a wyzwalacz
+-- pilnuje też UPDATE: późniejszy zapis metadanych z pamięci serwera nie może go zgubić.
+CREATE OR REPLACE FUNCTION academy_private.mark_learner_account()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM public.academy_learner_accounts a WHERE a.email = lower(NEW.email) AND a.ended_at IS NULL) THEN
+        NEW.raw_app_meta_data := COALESCE(NEW.raw_app_meta_data, '{}'::jsonb) || '{"academy_only": true}'::jsonb;
+    END IF;
+    RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION academy_private.mark_learner_account() FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER academy_learner_mark_account
+    BEFORE INSERT OR UPDATE OF raw_app_meta_data, email ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION academy_private.mark_learner_account();
+
 -- Porównanie z wartością jsonb, nie z tekstem: napis "true" nie włącza izolacji w aplikacji,
 -- więc nie może też ustawić kolumny.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -152,6 +170,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='academy_learner_trial_source_guard' AND NOT tgisinternal) THEN
         RAISE EXCEPTION 'b1_2_trial_guard_missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='academy_learner_mark_account' AND tgrelid='auth.users'::regclass AND NOT tgisinternal) THEN
+        RAISE EXCEPTION 'b1_2_mark_trigger_missing';
     END IF;
     v_def := pg_get_functiondef('public.pin_profile_privilege_columns()'::regprocedure);
     IF v_def NOT LIKE '%NEW.academy_only            := OLD.academy_only%' THEN RAISE EXCEPTION 'b1_2_pin_missing'; END IF;

@@ -30,6 +30,35 @@ BEGIN
     END;
 END $$;
 
+-- Adres z listy dostaje znacznik niezależnie od drogi założenia konta.
+INSERT INTO public.academy_learner_accounts(email, source) VALUES ('lista@example.test', 'reczne');
+INSERT INTO public.academy_learner_accounts(email, source, ended_at) VALUES ('koniec@example.test', 'reczne', now());
+DO $$
+DECLARE
+    v_listed uuid := '10000000-0000-0000-0000-000000000011';
+    v_ended uuid := '10000000-0000-0000-0000-000000000012';
+    v_other uuid := '10000000-0000-0000-0000-000000000013';
+    v_only boolean;
+    v_meta jsonb;
+BEGIN
+    INSERT INTO auth.users(id, email) VALUES (v_listed, 'Lista@example.test');
+    SELECT academy_only INTO v_only FROM public.profiles WHERE id = v_listed;
+    IF v_only IS NOT TRUE THEN RAISE EXCEPTION 'listed signup not marked in profile'; END IF;
+    SELECT raw_app_meta_data INTO v_meta FROM auth.users WHERE id = v_listed;
+    IF v_meta->'academy_only' <> 'true'::jsonb THEN RAISE EXCEPTION 'listed signup missing app marker'; END IF;
+
+    -- Zapis metadanych bez znacznika, jak późniejszy UPDATE z pamięci serwera Auth, go nie gubi.
+    UPDATE auth.users SET raw_app_meta_data = '{"provider":"email"}' WHERE id = v_listed;
+    SELECT raw_app_meta_data INTO v_meta FROM auth.users WHERE id = v_listed;
+    IF v_meta->'academy_only' <> 'true'::jsonb OR v_meta->>'provider' <> 'email' THEN RAISE EXCEPTION 'marker lost on update: %', v_meta; END IF;
+
+    INSERT INTO auth.users(id, email) VALUES (v_ended, 'koniec@example.test');
+    INSERT INTO auth.users(id, email) VALUES (v_other, 'obcy@example.test');
+    IF (SELECT academy_only FROM public.profiles WHERE id = v_ended) OR (SELECT academy_only FROM public.profiles WHERE id = v_other) THEN
+        RAISE EXCEPTION 'marker set for ended or unlisted address';
+    END IF;
+END $$;
+
 -- source='proba' wolno nadać SQL-em, ale nie kluczem serwisowym.
 INSERT INTO public.academy_learner_accounts(id, email, source, user_id)
     VALUES ('20000000-0000-0000-0000-000000000001', 'nauka@example.test', 'proba', '10000000-0000-0000-0000-000000000001');
