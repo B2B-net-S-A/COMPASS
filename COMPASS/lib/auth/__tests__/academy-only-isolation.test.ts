@@ -54,6 +54,7 @@ const ROUTE_RULES: Record<string, RouteRule> = {
     'app/api/akademia/wejscie/request/route.ts': 'public',
     'app/api/akademia/attachment/route.ts': 'learner',
     'app/api/akademia/certificate/route.ts': 'learner',
+    'app/api/akademia/participation/route.ts': 'learner',
     'app/api/academy/sessions/[id]/calendar/route.ts': 'learner',
     'app/api/admin/email-preview/route.ts': 'explicit',
     'app/api/admin/snapshot/route.ts': 'explicit',
