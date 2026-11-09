@@ -3,6 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AcademyVideo } from '../AcademyVideo'
 import { MAX_RECOVERY_ATTEMPTS, STALL_TIMEOUT_MS } from '@/lib/academy/video-playback'
 
+const chapterList = vi.fn()
+vi.mock('@/lib/actions/academy-video-chapters', () => ({ listVideoChapters: (...args: unknown[]) => chapterList(...args) }))
+beforeEach(() => { chapterList.mockReset(); chapterList.mockResolvedValue({ success: true, data: { available: true, chapters: [] } }) })
+
 const video = { asset_id: 'video-id', name: 'Warsztat.mp4', storage_path: 'private/video.mp4', size_bytes: 1000 }
 const fetchMock = vi.fn()
 const response = (url = 'https://storage.example.test/video.mp4?token=first') => ({ ok: true, json: async () => ({ url, expiresIn: 300 }) })
@@ -10,6 +14,32 @@ const mediaError = async (container: HTMLElement) => { await act(async () => { f
 
 beforeEach(() => { vi.useFakeTimers(); vi.stubGlobal('fetch', fetchMock); fetchMock.mockReset() })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
+
+it('lists chapters and jumps to one on click', async () => {
+    chapterList.mockResolvedValue({ success: true, data: { available: true, chapters: [{ position_seconds: 0, title: 'Wstęp' }, { position_seconds: 90, title: 'Główna część' }] } })
+    fetchMock.mockResolvedValue(response())
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    const { container } = render(<AcademyVideo lessonId="lesson" video={video} />)
+    await act(async () => {})
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /1:30\s*Główna część/ })) })
+    expect(container.querySelector('video')!.currentTime).toBe(90)
+    expect(play).toHaveBeenCalled()
+    play.mockRestore()
+})
+
+it('still plays when chapters cannot be loaded and skips them for audio', async () => {
+    chapterList.mockRejectedValue(new Error('down'))
+    fetchMock.mockResolvedValue(response())
+    const { container } = render(<AcademyVideo lessonId="lesson" video={video} />)
+    await act(async () => {})
+    expect(container.querySelector('video')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Rozdziały nagrania' })).toBeNull()
+    cleanup()
+    chapterList.mockClear()
+    render(<AcademyVideo runId="run" video={video} audio />)
+    await act(async () => {})
+    expect(chapterList).not.toHaveBeenCalled()
+})
 
 it('does not recreate a playing element when the signed URL ages', async () => {
     fetchMock.mockResolvedValue(response())
