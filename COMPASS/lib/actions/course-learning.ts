@@ -33,7 +33,7 @@ export async function enrollInCourse(courseId: string): Promise<ActionResult<{ e
     return academyAction('enrollment.create', async () => {
         const { client, access } = await requireAcademyContext()
         const id = z.uuid().parse(courseId)
-        const { data: existing, error: existingError } = await client.from('course_enrollments').select('id').eq('user_id', access.userId).eq('course_id', id).is('run_id', null).maybeSingle()
+        const { data: existing, error: existingError } = await client.from('course_enrollments').select('id').eq('user_id', access.userId).eq('course_id', id).is('run_id', null).order('enrolled_at', { ascending: false }).limit(1).maybeSingle()
         assertDatabaseResult(existingError)
         const { data, error } = await client.rpc('academy_enroll', { p_course_id: id })
         assertDatabaseResult(error)
@@ -45,7 +45,8 @@ export async function enrollInCourse(courseId: string): Promise<ActionResult<{ e
 async function enrollmentContext(courseId: string, enrollmentId?: string) {
     const context = await requireAcademyContext()
     let query = context.client.from('course_enrollments').select('id,version_id,completed_at').eq('course_id', z.uuid().parse(courseId)).eq('user_id', context.access.userId)
-    query = enrollmentId ? query.eq('id', z.uuid().parse(enrollmentId)) : query.is('run_id', null)
+    // Zapis samodzielny może mieć kilka cykli recertyfikacji: liczy się najnowszy.
+    query = enrollmentId ? query.eq('id', z.uuid().parse(enrollmentId)) : query.is('run_id', null).order('enrolled_at', { ascending: false }).limit(1)
     const { data, error } = await query.single()
     assertDatabaseResult(error)
     if (!data) throw new Error('Najpierw zapisz się na szkolenie.')
