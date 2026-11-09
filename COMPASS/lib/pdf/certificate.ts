@@ -15,6 +15,18 @@ export interface GenerateCertificatePdfArgs {
     verificationUrl?: string
 }
 
+export interface GenerateParticipationPdfArgs {
+    fullName: string
+    courseTitle: string
+    runTitle: string | null
+    issuedAt: string
+    documentCode: string
+    versionNumber?: number
+}
+
+/** Szkolenia firmowe nie są certyfikacją producenta technologii. */
+export const VENDOR_DISCLAIMER = 'Dokument wewnętrzny B2B.net SA. Nie jest certyfikatem producenta ani nie potwierdza certyfikacji producenta technologii.'
+
 const WIDTH = 595.28
 const HEIGHT = 841.89
 const TEXT_WIDTH = WIDTH - 128
@@ -112,7 +124,48 @@ export async function generateCertificatePdf(args: GenerateCertificatePdfArgs): 
     drawCentered(page, font, 'Identyfikator certyfikatu', 121, 8, MUTED)
     drawFitted(page, font, args.certificateHash, { top: 114, height: 22, maxSize: 8, minSize: 6 }, MUTED)
     if (args.verificationUrl) drawFitted(page, font, args.verificationUrl, { top: 86, height: 41, maxSize: 8, minSize: 6 }, MUTED)
+    drawFitted(page, font, VENDOR_DISCLAIMER, { top: 62, height: 24, maxSize: 7, minSize: 6 }, MUTED)
 
+    return document.save()
+}
+
+/** Osobny szablon: zaświadczenie potwierdza udział, nie wiedzę. Nazwisko pochodzi z migawki dokumentu. */
+export async function generateParticipationPdf(args: GenerateParticipationPdfArgs): Promise<Uint8Array> {
+    const issued = new Date(args.issuedAt)
+    if (!Number.isFinite(issued.getTime())) throw new Error('Nieprawidłowa data wystawienia zaświadczenia.')
+    const name = cleanText(args.fullName)
+    const title = cleanText(args.courseTitle)
+    if (!name || !title) throw new Error('Zaświadczenie wymaga imienia, nazwiska i tytułu szkolenia.')
+    const document = await PDFDocument.create()
+    document.registerFontkit(fontkit)
+    document.setTitle(`Zaświadczenie udziału: ${title}`)
+    document.setSubject('Udział w szkoleniu')
+    document.setAuthor('COMPASS Akademia')
+    document.setCreator('COMPASS Akademia')
+    document.setProducer('COMPASS Akademia LMS')
+    document.setCreationDate(issued)
+    document.setModificationDate(issued)
+    document.setLanguage('pl-PL')
+    const font = await document.embedFont(await certificateFont(), { subset: true })
+    const page = document.addPage([WIDTH, HEIGHT])
+    page.drawRectangle({ x: 28, y: 28, width: WIDTH - 56, height: HEIGHT - 56, borderColor: BORDER, borderWidth: 1 })
+    page.drawText('COMPASS / AKADEMIA', { x: 48, y: HEIGHT - 84, font, size: 10, color: MUTED })
+    drawCentered(page, font, 'ZAŚWIADCZENIE', 695, 32)
+    drawCentered(page, font, 'udziału w szkoleniu', 666, 14, MUTED)
+    page.drawLine({ start: { x: 225, y: 637 }, end: { x: WIDTH - 225, y: 637 }, thickness: 1, color: BORDER })
+    drawCentered(page, font, 'Potwierdzamy, że', 605, 11, MUTED)
+    drawFitted(page, font, name, { top: 584, height: 104, maxSize: 26, minSize: 11 })
+    drawCentered(page, font, 'wziął(-ęła) udział w szkoleniu', 460, 11, MUTED)
+    drawFitted(page, font, title, { top: 436, height: 134, maxSize: 22, minSize: 11 })
+    if (args.runTitle) drawFitted(page, font, `Edycja: ${cleanText(args.runTitle)}`, { top: 281, height: 50, maxSize: 11, minSize: 8 }, MUTED)
+    const date = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Warsaw' }).format(issued)
+    drawCentered(page, font, `Data wystawienia: ${date}`, 208, 11)
+    if (args.versionNumber !== undefined) drawCentered(page, font, `Wersja programu: ${args.versionNumber}`, 188, 10, MUTED)
+    page.drawLine({ start: { x: 64, y: 168 }, end: { x: WIDTH - 64, y: 168 }, thickness: 0.75, color: BORDER })
+    drawCentered(page, font, 'Zaświadczenie nie potwierdza zaliczenia testu wiedzy.', 145, 10, MUTED)
+    drawCentered(page, font, 'Identyfikator dokumentu', 121, 8, MUTED)
+    drawFitted(page, font, args.documentCode, { top: 114, height: 22, maxSize: 8, minSize: 6 }, MUTED)
+    drawFitted(page, font, VENDOR_DISCLAIMER, { top: 62, height: 24, maxSize: 7, minSize: 6 }, MUTED)
     return document.save()
 }
 
@@ -120,4 +173,8 @@ export async function generateCertificatePdf(args: GenerateCertificatePdfArgs): 
 export function certificateFilename(courseTitle: string, fullName: string): string {
     const safe = (value: string, length: number) => value.replace(/[łŁ]/g, letter => letter === 'ł' ? 'l' : 'L').normalize('NFD').replace(/\p{M}/gu, '').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, length)
     return `Certyfikat_${safe(courseTitle, 40)}_${safe(fullName, 30)}.pdf`
+}
+
+export function participationFilename(courseTitle: string, fullName: string): string {
+    return certificateFilename(courseTitle, fullName).replace(/^Certyfikat_/, 'Zaswiadczenie_')
 }

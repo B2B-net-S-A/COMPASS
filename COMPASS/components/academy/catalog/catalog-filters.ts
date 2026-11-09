@@ -24,6 +24,7 @@ export const COURSE_FORMAT_LABELS: Record<CatalogDeliveryMode, string> = {
     self_paced: 'We własnym tempie',
     live: 'Na żywo w Teams',
     blended: 'Kurs mieszany',
+    assessment: 'Test poza kursem',
 }
 
 function single(value: string | string[] | undefined): string {
@@ -42,7 +43,7 @@ export function parseCatalogFilters(params: CatalogSearchParams): CatalogFilters
         instructorId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(instructor) ? instructor : undefined,
         level: level === 'beginner' || level === 'intermediate' || level === 'advanced' ? level : undefined,
         courseType: source === 'company' || source === 'consultant' ? source : undefined,
-        deliveryMode: format === 'self_paced' || format === 'live' || format === 'blended' ? format : undefined,
+        deliveryMode: format === 'self_paced' || format === 'live' || format === 'blended' || format === 'assessment' ? format : undefined,
         orderBy: sort === 'popular' || sort === 'top_rated' ? sort : 'newest',
     }
 }
