@@ -53,4 +53,4 @@ export const GET = withAuth(async (request, { user }) => {
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
     } })
-}, { role: [...ACADEMY_ROLES] })
+}, { role: [...ACADEMY_ROLES], allowAcademyOnly: true })

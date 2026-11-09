@@ -70,6 +70,7 @@ interface SidebarProps {
     consultantSuccessEnabled?: boolean
     // Phase 45: per-user grant — additive Talent Community access without the role.
     academyEnabled?: boolean
+    academyOnly?: boolean
     hasTcmAccess?: boolean
     // „Ludzie w NEXUSIE”: moduły w archiwum (lista od serwera, env runtime) i adres NEXUSA.
     hrMovedModules?: HrModule[]
@@ -102,6 +103,7 @@ export function Sidebar({
     consultantSuccessEnabled = false,
     hasTcmAccess = false,
     academyEnabled = false,
+    academyOnly = false,
     hrMovedModules = [],
     nexusUrl = null,
 }: SidebarProps) {
@@ -374,7 +376,10 @@ export function Sidebar({
         ],
     }
 
-    const groups: NavGroup[] = (() => {
+    const groups: NavGroup[] = academyOnly ? [{
+        heading: t('group_growth'),
+        links: [{ name: t('nav_learning'), href: '/learning', icon: GraduationCap, feature: null }],
+    }] : (() => {
         const out: NavGroup[] = [...platformGroups]
         if (isHrZone) out.push(internalGroup)
         // Phase 27i: finanse reaches the Administracja HR hub (invoices/bonuses/rates/clients tabs)

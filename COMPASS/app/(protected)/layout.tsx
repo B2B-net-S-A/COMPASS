@@ -19,6 +19,7 @@ import { logger } from '@/lib/logger'
 import { isConsultantSuccessEnabled } from '@/lib/consultant-success/flags'
 import { hrLandingPath, movedModules, nexusAppUrl } from '@/lib/hr/moved-to-nexus'
 import { academyRolloutAllows } from '@/lib/academy/rollout-probe'
+import { ACADEMY_ONLY_HOME, isAcademyOnlyUser } from '@/lib/auth/academy-only'
 import { isAcademyOfficeRole } from '@/lib/types/role'
 
 const Tour = nextDynamic(() => import('@/components/onboarding/Tour').then(m => m.Tour), { ssr: false })
@@ -69,7 +70,10 @@ export default async function ProtectedLayout({
             permissionsMap = DEFAULT_PERMISSIONS
         }
 
-        const role = (profile?.role as 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community') || 'consultant'
+        // Konto nauki dostaje powłokę uczestnika niezależnie od wiersza profilu: guardy i tak
+        // odmówią mu liczników i list, a odmowa w layoucie kończyłaby się przekierowaniem na /login.
+        const academyOnly = isAcademyOnlyUser(user)
+        const role = academyOnly ? 'consultant' : (profile?.role as 'consultant' | 'admin' | 'internal' | 'finanse' | 'manager' | 'talent_community') || 'consultant'
 
         // PR5b: usunięto cookie-based MFA check dla admin (lib/mfa.ts).
         // Microsoft Entra Conditional Access przejmuje wymuszanie MFA na
@@ -118,7 +122,7 @@ export default async function ProtectedLayout({
             lifecycleCount,
             activeLeaves,
         ] = await Promise.all([
-            getUnreadNewsCount(),
+            academyOnly ? Promise.resolve({ success: false as const, error: 'skip' }) : getUnreadNewsCount(),
             isAdminLike ? listTickets({ scope: 'all', status: 'open', limit: 1 }) : Promise.resolve({ success: false as const, error: 'skip' }),
             isAdminLike ? listAllPitchesAdmin('submitted') : Promise.resolve({ success: false as const, error: 'skip' }),
             // Audyt 2026-08 (C4): komunikator usunięty — nie miał RPC w bazie,
@@ -158,12 +162,13 @@ export default async function ProtectedLayout({
                     academyEnabled={academyAccess?.success === true || officeAcademyAllowed}
                     hrMovedModules={Array.from(moved)}
                     nexusUrl={nexusAppUrl()}
-                    landingHref={hrLandingPath(role, moved, officeAcademyAllowed)}
+                    landingHref={academyOnly ? ACADEMY_ONLY_HOME : hrLandingPath(role, moved, officeAcademyAllowed)}
+                    academyOnly={academyOnly}
                 >
                     <LayoutPreferencesProvider>
                         {children}
                     </LayoutPreferencesProvider>
-                    <Tour initialDone={profile?.onboarding_tour_done ?? false} />
+                    <Tour initialDone={academyOnly || (profile?.onboarding_tour_done ?? false)} />
                 </AppLayout>
             </ThemeProvider>
         )
