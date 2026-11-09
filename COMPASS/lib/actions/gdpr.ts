@@ -16,6 +16,7 @@
 import { logAudit } from '@/lib/actions/audit'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import { requireAdminAction } from '@/lib/auth/internal-guard'
+import { isMissingDatabaseObject } from '@/lib/academy/migration-contract'
 import { createServiceClient } from '@/lib/supabase/admin'
 import {
     manualFollowUpsFor,
@@ -43,6 +44,7 @@ const PAGE_SIZE = 500
 // `TableName` pochodzi z wygenerowanych typów bazy.
 type RowBag = Record<string, unknown>
 interface PgError {
+    code?: string | null
     message: string
 }
 interface FilterLike extends PromiseLike<{ data: RowBag[] | null; error: PgError | null }> {
@@ -443,12 +445,14 @@ export async function anonymizePersonalData(input: {
                     ? await table.delete().eq(step.column, input.subjectId)
                     : await table.update(step.patch).eq(step.column, input.subjectId)
 
+            // Tabela z migracji, której jeszcze nie zastosowano, nie ma czego zacierać.
+            const missingOptional = step.optional === true && isMissingDatabaseObject(error)
             steps.push({
                 table: step.table,
                 label: step.label,
                 operation: step.operation,
-                ok: !error,
-                ...(error ? { error: error.message } : {}),
+                ok: !error || missingOptional,
+                ...(error && !missingOptional ? { error: error.message } : {}),
             })
         }
 

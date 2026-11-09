@@ -186,6 +186,15 @@ describe('planRosterSync', () => {
         expect(plan.stats.returns).toBe(MAX_RETURNS_PER_RUN + 1)
     })
 
+    it('leaves an Academy learner account untouched even when the e-mail matches', () => {
+        const plan = planRosterSync(
+            [person('nauka', { employment_status: 'exited' })],
+            [profile('nauka', { employment_status: 'learning' })],
+        )
+        expect(plan.changes).toEqual([])
+        expect(plan.stats.exits).toBe(0)
+    })
+
     it('never exits an admin automatically, but still syncs their other fields', () => {
         const plan = planRosterSync(
             [person('boss', { employment_status: 'exited', work_start_date: '2026-04-01' })],
