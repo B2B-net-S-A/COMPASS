@@ -18,6 +18,7 @@ vi.mock('@/lib/logger', () => ({ logger: { error: mocks.log } }))
 
 import { GET as attachment } from '../attachment/route'
 import { GET as certificate } from '../certificate/route'
+import '../participation/route'
 
 const lessonId = '20000000-0000-4000-8000-000000000001'
 const runId = '20000000-0000-4000-8000-000000000002'
@@ -88,8 +89,8 @@ beforeEach(() => {
 afterEach(() => { expect(mutation).not.toHaveBeenCalled() })
 
 describe('Academy authenticated download boundary', () => {
-    it('admits every Academy role through both download routes while retaining object checks', () => {
-        expect(mocks.policies).toHaveLength(2)
+    it('admits every Academy role and learner accounts through every download route', () => {
+        expect(mocks.policies).toHaveLength(3)
         for (const policy of mocks.policies) expect(policy).toEqual({ role: ['consultant', 'admin', 'talent_community', 'internal', 'manager', 'finanse'], allowAcademyOnly: true })
     })
 

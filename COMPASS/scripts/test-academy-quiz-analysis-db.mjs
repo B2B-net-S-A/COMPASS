@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createQuizDatabase, draftCourse, makeQuestions, publishCourse } from './lib/academy-quiz-fixture.mjs';
 
-const fixture = await createQuizDatabase({ through: 'academy_question_drafts' });
+const fixture = await createQuizDatabase({ through: 'academy_question_drafts_key' });
 const { db, query: sql, actor, owner, rpc, expectDenied, ids, engine } = fixture;
 let checks = 0;
 
@@ -25,6 +25,17 @@ await actor('student');
 await expectDenied('select public.academy_question_analysis($1)', [course.versionId], /quiz_key_access_required/); checks++;
 await actor('admin', 'anon');
 await expectDenied('select public.academy_question_analysis($1)', [course.versionId], /permission denied/); checks++;
+
+// Szkic niesie klucz, więc czyta go ten, kto widzi klucz kursu, a nie każdy redaktor.
+await actor('trainer');
+assert.equal(await rpc('academy_save_question_drafts', [course.courseId, JSON.stringify([{ source_label: 'Moduł 1', source_excerpt: 'Fragment.', question_text: 'Z kluczem?', options: [{ option_text: 'Tak', is_correct: true }, { option_text: 'Nie', is_correct: false }] }])]), 1); checks++;
+const draftsOfPublished = async () => (await sql('select options from public.academy_question_drafts where course_id=$1', [course.courseId])).rows.length;
+assert.equal(await draftsOfPublished(), 1, 'autor czyta szkic'); checks++;
+await actor('admin'); assert.equal(await draftsOfPublished(), 1, 'recenzent czyta szkic'); checks++;
+await actor('internal'); assert.equal(await draftsOfPublished(), 0, 'redaktor bez klucza nie czyta szkicu'); checks++;
+await actor('student'); assert.equal(await draftsOfPublished(), 0); checks++;
+await owner();
+await sql('delete from public.academy_question_drafts where course_id=$1', [course.courseId]);
 
 // Odpowiedzi: student dobrze/źle, other źle/źle; autor rozwiązuje swój test i ma wypaść z analizy.
 await owner();
