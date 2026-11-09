@@ -65,10 +65,13 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 | 32 | `20261110130000_academy_twin_course.sql` | #502 | nieodwracalne, cofamy PITR | czeka |
 | 33 | `20261110133000_academy_b5_4_reports.sql` | #506 | `supabase/rollbacks/20261110133000_academy_b5_4_reports.sql` | czeka |
 | 34 | `20261110143000_academy_b5_6_retrieval.sql` | #507 | `supabase/rollbacks/20261110143000_academy_b5_6_retrieval.sql` | czeka |
-| 35 | `20261110160000_academy_question_drafts_key.sql` | #514 | `supabase/rollbacks/20261110160000_academy_question_drafts_key.sql` | czeka |
-| 36 | `20261110160100_academy_certificates_expiring_rollout.sql` | #514 | `supabase/rollbacks/20261110160100_academy_certificates_expiring_rollout.sql` | czeka |
-| 37 | `20261110160200_academy_adopt_learner_user.sql` | #515 | `supabase/rollbacks/20261110160200_academy_adopt_learner_user.sql` | czeka |
-| 38 | `20261110160300_academy_b1_10_launch_condition.sql` | #516 | `supabase/rollbacks/20261110160300_academy_b1_10_launch_condition.sql` | czeka |
+| 35 | `20261110150000_academy_b3_10_tcm_review.sql` | #512 | `supabase/rollbacks/20261110150000_academy_b3_10_tcm_review.sql` | czeka |
+| 36 | `20261110160000_academy_question_drafts_key.sql` | #514 | `supabase/rollbacks/20261110160000_academy_question_drafts_key.sql` | czeka |
+| 37 | `20261110160100_academy_certificates_expiring_rollout.sql` | #514 | `supabase/rollbacks/20261110160100_academy_certificates_expiring_rollout.sql` | czeka |
+| 38 | `20261110160200_academy_adopt_learner_user.sql` | #515 | `supabase/rollbacks/20261110160200_academy_adopt_learner_user.sql` | czeka |
+| 39 | `20261110160300_academy_b1_10_launch_condition.sql` | #516 | `supabase/rollbacks/20261110160300_academy_b1_10_launch_condition.sql` | czeka |
+| 40 | `20261110164500_academy_programme_completions_report.sql` | #523 | `supabase/rollbacks/20261110164500_academy_programme_completions_report.sql` | czeka |
+| 41 | `20261110170000_academy_b4_3_mark_complete_guard.sql` | #521 | `supabase/rollbacks/20261110170000_academy_b4_3_mark_complete_guard.sql` | czeka |
 
 ## Warunki stosowania
 
@@ -276,6 +279,13 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
   - Warunek: po `20261109200100_academy_quiz_pool.sql` i `20261109200300_academy_question_void.sql`.
   - Cofnięcie: `supabase/rollbacks/20261110143000_academy_b5_6_retrieval.sql`.
 
+### B3.10 Recenzja także przez TCM
+
+- `COMPASS/supabase/migrations/20261110150000_academy_b3_10_tcm_review.sql`
+  - Warunek: po `20261109130000_academy_review_signal.sql` (B0.8) i po `20261006080417_academy_tcm_full_editor.sql`. Bez B0.8 migracja przerywa się komunikatem `b3_10_wymaga_B0_8` i niczego nie zmienia.
+  - Łata w miejscu wyłącznie warunki wejścia funkcji (`pg_get_functiondef` + `replace`), więc zachowuje późniejsze zmiany ich ciał. Brak wzorca przerywa całą transakcję.
+  - Cofnięcie: `supabase/rollbacks/20261110150000_academy_b3_10_tcm_review.sql`. Decyzje podjęte w międzyczasie przez TCM zostają w historii.
+
 ### Przegląd bezpieczeństwa: klucz w szkicach i przypomnienia o certyfikatach
 
 - `COMPASS/supabase/migrations/20261110160000_academy_question_drafts_key.sql`
@@ -297,6 +307,20 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
 - `COMPASS/supabase/migrations/20261110160300_academy_b1_10_launch_condition.sql`
   - Warunek: po `20261109130300_academy_readiness.sql`.
   - Cofnięcie: `supabase/rollbacks/20261110160300_academy_b1_10_launch_condition.sql`.
+
+### B4.8 Raport programu bez kont próbnych
+
+- `COMPASS/supabase/migrations/20261110164500_academy_programme_completions_report.sql`
+  - Warunek: po `20261110130000_academy_twin_course.sql` i `20261110133000_academy_b5_4_reports.sql` (korzysta z `academy_private.report_excludes`).
+  - Podmienia tylko ciało `academy_programme_completions()`: pomija konta próbne i kurs-atrapę jak raport kompetencji. Dostęp i kształt wyniku bez zmian.
+  - Cofnięcie: `supabase/rollbacks/20261110164500_academy_programme_completions_report.sql`.
+
+### B4.3 Ręczne zaliczenie modułu z nagraniem
+
+- `COMPASS/supabase/migrations/20261110170000_academy_b4_3_mark_complete_guard.sql`
+  - Warunek: po `20261109213000_academy_video_progress.sql`. Bez niej przerywa się komunikatem `b4_3_guard_wymaga_B4_3`.
+  - Łata w miejscu `academy_mark_lesson_complete` (`pg_get_functiondef` + `replace`): poniżej progu obejrzenia odmowa `video_watch_required`. Brak wzorca przerywa transakcję.
+  - Cofnięcie: `supabase/rollbacks/20261110170000_academy_b4_3_mark_complete_guard.sql`.
 
 ### B5.9 Skrypt usuwania danych prób
 
