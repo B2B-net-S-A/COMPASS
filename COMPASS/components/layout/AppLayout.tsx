@@ -25,6 +25,8 @@ interface AppLayoutProps {
     hrMovedModules?: HrModule[]
     nexusUrl?: string | null
     landingHref?: string
+    /** Konto nauki: menu tylko Akademia, bez skrótów do reszty aplikacji. */
+    academyOnly?: boolean
 }
 
 export function AppLayout({
@@ -40,6 +42,7 @@ export function AppLayout({
     hrMovedModules = [],
     nexusUrl = null,
     landingHref,
+    academyOnly = false,
 }: AppLayoutProps) {
     return (
         <LanguageProvider>
@@ -48,6 +51,7 @@ export function AppLayout({
                     {/* Desktop sidebar — always visible md+ */}
                     <Sidebar
                         role={role}
+                        academyOnly={academyOnly}
                         user={user}
                         permissions={permissions}
                         badges={sidebarBadges}
@@ -60,7 +64,7 @@ export function AppLayout({
                     />
 
                     <div className="flex flex-1 flex-col min-w-0">
-                        <TopBar user={user} />
+                        <TopBar user={user} academyOnly={academyOnly} />
 
                         <main className="flex-1 p-4 md:p-8 pb-28 md:pb-8 overflow-y-auto">
                             {children}
@@ -75,7 +79,7 @@ export function AppLayout({
                                 <div className="flex gap-4">
                                     <Link href="/privacy-policy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
                                     <Link href="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
-                                    <Link href="/support" className="hover:text-foreground transition-colors">Support</Link>
+                                    {!academyOnly && <Link href="/support" className="hover:text-foreground transition-colors">Support</Link>}
                                 </div>
                             </div>
                         </footer>
@@ -89,6 +93,7 @@ export function AppLayout({
                         landingHref={landingHref}
                         hrMovedModules={hrMovedModules}
                         nexusUrl={nexusUrl}
+                        academyOnly={academyOnly}
                     />
                 </div>
             </PermissionsProvider>

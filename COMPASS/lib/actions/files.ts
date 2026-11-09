@@ -7,6 +7,7 @@ import { generateEmbedding } from '@/lib/ai/embeddings'
 import { revalidatePath } from 'next/cache'
 import { chatJSON } from '@/lib/ai/llm'
 import { requireAdminAction } from '@/lib/auth/internal-guard'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024
 const MAX_CV_SIZE = 20 * 1024 * 1024
@@ -19,6 +20,7 @@ function assertFileSize(file: File, maxBytes: number, label: string) {
 }
 
 export async function uploadAvatar(formData: FormData) {
+    await assertNotAcademyOnly()
     const file = formData.get('file') as File
     if (!file) throw new Error('No file')
     assertFileSize(file, MAX_AVATAR_SIZE, 'Awatar')
@@ -55,6 +57,7 @@ export async function uploadAvatar(formData: FormData) {
 }
 
 export async function uploadCV(formData: FormData) {
+    await assertNotAcademyOnly()
     const file = formData.get('file') as File
     if (!file) throw new Error('Nie wybrano pliku')
     assertFileSize(file, MAX_CV_SIZE, 'CV')
@@ -136,6 +139,7 @@ export async function uploadCV(formData: FormData) {
 }
 
 export async function generateProfileFromCV(manualData?: any) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Nie jesteś zalogowany')
@@ -256,6 +260,7 @@ ${sanitizedText.slice(0, 10000)}`,
 // --- Referral CV Upload ---
 
 export async function uploadReferralCV(formData: FormData) {
+    await assertNotAcademyOnly()
     const file = formData.get('file') as File
     if (!file) return { success: false, error: 'Nie wybrano pliku' }
     if (file.size > MAX_CV_SIZE) {

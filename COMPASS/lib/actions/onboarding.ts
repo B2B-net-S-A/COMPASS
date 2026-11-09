@@ -1,8 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 export async function setOnboardingTourDone(): Promise<{ success: boolean; error?: string }> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
