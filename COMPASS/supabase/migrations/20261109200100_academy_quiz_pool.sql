@@ -184,7 +184,9 @@ BEGIN
         IF v_draw>v_count THEN RAISE EXCEPTION 'quiz_pool_smaller_than_draw'; END IF;
     END IF;
     -- Wyjaśnienia ujawniają klucz po próbie, więc pula musi być co najmniej dwukrotnie większa od zestawu.
-    IF COALESCE((v.completion_rules->>'show_explanations')::boolean,false) AND (v_draw IS NULL OR v_count<2*v_draw) THEN
+    -- Stały zestaw (draw_random=false) wróciłby w kolejnej próbie razem z ujawnionym kluczem.
+    IF COALESCE((v.completion_rules->>'show_explanations')::boolean,false) AND (v_draw IS NULL OR v_count<2*v_draw
+        OR NOT COALESCE((v.completion_rules->>'draw_random')::boolean,true)) THEN
         RAISE EXCEPTION 'quiz_explanations_need_larger_pool';
     END IF;
     IF EXISTS(SELECT 1 FROM public.course_quiz_questions q WHERE q.version_id=v.id AND q.pool_status='approved' AND (

@@ -63,6 +63,8 @@ const tight = await draftCourse(fixture, { title: 'Za mała pula', questions: ma
 await expectDenied('select public.academy_submit_for_review($1)', [tight.courseId], /quiz_explanations_need_larger_pool/); checks++;
 const noDraw = await draftCourse(fixture, { title: 'Bez losowania', questions: makeQuestions(20), rules: { show_explanations: true } });
 await expectDenied('select public.academy_submit_for_review($1)', [noDraw.courseId], /quiz_explanations_need_larger_pool/); checks++;
+const fixedSet = await draftCourse(fixture, { title: 'Stały zestaw', questions: makeQuestions(20), rules: { draw_count: 5, show_explanations: true, draw_random: false } });
+await expectDenied('select public.academy_submit_for_review($1)', [fixedSet.courseId], /quiz_explanations_need_larger_pool/); checks++;
 const none = await draftCourse(fixture, { title: 'Bez pytań', questions: [] });
 await expectDenied('select public.academy_submit_for_review($1)', [none.courseId], /quiz_requires_questions/); checks++;
 
