@@ -21,6 +21,8 @@ export interface CourseCompletionRules {
     pre_test_count?: number | null
     require_all_lessons: boolean
     attendance_percent: number
+    /** Share of a lesson's recordings that completes it; 90 when unset. */
+    video_watch_percent?: number
 }
 
 export interface Course {

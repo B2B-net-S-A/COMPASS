@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAcademyAction } from '@/components/academy/useAcademyAction'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -11,6 +11,9 @@ import { Badge } from '@/components/ui/badge'
 import { MarkdownView } from './MarkdownView'
 import { EmbedVideo } from './EmbedVideo'
 import { AcademyVideo } from '@/components/academy/AcademyVideo'
+import { LessonVideo } from '@/components/academy/LessonVideo'
+import { DEFAULT_VIDEO_WATCH_PERCENT } from '@/lib/academy/video-progress'
+import type { LessonVideoProgress, VideoProgressResult } from '@/lib/actions/academy-video-progress'
 import { lessonCaptionForVideo } from '@/lib/academy/lesson-captions'
 import { CourseCompletion } from '@/components/academy/CourseCompletion'
 import { academyCourseHref } from '@/lib/academy/navigation'
@@ -28,9 +31,21 @@ interface LessonPlayerProps {
     revokedAt?: string | null
     revokedReason?: string | null
     completedAt?: string | null
+    videoProgress?: LessonVideoProgress
+    videoWatchPercent?: number
+}
+
+function celebrateStreak(days: number) {
+    if (typeof window === 'undefined') return
+    // Lazy-import toast żeby nie obciążać bundle gdy nie potrzebne
+    import('@/lib/toast-success').then(({ toastSuccess }) => {
+        toastSuccess(`🔥 ${days} dni z rzędu! +25 pkt loyalty za passę nauki.`)
+    })
 }
 
 export function LessonPlayer({
+    videoProgress,
+    videoWatchPercent = DEFAULT_VIDEO_WATCH_PERCENT,
     courseId,
     courseSlug,
     lesson,
@@ -46,8 +61,30 @@ export function LessonPlayer({
     const [isCompleted, setIsCompleted] = useState(completedLessonIds.includes(lesson.id))
     const [isPending, startTransition] = useAcademyAction()
     const [error, setError] = useState<string | null>(null)
+    const [watchedPercent, setWatchedPercent] = useState<number | null>(null)
+    const partRefs = useRef<(HTMLDivElement | null)[]>([])
 
-    const videos = lesson.attachments.filter(attachment => attachment.mime_type === 'video/mp4' && attachment.asset_id)
+    const videos = lesson.attachments.filter((attachment): attachment is typeof attachment & { asset_id: string } => attachment.mime_type === 'video/mp4' && !!attachment.asset_id)
+    // A lesson with a recording completes by watching it; the button stays for text
+    // lessons and until the progress migration has been applied.
+    const completesByWatching = videos.length > 0 && videoProgress?.available === true
+
+    // Teams splits a long session into files; the next one starts where this one ended.
+    const playNextPart = (index: number) => {
+        const next = partRefs.current[index + 1]
+        if (!next) return
+        next.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        void next.querySelector('video')?.play().catch(() => {})
+    }
+
+    const handleVideoResult = (result: VideoProgressResult) => {
+        if (!result.available) return
+        setWatchedPercent(result.watchedPercent)
+        if (!result.completed) return
+        setIsCompleted(true)
+        if (result.streak?.milestone_reached) celebrateStreak(result.streak.current)
+        router.refresh()
+    }
 
     const currentIdx = allLessons.findIndex((l) => l.id === lesson.id)
     const prevLesson = currentIdx > 0 ? allLessons[currentIdx - 1] : null
@@ -70,13 +107,7 @@ export function LessonPlayer({
                 }
                 setIsCompleted(true)
                 // A1.4: pokazujemy toast gdy user osiągnął milestone passy 7/14/21+
-                if (res.data?.streak?.milestone_reached && typeof window !== 'undefined') {
-                    const days = res.data.streak.current
-                    // Lazy-import toast żeby nie obciążać bundle gdy nie potrzebne
-                    import('@/lib/toast-success').then(({ toastSuccess }) => {
-                        toastSuccess(`🔥 ${days} dni z rzędu! +25 pkt loyalty za passę nauki.`)
-                    })
-                }
+                if (res.data?.streak?.milestone_reached) celebrateStreak(res.data.streak.current)
                 router.refresh()
             } catch {
                 setError('Połączenie zostało przerwane. Spróbuj ponownie.')
@@ -105,7 +136,12 @@ export function LessonPlayer({
                 )}
             </div>
 
-            {videos.map(video => <AcademyVideo key={video.asset_id} lessonId={lesson.id} video={video} captions={lessonCaptionForVideo(lesson.attachments, video.asset_id!)} />)}
+            {videos.map((video, index) => <div key={video.asset_id} ref={element => { partRefs.current[index] = element }} className="space-y-2">
+                {videos.length > 1 && <p className="text-sm font-medium">Część {index + 1} z {videos.length}</p>}
+                {completesByWatching
+                    ? <LessonVideo lessonId={lesson.id} enrollmentId={enrollmentId} video={video} captions={lessonCaptionForVideo(lesson.attachments, video.asset_id)} saved={videoProgress?.items[video.asset_id]} onResult={handleVideoResult} onEnded={() => playNextPart(index)} />
+                    : <AcademyVideo lessonId={lesson.id} video={video} captions={lessonCaptionForVideo(lesson.attachments, video.asset_id)} />}
+            </div>)}
 
             {lesson.attachments.filter(item => item.asset_id && ['audio/mpeg', 'audio/mp4'].includes(item.mime_type ?? '')).map(audio => <AcademyVideo key={audio.asset_id} lessonId={lesson.id} video={audio} audio />)}
 
@@ -154,7 +190,7 @@ export function LessonPlayer({
 
             {/* Mark complete + nav */}
             <div className="flex items-center justify-between gap-2 flex-wrap pt-4 border-t border-border">
-                <Button
+                {completesByWatching && !isCompleted ? <p role="status" className="text-sm text-muted-foreground">Moduł zaliczy się automatycznie po obejrzeniu {videoWatchPercent}% nagrania{watchedPercent !== null && <> · obejrzano {watchedPercent.toLocaleString('pl-PL')}%</>}.</p> : <Button
                     onClick={handleMarkComplete}
                     disabled={isCompleted || isPending}
                     variant={isCompleted ? 'outline' : 'default'}
@@ -168,7 +204,7 @@ export function LessonPlayer({
                         <Circle className="w-4 h-4" />
                     )}
                     {isCompleted ? 'Lekcja ukończona' : 'Oznacz jako ukończoną'}
-                </Button>
+                </Button>}
 
                 <div className="flex items-center gap-2">
                     {prevLesson && (

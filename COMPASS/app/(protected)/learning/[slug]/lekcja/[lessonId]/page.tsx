@@ -4,6 +4,7 @@ import { LessonPlayer } from '@/components/learning/LessonPlayer'
 import { CourseQA } from '@/components/learning/CourseQA'
 import { getCourseDetail } from '@/lib/actions/courses'
 import { recordLessonAccess } from '@/lib/actions/course-learning'
+import { getLessonVideoProgress } from '@/lib/actions/academy-video-progress'
 import { academyCourseHref } from '@/lib/academy/navigation'
 
 export const dynamic = 'force-dynamic'
@@ -42,10 +43,14 @@ export default async function LessonPage({ params, searchParams }: {
     </div>
 
     await recordLessonAccess(course.id, lesson.id, enrollmentId)
+    const videoIds = lesson.attachments.filter(item => item.mime_type === 'video/mp4' && item.asset_id).map(item => item.asset_id as string)
+    const progress = await getLessonVideoProgress(videoIds)
+    const videoProgress = progress?.success ? progress.data : { available: false, items: {} }
     return <div className="mx-auto max-w-4xl space-y-6 p-6 md:p-8">
         <LessonPlayer key={`${enrollmentId}:${lesson.id}`} courseId={course.id} courseSlug={course.slug}
             enrollmentId={enrollmentId} completedAt={course.completed_at} revokedAt={course.completion_revoked_at} revokedReason={course.completion_revoked_reason} lesson={lesson} allLessons={lessons}
-            completedLessonIds={completedIds} quizAvailable={course.quiz_questions_count > 0} />
+            completedLessonIds={completedIds} quizAvailable={course.quiz_questions_count > 0}
+            videoProgress={videoProgress} videoWatchPercent={course.completion_rules?.video_watch_percent} />
         <CourseQA courseId={course.id} lessonId={lesson.id} enrollmentId={enrollmentId} />
     </div>
 }

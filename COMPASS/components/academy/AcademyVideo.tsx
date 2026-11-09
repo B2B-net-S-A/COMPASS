@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button'
 import { hasRecovered, MAX_RECOVERY_ATTEMPTS, PLAYBACK_RATES, recoveryDelayMs, STALL_TIMEOUT_MS } from '@/lib/academy/video-playback'
 import type { CourseAttachment } from '@/lib/types/learning'
 
-type Props = ({ lessonId: string; runId?: never } | { runId: string; lessonId?: never }) & { video: CourseAttachment; captions?: CourseAttachment; audio?: boolean }
+/** tick = playback advanced, seek = position jumped, idle = paused, ended or hidden. */
+export type PlaybackEvent = 'tick' | 'seek' | 'idle'
+type Props = ({ lessonId: string; runId?: never } | { runId: string; lessonId?: never }) & { video: CourseAttachment; captions?: CourseAttachment; audio?: boolean; startAt?: number; onPlaybackEvent?: (event: PlaybackEvent, element: HTMLMediaElement) => void }
 interface SignedSource { url: string; expiresIn: number }
 interface PlaybackPosition { time: number; paused: boolean; captions: boolean }
 
@@ -28,7 +30,8 @@ async function signedSource(endpoint: string, signal: AbortSignal): Promise<Sign
     return { url: url.href, expiresIn: data.expiresIn }
 }
 
-export function AcademyVideo({ lessonId, runId, video, captions, audio = false }: Props) {
+export function AcademyVideo({ lessonId, runId, video, captions, audio = false, startAt = 0, onPlaybackEvent }: Props) {
+    const initialPosition = useRef(startAt)
     const player = useRef<HTMLMediaElement | null>(null)
     const refresh = useRef<(manual?: boolean) => void>(() => {})
     const scheduleRecovery = useRef<() => void>(() => {})
@@ -53,7 +56,7 @@ export function AcademyVideo({ lessonId, runId, video, captions, audio = false }
         let fetching = false
         let hasSource = false
         let revision = 0
-        playback.current = null
+        playback.current = initialPosition.current > 0 ? { time: initialPosition.current, paused: true, captions: false } : null
         recovery.current = { attempts: 0, errorPosition: 0 }
         setRecovering(false)
         setSources(null)
@@ -172,13 +175,19 @@ export function AcademyVideo({ lessonId, runId, video, captions, audio = false }
         onError: playbackError,
         onLoadStart: armStallWatch,
         onWaiting: armStallWatch,
-        onSeeking: armStallWatch,
+        onSeeking: () => { armStallWatch(); notify('seek') },
         onProgress: () => { if (stallTimer.current) armStallWatch() },
         onSeeked: disarmStallWatch,
         onCanPlay: disarmStallWatch,
         onPlaying: disarmStallWatch,
-        onTimeUpdate: trackProgress,
+        onTimeUpdate: () => { trackProgress(); notify('tick') },
+        onPause: () => notify('idle'),
+        onEnded: () => notify('idle'),
         onPlay: () => setResumeMessage(false),
+    }
+
+    function notify(event: PlaybackEvent) {
+        if (player.current) onPlaybackEvent?.(event, player.current)
     }
 
     function trackProgress() {
