@@ -12,6 +12,7 @@ import {
 } from '@/lib/validators/projects'
 
 export async function deleteProject(projectId: string) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -60,6 +61,7 @@ export async function deleteProject(projectId: string) {
 }
 
 export async function deleteProjects(projectIds: string[]) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -103,6 +105,7 @@ export async function deleteProjects(projectIds: string[]) {
 }
 
 export async function updateProject(projectId: string, updates: Record<string, unknown>) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -132,8 +135,10 @@ export async function updateProject(projectId: string, updates: Record<string, u
 }
 
 import { ProjectMatch } from '@/lib/types'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 export async function getProjectMatchSummary(projectId: string): Promise<Record<string, number>> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: project } = await supabase.from('projects').select('embedding').eq('id', projectId).single()
     if (!project?.embedding) return { total: 0, high: 0, medium: 0, low: 0 }
@@ -160,6 +165,7 @@ export async function getProjectMatchSummary(projectId: string): Promise<Record<
 }
 
 export async function getProjectMatches(projectId: string): Promise<ProjectMatch[]> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
 
     // 1. Get project details for context
@@ -239,6 +245,7 @@ export async function getProjectMatches(projectId: string): Promise<ProjectMatch
 }
 
 export async function getMyProjectMatch(projectId: string): Promise<ProjectMatch | null> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 

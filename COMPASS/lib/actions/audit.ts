@@ -5,6 +5,7 @@ import { logCompat } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 export type AuditAction =
     | 'ACADEMY_SYNC_RUN'
@@ -315,6 +316,7 @@ export async function logAudit(
     action: AuditAction,
     details?: Record<string, any>
 ) {
+    await assertNotAcademyOnly()
     try {
         const headerStore = headers()
         const ip = headerStore.get('x-forwarded-for') || 'unknown'
