@@ -13,9 +13,11 @@ export interface AcademyShellProps {
     action?: ReactNode
     children: ReactNode
     showCalendar?: boolean
+    /** The page renders its own heading, e.g. a course card with a cover. */
+    hideHeader?: boolean
 }
 
-export function AcademyShell({ activeTab, access, title, description, action, children, showCalendar = true }: AcademyShellProps) {
+export function AcademyShell({ activeTab, access, title, description, action, children, showCalendar = true, hideHeader = false }: AcademyShellProps) {
     const tabs = [
         { id: 'catalog', label: 'Katalog szkoleń', href: '/learning', icon: Library, visible: true },
         { id: 'my', label: 'Moje szkolenia', href: '/learning/moje', icon: BookOpen, visible: true },
@@ -27,7 +29,7 @@ export function AcademyShell({ activeTab, access, title, description, action, ch
 
     return (
         <div className="mx-auto w-full max-w-7xl space-y-7 p-4 pb-12 sm:p-6 lg:space-y-8 lg:p-8">
-            <header className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            {!hideHeader && <header className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="max-w-2xl space-y-3">
                     <div className="flex items-center gap-3">
                         <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
@@ -38,7 +40,7 @@ export function AcademyShell({ activeTab, access, title, description, action, ch
                     {description && <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">{description}</p>}
                 </div>
                 {action && <div className="shrink-0">{action}</div>}
-            </header>
+            </header>}
             <nav aria-label="Akademia" className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1">
                 {tabs.filter((tab) => tab.visible).map(({ id, label, href, icon: Icon }) => (
                     <Link
