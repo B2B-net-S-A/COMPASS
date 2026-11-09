@@ -9,7 +9,7 @@ import { CourseCover } from './catalog/CourseCover'
 import type { AcademyCatalogOptions } from '@/lib/actions/academy-discovery'
 import type { CatalogNextRun } from './catalog/catalog-runs'
 import { sessionDate, sessionTime } from './sessions/session-format'
-import { CATALOG_PAGE_SIZE, COURSE_FORMAT_LABELS, COURSE_LEVEL_LABELS, catalogHref, formatCourseDuration, type CatalogFilters } from './catalog/catalog-filters'
+import { CATALOG_PAGE_SIZE, COURSE_FORMAT_LABELS, COURSE_LEVEL_LABELS, LIBRARY_FORMAT_LABELS, catalogHref, formatCourseDuration, formatLibrarySummary, type CatalogFilters, type LibraryFormat, type LibrarySummary } from './catalog/catalog-filters'
 
 interface CourseCatalogProps {
     courses: CourseListItem[]
@@ -21,7 +21,11 @@ interface CourseCatalogProps {
     options?: AcademyCatalogOptions
     nextRuns?: Record<string, CatalogNextRun>
     discoveryError?: string
+    topics?: string[]
+    librarySummaries?: Record<string, LibrarySummary>
 }
+
+const LIBRARY_FORMATS: LibraryFormat[] = ['video', 'live', 'materials', 'test']
 
 const SELECT_CLASS = 'h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 const FORMAT_OPTIONS = [
@@ -31,8 +35,8 @@ const FORMAT_OPTIONS = [
     { value: 'blended' as const, label: 'Kursy mieszane', icon: Layers },
 ]
 
-export function CourseCatalog({ courses, total, page, filters, canTeach, error, options = { categories: [], instructors: [] }, nextRuns = {}, discoveryError }: CourseCatalogProps) {
-    const hasFilters = Boolean(filters.search || filters.level || filters.courseType || filters.deliveryMode || filters.category || filters.instructorId)
+export function CourseCatalog({ courses, total, page, filters, canTeach, error, options = { categories: [], instructors: [] }, nextRuns = {}, discoveryError, topics = [], librarySummaries }: CourseCatalogProps) {
+    const hasFilters = Boolean(filters.search || filters.level || filters.courseType || filters.deliveryMode || filters.category || filters.instructorId || filters.libraryFormat || filters.topic)
     const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE))
     const first = (page - 1) * CATALOG_PAGE_SIZE + 1
     const last = Math.min(page * CATALOG_PAGE_SIZE, total)
@@ -69,6 +73,13 @@ export function CourseCatalog({ courses, total, page, filters, canTeach, error, 
                                 {options.instructors.map((author) => <option key={author.id} value={author.id}>{author.name}</option>)}
                             </select>
                         </div>
+                        {topics.length > 0 && <div className="space-y-1.5">
+                            <label htmlFor="academy-topic" className="text-xs font-medium text-muted-foreground">Temat</label>
+                            <select id="academy-topic" name="topic" defaultValue={filters.topic ?? ''} className={SELECT_CLASS}>
+                                <option value="">Wszystkie tematy</option>
+                                {topics.map((topic) => <option key={topic} value={topic}>{topic}</option>)}
+                            </select>
+                        </div>}
                         <div className="space-y-1.5">
                             <label htmlFor="academy-level" className="text-xs font-medium text-muted-foreground">Poziom</label>
                             <select id="academy-level" name="level" defaultValue={filters.level ?? ''} className={SELECT_CLASS}>
@@ -95,6 +106,11 @@ export function CourseCatalog({ courses, total, page, filters, canTeach, error, 
                         <Button type="submit" variant="outline" className="h-10 self-end rounded-lg"><SlidersHorizontal aria-hidden="true" /> Zastosuj</Button>
                     </div>
                 </form>
+                {librarySummaries && <nav aria-label="Zawartość biblioteki" className="flex flex-wrap gap-2">
+                    {[undefined, ...LIBRARY_FORMATS].map((format) => (
+                        <Link key={format ?? 'all'} href={catalogHref({ ...filters, libraryFormat: format })} aria-current={filters.libraryFormat === format ? 'page' : undefined} className={cn('inline-flex min-h-10 items-center rounded-full border px-4 text-sm font-medium', filters.libraryFormat === format ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground')}>{format ? LIBRARY_FORMAT_LABELS[format] : 'Wszystkie'}</Link>
+                    ))}
+                </nav>}
                 <nav aria-label="Format szkolenia" className="flex flex-wrap gap-2">
                     {FORMAT_OPTIONS.map(({ value, label, icon: Icon }) => (
                         <Link key={value ?? 'all'} href={catalogHref({ ...filters, deliveryMode: value })} aria-current={filters.deliveryMode === value ? 'page' : undefined} className={cn('inline-flex min-h-10 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background', filters.deliveryMode === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground')}>
@@ -143,6 +159,8 @@ export function CourseCatalog({ courses, total, page, filters, canTeach, error, 
                                             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
                                                 <span className="rounded-md bg-muted px-2 py-1">{COURSE_LEVEL_LABELS[course.level]}</span>
                                                 {duration && <span className="inline-flex items-center gap-1.5"><Clock3 className="size-3.5" aria-hidden="true" />{duration}</span>}
+                                                {librarySummaries?.[course.id]?.modules ? <span>{formatLibrarySummary(librarySummaries[course.id])}</span> : null}
+                                                {librarySummaries?.[course.id]?.materials ? <span>Materiały: {librarySummaries[course.id].materials}</span> : null}
                                             </div>
                                             <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
                                                 <div className="min-w-0 space-y-1">
