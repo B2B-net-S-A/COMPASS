@@ -3,22 +3,19 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 import { requireRows, selectInChunks } from '@/lib/supabase/select-in-chunks'
+import { isMissingDatabaseObject } from './migration-contract'
 import type { AcademyRunDTO, AcademyRunParticipantDTO } from '@/lib/types/academy-sessions'
 import type { EditionAttemptEvidence, EditionOptionEvidence, EditionQuestionEvidence, EditionReportEvidence } from './edition-report'
 
 type QueryError = { code?: string; message: string } | null
 type QueryResult<T> = { data: T | null; error: QueryError }
 
-// Code ships before its SQL, so a missing column or table means "waits for
-// migration" (42703/42P01, or the PostgREST schema-cache variants), not a fault.
-const NOT_MIGRATED = new Set(['42703', '42P01', 'PGRST204', 'PGRST205'])
-
-/** A probe of an object that a later migration adds: true/false for present/absent,
+/** Code ships before its SQL. A probe of an object that a later migration adds: true/false for present/absent,
  * and any other failure is thrown, because it is not evidence of absence. */
 async function isMigrated(query: PromiseLike<QueryResult<unknown>>): Promise<boolean> {
     const { error } = await query
     if (!error) return true
-    if (NOT_MIGRATED.has(error.code ?? '')) return false
+    if (isMissingDatabaseObject(error)) return false
     throw new Error(`Nie udało się sprawdzić schematu raportu edycji: ${error.message}`)
 }
 
@@ -27,7 +24,7 @@ async function isMigrated(query: PromiseLike<QueryResult<unknown>>): Promise<boo
 async function readReportsStart(client: SupabaseClient): Promise<string | null> {
     const { data, error } = await client.from('academy_rollout_settings').select('reports_start_at').maybeSingle()
     if (error) {
-        if (!NOT_MIGRATED.has(error.code ?? '')) logger.warn({ event: 'academy.edition_report.reports_start_unavailable', code: error.code })
+        if (!isMissingDatabaseObject(error)) logger.warn({ event: 'academy.edition_report.reports_start_unavailable', code: error.code })
         return null
     }
     return (data as { reports_start_at?: string | null } | null)?.reports_start_at ?? null
@@ -36,7 +33,7 @@ async function readReportsStart(client: SupabaseClient): Promise<string | null> 
 async function readRehearsalCourse(client: SupabaseClient, courseId: string): Promise<boolean> {
     const { data, error } = await client.from('courses').select('is_rehearsal').eq('id', courseId).maybeSingle()
     if (error) {
-        if (!NOT_MIGRATED.has(error.code ?? '')) logger.warn({ event: 'academy.edition_report.rehearsal_flag_unavailable', code: error.code })
+        if (!isMissingDatabaseObject(error)) logger.warn({ event: 'academy.edition_report.rehearsal_flag_unavailable', code: error.code })
         return false
     }
     return (data as { is_rehearsal?: boolean } | null)?.is_rehearsal === true
@@ -44,7 +41,7 @@ async function readRehearsalCourse(client: SupabaseClient, courseId: string): Pr
 
 async function readParticipationDocuments(client: SupabaseClient, runId: string): Promise<number | null> {
     const { data, error } = await client.from('academy_participation_documents').select('id').eq('run_id', runId)
-    if (error && NOT_MIGRATED.has(error.code ?? '')) return null
+    if (isMissingDatabaseObject(error)) return null
     return requireRows('zaświadczeń udziału', { data: data as Array<{ id: string }> | null, error }).length
 }
 
