@@ -2,6 +2,14 @@
 
 Strona z audytem i makietami: https://claude.ai/artifact/MBMpkD62zST4ge7rUmqszt (dostęp właściciela).
 
+## Decyzje właściciela, 2026-11-10: wersja prosta
+
+Szczegóły i plan prac: `docs/academy/wersja-prosta.md`.
+
+- Nagranie webinaru widzą wszyscy z dostępem do Akademii, bez terminu, pod warunkiem nagrania bez głosów uczestników.
+- Jedna akceptacja drugiej osoby na szkolenie: przed wejściem nagrania do biblioteki. Zapowiedź publikuje organizator sam.
+- Test i certyfikat są opcjonalne; certyfikat nadal wymaga zdanego testu.
+
 ## Decyzje właściciela, 2026-11-09
 
 - Najpierw cały gotowy system, potem używanie, testy i zapraszanie.
@@ -765,7 +773,7 @@ Kotwice: `docs/academy/ (runbook startu); app/(protected)/admin/learning/gotowos
 - 04.12.2026: **Jaki adres jest kluczem konta nauki konsultanta?** Rekomendacja: contracts.candidate_email dopisany do eksportu NEXUSA, wdrożony po rejestrze czynności
 - 04.12.2026: **Jak długo konsultant ma dostęp po końcu umowy?** Rekomendacja: 60 dni jak w portalu NEXUS, dokument zostaje
 - 18.12.2026: **Czy treści prowadzących mogą być przekazywane do Claude'a na szkice pytań?** Rekomendacja: Tak, tylko materiały bez głosów uczestników, za zgodą prowadzącego zapisaną przy materiale
-- 15.01.2027: **Kto widzi nagranie edycji i jak długo?** Rekomendacja: Tylko potwierdzeni zapisani tej edycji, najdłużej 90 dni; archiwum z datą usunięcia po 12 miesiącach; nigdy w bibliotece
+- ~~15.01.2027: **Kto widzi nagranie edycji i jak długo?**~~ Rozstrzygnięte 2026-11-10: wszyscy z dostępem do Akademii, bez terminu, nagranie bez głosów uczestników (`docs/academy/wersja-prosta.md`).
 - 15.01.2027: **Czy i kiedy nadać nowe uprawnienia Graph (nagrania, transkrypty, frekwencja)?** Rekomendacja: Budować za przełącznikiem, uprawnień nie nadawać przed bramką startu
 - 12.02.2027: **Jaki domyślny okres ważności mają dokumenty?** Rekomendacja: 12 miesięcy dla tematów regulacyjnych (DORA, cyberbezpieczeństwo), bez terminu dla pozostałych; ustawiane per program
 - 12.02.2027: **Jaki jest zakres raportu kompetencji i grupowania po kliencie?** Rekomendacja: Raport menedżerski tylko dla zespołów biura; raport kompetencji dla właściciela, grupowanie po kliencie włączane dopiero po opinii prawnika

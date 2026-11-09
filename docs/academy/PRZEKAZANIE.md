@@ -16,6 +16,7 @@ Właściciel zdecydował, że najpierw powstaje cały gotowy system szkoleń, a 
 | Co | Gdzie |
 |---|---|
 | Plan etapów B0–B5, scenariusze G01–G57, bramka startu | `docs/academy/plan-budowy-2026-11.md` |
+| **Wersja prosta: decyzje z 2026-11-10, ekrany docelowe, plan prac** (następny krok) | `docs/academy/wersja-prosta.md` |
 | Kolejka migracji i warunki | `docs/academy/migracje-do-zastosowania.md` |
 | Zadania dla człowieka | `docs/academy/czeka-na-wlasciciela.md` |
 | Audyt, roadmapa i 18 makiet (otwórz w przeglądarce) | `docs/academy/przekazanie/akademia-roadmapa.html` |
