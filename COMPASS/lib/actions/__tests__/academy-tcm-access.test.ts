@@ -22,7 +22,7 @@ describe('TCM Academy editor authorization', () => {
     it.each([
         () => approveCourse(COURSE, VERSION, id(90)),
         () => setAcademyTrainer(id(2), true),
-        () => setAcademyRollout({ mode: 'open', userIds: [] }),
+        () => setAcademyRollout({ mode: 'closed', userIds: [] }),
     ])('denies administrator writes before their RPC', async action => {
         expect(await action()).toEqual({ success: false, error: 'Ta operacja wymaga uprawnień administratora.' })
         expect(client.rpc.mock.calls.map(([name]) => name)).toEqual(['academy_rollout_access'])

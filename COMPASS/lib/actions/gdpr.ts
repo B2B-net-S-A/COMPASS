@@ -24,6 +24,7 @@ import {
     sourcesFor,
     type GdprSubjectType,
     type RetainedRecord,
+    PENDING_MIGRATION_TABLES,
 } from '@/lib/gdpr/subject-data'
 import { ACADEMY_EXPORT_FOLLOW_UPS, SUBJECT_ACADEMY_AUDIT_ACTIONS, ACADEMY_CYCLE_EXPORT_FOLLOW_UPS, subjectEditionSurveyRow, subjectTeachingInterestRow, subjectWebinarRosterRow, subjectWebinarAttendanceRow, parseAttendanceRosterRows, subjectAcademyAuditRow, subjectCompletionRow, subjectTeamsReportRows } from '@/lib/gdpr/academy-export'
 
@@ -178,6 +179,8 @@ export async function exportPersonalData(input: {
             const result = await readBoundedRows(source.table, () => db.from(source.table)
                 .select(source.select ?? '*').eq(source.column, input.subjectId))
             if (result.error) {
+                // Migracje B2 stosuje się po wdrożeniu kodu: tabeli jeszcze nie ma, więc nie ma w niej danych.
+                if (PENDING_MIGRATION_TABLES.has(source.table) && /does not exist|schema cache/i.test(result.error)) continue
                 unavailable.push({ table: source.table, reason: result.error })
                 continue
             }

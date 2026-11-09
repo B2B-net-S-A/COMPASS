@@ -32,7 +32,7 @@ describe('Academy rollout actions', () => {
     it('requires an administrator to inspect or change rollout settings', async () => {
         setup({}, false)
         expect((await getAcademyRollout()).success).toBe(false)
-        expect((await setAcademyRollout({ mode: 'open', userIds: [] })).success).toBe(false)
+        expect((await setAcademyRollout({ mode: 'closed', userIds: [] })).success).toBe(false)
         expect(client.rpc).not.toHaveBeenCalledWith('academy_set_rollout', expect.anything())
     })
     it('persists only validated deduplicated IDs through the policy RPC', async () => {
@@ -42,6 +42,19 @@ describe('Academy rollout actions', () => {
         client.rpc.mockClear()
         expect((await setAcademyRollout({ mode: 'pilot', userIds: ['not-a-uuid'] })).success).toBe(false)
         expect(client.rpc).not.toHaveBeenCalledWith('academy_set_rollout', expect.anything())
+    })
+    it('refuses open mode without reaching the policy RPC', async () => {
+        setup({ rpcs: { academy_set_rollout: () => null } })
+        expect((await setAcademyRollout({ mode: 'open' as never, userIds: [] })).success).toBe(false)
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_set_rollout', expect.anything())
+    })
+    it('limits the pilot list to 20 distinct accounts', async () => {
+        const accounts = Array.from({ length: 21 }, (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`)
+        setup({ rpcs: { academy_set_rollout: () => null } })
+        expect(await setAcademyRollout({ mode: 'pilot', userIds: accounts })).toEqual({ success: false, error: 'Pilot może objąć najwyżej 20 kont.' })
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_set_rollout', expect.anything())
+        expect((await setAcademyRollout({ mode: 'pilot', userIds: [...accounts.slice(0, 20), accounts[0]] })).success).toBe(true)
+        expect(client.rpc).toHaveBeenCalledWith('academy_set_rollout', { p_mode: 'pilot', p_user_ids: accounts.slice(0, 20) })
     })
 })
 
