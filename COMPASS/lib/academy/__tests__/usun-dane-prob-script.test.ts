@@ -25,10 +25,10 @@ describe('skrypt usuwania danych prób', () => {
         expect(sql).not.toContain('academy_version_immutable')
     })
 
-    it('wyłącza tylko trzy triggery historii ukończeń i każdy włącza z powrotem', () => {
+    it('wyłącza tylko triggery historii ukończeń i zaświadczeń, a każdy włącza z powrotem', () => {
         const disabled = Array.from(sql.matchAll(/DISABLE TRIGGER (\w+)/g), match => match[1]).sort()
         const enabled = Array.from(sql.matchAll(/ENABLE TRIGGER (\w+)/g), match => match[1]).sort()
-        expect(disabled).toEqual(['academy_completion_history', 'academy_revocation_history', 'academy_reward_link_history'])
+        expect(disabled).toEqual(['academy_completion_history', 'academy_participation_history', 'academy_revocation_history', 'academy_reward_link_history'])
         expect(enabled).toEqual(disabled)
         expect(sql).not.toContain('session_replication_role')
     })

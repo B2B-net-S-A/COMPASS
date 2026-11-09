@@ -42,6 +42,10 @@ CREATE TABLE public.notifications(id uuid PRIMARY KEY, user_id uuid NOT NULL REF
 CREATE TABLE public.audit_logs(id uuid PRIMARY KEY, user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL);
 CREATE TABLE public.academy_learner_accounts(id uuid PRIMARY KEY, source text NOT NULL, user_id uuid REFERENCES public.profiles(id));
 CREATE TABLE public.academy_outbox(id uuid PRIMARY KEY, status text NOT NULL);
+CREATE TABLE public.academy_participation_documents(id uuid PRIMARY KEY, enrollment_id uuid NOT NULL UNIQUE REFERENCES public.course_enrollments(id), user_id uuid NOT NULL REFERENCES public.profiles(id));
+CREATE FUNCTION academy_private.guard_participation_history() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'completion_history_is_immutable'; END $$;
+CREATE TRIGGER academy_participation_history BEFORE UPDATE OR DELETE ON public.academy_participation_documents FOR EACH ROW EXECUTE FUNCTION academy_private.guard_participation_history();
+CREATE TABLE public.academy_document_shares(id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE, completion_id uuid UNIQUE REFERENCES public.course_completions(id), participation_id uuid UNIQUE REFERENCES public.academy_participation_documents(id));
 
 -- Prawdziwa definicja z 20260922141946, razem z jej trzema triggerami.
 CREATE FUNCTION academy_private.guard_completion_history()
@@ -79,6 +83,8 @@ INSERT INTO public.academy_reward_claims VALUES('cccccccc-0000-0000-0000-0000000
 INSERT INTO public.academy_audit_events VALUES('dddddddd-0000-0000-0000-00000000000a','00000000-0000-0000-0000-00000000000a'),('dddddddd-0000-0000-0000-00000000000c','00000000-0000-0000-0000-00000000000c');
 INSERT INTO public.notifications VALUES('eeeeeeee-0000-0000-0000-00000000000a','00000000-0000-0000-0000-00000000000a');
 INSERT INTO public.audit_logs VALUES('ffffffff-0000-0000-0000-00000000000a','00000000-0000-0000-0000-00000000000a');
+INSERT INTO public.academy_participation_documents VALUES('13131313-0000-0000-0000-00000000000b','66666666-0000-0000-0000-00000000000b','00000000-0000-0000-0000-00000000000b'),('13131313-0000-0000-0000-00000000000c','66666666-0000-0000-0000-00000000000c','00000000-0000-0000-0000-00000000000c');
+INSERT INTO public.academy_document_shares VALUES('14141414-0000-0000-0000-00000000000a','00000000-0000-0000-0000-00000000000a','77777777-0000-0000-0000-00000000000a',NULL),('14141414-0000-0000-0000-00000000000b','00000000-0000-0000-0000-00000000000b',NULL,'13131313-0000-0000-0000-00000000000b'),('14141414-0000-0000-0000-00000000000c','00000000-0000-0000-0000-00000000000c','77777777-0000-0000-0000-00000000000c',NULL);
 INSERT INTO public.academy_outbox VALUES('12121212-0000-0000-0000-00000000000a','held'),('12121212-0000-0000-0000-00000000000b','approved'),('12121212-0000-0000-0000-00000000000c','sent_test'),('12121212-0000-0000-0000-00000000000d','failed');
 
 CREATE FUNCTION pg_temp.state() RETURNS text LANGUAGE sql AS $$
@@ -151,6 +157,8 @@ SELECT :'LAST_ERROR_MESSAGE' IS NOT NULL AND pg_temp.state()='1/1/1/1/1/2' AS ok
 \echo '[10] dane konta spoza listy i treść kursów zostają'
 DO $$ BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.course_completions WHERE user_id='00000000-0000-0000-0000-00000000000c') THEN RAISE EXCEPTION 'ukończenie c'; END IF;
+ IF (SELECT count(*) FROM public.academy_participation_documents)<>1 OR NOT EXISTS(SELECT 1 FROM public.academy_participation_documents WHERE user_id='00000000-0000-0000-0000-00000000000c') THEN RAISE EXCEPTION 'zaświadczenia'; END IF;
+ IF (SELECT count(*) FROM public.academy_document_shares)<>1 OR NOT EXISTS(SELECT 1 FROM public.academy_document_shares WHERE user_id='00000000-0000-0000-0000-00000000000c') THEN RAISE EXCEPTION 'linki weryfikacji'; END IF;
  IF NOT EXISTS(SELECT 1 FROM public.course_quiz_attempts WHERE user_id='00000000-0000-0000-0000-00000000000c') THEN RAISE EXCEPTION 'próba c'; END IF;
  IF NOT EXISTS(SELECT 1 FROM public.academy_webinar_attendance WHERE roster_id='bbbbbbbb-0000-0000-0000-00000000000c') THEN RAISE EXCEPTION 'obecność c'; END IF;
  IF (SELECT actor_id FROM public.academy_audit_events WHERE id='dddddddd-0000-0000-0000-00000000000c') IS NULL THEN RAISE EXCEPTION 'audyt c'; END IF;
@@ -164,9 +172,12 @@ DO $$ BEGIN
 END $$;
 \if :ERROR \echo 'FAIL 10' :LAST_ERROR_MESSAGE \q 3 \endif
 
-\echo '[11] strażnik historii ukończeń działa po przebiegu'
+\echo '[11] strażnik historii ukończeń i zaświadczeń działa po przebiegu'
 DELETE FROM public.course_completions;
 SELECT :'LAST_ERROR_MESSAGE' LIKE '%completion_history_is_immutable%' AS ok \gset
 \if :ok \else \echo 'FAIL 11' \q 3 \endif
+\unset LAST_ERROR_MESSAGE
+SELECT NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='academy_participation_history' AND tgenabled<>'O') AS ok \gset
+\if :ok \else \echo 'FAIL 11b' \q 3 \endif
 
 \echo 'WSZYSTKIE ASERCJE OK'

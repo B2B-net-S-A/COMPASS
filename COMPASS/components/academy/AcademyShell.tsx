@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { BookOpen, CalendarDays, GraduationCap, Library, Map, Presentation, ShieldCheck } from 'lucide-react'
+import { BookOpen, CalendarDays, GraduationCap, Library, Presentation, ShieldCheck, UsersRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export type AcademyTab = 'catalog' | 'my' | 'calendar' | 'paths' | 'teaching' | 'admin'
+export type AcademyTab = 'catalog' | 'my' | 'calendar' | 'paths' | 'teaching' | 'team' | 'admin'
 
 export interface AcademyShellProps {
     activeTab: AcademyTab
-    access: { isAdmin: boolean; canTeach: boolean; canManageAcademy?: boolean; rolloutMode?: 'closed' | 'pilot' | 'open'; isPilot?: boolean }
+    access: { isAdmin: boolean; canTeach: boolean; canManageAcademy?: boolean; isManager?: boolean; rolloutMode?: 'closed' | 'pilot' | 'open'; isPilot?: boolean }
     title: string
     description?: string
     action?: ReactNode
@@ -22,8 +22,8 @@ export function AcademyShell({ activeTab, access, title, description, action, ch
         { id: 'catalog', label: 'Katalog szkoleń', href: '/learning', icon: Library, visible: true },
         { id: 'my', label: 'Moje szkolenia', href: '/learning/moje', icon: BookOpen, visible: true },
         { id: 'calendar', label: 'Kalendarz', href: '/learning/kalendarz', icon: CalendarDays, visible: showCalendar },
-        { id: 'paths', label: 'Ścieżki nauki', href: '/learning/paths', icon: Map, visible: true },
         { id: 'teaching', label: access.canManageAcademy ? 'Edytor Akademii' : 'Prowadzę', href: '/learning/tworze', icon: Presentation, visible: access.canTeach || access.isAdmin },
+        { id: 'team', label: 'Mój zespół', href: '/learning/zespol', icon: UsersRound, visible: access.isManager === true },
         { id: 'admin', label: 'Administracja', href: '/admin/learning', icon: ShieldCheck, visible: access.isAdmin },
     ]
 
