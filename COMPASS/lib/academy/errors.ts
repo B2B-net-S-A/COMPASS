@@ -21,6 +21,7 @@ const messages: Record<string, string> = {
     duplicate_video_chapter: 'Dwa rozdziały mają ten sam czas. Zmień jeden z nich.',
     chapters_require_video: 'Rozdziały można dodać tylko do nagrania wideo.',
     prerequisites_not_completed: 'Najpierw ukończ wymagane szkolenia wstępne.',
+    run_not_finished: 'Kurs dla nieobecnych można utworzyć po zakończeniu wszystkich spotkań edycji.',
     invalid_prerequisite: 'Wybierz dostępne szkolenia wstępne; kurs nie może wymagać samego siebie.',
     published_visible_prerequisites_required: 'Przed publikacją zatwierdź i udostępnij wszystkie szkolenia wstępne.',
     prerequisite_cycle: 'Wymagania wstępne tworzą zamknięty cykl. Usuń wzajemną zależność kursów.',

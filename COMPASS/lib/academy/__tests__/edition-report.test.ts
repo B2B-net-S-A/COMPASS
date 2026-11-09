@@ -21,9 +21,9 @@ const summary = (registrations: number): EditionSummary => ({
 })
 const survey: EditionSurveyReport = { responseCount: 1, overall: 4.3, trainer: 4.6, materials: 4.1, materialsResponseCount: 1, nps: null, difficulty: { too_easy: 0, appropriate: 1, too_hard: 0 }, futureTopics: ['=SUM(A1)'], teachingInterests: [{ userId: 'u1', fullName: 'Osoba Prywatna 1', proposedTopic: 'x', contactPreference: 'compass' }] }
 const roster: WebinarRosterRow[] = []
-const attempt = (n: number, at: string, score: number, passed: boolean, answers: unknown = [], kind?: string) => ({ enrollment_id: `e${n}`, answers, score_percent: score, passed, attempted_at: at, kind })
+const attempt = (n: number, at: string, score: number | null, passed: boolean, answers: unknown = [], kind?: string, status?: string) => ({ enrollment_id: `e${n}`, answers, score_percent: score, passed, attempted_at: at, kind, status })
 const evidence = (overrides: Partial<EditionReportEvidence> = {}): EditionReportEvidence => ({
-    quizRequired: true, passPercent: 70, attempts: [], questions: [], options: [], preTestTracked: true, voidingTracked: true,
+    quizRequired: true, passPercent: 70, attempts: [], questions: [], options: [], gain: { participants: 0, average_pre: null, average_final: null, average_gain: null }, voidingTracked: true, keyHolderEnrollments: [],
     participationDocuments: 0, reportsStartAt: '2026-01-01T00:00:00Z', rehearsalCourse: false, ...overrides,
 })
 const report = (people: AcademyRunParticipantDTO[], e: EditionReportEvidence, s = summary(people.length), r = run) => buildEditionReport(r, people, roster, s, survey, e)
@@ -55,18 +55,45 @@ describe('buildEditionReport', () => {
         expect(r.quiz).toEqual({ passPercent: 70, attempted: 0, averageFirstScore: null, passedFirst: 0, passedLater: 0, notPassed: 0, passedTotal: 0 })
     })
 
-    it('does not count pre-test attempts as the first scored attempt and pairs before and after', () => {
-        const r = report([person(1), person(2), person(3)], evidence({ attempts: [
-            attempt(1, '2026-11-20T10:00:00Z', 40, false, [], 'pre'), attempt(1, '2026-11-26T10:00:00Z', 80, true, [], 'final'),
-            attempt(2, '2026-11-20T10:00:00Z', 60, false, [], 'pre'), attempt(2, '2026-11-26T10:00:00Z', 90, true, [], 'final'),
-            attempt(3, '2026-11-20T10:00:00Z', 10, false, [], 'pre'),
-        ] }))
-        expect(r.quiz?.attempted).toBe(2)
-        expect(r.preTest).toEqual({ tracked: true, solved: 3, both: 2, before: 50, after: 85, gain: 35 })
+    it('does not count pre-test attempts as the first scored attempt and takes the gain from the database', () => {
+        const r = report([person(1), person(2)], evidence({
+            gain: { participants: 2, average_pre: 50, average_final: 85, average_gain: 35 },
+            attempts: [
+                attempt(1, '2026-11-20T10:00:00Z', 40, false, [], 'pre'), attempt(1, '2026-11-26T10:00:00Z', 80, true, [], 'final'),
+                attempt(2, '2026-11-20T10:00:00Z', 60, false, [], 'pre'),
+            ],
+        }))
+        expect(r.quiz?.attempted).toBe(1)
+        expect(r.preTest).toEqual({ tracked: true, solved: 2, both: 2, before: 50, after: 85, gain: 35 })
     })
 
     it('says the pre-test waits for its migration rather than showing zero', () => {
-        expect(report([person(1)], evidence({ preTestTracked: false })).preTest).toEqual({ tracked: false })
+        expect(report([person(1)], evidence({ gain: null })).preTest).toEqual({ tracked: false })
+    })
+
+    it('leaves out an attempt still in progress, which has no score yet', () => {
+        const r = report([person(1)], evidence({ attempts: [
+            attempt(1, '2026-11-26T09:00:00Z', null, false, [], 'final', 'in_progress'),
+            attempt(1, '2026-11-26T10:00:00Z', 90, true, [], 'final', 'submitted'),
+        ] }))
+        expect(r.quiz).toMatchObject({ attempted: 1, averageFirstScore: 90, passedFirst: 1 })
+    })
+
+    it('keeps people with access to the answer key out of the results, but not out of attendance or documents', () => {
+        const r = report([person(1, 'present', 'completed'), person(2)], evidence({
+            keyHolderEnrollments: ['e1'],
+            questions: [{ id: 'q', order_index: 0, question_text: 'P', voided_at: null }],
+            options: [{ id: 'a', question_id: 'q', option_text: 'Dobra', is_correct: true }, { id: 'b', question_id: 'q', option_text: 'Zła', is_correct: false }],
+            attempts: [
+                attempt(1, '2026-11-26T10:00:00Z', 100, true, [{ question_id: 'q', selected_option_id: 'a' }]),
+                attempt(2, '2026-11-26T10:00:00Z', 0, false, [{ question_id: 'q', selected_option_id: 'b' }]),
+            ],
+        }))
+        expect(r.excludedKeyHolders).toBe(1)
+        expect(r.quiz).toMatchObject({ attempted: 1, passedTotal: 0, notPassed: 1 })
+        expect(r.questions?.rows[0]).toMatchObject({ correct: 0, answered: 1 })
+        expect(r.present).toBe(2)
+        expect(r.documents.certificates).toBe(1)
     })
 
     it('counts certificates only for unrevoked completions of confirmed people and keeps attestations separate', () => {
@@ -185,7 +212,7 @@ describe('editionReportCsv', () => {
     })
 
     it('marks rehearsal data and absent migrations in words, not as zero', () => {
-        const csv = csvOf(report([person(1)], evidence({ reportsStartAt: null, preTestTracked: false, participationDocuments: null })))
+        const csv = csvOf(report([person(1)], evidence({ reportsStartAt: null, gain: null, participationDocuments: null })))
         expect(csv).toContain('"Status danych";"próba (dane sprzed daty startu raportów)"')
         expect(csv).toContain('"Pre-test";"Stan";"czeka na migrację"')
         expect(csv).toContain('"Zaświadczenia udziału";"czeka na migrację"')

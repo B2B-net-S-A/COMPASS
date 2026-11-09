@@ -13,6 +13,7 @@ export interface AcademyAccess {
     isAdmin: boolean
     canManageAcademy: boolean
     canTeach: boolean
+    isManager?: boolean
     rolloutMode?: 'closed' | 'pilot' | 'open'
     isPilot?: boolean
 }
@@ -50,7 +51,8 @@ export async function requireAcademyContext(options: { trainer?: boolean; admin?
     if (options.admin && !isAdmin) throw new Error('Ta operacja wymaga uprawnień administratora.')
     if (options.editor && !canManageAcademy) throw new Error('Ta operacja wymaga uprawnień obsługi Akademii.')
     if (options.trainer && !canTeach) throw new Error('Tworzenie szkoleń jest dostępne dla uprawnionych trenerów.')
-    return { client, access: { userId: user.id, isAdmin, canManageAcademy, canTeach, rolloutMode: rollout.mode, isPilot: rollout.isPilot === true } satisfies AcademyAccess }
+    const access: AcademyAccess = { userId: user.id, isAdmin, canManageAcademy, canTeach, isManager: !learnerOnly && profile.role === 'manager', rolloutMode: rollout.mode, isPilot: rollout.isPilot === true }
+    return { client, access }
 }
 
 export async function academyAction<T>(event: string, action: () => Promise<T>): Promise<ActionResult<T>> {

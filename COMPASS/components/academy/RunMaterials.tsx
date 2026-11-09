@@ -72,7 +72,7 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAca
 
     const publishedVideos = items.filter(file => file.status === 'ready' && file.review_status === 'published' && file.mime_type === 'video/mp4')
 
-    return <section aria-labelledby={'run-materials-' + runId} className="space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
+    return <section id="materialy" aria-labelledby={'run-materials-' + runId} className="scroll-mt-6 space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
             <div><h2 id={'run-materials-' + runId} className="text-lg font-semibold">Materiały po szkoleniu</h2><p className="mt-1 text-sm text-muted-foreground">Nagrania i pliki dla tej edycji. Nie zmieniają programu ani warunków zaliczenia.</p></div>
             <Button variant="ghost" size="sm" disabled={pending} onClick={() => void refresh()}><RefreshCw className="size-4" aria-hidden="true" />Odśwież</Button>
