@@ -3,10 +3,7 @@
 -- Token submission_id zostaje bez zmian: po wycofaniu nieaktualny podgląd recenzenta dostaje
 -- pending_review_required, a po ponownym zgłoszeniu review_submission_changed.
 --
--- Cofnięcie: DROP TRIGGER academy_review_signal ON public.course_versions;
---   DROP FUNCTION academy_private.review_signal(), academy_private.review_notify(text,uuid,text,text,text,text),
---   public.academy_withdraw_submission(uuid,uuid); oraz przywrócenie listy akcji w academy_course_review_history
---   z pliku 20260923093432. Wiersze w notifications zostają, są nieszkodliwe.
+-- Cofnięcie: supabase/rollbacks/20261109130000_academy_review_signal.sql.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION academy_private.review_notify(p_key text,p_user_id uuid,p_type text,p_title text,p_body text,p_url text)
@@ -134,6 +131,8 @@ BEGIN
     RETURN result;
 END $$;
 
+NOTIFY pgrst,'reload schema';
+
 DO $$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='academy_review_signal' AND tgrelid='public.course_versions'::regclass AND NOT tgisinternal) THEN
@@ -150,5 +149,4 @@ BEGIN
         RAISE EXCEPTION 'B0.8: historia decyzji nie zna wycofania';
     END IF;
 END $$;
-NOTIFY pgrst,'reload schema';
 COMMIT;

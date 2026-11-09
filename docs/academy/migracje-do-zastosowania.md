@@ -1,9 +1,33 @@
-# Migracje Akademii do zastosowania przez właściciela
+# Akademia: migracje do zastosowania
 
-Pliki w `COMPASS/supabase/migrations/`. Stosować po kolei, w tej kolejności, przez MCP `apply_migration`
-(nigdy `supabase db push`). Każdy plik kończy się samosprawdzeniem `DO $$`, cofnięcie opisuje jego nagłówek.
-Kod jest już na produkcji i działa bez nich: nowe akcje odpowiadają „czeka na migrację”.
+Kolejka plików SQL Akademii. Sesje budujące tylko dopisują tu pliki, a stosuje je właściciel. Bo każdy merge jedzie na produkcję bez stagingu, a `supabase db push` próbowałby zaaplikować od nowa prawie cały katalog (rejestr i pliki są rozjechane, patrz `CLAUDE.md`).
 
-| Kolejność | Plik | Zadanie | Co zmienia | Sprawdzone lokalnie |
+## Rytm
+
+1. Okno dzienne właściciela o stałej porze. Poza oknem nikt nie stosuje SQL, więc wiadomo, kiedy baza mogła się zmienić.
+2. Pliki idą po kolei, od najniższego numeru w tabeli. Następny dopiero po udanym poprzednim.
+3. Wyłącznie przez MCP `apply_migration` z wersją równą prefiksowi pliku. Nigdy `supabase db push`.
+4. Migracja kończy się blokiem `DO $$` z `RAISE EXCEPTION`. Gdy samosprawdzenie padnie, transakcja się cofa, a kolejka staje do wyjaśnienia przyczyny.
+5. Po zastosowaniu zmień „Stan” na datę i dopisz wersję z rejestru.
+
+## Kod idzie przed SQL
+
+Kod trafia na produkcję wcześniej niż jego migracja, więc:
+
+- Nowa akcja obsługuje brak obiektu komunikatem „czeka na migrację” (`lib/academy/migration-contract.ts`). Liczą się kody `42P01`, `42703`, `42883` oraz `PGRST202`, `PGRST204`, `PGRST205`, bo PostgREST zgłasza brak tabeli, kolumny albo funkcji własnym kodem, zanim zapytanie dojdzie do Postgresa.
+- Kanał wyjścia przy braku obiektu nie wysyła niczego. Brak kolejki oznacza brak wiadomości i zdarzenie w Sentry.
+- Reszta aplikacji działa bez zmian niezależnie od tego, czy plik już zastosowano.
+
+## Cofanie
+
+Każdy wiersz ma w kolumnie „Cofnięcie” jedno z dwóch:
+
+- ścieżkę skryptu: `supabase/rollbacks/<ta sama nazwa pliku>` (katalog względem `COMPASS/`, poza `supabase/migrations`, żeby skrypt nigdy nie wyglądał na migrację),
+- albo dosłowną notkę: `nieodwracalne, cofamy PITR`.
+
+Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wiersz ma plik, końcowe samosprawdzenie, cofnięcie i właściwą kolejność.
+
+## Kolejka
+
+| Lp. | Plik | PR | Cofnięcie | Stan |
 |---|---|---|---|---|
-| 1 | `20261109130000_academy_review_signal.sql` | B0.8 | Dzwonek przy zgłoszeniu, decyzji i wycofaniu; RPC `academy_withdraw_submission`; historia pokazuje wycofanie | postgres:17, `supabase/tests/academy_review_signal_smoke.sql` |
