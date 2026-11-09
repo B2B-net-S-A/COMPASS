@@ -6,23 +6,25 @@ import { CourseLearnerPreview } from '@/components/academy/CourseLearnerPreview'
 import { AcademyReviewHistory } from '@/components/academy/AcademyReviewHistory'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, BookOpen, CalendarDays, CheckCircle2, CopyPlus, Eye, FileText, ListChecks, Loader2, LockKeyhole, Send } from 'lucide-react'
+import { AlertCircle, BookOpen, CalendarDays, CheckCircle2, CopyPlus, Eye, FileText, ListChecks, Loader2, LockKeyhole, Send, Undo2 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { CourseAuthorForm } from './CourseAuthorForm'
 import { LessonsEditor } from './LessonsEditor'
 import { QuizEditor } from './QuizEditor'
-import { beginCourseDraft, submitForReview } from '@/lib/actions/courses'
+import { beginCourseDraft, submitForReview, withdrawSubmission } from '@/lib/actions/courses'
 import { QUIZ_MIN_QUESTIONS, QUIZ_MAX_QUESTIONS, QUIZ_OPTIONS_PER_QUESTION, type CourseDetail, type CourseLesson, type CourseQuizQuestionAuthor } from '@/lib/types/learning'
 
 interface CourseEditWizardProps {
     course: CourseDetail
     initialLessons: CourseLesson[]
     initialQuiz: CourseQuizQuestionAuthor[]
+    /** Migracja puli zastosowana: pytania prowadzi bank, a stary formularz nie nadpisuje tematów i wyjaśnień. */
+    poolEnabled?: boolean
 }
 
-export function CourseEditWizard({ course, initialLessons, initialQuiz }: CourseEditWizardProps) {
+export function CourseEditWizard({ course, initialLessons, initialQuiz, poolEnabled = false }: CourseEditWizardProps) {
     const router = useRouter()
     const [activeTab, setActiveTab] = useState('meta')
     const [error, setError] = useState<string | null>(null)
@@ -34,10 +36,10 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
     const editable = !archived && (versionStatus === 'draft' || versionStatus === 'rejected')
     const mode = course.delivery_mode ?? 'self_paced'
     const quizRequired = course.completion_rules?.quiz_required ?? true
-    const lessonsRequired = mode !== 'live' || course.completion_rules?.require_all_lessons === true
+    const lessonsRequired = mode !== 'assessment' && (mode !== 'live' || course.completion_rules?.require_all_lessons === true)
     const metadataReady = course.title.trim().length >= 3 && Boolean(course.category.trim())
     const lessonsReady = !lessonsRequired || initialLessons.length >= 1
-    const quizReady = !quizRequired || (
+    const quizReady = !quizRequired || poolEnabled && initialQuiz.length >= 1 || (
         initialQuiz.length >= QUIZ_MIN_QUESTIONS && initialQuiz.length <= QUIZ_MAX_QUESTIONS &&
         initialQuiz.every((question) => question.question_text.trim() && question.options.length === QUIZ_OPTIONS_PER_QUESTION && question.options.every((option) => option.option_text.trim()) && question.options.filter((option) => option.is_correct).length === 1)
     )
@@ -61,6 +63,22 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
         })
     }
 
+    async function handleWithdraw() {
+        if (versionStatus !== 'pending_review' || archived || isPending) return
+        const accepted = await confirm({ description: 'Wycofać zgłoszenie? Wersja wróci do edycji, a administrator przestanie widzieć ją w kolejce. Możesz zgłosić ją ponownie.' })
+        if (!accepted) return
+        setError(null)
+        setSuccess(null)
+        startTransition(async () => {
+            try {
+                const result = await withdrawSubmission(course.id, course.submission_id)
+                if (!result.success) { setError(result.error); return }
+                setSuccess('Zgłoszenie zostało wycofane. Możesz dalej edytować tę wersję.')
+                router.refresh()
+            } catch { setError('Nie udało się wycofać zgłoszenia. Spróbuj ponownie.') }
+        })
+    }
+
     function handleNewVersion() {
         if (archived || versionStatus !== 'published' || isPending) return
         setError(null)
@@ -81,7 +99,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
         : versionStatus === 'published'
         ? 'Ta wersja jest opublikowana. Aby zmienić treści lub zasady ukończenia, utwórz nową wersję roboczą.'
         : versionStatus === 'pending_review'
-            ? 'Ta wersja czeka na decyzję administratora. Edycja będzie możliwa, jeśli otrzymasz prośbę o poprawki.'
+            ? 'Ta wersja czeka na decyzję administratora. Aby ją zmienić, wycofaj zgłoszenie w zakładce Akceptacja.'
             : 'To szkolenie zostało zarchiwizowane. Materiały i historia uczestników pozostają zachowane.'
 
     return (
@@ -116,7 +134,7 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                 </TabsContent>
                 <TabsContent value="quiz" className="mt-6 space-y-4">
                     {!quizRequired && <p className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">Quiz nie jest warunkiem ukończenia tego szkolenia. Możesz przygotować pytania lub włączyć wymaganie quizu w zakładce „Informacje”.</p>}
-                    {editable ? <QuizEditor key={course.version_id ?? course.id} courseId={course.id} initialQuestions={initialQuiz} onChanged={() => router.refresh()} /> : <LockedPanel message={lockedMessage} />}
+                    {poolEnabled ? <Button asChild><Link href={`/learning/tworze/${course.id}/test`}>Otwórz bank pytań i ustawienia testu</Link></Button> : editable ? <QuizEditor key={course.version_id ?? course.id} courseId={course.id} initialQuestions={initialQuiz} onChanged={() => router.refresh()} /> : <LockedPanel message={lockedMessage} />}
                 </TabsContent>
                 <TabsContent value="preview" className="mt-6"><CourseLearnerPreview key={`${course.version_id ?? course.id}-${course.updated_at}`} course={course} lessons={initialLessons} quiz={initialQuiz} /></TabsContent>
                 <TabsContent value="publish" className="mt-6 space-y-5">
@@ -125,10 +143,10 @@ export function CourseEditWizard({ course, initialLessons, initialQuiz }: Course
                         <ul className="space-y-3">
                             <ChecklistItem done={metadataReady} label="Uzupełniony tytuł i kategoria szkolenia" />
                             <ChecklistItem done={lessonsReady} label={lessonsRequired ? `Przynajmniej jedna lekcja · dodano ${initialLessons.length}` : 'Materiały opcjonalne dla szkolenia na żywo'} />
-                            <ChecklistItem done={quizReady} label={quizRequired ? `Quiz: ${QUIZ_MIN_QUESTIONS}–${QUIZ_MAX_QUESTIONS} kompletnych pytań · dodano ${initialQuiz.length}` : 'Zaliczenie bez obowiązkowego quizu'} />
+                            <ChecklistItem done={quizReady} label={quizRequired ? (poolEnabled ? `Test: pytania w puli · dodano ${initialQuiz.length}` : `Quiz: ${QUIZ_MIN_QUESTIONS}–${QUIZ_MAX_QUESTIONS} kompletnych pytań · dodano ${initialQuiz.length}`) : 'Zaliczenie bez obowiązkowego quizu'} />
                         </ul>
                         <div className="space-y-2 rounded-xl bg-muted/50 p-4 text-sm"><p className="font-medium">Warunki ukończenia tej wersji</p><ul className="list-inside list-disc space-y-1 text-muted-foreground">{course.completion_rules?.require_all_lessons !== false && <li>Ukończenie wszystkich lekcji</li>}{mode !== 'self_paced' && <li>Obecność przez co najmniej {course.completion_rules?.attendance_percent ?? 80}% każdej wymaganej sesji</li>}{quizRequired && <li>Co najmniej {course.completion_rules?.quiz_pass_percent ?? 70}% poprawnych odpowiedzi w quizie</li>}</ul></div>
-                        {editable ? <div className="space-y-2 border-t border-border pt-5"><Button onClick={handleSubmit} disabled={!canSubmit || isPending} className="h-11 w-full rounded-lg sm:w-auto">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}Prześlij do akceptacji</Button>{!canSubmit && <p className="text-sm text-muted-foreground">Uzupełnij elementy oznaczone jako brakujące.</p>}</div> : <LockedPanel message={lockedMessage} />}
+                        {editable ? <div className="space-y-2 border-t border-border pt-5"><Button onClick={handleSubmit} disabled={!canSubmit || isPending} className="h-11 w-full rounded-lg sm:w-auto">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}Prześlij do akceptacji</Button>{!canSubmit && <p className="text-sm text-muted-foreground">Uzupełnij elementy oznaczone jako brakujące.</p>}</div> : <div className="space-y-3 border-t border-border pt-5"><LockedPanel message={lockedMessage} />{versionStatus === 'pending_review' && !archived && <Button type="button" variant="outline" onClick={handleWithdraw} disabled={isPending} className="h-11 w-full rounded-lg sm:w-auto">{isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Undo2 aria-hidden="true" />}Wycofaj zgłoszenie</Button>}</div>}
                     </section>
                     <aside className="space-y-2 rounded-xl border border-primary/15 bg-primary/5 p-5 text-sm"><p className="font-semibold">Co nastąpi po akceptacji?</p><p className="leading-relaxed text-muted-foreground">Szkolenie będzie dostępne w katalogu. Kolejne zmiany przygotujesz jako nową wersję, bez zmiany materiałów osób już zapisanych.{mode !== 'self_paced' && ' Terminy spotkań przygotujesz osobno w edycjach szkolenia. Administrator zatwierdzi je przed otwarciem zapisów.'}</p></aside>
                 </TabsContent>
