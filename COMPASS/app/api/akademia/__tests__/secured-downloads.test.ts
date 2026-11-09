@@ -243,6 +243,19 @@ describe('Academy certificate evidence', () => {
         expect(mocks.log).toHaveBeenCalledExactlyOnceWith({ event: 'academy.certificate.invalid_snapshot', enrollmentId })
     })
 
+    it('prints the public link only when the owner enabled it and the switch is on', async () => {
+        const code = 'c'.repeat(32)
+        for (const [switchValue, expected] of [['true', `/v/${code}`], ['false', '/learning/certyfikaty/']] as const) {
+            vi.stubEnv('ACADEMY_PUBLIC_VERIFY_ENABLED', switchValue)
+            result('course_enrollments', { id: enrollmentId })
+            result('course_completions', completion())
+            result('academy_document_shares', { public_code: code, share_enabled: true })
+            expect((await certificate(request('certificate', { courseId, enrollmentId }))).status).toBe(200)
+            expect(mocks.pdf.mock.lastCall?.[0].verificationUrl).toContain(expected)
+        }
+        vi.unstubAllEnvs()
+    })
+
     it('renders exclusively the historical completion snapshot and emits private PDF headers', async () => {
         result('course_enrollments', { id: enrollmentId })
         result('course_completions', completion())
