@@ -1,4 +1,5 @@
 import { ZodError } from 'zod'
+import { MIGRATION_PENDING_PL, isMissingDatabaseObject } from './migration-contract'
 import { quizAttemptWindowMessage } from './quiz-attempt-policy'
 
 const fallback = 'Nie udało się wykonać operacji. Odśwież stronę i spróbuj ponownie.'
@@ -64,6 +65,7 @@ const messages: Record<string, string> = {
 
 export function academyDatabaseError(error: { message: string; code?: string }): string {
     if (messages[error.message]) return messages[error.message]
+    if (isMissingDatabaseObject(error)) return MIGRATION_PENDING_PL
     // Only explicit, bounded domain exceptions may reach the interface verbatim.
     // PostgreSQL details, constraints, table names and transport errors stay server-side.
     if (['P0001', '42501'].includes(error.code ?? '') && error.message.length <= 500 && /[ąćęłńóśźż]/iu.test(error.message)) return error.message
