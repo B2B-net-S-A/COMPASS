@@ -58,9 +58,34 @@ export async function claimLearnerEntry(
     return (data ?? []).length === 1
 }
 
+function isEmailTaken(error: { code?: string; message?: string } | null): boolean {
+    return error?.code === 'email_exists' || /already been registered/i.test(error?.message ?? '')
+}
+
+/**
+ * Adres z listy mógł zająć ktoś przez publiczną rejestrację, co bez tego blokowałoby przepustkę.
+ * Baza przejmuje wyłącznie konto bez logowania i kasuje jego hasło, a używanego nie ruszamy.
+ */
+async function adoptExistingLearnerUser(client: SupabaseClient, account: LearnerAccount): Promise<string | null> {
+    const { data, error } = await client.rpc('academy_adopt_learner_user', { p_account_id: account.id })
+    if (error) {
+        if (isMissingDatabaseObject(error)) {
+            logger.error({ event: 'academy.learner_entry.adoption_pending_migration', code: error.code })
+            return null
+        }
+        throw new Error(`learner account adoption failed: ${error.code ?? 'unknown'}`)
+    }
+    if (typeof data !== 'string') {
+        logger.error({ event: 'academy.learner_entry.adoption_refused', accountId: account.id })
+        return null
+    }
+    logger.warn({ event: 'academy.learner_entry.adopted', accountId: account.id })
+    return data
+}
+
 /**
  * Zakłada konto przez Admin API albo potwierdza istniejące. Znacznik `academy_only` idzie
- * w `app_metadata` jako wartość logiczna. Nie przejmujemy cudzego konta o tym adresie.
+ * w `app_metadata` jako wartość logiczna. Konta, na które ktoś się logował, nie przejmujemy.
  */
 export async function ensureLearnerUser(client: SupabaseClient, account: LearnerAccount): Promise<string | null> {
     if (account.user_id) {
@@ -79,6 +104,7 @@ export async function ensureLearnerUser(client: SupabaseClient, account: Learner
         user_metadata: { full_name: account.full_name ?? undefined },
     })
     if (error || !data.user) {
+        if (isEmailTaken(error)) return adoptExistingLearnerUser(client, account)
         logger.error({ event: 'academy.learner_entry.create_failed', code: error?.code })
         return null
     }

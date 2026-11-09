@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
     getUserById: vi.fn(),
     generateLink: vi.fn(),
     deleteUser: vi.fn(),
+    adopt: vi.fn(),
     linkError: null as { code: string } | null,
 }))
 
@@ -36,6 +37,7 @@ vi.mock('@/lib/supabase/admin', () => ({
             return query
         },
         auth: { admin: { createUser: state.createUser, getUserById: state.getUserById, generateLink: state.generateLink, deleteUser: state.deleteUser } },
+        rpc: (name: string, args: unknown) => name === 'academy_adopt_learner_user' ? state.adopt(name, args) : Promise.resolve({ data: { failed: 0 }, error: null }),
     }),
 }))
 
@@ -63,6 +65,7 @@ beforeEach(() => {
     state.deleteUser.mockReset().mockResolvedValue({ error: null })
     state.createUser.mockReset().mockResolvedValue({ data: { user: { id: 'new-user' } }, error: null })
     state.getUserById.mockReset()
+    state.adopt.mockReset()
     state.generateLink.mockReset().mockResolvedValue({ data: { user: { id: 'new-user' }, properties: { hashed_token: 'hash' } }, error: null })
 })
 
@@ -246,10 +249,48 @@ describe('POST /api/akademia/wejscie/[token]', () => {
         expect(state.generateLink).not.toHaveBeenCalled()
     })
 
-    it('adres istniejącego konta w Auth nie przejmuje go', async () => {
-        state.createUser.mockResolvedValue({ data: { user: null }, error: { code: 'email_exists' } })
+    describe('adres zajęty w Auth', () => {
+        beforeEach(() => {
+            state.createUser.mockResolvedValue({ data: { user: null }, error: { code: 'email_exists' } })
+        })
+
+        it('konto po logowaniu nie jest przejmowane', async () => {
+            state.adopt.mockResolvedValue({ data: null, error: null })
+            expect((await post(token())).status).toBe(409)
+            expect(state.adopt).toHaveBeenCalledWith('academy_adopt_learner_user', { p_account_id: ACCOUNT_ID })
+            expect(state.generateLink).not.toHaveBeenCalled()
+        })
+
+        it('konto bez logowania jest przejmowane i wejście działa', async () => {
+            state.adopt.mockResolvedValue({ data: 'new-user', error: null })
+            const response = await post(token())
+            expect(response.status).toBe(200)
+            expect(await response.json()).toEqual({ tokenHash: 'hash' })
+        })
+
+        it('stara treść błędu bez kodu też prowadzi do przejęcia', async () => {
+            state.createUser.mockResolvedValue({ data: { user: null }, error: { message: 'A user with this email address has already been registered' } })
+            state.adopt.mockResolvedValue({ data: 'new-user', error: null })
+            expect((await post(token())).status).toBe(200)
+        })
+
+        it('przed migracją kończy się odmową, nie awarią', async () => {
+            state.adopt.mockResolvedValue({ data: null, error: { code: 'PGRST202' } })
+            expect((await post(token())).status).toBe(409)
+            expect(state.generateLink).not.toHaveBeenCalled()
+        })
+
+        it('awaria funkcji daje 503 i nie otwiera wejścia', async () => {
+            state.adopt.mockResolvedValue({ data: null, error: { code: '40001' } })
+            expect((await post(token())).status).toBe(503)
+            expect(state.generateLink).not.toHaveBeenCalled()
+        })
+    })
+
+    it('inny błąd zakładania konta nie uruchamia przejęcia', async () => {
+        state.createUser.mockResolvedValue({ data: { user: null }, error: { code: 'unexpected_failure' } })
         expect((await post(token())).status).toBe(409)
-        expect(state.generateLink).not.toHaveBeenCalled()
+        expect(state.adopt).not.toHaveBeenCalled()
     })
 })
 

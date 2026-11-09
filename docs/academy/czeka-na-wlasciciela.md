@@ -178,6 +178,8 @@ Wymóg dla B1.3: przepustka zapisuje znacznik jako wartość logiczną `true`. N
 - `NEXT_PUBLIC_APP_URL` musi wskazywać adres produkcji, bo z niego powstaje link w wiadomości.
 - Decyzja przed bramką startu: po włączeniu `ACADEMY_PASS_ENABLED` wiadomość do zwykłego konta zostaje w kolejce `held` i wygasa po 15 minutach, bo bramka B0.2 wymaga zatwierdzenia paczki przez człowieka. Do działania dla uczestników link ponownego wejścia potrzebuje osobnej reguły zatwierdzania dla tego rodzaju wiadomości.
 - Limity są w pamięci procesu i zerują się przy restarcie. Przy więcej niż jednym kontenerze trzeba je przenieść do bazy.
+- Decyzja przed włączeniem przepustki (przegląd bezpieczeństwa 2026-11-09): wiadomość `academy.reentry` powstaje w kolejce bez `batch_id`, a zatwierdzić i wysłać można tylko paczkę (`approveAcademyOutboxBatch`, ograniczenie `academy_outbox_approval_recorded`). Kod zostaje bez zmian, więc poza wysyłką testową na skrzynki właściciela taka wiadomość nie ma drogi wyjścia. Trzeba wybrać: osobna reguła dla tego rodzaju wiadomości albo ręczne zatwierdzanie paczek, które przy linku ważnym 15 minut praktycznie nie zadziała.
+- Adres z listy zajęty przez zwykłą rejestrację: migracja `20261110160200_academy_adopt_learner_user.sql` przejmuje konto bez logowania i kasuje jego hasło. Konto, na które ktoś się już logował, jest odrzucane: wejście kończy się komunikatem o kontakcie z organizatorem, a w logu jest `academy.learner_entry.adoption_refused`. Taką sprawę trzeba rozstrzygnąć ręcznie, bo to może być przejęty adres.
 
 ## B1.8 Ekran klauzuli i regulaminu jako miejsce na treść
 
