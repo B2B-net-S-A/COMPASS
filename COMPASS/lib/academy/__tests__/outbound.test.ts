@@ -8,6 +8,7 @@ import {
     approveAcademyOutboxBatch,
     holdAcademyMail,
     runAcademyOutboxHousekeeping,
+    sendAcademyAutoMail,
     sendAcademyMailTest,
     sendApprovedAcademyBatch,
 } from '../outbound'
@@ -336,6 +337,82 @@ describe('porządki w kolejce', () => {
     it('awaria zapisu jest zgłaszana', async () => {
         const { client } = fakeDb([], { update: { code: '08006', message: 'brak' } })
         expect(await runAcademyOutboxHousekeeping(client)).toEqual({ status: 'failed' })
+    })
+})
+
+describe('reguła automatyczna: link ponownego wejścia (B1.7)', () => {
+    const BOTH = { ACADEMY_MAIL_ENABLED: 'true', ACADEMY_PASS_ENABLED: 'true' } as unknown as NodeJS.ProcessEnv
+    const IN_15_MIN = new Date(NOW.getTime() + 15 * 60_000).toISOString()
+    const reentry = (overrides: Row = {}) => row({
+        kind: 'academy.reentry', html: `<a href="${ACADEMY_PERSONAL_LINK_PLACEHOLDER}">Wejdź</a>`,
+        created_at: NOW.toISOString(), expires_at: IN_15_MIN, ...overrides,
+    })
+    const link = async () => 'https://x.test/wejdz/sekret-tokenu'
+
+    it.each([
+        ['bez żadnego przełącznika', OFF, 'mail_disabled'],
+        ['z samą pocztą', ON, 'auto_disabled'],
+        ['z samą przepustką', { ACADEMY_PASS_ENABLED: 'true' } as unknown as NodeJS.ProcessEnv, 'mail_disabled'],
+        ['z wartością inną niż true', { ACADEMY_MAIL_ENABLED: 'true', ACADEMY_PASS_ENABLED: '1' } as unknown as NodeJS.ProcessEnv, 'auto_disabled'],
+    ])('%s nie wysyła i zostawia wiersz w kolejce', async (_label, env, reason) => {
+        const { client, rows } = fakeDb([reentry()])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env, personalLink: link })).toEqual({ status: 'refused', reason })
+        expect(sendEmail).not.toHaveBeenCalled()
+        expect(rows[0]).toMatchObject({ status: 'held', claimed_at: null })
+    })
+
+    it('przy obu przełącznikach wysyła, a w kolejce zostaje dowód zatwierdzenia regułą', async () => {
+        const { client, rows } = fakeDb([reentry()])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH, personalLink: link })).toEqual({ status: 'sent' })
+        expect(sendEmail).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ to: 'osoba@example.test', html: '<a href="https://x.test/wejdz/sekret-tokenu">Wejdź</a>' }))
+        expect(rows[0]).toMatchObject({ status: 'sent', approved_by: null, approved_at: NOW.toISOString(), claimed_at: NOW.toISOString() })
+        expect(String(rows[0].html)).toContain(ACADEMY_PERSONAL_LINK_PLACEHOLDER)
+    })
+
+    it.each(['test', 'academy.invite', 'academy.course_inactivity'])('rodzaj %s spoza reguły nie wychodzi', async kind => {
+        const { client, rows } = fakeDb([reentry({ kind })])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH, personalLink: link })).toEqual({ status: 'refused', reason: 'not_auto_kind' })
+        expect(sendEmail).not.toHaveBeenCalled()
+        expect(rows[0].status).toBe('held')
+        expect(Sentry.captureMessage).toHaveBeenCalledOnce()
+    })
+
+    it('wiersz z długim terminem nie wychodzi, nawet tego rodzaju', async () => {
+        const { client, rows } = fakeDb([reentry({ expires_at: FUTURE })])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH, personalLink: link })).toEqual({ status: 'refused', reason: 'invalid' })
+        expect(sendEmail).not.toHaveBeenCalled()
+        expect(rows[0].status).toBe('held')
+    })
+
+    it('wiersz bez paczki nie wychodzi', async () => {
+        const { client } = fakeDb([reentry({ batch_id: null })])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH, personalLink: link })).toEqual({ status: 'refused', reason: 'invalid' })
+        expect(sendEmail).not.toHaveBeenCalled()
+    })
+
+    it('wiersz po terminie nie wychodzi', async () => {
+        const { client } = fakeDb([reentry({ created_at: '2026-11-09T11:40:00.000Z', expires_at: '2026-11-09T11:55:00.000Z' })])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH, personalLink: link })).toEqual({ status: 'refused', reason: 'past_due' })
+        expect(sendEmail).not.toHaveBeenCalled()
+    })
+
+    it.each(['approved', 'sent', 'sent_test', 'expired'])('wiersz w stanie %s nie wychodzi drugi raz', async status => {
+        const { client } = fakeDb([reentry({ status })])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH, personalLink: link })).toEqual({ status: 'refused', reason: 'not_held' })
+        expect(sendEmail).not.toHaveBeenCalled()
+    })
+
+    it('bez generatora linku nie wysyła znacznika', async () => {
+        const { client, rows } = fakeDb([reentry()])
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH })).toEqual({ status: 'failed' })
+        expect(sendEmail).not.toHaveBeenCalled()
+        expect(rows[0]).toMatchObject({ status: 'failed', last_error: 'personal_link_unavailable' })
+    })
+
+    it('brak tabeli nie wysyła niczego', async () => {
+        const { client } = fakeDb([], { select: { code: 'PGRST205', message: 'brak' } })
+        expect(await sendAcademyAutoMail(client, { id: 'row-1', env: BOTH, personalLink: link })).toEqual({ status: 'refused', reason: 'migration_pending' })
+        expect(sendEmail).not.toHaveBeenCalled()
     })
 })
 

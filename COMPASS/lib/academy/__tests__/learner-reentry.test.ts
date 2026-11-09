@@ -12,12 +12,14 @@ const state = vi.hoisted(() => ({
     account: null as Record<string, unknown> | null,
     hold: vi.fn(),
     send: vi.fn(),
+    auto: vi.fn(),
 }))
 
 vi.mock('@/lib/academy/outbound', () => ({
     ACADEMY_PERSONAL_LINK_PLACEHOLDER: '{{academy_personal_link}}',
     holdAcademyMail: state.hold,
     sendAcademyMailTest: state.send,
+    sendAcademyAutoMail: state.auto,
     testRecipients: (env: NodeJS.ProcessEnv) => new Set((env.ACADEMY_MAIL_TEST_RECIPIENTS ?? '').split(',').filter(Boolean)),
 }))
 vi.mock('@/lib/supabase/admin', () => ({
@@ -48,6 +50,7 @@ beforeEach(() => {
     state.account = trial()
     state.hold.mockReset().mockResolvedValue({ status: 'held', id: 'row-1' })
     state.send.mockReset().mockResolvedValue({ status: 'sent_test' })
+    state.auto.mockReset().mockResolvedValue({ status: 'sent' })
 })
 
 describe('przy wyłączonej przepustce', () => {
@@ -56,6 +59,7 @@ describe('przy wyłączonej przepustce', () => {
         expect((await post('uczestnik@example.test')).status).toBe(404)
         expect(state.hold).not.toHaveBeenCalled()
         expect(state.send).not.toHaveBeenCalled()
+        expect(state.auto).not.toHaveBeenCalled()
     })
 
     it('niepoprawne dane dostają 404', async () => {
@@ -122,11 +126,44 @@ describe('po włączeniu przepustki', () => {
         expect(company).toEqual(known)
     })
 
-    it('zwykłe konto zostaje w kolejce i nie jest wysyłane', async () => {
+    it('zwykłe konto idzie regułą automatyczną bramki, nie wysyłką testową', async () => {
         state.account = { ...trial(), email: 'uczestnik@example.test', source: 'umowa' }
         await post('uczestnik@example.test')
-        expect(state.hold).toHaveBeenCalledTimes(1)
+        expect(state.hold).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.objectContaining({
+            kind: 'academy.reentry', recipient: 'uczestnik@example.test', batchId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        }))
         expect(state.send).not.toHaveBeenCalled()
+        expect(state.auto).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.objectContaining({ id: 'row-1' }))
+        const link = await state.auto.mock.calls[0][1].personalLink()
+        expect(verifyLearnerPassToken(link.split('/wejdz/')[1], SECRET)).toMatchObject({ ok: true })
+    })
+
+    it('odpowiedź nie czeka na wysyłkę, więc czas nie zdradza konta', async () => {
+        state.account = { ...trial(), email: 'uczestnik@example.test', source: 'umowa' }
+        state.auto.mockReturnValue(new Promise(() => undefined))
+        const response = await post('uczestnik@example.test')
+        expect(response.status).toBe(200)
+        expect(state.auto).toHaveBeenCalledTimes(1)
+    })
+
+    it('odrzucona wysyłka nie wywraca odpowiedzi', async () => {
+        state.account = { ...trial(), email: 'uczestnik@example.test', source: 'umowa' }
+        state.auto.mockRejectedValue(new Error('graph'))
+        expect((await post('uczestnik@example.test')).status).toBe(200)
+        await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    it('skrzynka właściciela dalej dostaje wysyłkę testową, nie regułę', async () => {
+        await post(OWNER)
+        expect(state.send).toHaveBeenCalledTimes(1)
+        expect(state.auto).not.toHaveBeenCalled()
+    })
+
+    it('duplikat w oknie 15 minut nie wysyła drugi raz', async () => {
+        state.account = { ...trial(), email: 'uczestnik@example.test', source: 'umowa' }
+        state.hold.mockResolvedValue({ status: 'duplicate' })
+        await post('uczestnik@example.test')
+        expect(state.auto).not.toHaveBeenCalled()
     })
 
     it.each([
