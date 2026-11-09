@@ -1,5 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isAcademySwitchOn } from './switches'
 
 interface CleanupAsset { id: string; course_id: string; storage_path: string; cleanup_token: string }
 interface CleanupReport { eligible: number; bytes: number; failed: number; purged: number }
@@ -15,7 +16,7 @@ export function academyMaterialRetentionPolicy(env = process.env): MaterialReten
     }
     if (env.ACADEMY_MATERIAL_CLEANUP_ENABLED && !['true', 'false'].includes(env.ACADEMY_MATERIAL_CLEANUP_ENABLED)) throw new Error('invalid_retention_policy')
     return {
-        execute: env.ACADEMY_MATERIAL_CLEANUP_ENABLED === 'true',
+        execute: isAcademySwitchOn('ACADEMY_MATERIAL_CLEANUP_ENABLED', env),
         uploadHours: integer(env.ACADEMY_UPLOAD_RETENTION_HOURS, 48, 48, 8760),
         rejectedDays: integer(env.ACADEMY_REJECTED_RETENTION_DAYS, 30, 30, 3650),
     }
