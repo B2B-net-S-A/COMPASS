@@ -7,7 +7,7 @@ import type { CourseListItem } from '@/lib/types/learning'
 import { AcademyEmptyState } from './AcademyEmptyState'
 import { CourseCover } from './catalog/CourseCover'
 import type { AcademyCatalogOptions } from '@/lib/actions/academy-discovery'
-import type { CatalogNextRun } from './catalog/catalog-runs'
+import { nearestCatalogRun, type CatalogNextRun } from './catalog/catalog-runs'
 import { sessionDate, sessionTime } from './sessions/session-format'
 import { CATALOG_PAGE_SIZE, COURSE_FORMAT_LABELS, COURSE_LEVEL_LABELS, LIBRARY_FORMAT_LABELS, catalogHref, formatCourseDuration, formatLibrarySummary, type CatalogFilters, type LibraryFormat, type LibrarySummary } from './catalog/catalog-filters'
 
@@ -40,9 +40,19 @@ export function CourseCatalog({ courses, total, page, filters, canTeach, error, 
     const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE))
     const first = (page - 1) * CATALOG_PAGE_SIZE + 1
     const last = Math.min(page * CATALOG_PAGE_SIZE, total)
+    const nearest = !hasFilters && page === 1 ? nearestCatalogRun(nextRuns) : null
+    const nearestCourse = nearest ? courses.find(course => course.id === nearest.courseId) : undefined
 
     return (
         <div className="space-y-6">
+            {nearest && nearestCourse && <section aria-labelledby="academy-nearest-live" className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                <div className="min-w-0 space-y-1">
+                    <h2 id="academy-nearest-live" className="text-xs font-medium text-muted-foreground">Najbliższe szkolenie live</h2>
+                    <p className="text-base font-semibold text-foreground">{nearestCourse.title}</p>
+                    <p className="text-sm text-muted-foreground">{new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long', timeStyle: 'short', timeZone: nearest.run.timeZone }).format(new Date(nearest.run.startsAt))}{nearest.run.full ? ' · brak wolnych miejsc' : ''}</p>
+                </div>
+                <Button asChild variant="outline" className="shrink-0 rounded-lg"><Link href={`/learning/${nearestCourse.slug}`}>Zobacz termin</Link></Button>
+            </section>}
             <section aria-label="Wyszukiwanie i filtrowanie szkoleń" className="space-y-5">
                 <form key={catalogHref(filters)} action="/learning" method="get" className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
                     {filters.deliveryMode && <input type="hidden" name="format" value={filters.deliveryMode} />}

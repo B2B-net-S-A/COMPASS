@@ -3,6 +3,7 @@ import fontkit from '@pdf-lib/fontkit'
 import { createHash } from 'crypto'
 import { readFile } from 'fs/promises'
 import path from 'path'
+import { VENDOR_DISCLAIMER } from '@/lib/academy/document-text'
 
 export interface GenerateCertificatePdfArgs {
     fullName: string
@@ -11,6 +12,8 @@ export interface GenerateCertificatePdfArgs {
     completedAt: string
     certificateHash: string
     versionNumber?: number
+    /** Koniec ważności z migawki; bez niego dokument jest bezterminowy. */
+    validUntil?: string | null
     /** Public verification URL (rendered as text). */
     verificationUrl?: string
 }
@@ -24,8 +27,7 @@ export interface GenerateParticipationPdfArgs {
     versionNumber?: number
 }
 
-/** Szkolenia firmowe nie są certyfikacją producenta technologii. */
-export const VENDOR_DISCLAIMER = 'Dokument wewnętrzny B2B.net SA. Nie jest certyfikatem producenta ani nie potwierdza certyfikacji producenta technologii.'
+export { VENDOR_DISCLAIMER }
 
 const WIDTH = 595.28
 const HEIGHT = 841.89
@@ -117,7 +119,10 @@ export async function generateCertificatePdf(args: GenerateCertificatePdfArgs): 
     if (args.courseAuthorName) drawFitted(page, font, `Autor szkolenia: ${cleanText(args.courseAuthorName)}`, { top: 281, height: 50, maxSize: 11, minSize: 8 }, MUTED)
 
     const date = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Warsaw' }).format(completed)
-    drawCentered(page, font, `Data ukończenia: ${date}`, 208, 11)
+    const validUntil = args.validUntil ? new Date(args.validUntil) : null
+    if (validUntil && !Number.isFinite(validUntil.getTime())) throw new Error('Nieprawidłowa data ważności certyfikatu.')
+    const validity = validUntil ? ` · ważny do: ${new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Warsaw' }).format(validUntil)}` : ''
+    drawCentered(page, font, `Data ukończenia: ${date}${validity}`, 208, 11)
     if (args.versionNumber !== undefined) drawCentered(page, font, `Wersja programu: ${args.versionNumber}`, 188, 10, MUTED)
     page.drawLine({ start: { x: 64, y: 168 }, end: { x: WIDTH - 64, y: 168 }, thickness: 0.75, color: BORDER })
     drawCentered(page, font, 'B2B.net SA - COMPASS Akademia', 145, 11)

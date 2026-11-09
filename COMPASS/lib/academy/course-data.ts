@@ -10,6 +10,7 @@ export const completionRulesSchema = z.object({
     quiz_pass_percent: z.number().int().min(1).max(100),
     require_all_lessons: z.boolean(),
     attendance_percent: z.number().int().min(1).max(100),
+    video_watch_percent: z.number().int().min(50).max(100).optional(),
 })
 
 export const courseMetadataSchema = z.object({
@@ -77,7 +78,8 @@ export async function loadAcademyCourse(
     let enrollmentQuery = client.from('course_enrollments').select('id,version_id,run_id,completed_at,completed_lessons,lesson_completion_dates')
         .eq('course_id', course.id).eq('user_id', userId)
     if (options.enrollmentId) enrollmentQuery = enrollmentQuery.eq('id', z.uuid().parse(options.enrollmentId))
-    else enrollmentQuery = enrollmentQuery.is('run_id', null)
+    // Zapis samodzielny może mieć kilka cykli recertyfikacji: liczy się najnowszy.
+    else enrollmentQuery = enrollmentQuery.is('run_id', null).order('enrolled_at', { ascending: false }).limit(1)
     const { data: enrollment, error: enrollmentError } = await enrollmentQuery.maybeSingle()
     assertDatabaseResult(enrollmentError)
     if (options.enrollmentId && !enrollment) throw new Error('Nie masz dostępu do tego zapisu.')

@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { materialRejectionMessage } from '@/lib/academy/material-errors'
+import { isMissingDatabaseObject, MIGRATION_PENDING_PL } from '@/lib/academy/migration-contract'
 
 const inputSchema = z.object({
     courseId: z.uuid(), lessonId: z.uuid().optional(), runId: z.uuid().optional(), filename: z.string().trim().min(1).max(180).regex(/^[^/\\\r\n]+$/),
@@ -73,14 +74,29 @@ export async function listAcademyLessonUploads(lessonId: string) {
 export async function listAcademyRunMaterials(runId: string) {
     return academyAction('material.run_materials', async () => {
         const { client } = await requireAcademyContext()
-        const { data, error } = await client.from('academy_material_catalog')
-            .select('id,filename,storage_path,mime_type,size_bytes,status,review_status,review_note,uploaded_by,scan_error,caption_for_asset_id')
+        const columns = 'id,filename,storage_path,mime_type,size_bytes,status,review_status,review_note,uploaded_by,scan_error,caption_for_asset_id'
+        const load = (select: string) => client.from('academy_material_catalog').select(select)
             .eq('run_id', z.uuid().parse(runId)).is('purged_at', null).or('scan_error.is.null,scan_error.neq.discarded_by_author')
             .order('created_at')
+        let { data, error } = await load(`${columns},available_until`)
+        // The term column arrives with a later migration; until then the list is the same as before.
+        if (error && isMissingDatabaseObject(error)) ({ data, error } = await load(columns))
         assertDatabaseResult(error)
-        return (data ?? []).map(({ scan_error, ...item }) => ({ ...item,
+        const rows = (data ?? []) as unknown as ({ scan_error: string | null; status: string } & Record<string, unknown>)[]
+        return rows.map(({ scan_error, ...item }) => ({ ...item,
             error: item.status === 'rejected' ? materialRejectionMessage(scan_error) : null,
-        })) as (import('@/lib/types/academy-materials').AcademyRunMaterial & { error: string | null })[]
+        })) as unknown as (import('@/lib/types/academy-materials').AcademyRunMaterial & { error: string | null })[]
+    })
+}
+
+export async function setRunMaterialAvailability(input: { assetId: string; until: string | null }) {
+    return academyAction('material.availability', async () => {
+        const { client } = await requireAcademyContext()
+        const parsed = z.object({ assetId: z.uuid(), until: z.iso.datetime().nullable() }).parse(input)
+        const { error } = await client.rpc('academy_set_run_material_availability', { p_asset_id: parsed.assetId, p_until: parsed.until })
+        if (error && isMissingDatabaseObject(error)) throw new Error(MIGRATION_PENDING_PL)
+        assertDatabaseResult(error)
+        return { until: parsed.until }
     })
 }
 

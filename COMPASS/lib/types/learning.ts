@@ -21,6 +21,8 @@ export interface CourseCompletionRules {
     pre_test_count?: number | null
     require_all_lessons: boolean
     attendance_percent: number
+    /** Share of a lesson's recordings that completes it; 90 when unset. */
+    video_watch_percent?: number
 }
 
 export interface Course {
@@ -50,6 +52,8 @@ export interface Course {
     /** A2.2: kursy wymagane przed zapisem (musi być completed). */
     prerequisite_course_ids: string[]
     delivery_mode?: CourseDeliveryMode
+    /** The live edition this self-paced course was created from, for people who missed it. */
+    source_run_id?: string | null
     published_version_id?: string | null
     draft_version_id?: string | null
     version_id?: string

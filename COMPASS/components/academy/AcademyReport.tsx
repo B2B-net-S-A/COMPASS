@@ -7,10 +7,14 @@ interface Props {
     rows: Row[]
     months?: Array<{ month: string; count: number }>
     admin?: boolean
+    reportsStartAt?: string | null
 }
 
-export function AcademyReport({ metrics, rows, months, admin = false }: Props) {
+export function AcademyReport({ metrics, rows, months, admin = false, reportsStartAt = null }: Props) {
     return <div className="space-y-6">
+        {reportsStartAt
+            ? <p role="note" className="text-sm text-muted-foreground">Raport liczy dane od startu Akademii: {new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long', timeZone: 'Europe/Warsaw' }).format(new Date(reportsStartAt))}.</p>
+            : <p role="note" className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm"><span className="font-semibold">Próba.</span> Do startu Akademii raport pokazuje dane z prób i szkoleń testowych.</p>}
         <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(metric => <div key={metric.label} className="rounded-2xl border border-border bg-card p-5"><dt className="text-sm text-muted-foreground">{metric.label}</dt><dd className="mt-2 text-3xl font-semibold tabular-nums">{metric.href ? <Link className="underline-offset-4 hover:underline" href={metric.href}>{metric.value}</Link> : metric.value}</dd></div>)}</dl>
         <p className="text-sm leading-relaxed text-muted-foreground">Zestawienie obejmuje aktywne zapisy oraz zachowane ukończenia, także kursów archiwalnych. Pomija rezerwę i anulowane udziały bez ukończenia. Ukończenia pochodzą z potwierdzonych zaliczeń; unieważnione nie są zaliczane. Ocena dotyczy całego kursu; brak ocen oznaczamy kreską.</p>
         {months && <section className="rounded-2xl border border-border bg-card p-5"><h2 className="mb-4 text-lg font-semibold">Zapisy w ostatnich 12 miesiącach</h2><p className="mb-4 text-xs text-muted-foreground">Miesiące według daty zapisu w UTC; te same zasady zakresu co w podsumowaniu.</p><ol className="space-y-3">{months.map(month => <li key={month.month} className="flex items-center gap-3 text-sm"><span className="w-20 shrink-0">{new Intl.DateTimeFormat('pl-PL', { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(new Date(`${month.month}-01T00:00:00Z`))}</span><span className="h-3 flex-1 overflow-hidden rounded bg-muted" aria-hidden="true"><span className="block h-full bg-primary" style={{ width: `${month.count / Math.max(1, ...months.map(item => item.count)) * 100}%` }} /></span><span className="w-12 shrink-0 text-right tabular-nums">{month.count}</span></li>)}</ol></section>}

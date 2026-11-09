@@ -18,7 +18,7 @@ beforeEach(() => {
     mocks.role = 'talent_community'
     vi.mocked(getAcademyAccess).mockResolvedValue({ success: true, data: { userId: 'tcm', isAdmin: false, canTeach: true, canManageAcademy: true, rolloutMode: 'closed', isPilot: false } })
     vi.mocked(getMyCourses).mockResolvedValue({ success: true, data: [{ id: 'foreign-course', title: 'Szkolenie innego autora', category: 'AI', status: 'draft', delivery_mode: 'live', can_edit: true, can_lead: true, version_status: 'draft' }] as never })
-    vi.mocked(getAdminLmsAnalytics).mockResolvedValue({ success: true, data: { total_published_courses: 4, total_pending_review: 2, total_enrollments: 96, total_completions: 0, overall_completion_rate: 0, average_rating_all: 0, top_courses: [], monthly_enrollments: [] } })
+    vi.mocked(getAdminLmsAnalytics).mockResolvedValue({ success: true, data: { reports_start_at: null, total_published_courses: 4, total_pending_review: 2, total_enrollments: 96, total_completions: 0, overall_completion_rate: 0, average_rating_all: 0, top_courses: [], monthly_enrollments: [] } })
 })
 afterEach(cleanup)
 it('offers editing and editions for another author while hiding admin moderation', async () => {

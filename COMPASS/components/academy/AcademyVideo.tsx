@@ -4,9 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { hasRecovered, MAX_RECOVERY_ATTEMPTS, PLAYBACK_RATES, recoveryDelayMs, STALL_TIMEOUT_MS } from '@/lib/academy/video-playback'
+import { activeChapterIndex, formatChapterTime, type VideoChapter } from '@/lib/academy/video-chapters'
+import { listVideoChapters } from '@/lib/actions/academy-video-chapters'
 import type { CourseAttachment } from '@/lib/types/learning'
 
-type Props = ({ lessonId: string; runId?: never } | { runId: string; lessonId?: never }) & { video: CourseAttachment; captions?: CourseAttachment; audio?: boolean }
+/** tick = playback advanced, seek = position jumped, idle = paused, ended or hidden. */
+export type PlaybackEvent = 'tick' | 'seek' | 'idle'
+type Props = ({ lessonId: string; runId?: never } | { runId: string; lessonId?: never }) & { video: CourseAttachment; captions?: CourseAttachment; audio?: boolean; startAt?: number; onPlaybackEvent?: (event: PlaybackEvent, element: HTMLMediaElement) => void }
 interface SignedSource { url: string; expiresIn: number }
 interface PlaybackPosition { time: number; paused: boolean; captions: boolean }
 
@@ -28,7 +32,8 @@ async function signedSource(endpoint: string, signal: AbortSignal): Promise<Sign
     return { url: url.href, expiresIn: data.expiresIn }
 }
 
-export function AcademyVideo({ lessonId, runId, video, captions, audio = false }: Props) {
+export function AcademyVideo({ lessonId, runId, video, captions, audio = false, startAt = 0, onPlaybackEvent }: Props) {
+    const initialPosition = useRef(startAt)
     const player = useRef<HTMLMediaElement | null>(null)
     const refresh = useRef<(manual?: boolean) => void>(() => {})
     const scheduleRecovery = useRef<() => void>(() => {})
@@ -43,6 +48,17 @@ export function AcademyVideo({ lessonId, runId, video, captions, audio = false }
     const [resumeMessage, setResumeMessage] = useState(false)
     const [recovering, setRecovering] = useState(false)
     const [rate, setRate] = useState<number>(1)
+    const [chapters, setChapters] = useState<VideoChapter[]>([])
+    const [currentTime, setCurrentTime] = useState(0)
+    const assetId = audio ? undefined : video.asset_id
+
+    useEffect(() => {
+        if (!assetId) return
+        let cancelled = false
+        // Chapters only help navigation, so a failure leaves the plain player.
+        listVideoChapters(assetId).then(result => { if (!cancelled && result?.success) setChapters(result.data.chapters) }).catch(() => {})
+        return () => { cancelled = true }
+    }, [assetId])
     const captionAssetId = captions?.asset_id
     const captionPath = captions?.storage_path
 
@@ -53,7 +69,7 @@ export function AcademyVideo({ lessonId, runId, video, captions, audio = false }
         let fetching = false
         let hasSource = false
         let revision = 0
-        playback.current = null
+        playback.current = initialPosition.current > 0 ? { time: initialPosition.current, paused: true, captions: false } : null
         recovery.current = { attempts: 0, errorPosition: 0 }
         setRecovering(false)
         setSources(null)
@@ -172,19 +188,35 @@ export function AcademyVideo({ lessonId, runId, video, captions, audio = false }
         onError: playbackError,
         onLoadStart: armStallWatch,
         onWaiting: armStallWatch,
-        onSeeking: armStallWatch,
+        onSeeking: () => { armStallWatch(); notify('seek') },
         onProgress: () => { if (stallTimer.current) armStallWatch() },
         onSeeked: disarmStallWatch,
         onCanPlay: disarmStallWatch,
         onPlaying: disarmStallWatch,
-        onTimeUpdate: trackProgress,
+        onTimeUpdate: () => { trackProgress(); notify('tick') },
+        onPause: () => notify('idle'),
+        onEnded: () => notify('idle'),
         onPlay: () => setResumeMessage(false),
+    }
+
+    function notify(event: PlaybackEvent) {
+        if (player.current) onPlaybackEvent?.(event, player.current)
     }
 
     function trackProgress() {
         const element = player.current
         if (element && recovery.current.attempts > 0 && hasRecovered(recovery.current.errorPosition, element.currentTime)) recovery.current = { attempts: 0, errorPosition: 0 }
+        if (element && chapters.length) setCurrentTime(element.currentTime)
     }
+
+    function jumpTo(seconds: number) {
+        const element = player.current
+        if (!element) return
+        element.currentTime = seconds
+        void element.play().catch(() => {})
+    }
+
+    const activeChapter = activeChapterIndex(chapters, currentTime)
 
     function changeRate(value: number) {
         setRate(value)
@@ -192,11 +224,16 @@ export function AcademyVideo({ lessonId, runId, video, captions, audio = false }
     }
 
     return <section className="space-y-3" aria-label={`Nagranie: ${video.name}`}>
+        <div className={chapters.length ? 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem]' : undefined}>
         <div className="overflow-hidden rounded-xl border border-border bg-muted">
             {sources && audio ? <audio key={sources.revision} ref={element => { player.current = element }} src={sources.video} controls preload="metadata" aria-label={video.name} className="w-full" onLoadedMetadata={restorePlayback} {...mediaEvents} /> : sources ? <video key={sources.revision} ref={element => { player.current = element }} src={sources.video} controls controlsList="noplaybackrate" playsInline preload="metadata" crossOrigin="anonymous" aria-label={video.name} className="aspect-video w-full" onLoadedMetadata={restorePlayback} {...mediaEvents}>
                 {sources.captions && <track key={sources.captions} kind="captions" src={sources.captions} srcLang="und" label="Napisy" onError={() => setCaptionError(true)} />}
                 Twoja przeglądarka nie obsługuje odtwarzania tego nagrania.
             </video> : <div className={`flex ${audio ? 'min-h-16' : 'aspect-video'} items-center justify-center p-6 text-sm text-muted-foreground`}>{loading ? 'Przygotowanie nagrania…' : 'Nagranie nie jest dostępne.'}</div>}
+        </div>
+        {chapters.length > 0 && <nav aria-label="Rozdziały nagrania" className="max-h-96 overflow-y-auto rounded-xl border border-border p-2 lg:max-h-none">
+            <ol className="space-y-1">{chapters.map((chapter, index) => <li key={chapter.position_seconds}><button type="button" aria-current={index === activeChapter ? 'true' : undefined} onClick={() => jumpTo(chapter.position_seconds)} className={`flex w-full gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted ${index === activeChapter ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}><span className="shrink-0 tabular-nums">{formatChapterTime(chapter.position_seconds)}</span><span className="min-w-0">{chapter.title}</span></button></li>)}</ol>
+        </nav>}
         </div>
         {sources && <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">Prędkość<select value={rate} onChange={event => changeRate(Number(event.target.value))} className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground">{PLAYBACK_RATES.map(value => <option key={value} value={value}>{value.toLocaleString('pl-PL')}×</option>)}</select></label>}
         {(loading || recovering) && <p role="status" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden="true" />{recovering ? 'Połączenie przerwane. Ponawiam i wrócę do tego samego miejsca…' : sources ? 'Odświeżanie dostępu do nagrania…' : 'Wczytywanie nagrania…'}</p>}

@@ -32,6 +32,10 @@ Prowadzący i organizatorzy są pomijani listą adresów przypisaną do edycji. 
 
 Przed zastosowaniem migracji import działa jak dotąd: pierwszy zły wiersz odrzuca cały plik.
 
+## Późna aktywacja
+
+Po zastosowaniu migracji `20261110100000_academy_bind_learner_to_run.sql` konto nauki przy wejściu z przepustki łączy się z wierszem prywatnej listy po adresie, na który przepustkę dostarczono. Zapis zostaje potwierdzony bez zajmowania dodatkowego miejsca, a zaimportowana frekwencja przenosi się do `session_attendance` i odpala sprawdzenie ukończenia. Rezygnacja nie jest cofana, a ręczna decyzja o obecności zostaje. Automat nie dopasowuje po nazwisku.
+
 ## Korespondencja seryjna
 
 Eksport CSV z BOM, separatorem średnik i zabezpieczeniem formuł jest przeznaczony do Worda. Kolumny: Email, ImieNazwisko, Szkolenie, Edycja. Eksport obejmuje aktywnych uczestników listy webinaru i dodatkowe potwierdzone zapisy Compass, bez dublowania osób. Adres pochodzi z aktualnej powiązanej ewidencji umów albo jawnej weryfikacji administratora z uzasadnieniem. Nie używa jako zastępstwa adresu z Teams. Brakujący/stary adres jest pomijany z liczbą pominięć, a współdzielony adres blokuje eksport. Eksport i zmiany mają ślad audytowy; nie następuje wysyłka.
