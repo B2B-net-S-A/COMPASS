@@ -30,7 +30,7 @@ import type { Database } from '@/lib/supabase/database.types'
 type AcademyTableName = 'course_completions' | 'course_run_registrations' | 'course_materials'
     | 'academy_user_capabilities' | 'course_staff' | 'course_run_staff'
     | 'academy_organizers' | 'academy_m365_identities' | 'academy_notification_receipts'
-    | 'session_attendance' | 'academy_edition_survey_responses' | 'academy_webinar_roster'
+    | 'session_attendance' | 'academy_edition_survey_responses' | 'academy_webinar_roster' | 'academy_retrieval_schedule'
     | 'course_quiz_attempt_items' | 'academy_participation_documents'
 
 /** Tabele z migracji B2 stosowanych po wdrożeniu kodu: ich brak nie oznacza niepełnego eksportu. */
@@ -99,6 +99,7 @@ export const EMPLOYEE_SOURCES: readonly SubjectSource[] = [
     { table: 'academy_participation_documents', column: 'user_id', label: 'Zaświadczenia udziału w szkoleniach', select: 'id,enrollment_id,user_id,course_id,run_id,version_id,issued_at,snapshot' },
     { table: 'course_ratings', column: 'user_id', label: 'Oceny szkoleń' },
     { table: 'course_survey_responses', column: 'user_id', label: 'Ankiety po szkoleniach' },
+    { table: 'academy_retrieval_schedule', column: 'user_id', label: 'Powtórki po szkoleniach' },
     { table: 'academy_edition_survey_responses', column: 'user_id', label: 'Ankiety po edycjach szkoleń', select: 'id,run_id,user_id,enrollment_id,registration_id,overall,trainer,materials,difficulty,future_topics,nps,created_at' },
     { table: 'course_questions', column: 'user_id', label: 'Pytania do szkoleń' },
     { table: 'course_answers', column: 'user_id', label: 'Odpowiedzi w szkoleniach' },
