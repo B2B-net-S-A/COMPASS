@@ -7,6 +7,7 @@ import {
     filterEmployedInMonth,
     isActiveNow,
     isEmployedInMonth,
+    ACADEMY_LEARNER_STATUS,
 } from '@/lib/hr/employment-window'
 
 const JULY = '2026-07-01'
@@ -156,17 +157,39 @@ describe('excludeExited — ta sama reguła po stronie zapytania', () => {
         return q
     }
 
-    it('nakłada neq na employment_status z wartością "exited"', () => {
+    it('nakłada neq na employment_status dla "exited" i konta nauki', () => {
         const q = fakeQuery()
 
         excludeExited(q)
 
-        expect(q.calls).toEqual([['employment_status', 'exited']])
+        expect(q.calls).toEqual([['employment_status', 'exited'], ['employment_status', 'learning']])
     })
 
     it('zwraca ten sam builder — inaczej wywołujący traciłby filtr przy .order()/.await', () => {
         const q = fakeQuery()
 
         expect(excludeExited(q)).toBe(q)
+    })
+})
+
+describe('konto nauki poza listami ludzi', () => {
+    const learner = { employment_status: ACADEMY_LEARNER_STATUS, termination_date: null }
+    const active = { employment_status: 'active', termination_date: null }
+
+    it('nie trafia na listę tu i teraz', () => {
+        expect(isActiveNow(learner)).toBe(false)
+        expect(activeRoster([learner, active])).toEqual([active])
+    })
+
+    it('nie trafia do raportu miesięcznego', () => {
+        expect(isEmployedInMonth(learner, JULY)).toBe(false)
+        expect(isEmployedInMonth({ ...learner, termination_date: '2030-01-01' }, JULY)).toBe(false)
+    })
+
+    it('excludeExited odcina go w zapytaniu i nie gubi buildera', () => {
+        const calls: string[] = []
+        const query = { neq(column: string, value: string) { calls.push(`${column}=${value}`); return query } }
+        expect(excludeExited(query)).toBe(query)
+        expect(calls).toEqual(['employment_status=exited', 'employment_status=learning'])
     })
 })

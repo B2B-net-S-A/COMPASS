@@ -27,6 +27,7 @@
 //     kto widzi archiwum zespołu (RLS), a „nie wiem” to nie to samo co „nie ma”.
 
 import { z } from 'zod'
+import { ACADEMY_LEARNER_STATUS } from '@/lib/hr/employment-window'
 
 export const EMPLOYMENT_STATUSES = ['pending', 'onboarding', 'active', 'offboarding', 'exited'] as const
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number]
@@ -200,6 +201,8 @@ export function planRosterSync(
             stats.ambiguous_email += 1
             continue
         }
+        // Konto nauki Akademii nie jest pracownikiem i nie podlega liście z NEXUSA.
+        if (candidates[0].employment_status === ACADEMY_LEARNER_STATUS) continue
         stats.matched += 1
         const row = candidates[0]
         const patch: ProfilePatch = {}

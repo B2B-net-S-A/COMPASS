@@ -39,7 +39,7 @@ import type {
     ResponsibleRole,
 } from '@/lib/types/lifecycle'
 import { ONBOARDING_CATEGORIES, RESPONSIBLE_ROLES } from '@/lib/types/lifecycle'
-import { excludeExited, isActiveNow } from '@/lib/hr/employment-window'
+import { ACADEMY_LEARNER_STATUS, excludeExited, isActiveNow } from '@/lib/hr/employment-window'
 import { assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -1633,7 +1633,8 @@ export async function getLifecycleAnalytics(): Promise<LifecycleAnalytics> {
         supabase
             .from('profiles')
             .select('role, employment_status')
-            .in('role', ['consultant', 'internal', 'finanse', 'manager', 'talent_community']),
+            .in('role', ['consultant', 'internal', 'finanse', 'manager', 'talent_community'])
+            .neq('employment_status', ACADEMY_LEARNER_STATUS),
     ])
 
     const completedOnboardings = completedOnboardingsRes.data ?? []
