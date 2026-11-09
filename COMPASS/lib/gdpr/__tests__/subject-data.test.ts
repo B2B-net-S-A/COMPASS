@@ -8,6 +8,7 @@ import {
     EMPLOYEE_SOURCES,
     employeeScrubSteps,
     manualFollowUpsFor,
+    PENDING_MIGRATION_TABLES,
     retainedFor,
     scrubStepsFor,
     sourcesFor,
@@ -147,6 +148,16 @@ it('keeps cycle evidence for explicit manual review and scrubs only linked Acade
         expect(academyTables.every(table=>table==='academy_webinar_roster'||table==='academy_learner_accounts')).toBe(true)
     }
     expect(retainedFor('employee').some(record=>record.label.includes('przekazania praw'))).toBe(true)
+})
+
+describe('postęp oglądania nagrań w RODO', () => {
+    it('eksport pracownika obejmuje postęp nagrań po user_id', () => {
+        expect(sourcesFor('employee').find(source => source.table === 'academy_video_progress')).toMatchObject({ column: 'user_id' })
+    })
+
+    it('brak tabeli przed migracją B4.3 nie oznacza niepełnego eksportu', () => {
+        expect(PENDING_MIGRATION_TABLES.has('academy_video_progress')).toBe(true)
+    })
 })
 
 describe('konto nauki i lista edycji w RODO', () => {
