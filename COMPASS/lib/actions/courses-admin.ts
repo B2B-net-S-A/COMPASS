@@ -43,6 +43,19 @@ export async function getReviewQueue(page = 1): Promise<ActionResult<ReviewQueue
     })
 }
 
+/** Licznik w nawigacji to dekoracja: błąd zwraca null i chowa plakietkę, nie psuje ekranu. */
+export async function getReviewQueueCount(): Promise<number | null> {
+    try {
+        const { client } = await requireAcademyContext({ admin: true })
+        const { error, count } = await client.from('course_versions')
+            .select('id,courses!course_versions_course_id_fkey!inner(status)', { count: 'exact', head: true })
+            .eq('status', 'pending_review').neq('courses.status', 'archived')
+        return error ? null : count ?? null
+    } catch {
+        return null
+    }
+}
+
 async function review(courseId: string, versionId: string | undefined, submissionId: string | null | undefined, approve: boolean, reason?: string) {
     const { client } = await requireAcademyContext({ admin: true })
     if (!versionId || !submissionId) throw new Error('Odśwież podgląd wersji przed podjęciem decyzji.')

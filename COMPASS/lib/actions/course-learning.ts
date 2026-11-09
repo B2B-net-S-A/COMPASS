@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchDisplayNames } from '@/lib/people/display-names'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { withCourseVersion, type CourseVersion } from '@/lib/academy/course-data'
+import { isMissingDatabaseObject } from '@/lib/academy/migration-contract'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import type {
@@ -13,7 +14,10 @@ import type {
     Course,
     CourseEnrollmentWithProgress,
     CourseListItem,
+    QuizAttemptResult,
+    QuizAttemptSession,
     QuizQuestionForAttempt,
+    QuizStatus,
     QuizSubmissionResult,
     RecommendedCourse,
 } from '@/lib/types/learning'
@@ -84,6 +88,68 @@ export async function submitQuizAttempt(courseId: string, answers: { question_id
         assertDatabaseResult(error)
         revalidatePath('/learning', 'layout')
         return data as QuizSubmissionResult
+    })
+}
+
+/** `null` oznacza, że migracja sesji podejścia nie jest jeszcze zastosowana i obowiązuje dotychczasowy quiz. */
+export async function getQuizStatus(courseId: string, enrollmentId?: string): Promise<ActionResult<QuizStatus | null>> {
+    return academyAction('quiz.status', async () => {
+        const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { data, error } = await client.rpc('academy_quiz_status', { p_enrollment_id: enrollment.id })
+        if (isMissingDatabaseObject(error)) return null
+        assertDatabaseResult(error)
+        return data as QuizStatus
+    })
+}
+
+export async function startQuizAttempt(courseId: string, enrollmentId: string | undefined, kind: 'final' | 'pre' = 'final'): Promise<ActionResult<QuizAttemptSession>> {
+    return academyAction('quiz.start', async () => {
+        const { client, enrollment } = await enrollmentContext(courseId, enrollmentId)
+        const { data, error } = await client.rpc('academy_start_quiz_attempt', { p_enrollment_id: enrollment.id, p_kind: z.enum(['final', 'pre']).parse(kind) })
+        assertDatabaseResult(error)
+        return data as QuizAttemptSession
+    })
+}
+
+export async function saveQuizAnswer(attemptId: string, questionId: string, optionId: string): Promise<ActionResult<{ saved: boolean; remaining_seconds: number }>> {
+    return academyAction('quiz.save', async () => {
+        const { client } = await requireAcademyContext()
+        const { data, error } = await client.rpc('academy_save_quiz_answer', { p_attempt_id: z.uuid().parse(attemptId), p_question_id: z.uuid().parse(questionId), p_option_id: z.uuid().parse(optionId) })
+        assertDatabaseResult(error)
+        return data as { saved: boolean; remaining_seconds: number }
+    })
+}
+
+export async function finishQuizAttempt(attemptId: string, answers: { question_id: string; selected_option_id: string }[]): Promise<ActionResult<QuizSubmissionResult>> {
+    return academyAction('quiz.finish', async () => {
+        const { client } = await requireAcademyContext()
+        const parsed = z.array(z.object({ question_id: z.uuid(), selected_option_id: z.uuid() })).max(100).parse(answers)
+        const { data, error } = await client.rpc('academy_submit_quiz_attempt', { p_attempt_id: z.uuid().parse(attemptId), p_answers: parsed })
+        assertDatabaseResult(error)
+        revalidatePath('/learning', 'layout')
+        return data as QuizSubmissionResult
+    })
+}
+
+/** `null` oznacza brak migracji: wynik pokazuje wtedy sama dotychczasowa karta. */
+export async function getQuizAttemptResult(attemptId: string): Promise<ActionResult<QuizAttemptResult | null>> {
+    return academyAction('quiz.attempt_result', async () => {
+        const { client } = await requireAcademyContext()
+        const { data, error } = await client.rpc('academy_quiz_attempt_result', { p_attempt_id: z.uuid().parse(attemptId) })
+        if (isMissingDatabaseObject(error)) return null
+        assertDatabaseResult(error)
+        return data as QuizAttemptResult
+    })
+}
+
+/** Czy obecność bez zdanego testu dała już zaświadczenie udziału; przed migracją zawsze false. */
+export async function hasParticipationDocument(enrollmentId: string): Promise<ActionResult<boolean>> {
+    return academyAction('participation.exists', async () => {
+        const { client, access } = await requireAcademyContext()
+        const { data, error } = await client.from('academy_participation_documents').select('id').eq('enrollment_id', z.uuid().parse(enrollmentId)).eq('user_id', access.userId).maybeSingle()
+        if (isMissingDatabaseObject(error)) return false
+        assertDatabaseResult(error)
+        return !!data
     })
 }
 

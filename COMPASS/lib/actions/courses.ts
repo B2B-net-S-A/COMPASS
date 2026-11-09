@@ -122,6 +122,7 @@ export async function listPublishedCourses(filters: ListCoursesFilters = {}): Pr
             query = query.in('id', courses)
         }
         if (filters.category) query = query.eq('category', filters.category)
+        if (filters.topic) query = query.eq('topic', filters.topic)
         if (filters.level) query = query.eq('level', filters.level)
         if (filters.delivery_mode) query = query.eq('delivery_mode', filters.delivery_mode)
         if (filters.course_type) query = query.eq('course_type', filters.course_type)
@@ -523,6 +524,20 @@ export async function submitForReview(courseId: string): Promise<ActionResult<vo
         revalidatePath('/learning/tworze')
         revalidatePath(`/learning/tworze/${courseId}/edit`)
         revalidatePath('/admin/learning')
+    })
+}
+
+/** Autor wycofuje zgłoszenie, gdy recenzent jeszcze nie zdecydował; token chroni przed wyścigiem z decyzją. */
+export async function withdrawSubmission(courseId: string, submissionId: string | null | undefined): Promise<ActionResult<void>> {
+    return academyAction('course.withdraw', async () => {
+        const { client } = await requireAcademyContext({ trainer: true })
+        if (!submissionId) throw new Error('Odśwież stronę przed wycofaniem zgłoszenia.')
+        const parsed = z.object({ courseId: z.uuid(), submissionId: z.uuid() }).parse({ courseId, submissionId })
+        const { error } = await client.rpc('academy_withdraw_submission', { p_course_id: parsed.courseId, p_submission_id: parsed.submissionId })
+        assertDatabaseResult(error)
+        revalidatePath('/learning/tworze')
+        revalidatePath(`/learning/tworze/${parsed.courseId}/edit`)
+        revalidatePath('/admin/learning', 'layout')
     })
 }
 
