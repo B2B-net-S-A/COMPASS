@@ -60,7 +60,7 @@ export function AcademyHandoverPanel({ versionId, runId }: { versionId: string; 
                 </fieldset>
             </form>
             {!editable && <div className="flex flex-wrap gap-3 text-sm">{h?.source_url && <a className="text-primary underline" href={h.source_url} target="_blank" rel="noopener noreferrer">Źródła montażowe (nowa karta)</a>}{h?.rights_url && <a className="text-primary underline" href={h.rights_url} target="_blank" rel="noopener noreferrer">Dokument przekazania praw (nowa karta)</a>}</div>}
-            {h?.status === 'submitted' && (state.canReview ? <form onSubmit={review} className="space-y-3 border-t border-border pt-4"><label className="block text-sm">Uwagi do odbioru<Input name="note" maxLength={2000} disabled={busy} /></label><div className="flex gap-2"><Button type="submit" value="accept" disabled={busy}>Potwierdź odbiór pakietu</Button><Button type="submit" value="reject" variant="outline" disabled={busy}>Zwróć do poprawy</Button></div></form> : <p className="text-sm text-muted-foreground">Pakiet musi odebrać niezależny administrator, który nie tworzył materiałów ani programu.</p>)}
+            {h?.status === 'submitted' && (state.canReview ? <form onSubmit={review} className="space-y-3 border-t border-border pt-4"><label className="block text-sm">Uwagi do odbioru<Input name="note" maxLength={2000} disabled={busy} /></label><div className="flex gap-2"><Button type="submit" value="accept" disabled={busy}>Potwierdź odbiór pakietu</Button><Button type="submit" value="reject" variant="outline" disabled={busy}>Zwróć do poprawy</Button></div></form> : <p className="text-sm text-muted-foreground">Pakiet musi odebrać niezależna osoba, która nie tworzyła materiałów ani programu.</p>)}
         </>}
     </section>
 }

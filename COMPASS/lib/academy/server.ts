@@ -7,12 +7,15 @@ import { logger } from '@/lib/logger'
 import { isAcademyRole } from '@/lib/types/role'
 import { isAcademyOnlyUser } from '@/lib/auth/academy-only'
 import { academyActionError, academyDatabaseError } from './errors'
+import { isMissingDatabaseObject } from './migration-contract'
 
 export interface AcademyAccess {
     userId: string
     isAdmin: boolean
     canManageAcademy: boolean
     canTeach: boolean
+    /** Ustalane tylko na żądanie (`reviewer` albo `reviewState`). Inaczej undefined, czyli brak prawa. */
+    canReview?: boolean
     isManager?: boolean
     rolloutMode?: 'closed' | 'pilot' | 'open'
     isPilot?: boolean
@@ -24,7 +27,14 @@ export function academyClient(): SupabaseClient {
     return createClient() as unknown as SupabaseClient
 }
 
-export async function requireAcademyContext(options: { trainer?: boolean; admin?: boolean; editor?: boolean } = {}) {
+/** TCM recenzuje dopiero po migracji B3.10: bez niej funkcji nie ma i zachowanie zostaje stare. */
+async function tcmMayReview(client: SupabaseClient): Promise<boolean> {
+    const { data, error } = await client.rpc('academy_is_reviewer')
+    if (error && !isMissingDatabaseObject(error)) logger.error({ event: 'academy.reviewer_probe.failed', error })
+    return !error && data === true
+}
+
+export async function requireAcademyContext(options: { trainer?: boolean; admin?: boolean; editor?: boolean; reviewer?: boolean; reviewState?: boolean } = {}) {
     const client = academyClient()
     const { data: { user }, error: authError } = await client.auth.getUser()
     if (authError || !user) throw new Error('Zaloguj się, aby korzystać z Akademii.')
@@ -48,10 +58,13 @@ export async function requireAcademyContext(options: { trainer?: boolean; admin?
         if (grantError) throw new Error('Nie udało się sprawdzić uprawnień Akademii. Spróbuj ponownie.')
         canTeach = grant?.can_train === true && !grant.revoked_at
     }
+    const wantsReview = options.reviewer === true || options.reviewState === true
+    const canReview = wantsReview ? isAdmin || (canManageAcademy && await tcmMayReview(client)) : undefined
     if (options.admin && !isAdmin) throw new Error('Ta operacja wymaga uprawnień administratora.')
+    if (options.reviewer && !canReview) throw new Error('Ta operacja wymaga uprawnień recenzenta Akademii.')
     if (options.editor && !canManageAcademy) throw new Error('Ta operacja wymaga uprawnień obsługi Akademii.')
     if (options.trainer && !canTeach) throw new Error('Tworzenie szkoleń jest dostępne dla uprawnionych trenerów.')
-    const access: AcademyAccess = { userId: user.id, isAdmin, canManageAcademy, canTeach, isManager: !learnerOnly && profile.role === 'manager', rolloutMode: rollout.mode, isPilot: rollout.isPilot === true }
+    const access: AcademyAccess = { userId: user.id, isAdmin, canManageAcademy, canTeach, canReview, isManager: !learnerOnly && profile.role === 'manager', rolloutMode: rollout.mode, isPilot: rollout.isPilot === true }
     return { client, access }
 }
 

@@ -52,7 +52,7 @@ export default async function AcademyRunPage({ params }: { params: { id: string 
         {people && <AcademyRunPeoplePanel data={people.success ? people.data : undefined} error={people.success ? undefined : people.error} />}
         {audience && <AcademyRunAudiencePanel runId={run.id} state={audience.success ? audience.data : undefined} error={audience.success ? undefined : audience.error} open={invitationsOpen} />}
         {outbox && <AcademyRunOutboxPanel runId={run.id} state={outbox.success ? outbox.data : undefined} error={outbox.success ? undefined : outbox.error} />}
-        {(run.canManage || enrolled) && <RunMaterials runId={run.id} courseId={run.courseId} canManage={run.canManage} isAdmin={access.data.isAdmin} canManageAcademy={access.data.canManageAcademy} userId={access.data.userId} readOnly={run.status === 'cancelled'} />}
+        {(run.canManage || enrolled) && <RunMaterials runId={run.id} courseId={run.courseId} canManage={run.canManage} isAdmin={access.data.isAdmin} canManageAcademy={access.data.canManageAcademy} canReview={access.data.canReview === true} canApprove={access.data.isAdmin || run.canPublish} userId={access.data.userId} readOnly={run.status === 'cancelled'} />}
         {access.data.canManageAcademy && (participants?.success ? <EditionSummary run={run} participants={participants.data} /> : <p role="alert" className="text-sm text-destructive">Nie udało się pobrać pełnej listy zapisów do podsumowania edycji.</p>)}
         {(run.canManage || run.myRegistration) && <EditionSurvey runId={run.id} canManage={run.canManage} />}
         {run.canManage && <AcademyHandoverPanel versionId={run.versionId} runId={run.id} />}

@@ -103,7 +103,7 @@ export async function setRunMaterialAvailability(input: { assetId: string; until
 export async function reviewAcademyRunMaterial(input: { assetId: string; decision: 'approve' | 'reject' | 'withdraw'; note?: string }) {
     return academyAction('material.review', async () => {
         const parsed = z.object({ assetId: z.uuid(), decision: z.enum(['approve', 'reject', 'withdraw']), note: z.string().trim().max(2000).optional() }).parse(input)
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ reviewer: true })
         const { error } = await client.rpc('academy_review_run_material', {
             p_asset_id: parsed.assetId, p_decision: parsed.decision, p_note: parsed.note ?? null,
         })
@@ -126,7 +126,7 @@ export async function listAcademyRunMaterialReviews(page = 1) {
     return academyAction('material.review_queue', async () => {
         if (!Number.isSafeInteger(page) || page < 1 || page > 100000) throw new Error('Nieprawidłowy numer strony kolejki.')
         const pageSize = 25
-        const { client } = await requireAcademyContext({ admin: true })
+        const { client } = await requireAcademyContext({ reviewer: true })
         const { data, error, count } = await client.from('academy_material_catalog')
             .select('id,filename,run_id,created_at', { count: 'exact' }).not('run_id', 'is', null)
             .eq('status', 'ready').eq('review_status', 'pending_review').order('created_at').order('id')

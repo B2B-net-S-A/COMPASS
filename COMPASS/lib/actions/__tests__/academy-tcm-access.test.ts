@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockSupabase } from '@/test/mocks/supabase'
 import { academyFixture, COURSE, USER, VERSION, id } from './academy-fixtures'
 import { requireAcademyContext } from '@/lib/academy/server'
-import { approveCourse } from '../courses-admin'
+import { approveCourse, canReviewCourseVersion, getReviewQueue } from '../courses-admin'
 import { setAcademyRollout, setAcademyTrainer, listAcademyTrainerPage } from '../academy-access'
 
 let client: MockSupabase
@@ -20,12 +20,48 @@ describe('TCM Academy editor authorization', () => {
         expect(client.from).not.toHaveBeenCalledWith('academy_user_capabilities')
     })
     it.each([
-        () => approveCourse(COURSE, VERSION, id(90)),
         () => setAcademyTrainer(id(2), true),
         () => setAcademyRollout({ mode: 'closed', userIds: [] }),
     ])('denies administrator writes before their RPC', async action => {
         expect(await action()).toEqual({ success: false, error: 'Ta operacja wymaga uprawnień administratora.' })
         expect(client.rpc.mock.calls.map(([name]) => name)).toEqual(['academy_rollout_access'])
+    })
+    const reviewerProbe = (probe: () => unknown) => academyFixture({ tables: { profiles: [profile], academy_user_capabilities: [], course_versions: [] }, rpcs: {
+        academy_rollout_access: () => ({ allowed: true, mode: 'closed', isPilot: false }),
+        academy_is_reviewer: probe,
+        academy_review_course: () => ({ first_publish_bonus: false }),
+        academy_can_review_version: () => true,
+    } })
+    it('opens the review queue and decision to a TCM once the B3.10 migration confirms the reviewer', async () => {
+        client = reviewerProbe(() => true)
+        const { access } = await requireAcademyContext({ reviewer: true })
+        expect(access).toMatchObject({ isAdmin: false, canReview: true })
+        expect(await canReviewCourseVersion(VERSION)).toEqual({ success: true, data: true })
+        expect((await getReviewQueue()).success).toBe(true)
+    })
+    it('keeps the old behaviour for a TCM until the migration exists', async () => {
+        client = academyFixture({ tables: { profiles: [profile], academy_user_capabilities: [] }, rpcs: { academy_rollout_access: () => ({ allowed: true, mode: 'closed', isPilot: false }) } })
+        client.rpc.mockImplementationOnce(async () => ({ data: { allowed: true, mode: 'closed', isPilot: false }, error: null }))
+        client.rpc.mockImplementationOnce(async () => ({ data: null, error: { message: 'missing', code: 'PGRST202' } }))
+        expect(await approveCourse(COURSE, VERSION, id(90))).toEqual({ success: false, error: 'Ta operacja wymaga uprawnień recenzenta Akademii.' })
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_review_course', expect.anything())
+    })
+    it('does not ask the database about review for callers that do not need it', async () => {
+        client = reviewerProbe(() => true)
+        const { access } = await requireAcademyContext({ editor: true })
+        expect(access.canReview).toBeUndefined()
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_is_reviewer')
+    })
+    it('denies the review actions to an ordinary role without the probe', async () => {
+        client = academyFixture({ tables: { profiles: [{ ...profile, role: 'consultant' }], academy_user_capabilities: [] }, rpcs: { academy_rollout_access: () => ({ allowed: true, mode: 'open', isPilot: false }) } })
+        expect(await approveCourse(COURSE, VERSION, id(90))).toEqual({ success: false, error: 'Ta operacja wymaga uprawnień recenzenta Akademii.' })
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_is_reviewer')
+    })
+    it('never treats a learner account as a reviewer', async () => {
+        const learner = { id: USER, email: 'u@example.test', app_metadata: { academy_only: true } }
+        client = academyFixture({ tables: { profiles: [profile] }, user: learner, rpcs: { academy_rollout_access: () => ({ allowed: true, mode: 'pilot', isPilot: true }), academy_is_reviewer: () => true } })
+        await expect(requireAcademyContext({ reviewer: true })).rejects.toThrow('recenzenta Akademii')
+        expect(client.rpc).not.toHaveBeenCalledWith('academy_is_reviewer')
     })
     it('does not grant a consultant trainer global editing', async () => {
         client = academyFixture()

@@ -74,7 +74,7 @@ export function AdminReviewActions({ courseId, versionId, submissionId, title, c
                     <h3 className="font-semibold">Decyzja moderatora</h3>
                 </div>
 
-                {!canReview && <p className="text-sm text-warning">Akceptację musi przeprowadzić administrator, który nie jest autorem ani współautorem tej wersji.</p>}
+                {!canReview && <p className="text-sm text-warning">Akceptację musi przeprowadzić osoba, która nie jest autorem ani współautorem tej wersji.</p>}
                 {error && (
                     <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
