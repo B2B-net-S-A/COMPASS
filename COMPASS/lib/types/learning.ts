@@ -9,7 +9,7 @@ export type CourseLevel = 'beginner' | 'intermediate' | 'advanced'
 // Phase 1.1 (2026-05-04): course_type ENUM in DB; consultant=peer-authored (admin moderation),
 // company=B2Bnetwork-authored (admin/trainer creates, no peer-author bonus).
 export type CourseType = 'consultant' | 'company'
-export type CourseDeliveryMode = 'self_paced' | 'live' | 'blended'
+export type CourseDeliveryMode = 'self_paced' | 'live' | 'blended' | 'assessment'
 export interface CourseCompletionRules {
     quiz_required: boolean
     quiz_pass_percent: number

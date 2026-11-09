@@ -31,6 +31,10 @@ type AcademyTableName = 'course_completions' | 'course_run_registrations' | 'cou
     | 'academy_user_capabilities' | 'course_staff' | 'course_run_staff'
     | 'academy_organizers' | 'academy_m365_identities' | 'academy_notification_receipts'
     | 'session_attendance' | 'academy_edition_survey_responses' | 'academy_webinar_roster'
+    | 'course_quiz_attempt_items' | 'academy_participation_documents'
+
+/** Tabele z migracji B2 stosowanych po wdrożeniu kodu: ich brak nie oznacza niepełnego eksportu. */
+export const PENDING_MIGRATION_TABLES: ReadonlySet<string> = new Set(['course_quiz_attempt_items', 'academy_participation_documents'])
 export type TableName = keyof Database['public']['Tables'] | AcademyTableName
 
 /** Osoba z kontem w aplikacji (`profiles`) albo kontraktor u klienta (`contractors`). */
@@ -91,6 +95,8 @@ export const EMPLOYEE_SOURCES: readonly SubjectSource[] = [
     { table: 'course_materials', column: 'uploaded_by', label: 'Przesłane materiały Akademii', select: 'id,course_id,version_id,lesson_id,run_id,uploaded_by,filename,storage_path,mime_type,size_bytes,status,review_status,created_at,scanned_at,purged_at' },
     { table: 'academy_notification_receipts', column: 'user_id', label: 'Potwierdzenia powiadomień Akademii' },
     { table: 'course_quiz_attempts', column: 'user_id', label: 'Podejścia do quizów' },
+    { table: 'course_quiz_attempt_items', column: 'user_id', label: 'Pytania i odpowiedzi w podejściach do testów', select: 'attempt_id,question_id,user_id,position,selected_option_id,answered_at' },
+    { table: 'academy_participation_documents', column: 'user_id', label: 'Zaświadczenia udziału w szkoleniach', select: 'id,enrollment_id,user_id,course_id,run_id,version_id,issued_at,snapshot' },
     { table: 'course_ratings', column: 'user_id', label: 'Oceny szkoleń' },
     { table: 'course_survey_responses', column: 'user_id', label: 'Ankiety po szkoleniach' },
     { table: 'academy_edition_survey_responses', column: 'user_id', label: 'Ankiety po edycjach szkoleń', select: 'id,run_id,user_id,enrollment_id,registration_id,overall,trainer,materials,difficulty,future_topics,nps,created_at' },

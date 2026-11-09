@@ -71,6 +71,10 @@ it('allows live training without a quiz after its inactive threshold was cleared
     fireEvent.change(screen.getByLabelText('Kategoria'), { target: { value: 'Backend' } })
     fireEvent.change(screen.getByLabelText('Próg zaliczenia quizu (%)'), { target: { value: '' } })
     fireEvent.click(screen.getByRole('radio', { name: /Na żywo w Teams/ }))
+    // Certyfikat to obecność i zdany test: nowy kurs live ma test domyślnie, autor może go świadomie wyłączyć.
+    const quiz = screen.getByRole('checkbox', { name: /quiz/i })
+    expect(quiz).toBeChecked()
+    fireEvent.click(quiz)
     fireEvent.click(screen.getByRole('button', { name: 'Utwórz szkic szkolenia' }))
     await waitFor(() => expect(createCourse).toHaveBeenCalledWith(expect.objectContaining({ delivery_mode: 'live', completion_rules: { quiz_required: false, quiz_pass_percent: 80, require_all_lessons: false, attendance_percent: 80 } })))
 })
