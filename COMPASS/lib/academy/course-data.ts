@@ -10,6 +10,7 @@ export const completionRulesSchema = z.object({
     quiz_pass_percent: z.number().int().min(1).max(100),
     require_all_lessons: z.boolean(),
     attendance_percent: z.number().int().min(1).max(100),
+    video_watch_percent: z.number().int().min(50).max(100).optional(),
 })
 
 export const courseMetadataSchema = z.object({

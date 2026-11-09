@@ -5,6 +5,8 @@ import { quizAttemptWindowMessage } from './quiz-attempt-policy'
 const fallback = 'Nie udało się wykonać operacji. Odśwież stronę i spróbuj ponownie.'
 const messages: Record<string, string> = {
     academy_access_required: 'Nie masz dostępu do Akademii.',
+    run_material_required: 'Termin dostępności dotyczy tylko materiałów edycji.',
+    run_manager_required: 'Termin dostępności ustawia organizator tej edycji.',
     academy_open_locked: 'Tryb otwarty jest zablokowany do bramki startu. Wybierz tryb zamknięty albo pilot.',
     pilot_limit_exceeded: 'Pilot może objąć najwyżej 20 kont.',
     admin_required: 'Ta operacja wymaga uprawnień administratora.',
@@ -78,6 +80,8 @@ const messages: Record<string, string> = {
     quiz_attempt_window_exhausted: quizAttemptWindowMessage,
     not_enrolled: 'Najpierw zapisz się na szkolenie.',
     enrollment_not_found: 'Nie znaleziono Twojego zapisu na szkolenie.',
+    video_not_in_lesson: 'To nagranie nie należy już do tej lekcji. Odśwież stronę.',
+    invalid_video_progress: 'Nie udało się zapisać postępu nagrania. Odśwież stronę.',
     own_enrollment_required: 'Nie masz dostępu do tego zapisu.',
     own_path_enrollment_required: 'Najpierw zapisz się na tę ścieżkę nauki.',
     own_trusted_completion_required: 'Ta czynność będzie dostępna po ukończeniu szkolenia.',
