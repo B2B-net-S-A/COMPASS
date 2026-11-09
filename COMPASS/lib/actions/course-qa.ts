@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchDisplayNames } from '@/lib/people/display-names'
 import { academyAction, assertDatabaseResult, requireAcademyContext } from '@/lib/academy/server'
 import { loadAcademyCourse } from '@/lib/academy/course-data'
 import { z } from 'zod'
@@ -75,19 +76,7 @@ export async function listCourseQuestions(
         if (rows.length === 0) return { success: true, data: [] }
 
         // Pull profile names
-        const userIds = Array.from(new Set(rows.map((r) => r.user_id)))
-        const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url')
-            .in('id', userIds)
-        const profileMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
-        for (const p of (profiles ?? []) as Array<{
-            id: string
-            full_name: string | null
-            avatar_url: string | null
-        }>) {
-            profileMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url })
-        }
+        const profileMap = await fetchDisplayNames(supabase, rows.map((r) => r.user_id))
 
         const items: CourseQuestion[] = rows.map((r) => ({
             ...r,
@@ -129,19 +118,7 @@ export async function listAnswersForQuestion(
         const rows = (answers ?? []) as ARow[]
         if (rows.length === 0) return { success: true, data: [] }
 
-        const userIds = Array.from(new Set(rows.map((r) => r.user_id)))
-        const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url')
-            .in('id', userIds)
-        const profileMap = new Map<string, { full_name: string | null; avatar_url: string | null }>()
-        for (const p of (profiles ?? []) as Array<{
-            id: string
-            full_name: string | null
-            avatar_url: string | null
-        }>) {
-            profileMap.set(p.id, { full_name: p.full_name, avatar_url: p.avatar_url })
-        }
+        const profileMap = await fetchDisplayNames(supabase, rows.map((r) => r.user_id))
 
         const items: CourseAnswer[] = rows.map((r) => ({
             ...r,
