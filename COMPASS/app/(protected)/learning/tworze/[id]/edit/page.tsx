@@ -1,5 +1,8 @@
 import { AcademyHandoverPanel } from '@/components/academy/AcademyHandoverPanel'
 import { AcademyStaffPanel } from '@/components/academy/AcademyStaffPanel'
+import { CourseLibraryFields } from '@/components/academy/CourseLibraryFields'
+import { getAcademyCatalogTopics } from '@/lib/actions/academy-discovery'
+import { getCourseLibraryFields } from '@/lib/actions/academy-library'
 import { getAcademyStaff } from '@/lib/actions/academy-staff'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -41,6 +44,8 @@ export default async function EditCoursePage({ params }: PageProps) {
     const lessons = lessonsResult.success ? lessonsResult.data : []
     const quiz = quizResult.success ? quizResult.data : []
     const staff = await getAcademyStaff(course.id)
+    // Temat i program to dodatek: błąd odczytu pokazuje panel, reszta edytora działa jak wcześniej.
+    const [library, topics] = await Promise.all([getCourseLibraryFields(course.id), getAcademyCatalogTopics()])
     const status = STATUS_LABEL[course.status]
     const versionStatus = course.version_status ? STATUS_LABEL[course.version_status] : null
 
@@ -71,6 +76,7 @@ export default async function EditCoursePage({ params }: PageProps) {
 
             {staff.success && staff.data && <AcademyStaffPanel courseId={course.id} state={staff.data} />}
             {course.version_id && <AcademyHandoverPanel versionId={course.version_id} />}
+            <CourseLibraryFields courseId={course.id} result={library} topics={topics.success ? topics.data : []} archived={course.status === 'archived'} />
             <CourseEditWizard course={course} initialLessons={lessons} initialQuiz={quiz} poolEnabled={bank.success && !bank.data.awaitingMigration} />
         </div>
     )
