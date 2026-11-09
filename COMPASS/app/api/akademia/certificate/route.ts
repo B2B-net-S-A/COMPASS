@@ -4,6 +4,7 @@ import { withAuth } from '@/lib/api/with-auth'
 import { academyClient } from '@/lib/academy/server'
 import { ACADEMY_ROLES } from '@/lib/types/role'
 import { logger } from '@/lib/logger'
+import { isAcademySwitchOn } from '@/lib/academy/switches'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +41,11 @@ export const GET = withAuth(async (request, { user }) => {
         return new Response('Nie udało się odczytać certyfikatu. Skontaktuj się z administratorem.', { status: 500 })
     }
     const snapshot = parsed.data
+    // DEKORACJA: bez aktywnego linku publicznego PDF pokazuje stronę statusu w Compass.
+    const share = isAcademySwitchOn('ACADEMY_PUBLIC_VERIFY_ENABLED')
+        ? (await client.from('academy_document_shares').select('public_code,share_enabled').eq('completion_id', completion.id).maybeSingle()).data
+        : null
+    const publicUrl = share?.share_enabled ? `${request.nextUrl.origin}/v/${share.public_code}` : undefined
     const pdfBytes = await generateCertificatePdf({
         fullName: snapshot.participant_name,
         courseTitle: snapshot.course_title,
@@ -48,7 +54,7 @@ export const GET = withAuth(async (request, { user }) => {
         certificateHash: snapshot.certificate_hash,
         versionNumber: snapshot.version_number,
         validUntil: snapshot.valid_until,
-        verificationUrl: completion.id ? `${request.nextUrl.origin}/learning/certyfikaty/${completion.id}` : undefined,
+        verificationUrl: publicUrl ?? (completion.id ? `${request.nextUrl.origin}/learning/certyfikaty/${completion.id}` : undefined),
     })
     return new Response(Buffer.from(pdfBytes), { headers: {
         'Content-Type': 'application/pdf',

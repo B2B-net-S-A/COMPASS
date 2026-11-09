@@ -11,6 +11,7 @@ import { getAcademyAccess } from '@/lib/actions/academy-access'
 import { getEditionOperationCounter } from '@/lib/actions/academy-edition-closing'
 import { getCourseDetail } from '@/lib/actions/courses'
 import { listAcademyRunMaterials } from '@/lib/actions/academy-materials'
+import { TwinCourseButton } from '@/components/academy/sessions/TwinCourseButton'
 import { getAcademyRunPeople } from '@/lib/actions/academy-run-people'
 import { getAcademyRun, listAcademyRunParticipants } from '@/lib/actions/academy-sessions'
 import { listAcademyWebinarExceptions, listAcademyWebinarRoster } from '@/lib/actions/academy-webinar-import'
@@ -38,5 +39,6 @@ export default async function EditionClosingPage({ params }: { params: { id: str
     const sessionsEnded = run.sessions.filter(session => session.status === 'scheduled').every(session => Date.parse(session.actualEndsAt ?? session.endsAt) <= now)
     return <AcademyShell activeTab="teaching" access={access.data} title="Zamknięcie edycji" description={`${run.courseTitle} · ${run.title}`} action={back}>
         <EditionClosingScreen runId={run.id} steps={steps} counter={counter.success ? counter.data : null} sessionsEnded={sessionsEnded} />
+        {sessionsEnded && <div className="mt-6"><TwinCourseButton runId={run.id} /></div>}
     </AcademyShell>
 }
