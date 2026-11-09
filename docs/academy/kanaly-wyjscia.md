@@ -7,6 +7,7 @@ Spis wszystkiego, czym Akademia mogłaby dotrzeć do człowieka poza aplikacją 
 | Poczta Microsoft Graph | `lib/academy/outbound.ts`, jedyny wywołujący `sendEmail` w obszarze Akademii | Wiersz `held` w `academy_outbox`, zero wywołań Graph | Paczka zatwierdzona przez człowieka i `ACADEMY_MAIL_ENABLED=true`. Wysyłka testowa tylko na `ACADEMY_MAIL_TEST_RECIPIENTS` |
 | Cron `course-inactivity` | `app/api/cron/course-inactivity/route.ts` | Przez bramkę: wiersz `held`, `sent: 0`. Znacznik `last_inactivity_email_at` zostaje nietknięty, bo nic nie wyszło | Jak poczta |
 | Wydarzenia Graph z uczestnikami | `lib/academy/teams.ts` (`createTeamsCalendarEvent`), woła wyłącznie `lib/academy/integration-worker.ts` | Worker nie pobiera zadań | `ACADEMY_TEAMS_ENABLED=true` (tylko dosłowna wartość `true`) oraz komplet danych Azure |
+| Przypomnienia T-21, T-7, T-1, T-1 h | `lib/academy/run-reminders-worker.ts`, wołany z `app/api/cron/academy-sync` | Przez bramkę: wiersze `held` z terminem na początek spotkania | Jak poczta |
 | Web push | `lib/push/dispatch.ts` | Obszar Akademii go nie woła | Brak wywołań; test czytający źródło |
 | Webhook Teams | `lib/teams/webhook.ts` | Obszar Akademii go nie woła | Brak wywołań; test czytający źródło |
 | Maile Supabase Auth | `lib/actions/user-admin.ts`, `app/forgot-password/page.tsx` | Obszar Akademii ich nie wyzwala. Zaproszenia do konta i reset hasła należą do reszty aplikacji | Brak wywołań w obszarze; test czytający źródło |
