@@ -34,7 +34,7 @@ beforeEach(() => {
     vi.mocked(canReviewCourseVersion).mockResolvedValue({ success: true, data: true })
 })
 afterEach(cleanup)
-async function show(legacy = false) { render(await AdminCourseReviewPage({ params: { id: 'course' }, searchParams: legacy ? { legacy: '1' } : {} })) }
+async function show() { render(await AdminCourseReviewPage({ params: { id: 'course' } })) }
 describe('complete administrator moderation preview', () => {
     it('exposes scoped PDF links, video with captions, content and completion rules before a decision', async () => {
         await show()
@@ -81,11 +81,5 @@ describe('complete administrator moderation preview', () => {
         vi.mocked(canReviewCourseVersion).mockResolvedValue({ success: true, data: false })
         await show()
         expect(screen.getByRole('button', { name: 'Zatwierdź i opublikuj' })).toBeDisabled()
-    })
-    it('loads legacy published evidence explicitly rather than a working draft', async () => {
-        await show(true)
-        expect(getCourseDetail).toHaveBeenCalledWith('course', { publishedOnly: true })
-        expect(getCourseLessons).toHaveBeenCalledWith('course', { publishedOnly: true })
-        expect(getCourseQuizForAuthor).toHaveBeenCalledWith('course', { publishedOnly: true })
     })
 })

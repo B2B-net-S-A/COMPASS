@@ -20,7 +20,6 @@ import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/server'
 import { TierBadge } from '@/components/league/TierBadge'
 import { ProgressRing } from '@/components/league/ProgressRing'
-import { LearningStreakWidget } from '@/components/learning/LearningStreakWidget'
 import { TicketStatusBadge } from '@/components/support/TicketStatusBadge'
 import { getLoyaltyOverview } from '@/lib/actions/loyalty'
 import { academyResumeHref } from '@/lib/academy/navigation'
@@ -42,14 +41,11 @@ export default async function HomePage() {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, role, learning_streak_current, learning_streak_longest, learning_streak_last_date')
+        .select('full_name, role')
         .eq('id', user.id)
         .single<{
             full_name: string | null
             role: string | null
-            learning_streak_current: number | null
-            learning_streak_longest: number | null
-            learning_streak_last_date: string | null
         }>()
 
     // Konsultant biurowy (role='internal') nie widzi /home — HR Hub jest jego landingiem.
@@ -174,7 +170,7 @@ export default async function HomePage() {
                 </CardContent>
             </Card>
 
-            {!learningHidden && (recentlyActive || (profile?.learning_streak_longest ?? 0) > 0) && (
+            {!learningHidden && recentlyActive && (
                 <div className="grid gap-4 md:grid-cols-3">
                     {recentlyActive && (
                         <Link
@@ -200,15 +196,6 @@ export default async function HomePage() {
                                 </CardContent>
                             </Card>
                         </Link>
-                    )}
-                    {(profile?.learning_streak_longest ?? 0) > 0 && (
-                        <div className={recentlyActive ? '' : 'md:col-span-3'}>
-                            <LearningStreakWidget
-                                current={profile?.learning_streak_current ?? 0}
-                                longest={profile?.learning_streak_longest ?? 0}
-                                lastDate={profile?.learning_streak_last_date ?? null}
-                            />
-                        </div>
                     )}
                 </div>
             )}
