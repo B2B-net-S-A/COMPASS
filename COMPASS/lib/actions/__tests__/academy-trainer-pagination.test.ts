@@ -34,7 +34,7 @@ beforeEach(() => {
 })
 
 describe('Academy trainer directory', () => {
-    it('pages beyond 100 profiles and resolves grants only for visible consultants', async () => {
+    it('pages beyond 100 profiles and resolves grants only for visible accounts without an editor role', async () => {
         const selectedIds: string[][] = []
         const originalFrom = client.from
         client.from = vi.fn((table: string) => {
@@ -52,17 +52,17 @@ describe('Academy trainer directory', () => {
 
         const first = await listAcademyTrainerPage({ page: 1 })
         const last = await listAcademyTrainerPage({ page: 6 })
-        expect(first.success && first.data).toMatchObject({ page: 1, pageSize: 25, total: 131 })
-        expect(last.success && last.data).toMatchObject({ page: 6, pageSize: 25, total: 131 })
+        expect(first.success && first.data).toMatchObject({ page: 1, pageSize: 25, total: 132 })
+        expect(last.success && last.data).toMatchObject({ page: 6, pageSize: 25, total: 132 })
         if (!last.success) throw new Error(last.error)
-        expect(last.data.items).toHaveLength(6)
+        expect(last.data.items).toHaveLength(7)
         expect(last.data.items.find(person => person.id === id(1128))).toMatchObject({ canTeach: true, grantedAt: '2026-09-22T08:00:00Z' })
         expect(last.data.items.find(person => person.id === id(1129))).toMatchObject({ canTeach: false })
         expect(selectedIds).toHaveLength(2)
         expect(selectedIds[1]).toEqual(last.data.items.map(person => person.id))
     })
 
-    it('searches before paging, omits ineligible roles and keeps the pilot lookup bounded', async () => {
+    it('searches before paging, omits ineligible accounts and keeps the pilot lookup bounded', async () => {
         const matched = await listAcademyTrainerPage({ search: 'Konsultant 129', page: 1 })
         expect(matched.success && matched.data).toMatchObject({ total: 1 })
         if (!matched.success) throw new Error(matched.error)
@@ -72,6 +72,9 @@ describe('Academy trainer directory', () => {
         expect(pilot.success && pilot.data).toHaveLength(100)
         if (!pilot.success) throw new Error(pilot.error)
         expect(pilot.data[0]).toMatchObject({ id: USER, role: 'admin', canTeach: true })
-        expect(pilot.data.some(person => person.id === id(3000) || person.id === id(3001) || person.id === id(3002))).toBe(false)
+        expect(pilot.data.some(person => person.id === id(3000) || person.id === id(3001))).toBe(false)
+
+        const office = await listAcademyTrainers('Manager')
+        expect(office.success && office.data.map(person => person.id)).toEqual([id(3002)])
     })
 })
