@@ -2,9 +2,10 @@
 // OnlineMeetingRecording.Read.All i polityce dostępu aplikacji, dlatego domyślnie jest wyłączony.
 // Bez przełącznika zadanie w ogóle nie powstaje, więc nie ma też żadnego żądania do Graph.
 import type { GraphLike } from '@/lib/graph/client'
+import { isAcademySwitchOn } from './switches'
 
 export function academyGraphRecordingsEnabled(env: Record<string, string | undefined> = process.env): boolean {
-    return env.ACADEMY_GRAPH_RECORDINGS_ENABLED === 'true'
+    return isAcademySwitchOn('ACADEMY_GRAPH_RECORDINGS_ENABLED', env as NodeJS.ProcessEnv)
 }
 
 export interface TeamsMeetingTarget {
