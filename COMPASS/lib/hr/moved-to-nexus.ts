@@ -160,13 +160,18 @@ export function nexusModuleUrl(module: HrModule, base: string | null = nexusAppU
  * - TCM idzie do Akademii (`/learning`), gdy WSZYSTKIE moduły HR są w NEXUSIE —
  *   wtedy hub i People Ops to samo archiwum, a TCM ma w Compassie jedną żywą pracę:
  *   globalny edytor Akademii.
- * - `internal`/`manager`/`finanse` zostają na `/internal`: Akademia ich nie wpuszcza
- *   (`requireAcademyContext`, middleware odsyła ich z `/learning` na landing), a hub
- *   pokazuje archiwum z banerem i linkiem do NEXUSA. Inny landing byłby pętlą albo
- *   pustym ekranem.
+ * - `internal`/`manager`/`finanse` idą do Akademii na tych samych warunkach, ale tylko
+ *   gdy rollout wpuszcza tę osobę (`academyAllowed`, B1.1). Bez tego zostają na
+ *   `/internal`: middleware odsyła je z `/learning` na landing, więc inny wynik byłby
+ *   pętlą albo pustym ekranem.
  */
-export function hrLandingPath(role: string | null | undefined, moved: ReadonlySet<HrModule>): string {
+export function hrLandingPath(
+    role: string | null | undefined,
+    moved: ReadonlySet<HrModule>,
+    academyAllowed = false,
+): string {
     if (role === 'admin' || role === 'consultant' || !role) return '/home'
-    if (role === 'talent_community' && HR_MODULES.every((m) => moved.has(m))) return '/learning'
+    const hubIsArchive = HR_MODULES.every((m) => moved.has(m))
+    if (hubIsArchive && (role === 'talent_community' || academyAllowed)) return '/learning'
     return '/internal'
 }
