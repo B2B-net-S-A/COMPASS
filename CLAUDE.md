@@ -495,7 +495,7 @@ z ostrzeżeniem). Nowa trasa cron **zawsze** przez `withCronHeartbeat` — patrz
 | Scheduler | Co | Uwaga |
 |---|---|---|
 | **Coolify** → Resources → compass → Schedules | większość tras | źródło prawdy to `scheduled_tasks` w `coolify-db`, nie ten plik |
-| **GH Actions** | `cron-legal-monitor-alerts.yml` (`23 8 * * *`), `cron-timesheet-reminder.yml` (`0 8 1-5 * *`) | redundancja jest bezpieczna tylko tam, gdzie trasa ma dedup w bazie |
+| **GH Actions** | `cron-legal-monitor-alerts.yml` (`23 8 * * *`), `cron-timesheet-reminder.yml` (`0 8 1-5 * *`), `cron-audit-log-retention.yml` (`41 3 * * *`) | redundancja jest bezpieczna tylko tam, gdzie trasa ma dedup w bazie |
 
 **Pięć pułapek, każda już raz zabolała:**
 

@@ -1,0 +1,44 @@
+name: Audit log retention (daily cron)
+
+# B5.7. Trasa /api/cron/audit-log-retention istniała od audytu 2026-08 (C5), ale nikt
+# jej nie wywoływał: produkcja miała 0 wpisów AUDIT_LOG_RETENTION_RUN. Polityka retencji
+# deklaruje 12 miesięcy, a zadeklarowanego okresu, którego nikt nie egzekwuje, nie ma.
+#
+# Dziennie, bo przebieg ma sufit 20 000 wierszy i sam nadrabia zaległość. Wielokrotne
+# wołanie jest bezpieczne: trasa usuwa tylko wiersze starsze niż 12 miesięcy, więc
+# ewentualne zadanie w Coolify nie zdubluje skutku. Pierwsze realne kasowanie przypada
+# na maj 2027, wcześniej przebieg zostawia wyłącznie heartbeat.
+
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-log-retention
+  cancel-in-progress: false
+
+jobs:
+  retention:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Curl /api/cron/audit-log-retention
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -o pipefail
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Brak APP_URL albo CRON_SECRET w ustawieniach repo."
+            exit 1
+          fi
+          curl -fsSL --retry 3 --retry-delay 10 \
+            -A "dynaminds-smoke-test/1.0" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/audit-log-retention" | tee /tmp/result.json
+          echo
+          jq -e '.ok == true' /tmp/result.json > /dev/null
