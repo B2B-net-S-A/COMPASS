@@ -46,6 +46,15 @@ describe('TCM Academy editor authorization', () => {
         expect(access).toMatchObject({ isAdmin: false, canManageAcademy: false, canTeach: false, isPilot: true })
         await expect(requireAcademyContext({ editor: true })).rejects.toThrow('uprawnień obsługi Akademii')
     })
+    it('keeps a learner account a learner even with a trainer grant or a stray role', async () => {
+        const learner = { id: USER, email: 'u@example.test', app_metadata: { academy_only: true } }
+        client = academyFixture({ tables: { profiles: [{ ...profile, role: 'consultant' }], academy_user_capabilities: [{ user_id: USER, can_train: true, revoked_at: null }] }, user: learner, rpcs: { academy_rollout_access: () => ({ allowed: true, mode: 'pilot', isPilot: true }) } })
+        const { access } = await requireAcademyContext()
+        expect(access).toMatchObject({ isAdmin: false, canManageAcademy: false, canTeach: false })
+        await expect(requireAcademyContext({ trainer: true })).rejects.toThrow('uprawnionych trenerów')
+        client = academyFixture({ tables: { profiles: [{ ...profile, role: 'admin' }] }, user: learner, rpcs: { academy_rollout_access: () => ({ allowed: true, mode: 'pilot', isPilot: true }) } })
+        await expect(requireAcademyContext({ admin: true })).rejects.toThrow('uprawnień administratora')
+    })
     it('fails closed when the rollout authority denies access', async () => {
         client = academyFixture({ tables: { profiles: [profile] }, rpcs: { academy_rollout_access: () => ({ allowed: false, mode: 'closed' }) } })
         await expect(requireAcademyContext({ editor: true })).rejects.toThrow('nie jest jeszcze dostępna')

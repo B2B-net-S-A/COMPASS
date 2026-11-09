@@ -11,6 +11,7 @@ import {
     type CategoryMaterial,
     type SupportActionResult,
 } from '@/lib/types/support'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 const BUCKET = 'support-materials'
 
@@ -35,6 +36,7 @@ function validateFile(file: File): string | null {
 // ─── Category materials ──────────────────────────────────────────────────────
 
 export async function listCategoryMaterials(categoryId: string): Promise<SupportActionResult<CategoryMaterial[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data, error } = await supabase
@@ -58,6 +60,7 @@ export async function listCategoryMaterials(categoryId: string): Promise<Support
 export async function uploadCategoryMaterialForm(
     formData: FormData,
 ): Promise<SupportActionResult<CategoryMaterial>> {
+    await assertNotAcademyOnly()
     const categoryId = String(formData.get('category_id') ?? '')
     if (!categoryId) return { success: false, error: 'Brak ID kategorii.' }
     const file = formData.get('file')
@@ -75,6 +78,7 @@ export async function uploadCategoryMaterial(
     title: string,
     description?: string,
 ): Promise<SupportActionResult<CategoryMaterial>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase, user } = await requireSuperAdmin()
         if (!title || title.trim().length < 2) return { success: false, error: 'Tytuł musi mieć co najmniej 2 znaki.' }
@@ -122,6 +126,7 @@ export async function uploadCategoryMaterial(
 }
 
 export async function deleteCategoryMaterial(id: string): Promise<SupportActionResult<true>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase } = await requireSuperAdmin()
         const { data: existing, error: fetchErr } = await supabase
@@ -150,6 +155,7 @@ export async function deleteCategoryMaterial(id: string): Promise<SupportActionR
 // ─── Article attachments ─────────────────────────────────────────────────────
 
 export async function listArticleAttachments(articleId: string): Promise<SupportActionResult<ArticleAttachment[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data, error } = await supabase
@@ -170,6 +176,7 @@ export async function listArticleAttachments(articleId: string): Promise<Support
 export async function uploadArticleAttachmentForm(
     formData: FormData,
 ): Promise<SupportActionResult<ArticleAttachment>> {
+    await assertNotAcademyOnly()
     const articleId = String(formData.get('article_id') ?? '')
     if (!articleId) return { success: false, error: 'Brak ID artykułu.' }
     const file = formData.get('file')
@@ -183,6 +190,7 @@ export async function uploadArticleAttachment(
     file: File,
     title: string,
 ): Promise<SupportActionResult<ArticleAttachment>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase, user } = await requireSuperAdmin()
         if (!title || title.trim().length < 2) return { success: false, error: 'Tytuł musi mieć co najmniej 2 znaki.' }
@@ -229,6 +237,7 @@ export async function uploadArticleAttachment(
 }
 
 export async function deleteArticleAttachment(id: string): Promise<SupportActionResult<true>> {
+    await assertNotAcademyOnly()
     try {
         const { supabase } = await requireSuperAdmin()
         const { data: existing, error: fetchErr } = await supabase
@@ -257,6 +266,7 @@ export async function deleteArticleAttachment(id: string): Promise<SupportAction
 // ─── Signed URL for download (any authenticated user) ────────────────────────
 
 export async function getMaterialDownloadUrl(filePath: string): Promise<SupportActionResult<string>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()

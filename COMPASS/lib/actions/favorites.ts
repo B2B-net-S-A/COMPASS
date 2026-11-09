@@ -5,8 +5,10 @@ import { logCompat } from '@/lib/logger'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { FavoriteProject } from '@/lib/types'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 export async function addFavoriteProject(projectId: string, note?: string) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
@@ -35,6 +37,7 @@ export async function addFavoriteProject(projectId: string, note?: string) {
 }
 
 export async function removeFavoriteProject(projectId: string) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
@@ -54,6 +57,7 @@ export async function removeFavoriteProject(projectId: string) {
 }
 
 export async function toggleFavoriteProject(projectId: string) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
@@ -101,6 +105,7 @@ export async function toggleFavoriteProject(projectId: string) {
 }
 
 export async function getMyFavoriteProjects(): Promise<(FavoriteProject & { project: any })[]> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
@@ -119,6 +124,7 @@ export async function getMyFavoriteProjects(): Promise<(FavoriteProject & { proj
 }
 
 export async function getUserFavoriteProjects(userId: string): Promise<(FavoriteProject & { project: any })[]> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
 
     const { data, error } = await supabase
@@ -135,6 +141,7 @@ export async function getUserFavoriteProjects(userId: string): Promise<(Favorite
 }
 
 export async function getMyFavoriteProjectIds(): Promise<string[]> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
@@ -149,6 +156,7 @@ export async function getMyFavoriteProjectIds(): Promise<string[]> {
 }
 
 export async function updateFavoriteNote(projectId: string, note: string) {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
@@ -164,6 +172,7 @@ export async function updateFavoriteNote(projectId: string, note: string) {
 }
 
 export async function getProjectFavoriteCount(projectId: string): Promise<number> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
 
     const { count, error } = await supabase

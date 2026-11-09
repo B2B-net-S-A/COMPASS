@@ -13,6 +13,7 @@ import { runAction, ExpectedError, type ActionResult } from '@/lib/actions/actio
 import { revokeAccountAccess } from '@/lib/auth/account-access'
 import { warsawDate } from '@/lib/oof/oof-dates'
 import { assertEmploymentStatusWritable, assertHrModuleWritable, isMovedToNexus } from '@/lib/hr/moved-to-nexus'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ const MAX_LIMIT = 200
 const SEARCH_FETCH_BATCH = 1000
 
 export async function listAllUsers(input?: ListAllUsersInput): Promise<ListAllUsersResult> {
+    await assertNotAcademyOnly()
     await requireSuperAdmin()
 
     const search = input?.search?.trim().toLowerCase() ?? ''
@@ -229,6 +231,7 @@ function mapUser(
 // ─── Password reset link ─────────────────────────────────────────────────────
 
 export async function sendPasswordResetLink(targetUserId: string): Promise<void> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     const target = await fetchTargetUser(targetUserId)
     ensureCanModify(actor.id, target)
@@ -275,6 +278,7 @@ function validatePassword(password: string) {
 }
 
 export async function forceSetPassword(targetUserId: string, newPassword: string): Promise<void> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     validatePassword(newPassword)
     const target = await fetchTargetUser(targetUserId)
@@ -305,6 +309,7 @@ export async function forceSetPassword(targetUserId: string, newPassword: string
 // ─── Sign out all sessions ───────────────────────────────────────────────────
 
 export async function signOutAllSessions(targetUserId: string): Promise<void> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     const target = await fetchTargetUser(targetUserId)
     ensureCanModify(actor.id, target)
@@ -327,6 +332,7 @@ export async function signOutAllSessions(targetUserId: string): Promise<void> {
 const PERMANENT_BAN_DURATION = '876000h' // ≈ 100 years
 
 export async function setUserBan(targetUserId: string, banned: boolean): Promise<void> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     const target = await fetchTargetUser(targetUserId)
     ensureCanModify(actor.id, target)
@@ -346,6 +352,7 @@ export async function setUserBan(targetUserId: string, banned: boolean): Promise
 // ─── Public helper: is current user a Super Admin? ───────────────────────────
 
 export async function checkUserAdminAccess(): Promise<boolean> {
+    await assertNotAcademyOnly()
     try {
         await requireSuperAdmin()
         return true
@@ -391,6 +398,7 @@ async function syncAdminAccessList(
 }
 
 export async function setUserRole(targetUserId: string, newRole: DbRole): Promise<void> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     if (!DB_ROLES.includes(newRole)) {
         throw new Error(`Nieprawidłowa rola: ${newRole}`)
@@ -512,6 +520,7 @@ export interface EmployeeProfileFields {
 }
 
 export async function setEmployeeProfile(targetUserId: string, fields: EmployeeProfileInput): Promise<void> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     // Kartoteka (miejsce pracy, forma zatrudnienia, start) i pula urlopowa mają
     // osobne przełączniki — każde pole odmawia według modułu, który je prowadzi.
@@ -585,6 +594,7 @@ export async function setEmployeeProfile(targetUserId: string, fields: EmployeeP
 }
 
 export async function getEmployeeProfileFields(targetUserId: string): Promise<EmployeeProfileFields> {
+    await assertNotAcademyOnly()
     await requireSuperAdmin()
     const admin = createServiceClient()
     const { data, error } = await admin
@@ -637,6 +647,7 @@ const INVITABLE_ROLES: InviteUserInput['role'][] = [
 ]
 
 export async function inviteUser(input: InviteUserInput): Promise<ActionResult<{ userId: string }>> {
+    await assertNotAcademyOnly()
     return runAction('inviteUser', async () => {
         const { user: actor } = await requireSuperAdmin()
 
@@ -782,6 +793,7 @@ export interface ManagerCandidate {
  * admin/manager/finanse — wszyscy z "managerską odpowiedzialnością".
  */
 export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
+    await assertNotAcademyOnly()
     await requireSuperAdmin()
     const admin = createServiceClient()
     // Nikogo nie podpinamy pod przełożonego, który już odszedł.
@@ -804,6 +816,7 @@ export async function listManagerCandidates(): Promise<ManagerCandidate[]> {
  * Pass `managerId=null` to unassign.
  */
 export async function setUserManager(targetUserId: string, managerId: string | null): Promise<void> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     assertHrModuleWritable('people')
     const target = await fetchTargetUser(targetUserId)
@@ -866,6 +879,7 @@ export async function archiveEmployee(
     terminationDate?: string,
     options?: { sendEmployeeEmail?: boolean; sendManagerEmail?: boolean },
 ): Promise<{ interviewId: string }> {
+    await assertNotAcademyOnly()
     const { user: actor } = await requireSuperAdmin()
     assertHrModuleWritable('lifecycle')
     const target = await fetchTargetUser(targetUserId)
@@ -902,6 +916,7 @@ export async function archiveEmployee(
  * Cofnięcie pomyłki: Administracja użytkownikami → Odblokuj + zmiana statusu.
  */
 export async function deactivateEmployee(targetUserId: string, lastWorkDay?: string): Promise<ActionResult<void>> {
+    await assertNotAcademyOnly()
     return runAction('deactivateEmployee', async () => {
         const { user: actor } = await requireSuperAdmin()
         const target = await fetchTargetUser(targetUserId)
@@ -955,6 +970,7 @@ export async function deactivateEmployee(targetUserId: string, lastWorkDay?: str
  * Działa tylko dla `exited` — offboarding ma własny przebieg w /internal/lifecycle.
  */
 export async function reactivateEmployee(targetUserId: string): Promise<ActionResult<void>> {
+    await assertNotAcademyOnly()
     return runAction('reactivateEmployee', async () => {
         const { user: actor } = await requireSuperAdmin()
         const target = await fetchTargetUser(targetUserId)
@@ -1021,6 +1037,7 @@ export async function deleteUserAccount(
     targetUserId: string,
     confirmEmail: string,
 ): Promise<DeleteUserResult> {
+    await assertNotAcademyOnly()
     try {
         const { user: actor } = await requireSuperAdmin()
         const target = await fetchTargetUser(targetUserId)

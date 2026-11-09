@@ -2,6 +2,7 @@
 
 
 import { createClient } from '@/lib/supabase/server'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 export interface ProjectsAnalysis {
     totalAnalyzed: number
@@ -54,6 +55,7 @@ const getCanonicalSkill = (skill: string) => {
 }
 
 export async function getSkillGaps(): Promise<ProjectsAnalysis> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
