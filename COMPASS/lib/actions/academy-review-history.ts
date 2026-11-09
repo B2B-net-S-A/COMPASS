@@ -9,7 +9,7 @@ const cursorSchema = z.object({ createdAt: z.iso.datetime({ offset: true }), id:
 const pageSchema = z.object({
     items: z.array(z.object({
         id: z.uuid(),
-        action: z.enum(['COURSE_REVIEW_SUBMITTED', 'COURSE_SUBMITTED', 'COURSE_PUBLISHED', 'COURSE_REJECTED', 'LEGACY_COURSE_REVIEWED', 'COURSE_ARCHIVED']),
+        action: z.enum(['COURSE_REVIEW_SUBMITTED', 'COURSE_SUBMITTED', 'COURSE_PUBLISHED', 'COURSE_REJECTED', 'LEGACY_COURSE_REVIEWED', 'COURSE_ARCHIVED', 'COURSE_REVIEW_WITHDRAWN']),
         createdAt: z.iso.datetime({ offset: true }), actorName: z.string().max(200).nullable(),
         versionNumber: z.number().int().positive().nullable(), submissionId: z.uuid().nullable(),
         reason: z.string().max(3000).nullable(), approved: z.boolean().nullable(),
