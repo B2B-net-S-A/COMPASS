@@ -10,6 +10,7 @@ import type {
     SupportArticle,
     SupportArticleListItem,
 } from '@/lib/types/support'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 async function isAdminOrTrainer(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
     const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
@@ -32,6 +33,7 @@ function slugify(text: string): string {
 }
 
 export async function listArticlesByCategory(categorySlug?: string, options: { onlyPublished?: boolean } = { onlyPublished: true }): Promise<SupportActionResult<SupportArticleListItem[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: categories } = await supabase
@@ -82,6 +84,7 @@ export async function listArticlesByCategory(categorySlug?: string, options: { o
 }
 
 export async function getArticleBySlug(slug: string): Promise<SupportActionResult<SupportArticle>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data, error } = await supabase
@@ -99,6 +102,7 @@ export async function getArticleBySlug(slug: string): Promise<SupportActionResul
 }
 
 export async function createArticle(input: CreateArticleInput): Promise<SupportActionResult<{ articleId: string; slug: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -139,6 +143,7 @@ export async function createArticle(input: CreateArticleInput): Promise<SupportA
 }
 
 export async function updateArticle(articleId: string, patch: Partial<CreateArticleInput> & { publish?: boolean }): Promise<SupportActionResult<{ slug: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()

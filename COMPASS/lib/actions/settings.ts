@@ -3,11 +3,13 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 /**
  * Get a system setting value by key
  */
 export async function getSystemSetting(key: string): Promise<string | null> {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
 
     const { data, error } = await supabase
@@ -28,6 +30,7 @@ export async function getSystemSetting(key: string): Promise<string | null> {
  * Update a system setting (admin only)
  */
 export async function updateSystemSetting(key: string, value: string) {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
 
     // Check admin permissions
@@ -68,6 +71,7 @@ export async function updateSystemSetting(key: string, value: string) {
  * Get all system settings (admin only)
  */
 export async function getAllSystemSettings() {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
 
     // Check admin permissions

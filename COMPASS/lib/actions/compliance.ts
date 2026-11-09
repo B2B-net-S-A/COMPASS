@@ -7,6 +7,7 @@ import { CURRENT_TERMS_VERSION } from '@/lib/constants/compliance'
 import { getFallbackDoc } from '@/lib/constants/fallback-docs'
 import { SLUG_TO_DOCUMENT_TYPE } from '@/lib/constants/legal-documents'
 import { headers } from 'next/headers'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export interface LegalDocument {
  * Returns the latest consent record or null if re-acceptance is needed.
  */
 export async function checkUserConsents(): Promise<UserConsent | null> {
+    await assertNotAcademyOnly()
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -85,6 +87,7 @@ export interface SaveConsentsInput {
  * Save user consent record with IP + User-Agent for audit trail.
  */
 export async function saveUserConsents(input: SaveConsentsInput): Promise<{ error?: string }> {
+    await assertNotAcademyOnly()
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Nie jesteś zalogowany.' }
@@ -165,6 +168,7 @@ function normaliseDoc(row: LegalDocumentRow | null): LegalDocument | null {
  * `document_type` + `content` schema with a friendly slug → enum mapping.
  */
 export async function getLegalDocument(slug: string): Promise<LegalDocument | null> {
+    await assertNotAcademyOnly()
   const supabase = createClient()
 
   // Primary: try `slug` column (newer schema)
@@ -224,6 +228,7 @@ export async function getLegalDocument(slug: string): Promise<LegalDocument | nu
 export async function listLegalDocuments(
   visibility?: 'public' | 'authenticated' | 'admin'
 ): Promise<LegalDocument[]> {
+    await assertNotAcademyOnly()
   const supabase = createClient()
 
   let query = supabase
@@ -262,6 +267,7 @@ export interface ConsentWithUser extends UserConsent {
  * Admin-only: list all consent records (for audit).
  */
 export async function listAllConsents(limit = 100): Promise<ConsentWithUser[]> {
+    await assertNotAcademyOnly()
   const supabase = createClient()
 
   const { data } = await supabase

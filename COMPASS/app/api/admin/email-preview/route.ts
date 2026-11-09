@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { canAccessInternalZone, isAdminLike, type AppRole } from '@/lib/types/role'
+import { isAcademyOnlyUser } from '@/lib/auth/academy-only'
 import { isPreviewTemplate, PREVIEW_TEMPLATES, renderPreview } from '@/lib/email/previews'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,9 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     if (userErr || !user || !user.email) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (isAcademyOnlyUser(user)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { data: profile } = await supabase
