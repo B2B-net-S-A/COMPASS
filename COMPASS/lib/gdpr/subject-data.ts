@@ -31,11 +31,11 @@ type AcademyTableName = 'course_completions' | 'course_run_registrations' | 'cou
     | 'academy_user_capabilities' | 'course_staff' | 'course_run_staff'
     | 'academy_organizers' | 'academy_m365_identities' | 'academy_notification_receipts'
     | 'session_attendance' | 'academy_edition_survey_responses' | 'academy_webinar_roster' | 'academy_retrieval_schedule'
-    | 'academy_learner_accounts'
+    | 'academy_learner_accounts' | 'academy_video_progress'
     | 'course_quiz_attempt_items' | 'academy_participation_documents'
 
-/** Tabele z migracji B1 i B2 stosowanych po wdrożeniu kodu: ich brak nie oznacza niepełnego eksportu. */
-export const PENDING_MIGRATION_TABLES: ReadonlySet<string> = new Set(['academy_learner_accounts', 'course_quiz_attempt_items', 'academy_participation_documents'])
+/** Tabele z migracji B1, B2 i B4 stosowanych po wdrożeniu kodu: ich brak nie oznacza niepełnego eksportu. */
+export const PENDING_MIGRATION_TABLES: ReadonlySet<string> = new Set(['academy_learner_accounts', 'course_quiz_attempt_items', 'academy_participation_documents', 'academy_video_progress'])
 export type TableName = keyof Database['public']['Tables'] | AcademyTableName
 
 /** Osoba z kontem w aplikacji (`profiles`) albo kontraktor u klienta (`contractors`). */
@@ -87,6 +87,7 @@ export const EMPLOYEE_SOURCES: readonly SubjectSource[] = [
     { table: 'lifecycle_events', column: 'user_id', label: 'Zdarzenia cyklu życia' },
     { table: 'academy_learner_accounts', column: 'user_id', label: 'Konto nauki w Akademii' },
     { table: 'course_enrollments', column: 'user_id', label: 'Zapisy na szkolenia' },
+    { table: 'academy_video_progress', column: 'user_id', label: 'Postęp oglądania nagrań szkoleń', select: 'user_id,asset_id,position_seconds,duration_seconds,watched_ranges,updated_at' },
     { table: 'course_run_registrations', column: 'user_id', label: 'Rejestracje na edycje szkoleń' },
     { table: 'course_completions', column: 'user_id', label: 'Ukończenia i dane certyfikatów', select: 'id,enrollment_id,user_id,course_id,version_id,completed_at,revoked_at,legacy,certificate_snapshot' },
     { table: 'academy_user_capabilities', column: 'user_id', label: 'Uprawnienia prowadzącego', select: 'user_id,can_train,granted_at,revoked_at' },

@@ -99,6 +99,10 @@ describe('pinned progress and lesson access', () => {
         setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_mark_lesson_complete: fail('lesson_not_in_enrollment') } })
         expect(await markLessonComplete(COURSE, LESSON, ENROLLMENT)).toEqual({ success: false, error: 'Lekcja nie należy do Twojej wersji programu.' })
     })
+    it('explains that a video lesson completes by watching (B4.3)', async () => {
+        setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_mark_lesson_complete: fail('video_watch_required') } })
+        expect(await markLessonComplete(COURSE, LESSON, ENROLLMENT)).toEqual({ success: false, error: 'Moduł z nagraniem zalicza się sam po obejrzeniu ustawionej części nagrania.' })
+    })
     it('records resume position against the selected enrollment', async () => {
         setup({ tables: { course_enrollments: [enrollmentRow()] }, rpcs: { academy_record_lesson_access: () => null } })
         expect(await recordLessonAccess(COURSE, LESSON, ENROLLMENT)).toEqual({ success: true, data: undefined })
