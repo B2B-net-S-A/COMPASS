@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-import { claimLearnerEntry, createLearnerSessionHash, ensureLearnerUser, resolveLearnerPass } from '@/lib/academy/learner-entry'
+import { bindLearnerToRuns, claimLearnerEntry, createLearnerSessionHash, ensureLearnerUser, resolveLearnerPass } from '@/lib/academy/learner-entry'
 import { CURRENT_LEARNER_INFO_VERSION } from '@/lib/academy/learner-info'
 import { logger } from '@/lib/logger'
 import { createServiceClient } from '@/lib/supabase/admin'
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest, { params }: { params: { token: 
         }
         const userId = await ensureLearnerUser(client, resolved.account)
         if (!userId) return reply({ error: 'Nie udało się przygotować konta. Skontaktuj się z organizatorem szkolenia.' }, 409)
+        await bindLearnerToRuns(client, resolved.account.id, userId)
         const tokenHash = await createLearnerSessionHash(client, resolved.account.email, userId)
         if (!tokenHash) return reply({ error: 'Nie udało się przygotować wejścia. Spróbuj ponownie później.' }, 503)
         return reply({ tokenHash }, 200)
