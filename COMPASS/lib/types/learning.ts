@@ -113,6 +113,8 @@ export interface CourseDetail extends Course {
     author_avatar_url: string | null
     lessons: CourseLesson[]
     quiz_questions_count: number
+    /** Kurs z modułów dla nieobecnych: początki nieodwołanych sesji edycji na żywo (RLS może dać pustą listę). */
+    live_session_starts?: string[]
     is_enrolled: boolean
     user_rating: { rating: number; comment: string | null } | null
     enrollment_id?: string | null
