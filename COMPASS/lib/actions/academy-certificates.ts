@@ -12,7 +12,7 @@ export interface AcademyCertificateRecord {
     completed_at: string
     revoked_at: string | null
     revoked_reason: string | null
-    certificate_snapshot: { course_title: string; participant_name: string; version_number: number; certificate_hash: string }
+    certificate_snapshot: { course_title: string; participant_name: string; version_number: number; certificate_hash: string; valid_until?: string | null }
     decision: { rewards_state: string; reversed_transactions: number; manual_reward_review_required: boolean } | null
 }
 
@@ -51,6 +51,12 @@ export async function getMyAcademyCertificate(completionId: string) {
             .eq('id', z.uuid().parse(completionId)).eq('user_id', access.userId).single()
         assertDatabaseResult(error)
         if (!data) throw new Error('Certyfikat nie istnieje lub nie masz do niego dostępu.')
-        return data as Omit<AcademyCertificateRecord, 'decision'>
+        // Odnowienie dotyczy tylko zapisu samodzielnego. DEKORACJA: bez tego odczytu strona działa, tylko bez przycisku.
+        const [enrollment, course] = await Promise.all([
+            client.from('course_enrollments').select('run_id').eq('id', data.enrollment_id).maybeSingle(),
+            client.from('courses').select('slug').eq('id', data.course_id).maybeSingle(),
+        ])
+        const renewalSlug = enrollment.data && enrollment.data.run_id === null && course.data ? course.data.slug as string : null
+        return { ...data, renewalSlug } as Omit<AcademyCertificateRecord, 'decision'> & { renewalSlug: string | null }
     })
 }

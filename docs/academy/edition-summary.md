@@ -11,13 +11,18 @@ na serwerze i bez zapisanego wpisu `ACADEMY_EDITION_REPORT_EXPORTED` w dzienniku
 audytu nie zostaje wydany.
 
 Części zależne od późniejszych migracji mówią „czeka na migrację”, a nie „0”:
-pre-test (`course_quiz_attempts.kind`), zaświadczenia udziału
-(`academy_participation_documents`), unieważnianie pytań
-(`course_quiz_questions.voided_at`; przycisk dochodzi z RPC zadania B2.3).
-Dane bez daty startu raportów (`academy_rollout_settings.reports_start_at`, B0.6),
-sprzed niej albo z kursu `is_rehearsal` mają etykietę „Próba”.
+pre-test (`academy_run_quiz_gain`), zaświadczenia udziału
+(`academy_participation_documents`). Dane bez daty startu raportów
+(`academy_reports_start_at`, B0.6), sprzed niej albo z kursu `is_rehearsal` mają
+etykietę „Próba”.
 
-Wynik pierwszego podejścia to najwcześniejsza próba `final` danej osoby. Analiza
+Wyniki osób z dostępem do klucza (autor, recenzent, współtwórca wersji) nie liczą się
+do wyników testu, analizy pytań ani przyrostu (`academy_run_key_holder_enrollments`).
+Obecność i dokumenty liczą się normalnie. Tabelę pytań widzi tylko osoba z dostępem do
+klucza, zgodnie z polityką `course_quiz_options`. Z niej można unieważnić pytanie: najpierw
+podgląd skutków, potem powód, który trafia do audytu.
+
+Wynik pierwszego podejścia to najwcześniejsza zamknięta próba `final` danej osoby. Analiza
 pytań liczy tylko te próby. Certyfikaty to nieunieważnione ukończenia potwierdzonych
 zapisów. Obecna jest osoba z progiem spełnionym na każdym aktywnym wymaganym
 spotkaniu; dopóki któregoś okna nie potwierdzono, liczba obecnych jest nieustalona.

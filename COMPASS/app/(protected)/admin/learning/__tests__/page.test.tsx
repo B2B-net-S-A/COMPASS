@@ -2,14 +2,13 @@ import { render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminAkademiaPage from '../page'
 
-const actions = vi.hoisted(() => ({ reviewQueue: vi.fn(), legacyQueue: vi.fn(), materialQueue: vi.fn() }))
+const actions = vi.hoisted(() => ({ reviewQueue: vi.fn(), materialQueue: vi.fn() }))
 
-vi.mock('@/lib/actions/courses-admin', () => ({ getReviewQueue: actions.reviewQueue, getLegacyReviewQueue: actions.legacyQueue }))
+vi.mock('@/lib/actions/courses-admin', () => ({ getReviewQueue: actions.reviewQueue }))
 vi.mock('@/components/academy/AcademyAdminNav', () => ({ AcademyAdminNav: () => null }))
 vi.mock('@/components/academy/RunMaterialReviewQueue', () => ({ RunMaterialReviewQueue: actions.materialQueue }))
 
 beforeEach(() => {
-    actions.legacyQueue.mockResolvedValue({ success: true, data: [] })
     actions.reviewQueue.mockResolvedValue({ success: true, data: { items: [], total: 1001, page: 21, pageSize: 50 } })
 })
 

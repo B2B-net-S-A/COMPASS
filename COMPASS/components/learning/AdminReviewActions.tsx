@@ -7,18 +7,17 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useConfirm } from '@/components/shared/ConfirmDialog'
-import { approveCourse, rejectCourse, reviewLegacyCourse } from '@/lib/actions/courses-admin'
+import { approveCourse, rejectCourse } from '@/lib/actions/courses-admin'
 
 interface AdminReviewActionsProps {
     versionId: string
     submissionId?: string | null
     courseId: string
     title: string
-    legacyReview?: boolean
     canReview?: boolean
 }
 
-export function AdminReviewActions({ courseId, versionId, submissionId, title, legacyReview = false, canReview = true }: AdminReviewActionsProps) {
+export function AdminReviewActions({ courseId, versionId, submissionId, title, canReview = true }: AdminReviewActionsProps) {
     const router = useRouter()
     const [showReject, setShowReject] = useState(false)
     const [reason, setReason] = useState('')
@@ -36,7 +35,7 @@ export function AdminReviewActions({ courseId, versionId, submissionId, title, l
         setError(null)
         setSuccess(null)
         startTransition(async () => {
-            const res = legacyReview ? await reviewLegacyCourse(courseId, versionId, true) : await approveCourse(courseId, versionId, submissionId)
+            const res = await approveCourse(courseId, versionId, submissionId)
             if (!res.success) {
                 setError(res.error)
                 return
@@ -58,12 +57,12 @@ export function AdminReviewActions({ courseId, versionId, submissionId, title, l
         setError(null)
         setSuccess(null)
         startTransition(async () => {
-            const res = legacyReview ? await reviewLegacyCourse(courseId, versionId, false, reason.trim()) : await rejectCourse(courseId, reason.trim(), versionId, submissionId)
+            const res = await rejectCourse(courseId, reason.trim(), versionId, submissionId)
             if (!res.success) {
                 setError(res.error)
                 return
             }
-            setSuccess(legacyReview ? 'Nowe zapisy pozostają wstrzymane. Zapisano powód decyzji.' : 'Wersja zwrócona do poprawy.')
+            setSuccess('Wersja zwrócona do poprawy.')
             setTimeout(() => router.push('/admin/learning'), 1500)
         })
     }
@@ -92,7 +91,7 @@ export function AdminReviewActions({ courseId, versionId, submissionId, title, l
                     <div className="flex gap-2">
                         <Button onClick={handleApprove} disabled={isPending || !canReview} className="gap-2 bg-success hover:bg-success/90">
                             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                            {legacyReview ? 'Zatwierdź i otwórz zapisy' : 'Zatwierdź i opublikuj'}
+                            Zatwierdź i opublikuj
                         </Button>
                         <Button onClick={() => setShowReject(true)} variant="outline" disabled={isPending || !canReview} className="gap-2">
                             <X className="w-4 h-4" /> Odrzuć

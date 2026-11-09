@@ -60,7 +60,6 @@ function AdminCourseCard({ course }: { course: AcademyAdminCourse }) {
                 <p className="text-sm text-muted-foreground">Autor: {course.authorName ?? 'Brak nazwy autora'}</p>
                 <p className="text-sm">Stan kursu: <span className="font-semibold">{ACADEMY_COURSE_STATUS_LABELS[archived ? 'archived' : course.status]}</span>{course.publishedVersionNumber !== null && <span className="text-muted-foreground"> · opublikowana wersja {course.publishedVersionNumber}</span>}</p>
                 {course.draftVersion && <p className="text-sm text-muted-foreground">Wersja robocza {course.draftVersion.number}: {ACADEMY_COURSE_STATUS_LABELS[course.draftVersion.status]}{course.draftVersion.title !== course.title && ` · ${course.draftVersion.title}`}</p>}
-                {course.legacyReviewRequired && !archived && <p className="text-sm text-warning">Publikacja historyczna wymaga ponownej akceptacji przed otwarciem zapisów.</p>}
             </div>
             <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline" size="sm"><Link href={`/learning/tworze/${course.id}/edit`}><BookOpen aria-hidden="true" />Program i historia</Link></Button>
