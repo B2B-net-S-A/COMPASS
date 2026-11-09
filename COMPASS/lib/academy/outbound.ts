@@ -61,6 +61,13 @@ function testRecipients(env: NodeJS.ProcessEnv): ReadonlySet<string> {
         .map(entry => entry.replace(/^["']+|["']+$/g, '').toLowerCase()).filter(Boolean))
 }
 
+/** Own Academy mailbox, unused until the launch gate turns its switch on. Graph permissions stay unchanged. */
+export function academySenderOverride(env: NodeJS.ProcessEnv): string | undefined {
+    if (env.ACADEMY_MAIL_SENDER_ENABLED !== 'true') return undefined
+    const sender = env.ACADEMY_MAIL_FROM?.trim()
+    return sender && /^(?:[^<>]*<)?[^@\s<>]+@[^@\s<>]+>?$/.test(sender) ? sender : undefined
+}
+
 function domainOf(address: string): string {
     return address.split('@')[1]?.toLowerCase() ?? 'unknown'
 }
@@ -130,7 +137,7 @@ async function finish(client: SupabaseClient, row: OutboxRow, patch: Record<stri
     if (error) refusalFor(error, row)
 }
 
-async function deliver(client: SupabaseClient, row: OutboxRow, sentStatus: 'sent' | 'sent_test', personalLink?: PersonalLink): Promise<'sent' | 'failed'> {
+async function deliver(client: SupabaseClient, row: OutboxRow, sentStatus: 'sent' | 'sent_test', env: NodeJS.ProcessEnv, personalLink?: PersonalLink): Promise<'sent' | 'failed'> {
     let html = row.html
     if (html.includes(ACADEMY_PERSONAL_LINK_PLACEHOLDER)) {
         const link = await personalLink?.(row).catch(() => null)
@@ -140,7 +147,8 @@ async function deliver(client: SupabaseClient, row: OutboxRow, sentStatus: 'sent
         }
         html = html.split(ACADEMY_PERSONAL_LINK_PLACEHOLDER).join(link)
     }
-    const result = await sendEmail({ to: row.recipient, subject: row.subject, html, redactRecipientInLogs: true })
+    const senderOverride = academySenderOverride(env)
+    const result = await sendEmail({ to: row.recipient, subject: row.subject, html, redactRecipientInLogs: true, ...(senderOverride ? { senderOverride } : {}) })
     if (!result.success) {
         logger.error({ event: 'academy.outbox.send_failed', kind: row.kind, recipientDomain: domainOf(row.recipient) })
         await finish(client, row, { status: 'failed', last_error: 'send_failed' })
@@ -166,7 +174,7 @@ export async function sendApprovedAcademyBatch(client: SupabaseClient, input: { 
             const claimed = await claim(client, row, now)
             if (claimed === 'taken') { skipped++; continue }
             if (claimed !== 'claimed') return claimed
-            if (await deliver(client, row, 'sent', input.personalLink) === 'sent') sent++
+            if (await deliver(client, row, 'sent', input.env ?? process.env, input.personalLink) === 'sent') sent++
             else failed++
         }
         return { status: 'done', sent, failed, skipped }
@@ -188,7 +196,7 @@ export async function sendAcademyMailTest(client: SupabaseClient, input: { id: s
         const claimed = await claim(client, row, now)
         if (claimed === 'taken') return { status: 'refused', reason: 'not_held' }
         if (claimed !== 'claimed') return claimed
-        return await deliver(client, row, 'sent_test', input.personalLink) === 'sent' ? { status: 'sent_test' } : { status: 'failed' }
+        return await deliver(client, row, 'sent_test', input.env ?? process.env, input.personalLink) === 'sent' ? { status: 'sent_test' } : { status: 'failed' }
     } catch {
         return refuse('write_failed')
     }

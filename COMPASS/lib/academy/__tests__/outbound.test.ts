@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendEmail } from '@/lib/email/sender'
 import {
     ACADEMY_PERSONAL_LINK_PLACEHOLDER,
+    academySenderOverride,
     approveAcademyOutboxBatch,
     holdAcademyMail,
     runAcademyOutboxHousekeeping,
@@ -335,5 +336,21 @@ describe('porządki w kolejce', () => {
     it('awaria zapisu jest zgłaszana', async () => {
         const { client } = fakeDb([], { update: { code: '08006', message: 'brak' } })
         expect(await runAcademyOutboxHousekeeping(client)).toEqual({ status: 'failed' })
+    })
+})
+
+describe('academySenderOverride', () => {
+    const env = (values: Record<string, string>) => values as unknown as NodeJS.ProcessEnv
+    it('stays unused until its own switch is on', () => {
+        expect(academySenderOverride(env({ ACADEMY_MAIL_FROM: 'akademia@b2bnetwork.pl' }))).toBeUndefined()
+        expect(academySenderOverride(env({ ACADEMY_MAIL_FROM: 'akademia@b2bnetwork.pl', ACADEMY_MAIL_ENABLED: 'true' }))).toBeUndefined()
+        expect(academySenderOverride(env({ ACADEMY_MAIL_FROM: 'akademia@b2bnetwork.pl', ACADEMY_MAIL_SENDER_ENABLED: 'false' }))).toBeUndefined()
+    })
+    it('returns the configured mailbox once enabled', () => {
+        expect(academySenderOverride(env({ ACADEMY_MAIL_FROM: 'Akademia <akademia@b2bnetwork.pl>', ACADEMY_MAIL_SENDER_ENABLED: 'true' }))).toBe('Akademia <akademia@b2bnetwork.pl>')
+    })
+    it('falls back to the default sender for an empty or malformed value', () => {
+        expect(academySenderOverride(env({ ACADEMY_MAIL_SENDER_ENABLED: 'true' }))).toBeUndefined()
+        expect(academySenderOverride(env({ ACADEMY_MAIL_FROM: 'nie adres', ACADEMY_MAIL_SENDER_ENABLED: 'true' }))).toBeUndefined()
     })
 })

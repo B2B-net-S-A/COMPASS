@@ -31,6 +31,11 @@ export interface EmailMessage {
     /** Optional override; otherwise uses MAIL_FROM env var. */
     from?: string
     /**
+     * Sender mailbox that wins over MAIL_FROM. Only the Academy gate sets it; legacy
+     * templates keep their hardcoded `from`, which MAIL_FROM deliberately ignores.
+     */
+    senderOverride?: string
+    /**
      * When true, Graph saves the sent message to the sender mailbox's Sent Items
      * folder. Use for compliance-relevant templates (leave decision, timesheet
      * decision, role change, broadcast). Default false to keep the shared mailbox
@@ -102,7 +107,7 @@ async function sendViaGraph(msg: EmailMessage): Promise<SendResult> {
     // `from` in legacy templates (noreply@compass.b2bnetwork.pl) is invalid
     // here. Always use MAIL_FROM env var when set, falling back to msg.from
     // only when MAIL_FROM is missing.
-    const fromHeader = process.env.MAIL_FROM ?? msg.from ?? getDefaultFrom()
+    const fromHeader = msg.senderOverride ?? process.env.MAIL_FROM ?? msg.from ?? getDefaultFrom()
     const fromAddress = fromHeader.replace(/^.*<([^>]+)>.*$/, '$1').trim() // strip "Name <addr>" → "addr"
     const payload = {
         message: {
