@@ -1,9 +1,33 @@
-# Akademia: migracje do zastosowania przez właściciela
+# Akademia: migracje do zastosowania
 
-Pliki leżą w `COMPASS/supabase/migrations/`. Stosuje je wyłącznie właściciel, przez MCP
-`apply_migration`, po jednej i w kolejności z tej listy. Nigdy `supabase db push`.
-Kod jest scalony wcześniej i działa bez tych obiektów.
+Kolejka plików SQL Akademii. Sesje budujące tylko dopisują tu pliki, a stosuje je właściciel. Bo każdy merge jedzie na produkcję bez stagingu, a `supabase db push` próbowałby zaaplikować od nowa prawie cały katalog (rejestr i pliki są rozjechane, patrz `CLAUDE.md`).
 
-| Kolejność | Plik | Zadanie | Warunek | Cofnięcie | Sprawdzenie |
-|---|---|---|---|---|---|
-| po B0.4 | `20261109210000_academy_b1_1_office_roles.sql` | B1.1: role `internal`, `manager`, `finanse` przez rollout, pilot przyjmuje konto dowolnej roli | Po B0.4 (blokada trybu open, limit 20). Migracja łata w `academy_set_rollout` tylko warunek roli, więc zachowuje zmiany B0.4. | `COMPASS/supabase/rollback/20261109210000_academy_b1_1_office_roles.down.sql` | Lokalnie: `supabase/tests/academy_b1_1_office_roles_stub.sql`, migracja, `academy_b1_1_office_roles_smoke.sql`. Na produkcji blok `DO $$` na końcu pliku. |
+## Rytm
+
+1. Okno dzienne właściciela o stałej porze. Poza oknem nikt nie stosuje SQL, więc wiadomo, kiedy baza mogła się zmienić.
+2. Pliki idą po kolei, od najniższego numeru w tabeli. Następny dopiero po udanym poprzednim.
+3. Wyłącznie przez MCP `apply_migration` z wersją równą prefiksowi pliku. Nigdy `supabase db push`.
+4. Migracja kończy się blokiem `DO $$` z `RAISE EXCEPTION`. Gdy samosprawdzenie padnie, transakcja się cofa, a kolejka staje do wyjaśnienia przyczyny.
+5. Po zastosowaniu zmień „Stan” na datę i dopisz wersję z rejestru.
+
+## Kod idzie przed SQL
+
+Kod trafia na produkcję wcześniej niż jego migracja, więc:
+
+- Nowa akcja obsługuje brak obiektu komunikatem „czeka na migrację” (`lib/academy/migration-contract.ts`). Liczą się kody `42P01`, `42703`, `42883` oraz `PGRST202`, `PGRST204`, `PGRST205`, bo PostgREST zgłasza brak tabeli, kolumny albo funkcji własnym kodem, zanim zapytanie dojdzie do Postgresa.
+- Kanał wyjścia przy braku obiektu nie wysyła niczego. Brak kolejki oznacza brak wiadomości i zdarzenie w Sentry.
+- Reszta aplikacji działa bez zmian niezależnie od tego, czy plik już zastosowano.
+
+## Cofanie
+
+Każdy wiersz ma w kolumnie „Cofnięcie” jedno z dwóch:
+
+- ścieżkę skryptu: `supabase/rollbacks/<ta sama nazwa pliku>` (katalog względem `COMPASS/`, poza `supabase/migrations`, żeby skrypt nigdy nie wyglądał na migrację),
+- albo dosłowną notkę: `nieodwracalne, cofamy PITR`.
+
+Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wiersz ma plik, końcowe samosprawdzenie, cofnięcie i właściwą kolejność.
+
+## Kolejka
+
+| Lp. | Plik | PR | Cofnięcie | Stan |
+|---|---|---|---|---|

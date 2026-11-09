@@ -5,7 +5,7 @@
 -- Kolejność: po B0.4 (blokada trybu open i limit 20 kont pilota). academy_set_rollout
 -- jest tu łatany jednym warunkiem, a nie przepisywany, bo zmienia ją też B0.4.
 -- Odwrotna kolejność cofnęłaby tę zmianę po cichu, gdyby B0.4 podmieniał całą funkcję.
--- Cofnięcie: supabase/rollback/20261109210000_academy_b1_1_office_roles.down.sql
+-- Cofnięcie: supabase/rollbacks/20261109210000_academy_b1_1_office_roles.sql
 BEGIN;
 
 CREATE OR REPLACE FUNCTION academy_private.rollout_allows_user(p_user_id uuid)
