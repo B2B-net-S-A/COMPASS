@@ -3,6 +3,7 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+import { isAcademySwitchOn } from './switches'
 import { AcademyIntegrationError } from './teams'
 import {
     runAcademyIntegrationBatch,
@@ -38,7 +39,7 @@ const sessionSchema = z.object({
 
 /** Presence of app credentials is configuration readiness, not proof of Microsoft grants. */
 export function academyManagedTeamsConfiguration(env: NodeJS.ProcessEnv = process.env): { managedTeamsAvailable: boolean; reason?: string } {
-    if (env.ACADEMY_TEAMS_ENABLED !== 'true') return {
+    if (!isAcademySwitchOn('ACADEMY_TEAMS_ENABLED', env)) return {
         managedTeamsAvailable: false,
         reason: 'Automatyczne spotkania Teams oczekują na uruchomienie przez administratora. Możesz użyć linku od prowadzącego.',
     }

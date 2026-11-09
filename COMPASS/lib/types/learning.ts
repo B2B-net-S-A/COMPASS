@@ -13,6 +13,12 @@ export type CourseDeliveryMode = 'self_paced' | 'live' | 'blended'
 export interface CourseCompletionRules {
     quiz_required: boolean
     quiz_pass_percent: number
+    draw_count?: number | null
+    time_limit_minutes?: number | null
+    show_explanations?: boolean
+    draw_random?: boolean
+    shuffle_options?: boolean
+    pre_test_count?: number | null
     require_all_lessons: boolean
     attendance_percent: number
 }
