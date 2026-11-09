@@ -18,7 +18,7 @@ export function TwinCourseButton({ runId }: { runId: string }) {
             try {
                 const result = await createTwinCourse(runId)
                 if (!result?.success) { setError(result?.error ?? 'Nie udało się utworzyć kursu. Spróbuj ponownie.'); return }
-                router.push(`/learning/tworze/${result.data.courseId}`)
+                router.push(`/learning/tworze/${result.data.courseId}/edit`)
             } catch {
                 setError('Połączenie zostało przerwane. Spróbuj ponownie.')
             }
