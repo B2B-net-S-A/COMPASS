@@ -21,6 +21,8 @@ if (!BASE_URL) {
 
 export default defineConfig({
     testDir: './e2e',
+    // Zestaw akceptacyjny Akademii ma własny config (playwright.academy.config.ts).
+    testIgnore: ['**/academy-acceptance/**'],
     timeout: 60_000,
     expect: { timeout: 10_000 },
     fullyParallel: false,

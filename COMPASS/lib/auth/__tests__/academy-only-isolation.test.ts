@@ -50,6 +50,8 @@ const ROUTE_RULES: Record<string, RouteRule> = {
     'app/api/akademia/health/route.ts': 'public',
     'app/api/auth/auto-login/route.ts': 'public',
     'app/api/public/consultant-pulse/[token]/route.ts': 'public',
+    'app/api/akademia/wejscie/[token]/route.ts': 'public',
+    'app/api/akademia/wejscie/request/route.ts': 'public',
     'app/api/akademia/attachment/route.ts': 'learner',
     'app/api/akademia/certificate/route.ts': 'learner',
     'app/api/academy/sessions/[id]/calendar/route.ts': 'learner',

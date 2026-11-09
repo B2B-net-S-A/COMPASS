@@ -44,7 +44,9 @@ describe('kanały wyjścia Akademii', () => {
     })
 
     it('maile Supabase Auth: obszar Akademii ich nie wyzwala', () => {
-        expect(using(/inviteUserByEmail|resetPasswordForEmail|signInWithOtp|generateLink/)).toEqual([])
+        expect(using(/inviteUserByEmail|resetPasswordForEmail|signInWithOtp/)).toEqual([])
+        // generateLink tylko zwraca hash, nic nie wysyła. Używa go wyłącznie przepustka (B1.3).
+        expect(using(/generateLink/)).toEqual(['lib/academy/learner-entry.ts'])
     })
 
     it('wydarzenia Graph z uczestnikami: wyłącznie worker integracji i moduł Teams', () => {

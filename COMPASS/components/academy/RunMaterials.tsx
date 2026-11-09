@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from '@/components/ui/textarea'
 import { MaterialUploader } from './MaterialUploader'
 import { AcademyVideo } from './AcademyVideo'
+import { VideoChaptersEditor } from './VideoChaptersEditor'
 import { useAcademyAction } from './useAcademyAction'
-import { assignAcademyRunCaption, listAcademyRunMaterials, reviewAcademyRunMaterial } from '@/lib/actions/academy-materials'
+import { assignAcademyRunCaption, listAcademyRunMaterials, reviewAcademyRunMaterial, setRunMaterialAvailability } from '@/lib/actions/academy-materials'
 import type { AcademyRunMaterial } from '@/lib/types/academy-materials'
 import type { CourseAttachment } from '@/lib/types/learning'
 
@@ -20,6 +21,33 @@ const asAttachment = (file: AcademyRunMaterial): CourseAttachment => ({
 const linkedCaption = (items: AcademyRunMaterial[], videoId: string): CourseAttachment | undefined => {
     const caption = items.find(file => file.status === 'ready' && file.review_status === 'published' && file.mime_type === 'text/vtt' && file.caption_for_asset_id === videoId)
     return caption ? asAttachment(caption) : undefined
+}
+
+const formatTerm = (value: string) => new Intl.DateTimeFormat('pl-PL', { dateStyle: 'long', timeZone: 'Europe/Warsaw' }).format(new Date(value))
+
+function RecordingTerm({ assetId, value, onSaved }: { assetId: string; value: string | null; onSaved: () => void }) {
+    const [date, setDate] = useState(value ? value.slice(0, 10) : '')
+    const [message, setMessage] = useState<string | null>(null)
+    const [saving, setSaving] = useState(false)
+    async function save(until: string | null) {
+        setSaving(true)
+        setMessage(null)
+        try {
+            const result = await setRunMaterialAvailability({ assetId, until })
+            if (result?.success) onSaved()
+            else setMessage(result?.error ?? 'Nie udało się zapisać terminu.')
+        } catch {
+            setMessage('Połączenie zostało przerwane. Spróbuj ponownie.')
+        } finally {
+            setSaving(false)
+        }
+    }
+    return <div className="flex flex-wrap items-end gap-2">
+        <label className="space-y-1 text-sm font-medium">Dostępne do<input type="date" value={date} onChange={event => setDate(event.target.value)} className="mt-1 block h-9 rounded-md border border-border bg-background px-2 text-sm font-normal" /></label>
+        <Button type="button" size="sm" variant="outline" disabled={saving || !date} onClick={() => { void save(new Date(`${date}T23:59:59`).toISOString()) }}>Zapisz termin</Button>
+        {value && <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={() => { setDate(''); void save(null) }}>Bez terminu</Button>}
+        {message && <p role="alert" className="w-full text-xs text-destructive">{message}</p>}
+    </div>
 }
 
 export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAcademy = false, userId, readOnly = false }: {
@@ -71,7 +99,7 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAca
 
     const publishedVideos = items.filter(file => file.status === 'ready' && file.review_status === 'published' && file.mime_type === 'video/mp4')
 
-    return <section aria-labelledby={'run-materials-' + runId} className="space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
+    return <section id="materialy" aria-labelledby={'run-materials-' + runId} className="scroll-mt-6 space-y-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
             <div><h2 id={'run-materials-' + runId} className="text-lg font-semibold">Materiały po szkoleniu</h2><p className="mt-1 text-sm text-muted-foreground">Nagrania i pliki dla tej edycji. Nie zmieniają programu ani warunków zaliczenia.</p></div>
             <Button variant="ghost" size="sm" disabled={pending} onClick={() => void refresh()}><RefreshCw className="size-4" aria-hidden="true" />Odśwież</Button>
@@ -85,6 +113,9 @@ export function RunMaterials({ runId, courseId, canManage, isAdmin, canManageAca
             </div>
             {['audio/mpeg', 'audio/mp4'].includes(item.mime_type) && <AcademyVideo runId={runId} video={asAttachment(item)} audio />}
             {item.mime_type === 'video/mp4' && <AcademyVideo runId={runId} video={asAttachment(item)} captions={item.review_status === 'published' ? linkedCaption(items, item.id) : undefined} />}
+            {item.mime_type === 'video/mp4' && item.available_until && <p className="text-sm text-muted-foreground">Nagranie dostępne do {formatTerm(item.available_until)}.</p>}
+            {canManage && !readOnly && item.mime_type === 'video/mp4' && <RecordingTerm assetId={item.id} value={item.available_until ?? null} onSaved={() => { void refresh() }} />}
+            {canManage && !readOnly && item.mime_type === 'video/mp4' && <VideoChaptersEditor assetId={item.id} />}
             {(isAdmin || canManageAcademy) && !readOnly && item.mime_type === 'text/vtt' && item.review_status === 'published' && <div className="flex flex-col gap-1 sm:max-w-sm">
                 <label htmlFor={`caption-target-${item.id}`} className="text-sm font-medium">Nagranie dla napisów</label>
                 <select id={`caption-target-${item.id}`} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" disabled={pending}

@@ -69,6 +69,8 @@ beforeEach(() => {
             select: (columns: string) => { read.columns = columns; return query },
             eq: (column: string, value: unknown) => { read.filters.push(['eq', column, value]); return query },
             is: (column: string, value: unknown) => { read.filters.push(['is', column, value]); return query },
+            order: () => query,
+            limit: () => query,
             maybeSingle: async () => {
                 const next = queued[table]?.shift()
                 if (!next) throw new Error(`Unexpected database read: ${table}`)
@@ -239,6 +241,19 @@ describe('Academy certificate evidence', () => {
         expect((await certificate(request('certificate', { courseId, enrollmentId }))).status).toBe(500)
         expect(mocks.pdf).not.toHaveBeenCalled()
         expect(mocks.log).toHaveBeenCalledExactlyOnceWith({ event: 'academy.certificate.invalid_snapshot', enrollmentId })
+    })
+
+    it('prints the public link only when the owner enabled it and the switch is on', async () => {
+        const code = 'c'.repeat(32)
+        for (const [switchValue, expected] of [['true', `/v/${code}`], ['false', '/learning/certyfikaty/']] as const) {
+            vi.stubEnv('ACADEMY_PUBLIC_VERIFY_ENABLED', switchValue)
+            result('course_enrollments', { id: enrollmentId })
+            result('course_completions', completion())
+            result('academy_document_shares', { public_code: code, share_enabled: true })
+            expect((await certificate(request('certificate', { courseId, enrollmentId }))).status).toBe(200)
+            expect(mocks.pdf.mock.lastCall?.[0].verificationUrl).toContain(expected)
+        }
+        vi.unstubAllEnvs()
     })
 
     it('renders exclusively the historical completion snapshot and emits private PDF headers', async () => {
