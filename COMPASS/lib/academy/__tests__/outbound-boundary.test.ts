@@ -19,8 +19,6 @@ const AREA = [
 const ACTIONS = /^(academy|course|learning-paths)/
 const FORBIDDEN = /\bsendEmail(Many)?\b|\bsendCourseInactivityReminder\b|\bgetResend\b|\/sendMail\b|from\s+['"]@\/lib\/email\/sender['"]/
 const GATE = 'lib/academy/outbound.ts'
-// Do czasu B0.3 jedyny znany wyjątek. B0.3 usuwa ten wpis razem z wywołaniem w trasie.
-const NOT_YET_GATED = new Set(['app/api/cron/course-inactivity/route.ts'])
 
 function sourceFiles(relative: string): string[] {
     const absolute = path.join(app, relative)
@@ -45,7 +43,7 @@ describe('jedyna droga poczty Akademii', () => {
     })
 
     it('nic poza bramką nie woła wysyłki poczty', () => {
-        const offenders = files.filter(file => file !== GATE && !NOT_YET_GATED.has(file) && FORBIDDEN.test(readFileSync(path.join(app, file), 'utf8')))
+        const offenders = files.filter(file => file !== GATE && FORBIDDEN.test(readFileSync(path.join(app, file), 'utf8')))
         expect(offenders).toEqual([])
     })
 })
