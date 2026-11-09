@@ -64,7 +64,7 @@ export function testRecipients(env: NodeJS.ProcessEnv): ReadonlySet<string> {
 
 /** Own Academy mailbox, unused until the launch gate turns its switch on. Graph permissions stay unchanged. */
 export function academySenderOverride(env: NodeJS.ProcessEnv): string | undefined {
-    if (env.ACADEMY_MAIL_SENDER_ENABLED !== 'true') return undefined
+    if (!isAcademySwitchOn('ACADEMY_MAIL_SENDER_ENABLED', env)) return undefined
     const sender = env.ACADEMY_MAIL_FROM?.trim()
     return sender && /^(?:[^<>]*<)?[^@\s<>]+@[^@\s<>]+>?$/.test(sender) ? sender : undefined
 }

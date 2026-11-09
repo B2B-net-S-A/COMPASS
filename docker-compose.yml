@@ -43,6 +43,8 @@ services:
       # zmiana wyłącznie w vaulcie.
       ACADEMY_MAIL_ENABLED: ${ACADEMY_MAIL_ENABLED:-false}
       ACADEMY_MAIL_TEST_RECIPIENTS: ${ACADEMY_MAIL_TEST_RECIPIENTS:-}
+      ACADEMY_MAIL_SENDER_ENABLED: ${ACADEMY_MAIL_SENDER_ENABLED:-false}
+      ACADEMY_MAIL_FROM: ${ACADEMY_MAIL_FROM:-}
       # Harness E2E (B0.7): otwiera wyłącznie trasę wyników gotowości.
       ACADEMY_READINESS_SECRET: ${ACADEMY_READINESS_SECRET:-}
       ACADEMY_PASS_ENABLED: ${ACADEMY_PASS_ENABLED:-false}
