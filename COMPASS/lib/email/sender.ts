@@ -37,6 +37,11 @@ export interface EmailMessage {
      * clean from transactional reminders/alerts.
      */
     saveToSentItems?: boolean
+    /**
+     * Bramka Akademii: przy błędzie wysyłki w logu i Sentry zostaje tylko domena adresata,
+     * bez adresu i tematu, a adresy są wycinane z tekstu błędu dostawcy.
+     */
+    redactRecipientInLogs?: boolean
 }
 
 export interface SendResult {
@@ -158,12 +163,13 @@ export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
     const provider = resolveProvider()
     const result = await sendViaGraph(msg)
     if (!result.success) {
+        const errorText = msg.redactRecipientInLogs
+            ? result.error?.replace(/[^@\s<>"']+@[^@\s<>"']+/g, '[adres]')
+            : result.error
         // Single console line keeps Sentry breadcrumbs clean and grep-able
-        logCompat.error(`[email/${provider}] send failed`, {
-            to: msg.to,
-            subject: msg.subject,
-            error: result.error,
-        })
+        logCompat.error(`[email/${provider}] send failed`, msg.redactRecipientInLogs
+            ? { recipientDomain: recipientDomain(msg.to), error: errorText }
+            : { to: msg.to, subject: msg.subject, error: errorText })
         // RODO-safe Sentry capture: never include recipient address or message
         // content (subject can leak PII like names). Tag with provider +
         // recipient domain only so we can pivot in Sentry UI.
@@ -174,7 +180,7 @@ export async function sendEmail(msg: EmailMessage): Promise<SendResult> {
                 recipient_domain: recipientDomain(msg.to),
             },
             extra: {
-                error: result.error,
+                error: errorText,
             },
         })
     }

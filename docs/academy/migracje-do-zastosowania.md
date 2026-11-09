@@ -31,3 +31,4 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 
 | Lp. | Plik | PR | Cofnięcie | Stan |
 |---|---|---|---|---|
+| 1 | `20261109021500_academy_outbox.sql` | B0.2 | `supabase/rollbacks/20261109021500_academy_outbox.sql` | czeka |
