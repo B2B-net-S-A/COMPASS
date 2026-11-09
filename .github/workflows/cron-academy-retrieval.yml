@@ -1,0 +1,39 @@
+name: Academy retrieval practice (daily cron)
+
+# B5.6. Przy wyłączonym ACADEMY_RETRIEVAL_ENABLED trasa kończy się bez żadnej pracy.
+# Po włączeniu tworzy terminy, wiersze held w academy_outbox i powiadomienia w dzwonku.
+# Niczego nie wysyła. Wielokrotne wołanie jest bezpieczne (dedupe_key, notified_at).
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academy-retrieval
+  cancel-in-progress: false
+
+jobs:
+  retrieval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Curl /api/cron/academy-retrieval
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -o pipefail
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Brak APP_URL albo CRON_SECRET w ustawieniach repo."
+            exit 1
+          fi
+          curl -fsSL --retry 3 --retry-delay 10 \
+            -A "dynaminds-smoke-test/1.0" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/academy-retrieval" | tee /tmp/result.json
+          echo
+          jq -e '.ok == true' /tmp/result.json > /dev/null
