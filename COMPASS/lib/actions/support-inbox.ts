@@ -24,6 +24,7 @@ import {
 import { excludeExited } from '@/lib/hr/employment-window'
 import { requireRows, selectInChunks } from '@/lib/supabase/select-in-chunks'
 import { hrModuleRefusal } from '@/lib/hr/moved-to-nexus'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 interface ProfileLite {
     id: string
@@ -159,6 +160,7 @@ export async function listInboxTickets(filter?: {
     consultant_id?: string
     assignee_id?: string
 }): Promise<SupportActionResult<Record<TicketStatus, InboxTicketWithMeta[]>>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -345,6 +347,7 @@ export async function listInboxTickets(filter?: {
 export async function getInboxTicketDetail(
     ticketId: string,
 ): Promise<SupportActionResult<InboxTicketWithMeta & { comments: SupportComment[]; can_reply: boolean; can_change_status: boolean }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -435,6 +438,7 @@ export async function getInboxTicketDetail(
 export async function createInboxTicket(
     input: CreateInboxTicketInput,
 ): Promise<SupportActionResult<{ ticketId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -570,6 +574,7 @@ export async function moveInboxTicket(
     ticketId: string,
     newStatus: TicketStatus,
 ): Promise<SupportActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -630,6 +635,7 @@ export async function addInboxComment(
     body: string,
     isInternal = false,
 ): Promise<SupportActionResult<{ commentId: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -693,6 +699,7 @@ export async function renameInboxTicket(
     ticketId: string,
     subject: string,
 ): Promise<SupportActionResult<{ subject: string }>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -760,6 +767,7 @@ export async function assignInboxTicket(
     handlerId: string | null,
     consultantId?: string | null,
 ): Promise<SupportActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -820,6 +828,7 @@ export async function assignInboxTicket(
 }
 
 export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLite[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -864,6 +873,7 @@ export async function listInboxHandlers(): Promise<SupportActionResult<ProfileLi
  * the isCallerHandler guard above keeps this restricted to handlers.
  */
 export async function searchConsultants(query: string): Promise<SupportActionResult<ConsultantSearchResult[]>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -895,6 +905,7 @@ export async function searchConsultants(query: string): Promise<SupportActionRes
 
 /** Atomic, version-checked edit of a case, including its planning details. */
 export async function updateInboxWorkspace(ticketId: string, expectedUpdatedAt: string, input: InboxEditInput): Promise<SupportActionResult<void>> {
+    await assertNotAcademyOnly()
     try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()

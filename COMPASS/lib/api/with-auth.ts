@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { isArchivedAccount } from '@/lib/auth/employment-access'
+import { isAcademyOnlyUser } from '@/lib/auth/academy-only'
 import type { DbRole } from '@/lib/types/role'
 
 // Phase 18.7: ujednolicony auth wrapper dla API routes (/api/**).
@@ -70,6 +71,8 @@ type AuthHandler = (request: NextRequest, ctx: AuthContext) => Promise<Response>
 interface WithAuthOpts {
     /** Pojedyncza rola lub lista dozwolonych ról. Brak = każdy authenticated. */
     role?: DbRole | DbRole[]
+    /** B1.4: konto nauki dostaje 403, chyba że trasa należy do Akademii i ustawi to jawnie. */
+    allowAcademyOnly?: boolean
 }
 
 /**
@@ -89,6 +92,10 @@ export function withAuth(handler: AuthHandler, opts: WithAuthOpts = {}) {
 
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
+        if (isAcademyOnlyUser(user) && !opts.allowAcademyOnly) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 
         // Profil pobierany ZAWSZE, nie tylko gdy `opts.role` jest ustawione:

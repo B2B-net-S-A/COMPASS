@@ -5,6 +5,7 @@ import { ARCHIVED_ACCOUNT_ERROR_CODE, isArchivedAccount } from '@/lib/auth/emplo
 import { hrLandingPath, movedModules } from '@/lib/hr/moved-to-nexus'
 import { academyRolloutAllows } from '@/lib/academy/rollout-probe'
 import { isAcademyOfficeRole } from '@/lib/types/role'
+import { ACADEMY_ONLY_HOME, isAcademyOnlyPathAllowed, isAcademyOnlyUser } from '@/lib/auth/academy-only'
 
 export async function middleware(request: NextRequest) {
     const response = NextResponse.next({
@@ -94,6 +95,15 @@ export async function middleware(request: NextRequest) {
             // na odpowiedź przekierowującą, bo to ona wraca do przeglądarki.
             response.cookies.getAll().forEach((cookie) => archivedResponse.cookies.set(cookie))
             return archivedResponse
+        }
+
+        // B1.4: konto nauki ma białą listę ścieżek i omija bramkę onboardingu z CV. To tylko
+        // pierwsza warstwa: akcje i trasy API odmawiają same (academy-only-isolation.test.ts).
+        if (isAcademyOnlyUser(user)) {
+            if (isPublicPath || isAcademyOnlyPathAllowed(pathname)) return response
+            const learnerResponse = NextResponse.redirect(new URL(ACADEMY_ONLY_HOME, request.url))
+            response.cookies.getAll().forEach((cookie) => learnerResponse.cookies.set(cookie))
+            return learnerResponse
         }
 
         // Phase 20: HR-zone roles (everyone EXCEPT consultant IT).

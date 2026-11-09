@@ -8,6 +8,7 @@ import { requireAuthenticatedAction } from '@/lib/auth/internal-guard'
 import { ExpectedError, runAction, type ActionResult } from '@/lib/actions/action-result'
 import { revalidatePath } from 'next/cache'
 import { indexDocumentText } from './document-indexing'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 const DOCUMENTS_BUCKET = 'documents'
 /** Audyt 2026-09-22 (O07): podpisany link żyje 5 minut — wystarczy na kliknięcie. */
@@ -28,6 +29,7 @@ function sanitizeFileName(name: string): string {
 }
 
 export async function uploadNewDocument(formData: FormData) {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
@@ -111,6 +113,7 @@ export async function uploadNewDocument(formData: FormData) {
 }
 
 export async function uploadNewVersion(formData: FormData) {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
@@ -187,6 +190,7 @@ export async function uploadNewVersion(formData: FormData) {
 }
 
 export async function archiveDocument(documentId: string) {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
 
     // Soft delete (archive)
@@ -204,6 +208,7 @@ export async function archiveDocument(documentId: string) {
 }
 
 export async function deleteDocument(documentId: string) {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -302,6 +307,7 @@ export async function getDocumentDownloadUrl(versionId: string): Promise<ActionR
 }
 
 export async function getUnifiedDocuments(ownerId?: string, isPublic: boolean = false, category?: DocumentCategory) {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
 
     let query = supabase
@@ -382,6 +388,7 @@ function formatFileSize(bytes: number): string {
  * Useful for admin batch operations or manual re-indexing.
  */
 export async function reindexDocument(documentId: string, textContent: string, description?: string) {
+    await assertNotAcademyOnly()
     return indexDocumentText(documentId, textContent, description)
 }
 
@@ -390,6 +397,7 @@ export async function reindexDocument(documentId: string, textContent: string, d
  * Admin-only operation.
  */
 export async function reindexAllDocuments() {
+    await assertNotAcademyOnly()
     const supabase = await createClient()
 
     const { data: { user } } = await supabase.auth.getUser()

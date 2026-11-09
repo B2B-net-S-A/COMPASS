@@ -3,6 +3,7 @@
 import { logCompat } from '@/lib/logger'
 
 import { createClient } from '@/lib/supabase/server'
+import { assertNotAcademyOnly } from '@/lib/auth/academy-only-guard'
 
 /**
  * Index a document's text content (called after upload).
@@ -14,6 +15,7 @@ export async function indexDocumentText(
     textContent: string,
     description?: string
 ): Promise<boolean> {
+    await assertNotAcademyOnly()
     const supabase = createClient()
 
     const updateData: Record<string, unknown> = {

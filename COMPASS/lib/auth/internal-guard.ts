@@ -6,6 +6,7 @@ import { ExpectedError, SessionExpiredError } from '@/lib/actions/expected-error
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { perRequestCache } from '@/lib/utils/request-cache'
+import { ACADEMY_ONLY_DENIED_MESSAGE, isAcademyOnlyUser } from '@/lib/auth/academy-only'
 import {
     canAccessInternalZone,
     canManageInbox,
@@ -61,6 +62,8 @@ const loadAuthContext = perRequestCache(async function loadAuthContext(): Promis
     const supabase = createClient()
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user || !user.email) return null
+    // B1.4: konto nauki nie przechodzi przez żaden guard strefy HR ani platformy.
+    if (isAcademyOnlyUser(user)) throw new ExpectedError(ACADEMY_ONLY_DENIED_MESSAGE)
 
     const { data: profile } = await supabase
         .from('profiles')

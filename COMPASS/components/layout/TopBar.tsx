@@ -26,13 +26,14 @@ interface TopBarProps {
         email?: string | null
         avatar_url?: string | null
     } | null
+    academyOnly?: boolean
 }
 
 // Audyt 2026-08 (UI): usunięty prop `onMenuToggle` i schowany za nim hamburger.
 // Nikt go nigdy nie przekazywał (AppLayout renderuje <TopBar user={user} />), więc
 // przycisk nie renderował się ani razu. Nawigacja mobilna to dolny pasek
 // (components/layout/MobileMenu.tsx) — szuflada z Sidebarem nie została wdrożona.
-export function TopBar({ user }: TopBarProps) {
+export function TopBar({ user, academyOnly = false }: TopBarProps) {
     const router = useRouter()
     const supabase = createClient()
     const { t } = useTranslation()
@@ -98,13 +99,17 @@ export function TopBar({ user }: TopBarProps) {
                             </div>
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem asChild>
-                            <Link href="/home">{t('profile')}</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                            <Link href="/settings">{t('settings')}</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
+                        {!academyOnly && (
+                            <>
+                                <DropdownMenuItem asChild>
+                                    <Link href="/home">{t('profile')}</Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                    <Link href="/settings">{t('settings')}</Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                            </>
+                        )}
                         <DropdownMenuItem onClick={handleSignOut}>
                             {t('logout')}
                         </DropdownMenuItem>
