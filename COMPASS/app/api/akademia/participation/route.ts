@@ -3,6 +3,7 @@ import { generateParticipationPdf, participationFilename } from '@/lib/pdf/certi
 import { withAuth } from '@/lib/api/with-auth'
 import { academyClient } from '@/lib/academy/server'
 import { isMissingDatabaseObject, MIGRATION_PENDING_PL } from '@/lib/academy/migration-contract'
+import { ACADEMY_ROLES } from '@/lib/types/role'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -40,4 +41,4 @@ export const GET = withAuth(async (request, { user }) => {
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
     } })
-}, { role: ['consultant', 'admin', 'talent_community'] })
+}, { role: [...ACADEMY_ROLES], allowAcademyOnly: true })
