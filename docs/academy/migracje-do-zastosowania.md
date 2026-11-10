@@ -75,7 +75,7 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 | 42 | `20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | #527 | `supabase/rollbacks/20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | czeka |
 | 43 | `20261110190000_academy_prosta_postep_nagrania.sql` | #528 | `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql` | czeka |
 | 44 | `20261110200000_academy_prosta_wyslij_do_publikacji.sql` | #529 | `supabase/rollbacks/20261110200000_academy_prosta_wyslij_do_publikacji.sql` | czeka |
-| 45 | `20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql` | #PR4 | `supabase/rollbacks/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql` | czeka |
+| 45 | `20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql` | #530 | `supabase/rollbacks/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql` | czeka |
 
 ## Warunki stosowania
 
