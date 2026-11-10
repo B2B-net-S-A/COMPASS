@@ -20,13 +20,12 @@ it('opens the draft editor after creating the course', async () => {
     render(<TwinCourseButton runId="run-1" />)
     await click()
     expect(createTwinCourse).toHaveBeenCalledWith('run-1')
-    expect(push).toHaveBeenCalledWith('/learning/tworze/course-1/edit')
+    expect(push).toHaveBeenCalledWith('/learning/tworze/course-1')
 })
 
 it('redirects to a route that has a page', () => {
-    // /learning/tworze/[id] has no page.tsx, so the old redirect ended in a 404.
-    expect(existsSync(join(process.cwd(), 'app/(protected)/learning/tworze/[id]/edit/page.tsx'))).toBe(true)
-    expect(existsSync(join(process.cwd(), 'app/(protected)/learning/tworze/[id]/page.tsx'))).toBe(false)
+    // Before #529 /learning/tworze/[id] had no page.tsx and the redirect ended in a 404.
+    expect(existsSync(join(process.cwd(), 'app/(protected)/learning/tworze/[id]/page.tsx'))).toBe(true)
 })
 
 it('shows the refusal and stays on the page', async () => {
