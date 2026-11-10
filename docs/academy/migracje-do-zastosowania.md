@@ -74,6 +74,7 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 | 41 | `20261110170000_academy_b4_3_mark_complete_guard.sql` | #521 | `supabase/rollbacks/20261110170000_academy_b4_3_mark_complete_guard.sql` | czeka |
 | 42 | `20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | #527 | `supabase/rollbacks/20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | czeka |
 | 43 | `20261110190000_academy_prosta_postep_nagrania.sql` | #528 | `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql` | czeka |
+| 44 | `20261110200000_academy_prosta_wyslij_do_publikacji.sql` | #529 | `supabase/rollbacks/20261110200000_academy_prosta_wyslij_do_publikacji.sql` | czeka |
 
 ## Warunki stosowania
 
@@ -347,3 +348,11 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
   - `academy_save_recording_progress` zapisuje pozycję nagrania edycji w `academy_video_progress` (bez zaliczania lekcji), `academy_recording_durations` oddaje sam czas trwania jako agregat.
   - Bez migracji biblioteka i odtwarzacz działają, tylko nie pamiętają pozycji i nie znają czasu trwania.
   - Cofnięcie: `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql`.
+
+### Wersja prosta, krok 3: „Wyślij do publikacji” i zgoda trenera
+
+- `COMPASS/supabase/migrations/20261110200000_academy_prosta_wyslij_do_publikacji.sql`
+  - Warunek: po `20261110150000_academy_b3_10_tcm_review.sql` (`prosta_3_wymaga_B3_10`) i `20261109213000_academy_video_progress.sql` (`prosta_3_wymaga_B4_3`).
+  - Tabela `academy_run_publication_requests` (jedno pole zgody trenera zamiast pakietu przekazania), `academy_request_run_publication` (zapis zgody, audyt, dzwonek w Compass dla recenzentów, bez maili), `academy_run_recording_viewers` (liczba oglądających dla prowadzącego, agregat).
+  - Bez migracji przycisk mówi, że czeka na migrację; wgrane pliki i tak czekają na akceptację.
+  - Cofnięcie: `supabase/rollbacks/20261110200000_academy_prosta_wyslij_do_publikacji.sql`.
