@@ -73,6 +73,7 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 | 40 | `20261110164500_academy_programme_completions_report.sql` | #523 | `supabase/rollbacks/20261110164500_academy_programme_completions_report.sql` | czeka |
 | 41 | `20261110170000_academy_b4_3_mark_complete_guard.sql` | #521 | `supabase/rollbacks/20261110170000_academy_b4_3_mark_complete_guard.sql` | czeka |
 | 42 | `20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | #527 | `supabase/rollbacks/20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | czeka |
+| 43 | `20261110190000_academy_prosta_postep_nagrania.sql` | #528 | `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql` | czeka |
 
 ## Warunki stosowania
 
@@ -338,3 +339,11 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
   - Decyzja właściciela z 2026-11-10: zatwierdzony materiał edycji (`ready` + `published`) czyta każdy z dostępem do Akademii, gdy kurs i edycja są opublikowane. Termin `available_until` przestaje działać, także przy sprzątaniu. Zapisani czytają jak dotąd.
   - Ta sama funkcja pilnuje podpisanego URL ze Storage, rozdziałów i `academy_material_catalog`, więc wszystkie trzy poszerzają się razem.
   - Cofnięcie: `supabase/rollbacks/20261110180000_academy_prosta_nagranie_w_bibliotece.sql`.
+
+### Wersja prosta, krok 2: postęp i czas trwania nagrania edycji
+
+- `COMPASS/supabase/migrations/20261110190000_academy_prosta_postep_nagrania.sql`
+  - Warunek: po `20261109213000_academy_video_progress.sql`. Bez niej przerywa się komunikatem `prosta_2_wymaga_B4_3`. Po kroku 1 działa dla każdego z dostępem, przed nim tylko dla zapisanych.
+  - `academy_save_recording_progress` zapisuje pozycję nagrania edycji w `academy_video_progress` (bez zaliczania lekcji), `academy_recording_durations` oddaje sam czas trwania jako agregat.
+  - Bez migracji biblioteka i odtwarzacz działają, tylko nie pamiętają pozycji i nie znają czasu trwania.
+  - Cofnięcie: `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql`.
