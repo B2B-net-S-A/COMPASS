@@ -1,91 +1,46 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
-import { Plus } from 'lucide-react'
 import { AcademyShell } from '@/components/academy/AcademyShell'
-import { CourseCatalog } from '@/components/academy/CourseCatalog'
-import { Button } from '@/components/ui/button'
+import { AcademyLibrary } from '@/components/academy/library/AcademyLibrary'
 import { getAcademyAccess } from '@/lib/actions/academy-access'
-import { listPublishedCourses } from '@/lib/actions/courses'
-import { getAcademyCatalogOptions, getAcademyCatalogTopics, getAcademyLibrarySummary } from '@/lib/actions/academy-discovery'
+import { getAcademyCatalogTopics } from '@/lib/actions/academy-discovery'
+import { listLibraryRecordings } from '@/lib/actions/academy-recordings'
 import { listAcademyRunPage } from '@/lib/actions/academy-sessions'
-import { getCatalogNextRuns } from '@/components/academy/catalog/catalog-runs'
-import {
-    CATALOG_PAGE_SIZE,
-    catalogHref,
-    matchesLibraryFormat,
-    parseCatalogFilters,
-    parseCatalogPage,
-    type CatalogSearchParams,
-} from '@/components/academy/catalog/catalog-filters'
+import { listPublishedCourses } from '@/lib/actions/courses'
+import { continueWatching, filterRecordings, nearestLive } from '@/lib/academy/recording-library'
+import type { CatalogSearchParams } from '@/components/academy/catalog/catalog-filters'
+import { CatalogPage } from './_katalog/catalog-page'
 
 export const dynamic = 'force-dynamic'
 
-const LIBRARY_SCAN_SIZE = 50
+/** Parametry pełnego katalogu: ich obecność (także z jego formularza) otwiera stary widok. */
+const CATALOG_KEYS = ['widok', 'category', 'instructor', 'format', 'library', 'topic', 'level', 'type', 'sort', 'page']
+
+function single(value: string | string[] | undefined): string {
+    return (Array.isArray(value) ? value[0] : value)?.trim().slice(0, 100) ?? ''
+}
 
 export default async function AkademiaPage({ searchParams }: { searchParams: CatalogSearchParams }) {
-    const filters = parseCatalogFilters(searchParams)
-    const page = parseCatalogPage(searchParams.page)
-    const listFilters = {
-        search: filters.search || undefined,
-        category: filters.category,
-        instructor_id: filters.instructorId,
-        course_type: filters.courseType,
-        level: filters.level,
-        delivery_mode: filters.deliveryMode,
-        topic: filters.topic,
-        orderBy: filters.orderBy,
-    }
-    const [accessResult, firstResult, options, topics] = await Promise.all([
+    if (CATALOG_KEYS.some(key => key in searchParams)) return <CatalogPage searchParams={searchParams} />
+    const search = single(searchParams.q)
+    const topic = single(searchParams.temat) || undefined
+    const now = new Date()
+    const [accessResult, recordings, topics, courses, runs] = await Promise.all([
         getAcademyAccess(),
-        // A content format needs every matching course to page correctly after filtering.
-        listPublishedCourses({ ...listFilters, page: filters.libraryFormat ? 1 : page, limit: filters.libraryFormat ? LIBRARY_SCAN_SIZE : CATALOG_PAGE_SIZE }),
-        getAcademyCatalogOptions(),
+        listLibraryRecordings(),
         getAcademyCatalogTopics(),
+        listPublishedCourses({ search: search || undefined, topic, page: 1, limit: 12 }),
+        listAcademyRunPage({ scope: 'catalog', windowStart: now.toISOString(), pageSize: 10 }),
     ])
-    let result = firstResult
-    const summaries = firstResult.success ? await getAcademyLibrarySummary(firstResult.data.items.map(course => course.id)) : null
-    if (filters.libraryFormat && firstResult.success && summaries?.success && summaries.data.available) {
-        const format = filters.libraryFormat
-        const matching = firstResult.data.items.filter(course => matchesLibraryFormat(format, course.delivery_mode ?? 'self_paced', summaries?.success ? summaries.data.items[course.id] : undefined))
-        const start = (page - 1) * CATALOG_PAGE_SIZE
-        result = { success: true, data: { items: matching.slice(start, start + CATALOG_PAGE_SIZE), total: matching.length } }
-    }
-    const librarySummaries = summaries?.success && summaries.data.available ? summaries.data.items : undefined
-    const visibleIds = result.success ? result.data.items.map(course => course.id) : []
-    const runs = visibleIds.length ? await listAcademyRunPage({ scope: 'catalog', courseIds: visibleIds, windowStart: new Date().toISOString(), pageSize: visibleIds.length }) : null
-
     const access = accessResult.success ? accessResult.data : { isAdmin: false, canTeach: false }
-    const canTeach = access.isAdmin || access.canTeach
+    const all = recordings.success ? recordings.data.items : []
 
-    if (result.success && page > Math.max(1, Math.ceil(result.data.total / CATALOG_PAGE_SIZE))) {
-        redirect(catalogHref(filters, Math.max(1, Math.ceil(result.data.total / CATALOG_PAGE_SIZE))))
-    }
-
-    return (
-        <AcademyShell
-            activeTab="catalog"
-            access={access}
-            title="Akademia"
-            description="Wybierz szkolenie dla siebie. Ucz się we własnym tempie lub dołącz do zajęć z prowadzącym."
-            action={canTeach ? (
-                <Button asChild className="h-11 rounded-xl px-5">
-                    <Link href="/learning/tworze/nowy"><Plus aria-hidden="true" /> Nowe szkolenie</Link>
-                </Button>
-            ) : undefined}
-        >
-            <CourseCatalog
-                filters={filters}
-                page={page}
-                courses={result.success ? result.data.items : []}
-                total={result.success ? result.data.total : 0}
-                error={result.success ? undefined : result.error}
-                canTeach={canTeach}
-                options={options.success ? options.data : undefined}
-                topics={topics.success ? topics.data : []}
-                librarySummaries={librarySummaries}
-                nextRuns={runs?.success ? getCatalogNextRuns(runs.data.items, new Date().toISOString()) : undefined}
-                discoveryError={!options.success || (runs !== null && !runs.success) ? 'Część filtrów lub terminów jest chwilowo niedostępna. Odśwież stronę, aby spróbować ponownie.' : undefined}
-            />
-        </AcademyShell>
-    )
+    return <AcademyShell activeTab="catalog" access={access} title="Akademia"
+        description="Nagrania i materiały z webinarów i szkoleń. Obejrzyj, kiedy chcesz, albo zapisz się na najbliższe na żywo."
+        action={<Link href="/learning?widok=katalog" className="text-sm font-medium text-primary underline-offset-4 hover:underline">Pełny katalog z filtrami</Link>}>
+        <AcademyLibrary search={search} topic={topic} topics={topics.success ? topics.data : []}
+            recordings={filterRecordings(all, { search, topic })} continueItems={continueWatching(all)}
+            courses={courses.success ? courses.data.items : []}
+            nextLive={runs.success ? nearestLive(runs.data.items, now.getTime()) : null}
+            error={!recordings.success || !courses.success ? 'Część biblioteki jest chwilowo niedostępna. Odśwież stronę, aby spróbować ponownie.' : undefined} />
+    </AcademyShell>
 }
