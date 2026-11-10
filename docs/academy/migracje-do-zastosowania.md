@@ -362,6 +362,7 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
 
 - `COMPASS/supabase/migrations/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql`
   - Warunek: po `20261006080417_academy_tcm_full_editor.sql` (`prosta_4_wymaga_tcm_full_editor`).
-  - `academy_publish_announcement`: redaktor globalny (admin, TCM) publikuje wersję szkolenia na żywo lub mieszanego bez recenzji. Szkolenia we własnym tempie nadal przechodzą recenzję. Akceptacja nagrania bez zmian (zasada czterech oczu; samosprawdzenie to pilnuje).
+  - `academy_publish_announcement`: redaktor globalny (admin, TCM) publikuje bez recenzji pierwszą wersję szkolenia na żywo (`live`). Kursy mieszane, we własnym tempie i poprawki opublikowanego kursu nadal przechodzą recenzję.
+  - `academy_private.guard_run_review`: redaktor globalny publikuje edycję szkolenia na żywo, którą sam założył; inne edycje nadal wymagają osoby spoza twórców. Akceptacja nagrania bez zmian (zasada czterech oczu; samosprawdzenie to pilnuje).
   - Bez migracji formularz „Nowe szkolenie na żywo” nic nie zakłada i mówi, że czeka na migrację.
   - Cofnięcie: `supabase/rollbacks/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql`.

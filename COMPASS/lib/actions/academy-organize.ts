@@ -72,8 +72,14 @@ export async function listLiveTrainers(): Promise<ActionResult<LiveTrainer[]>> {
         const grants = requireRows<{ user_id: string }>('trenerów Akademii', await admin.from('academy_user_capabilities').select('user_id').eq('can_train', true).is('revoked_at', null).limit(1000))
         const ids = grants.map(row => row.user_id).filter(id => z.uuid().safeParse(id).success)
         type Person = { id: string; full_name: string | null; email: string; employment_status: string | null; is_external: boolean | null }
-        const people = requireRows<Person>('profili trenerów', await admin.from('profiles').select('id,full_name,email,employment_status,is_external')
-            .or(`role.in.(admin,talent_community)${ids.length ? `,id.in.(${ids.slice(0, 500).join(',')})` : ''}`).limit(1000))
+        const columns = 'id,full_name,email,employment_status,is_external'
+        // Id paczkami (selectInChunks), bo długie `.in()` ucinało się w drodze do kontenera (incydent 25.08).
+        const [editors, granted] = await Promise.all([
+            admin.from('profiles').select(columns).in('role', ['admin', 'talent_community']).limit(500),
+            selectInChunks<Person>({ source: 'academy.organize.trainers', column: 'id', ids, query: () => admin.from('profiles').select(columns) }),
+        ])
+        const byId = new Map([...requireRows<Person>('redaktorów Akademii', editors), ...granted].map(person => [person.id, person]))
+        const people = Array.from(byId.values())
         return people
             .filter(person => !person.is_external && person.employment_status !== 'exited')
             .map(person => ({ id: person.id, name: person.full_name || person.email }))

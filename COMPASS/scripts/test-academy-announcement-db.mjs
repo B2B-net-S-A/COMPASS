@@ -15,8 +15,8 @@ const apply = async file => { await owner(); await db.exec(fs.readFileSync(fileU
 
 
 try {
-    await apply('20261006080417_academy_tcm_full_editor.sql');
-    await apply('20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql');
+    // Kolejka produkcyjna: B3.10 (TCM publikuje edycje) jest przed tą migracją.
+    for (const file of ['20261006080417_academy_tcm_full_editor.sql', '20261109130000_academy_review_signal.sql', '20261110150000_academy_b3_10_tcm_review.sql', '20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql']) await apply(file);
     const tcm = '00000000-0000-0000-0000-0000000000a1';
     await owner();
     await sql("insert into auth.users(id,email,email_confirmed_at) values($1,'tcm@example.test',now())", [tcm]);
@@ -41,10 +41,13 @@ try {
     // Drugie wywołanie nic nie zmienia.
     await actor(tcm); eq((await sql(publish, [live.course_id])).rows[0].v, live.version_id, 'idempotentne');
 
-    // Teraz da się założyć i opublikować edycję; zapisy otwarte.
+    // Organizator sam zakłada termin i sam go publikuje (jest twórcą edycji); zapisy otwarte.
+    const session = { title: 'Webinar', startsAt: new Date(Date.now() + 86400000).toISOString(), endsAt: new Date(Date.now() + 90000000).toISOString(), timeZone: 'Europe/Warsaw', mode: 'external_link', externalJoinUrl: 'https://teams.microsoft.com/meet/1', required: true };
+    await actor(tcm);
     const run = await rpc('academy_create_run', [{ courseId: live.course_id, versionId: live.version_id, title: 'Webinar 18.11', capacity: 200 }]);
-    await rpc('academy_save_session', [{ runId: run, title: 'Webinar', startsAt: new Date(Date.now() + 86400000).toISOString(), endsAt: new Date(Date.now() + 90000000).toISOString(), timeZone: 'Europe/Warsaw', mode: 'external_link', externalJoinUrl: 'https://teams.microsoft.com/meet/1', required: true }]);
-    await actor('admin'); await rpc('academy_publish_run', [run]);
+    await rpc('academy_save_session', [{ runId: run, ...session }]);
+    await rpc('academy_publish_run', [run]);
+    await owner(); eq((await sql('select status from course_runs where id=$1', [run])).rows[0].status, 'published', 'organizator publikuje własną edycję');
     await actor('student'); eq((await rpc('academy_register_run', [run])) !== null, true, 'zapis');
 
     // Szkolenie we własnym tempie nadal wymaga recenzji.
@@ -53,6 +56,23 @@ try {
     await expectDenied(publish, [selfPaced.course_id], /live_course_required/); checks++;
     await expectDenied(publish, ['00000000-0000-0000-0000-00000000ffff'], /course_not_found/); checks++;
 
+    // Kurs mieszany niesie lekcje i test: zapowiedź bez recenzji go nie publikuje, a jego edycja
+    // nadal wymaga osoby spoza twórców.
+    const blended = await rpc('academy_create_course', [{ title: 'Kurs mieszany', category: 'IT', delivery_mode: 'blended', completion_rules: { ...rules, require_all_lessons: true } }]);
+    await expectDenied(publish, [blended.course_id], /live_course_required/); checks++;
+    await sql("insert into course_lessons(course_id,version_id,title,order_index,content_md,estimated_minutes)values($1,$2,'Lekcja',0,'Tekst',15)", [blended.course_id, blended.version_id]);
+    await rpc('academy_submit_for_review', [blended.course_id]);
+    const token = (await sql('select submission_id from course_versions where id=$1', [blended.version_id])).rows[0].submission_id;
+    await actor('admin'); await rpc('academy_review_course', [blended.version_id, true, null, token]);
+    await actor(tcm);
+    const blendedRun = await rpc('academy_create_run', [{ courseId: blended.course_id, versionId: blended.version_id, title: 'Mieszany', capacity: 20 }]);
+    await rpc('academy_save_session', [{ runId: blendedRun, ...session }]);
+    await expectDenied('select public.academy_publish_run($1)', [blendedRun], /independent_admin_review_required/); checks++;
+
+    // Poprawka opublikowanego webinaru to zmiana treści: idzie do recenzji, nie przez zapowiedź.
+    await actor(tcm); await rpc('academy_begin_draft', [live.course_id]);
+    await expectDenied(publish, [live.course_id], /announcement_draft_required/); checks++;
+
     // Archiwum nie wraca przez zapowiedź.
     const archived = await rpc('academy_create_course', [{ title: 'Stary webinar', category: 'Webinar', delivery_mode: 'live', completion_rules: rules }]);
     await owner(); await sql("update courses set status='archived' where id=$1", [archived.course_id]);
@@ -60,6 +80,7 @@ try {
 
     await owner(); await db.exec(fs.readFileSync(fileURLToPath(new URL('../supabase/rollbacks/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql', import.meta.url)), 'utf8'));
     eq((await sql("select to_regprocedure('public.academy_publish_announcement(uuid)') is null x")).rows[0].x, true, 'cofnięcie');
+    eq((await sql("select pg_get_functiondef('academy_private.guard_run_review()'::regprocedure) like '%global_editor%' x")).rows[0].x, false, 'cofnięcie wyzwalacza');
 
     console.log(`Academy announcement DB checks passed: ${checks}`);
 } finally {
