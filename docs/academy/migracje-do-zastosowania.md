@@ -72,6 +72,9 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 | 39 | `20261110160300_academy_b1_10_launch_condition.sql` | #516 | `supabase/rollbacks/20261110160300_academy_b1_10_launch_condition.sql` | czeka |
 | 40 | `20261110164500_academy_programme_completions_report.sql` | #523 | `supabase/rollbacks/20261110164500_academy_programme_completions_report.sql` | czeka |
 | 41 | `20261110170000_academy_b4_3_mark_complete_guard.sql` | #521 | `supabase/rollbacks/20261110170000_academy_b4_3_mark_complete_guard.sql` | czeka |
+| 42 | `20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | #527 | `supabase/rollbacks/20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | czeka |
+| 43 | `20261110190000_academy_prosta_postep_nagrania.sql` | #528 | `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql` | czeka |
+| 44 | `20261110200000_academy_prosta_wyslij_do_publikacji.sql` | #529 | `supabase/rollbacks/20261110200000_academy_prosta_wyslij_do_publikacji.sql` | czeka |
 
 ## Warunki stosowania
 
@@ -329,3 +332,27 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
   - Żeby zadziałał, dopisz na początku SQL-a podanego do `apply_migration`, w tej samej transakcji: `SELECT set_config('academy.usun_dane_prob', 'TAK-USUN-DANE-PROB', true);`
   - Cofnięcie: nieodwracalne, cofamy PITR.
   - Wpis do rejestru: `20261109233000_academy_b5_9_usun_dane_prob.sql`, cofnięcie „nieodwracalne, cofamy PITR”, stan „bramka startu”.
+
+### Wersja prosta, krok 1: nagranie edycji w bibliotece
+
+- `COMPASS/supabase/migrations/20261110180000_academy_prosta_nagranie_w_bibliotece.sql`
+  - Warunek: po `20261109213300_academy_run_material_availability.sql`. Bez niej przerywa się komunikatem `prosta_1_wymaga_B4_6`.
+  - Decyzja właściciela z 2026-11-10: zatwierdzony materiał edycji (`ready` + `published`) czyta każdy z dostępem do Akademii, gdy kurs i edycja są opublikowane. Termin `available_until` przestaje działać, także przy sprzątaniu. Zapisani czytają jak dotąd.
+  - Ta sama funkcja pilnuje podpisanego URL ze Storage, rozdziałów i `academy_material_catalog`, więc wszystkie trzy poszerzają się razem.
+  - Cofnięcie: `supabase/rollbacks/20261110180000_academy_prosta_nagranie_w_bibliotece.sql`.
+
+### Wersja prosta, krok 2: postęp i czas trwania nagrania edycji
+
+- `COMPASS/supabase/migrations/20261110190000_academy_prosta_postep_nagrania.sql`
+  - Warunek: po `20261109213000_academy_video_progress.sql`. Bez niej przerywa się komunikatem `prosta_2_wymaga_B4_3`. Po kroku 1 działa dla każdego z dostępem, przed nim tylko dla zapisanych.
+  - `academy_save_recording_progress` zapisuje pozycję nagrania edycji w `academy_video_progress` (bez zaliczania lekcji), `academy_recording_durations` oddaje sam czas trwania jako agregat.
+  - Bez migracji biblioteka i odtwarzacz działają, tylko nie pamiętają pozycji i nie znają czasu trwania.
+  - Cofnięcie: `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql`.
+
+### Wersja prosta, krok 3: „Wyślij do publikacji” i zgoda trenera
+
+- `COMPASS/supabase/migrations/20261110200000_academy_prosta_wyslij_do_publikacji.sql`
+  - Warunek: po `20261110150000_academy_b3_10_tcm_review.sql` (`prosta_3_wymaga_B3_10`) i `20261109213000_academy_video_progress.sql` (`prosta_3_wymaga_B4_3`).
+  - Tabela `academy_run_publication_requests` (jedno pole zgody trenera zamiast pakietu przekazania), `academy_request_run_publication` (zapis zgody, audyt, dzwonek w Compass dla recenzentów, bez maili), `academy_run_recording_viewers` (liczba oglądających dla prowadzącego, agregat).
+  - Bez migracji przycisk mówi, że czeka na migrację; wgrane pliki i tak czekają na akceptację.
+  - Cofnięcie: `supabase/rollbacks/20261110200000_academy_prosta_wyslij_do_publikacji.sql`.
