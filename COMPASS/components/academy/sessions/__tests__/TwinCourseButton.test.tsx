@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { TwinCourseButton } from '../TwinCourseButton'
@@ -19,6 +21,11 @@ it('opens the draft editor after creating the course', async () => {
     await click()
     expect(createTwinCourse).toHaveBeenCalledWith('run-1')
     expect(push).toHaveBeenCalledWith('/learning/tworze/course-1')
+})
+
+it('redirects to a route that has a page', () => {
+    // Before #529 /learning/tworze/[id] had no page.tsx and the redirect ended in a 404.
+    expect(existsSync(join(process.cwd(), 'app/(protected)/learning/tworze/[id]/page.tsx'))).toBe(true)
 })
 
 it('shows the refusal and stays on the page', async () => {
