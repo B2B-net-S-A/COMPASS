@@ -75,6 +75,7 @@ Test `lib/academy/__tests__/migration-contract.test.ts` pilnuje, że każdy wier
 | 42 | `20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | #527 | `supabase/rollbacks/20261110180000_academy_prosta_nagranie_w_bibliotece.sql` | czeka |
 | 43 | `20261110190000_academy_prosta_postep_nagrania.sql` | #528 | `supabase/rollbacks/20261110190000_academy_prosta_postep_nagrania.sql` | czeka |
 | 44 | `20261110200000_academy_prosta_wyslij_do_publikacji.sql` | #529 | `supabase/rollbacks/20261110200000_academy_prosta_wyslij_do_publikacji.sql` | czeka |
+| 45 | `20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql` | #530 | `supabase/rollbacks/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql` | czeka |
 
 ## Warunki stosowania
 
@@ -356,3 +357,12 @@ Do czasu zastosowania przycisk na ekranie zamknięcia edycji mówi, że czeka na
   - Tabela `academy_run_publication_requests` (jedno pole zgody trenera zamiast pakietu przekazania), `academy_request_run_publication` (zapis zgody, audyt, dzwonek w Compass dla recenzentów, bez maili), `academy_run_recording_viewers` (liczba oglądających dla prowadzącego, agregat).
   - Bez migracji przycisk mówi, że czeka na migrację; wgrane pliki i tak czekają na akceptację.
   - Cofnięcie: `supabase/rollbacks/20261110200000_academy_prosta_wyslij_do_publikacji.sql`.
+
+### Wersja prosta, krok 4: zapowiedź bez drugiej osoby
+
+- `COMPASS/supabase/migrations/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql`
+  - Warunek: po `20261006080417_academy_tcm_full_editor.sql` (`prosta_4_wymaga_tcm_full_editor`).
+  - `academy_publish_announcement`: redaktor globalny (admin, TCM) publikuje bez recenzji pierwszą wersję szkolenia na żywo (`live`). Kursy mieszane, we własnym tempie i poprawki opublikowanego kursu nadal przechodzą recenzję.
+  - `academy_private.guard_run_review`: redaktor globalny publikuje edycję szkolenia na żywo, którą sam założył; inne edycje nadal wymagają osoby spoza twórców. Akceptacja nagrania bez zmian (zasada czterech oczu; samosprawdzenie to pilnuje).
+  - Bez migracji formularz „Nowe szkolenie na żywo” nic nie zakłada i mówi, że czeka na migrację.
+  - Cofnięcie: `supabase/rollbacks/20261110210000_academy_prosta_zapowiedz_bez_drugiej_osoby.sql`.
