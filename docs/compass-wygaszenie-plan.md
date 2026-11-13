@@ -188,13 +188,13 @@ Zmiany env NEXUSA idą przez „Coolify set env” i wdrożenie w oknie 18:00–
 |---|---|---|---|---|
 | 1.1 | NEXUS: źródło dostępności `local` (K11, `PUT /api/hr/admin/availability-source`), potem `COMPASS_AVAILABILITY_ENABLED=false` → Deploy | przydziały działają, sonda `workforce_availability` zielona | przy złym źródle stają przydziały rekrutacji | `hr_availability_source=compass`, flaga `true` |
 | 1.2 | NEXUS: moduł `lifecycle` włączony (§ 4 runbooka), potem `COMPASS_LIFECYCLE_ENABLED=false` | wynik pętli `superseded_by_hr_lifecycle` | konta osób, które odeszły, bez deaktywacji | flaga `true`, moduł wyłączony |
-| 1.3 | ATLAS: wariant z decyzji D2 (wyłączyć moduł sygnałów albo przepiąć na NEXUS) | sonda ATLASA bez `compass_signals: degraded`, `synthetic.yml` zielony | wyłączenie: handlowcy nie dostają nowych sygnałów z kart rozmów (dane w `compass_signals` zostają). Przepięcie: pierwszy feed z NEXUSA wycofa stare sygnały, jeśli nie dopasuje ich po `compass_id` | `COMPASS_SIGNALS_MODULE_ENABLED=true` |
+| 1.3 | ATLAS: `COMPASS_SIGNALS_MODULE_ENABLED=false` i `compass_status_push_enabled=false` (D2: ATLAS idzie do wygaszenia, bez przepinania na NEXUS) | sonda ATLASA bez `compass_signals: degraded`, `synthetic.yml` zielony | wyłączenie: handlowcy nie dostają nowych sygnałów z kart rozmów (dane w `compass_signals` zostają). Przepięcie: pierwszy feed z NEXUSA wycofa stare sygnały, jeśli nie dopasuje ich po `compass_id` | `COMPASS_SIGNALS_MODULE_ENABLED=true` |
 
 ### Krok 2: Compass przestaje pisać i oddawać dane
 
 | # | Co | Kontrola | Ryzyko | Cofnięcie |
 |---|---|---|---|---|
-| 2.1 | Monitoring prawny według decyzji D3 (przeniesienie do NEXUSA albo pożegnalny digest i koniec) | odbiorca digestu poinformowany | utrata alertów prawnych | — |
+| 2.1 | Monitoring prawny (D3): moduł w NEXUSIE działa i wysłał pierwszy digest, odbiorca potwierdził. Dopiero wtedy wyłączyć `cron-legal-monitor-alerts.yml` | digest z NEXUSA dotarł | przerwa w alertach prawnych albo dwa digesty naraz | włączyć workflow w Compassie |
 | 2.2 | Compass env: `HR_MOVED_TO_NEXUS=people,leave,time,payroll,lifecycle,care,cases` | crony `care`/`lifecycle` piszą `skipped`, brak powiadomień `contractor_followup` | opiekunowie przestają dostawać przypomnienia z Compassa (NEXUS ma kanban spraw z kartami opieki) | poprzednia wartość env |
 | 2.3 | Compass env: `HR_EXPORTS_OFF=people,leave,time,payroll,lifecycle,care,cases` (po krokach 1.x) | 410 na `/api/internal/*`, konsumenci bez błędów | nieznany wywołujący (krok 0.4) | `HR_EXPORTS_OFF=` |
 | 2.4 | Tydzień obserwacji: Sentry Compassa, sondy NEXUSA i ATLASA | brak nowych błędów | — | — |
@@ -237,15 +237,15 @@ Zmiany env NEXUSA idą przez „Coolify set env” i wdrożenie w oknie 18:00–
 
 ---
 
-## 8. Decyzje dla Artura
+## 8. Decyzje Artura
 
-| # | Decyzja | Rekomendacja |
+| # | Decyzja | Stan |
 |---|---|---|
-| D1 | Otwarta rejestracja i czytelne `profiles` (sekcja 1) | wyłączyć rejestrację w panelu Supabase teraz, przed resztą planu |
-| D2 | Sygnały sprzedażowe dla ATLASA | wyłączyć moduł w ATLASIE, bo zgodnie z decyzją z 22.10 popyt idzie do Delivery Leada w NEXUSIE |
-| D3 | Monitoring prawny (jedyna funkcja bez odpowiednika) | do ustalenia z odbiorcą digestu |
-| D4 | Forma archiwum i okres karencji | pełny zrzut + CSV w SharePoincie, karencja 90 dni |
-| D5 | Rozmowy kontraktorów, wejścia i zejścia, placementy (poza paczką) | tylko w archiwum, bez importu do NEXUSA |
+| D1 | Otwarta rejestracja i czytelne `profiles` (sekcja 1) | **13.11.2026: wyłączyć rejestrację teraz** (zlecone tej sesji) |
+| D2 | Sygnały sprzedażowe dla ATLASA | **13.11.2026: ATLAS też jest wygaszany**, bo wszystko jest albo będzie w NEXUSIE. Przepięcia ATLASA na NEXUS nie robimy. Krok 1.3 = wyłączenie modułu sygnałów w ATLASIE w ramach osobnego planu wygaszenia ATLASA |
+| D3 | Monitoring prawny (jedyna funkcja bez odpowiednika) | **13.11.2026: przenieść do NEXUSA.** Compass wysyła digest do czasu uruchomienia modułu w NEXUSIE, więc krok 2.1 czeka na ten moduł |
+| D4 | Forma archiwum i okres karencji | otwarte. Rekomendacja: pełny zrzut + CSV w SharePoincie, karencja 90 dni |
+| D5 | Rozmowy kontraktorów, wejścia i zejścia, placementy (poza paczką) | otwarte. Rekomendacja: tylko w archiwum, bez importu do NEXUSA |
 
 ## 9. Niepotwierdzone (gdzie szukano)
 
