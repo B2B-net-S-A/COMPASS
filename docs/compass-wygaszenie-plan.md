@@ -35,7 +35,7 @@ Lokalne checkouty NEXUSA (24.07) i ATLASA (28.09) są nieaktualne, więc nie nal
 
 Wniosek: z Compassa nikt już realnie nie korzysta. Nadal jednak działają crony, które wysyłają powiadomienia, i ATLAS pobiera z niego sygnały sprzedażowe.
 
-### Pilne, niezależnie od wygaszenia: rejestracja jest otwarta
+### Pilne, niezależnie od wygaszenia: rejestracja była otwarta (zamknięta 13.11, D1)
 
 - `GET /auth/v1/settings` zwraca `disable_signup: false`, a dostawcy to `email` i `azure`.
 - Polityka `"Public profiles are viewable by everyone."` na `profiles` ma `roles={authenticated}` i `qual=true`.
@@ -241,7 +241,7 @@ Zmiany env NEXUSA idą przez „Coolify set env” i wdrożenie w oknie 18:00–
 
 | # | Decyzja | Stan |
 |---|---|---|
-| D1 | Otwarta rejestracja i czytelne `profiles` (sekcja 1) | **13.11.2026: wyłączyć rejestrację teraz** (zlecone tej sesji) |
+| D1 | Otwarta rejestracja i czytelne `profiles` (sekcja 1) | **Zrobione 13.11.2026:** w panelu Supabase wyłączono „Allow new users to sign up”, `/auth/v1/settings` zwraca `disable_signup: true`. Polityka `profiles` z `qual=true` zostaje do wyłączenia aplikacji, ale nowego konta nie da się już założyć. Wycofanie: włączyć przełącznik |
 | D2 | Sygnały sprzedażowe dla ATLASA | **13.11.2026: ATLAS też jest wygaszany**, bo wszystko jest albo będzie w NEXUSIE. Przepięcia ATLASA na NEXUS nie robimy. Krok 1.3 = wyłączenie modułu sygnałów w ATLASIE w ramach osobnego planu wygaszenia ATLASA |
 | D3 | Monitoring prawny (jedyna funkcja bez odpowiednika) | **13.11.2026: przenieść do NEXUSA.** Compass wysyła digest do czasu uruchomienia modułu w NEXUSIE, więc krok 2.1 czeka na ten moduł |
 | D4 | Forma archiwum i okres karencji | otwarte. Rekomendacja: pełny zrzut + CSV w SharePoincie, karencja 90 dni |
