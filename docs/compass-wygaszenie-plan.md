@@ -194,7 +194,7 @@ Zmiany env NEXUSA idą przez „Coolify set env” i wdrożenie w oknie 18:00–
 
 | # | Co | Kontrola | Ryzyko | Cofnięcie |
 |---|---|---|---|---|
-| 2.1 | Monitoring prawny (D3): moduł w NEXUSIE działa i wysłał pierwszy digest, odbiorca potwierdził. Dopiero wtedy wyłączyć `cron-legal-monitor-alerts.yml` | digest z NEXUSA dotarł | przerwa w alertach prawnych albo dwa digesty naraz | włączyć workflow w Compassie |
+| 2.1 | Monitoring prawny (D3): z Compassa nic nie przenosimy. `cron-legal-monitor-alerts.yml` wyłączamy razem z resztą cronów w kroku 4. Pozycje `legal_monitor_items` zostają tylko w pełnym zrzucie (krok 3) | — | przerwa w alertach prawnych, jeśli moduł w NEXUSIE nie ruszy przed krokiem 4 | włączyć workflow w Compassie |
 | 2.2 | Compass env: `HR_MOVED_TO_NEXUS=people,leave,time,payroll,lifecycle,care,cases` | crony `care`/`lifecycle` piszą `skipped`, brak powiadomień `contractor_followup` | opiekunowie przestają dostawać przypomnienia z Compassa (NEXUS ma kanban spraw z kartami opieki) | poprzednia wartość env |
 | 2.3 | Compass env: `HR_EXPORTS_OFF=people,leave,time,payroll,lifecycle,care,cases` (po krokach 1.x) | 410 na `/api/internal/*`, konsumenci bez błędów | nieznany wywołujący (krok 0.4) | `HR_EXPORTS_OFF=` |
 | 2.4 | Tydzień obserwacji: Sentry Compassa, sondy NEXUSA i ATLASA | brak nowych błędów | — | — |
@@ -243,7 +243,7 @@ Zmiany env NEXUSA idą przez „Coolify set env” i wdrożenie w oknie 18:00–
 |---|---|---|
 | D1 | Otwarta rejestracja i czytelne `profiles` (sekcja 1) | **Zrobione 13.11.2026:** w panelu Supabase wyłączono „Allow new users to sign up”, `/auth/v1/settings` zwraca `disable_signup: true`. Polityka `profiles` z `qual=true` zostaje do wyłączenia aplikacji, ale nowego konta nie da się już założyć. Wycofanie: włączyć przełącznik |
 | D2 | Sygnały sprzedażowe dla ATLASA | **13.11.2026: ATLAS też jest wygaszany**, bo wszystko jest albo będzie w NEXUSIE. Przepięcia ATLASA na NEXUS nie robimy. Krok 1.3 = wyłączenie modułu sygnałów w ATLASIE w ramach osobnego planu wygaszenia ATLASA |
-| D3 | Monitoring prawny (jedyna funkcja bez odpowiednika) | **13.11.2026: przenieść do NEXUSA.** Compass wysyła digest do czasu uruchomienia modułu w NEXUSIE, więc krok 2.1 czeka na ten moduł |
+| D3 | Monitoring prawny (jedyna funkcja bez odpowiednika) | **13.11.2026: z Compassa nic nie przenosimy** (ani 96 pozycji, ani ekranu). Moduł w NEXUSIE powstaje od zera w osobnej sesji. Workflow w Compassie wyłączamy razem z wygaszeniem Compassa |
 | D4 | Forma archiwum i okres karencji | otwarte. Rekomendacja: pełny zrzut + CSV w SharePoincie, karencja 90 dni |
 | D5 | Rozmowy kontraktorów, wejścia i zejścia, placementy (poza paczką) | otwarte. Rekomendacja: tylko w archiwum, bez importu do NEXUSA |
 
