@@ -188,7 +188,7 @@ Zmiany env NEXUSA idą przez „Coolify set env” i wdrożenie w oknie 18:00–
 |---|---|---|---|---|
 | 1.1 | NEXUS: źródło dostępności `local` (K11, `PUT /api/hr/admin/availability-source`), potem `COMPASS_AVAILABILITY_ENABLED=false` → Deploy | przydziały działają, sonda `workforce_availability` zielona | przy złym źródle stają przydziały rekrutacji | `hr_availability_source=compass`, flaga `true` |
 | 1.2 | NEXUS: moduł `lifecycle` włączony (§ 4 runbooka), potem `COMPASS_LIFECYCLE_ENABLED=false` | wynik pętli `superseded_by_hr_lifecycle` | konta osób, które odeszły, bez deaktywacji | flaga `true`, moduł wyłączony |
-| 1.3 | ATLAS: `COMPASS_SIGNALS_MODULE_ENABLED=false` i `compass_status_push_enabled=false` (D2: ATLAS idzie do wygaszenia, bez przepinania na NEXUS) | sonda ATLASA bez `compass_signals: degraded`, `synthetic.yml` zielony | wyłączenie: handlowcy nie dostają nowych sygnałów z kart rozmów (dane w `compass_signals` zostają). Przepięcie: pierwszy feed z NEXUSA wycofa stare sygnały, jeśli nie dopasuje ich po `compass_id` | `COMPASS_SIGNALS_MODULE_ENABLED=true` |
+| 1.3 | **Zrobione 13.11.2026 ok. 15:58 UTC.** ATLAS: `COMPASS_SIGNALS_MODULE_ENABLED=false` (run „Coolify set env” 43457574569, success). Ostatni bieg pullera 15:43 UTC. `synthetic.yml` ATLASA `disabled_manually`, scheduler ATLASA zamrożony od 16:08 UTC (B2B-net-S-A/ATLAS#420). Import końcowy ATLAS → NEXUS zrobiony. D2: ATLAS idzie do wygaszenia, bez przepinania na NEXUS | sonda ATLASA bez `compass_signals: degraded`, `synthetic.yml` zielony | wyłączenie: handlowcy nie dostają nowych sygnałów z kart rozmów (dane w `compass_signals` zostają). Przepięcie: pierwszy feed z NEXUSA wycofa stare sygnały, jeśli nie dopasuje ich po `compass_id` | `COMPASS_SIGNALS_MODULE_ENABLED=true` |
 
 ### Krok 2: Compass przestaje pisać i oddawać dane
 
@@ -196,7 +196,7 @@ Zmiany env NEXUSA idą przez „Coolify set env” i wdrożenie w oknie 18:00–
 |---|---|---|---|---|
 | 2.1 | Monitoring prawny (D3): z Compassa nic nie przenosimy. `cron-legal-monitor-alerts.yml` wyłączamy razem z resztą cronów w kroku 4. Pozycje `legal_monitor_items` zostają tylko w pełnym zrzucie (krok 3) | — | przerwa w alertach prawnych, jeśli moduł w NEXUSIE nie ruszy przed krokiem 4 | włączyć workflow w Compassie |
 | 2.2 | Compass env: `HR_MOVED_TO_NEXUS=people,leave,time,payroll,lifecycle,care,cases` | crony `care`/`lifecycle` piszą `skipped`, brak powiadomień `contractor_followup` | opiekunowie przestają dostawać przypomnienia z Compassa (NEXUS ma kanban spraw z kartami opieki) | poprzednia wartość env |
-| 2.3 | Compass env: `HR_EXPORTS_OFF=people,leave,time,payroll,lifecycle,care,cases` (po krokach 1.x) | 410 na `/api/internal/*`, konsumenci bez błędów | nieznany wywołujący (krok 0.4) | `HR_EXPORTS_OFF=` |
+| 2.3 | Compass env: `HR_EXPORTS_OFF=people,leave,time,payroll,lifecycle,care,cases` (po krokach 1.x; od strony ATLASA `care` można wyłączyć już od 13.11) | 410 na `/api/internal/*`, konsumenci bez błędów | nieznany wywołujący (krok 0.4) | `HR_EXPORTS_OFF=` |
 | 2.4 | Tydzień obserwacji: Sentry Compassa, sondy NEXUSA i ATLASA | brak nowych błędów | — | — |
 
 ### Krok 3: eksport archiwum (tylko odczyt bazy)
